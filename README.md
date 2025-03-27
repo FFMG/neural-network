@@ -1,2 +1,4 @@
 # neural-network
-Very simple neural network in c++
+
+This project aims to create a very simple neural network in c++
+
