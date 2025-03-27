@@ -1,10 +1,8 @@
 #include "neuralnetwork.h"
-#include <cmath>
 
 NeuralNetwork::NeuralNetwork(
   int number_of_inputs, 
-  int number_of_outputs,
-  activation_method activation
+  const activation::method& activation
 ) :
   _dis(nullptr),
   _gen(nullptr),
@@ -15,7 +13,7 @@ NeuralNetwork::NeuralNetwork(
   std::random_device rd;
   _gen = new std::mt19937(rd());
   _dis = new std::uniform_real_distribution<>(-1.0, 1.0);
-  prepare_synaptic_weights(number_of_inputs, number_of_outputs);
+  prepare_synaptic_weights(number_of_inputs);
 }
 
 NeuralNetwork::~NeuralNetwork()
@@ -29,18 +27,18 @@ double NeuralNetwork::activation(double x) const
 {
   switch (_activation_method)
   {
-  case relu_activation:
-    return relu(x);
+  case activation::relu_activation:
+    return activation::relu(x);
 
-  case leakyRelu_activation:
-    return leakyRelu(x);
+  case activation::leakyRelu_activation:
+    return activation::leakyRelu(x);
 
-  case tanh_activation:
-    return tanh(x);
+  case activation::tanh_activation:
+    return activation::tanh(x);
 
-  case sigmoid_activation:
+  case activation::sigmoid_activation:
   default:
-    return sigmoid(x);
+    return activation::sigmoid(x);
   }
 }
 
@@ -48,76 +46,30 @@ double NeuralNetwork::activation_derivative(double x) const
 {
   switch (_activation_method)
   {
-  case relu_activation:
-    return relu_derivative(x);
+  case activation::relu_activation:
+    return activation::relu_derivative(x);
 
-  case leakyRelu_activation:
-    return leakyRelu_derivative(x);
+  case activation::leakyRelu_activation:
+    return activation::leakyRelu_derivative(x);
 
-  case tanh_activation:
-    return tanh_derivative(x);
+  case activation::tanh_activation:
+    return activation::tanh_derivative(x);
 
-  case sigmoid_activation:
+  case activation::sigmoid_activation:
   default:
-    return sigmoid_derivative(x);
+    return activation::sigmoid_derivative(x);
   }
 }
 
-// Sigmoid function
-double NeuralNetwork::sigmoid(double x) const
-{
-  return 1 / (1 + std::exp(-x));
-}
-
-// Sigmoid derivative
-double NeuralNetwork::sigmoid_derivative(double x) const
-{
-  return x * (1 - x);
-}
-
-double NeuralNetwork::relu(double x) const
-{
-  return std::max(0.0, x);
-}
-
-double NeuralNetwork::relu_derivative(double x) const
-{
-  return (x > 0.0) ? 1.0 : 0.0;
-}
-
-double NeuralNetwork::leakyRelu(double x, double alpha) const
-{
-  return (x > 0) ? x : alpha * x;
-}
-
-double NeuralNetwork::leakyRelu_derivative(double x, double alpha) const
-{
-  return (x > 0) ? 1.0 : alpha;
-}
-
-double NeuralNetwork::tanh(double x) const
-{
-  return (std::exp(x) - std::exp(-x)) / (std::exp(x) + std::exp(-x));
-}
-
-double NeuralNetwork::tanh_derivative(double x) const
-{
-  return 1 - std::pow(tanh(x), 2);
-}
-
-
-void NeuralNetwork::prepare_synaptic_weights(int number_of_inputs, int number_of_outputs)
+void NeuralNetwork::prepare_synaptic_weights(int number_of_inputs)
 {
   delete _synaptic_weights;
   _synaptic_weights = nullptr;
-  _synaptic_weights = new std::vector<std::vector<double>>(number_of_inputs, std::vector<double>(number_of_outputs));
+  _synaptic_weights = new std::vector<double>(number_of_inputs, 0);
 
   for (int i = 0; i < number_of_inputs; ++i) 
   {
-    for (int j = 0; j < number_of_outputs; ++j)
-    {
-      (*_synaptic_weights)[i][j] = (*_dis)(*_gen);
-    }
+    (*_synaptic_weights)[i] = (*_dis)(*_gen);
   }
 }
 
@@ -129,7 +81,7 @@ double NeuralNetwork::think(
   double sum = 0.0;
   for (auto i = 0; i < inputs.size(); ++i) 
   {
-    sum += inputs[i] * (*_synaptic_weights)[i][0];
+    sum += inputs[i] * (*_synaptic_weights)[i];
   }
   outputs = activation(sum);
   return outputs;
@@ -165,7 +117,7 @@ void NeuralNetwork::train(
     {
       double sum = 0.0;
       for (size_t j = 0; j < input_layer[i].size(); ++j) {
-        sum += input_layer[i][j] * (*_synaptic_weights)[j][0];
+        sum += input_layer[i][j] * (*_synaptic_weights)[j];
       }
       outputs[i][0] = activation(sum);
     }
@@ -199,7 +151,7 @@ void NeuralNetwork::train(
     }
 
     for (size_t i = 0; i < (*_synaptic_weights).size(); ++i) {
-      (*_synaptic_weights)[i][0] += weight_adjustments[i][0];
+      (*_synaptic_weights)[i] += weight_adjustments[i][0];
     }
   }
 }

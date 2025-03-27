@@ -21,7 +21,7 @@ int main()
       {0}, {1}, {1}, {0}
   };
 
-  auto* nn = new NeuralNetwork(3, 1, NeuralNetwork::tanh_activation);
+  auto* nn = new NeuralNetwork(3, activation::sigmoid_activation);
   nn->train(training_inputs, training_outputs, 10000);
 
   std::vector<std::vector<double>> inputs = {
