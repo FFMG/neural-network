@@ -1,4 +1,5 @@
 #pragma once
+#include "activation.h"
 #include <random>
 #include <iomanip>
 #include <vector>
@@ -6,15 +7,7 @@
 class NeuralNetwork
 {
 public:
-  enum activation_method
-  {
-    sigmoid_activation,
-    tanh_activation,
-    relu_activation,
-    leakyRelu_activation
-  };
-
-  NeuralNetwork(int number_of_inputs, int number_of_outputs, activation_method activation);
+  NeuralNetwork(int number_of_inputs, const activation::method& activation);
   virtual ~NeuralNetwork();
 
   void train(
@@ -31,22 +24,13 @@ public:
   ) const;
 
 private:
-  double sigmoid(double x) const;
-  double sigmoid_derivative(double x) const;
-  double tanh(double x) const;
-  double tanh_derivative(double x) const;
-  double relu(double x) const;
-  double relu_derivative(double x) const;
-  double leakyRelu(double x, double alpha = 0.01) const;
-  double leakyRelu_derivative(double x, double alpha = 0.01) const;
-
   double activation(double x) const;
   double activation_derivative(double x) const;
 
-  void prepare_synaptic_weights(int number_of_inputs, int number_of_outputs);
+  void prepare_synaptic_weights(int number_of_inputs);
 
   std::uniform_real_distribution<>* _dis;
   std::mt19937 *_gen;
-  std::vector<std::vector<double>>* _synaptic_weights;
-  const activation_method _activation_method;
+  std::vector<double>* _synaptic_weights;
+  const activation::method _activation_method;
 };
