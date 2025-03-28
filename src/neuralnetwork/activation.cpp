@@ -43,3 +43,41 @@ double activation::tanh_derivative(double x)
 {
   return 1 - std::pow(tanh(x), 2);
 }
+
+double activation::activate(method method, double x)
+{
+  switch (method)
+  {
+  case activation::relu_activation:
+    return activation::relu(x);
+
+  case activation::leakyRelu_activation:
+    return activation::leakyRelu(x);
+
+  case activation::tanh_activation:
+    return activation::tanh(x);
+
+  case activation::sigmoid_activation:
+  default:
+    return activation::sigmoid(x);
+  }
+}
+
+double activation::activate_derivative(method method, double x)
+{
+  switch (method)
+  {
+  case activation::relu_activation:
+    return activation::relu_derivative(x);
+
+  case activation::leakyRelu_activation:
+    return activation::leakyRelu_derivative(x);
+
+  case activation::tanh_activation:
+    return activation::tanh_derivative(x);
+
+  case activation::sigmoid_activation:
+  default:
+    return activation::sigmoid_derivative(x);
+  }
+}

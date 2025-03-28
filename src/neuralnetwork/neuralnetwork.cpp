@@ -23,44 +23,6 @@ NeuralNetwork::~NeuralNetwork()
   delete _synaptic_weights;
 }
 
-double NeuralNetwork::activation(double x) const
-{
-  switch (_activation_method)
-  {
-  case activation::relu_activation:
-    return activation::relu(x);
-
-  case activation::leakyRelu_activation:
-    return activation::leakyRelu(x);
-
-  case activation::tanh_activation:
-    return activation::tanh(x);
-
-  case activation::sigmoid_activation:
-  default:
-    return activation::sigmoid(x);
-  }
-}
-
-double NeuralNetwork::activation_derivative(double x) const
-{
-  switch (_activation_method)
-  {
-  case activation::relu_activation:
-    return activation::relu_derivative(x);
-
-  case activation::leakyRelu_activation:
-    return activation::leakyRelu_derivative(x);
-
-  case activation::tanh_activation:
-    return activation::tanh_derivative(x);
-
-  case activation::sigmoid_activation:
-  default:
-    return activation::sigmoid_derivative(x);
-  }
-}
-
 void NeuralNetwork::prepare_synaptic_weights(int number_of_inputs)
 {
   delete _synaptic_weights;
@@ -83,7 +45,7 @@ double NeuralNetwork::think(
   {
     sum += inputs[i] * (*_synaptic_weights)[i];
   }
-  outputs = activation(sum);
+  outputs = activation::activate(_activation_method, sum);
   return outputs;
 }
 
@@ -119,7 +81,7 @@ void NeuralNetwork::train(
       for (size_t j = 0; j < input_layer[i].size(); ++j) {
         sum += input_layer[i][j] * (*_synaptic_weights)[j];
       }
-      outputs[i][0] = activation(sum);
+      outputs[i][0] = activation::activate(_activation_method, sum);
     }
 
     // how much did we miss?
@@ -131,7 +93,7 @@ void NeuralNetwork::train(
     // multiply how much we missed by the slope of the activation at the values in outputs
     std::vector<std::vector<double>> adjustments(outputs.size(), std::vector<double>(1));
     for (size_t i = 0; i < outputs.size(); ++i) {
-      adjustments[i][0] = error[i][0] * activation_derivative(outputs[i][0]);
+      adjustments[i][0] = error[i][0] * activation::activate_derivative(_activation_method, outputs[i][0]);
     }
 
     // update weights
