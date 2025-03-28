@@ -16,6 +16,9 @@ public:
     int number_of_epoch
   );
 
+  std::vector<std::vector<double>> think(
+    const std::vector<std::vector<double>>& inputs
+  ) const;
   std::vector<double> think(
     const std::vector<double>& inputs
   ) const;
