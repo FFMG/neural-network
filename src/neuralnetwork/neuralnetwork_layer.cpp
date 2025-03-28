@@ -45,6 +45,18 @@ std::vector<double> NeuralNetworkLayer::think(
   return resultVals;
 }
 
+std::vector<std::vector<double>> NeuralNetworkLayer::think(
+  const std::vector<std::vector<double>>& inputs
+) const
+{
+  std::vector<std::vector<double>> outputs(inputs.size(), std::vector<double>(1));
+  for (size_t i = 0; i < inputs.size(); ++i)
+  {
+    outputs[i] = think(inputs[i]);
+  }
+  return outputs;
+}
+
 void NeuralNetworkLayer::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
