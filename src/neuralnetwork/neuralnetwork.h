@@ -24,9 +24,6 @@ public:
   ) const;
 
 private:
-  double activation(double x) const;
-  double activation_derivative(double x) const;
-
   void prepare_synaptic_weights(int number_of_inputs);
 
   std::uniform_real_distribution<>* _dis;

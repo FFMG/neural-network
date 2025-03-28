@@ -13,6 +13,10 @@ public:
     leakyRelu_activation
   };
 
+  static double activate(method method, double x);
+  static double activate_derivative(method method, double x);
+
+private:
   static double sigmoid(double x);
   static double sigmoid_derivative(double x);
   static double tanh(double x);
