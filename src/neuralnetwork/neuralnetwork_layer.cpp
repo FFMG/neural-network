@@ -7,7 +7,7 @@ NeuralNetworkLayer::NeuralNetworkLayer(
   _layers(nullptr),
   _activation_method(activation)
 {
-  unsigned numLayers = topology.size();
+  const auto& numLayers = topology.size();
   _layers = new std::vector<Neuron::Layer>();
   for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) 
   {
@@ -98,7 +98,7 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
 
   // Calculate hidden layer gradients
 
-  for (unsigned layerNum = layers_src.size() - 2; layerNum > 0; --layerNum) {
+  for (auto layerNum = layers_src.size() - 2; layerNum > 0; --layerNum) {
     auto& hiddenLayer = layers_src[layerNum];
     auto& nextLayer = layers_src[layerNum + 1];
 
@@ -108,7 +108,7 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
   }
 
   // update the hidden layers
-  for (unsigned layerNum = layers_src.size() - 1; layerNum > 0; --layerNum) {
+  for (auto layerNum = layers_src.size() - 1; layerNum > 0; --layerNum) {
     auto& layer = layers_src[layerNum];
     auto& prevLayer = layers_src[layerNum - 1];
 
