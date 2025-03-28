@@ -2,11 +2,19 @@
 
 ## What is it?
 
-This project aims to create a very simple neural network in c++
+This project aims to create a very simple neural network in c++ without any external libraries.
+
+It is not fast, it is not very good ... but it does the work and it shows you how it works.
+
+Look at the code ...
+
+## How to contribute
+
+If you spot anything wrong, please open a new issue ... as I said, I am still learning myself and I am only on my second or third epoch .... (that a NN joke ... I am sorry).
 
 ## How to use
 
-### Multiple Hiden layers
+### Multiple Hidden layers
 
 ```c++
 #include <iostream>
@@ -119,3 +127,11 @@ int main()
   return 0;
 }
 ```
+
+## Data Normalisation
+
+While the classes do not force you to normalise your data ... I strongly suggest you do :)
+
+Normalise the input output between -1 and 1 or 0 and 1
+
+This will save you a lot of headache ...
