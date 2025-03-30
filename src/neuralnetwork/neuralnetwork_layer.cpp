@@ -22,7 +22,7 @@ NeuralNetworkLayer::NeuralNetworkLayer(
     }
 
     // Force the bias node's output to 1.0 (it was the last neuron pushed in this layer):
-    (*_layers).back().back().setOutputVal(1.0);
+    (*_layers).back().back().set_output_value(1.0);
   }
 }
 
@@ -39,8 +39,10 @@ std::vector<double> NeuralNetworkLayer::think(
   forward_feed(inputs, layers);
 
   std::vector<double> resultVals;
-  for (unsigned n = 0; n < layers.back().size() - 1; ++n) {
-    resultVals.push_back(layers.back()[n].getOutputVal());
+  const auto& back_layer = layers.back();
+  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
+  {
+    resultVals.push_back(back_layer[n].get_output_value());
   }
   return resultVals;
 }
@@ -82,8 +84,9 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
   auto& outputLayer = layers_src.back();
   auto error = 0.0;
 
-  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) {
-    double delta = targetVals[n] - outputLayer[n].getOutputVal();
+  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
+  {
+    double delta = targetVals[n] - outputLayer[n].get_output_value();
     error += delta * delta;
   }
   error /= outputLayer.size() - 1; // get average error squared
@@ -93,7 +96,7 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
 
   for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
   {
-    outputLayer[n].calcOutputGradients(targetVals[n]);
+    outputLayer[n].calculate_output_gradients(targetVals[n]);
   }
 
   // Calculate hidden layer gradients
@@ -103,7 +106,7 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
     auto& nextLayer = layers_src[layerNum + 1];
 
     for (unsigned n = 0; n < hiddenLayer.size(); ++n) {
-      hiddenLayer[n].calcHiddenGradients(nextLayer);
+      hiddenLayer[n].calculate_hidden_gradients(nextLayer);
     }
   }
 
@@ -121,20 +124,25 @@ void NeuralNetworkLayer::back_propagation(const std::vector<double>& targetVals,
 void NeuralNetworkLayer::forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers) const
 {
   // Assign (latch) the input values into the input neurons
-  for (unsigned i = 0; i < inputVals.size(); ++i) {
-    layers[0][i].setOutputVal(inputVals[i]);
+  for (auto i = 0; i < inputVals.size(); ++i) 
+  {
+    layers[0][i].set_output_value(inputVals[i]);
   }
 
   // forward propagate
-  for (unsigned layerNum = 1; layerNum < layers.size(); ++layerNum) {
-    auto& prevLayer = layers[layerNum - 1];
-    for (unsigned n = 0; n < layers[layerNum].size() - 1; ++n) {
+  for (auto layerNum = 1; layerNum < layers.size(); ++layerNum) 
+  {
+    const auto& prevLayer = layers[layerNum - 1];
+    for (auto n = 0; n < layers[layerNum].size() - 1; ++n) 
+    {
       layers[layerNum][n].forward_feed(prevLayer);
     }
   }
 
   std::vector<double> resultVals;
-  for (unsigned n = 0; n < layers.back().size() - 1; ++n) {
-    resultVals.push_back(layers.back()[n].getOutputVal());
+  const auto& back_layer = layers.back();
+  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
+  {
+    resultVals.push_back(back_layer[n].get_output_value());
   }
 }
