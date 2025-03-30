@@ -1,4 +1,6 @@
 #include "neuron.h"
+#include <cmath>
+#include <random>
 
 double Neuron::eta = 0.15;    // overall net learning rate, [0.0..1.0]
 double Neuron::alpha = 0.5;   // momentum, multiplier of last deltaWeight, [0.0..1.0]
@@ -9,16 +11,18 @@ Neuron::Neuron(
   const activation::method& activation
 ) :
   _index(index),
-  _outputVal(0),
+  _output_value(0),
   _gradient(0),
   _activation_method(activation),
   _output_weights(nullptr)
 {
   _output_weights = new std::vector<Connection>();
-  for (unsigned c = 0; c < numOutputs; ++c) 
+  auto weights = he_initialization(numOutputs);
+  for (auto c = 0; c < numOutputs; ++c) 
   {
-    _output_weights->push_back(Connection());
-    _output_weights->back().weight = randomWeight();
+    auto connection = Connection();
+    connection.weight = weights[c];
+    _output_weights->push_back(connection);
   }
 }
 
@@ -30,7 +34,7 @@ Neuron::Neuron(
   const std::vector<Connection>& output_weights
 ) :
   _index(index),
-  _outputVal(outputVal),
+  _output_value(outputVal),
   _gradient(gradient),
   _activation_method(activation),
   _output_weights(nullptr)
@@ -43,7 +47,7 @@ Neuron::Neuron(
 }
 
 Neuron::Neuron(const Neuron& src) :
-  Neuron(src._index, src._outputVal, src._gradient, src._activation_method, *src._output_weights)
+  Neuron(src._index, src._output_value, src._gradient, src._activation_method, *src._output_weights)
 {
 }
 
@@ -65,10 +69,22 @@ const Neuron& Neuron::operator=(const Neuron& src)
   return *this;
 }
 
-
 Neuron::~Neuron()
 {
   Clean();
+}
+
+std::vector<double> Neuron::he_initialization(int num_neurons_prev_layer) 
+{
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / num_neurons_prev_layer));
+
+  std::vector<double> weights(num_neurons_prev_layer);
+  for (double& w : weights) {
+    w = dist(gen);  // Initialize weights
+  }
+  return weights;
 }
 
 void Neuron::Clean()
@@ -90,7 +106,7 @@ void Neuron::updateInputWeights(Layer& prevLayer)
     double newDeltaWeight =
       // Individual input, magnified by the gradient and train rate:
       eta
-      * neuron.getOutputVal()
+      * neuron.get_output_value()
       * _gradient
       // Also add momentum = a fraction of the previous delta weight;
       + alpha
@@ -107,23 +123,53 @@ double Neuron::sumDOW(const Layer& nextLayer) const
 
   // Sum our contributions of the errors at the nodes we feed.
 
-  for (unsigned n = 0; n < nextLayer.size() - 1; ++n) {
-    sum += _output_weights->at(n).weight * nextLayer[n]._gradient;
+  for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
+  {
+    auto weights_and_gradients = _output_weights->at(n).weight * nextLayer[n]._gradient;
+    sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
   }
-
+  if (!std::isfinite(sum))
+  {
+    return 0.0;
+  }
   return sum;
 }
 
-void Neuron::calcHiddenGradients(const Layer& nextLayer)
+void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
   double dow = sumDOW(nextLayer);
-  _gradient = dow * activation::activate_derivative(_activation_method, _outputVal);
+  auto gradient = dow * activation::activate_derivative(_activation_method, get_output_value());
+  if (!std::isfinite(gradient))
+  {
+    return;
+  }
+  _gradient = gradient;
 }
 
-void Neuron::calcOutputGradients(double targetVal)
+void Neuron::set_output_value(double val) 
 {
-  double delta = targetVal - _outputVal;
-  _gradient = delta * activation::activate_derivative(_activation_method, _outputVal);
+  if (!std::isfinite(val))
+  {
+    return;
+  }
+  _output_value = val;
+}
+
+double Neuron::get_output_value() const
+{ 
+  return _output_value; 
+}
+
+
+void Neuron::calculate_output_gradients(double targetVal)
+{
+  double delta = targetVal - get_output_value();
+  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
+  if (!std::isfinite(gradient))
+  {
+    return;
+  }
+  _gradient = gradient;
 }
 
 void Neuron::forward_feed(const Layer& prevLayer)
@@ -133,11 +179,11 @@ void Neuron::forward_feed(const Layer& prevLayer)
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  for (unsigned n = 0; n < prevLayer.size(); ++n) {
-    sum += prevLayer[n].getOutputVal() *
-      prevLayer[n]._output_weights->at(_index).weight;
+  for (unsigned n = 0; n < prevLayer.size(); ++n) 
+  {
+    sum += prevLayer[n].get_output_value() * prevLayer[n]._output_weights->at(_index).weight;
   }
 
-  _outputVal = activation::activate(_activation_method, sum);
+  set_output_value( activation::activate(_activation_method, sum) );
 }
 
