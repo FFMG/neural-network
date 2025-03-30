@@ -22,20 +22,37 @@ Neuron::Neuron(
   }
 }
 
-Neuron::Neuron(const Neuron& src) :
-  _index(src._index),
-  _outputVal(src._outputVal),
-  _gradient(src._gradient),
-  _activation_method(src._activation_method),
+Neuron::Neuron(
+  unsigned index,
+  double outputVal,
+  double gradient,
+  const activation::method& activation,
+  const std::vector<Connection>& output_weights
+) :
+  _index(index),
+  _outputVal(outputVal),
+  _gradient(gradient),
+  _activation_method(activation),
   _output_weights(nullptr)
 {
-  *this = src;
+  _output_weights = new std::vector<Connection>();
+  for (auto& connection : output_weights)
+  {
+    _output_weights->push_back(connection);
+  }
+}
+
+Neuron::Neuron(const Neuron& src) :
+  Neuron(src._index, src._outputVal, src._gradient, src._activation_method, *src._output_weights)
+{
 }
 
 const Neuron& Neuron::operator=(const Neuron& src)
 {
   if (this != &src)
   {
+    Clean();
+
     _output_weights = new std::vector<Connection>();
     if (src._output_weights != nullptr)
     {
@@ -51,7 +68,13 @@ const Neuron& Neuron::operator=(const Neuron& src)
 
 Neuron::~Neuron()
 {
+  Clean();
+}
+
+void Neuron::Clean()
+{
   delete _output_weights;
+  _output_weights = nullptr;
 }
 
 void Neuron::updateInputWeights(Layer& prevLayer)
@@ -59,7 +82,8 @@ void Neuron::updateInputWeights(Layer& prevLayer)
   // The weights to be updated are in the Connection container
   // in the neurons in the preceding layer
 
-  for (unsigned n = 0; n < prevLayer.size(); ++n) {
+  for (unsigned n = 0; n < prevLayer.size(); ++n) 
+  {
     Neuron& neuron = prevLayer[n];
     double oldDeltaWeight = neuron._output_weights->at(_index).delta_weight;
 
