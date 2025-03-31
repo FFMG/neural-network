@@ -179,9 +179,10 @@ void Neuron::forward_feed(const Layer& prevLayer)
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  for (unsigned n = 0; n < prevLayer.size(); ++n) 
+  for (const auto& layer : prevLayer) 
   {
-    sum += prevLayer[n].get_output_value() * prevLayer[n]._output_weights->at(_index).weight;
+    const auto weight = layer._output_weights->at(_index).weight;
+    sum += layer.get_output_value() * weight;
   }
 
   set_output_value( activation::activate(_activation_method, sum) );
