@@ -44,6 +44,18 @@ double activation::tanh_derivative(double x)
   return 1 - std::pow(tanh(x), 2);
 }
 
+// PReLU Activation Function
+double activation::PReLU(double x, double alpha)
+{
+  return (x > 0) ? x : alpha * x;
+}
+
+// PReLU Derivative Function
+double activation::PReLU_derivative(double x, double alpha)
+{
+  return (x > 0) ? 1.0 : alpha;
+}
+
 double activation::activate(method method, double x)
 {
   switch (method)
@@ -56,6 +68,9 @@ double activation::activate(method method, double x)
 
   case activation::tanh_activation:
     return activation::tanh(x);
+
+  case activation::PRelu_activation:
+    return activation::PReLU(x);
 
   case activation::sigmoid_activation:
   default:
@@ -75,6 +90,9 @@ double activation::activate_derivative(method method, double x)
 
   case activation::tanh_activation:
     return activation::tanh_derivative(x);
+
+  case activation::PRelu_activation:
+    return activation::PReLU_derivative(x);
 
   case activation::sigmoid_activation:
   default:
