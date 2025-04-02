@@ -10,7 +10,8 @@ public:
     sigmoid_activation,
     tanh_activation,
     relu_activation,
-    leakyRelu_activation
+    leakyRelu_activation,
+    PRelu_activation
   };
 
   static double activate(method method, double x);
@@ -25,5 +26,7 @@ private:
   static double relu_derivative(double x);
   static double leakyRelu(double x, double alpha = 0.01);
   static double leakyRelu_derivative(double x, double alpha = 0.01);
+  static double PReLU(double x, double alpha = 0.01);
+  static double PReLU_derivative(double x, double alpha = 0.01);
 };
 
