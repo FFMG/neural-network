@@ -128,6 +128,16 @@ int main()
 }
 ```
 
+## Activation methods
+
+The availables activation methods are:
+
+* sigmoid
+* tanh
+* relu
+* leakyRelu
+* PRelu
+
 ## Data Normalisation
 
 While the classes do not force you to normalise your data ... I strongly suggest you do :)
