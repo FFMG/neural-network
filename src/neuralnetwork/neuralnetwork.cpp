@@ -1,62 +1,60 @@
 #include "neuralnetwork.h"
+#include <cassert>
 
 NeuralNetwork::NeuralNetwork(
-  int number_of_inputs, 
-  const activation::method& activation
-) :
-  _dis(nullptr),
-  _gen(nullptr),
-  _synaptic_weights(nullptr),
+  const std::vector<unsigned>& topology, 
+  const activation::method& activation) :
+  _layers(nullptr),
   _activation_method(activation)
 {
-  // seed random numbers to make calculation
-  std::random_device rd;
-  _gen = new std::mt19937(rd());
-  _dis = new std::uniform_real_distribution<>(-1.0, 1.0);
-  prepare_synaptic_weights(number_of_inputs);
+  const auto& numLayers = topology.size();
+  _layers = new std::vector<Neuron::Layer>();
+  for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) 
+  {
+    _layers->push_back(Neuron::Layer());
+    unsigned numOutputs = layerNum == topology.size() - 1 ? 0 : topology[layerNum + 1];
+
+    // We have a new layer, now fill it with neurons, and
+    // add a bias neuron in each layer.
+    for (unsigned neuronNum = 0; neuronNum <= topology[layerNum]; ++neuronNum) 
+    {
+      _layers->back().push_back(Neuron(numOutputs, neuronNum, activation));
+    }
+
+    // Force the bias node's output to 1.0 (it was the last neuron pushed in this layer):
+    (*_layers).back().back().set_output_value(1.0);
+  }
 }
 
 NeuralNetwork::~NeuralNetwork()
 {
-  delete _gen;
-  delete _dis;
-  delete _synaptic_weights;
+  delete _layers;
 }
 
-void NeuralNetwork::prepare_synaptic_weights(int number_of_inputs)
-{
-  delete _synaptic_weights;
-  _synaptic_weights = nullptr;
-  _synaptic_weights = new std::vector<double>(number_of_inputs, 0);
-
-  for (int i = 0; i < number_of_inputs; ++i) 
-  {
-    (*_synaptic_weights)[i] = (*_dis)(*_gen);
-  }
-}
-
-double NeuralNetwork::think(
+std::vector<double> NeuralNetwork::think(
   const std::vector<double>& inputs
 ) const
 {
-  double outputs = 0;
-  double sum = 0.0;
-  for (auto i = 0; i < inputs.size(); ++i) 
+  auto layers = *_layers;
+  forward_feed(inputs, layers);
+
+  std::vector<double> resultVals;
+  const auto& back_layer = layers.back();
+  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
   {
-    sum += inputs[i] * (*_synaptic_weights)[i];
+    resultVals.push_back(back_layer[n].get_output_value());
   }
-  outputs = activation::activate(_activation_method, sum);
-  return outputs;
+  return resultVals;
 }
 
 std::vector<std::vector<double>> NeuralNetwork::think(
-    const std::vector<std::vector<double>>& inputs
-  ) const
+  const std::vector<std::vector<double>>& inputs
+) const
 {
   std::vector<std::vector<double>> outputs(inputs.size(), std::vector<double>(1));
   for (size_t i = 0; i < inputs.size(); ++i)
   {
-    outputs[i][0] = think(inputs[i]);
+    outputs[i] = think(inputs[i]);
   }
   return outputs;
 }
@@ -66,54 +64,85 @@ void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_outputs,
   int number_of_epoch)
 {
-  // Iterate 10,000 times
-  for (int iteration = 0; iteration < number_of_epoch; ++iteration)
+  for (auto i = 0; i < number_of_epoch; ++i)
   {
-    // Define input layer
-    std::vector<std::vector<double>> input_layer = training_inputs;
-
-    std::vector<std::vector<double>> outputs(input_layer.size(), std::vector<double>(1));
-
-    // Normalize the product of the input layer with the synaptic weights
-    for (size_t i = 0; i < input_layer.size(); ++i) 
+    for (auto j = 0; j < training_inputs.size(); ++j)
     {
-      double sum = 0.0;
-      for (size_t j = 0; j < input_layer[i].size(); ++j) {
-        sum += input_layer[i][j] * (*_synaptic_weights)[j];
-      }
-      outputs[i][0] = activation::activate(_activation_method, sum);
-    }
+      const auto& inputs = training_inputs[j];
+      const auto& outputs = training_outputs[j];
 
-    // how much did we miss?
-    std::vector<std::vector<double>> error(training_outputs.size(), std::vector<double>(1));
-    for (size_t i = 0; i < training_outputs.size(); ++i) {
-      error[i][0] = training_outputs[i][0] - outputs[i][0];
+      forward_feed(inputs, *_layers);
+      back_propagation(outputs, *_layers);
     }
+  }
+}
 
-    // multiply how much we missed by the slope of the activation at the values in outputs
-    std::vector<std::vector<double>> adjustments(outputs.size(), std::vector<double>(1));
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      adjustments[i][0] = error[i][0] * activation::activate_derivative(_activation_method, outputs[i][0]);
+void NeuralNetwork::back_propagation(const std::vector<double>& targetVals, std::vector<Neuron::Layer>& layers_src) const
+{
+  // Calculate overall net error (RMS of output neuron errors)
+
+  auto& outputLayer = layers_src.back();
+  auto error = 0.0;
+
+  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
+  {
+    double delta = targetVals[n] - outputLayer[n].get_output_value();
+    error += delta * delta;
+  }
+  error /= outputLayer.size() - 1; // get average error squared
+  error = sqrt(error); // RMS
+
+  // Calculate output layer gradients
+
+  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
+  {
+    outputLayer[n].calculate_output_gradients(targetVals[n]);
+  }
+
+  // Calculate hidden layer gradients
+
+  for (auto layerNum = layers_src.size() - 2; layerNum > 0; --layerNum) {
+    auto& hiddenLayer = layers_src[layerNum];
+    auto& nextLayer = layers_src[layerNum + 1];
+
+    for (unsigned n = 0; n < hiddenLayer.size(); ++n) {
+      hiddenLayer[n].calculate_hidden_gradients(nextLayer);
     }
+  }
 
-    // update weights
-    std::vector<std::vector<double>> input_layer_transpose(input_layer[0].size(), std::vector<double>(input_layer.size()));
-    for (size_t i = 0; i < input_layer.size(); ++i) {
-      for (size_t j = 0; j < input_layer[i].size(); ++j) {
-        input_layer_transpose[j][i] = input_layer[i][j];
-      }
+  // update the hidden layers
+  for (auto layerNum = layers_src.size() - 1; layerNum > 0; --layerNum) {
+    auto& layer = layers_src[layerNum];
+    auto& prevLayer = layers_src[layerNum - 1];
+
+    for (unsigned n = 0; n < layer.size() - 1; ++n) {
+      layer[n].updateInputWeights(prevLayer);
     }
+  }
+}
 
-    std::vector<std::vector<double>> weight_adjustments((*_synaptic_weights).size(), std::vector<double>(1, 0.0));
+void NeuralNetwork::forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers) const
+{
+  // Assign (latch) the input values into the input neurons
+  for (auto i = 0; i < inputVals.size(); ++i) 
+  {
+    layers[0][i].set_output_value(inputVals[i]);
+  }
 
-    for (size_t i = 0; i < (*_synaptic_weights).size(); ++i) {
-      for (size_t j = 0; j < adjustments.size(); ++j) {
-        weight_adjustments[i][0] += input_layer_transpose[i][j] * adjustments[j][0];
-      }
+  // forward propagate
+  for (auto layerNum = 1; layerNum < layers.size(); ++layerNum) 
+  {
+    const auto& prevLayer = layers[layerNum - 1];
+    for (auto n = 0; n < layers[layerNum].size() - 1; ++n) 
+    {
+      layers[layerNum][n].forward_feed(prevLayer);
     }
+  }
 
-    for (size_t i = 0; i < (*_synaptic_weights).size(); ++i) {
-      (*_synaptic_weights)[i] += weight_adjustments[i][0];
-    }
+  std::vector<double> resultVals;
+  const auto& back_layer = layers.back();
+  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
+  {
+    resultVals.push_back(back_layer[n].get_output_value());
   }
 }

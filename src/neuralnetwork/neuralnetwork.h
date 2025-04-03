@@ -1,17 +1,17 @@
 #pragma once
 #include "activation.h"
-#include <random>
-#include <iomanip>
+#include "neuron.h"
 #include <vector>
 
 class NeuralNetwork
 {
 public:
-  NeuralNetwork(int number_of_inputs, const activation::method& activation);
+  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
+  NeuralNetwork(const NeuralNetwork&) = delete;
   virtual ~NeuralNetwork();
 
   void train(
-    const std::vector<std::vector<double>>& training_inputs,  
+    const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs,
     int number_of_epoch
   );
@@ -19,15 +19,14 @@ public:
   std::vector<std::vector<double>> think(
     const std::vector<std::vector<double>>& inputs
   ) const;
-  double think(
+  std::vector<double> think(
     const std::vector<double>& inputs
   ) const;
 
 private:
-  void prepare_synaptic_weights(int number_of_inputs);
+  void forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers_src) const;
+  void back_propagation(const std::vector<double>& targetVals, std::vector<Neuron::Layer>& layers_src) const;
 
-  std::uniform_real_distribution<>* _dis;
-  std::mt19937 *_gen;
-  std::vector<double>* _synaptic_weights;
+  std::vector<Neuron::Layer>* _layers;
   const activation::method _activation_method;
 };
