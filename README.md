@@ -18,7 +18,7 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 
 ```c++
 #include <iostream>
-#include "neuralnetwork_layer.h"
+#include "neuralnetwork.h"
 ...
 
 int main()
@@ -35,7 +35,9 @@ int main()
       {0}, {1}, {1}, {0}
   };
 
-  auto* nnl = new NeuralNetworkLayer({ 3,4,1 }, activation::sigmoid_activation);
+  // the topology we create this NN with is
+  // 3 input network, a hidden layer with 4 neuron and 1 output layer.
+  auto* nnl = new NeuralNetwork({ 3,4,1 }, activation::sigmoid_activation);
   nnl->train(training_inputs, training_outputs, 10000);
 
   std::vector<std::vector<double>> inputs = {
