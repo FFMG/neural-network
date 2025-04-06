@@ -62,8 +62,16 @@ std::vector<std::vector<double>> NeuralNetwork::think(
 void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
-  int number_of_epoch)
+  int number_of_epoch,
+  const std::function<void(int)>& progress_callback
+)
 {
+  auto percent = 0;
+  // initial callback
+  if (progress_callback != nullptr)
+{
+    progress_callback(0);
+  }
   for (auto i = 0; i < number_of_epoch; ++i)
   {
     for (auto j = 0; j < training_inputs.size(); ++j)
@@ -74,6 +82,22 @@ void NeuralNetwork::train(
       forward_feed(inputs, *_layers);
       back_propagation(outputs, *_layers);
     }
+
+    if (progress_callback != nullptr)
+    {
+      auto this_percent = (int)(((float)i / number_of_epoch)*100);
+      if (this_percent != percent)
+      {
+        percent = this_percent;
+        progress_callback(percent);
+      }
+    }
+  }
+
+  // final callback if needed
+  if (progress_callback != nullptr && 100 != percent)
+  {
+    progress_callback(100);
   }
 }
 
