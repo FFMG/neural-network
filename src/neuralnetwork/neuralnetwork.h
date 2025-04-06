@@ -1,13 +1,17 @@
 #pragma once
+#include <vector>
+#include <functional>
+
 #include "activation.h"
 #include "neuron.h"
-#include <vector>
 
 class NeuralNetwork
 {
 public:
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
   NeuralNetwork(const NeuralNetwork&) = delete;
+  NeuralNetwork& operator=(const NeuralNetwork&) = delete;
+
   virtual ~NeuralNetwork();
 
   void train(
