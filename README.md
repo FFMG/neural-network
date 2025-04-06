@@ -130,6 +130,86 @@ int main()
 }
 ```
 
+#### Trainning callback method
+
+You can use a tainning callback method to see how the NN is training ...
+
+Simply pass a function pointer to the train method and it will be called after each percent change.
+The value is between 0% and 100%
+
+0% and 100% are always called.
+
+```c++
+#include <iostream>
+#include "neuralnetwork.h"
+...
+
+void show_progress_bar(int progress ) 
+{
+  int barWidth = 50;
+  int pos = barWidth * (progress / 100.0);
+
+  std::cout << "[";
+  for (int i = 0; i < barWidth; ++i) 
+  {
+    if (i < pos) std::cout << "=";
+    else if (i == pos) std::cout << ">";
+    else std::cout << " ";
+  }
+  std::cout << "] " << progress << " %\r";
+  std::cout.flush();
+}
+
+int main()
+{
+  std::vector<std::vector<double>> training_inputs = {
+    {0, 0, 1},
+    {1, 1, 1},
+    {1, 0, 1},
+    {0, 1, 1}
+  };
+
+  // output dataset
+  std::vector<std::vector<double>> training_outputs = {
+      {0}, {1}, {1}, {0}
+  };
+
+  auto* nn = new NeuralNetwork(3, activation::sigmoid_activation);
+  nn->train(training_inputs, training_outputs, 10000, show_progress_bar);
+
+  std::vector<std::vector<double>> inputs = {
+      {0, 0, 1},
+      {1, 1, 1},
+      {1, 0, 1},
+      {0, 1, 1}
+  };
+
+  std::cout << std::endl;
+
+  auto outputs = nn->think(inputs);
+  std::cout << "Output After Training:" << std::endl;
+  std::cout << std::fixed << std::setprecision(10);
+  for (const auto& row : outputs)
+  {
+    for (double val : row)
+    {
+      std::cout << val << std::endl;
+    }
+  }
+
+  std::cout << std::endl;
+
+  std::cout << "Output After Training:" << std::endl;
+  std::cout << std::fixed << std::setprecision(10);
+  std::cout << nn->think({ 0, 0, 1 }) << std::endl;
+  std::cout << nn->think({ 1, 1, 1 }) << std::endl;
+
+  delete nn;
+
+  return 0;
+}
+```
+
 ## Activation methods
 
 The availables activation methods are:
