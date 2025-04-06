@@ -57,6 +57,11 @@ const Neuron& Neuron::operator=(const Neuron& src)
   {
     Clean();
 
+    _index = src._index;
+    _output_value = src._output_value;
+    _gradient = src._gradient;
+    _activation_method = src._activation_method;
+
     _output_weights = new std::vector<Connection>();
     if (src._output_weights != nullptr)
     {
