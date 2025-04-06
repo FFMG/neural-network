@@ -7,22 +7,22 @@ NeuralNetwork::NeuralNetwork(
   _layers(nullptr),
   _activation_method(activation)
 {
-  const auto& numLayers = topology.size();
+  const auto& number_of_layers = topology.size();
   _layers = new std::vector<Neuron::Layer>();
-  for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) 
+  for (auto layer_number = 0; layer_number < number_of_layers; ++layer_number)
   {
-    _layers->push_back(Neuron::Layer());
-    unsigned numOutputs = layerNum == topology.size() - 1 ? 0 : topology[layerNum + 1];
+    auto number_of_outputs = layer_number == topology.size() - 1 ? 0 : topology[layer_number + 1];
+    auto layer = Neuron::Layer();
 
-    // We have a new layer, now fill it with neurons, and
-    // add a bias neuron in each layer.
-    for (unsigned neuronNum = 0; neuronNum <= topology[layerNum]; ++neuronNum) 
+    // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
+    for (unsigned neuronNum = 0; neuronNum <= topology[layer_number]; ++neuronNum)
     {
-      _layers->back().push_back(Neuron(numOutputs, neuronNum, activation));
+      // force the bias node's output to 1.0
+      auto neuron = Neuron(number_of_outputs, neuronNum, activation);
+      neuron.set_output_value(1.0);
+      layer.push_back(neuron);
     }
-
-    // Force the bias node's output to 1.0 (it was the last neuron pushed in this layer):
-    (*_layers).back().back().set_output_value(1.0);
+    _layers->push_back(layer);
   }
 }
 
@@ -69,7 +69,7 @@ void NeuralNetwork::train(
   auto percent = 0;
   // initial callback
   if (progress_callback != nullptr)
-{
+  {
     progress_callback(0);
   }
   for (auto i = 0; i < number_of_epoch; ++i)
