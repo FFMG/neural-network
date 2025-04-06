@@ -42,9 +42,10 @@ private:
 
   std::vector<double> he_initialization(int num_neurons_prev_layer);
   
-  const unsigned _index;
+  // data to save...
+  unsigned _index;
   double _output_value;
   double _gradient;
   std::vector<Connection>* _output_weights;
-  const activation::method _activation_method;
+  activation::method _activation_method;
 };
