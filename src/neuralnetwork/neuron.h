@@ -5,10 +5,38 @@
 class Neuron
 {
 private:
-  struct Connection
+  class Connection
   {
-    double weight;
-    double delta_weight;
+  public:
+    Connection(double weight) : 
+      _weight(weight), 
+      _delta_weight(0.0)
+    {
+    }
+    Connection(const Connection& connection) : 
+      _weight(connection._weight),
+      _delta_weight(connection._delta_weight)
+    {
+
+    }
+    Connection& operator=(const Connection& connection)
+    {
+      if (this != &connection)
+      {
+        _weight = connection._weight;
+        _delta_weight = connection._delta_weight;
+      }
+      return *this;
+    }
+
+    double weight() const { return _weight; };
+    double delta_weight() const { return _delta_weight; };
+    void set_weight( double weight) { _weight = weight; };
+    void set_delta_weight(double delta_weight){ _delta_weight = delta_weight; };
+
+  private:
+    double _weight;
+    double _delta_weight;
   };
 
 public:
