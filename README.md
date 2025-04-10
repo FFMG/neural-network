@@ -87,7 +87,7 @@ The value is between 0% and 100%
 #include "neuralnetwork.h"
 ...
 
-void show_progress_bar(int progress ) 
+void show_progress_bar(int progress, double error)
 {
   int barWidth = 50;
   int pos = barWidth * (progress / 100.0);
@@ -99,7 +99,7 @@ void show_progress_bar(int progress )
     else if (i == pos) std::cout << ">";
     else std::cout << " ";
   }
-  std::cout << "] " << progress << " %\r";
+  std::cout << "] " << progress << " %(error:" << error << ")   \r";
   std::cout.flush();
 }
 
