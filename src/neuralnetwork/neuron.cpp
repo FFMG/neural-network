@@ -18,11 +18,9 @@ Neuron::Neuron(
 {
   _output_weights = new std::vector<Connection>();
   auto weights = he_initialization(numOutputs);
-  for (auto c = 0; c < numOutputs; ++c) 
+  for (auto weight : weights)
   {
-    auto connection = Connection();
-    connection.weight = weights[c];
-    _output_weights->push_back(connection);
+    _output_weights->push_back(Connection( weight));
   }
 }
 
@@ -98,27 +96,24 @@ void Neuron::Clean()
   _output_weights = nullptr;
 }
 
-void Neuron::updateInputWeights(Layer& prevLayer)
+void Neuron::update_input_weights(Layer& previous_layer)
 {
-  // The weights to be updated are in the Connection container
-  // in the neurons in the preceding layer
-
-  for (unsigned n = 0; n < prevLayer.size(); ++n) 
+  for (auto& neuron : previous_layer)
   {
-    Neuron& neuron = prevLayer[n];
-    double oldDeltaWeight = neuron._output_weights->at(_index).delta_weight;
+    auto& connection = neuron._output_weights->at(_index);
+    const auto& old_delta_weight = connection.delta_weight();
 
-    double newDeltaWeight =
+    auto new_delta_weight =
       // Individual input, magnified by the gradient and train rate:
       eta
       * neuron.get_output_value()
       * _gradient
       // Also add momentum = a fraction of the previous delta weight;
       + alpha
-      * oldDeltaWeight;
+      * old_delta_weight;
 
-    neuron._output_weights->at(_index).delta_weight = newDeltaWeight;
-    neuron._output_weights->at(_index).weight += newDeltaWeight;
+    connection.set_delta_weight( new_delta_weight );
+    connection.set_weight(connection.weight() + new_delta_weight);
   }
 }
 
@@ -130,7 +125,7 @@ double Neuron::sumDOW(const Layer& nextLayer) const
 
   for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
   {
-    auto weights_and_gradients = _output_weights->at(n).weight * nextLayer[n]._gradient;
+    auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer[n]._gradient;
     sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
   }
   if (!std::isfinite(sum))
@@ -165,7 +160,6 @@ double Neuron::get_output_value() const
   return _output_value; 
 }
 
-
 void Neuron::calculate_output_gradients(double targetVal)
 {
   double delta = targetVal - get_output_value();
@@ -186,7 +180,7 @@ void Neuron::forward_feed(const Layer& prevLayer)
 
   for (const auto& layer : prevLayer) 
   {
-    const auto weight = layer._output_weights->at(_index).weight;
+    const auto weight = layer._output_weights->at(_index).weight();
     sum += layer.get_output_value() * weight;
   }
 
