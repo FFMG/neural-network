@@ -1,6 +1,8 @@
 #include "neuralnetwork.h"
 #include <cassert>
 
+static const double RecentAverageSmoothingFactor = 100.0;
+
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
   const activation::method& activation) :
@@ -63,15 +65,16 @@ void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
   int number_of_epoch,
-  const std::function<void(int)>& progress_callback
+  const std::function<void(int, double)>& progress_callback
 )
 {
   auto percent = 0;
   // initial callback
   if (progress_callback != nullptr)
   {
-    progress_callback(0);
+    progress_callback(0, 0.0);
   }
+  auto error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
     for (auto j = 0; j < training_inputs.size(); ++j)
@@ -80,16 +83,16 @@ void NeuralNetwork::train(
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
-      back_propagation(outputs, *_layers);
+      error = back_propagation(outputs, *_layers, error);
     }
 
     if (progress_callback != nullptr)
     {
       auto this_percent = (int)(((float)i / number_of_epoch)*100);
-      if (this_percent != percent)
+      if (this_percent != percent && percent != 100)
       {
         percent = this_percent;
-        progress_callback(percent);
+        progress_callback(percent, error);
       }
     }
   }
@@ -97,55 +100,70 @@ void NeuralNetwork::train(
   // final callback if needed
   if (progress_callback != nullptr && 100 != percent)
   {
-    progress_callback(100);
+    progress_callback(100, error);
   }
 }
 
-void NeuralNetwork::back_propagation(const std::vector<double>& targetVals, std::vector<Neuron::Layer>& layers_src) const
+double NeuralNetwork::back_propagation(
+  const std::vector<double>& targetVals, 
+  std::vector<Neuron::Layer>& layers_src,
+  const double current_recent_average_error
+) const
 {
-  // Calculate overall net error (RMS of output neuron errors)
-
-  auto& outputLayer = layers_src.back();
+  auto& output_layer = layers_src.back();
   auto error = 0.0;
 
-  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
+  for (unsigned n = 0; n < output_layer.size() - 1; ++n)
   {
-    double delta = targetVals[n] - outputLayer[n].get_output_value();
+    auto delta = targetVals[n] - output_layer[n].get_output_value();
     error += delta * delta;
   }
-  error /= outputLayer.size() - 1; // get average error squared
+  error /= output_layer.size() - 1; // get average error squared
   error = sqrt(error); // RMS
+
+  // Implement a recent average measurement
+  auto recent_average_error =
+    (current_recent_average_error * RecentAverageSmoothingFactor + error)
+    / (RecentAverageSmoothingFactor + 1.0);
 
   // Calculate output layer gradients
 
-  for (unsigned n = 0; n < outputLayer.size() - 1; ++n) 
+  for (auto n = 0; n < output_layer.size() - 1; ++n)
   {
-    outputLayer[n].calculate_output_gradients(targetVals[n]);
+    output_layer[n].calculate_output_gradients(targetVals[n]);
   }
 
   // Calculate hidden layer gradients
 
-  for (auto layerNum = layers_src.size() - 2; layerNum > 0; --layerNum) {
-    auto& hiddenLayer = layers_src[layerNum];
-    auto& nextLayer = layers_src[layerNum + 1];
+  for (auto layer_number = layers_src.size() - 2; layer_number > 0; --layer_number)
+  {
+    auto& hidden_layer = layers_src[layer_number];
+    auto& next_layer = layers_src[layer_number + 1];
 
-    for (unsigned n = 0; n < hiddenLayer.size(); ++n) {
-      hiddenLayer[n].calculate_hidden_gradients(nextLayer);
+    for (auto n = 0; n < hidden_layer.size(); ++n)
+    {
+      hidden_layer[n].calculate_hidden_gradients(next_layer);
     }
   }
 
   // update the hidden layers
-  for (auto layerNum = layers_src.size() - 1; layerNum > 0; --layerNum) {
+  for (auto layerNum = layers_src.size() - 1; layerNum > 0; --layerNum) 
+  {
     auto& layer = layers_src[layerNum];
     auto& prevLayer = layers_src[layerNum - 1];
 
-    for (unsigned n = 0; n < layer.size() - 1; ++n) {
-      layer[n].updateInputWeights(prevLayer);
+    for (unsigned n = 0; n < layer.size() - 1; ++n) 
+    {
+      layer[n].update_input_weights(prevLayer);
     }
   }
+  return recent_average_error;
 }
 
-void NeuralNetwork::forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers) const
+void NeuralNetwork::forward_feed(
+  const std::vector<double>& inputVals, 
+  std::vector<Neuron::Layer>& layers
+) const
 {
   // Assign (latch) the input values into the input neurons
   for (auto i = 0; i < inputVals.size(); ++i) 
@@ -154,19 +172,19 @@ void NeuralNetwork::forward_feed(const std::vector<double>& inputVals, std::vect
   }
 
   // forward propagate
-  for (auto layerNum = 1; layerNum < layers.size(); ++layerNum) 
+  for (auto layer_number = 1; layer_number < layers.size(); ++layer_number)
   {
-    const auto& prevLayer = layers[layerNum - 1];
-    for (auto n = 0; n < layers[layerNum].size() - 1; ++n) 
+    const auto& previous_layer = layers[layer_number - 1];
+    for (auto n = 0; n < layers[layer_number].size() - 1; ++n)
     {
-      layers[layerNum][n].forward_feed(prevLayer);
+      layers[layer_number][n].forward_feed(previous_layer);
     }
   }
 
-  std::vector<double> resultVals;
+  std::vector<double> result_values = {};
   const auto& back_layer = layers.back();
   for (unsigned n = 0; n < back_layer.size() - 1; ++n)
   {
-    resultVals.push_back(back_layer[n].get_output_value());
+    result_values.push_back(back_layer[n].get_output_value());
   }
 }

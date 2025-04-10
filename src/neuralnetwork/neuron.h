@@ -31,7 +31,7 @@ public:
   void forward_feed(const Layer& prevLayer);
   void calculate_output_gradients(double targetVal);
   void calculate_hidden_gradients(const Layer& nextLayer);
-  void updateInputWeights(Layer& prevLayer);
+  void update_input_weights(Layer& previous_layer);
 
 private:
   
