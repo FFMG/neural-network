@@ -79,7 +79,7 @@ public:
 private:
   
   void Clean();
-  static double eta;   // [0.0..1.0] overall net training rate
+  const double _learning_rate;   // [0.0..1.0] overall net training rate
   static double alpha; // [0.0..n] multiplier of last weight change (momentum)
   double sumDOW(const Layer& nextLayer) const;
 
