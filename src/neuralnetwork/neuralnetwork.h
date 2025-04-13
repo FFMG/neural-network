@@ -29,6 +29,7 @@ public:
   ) const;
 
 private:
+  void get_outputs( std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const;
   void forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers_src) const;
   double back_propagation(
     const std::vector<double>& targetVals, 

@@ -37,16 +37,11 @@ std::vector<double> NeuralNetwork::think(
   const std::vector<double>& inputs
 ) const
 {
+  std::vector<double> outputs;
   auto layers = *_layers;
   forward_feed(inputs, layers);
-
-  std::vector<double> resultVals;
-  const auto& back_layer = layers.back();
-  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
-  {
-    resultVals.push_back(back_layer[n].get_output_value());
-  }
-  return resultVals;
+  get_outputs(outputs, layers);
+  return outputs;
 }
 
 std::vector<std::vector<double>> NeuralNetwork::think(
@@ -161,12 +156,12 @@ double NeuralNetwork::back_propagation(
 }
 
 void NeuralNetwork::forward_feed(
-  const std::vector<double>& inputVals, 
+  const std::vector<double>& inputVals,
   std::vector<Neuron::Layer>& layers
 ) const
 {
   // Assign (latch) the input values into the input neurons
-  for (auto i = 0; i < inputVals.size(); ++i) 
+  for (auto i = 0; i < inputVals.size(); ++i)
   {
     layers[0][i].set_output_value(inputVals[i]);
   }
@@ -180,11 +175,14 @@ void NeuralNetwork::forward_feed(
       layers[layer_number][n].forward_feed(previous_layer);
     }
   }
+}
 
-  std::vector<double> result_values = {};
+void NeuralNetwork::get_outputs(std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const
+{
+  outputs.erase(outputs.begin(), outputs.end());
   const auto& back_layer = layers.back();
   for (unsigned n = 0; n < back_layer.size() - 1; ++n)
   {
-    result_values.push_back(back_layer[n].get_output_value());
+    outputs.push_back(back_layer[n].get_output_value());
   }
 }
