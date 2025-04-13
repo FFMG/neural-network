@@ -184,6 +184,11 @@ void Neuron::forward_feed(const Layer& prevLayer)
   {
     const auto weight = layer._output_weights->at(_index).weight();
     sum += layer.get_output_value() * weight;
+
+    if (!std::isfinite(sum))
+    {
+      return;
+    }
   }
 
   set_output_value( activation::activate(_activation_method, sum) );
