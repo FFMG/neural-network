@@ -2,7 +2,7 @@
 #include <cmath>
 #include <random>
 
-double Neuron::eta = 0.15;    // overall net learning rate, [0.0..1.0]
+#define LEARNING_RATE 0.05    // overall net learning rate, [0.0..1.0]
 double Neuron::alpha = 0.5;   // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
 Neuron::Neuron(
@@ -14,7 +14,8 @@ Neuron::Neuron(
   _output_value(0),
   _gradient(0),
   _activation_method(activation),
-  _output_weights(nullptr)
+  _output_weights(nullptr),
+  _learning_rate(LEARNING_RATE)
 {
   _output_weights = new std::vector<Connection>();
   auto weights = he_initialization(numOutputs);
@@ -35,7 +36,8 @@ Neuron::Neuron(
   _output_value(outputVal),
   _gradient(gradient),
   _activation_method(activation),
-  _output_weights(nullptr)
+  _output_weights(nullptr),
+  _learning_rate(LEARNING_RATE)
 {
   _output_weights = new std::vector<Connection>();
   for (auto& connection : output_weights)
@@ -105,7 +107,7 @@ void Neuron::update_input_weights(Layer& previous_layer)
 
     auto new_delta_weight =
       // Individual input, magnified by the gradient and train rate:
-      eta
+      _learning_rate
       * neuron.get_output_value()
       * _gradient
       // Also add momentum = a fraction of the previous delta weight;
