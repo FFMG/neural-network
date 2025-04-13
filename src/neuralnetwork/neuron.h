@@ -1,6 +1,7 @@
 #pragma once
 #include "activation.h"
 #include <vector>
+#include <cmath>
 
 class Neuron
 {
@@ -23,16 +24,30 @@ private:
     {
       if (this != &connection)
       {
-        _weight = connection._weight;
-        _delta_weight = connection._delta_weight;
+        set_weight(connection._weight);
+        set_delta_weight( connection._delta_weight);
       }
       return *this;
     }
 
     double weight() const { return _weight; };
     double delta_weight() const { return _delta_weight; };
-    void set_weight( double weight) { _weight = weight; };
-    void set_delta_weight(double delta_weight){ _delta_weight = delta_weight; };
+    void set_weight( double weight) 
+    { 
+      if (!std::isfinite(weight))
+      {
+        return;
+      }
+      _weight = weight; 
+    };
+    void set_delta_weight(double delta_weight)
+    {
+      if (!std::isfinite(delta_weight))
+      {
+        return;
+      }
+      _delta_weight = delta_weight; 
+    };
 
   private:
     double _weight;
