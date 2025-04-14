@@ -2,8 +2,10 @@
 #include <cmath>
 #include <random>
 
-#define LEARNING_RATE 0.05    // overall net learning rate, [0.0..1.0]
-double Neuron::alpha = 0.5;   // momentum, multiplier of last deltaWeight, [0.0..1.0]
+#define LEARNING_RATE 0.15    // overall net learning rate, [0.0..1.0]
+                              // the smaller the learning rate, the more epoch are needed.
+                              // but the bigger the learning rate, the more likely are exploding weights.
+double LEARNING_ALPHA = 0.5;   // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
 Neuron::Neuron(
   unsigned numOutputs, 
@@ -15,7 +17,8 @@ Neuron::Neuron(
   _gradient(0),
   _activation_method(activation),
   _output_weights(nullptr),
-  _learning_rate(LEARNING_RATE)
+  _learning_rate(LEARNING_RATE),
+  _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
   auto weights = he_initialization(numOutputs);
@@ -37,7 +40,8 @@ Neuron::Neuron(
   _gradient(gradient),
   _activation_method(activation),
   _output_weights(nullptr),
-  _learning_rate(LEARNING_RATE)
+  _learning_rate(LEARNING_RATE),
+  _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
   for (auto& connection : output_weights)
@@ -106,12 +110,10 @@ void Neuron::update_input_weights(Layer& previous_layer)
     const auto& old_delta_weight = connection.delta_weight();
 
     auto new_delta_weight =
-      // Individual input, magnified by the gradient and train rate:
-      _learning_rate
+      _learning_rate  // Individual input, magnified by the gradient and train rate:
       * neuron.get_output_value()
       * _gradient
-      // Also add momentum = a fraction of the previous delta weight;
-      + alpha
+      + _alpha  // momentum = a fraction of the previous delta weight;
       * old_delta_weight;
 
     connection.set_delta_weight( new_delta_weight );
