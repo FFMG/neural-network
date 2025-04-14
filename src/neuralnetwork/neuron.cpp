@@ -2,10 +2,10 @@
 #include <cmath>
 #include <random>
 
-#define LEARNING_RATE 0.15    // overall net learning rate, [0.0..1.0]
-                              // the smaller the learning rate, the more epoch are needed.
-                              // but the bigger the learning rate, the more likely are exploding weights.
-double LEARNING_ALPHA = 0.5;   // momentum, multiplier of last deltaWeight, [0.0..1.0]
+#define LEARNING_RATE double(0.15)    // overall net learning rate, [0.0..1.0]
+                                      // the smaller the learning rate, the more epoch are needed.
+                                      // but the bigger the learning rate, the more likely are exploding weights.
+#define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
 Neuron::Neuron(
   unsigned numOutputs, 
