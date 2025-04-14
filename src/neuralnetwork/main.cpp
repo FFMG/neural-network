@@ -4,11 +4,12 @@
 #include <iostream>
 #include "neuralnetwork.h"
 
-#include <iostream>
+#include <iomanip>
 #include <vector>
 
 int main()
 {
+  // XOR training input, 3 values in at a time.
   std::vector<std::vector<double>> training_inputs = {
       {0, 0, 1},
       {1, 1, 1},
@@ -16,24 +17,20 @@ int main()
       {0, 1, 1}
   };
 
-  // output dataset
+  // output, one single value for each input.
   std::vector<std::vector<double>> training_outputs = {
       {0}, {1}, {1}, {0}
   };
 
-  auto* nn = new NeuralNetwork(3, activation::sigmoid_activation);
-  nn->train(training_inputs, training_outputs, 10000);
-
-  std::vector<std::vector<double>> inputs = {
-      {0, 0, 1},
-      {1, 1, 1},
-      {1, 0, 1},
-      {0, 1, 1}
-  };
+  // the topology is 3 input, 1 output and one hidden layer with 3 neuron
+  auto* nn = new NeuralNetwork({3,2,1}, activation::sigmoid_activation);
+  nn->train(training_inputs, training_outputs, 50000);
 
   std::cout << std::endl;
 
-  auto outputs = nn->think(inputs);
+  // pass an array of array to think about
+  // the result should be close to the training output.
+  auto outputs = nn->think(training_inputs);
   std::cout << "Output After Training:" << std::endl;
   std::cout << std::fixed << std::setprecision(10);
   for (const auto& row : outputs) 
@@ -43,16 +40,20 @@ int main()
       std::cout << val << std::endl;
     }
   }
-
   std::cout << std::endl;
-
   std::cout << "Output After Training:" << std::endl;
   std::cout << std::fixed << std::setprecision(10);
-  std::cout << nn->think({ 0, 0, 1 }) << std::endl;
-  std::cout << nn->think({ 1, 1, 1 }) << std::endl;
+
+  // or we can train with a single inut
+  // we know that the output only has one value.
+  auto t1 = nn->think({ 0, 0, 1 });
+  std::cout << t1.front() << std::endl;//  should be close to 0
+
+  // or we can train with a single inut
+  // we know that the output only has one value.
+  auto t2 = nn->think({ 1, 1, 1 });
+  std::cout << t2.front() << std::endl; //  should be close to 1
 
   delete nn;
-  std::cout << "Hello World!\n";
-
   return 0;
 }
