@@ -80,7 +80,7 @@ private:
   
   void Clean();
   const double _learning_rate;   // [0.0..1.0] overall net training rate
-  static double alpha; // [0.0..n] multiplier of last weight change (momentum)
+  const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   double sumDOW(const Layer& nextLayer) const;
 
   std::vector<double> he_initialization(int num_neurons_prev_layer);
