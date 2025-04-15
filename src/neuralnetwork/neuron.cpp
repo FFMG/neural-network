@@ -2,22 +2,18 @@
 #include <cmath>
 #include <random>
 
-#define LEARNING_RATE double(0.15)    // overall net learning rate, [0.0..1.0]
-                                      // the smaller the learning rate, the more epoch are needed.
-                                      // but the bigger the learning rate, the more likely are exploding weights.
-#define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
-
 Neuron::Neuron(
   unsigned numOutputs, 
   unsigned index,
-  const activation::method& activation
+  const activation::method& activation,
+  double learning_rate
 ) :
   _index(index),
   _output_value(0),
   _gradient(0),
   _activation_method(activation),
   _output_weights(nullptr),
-  _learning_rate(LEARNING_RATE),
+  _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
@@ -33,14 +29,15 @@ Neuron::Neuron(
   double outputVal,
   double gradient,
   const activation::method& activation,
-  const std::vector<Connection>& output_weights
+  const std::vector<Connection>& output_weights,
+  double learning_rate
 ) :
   _index(index),
   _output_value(outputVal),
   _gradient(gradient),
   _activation_method(activation),
   _output_weights(nullptr),
-  _learning_rate(LEARNING_RATE),
+  _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
@@ -81,6 +78,20 @@ const Neuron& Neuron::operator=(const Neuron& src)
 Neuron::~Neuron()
 {
   Clean();
+}
+
+std::vector<std::array<double, 2>> Neuron::get_weights() const
+{
+  std::vector<std::array<double, 2>> weights;
+  if(nullptr == _output_weights)
+  {
+    return weights;
+  }
+  for(const auto& output_weight : *_output_weights)
+  {
+    weights.push_back({output_weight.weight(), output_weight.delta_weight()});
+  }
+  return weights;
 }
 
 std::vector<double> Neuron::he_initialization(int num_neurons_prev_layer) 

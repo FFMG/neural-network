@@ -33,6 +33,22 @@ NeuralNetwork::~NeuralNetwork()
   delete _layers;
 }
 
+const std::vector<Neuron::Layer>& NeuralNetwork::get_layers() const
+{
+  return *_layers;
+}
+
+std::vector<unsigned> NeuralNetwork::get_topology() const
+{
+  std::vector<unsigned> topology = {};
+  for(const auto& layer : *_layers)
+  {
+    // remove the bias Neuron.
+    topology.push_back(layer.size() -1);
+  }
+  return topology;
+}
+
 std::vector<double> NeuralNetwork::think(
   const std::vector<double>& inputs
 ) const
