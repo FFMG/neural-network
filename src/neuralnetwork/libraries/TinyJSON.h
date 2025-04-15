@@ -34,10 +34,11 @@
 //   MAJOR version when you make incompatible API changes
 //   MINOR version when you add functionality in a backward compatible manner
 //   PATCH version when you make backward compatible bug fixes
+// v0.1.1 - added some add( ... ) and set( ... ) methods
 static const short TJ_VERSION_MAJOR = 0;
-static const short TJ_VERSION_MINOR = 0;
+static const short TJ_VERSION_MINOR = 1;
 static const short TJ_VERSION_PATCH = 1;
-static const char TJ_VERSION_STRING[] = "0.0.1";
+static const char TJ_VERSION_STRING[] = "0.1.1";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -395,7 +396,7 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    void set(const TJCHAR* key, long long value);
+    void set_number(const TJCHAR* key, long long value);
 
     /// <summary>
     /// Set the value of a number
@@ -403,21 +404,7 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    inline void set(const TJCHAR* key, long value)
-    {
-      set(key, static_cast<long long>(value));
-    }
-
-    /// <summary>
-    /// Set the value of a number
-    /// </summary>
-    /// <param name="key"></param>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    inline void set(const TJCHAR* key, int value)
-    {
-      set(key, static_cast<long long>(value));
-    }
+    void set_float(const TJCHAR* key, long double value);
 
     /// <summary>
     /// Set the value a boolean
@@ -425,7 +412,7 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    void set(const TJCHAR* key, bool value);
+    void set_boolean(const TJCHAR* key, bool value);
 
     /// <summary>
     /// Set the value of a string.
@@ -433,7 +420,7 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    void set(const TJCHAR* key, const char* value);
+    void set_string(const TJCHAR* key, const char* value);
 
 #if TJ_INCLUDE_STD_STRING == 1
     /// <summary>
@@ -442,9 +429,9 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    inline void set(const std::string& key, const std::string& value) const
+    inline void set_string(const std::string& key, const std::string& value) const
     {
-      return set(key.c_str(), value.c_str());
+      return set_string(key.c_str(), value.c_str());
     }
 #endif
 
@@ -506,6 +493,18 @@ class TJDictionary;
 
     bool is_array() const;
 
+    void add(const TJValue* value);
+    void add_number(long long value);
+    void add_float(long double value);
+    void add_boolean(bool value);
+    void add_string(const char* value);
+#if TJ_INCLUDE_STD_STRING == 1
+    void add_string(const std::string& value)
+    {
+      add_string(value.c_str());
+    }
+#endif
+
   protected:
     /// <summary>
     /// Clone an array into an identical array
@@ -521,7 +520,7 @@ class TJDictionary;
     static TJValueArray* move(TJLIST*& values);
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
-
+    
   private:
     // All the key value pairs in this object.
     TJLIST* _values;

@@ -7,6 +7,8 @@
 #include <algorithm>
 #endif
 
+#include <limits>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -2156,6 +2158,37 @@ namespace TinyJSON
       return new TJValueNull();
     }
 
+    static TJValue* try_createnumber_from_float(long double value)
+    {
+      auto is_negative = false;
+      if (value < 0)
+      {
+        value = std::abs(value);
+        is_negative = true;
+      }
+      auto initial_pos_value = value;
+      long double int_part;
+      long double frac_part = std::modf(value, &int_part);
+      long long whole = static_cast<long long>(int_part);
+
+      int decimal_digits = 0;
+      while (std::abs(frac_part) > std::numeric_limits<long double>::epsilon() && decimal_digits < TJ_MAX_NUMBER_OF_DIGGITS)
+      {
+        value *= 10;
+        frac_part = std::modf(value, &int_part);
+        ++decimal_digits;
+      }
+
+      // Shift the fractional part to preserve `precision` decimal digits
+      long double scaled_frac = std::modf(initial_pos_value, &int_part) * std::pow(10.0L, decimal_digits);
+      long long fraction = static_cast<long long>(scaled_frac);
+      if (fraction == 0)
+      {
+        return new TJValueNumberInt(is_negative ? -1 * whole : whole);
+      }
+      return new TJValueNumberFloat(whole, fraction, decimal_digits, is_negative);
+    }
+
     static TJValue* try_create_number_from_parts_no_exponent(const bool& is_negative, const unsigned long long& unsigned_whole_number, const unsigned long long& unsigned_fraction, const unsigned int& fraction_exponent)
     {
       if (unsigned_fraction == 0)
@@ -3805,7 +3838,7 @@ namespace TinyJSON
   /// <param name="key"></param>
   /// <param name="value"></param>
   /// <returns></returns>
-  void TJValueObject::set(const TJCHAR* key, const char* value)
+  void TJValueObject::set_string(const TJCHAR* key, const char* value)
   {
     if (nullptr == _members)
     {
@@ -3843,7 +3876,7 @@ namespace TinyJSON
   /// <param name="key"></param>
   /// <param name="value"></param>
   /// <returns></returns>
-  void TJValueObject::set(const TJCHAR* key, long long value)
+  void TJValueObject::set_number(const TJCHAR* key, long long value)
   {
     if (nullptr == _members)
     {
@@ -3857,12 +3890,31 @@ namespace TinyJSON
   }
 
   /// <summary>
+  /// Set the value of a number
+  /// </summary>
+  /// <param name="key"></param>
+  /// <param name="value"></param>
+  /// <returns></returns>
+  void TJValueObject::set_float(const TJCHAR* key, long double value)
+  {
+    if (nullptr == _members)
+    {
+      _members = new TJDICTIONARY();
+    }
+
+    auto member = new TJMember(key, nullptr);
+    TJValue* value_number = TJHelper::try_createnumber_from_float(value);
+    member->move_value(value_number);
+    TJHelper::move_member_to_members(member, _members);
+  }
+
+  /// <summary>
   /// Set the value a boolean
   /// </summary>
   /// <param name="key"></param>
   /// <param name="value"></param>
   /// <returns></returns>
-  void TJValueObject::set(const TJCHAR* key, bool value)
+  void TJValueObject::set_boolean(const TJCHAR* key, bool value)
   {
     if (nullptr == _members)
     {
@@ -4201,6 +4253,55 @@ namespace TinyJSON
 #endif
     delete _values;
     _values = nullptr;
+  }
+
+  void TJValueArray::add(const TJValue* value)
+  {
+    if (nullptr == value)
+    {
+      auto* nullObject = new TJValueNull();
+      add(nullObject);
+      delete nullObject;
+      return;
+    }
+
+    if (_values == nullptr)
+    {
+      _values = new TJLIST();
+    }
+#if TJ_INCLUDE_STDVECTOR == 1
+    _values->push_back(value->clone());
+#else
+    _values->add(value->clone());
+#endif
+  }
+
+  void TJValueArray::add_number(long long value)
+  {
+    auto* objectNumber = new TJValueNumberInt(value);
+    add(objectNumber);
+    delete objectNumber;
+  }
+  
+  void TJValueArray::add_float(long double value)
+  {
+    auto* tjNumber = TJHelper::try_createnumber_from_float(value);
+    add(tjNumber);
+    delete tjNumber;
+  }
+  
+  void TJValueArray::add_boolean(bool value)
+  {
+    auto* objectBoolean = new TJValueBoolean(value);
+    add(objectBoolean);
+    delete objectBoolean;
+  }
+
+  void TJValueArray::add_string(const char* value)
+  {
+    auto* objectString = new TJValueString(value);
+    add(objectString);
+    delete objectString;
   }
 
   ///////////////////////////////////////
