@@ -1,7 +1,14 @@
 #pragma once
 #include "activation.h"
+
+#include <array>
 #include <vector>
 #include <cmath>
+
+#define LEARNING_RATE double(0.15)    // overall net learning rate, [0.0..1.0]
+                                      // the smaller the learning rate, the more epoch are needed.
+                                      // but the bigger the learning rate, the more likely are exploding weights.
+#define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
 class Neuron
 {
@@ -29,6 +36,7 @@ private:
       }
       return *this;
     }
+    virtual ~Connection() = default;
 
     double weight() const { return _weight; };
     double delta_weight() const { return _delta_weight; };
@@ -62,9 +70,14 @@ public:
     double outputVal,
     double gradient,
     const activation::method& activation,
-    const std::vector<Connection>& output_weights
-  );
-  Neuron(unsigned numOutputs, unsigned index, const activation::method& activation);
+    const std::vector<Connection>& output_weights,
+    double learning_rate = LEARNING_RATE
+    );
+  Neuron(unsigned numOutputs, 
+    unsigned index, 
+    const activation::method& activation,
+    double learning_rate = LEARNING_RATE
+    );
   Neuron(const Neuron& src);
   const Neuron& operator=(const Neuron& src);
   virtual ~Neuron();
@@ -76,10 +89,17 @@ public:
   void calculate_hidden_gradients(const Layer& nextLayer);
   void update_input_weights(Layer& previous_layer);
 
+  unsigned get_index() const {
+    return _index;
+  }
+  double get_learning_rate() const {
+    return _learning_rate;
+  }
+  std::vector<std::array<double, 2>> get_weights() const;
 private:
   
   void Clean();
-  const double _learning_rate;   // [0.0..1.0] overall net training rate
+  double _learning_rate;   // [0.0..1.0] overall net training rate
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   double sumDOW(const Layer& nextLayer) const;
 

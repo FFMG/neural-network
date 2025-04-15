@@ -28,6 +28,9 @@ public:
     const std::vector<double>& inputs
   ) const;
 
+  std::vector<unsigned> get_topology() const;
+  const std::vector<Neuron::Layer>& get_layers() const;
+  
 private:
   void get_outputs( std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const;
   void forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers_src) const;
