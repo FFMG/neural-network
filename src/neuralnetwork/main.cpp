@@ -3,12 +3,15 @@
 
 #include <iostream>
 #include "neuralnetwork.h"
+#include "neuralnetworkserializer.h"
 
 #include <iomanip>
 #include <vector>
 
 int main()
 {
+  const char* file_name = "./file.nn";
+
   // XOR training input, 3 values in at a time.
   std::vector<std::vector<double>> training_inputs = {
       {0, 0, 1},
@@ -53,6 +56,9 @@ int main()
   // we know that the output only has one value.
   auto t2 = nn->think({ 1, 1, 1 });
   std::cout << t2.front() << std::endl; //  should be close to 1
+
+  // save our neural network
+  NeuralNetworkSerializer::save(*nn, file_name);
 
   delete nn;
   return 0;
