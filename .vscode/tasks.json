@@ -7,6 +7,10 @@
       "args": [
         "-fdiagnostics-color=always",
         "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O3",
         "${workspaceFolder}/src/neuralnetwork/main.cpp",
         "${workspaceFolder}/src/neuralnetwork/neuralnetwork.cpp",
         "${workspaceFolder}/src/neuralnetwork/neuron.cpp",

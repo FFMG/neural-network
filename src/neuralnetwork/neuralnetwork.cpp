@@ -6,13 +6,13 @@ static const double RecentAverageSmoothingFactor = 100.0;
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
   const activation::method& activation) :
+  _error(0.0),
   _layers(nullptr),
-  _activation_method(activation),
-  _error(0.0)
+  _activation_method(activation)
 {
   const auto& number_of_layers = topology.size();
   _layers = new std::vector<Neuron::Layer>();
-  for (auto layer_number = 0; layer_number < number_of_layers; ++layer_number)
+  for (size_t layer_number = 0; layer_number < number_of_layers; ++layer_number)
   {
     auto number_of_outputs = layer_number == topology.size() - 1 ? 0 : topology[layer_number + 1];
     auto layer = Neuron::Layer();
@@ -32,9 +32,9 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const std::vector<Neuron::Layer>& layers, 
   const activation::method& activation) :
+  _error(0.0),  
   _layers(nullptr),
-  _activation_method(activation),
-  _error(0.0)
+  _activation_method(activation)
 {
   _layers = new std::vector<Neuron::Layer>();
   for (auto layer : layers)
@@ -114,7 +114,7 @@ void NeuralNetwork::train(
   _error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
-    for (auto j = 0; j < training_inputs.size(); ++j)
+    for (size_t j = 0; j < training_inputs.size(); ++j)
     {
       const auto& inputs = training_inputs[j];
       const auto& outputs = training_outputs[j];
@@ -165,7 +165,7 @@ double NeuralNetwork::back_propagation(
 
   // Calculate output layer gradients
 
-  for (auto n = 0; n < output_layer.size() - 1; ++n)
+  for (size_t n = 0; n < output_layer.size() - 1; ++n)
   {
     output_layer[n].calculate_output_gradients(targetVals[n]);
   }
@@ -177,7 +177,7 @@ double NeuralNetwork::back_propagation(
     auto& hidden_layer = layers_src[layer_number];
     auto& next_layer = layers_src[layer_number + 1];
 
-    for (auto n = 0; n < hidden_layer.size(); ++n)
+    for (size_t n = 0; n < hidden_layer.size(); ++n)
     {
       hidden_layer[n].calculate_hidden_gradients(next_layer);
     }
@@ -203,16 +203,16 @@ void NeuralNetwork::forward_feed(
 ) const
 {
   // Assign (latch) the input values into the input neurons
-  for (auto i = 0; i < inputVals.size(); ++i)
+  for (size_t i = 0; i < inputVals.size(); ++i)
   {
     layers[0][i].set_output_value(inputVals[i]);
   }
 
   // forward propagate
-  for (auto layer_number = 1; layer_number < layers.size(); ++layer_number)
+  for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
   {
     const auto& previous_layer = layers[layer_number - 1];
-    for (auto n = 0; n < layers[layer_number].size() - 1; ++n)
+    for (size_t n = 0; n < layers[layer_number].size() - 1; ++n)
     {
       layers[layer_number][n].forward_feed(previous_layer);
     }
