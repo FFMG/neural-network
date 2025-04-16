@@ -26,14 +26,14 @@ Neuron::Neuron(
 
 Neuron::Neuron(
   unsigned index,
-  double outputVal,
+  double output_value,
   double gradient,
   const activation::method& activation,
-  const std::vector<Connection>& output_weights,
+  const std::vector<std::array<double,2>>& output_weights,
   double learning_rate
 ) :
   _index(index),
-  _output_value(outputVal),
+  _output_value(output_value),
   _gradient(gradient),
   _activation_method(activation),
   _output_weights(nullptr),
@@ -41,15 +41,28 @@ Neuron::Neuron(
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
-  for (auto& connection : output_weights)
+  for (auto& weights : output_weights)
   {
+    auto connection = Connection(weights[0]);
+    connection.set_delta_weight(weights[1]);
     _output_weights->push_back(connection);
   }
 }
 
-Neuron::Neuron(const Neuron& src) :
-  Neuron(src._index, src._output_value, src._gradient, src._activation_method, *src._output_weights)
+Neuron::Neuron(const Neuron& src) : 
+  _index(src._index),
+  _output_value(src._output_value),
+  _gradient(src._gradient),
+  _activation_method(src._activation_method),
+  _output_weights(nullptr),
+  _learning_rate(src._learning_rate),
+  _alpha(LEARNING_ALPHA)
 {
+  _output_weights = new std::vector<Connection>();
+  for (auto& connection : *src._output_weights)
+  {
+    _output_weights->push_back(connection);
+  }
 }
 
 const Neuron& Neuron::operator=(const Neuron& src)
