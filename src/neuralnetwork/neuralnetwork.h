@@ -9,6 +9,7 @@ class NeuralNetwork
 {
 public:
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
+  NeuralNetwork(const std::vector<Neuron::Layer>& layers, const activation::method& activation);
   NeuralNetwork(const NeuralNetwork&) = delete;
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -30,7 +31,8 @@ public:
 
   std::vector<unsigned> get_topology() const;
   const std::vector<Neuron::Layer>& get_layers() const;
-  
+  activation::method get_activation_method() const;
+
 private:
   void get_outputs( std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const;
   void forward_feed(const std::vector<double>& inputVals, std::vector<Neuron::Layer>& layers_src) const;

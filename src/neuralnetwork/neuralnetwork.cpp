@@ -28,9 +28,28 @@ NeuralNetwork::NeuralNetwork(
   }
 }
 
+NeuralNetwork::NeuralNetwork(
+  const std::vector<Neuron::Layer>& layers, 
+  const activation::method& activation) :
+  _layers(nullptr),
+  _activation_method(activation)
+{
+  _layers = new std::vector<Neuron::Layer>();
+  for (auto layer : layers)
+  {
+    auto copy_layer = Neuron::Layer(layer);
+    _layers->push_back(copy_layer);
+  }
+}
+
 NeuralNetwork::~NeuralNetwork()
 {
   delete _layers;
+}
+
+activation::method NeuralNetwork::get_activation_method() const
+{
+  return _activation_method;
 }
 
 const std::vector<Neuron::Layer>& NeuralNetwork::get_layers() const
