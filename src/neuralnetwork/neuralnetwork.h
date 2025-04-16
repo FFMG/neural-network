@@ -32,6 +32,7 @@ public:
   std::vector<unsigned> get_topology() const;
   const std::vector<Neuron::Layer>& get_layers() const;
   activation::method get_activation_method() const;
+  long double get_error() const;
 
 private:
   void get_outputs( std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const;
@@ -42,6 +43,7 @@ private:
     const double current_recent_average_error
   ) const;
 
+  long double _error;
   std::vector<Neuron::Layer>* _layers;
   const activation::method _activation_method;
 };

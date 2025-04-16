@@ -54,6 +54,7 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   auto tj = new TinyJSON::TJValueObject();
   add_topology(nn, *tj);
   add_activation_method(nn, *tj);
+  add_error(nn, *tj);
   add_layers(nn, *tj);
 
   // save it.
@@ -260,6 +261,13 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   }
   json.set("layers", layers_array);
   delete layers_array;
+}
+
+void NeuralNetworkSerializer::add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+{
+  auto error = new TinyJSON::TJValueNumberFloat(nn.get_error());
+  json.set("error", error);
+  delete error;
 }
 
 void NeuralNetworkSerializer::add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

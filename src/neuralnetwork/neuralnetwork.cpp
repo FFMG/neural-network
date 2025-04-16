@@ -7,7 +7,8 @@ NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
   const activation::method& activation) :
   _layers(nullptr),
-  _activation_method(activation)
+  _activation_method(activation),
+  _error(0.0)
 {
   const auto& number_of_layers = topology.size();
   _layers = new std::vector<Neuron::Layer>();
@@ -32,7 +33,8 @@ NeuralNetwork::NeuralNetwork(
   const std::vector<Neuron::Layer>& layers, 
   const activation::method& activation) :
   _layers(nullptr),
-  _activation_method(activation)
+  _activation_method(activation),
+  _error(0.0)
 {
   _layers = new std::vector<Neuron::Layer>();
   for (auto layer : layers)
@@ -79,6 +81,11 @@ std::vector<double> NeuralNetwork::think(
   return outputs;
 }
 
+long double NeuralNetwork::get_error() const
+{
+  return _error;
+}
+
 std::vector<std::vector<double>> NeuralNetwork::think(
   const std::vector<std::vector<double>>& inputs
 ) const
@@ -104,7 +111,7 @@ void NeuralNetwork::train(
   {
     progress_callback(0, 0.0);
   }
-  auto error = 0.0;
+  _error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
     for (auto j = 0; j < training_inputs.size(); ++j)
@@ -113,7 +120,7 @@ void NeuralNetwork::train(
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
-      error = back_propagation(outputs, *_layers, error);
+      _error = back_propagation(outputs, *_layers, _error);
     }
 
     if (progress_callback != nullptr)
@@ -122,7 +129,7 @@ void NeuralNetwork::train(
       if (this_percent != percent && percent != 100)
       {
         percent = this_percent;
-        progress_callback(percent, error);
+        progress_callback(percent, _error);
       }
     }
   }
@@ -130,7 +137,7 @@ void NeuralNetwork::train(
   // final callback if needed
   if (progress_callback != nullptr && 100 != percent)
   {
-    progress_callback(100, error);
+    progress_callback(100, _error);
   }
 }
 
