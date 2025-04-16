@@ -14,7 +14,7 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 
 ## How to use
 
-### Multiple Hidden layers
+### XOR example with multiple hidden layers
 
 ```c++
 #include <iostream>
@@ -69,6 +69,42 @@ int main()
 
   delete nnl;
 
+  return 0;
+}
+```
+
+### Save/Load the Neural Network
+
+You might want to save your Neural Network for later use ...
+
+You can use `NeuralNetworkSerializer::save( ... )` to save a trained network and `NeuralNetworkSerializer::load(...)` to reuse it.
+
+```c++
+#include <iostream>
+#include "neuralnetwork.h"
+#include "neuralnetworkserializer.h"
+...
+
+int main()
+{
+  // create the NN
+  std::vector<unsigned> topology = {3,2,1};
+  auto nn = new NeuralNetwork(topology, activation::sigmoid_activation);
+
+  // train it 
+  ...
+
+  // save it
+  NeuralNetworkSerializer::save(*nn, "myfile.nn");
+
+  // then you can load it
+  auto nn_saved = NeuralNetworkSerializer::load("myfile.nn");
+
+  //  ... use it ...
+
+  delete nn_saved;
+
+  delete nn;
   return 0;
 }
 ```
