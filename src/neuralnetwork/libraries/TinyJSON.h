@@ -64,8 +64,8 @@ namespace TinyJSON
 #define TJDICTIONARY std::vector<TJMember*>
 #define TJLIST std::vector<TJValue*>
 #else
-  class TJList;
-  class TJDictionary;
+class TJList;
+class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
@@ -102,7 +102,7 @@ namespace TinyJSON
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;
+    unsigned int max_depth = 64;  
   };
 
   /// <summary>
@@ -333,7 +333,7 @@ namespace TinyJSON
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
-    const TJCHAR* try_get_string(const TJCHAR* key, bool case_sensitive = true) const;
+    const TJCHAR* try_get_string(const TJCHAR* key, bool case_sensitive = true) const;    
 
 #if TJ_INCLUDE_STD_STRING == 1
     /// <summary>
@@ -341,7 +341,7 @@ namespace TinyJSON
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
-    inline const TJCHAR* try_get_string(const std::string& key, bool case_sensitive = true) const
+    inline const TJCHAR* try_get_string(const std::string& key, bool case_sensitive = true) const    
     {
       return try_get_string(key.c_str(), case_sensitive);
     }
@@ -520,7 +520,7 @@ namespace TinyJSON
     static TJValueArray* move(TJLIST*& values);
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
-
+    
   private:
     // All the key value pairs in this object.
     TJLIST* _values;
@@ -668,7 +668,7 @@ namespace TinyJSON
   class TJValueNumberExponent : public TJValueNumber
   {
   public:
-    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent, bool is_negative);
+    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent,bool is_negative);
     virtual ~TJValueNumberExponent();
 
   protected:
@@ -697,7 +697,7 @@ namespace TinyJSON
     return TJ::parse(source, options);
   }
 
-#if TJ_INCLUDE_STD_STRING == 1
+  #if TJ_INCLUDE_STD_STRING == 1
   inline std::string operator ""_tj_indent(const TJCHAR * source, std::size_t)
   {
     parse_options options = {};
@@ -711,7 +711,7 @@ namespace TinyJSON
     std::string json(tj->dump(formating::indented));
     delete tj;
     return json;
-  }
+  }  
 
   inline std::string operator ""_tj_minify(const TJCHAR * source, std::size_t)
   {
@@ -727,6 +727,6 @@ namespace TinyJSON
     delete tj;
     return json;
   }
-#endif
+  #endif
 } // TinyJSON
 #endif // !TJ_INCLUDED 
