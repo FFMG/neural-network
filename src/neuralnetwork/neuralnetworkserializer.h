@@ -29,6 +29,7 @@ private:
 
   static void add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layer(const Neuron::Layer& layer, TinyJSON::TJValueArray& layers);
   static void add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer);
