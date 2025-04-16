@@ -4316,6 +4316,39 @@ namespace TinyJSON
     return true;
   }
 
+  long double TJValueNumber::get_float() const
+  {
+    auto value_float = dynamic_cast<const TinyJSON::TJValueNumberFloat*>(this);
+    if (nullptr != value_float)
+    {
+      return value_float->get_number();
+    }
+
+    auto value_int = dynamic_cast<const TinyJSON::TJValueNumberInt*>(this);
+    if (nullptr != value_int)
+    {
+      return static_cast<long double>(value_int->get_number());
+    }
+    throw TJParseException("The value is not a number!");
+  }
+
+  long long TJValueNumber::get_number() const
+  {
+    auto value_float = dynamic_cast<const TinyJSON::TJValueNumberFloat*>(this);
+    if (nullptr != value_float)
+    {
+      return static_cast<long long>(value_float->get_number());
+    }
+
+    auto value_int = dynamic_cast<const TinyJSON::TJValueNumberInt*>(this);
+    if (nullptr != value_int)
+    {
+      return value_int->get_number();
+    }
+    throw TJParseException("The value is not a number!");
+  }
+
+
   ///////////////////////////////////////
   /// TJValue whole Number
   TJValueNumberInt::TJValueNumberInt(const unsigned long long& number, const bool is_negative) :
