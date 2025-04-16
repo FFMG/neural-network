@@ -608,6 +608,9 @@ class TJDictionary;
   public:
     bool is_number() const;
 
+    long double get_float() const;
+    long long get_number() const;
+
   protected:
     const bool _is_negative;
   };
