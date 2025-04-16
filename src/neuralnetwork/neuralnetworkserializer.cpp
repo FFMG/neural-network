@@ -79,7 +79,7 @@ Neuron::Layer* NeuralNetworkSerializer::get_layer(
   {
     return nullptr;
   }
-  if(layer_number >= array->get_number_of_items())
+  if(layer_number >= unsigned(array->get_number_of_items()))
   {
     return nullptr;    
   }
@@ -138,7 +138,8 @@ Neuron::Layer* NeuralNetworkSerializer::get_layer(
       output_value,
       gradient,
       activation_method,
-      weights
+      weights,
+      learning_rate
     );
     layer->push_back(neuron);
   }
