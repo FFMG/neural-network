@@ -27,6 +27,7 @@ private:
   );
   static std::vector<std::array<double,2>> get_weights(const TinyJSON::TJValueObject& neuron);
 
+  static void add_basic(TinyJSON::TJValueObject& json);
   static void add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
