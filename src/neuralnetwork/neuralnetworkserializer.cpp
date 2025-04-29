@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "neuralnetworkserializer.h"
 
 NeuralNetworkSerializer::NeuralNetworkSerializer()
@@ -52,11 +54,12 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
 {
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
+  add_basic(*tj);
   add_topology(nn, *tj);
   add_activation_method(nn, *tj);
   add_error(nn, *tj);
   add_layers(nn, *tj);
-
+  
   // save it.
   TinyJSON::TJ::write_file(path.c_str(), *tj);
   
@@ -228,6 +231,15 @@ void NeuralNetworkSerializer::add_weights(const std::vector<std::array<double,2>
   }
   neuron.set("weights", weights_array);
   delete weights_array;
+}
+
+void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
+{
+  auto now = std::chrono::system_clock::now();
+  auto now_seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
+  long long current_timestamp = now_seconds.time_since_epoch().count();
+
+  json.set_number("created", current_timestamp);
 }
 
 void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer)
