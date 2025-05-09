@@ -49,8 +49,8 @@ private:
   void calculate_output_gradients(const std::vector<double>& current_output, Neuron::Layer& output_layer) const;
   double norm_output_gradients(Neuron::Layer& output_layer) const;
 
-  double _learning_rate;
   long double _error;
   std::vector<Neuron::Layer>* _layers;
   const activation::method _activation_method;
+  double _learning_rate;
 };
