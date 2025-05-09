@@ -2,8 +2,9 @@
 #include "activation.h"
 
 #include <array>
-#include <vector>
 #include <cmath>
+#include <iostream>
+#include <vector>
 
 #define LEARNING_RATE double(0.15)    // overall net learning rate, [0.0..1.0]
                                       // the smaller the learning rate, the more epoch are needed.
@@ -44,6 +45,8 @@ private:
     { 
       if (!std::isfinite(weight))
       {
+        std::cout << "Error while setting weight." << std::endl;
+        throw std::invalid_argument("Error while setting weight.");
         return;
       }
       _weight = weight; 
@@ -52,6 +55,8 @@ private:
     {
       if (!std::isfinite(delta_weight))
       {
+        std::cout << "Error while setting delta weight." << std::endl;
+        throw std::invalid_argument("Error while setting delta weight.");
         return;
       }
       _delta_weight = delta_weight; 
