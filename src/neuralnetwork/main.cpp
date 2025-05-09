@@ -11,7 +11,7 @@
 NeuralNetwork* create_neural_network()
 {
   std::vector<unsigned> topology = {3,2,1};
-  return new NeuralNetwork(topology, activation::sigmoid_activation);
+  return new NeuralNetwork(topology, activation::sigmoid_activation, 0.15);
 }
 
 void train_neural_network( NeuralNetwork& nn, unsigned epoch)
