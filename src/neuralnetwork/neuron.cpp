@@ -19,7 +19,7 @@ Neuron::Neuron(
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
-  auto weights = he_initialization(numOutputs);
+  auto weights = activation::weight_initialization(num_neurons_prev_layer, num_neurons_current_layer, activation);
   for (auto weight : weights)
   {
     _output_weights->push_back(Connection( weight));
@@ -105,19 +105,6 @@ std::vector<std::array<double, 2>> Neuron::get_weights() const
   for(const auto& output_weight : *_output_weights)
   {
     weights.push_back({output_weight.weight(), output_weight.delta_weight()});
-  }
-  return weights;
-}
-
-std::vector<double> Neuron::he_initialization(int num_neurons_prev_layer) 
-{
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / num_neurons_prev_layer));
-
-  std::vector<double> weights(num_neurons_prev_layer);
-  for (double& w : weights) {
-    w = dist(gen);  // Initialize weights
   }
   return weights;
 }
