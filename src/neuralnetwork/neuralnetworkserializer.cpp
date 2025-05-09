@@ -117,7 +117,7 @@ Neuron::Layer* NeuralNetworkSerializer::get_layer(
   }
 
   auto layer = new Neuron::Layer();
-  for( auto i = 0; i < layer_array->get_number_of_items(); ++i)
+  for( unsigned i = 0; i < layer_array->get_number_of_items(); ++i)
   {
     auto neuron_object = dynamic_cast<const TinyJSON::TJValueObject*>(layer_array->at(i));
     if(nullptr == neuron_object)
@@ -182,7 +182,7 @@ std::vector<std::array<double,2>> NeuralNetworkSerializer::get_weights(const Tin
   }
 
   std::vector<std::array<double,2>> weights;
-  for(auto i = 0; i < weights_array->get_number_of_items(); ++i)
+  for(unsigned i = 0; i < weights_array->get_number_of_items(); ++i)
   {
     auto inner_weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(weights_array->at(i));
     if( nullptr == inner_weights_array || 2 != inner_weights_array->get_number_of_items())
@@ -214,7 +214,7 @@ std::vector<unsigned> NeuralNetworkSerializer::get_topology(const TinyJSON::TJVa
   }
 
   std::vector<unsigned> topology;
-  for( auto i = 0; i < array->get_number_of_items(); ++i)
+  for( unsigned i = 0; i < array->get_number_of_items(); ++i)
   {
     auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(array->at(i));
     if(nullptr == number)

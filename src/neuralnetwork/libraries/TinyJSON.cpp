@@ -4486,7 +4486,7 @@ namespace TinyJSON
   std::vector<long double> TJValueArray::get_floats(bool throw_if_not_numbers) const
   {
     std::vector<long double> values = {};
-    for (auto i = 0; i < get_number_of_items(); ++i)
+    for (auto i = 0; i < int(get_number_of_items()); ++i)
     {
       auto value = _values->at(i);
       if (!value->is_number())
@@ -4506,7 +4506,7 @@ namespace TinyJSON
   std::vector<long long> TJValueArray::get_numbers(bool throw_if_not_numbers) const
   {
     std::vector<long long> values = {};
-    for (auto i = 0; i < get_number_of_items(); ++i)
+    for (auto i = 0; i < int(get_number_of_items()); ++i)
     {
       auto value = _values->at(i);
       if (!value->is_number())
