@@ -76,18 +76,22 @@ public:
     double gradient,
     const activation::method& activation,
     const std::vector<std::array<double,2>>& output_weights,
-    double learning_rate = LEARNING_RATE
+    double learning_rate
     );
     
-  Neuron(unsigned numOutputs, 
+  Neuron(
+    unsigned num_neurons_prev_layer,
+    unsigned num_neurons_current_layer,
     unsigned index, 
     const activation::method& activation,
-    double learning_rate = LEARNING_RATE
+    double learning_rate
     );
+
   Neuron(const Neuron& src);
   const Neuron& operator=(const Neuron& src);
   virtual ~Neuron();
 
+  void set_gradient_value(double val);
   void set_output_value(double val);
   double get_output_value() const;
   void forward_feed(const Layer& prevLayer);
@@ -108,9 +112,7 @@ public:
   std::vector<std::array<double, 2>> get_weights() const;
 private:
   void Clean();
-  double sumDOW(const Layer& nextLayer) const;
-
-  std::vector<double> he_initialization(int num_neurons_prev_layer);
+  double sum_of_derivatives_of_weights(const Layer& nextLayer) const;
   
   // data to save...
   unsigned _index;
