@@ -1,6 +1,7 @@
 #include "neuron.h"
+
 #include <cmath>
-#include <random>
+#include <iostream>
 
 Neuron::Neuron(
   unsigned numOutputs, 
@@ -165,13 +166,20 @@ double Neuron::sumDOW(const Layer& nextLayer) const
 
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
-  double dow = sumDOW(nextLayer);
-  auto gradient = dow * activation::activate_derivative(_activation_method, get_output_value());
-  if (!std::isfinite(gradient))
+  auto derivatives_of_weights = sum_of_derivatives_of_weights(nextLayer);
+  auto gradient = derivatives_of_weights * activation::activate_derivative(_activation_method, get_output_value());
+  set_gradient_value(gradient);
+}
+
+void Neuron::set_gradient_value(double val)
+{
+  if (!std::isfinite(val))
   {
+    std::cout << "Error while calculating hidden gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating hidden gradients.");
     return;
   }
-  _gradient = gradient;
+  _gradient = val;
 }
 
 void Neuron::set_output_value(double val) 
@@ -194,6 +202,8 @@ void Neuron::calculate_output_gradients(double targetVal)
   auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
   if (!std::isfinite(gradient))
   {
+    std::cout << "Error while calculating output gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating output gradients.");
     return;
   }
   _gradient = gradient;
@@ -213,10 +223,11 @@ void Neuron::forward_feed(const Layer& prevLayer)
 
     if (!std::isfinite(sum))
     {
+      std::cout << "Error while calculating forward feed." << std::endl;
+      throw std::invalid_argument("Error while calculating forward feed.");
       return;
     }
   }
 
   set_output_value( activation::activate(_activation_method, sum) );
 }
-
