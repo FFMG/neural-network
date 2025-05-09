@@ -4,7 +4,8 @@
 #include <iostream>
 
 Neuron::Neuron(
-  unsigned numOutputs, 
+  unsigned num_neurons_prev_layer,
+  unsigned num_neurons_current_layer,
   unsigned index,
   const activation::method& activation,
   double learning_rate
@@ -132,12 +133,26 @@ void Neuron::update_input_weights(Layer& previous_layer)
   for (auto& neuron : previous_layer)
   {
     auto& connection = neuron._output_weights->at(_index);
-    const auto& old_delta_weight = connection.delta_weight();
+    
+    auto gradient = _gradient;
+    if (!std::isfinite(gradient))
+    {
+      gradient = 0.0;
+      std::cout << "Error while calculating input weigh gradient it invalid." << std::endl;
+      throw std::invalid_argument("Error while calculating input weight.");
+    }
+    auto old_delta_weight = connection.delta_weight();
+    if (!std::isfinite(old_delta_weight))
+    {
+      old_delta_weight = 0.0;
+      std::cout << "Error while calculating input weigh old weight is invalid." << std::endl;
+      throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
+    }
 
     auto new_delta_weight =
       _learning_rate  // Individual input, magnified by the gradient and train rate:
       * neuron.get_output_value()
-      * _gradient
+      * gradient
       + _alpha  // momentum = a fraction of the previous delta weight;
       * old_delta_weight;
 
@@ -146,12 +161,9 @@ void Neuron::update_input_weights(Layer& previous_layer)
   }
 }
 
-double Neuron::sumDOW(const Layer& nextLayer) const
+double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
 {
   double sum = 0.0;
-
-  // Sum our contributions of the errors at the nodes we feed.
-
   for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
   {
     auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer[n]._gradient;
@@ -159,6 +171,8 @@ double Neuron::sumDOW(const Layer& nextLayer) const
   }
   if (!std::isfinite(sum))
   {
+    std::cout << "Error while calculating sum of the derivatives of the weights." << std::endl;
+    throw std::invalid_argument("Error while calculating sum of the derivatives of the weights.");
     return 0.0;
   }
   return sum;
@@ -186,6 +200,8 @@ void Neuron::set_output_value(double val)
 {
   if (!std::isfinite(val))
   {
+    std::cout << "Error while calculating output values." << std::endl;
+    throw std::invalid_argument("Error while calculating output values.");
     return;
   }
   _output_value = val;
