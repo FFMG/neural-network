@@ -1,27 +1,36 @@
 #include "neuralnetwork.h"
 #include <cassert>
+#include <cmath>
+#include <numeric>
 
 static const double RecentAverageSmoothingFactor = 100.0;
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
-  const activation::method& activation) :
+  const activation::method& activation,
+  double learning_rate
+  ) :
   _error(0.0),
   _layers(nullptr),
-  _activation_method(activation)
+  _activation_method(activation),
+  _learning_rate(learning_rate)
 {
   const auto& number_of_layers = topology.size();
   _layers = new std::vector<Neuron::Layer>();
   for (size_t layer_number = 0; layer_number < number_of_layers; ++layer_number)
   {
-    auto number_of_outputs = layer_number == topology.size() - 1 ? 0 : topology[layer_number + 1];
+    auto num_neurons_prev_layer = layer_number == topology.size() - 1 ? 0 : topology[layer_number + 1];
+    auto num_neurons_current_layer = layer_number == topology.size() ? 0 : topology[layer_number];
     auto layer = Neuron::Layer();
 
     // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
     for (unsigned neuronNum = 0; neuronNum <= topology[layer_number]; ++neuronNum)
     {
       // force the bias node's output to 1.0
-      auto neuron = Neuron(number_of_outputs, neuronNum, activation);
+      auto neuron = Neuron(
+        num_neurons_prev_layer,
+        num_neurons_current_layer,
+        neuronNum, activation, learning_rate);
       neuron.set_output_value(1.0);
       layer.push_back(neuron);
     }
@@ -31,10 +40,14 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Neuron::Layer>& layers, 
-  const activation::method& activation) :
-  _error(0.0),  
+  const activation::method& activation,
+  double learning_rate,
+  double error
+  ) :
+  _error(error),
   _layers(nullptr),
-  _activation_method(activation)
+  _activation_method(activation),
+  _learning_rate(learning_rate)
 {
   _layers = new std::vector<Neuron::Layer>();
   for (auto layer : layers)
@@ -44,9 +57,28 @@ NeuralNetwork::NeuralNetwork(
   }
 }
 
+NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
+  _error(src._error),
+  _layers(nullptr),
+  _activation_method(src._activation_method),
+  _learning_rate(src._learning_rate)
+{
+  _layers = new std::vector<Neuron::Layer>();
+  for (const auto& layer : *src._layers)
+  {
+    auto copy_layer = Neuron::Layer(layer);
+    _layers->push_back(copy_layer);
+  }
+}
+
 NeuralNetwork::~NeuralNetwork()
 {
   delete _layers;
+}
+
+double NeuralNetwork::get_learning_rate() const
+{
+  return _learning_rate;
 }
 
 activation::method NeuralNetwork::get_activation_method() const
@@ -120,7 +152,7 @@ void NeuralNetwork::train(
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
-      _error = back_propagation(outputs, *_layers, _error);
+      back_propagation(outputs, *_layers);
     }
 
     if (progress_callback != nullptr)
@@ -128,11 +160,15 @@ void NeuralNetwork::train(
       auto this_percent = (int)(((float)i / number_of_epoch)*100);
       if (this_percent != percent && percent != 100)
       {
+        _error = calculate_batch_rmse_error(training_outputs, *_layers);
         percent = this_percent;
         progress_callback(percent, _error);
       }
     }
   }
+
+  // get the very last error in case we do not have a callback and we just want to get the value.
+  _error = calculate_batch_rmse_error(training_outputs, *_layers);
 
   // final callback if needed
   if (progress_callback != nullptr && 100 != percent)
@@ -141,34 +177,38 @@ void NeuralNetwork::train(
   }
 }
 
-double NeuralNetwork::back_propagation(
-  const std::vector<double>& targetVals, 
-  std::vector<Neuron::Layer>& layers_src,
-  const double current_recent_average_error
+double NeuralNetwork::calculate_batch_rmse_error(
+  const std::vector<std::vector<double>>& targets,
+  const std::vector<std::vector<Neuron>>& layers
+) const{
+  const auto& output_layer = layers.back();
+  const size_t num_samples = targets.size();
+  const size_t num_outputs = output_layer.size() - 1; // exclude bias
+
+  double total_error = 0.0;
+
+  for (size_t i = 0; i < num_samples; ++i) {
+    for (size_t n = 0; n < num_outputs; ++n) {
+      double predicted = output_layer[n].get_output_value();
+      double actual = targets[i][n];
+      double delta = predicted - actual;
+      total_error += delta * delta;
+    }
+  }
+
+  double mean_squared_error = total_error / (num_samples * num_outputs);
+  return std::sqrt(mean_squared_error); // RMSE
+}
+
+void NeuralNetwork::back_propagation(
+  const std::vector<double>& current_output,
+  std::vector<Neuron::Layer>& layers_src
 ) const
 {
   auto& output_layer = layers_src.back();
-  auto error = 0.0;
-
-  for (unsigned n = 0; n < output_layer.size() - 1; ++n)
-  {
-    auto delta = targetVals[n] - output_layer[n].get_output_value();
-    error += delta * delta;
-  }
-  error /= output_layer.size() - 1; // get average error squared
-  error = sqrt(error); // RMS
-
-  // Implement a recent average measurement
-  auto recent_average_error =
-    (current_recent_average_error * RecentAverageSmoothingFactor + error)
-    / (RecentAverageSmoothingFactor + 1.0);
-
+  
   // Calculate output layer gradients
-
-  for (size_t n = 0; n < output_layer.size() - 1; ++n)
-  {
-    output_layer[n].calculate_output_gradients(targetVals[n]);
-  }
+  calculate_output_gradients(current_output, output_layer);
 
   // Calculate hidden layer gradients
 
@@ -194,7 +234,6 @@ double NeuralNetwork::back_propagation(
       layer[n].update_input_weights(prevLayer);
     }
   }
-  return recent_average_error;
 }
 
 void NeuralNetwork::forward_feed(
@@ -227,4 +266,44 @@ void NeuralNetwork::get_outputs(std::vector<double>& outputs, const std::vector<
   {
     outputs.push_back(back_layer[n].get_output_value());
   }
+}
+
+void NeuralNetwork::calculate_output_gradients(
+  const std::vector<double>& targetVals,
+  Neuron::Layer& output_layer
+  ) const
+{
+  for (size_t n = 0; n < output_layer.size() - 1; ++n)
+  {
+    output_layer[n].calculate_output_gradients(targetVals[n]);
+  }
+
+  const double max_norm = 10.0;
+  auto norm = norm_output_gradients(output_layer);
+  if (norm < max_norm)
+  {
+    return;
+  }
+
+  // update all the gradients.
+  double scale = max_norm / (norm == 0 ? 1e-8 : norm);
+  for (size_t n = 0; n < output_layer.size() - 1; ++n)
+  {
+    auto gradient = output_layer[n].get_gradient();
+    gradient *= scale;
+    output_layer[n].set_gradient_value(gradient);
+  }
+}
+
+double NeuralNetwork::norm_output_gradients(Neuron::Layer& output_layer) const
+{
+  auto acc = std::accumulate(
+    output_layer.begin(),
+    output_layer.end(),
+    0.0,
+    [](double sum, Neuron& n) {
+      auto grad = n.get_gradient();
+      return sum + grad * grad;
+    });
+  return std::sqrt(acc);
 }
