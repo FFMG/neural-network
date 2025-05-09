@@ -18,10 +18,9 @@
 #endif
 
 #include <exception>
-
-#if TJ_INCLUDE_STDVECTOR == 1
 #include <vector>
-#else
+
+#if TJ_INCLUDE_STDVECTOR == 0
 #include <stdexcept>
 #endif
 
@@ -64,8 +63,8 @@ namespace TinyJSON
 #define TJDICTIONARY std::vector<TJMember*>
 #define TJLIST std::vector<TJValue*>
 #else
-class TJList;
-class TJDictionary;
+  class TJList;
+  class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
@@ -102,7 +101,7 @@ class TJDictionary;
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;  
+    unsigned int max_depth = 64;
   };
 
   /// <summary>
@@ -326,14 +325,14 @@ class TJDictionary;
     /// Get the number of items in this array
     /// </summary>
     /// <returns></returns>
-    int get_number_of_items() const;
+    unsigned int get_number_of_items() const;
 
     /// <summary>
     /// Try and get a string value, if it does not exist, then we return null.
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
-    const TJCHAR* try_get_string(const TJCHAR* key, bool case_sensitive = true) const;    
+    const TJCHAR* try_get_string(const TJCHAR* key, bool case_sensitive = true) const;
 
 #if TJ_INCLUDE_STD_STRING == 1
     /// <summary>
@@ -341,7 +340,7 @@ class TJDictionary;
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
-    inline const TJCHAR* try_get_string(const std::string& key, bool case_sensitive = true) const    
+    inline const TJCHAR* try_get_string(const std::string& key, bool case_sensitive = true) const
     {
       return try_get_string(key.c_str(), case_sensitive);
     }
@@ -353,6 +352,12 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <returns></returns>
     virtual const TJValue* try_get_value(const TJCHAR* key, bool case_sensitive = true) const;
+
+    bool get_boolean(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
+    long double get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
+    long long get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
+    std::vector<long double> get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
+    std::vector<long long> get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
 
 #if TJ_INCLUDE_STD_STRING == 1
     /// <summary>
@@ -486,7 +491,7 @@ class TJDictionary;
     /// Get the number of items in this array
     /// </summary>
     /// <returns></returns>
-    int get_number_of_items() const;
+    unsigned int get_number_of_items() const;
 
     TJValue* operator [](int idx) const;
     TJValue* at(int idx) const;
@@ -494,10 +499,20 @@ class TJDictionary;
     bool is_array() const;
 
     void add(const TJValue* value);
+    void add_numbers(const std::vector<long long>& values);
+    void add_numbers(const std::vector<long>& values);
+    void add_numbers(const std::vector<int>& values);
+    void add_floats(const std::vector<long double>& values);
+    void add_floats(const std::vector<double>& values);
+    void add_floats(const std::vector<float>& values);
     void add_number(long long value);
     void add_float(long double value);
     void add_boolean(bool value);
     void add_string(const char* value);
+
+    std::vector<long double> get_floats(bool throw_if_not_numbers = false) const;
+    std::vector<long long> get_numbers(bool throw_if_not_numbers = false) const;
+
 #if TJ_INCLUDE_STD_STRING == 1
     void add_string(const std::string& value)
     {
@@ -520,7 +535,7 @@ class TJDictionary;
     static TJValueArray* move(TJLIST*& values);
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
-    
+
   private:
     // All the key value pairs in this object.
     TJLIST* _values;
@@ -668,12 +683,14 @@ class TJDictionary;
   class TJValueNumberExponent : public TJValueNumber
   {
   public:
-    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent,bool is_negative);
+    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent, bool is_negative);
     virtual ~TJValueNumberExponent();
+
+    long double get_number() const;
 
   protected:
     /// <summary>
-    /// Clone an array into an identical array
+    /// Clone an array into an identical value object
     /// </summary>
     TJValue* internal_clone() const;
 
@@ -697,7 +714,7 @@ class TJDictionary;
     return TJ::parse(source, options);
   }
 
-  #if TJ_INCLUDE_STD_STRING == 1
+#if TJ_INCLUDE_STD_STRING == 1
   inline std::string operator ""_tj_indent(const TJCHAR * source, std::size_t)
   {
     parse_options options = {};
@@ -711,7 +728,7 @@ class TJDictionary;
     std::string json(tj->dump(formating::indented));
     delete tj;
     return json;
-  }  
+  }
 
   inline std::string operator ""_tj_minify(const TJCHAR * source, std::size_t)
   {
@@ -727,6 +744,6 @@ class TJDictionary;
     delete tj;
     return json;
   }
-  #endif
+#endif
 } // TinyJSON
 #endif // !TJ_INCLUDED 
