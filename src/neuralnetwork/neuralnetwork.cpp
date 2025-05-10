@@ -1,5 +1,6 @@
 #include "neuralnetwork.h"
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <numeric>
 
@@ -137,7 +138,8 @@ void NeuralNetwork::train(
   const std::function<void(int, double)>& progress_callback
 )
 {
-  auto percent = 0;
+  const auto interval = std::chrono::seconds(5);
+  auto last_callback_time = std::chrono::high_resolution_clock::now();
   // initial callback
   if (progress_callback != nullptr)
   {
@@ -163,20 +165,22 @@ void NeuralNetwork::train(
       auto sum = std::accumulate(epoch_errors.begin(), epoch_errors.end(), 0.0);
       _error = sum / epoch_errors.size();
     }
-    
+
     if (progress_callback != nullptr)
     {
-      auto this_percent = (int)(((float)i / number_of_epoch)*100);
-      if (this_percent != percent && percent != 100)
+      auto current_time = std::chrono::high_resolution_clock::now();
+      auto elapsed_time = current_time - last_callback_time;
+      auto percent = (int)(((float)i / number_of_epoch)*100);
+      if (elapsed_time >= interval)
       {
-        percent = this_percent;
         progress_callback(percent, _error);
+        last_callback_time = current_time;
       }
     }
   }
 
   // final callback if needed
-  if (progress_callback != nullptr && 100 != percent)
+  if (progress_callback != nullptr)
   {
     progress_callback(100, _error);
   }
