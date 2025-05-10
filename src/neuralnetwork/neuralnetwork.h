@@ -19,7 +19,7 @@ public:
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs,
     int number_of_epoch,
-    const std::function<void(int, double)>& progress_callback = nullptr
+    const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr
   );
 
   std::vector<std::vector<double>> think(

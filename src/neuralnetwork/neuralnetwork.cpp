@@ -135,18 +135,21 @@ void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
   int number_of_epoch,
-  const std::function<void(int, double)>& progress_callback
+  const std::function<bool(int, NeuralNetwork&)>& progress_callback
 )
 {
   const auto interval = std::chrono::seconds(5);
   auto last_callback_time = std::chrono::high_resolution_clock::now();
   // initial callback
+  _error = 0.0;
   if (progress_callback != nullptr)
   {
-    progress_callback(0, 0.0);
+    if( !progress_callback(0, *this))
+    {
+      return;
+    }
   }
   const auto& output_layer = _layers->back();
-  _error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
     std::vector<double> epoch_errors = {};
@@ -173,7 +176,10 @@ void NeuralNetwork::train(
       auto percent = (int)(((float)i / number_of_epoch)*100);
       if (elapsed_time >= interval)
       {
-        progress_callback(percent, _error);
+        if( !progress_callback(percent, *this))
+        {
+          return;
+        }
         last_callback_time = current_time;
       }
     }
@@ -182,7 +188,7 @@ void NeuralNetwork::train(
   // final callback if needed
   if (progress_callback != nullptr)
   {
-    progress_callback(100, _error);
+    progress_callback(100, *this);
   }
 }
 
