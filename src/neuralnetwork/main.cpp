@@ -78,6 +78,8 @@ int main()
     delete nn_saved;
   }
 
+  std::cout << "Error: " << nn->get_error() << std::endl;
+
   std::cout << "Output After Training:" << std::endl;
   std::cout << std::fixed << std::setprecision(10);
 
