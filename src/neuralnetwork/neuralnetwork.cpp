@@ -109,7 +109,7 @@ std::vector<double> NeuralNetwork::think(
   std::vector<double> outputs;
   auto layers = *_layers;
   forward_feed(inputs, layers);
-  get_outputs(outputs, layers);
+  get_outputs(outputs, layers.back());
   return outputs;
 }
 
@@ -143,6 +143,7 @@ void NeuralNetwork::train(
   {
     progress_callback(0, 0.0);
   }
+  const auto& output_layer = _layers->back();
   _error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
@@ -160,7 +161,7 @@ void NeuralNetwork::train(
       auto this_percent = (int)(((float)i / number_of_epoch)*100);
       if (this_percent != percent && percent != 100)
       {
-        _error = calculate_batch_rmse_error(training_outputs, *_layers);
+        _error = calculate_batch_error(training_outputs, output_layer);
         percent = this_percent;
         progress_callback(percent, _error);
       }
@@ -168,7 +169,7 @@ void NeuralNetwork::train(
   }
 
   // get the very last error in case we do not have a callback and we just want to get the value.
-  _error = calculate_batch_rmse_error(training_outputs, *_layers);
+  _error = calculate_batch_error(training_outputs, output_layer);
 
   // final callback if needed
   if (progress_callback != nullptr && 100 != percent)
@@ -177,18 +178,37 @@ void NeuralNetwork::train(
   }
 }
 
+double NeuralNetwork::calculate_batch_error(
+  const std::vector<std::vector<double>>& targets,
+  const Neuron::Layer& output_layer
+) const
+{
+  return calculate_batch_rmse_error(targets, output_layer);
+}
+
 double NeuralNetwork::calculate_batch_rmse_error(
   const std::vector<std::vector<double>>& targets,
-  const std::vector<std::vector<Neuron>>& layers
-) const{
-  const auto& output_layer = layers.back();
+  const Neuron::Layer& output_layer
+) const 
+{
+  auto mean_squared_error = calculate_batch_mse_error(targets, output_layer);
+  return std::sqrt(mean_squared_error); // RMSE
+}
+
+double NeuralNetwork::calculate_batch_mse_error(
+  const std::vector<std::vector<double>>& targets,
+  const Neuron::Layer& output_layer
+) const
+{
   const size_t num_samples = targets.size();
-  const size_t num_outputs = output_layer.size() - 1; // exclude bias
+  const size_t num_output_neurons = output_layer.size() - 1; // exclude bias
 
   double total_error = 0.0;
 
-  for (size_t i = 0; i < num_samples; ++i) {
-    for (size_t n = 0; n < num_outputs; ++n) {
+  for (size_t i = 0; i < num_samples; ++i) 
+  {
+    for (size_t n = 0; n < num_output_neurons; ++n) 
+    {
       double predicted = output_layer[n].get_output_value();
       double actual = targets[i][n];
       double delta = predicted - actual;
@@ -196,8 +216,8 @@ double NeuralNetwork::calculate_batch_rmse_error(
     }
   }
 
-  double mean_squared_error = total_error / (num_samples * num_outputs);
-  return std::sqrt(mean_squared_error); // RMSE
+  double mean_squared_error = total_error / (num_samples * num_output_neurons);
+  return mean_squared_error; // MSE
 }
 
 void NeuralNetwork::back_propagation(
@@ -237,14 +257,14 @@ void NeuralNetwork::back_propagation(
 }
 
 void NeuralNetwork::forward_feed(
-  const std::vector<double>& inputVals,
+  const std::vector<double>& inputs,
   std::vector<Neuron::Layer>& layers
 ) const
 {
   // Assign (latch) the input values into the input neurons
-  for (size_t i = 0; i < inputVals.size(); ++i)
+  for (size_t i = 0; i < inputs.size(); ++i)
   {
-    layers[0][i].set_output_value(inputVals[i]);
+    layers[0][i].set_output_value(inputs[i]);
   }
 
   // forward propagate
@@ -258,13 +278,12 @@ void NeuralNetwork::forward_feed(
   }
 }
 
-void NeuralNetwork::get_outputs(std::vector<double>& outputs, const std::vector<Neuron::Layer>& layers) const
+void NeuralNetwork::get_outputs(std::vector<double>& outputs, const Neuron::Layer& output_layer) const
 {
   outputs.erase(outputs.begin(), outputs.end());
-  const auto& back_layer = layers.back();
-  for (unsigned n = 0; n < back_layer.size() - 1; ++n)
+  for (auto neuron : output_layer)
   {
-    outputs.push_back(back_layer[n].get_output_value());
+    outputs.push_back(neuron.get_output_value());
   }
 }
 
