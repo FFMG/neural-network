@@ -147,29 +147,33 @@ void NeuralNetwork::train(
   _error = 0.0;
   for (auto i = 0; i < number_of_epoch; ++i)
   {
+    std::vector<double> epoch_errors = {};
     for (size_t j = 0; j < training_inputs.size(); ++j)
     {
       const auto& inputs = training_inputs[j];
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
+      epoch_errors.push_back( calculate_batch_error(outputs, output_layer));
       back_propagation(outputs, *_layers);
     }
 
+    if(epoch_errors.size() > 0 )
+    {
+      auto sum = std::accumulate(epoch_errors.begin(), epoch_errors.end(), 0.0);
+      _error = sum / epoch_errors.size();
+    }
+    
     if (progress_callback != nullptr)
     {
       auto this_percent = (int)(((float)i / number_of_epoch)*100);
       if (this_percent != percent && percent != 100)
       {
-        _error = calculate_batch_error(training_outputs, output_layer);
         percent = this_percent;
         progress_callback(percent, _error);
       }
     }
   }
-
-  // get the very last error in case we do not have a callback and we just want to get the value.
-  _error = calculate_batch_error(training_outputs, output_layer);
 
   // final callback if needed
   if (progress_callback != nullptr && 100 != percent)
@@ -179,7 +183,7 @@ void NeuralNetwork::train(
 }
 
 double NeuralNetwork::calculate_batch_error(
-  const std::vector<std::vector<double>>& targets,
+  const std::vector<double>& targets,
   const Neuron::Layer& output_layer
 ) const
 {
@@ -187,7 +191,7 @@ double NeuralNetwork::calculate_batch_error(
 }
 
 double NeuralNetwork::calculate_batch_rmse_error(
-  const std::vector<std::vector<double>>& targets,
+  const std::vector<double>& targets,
   const Neuron::Layer& output_layer
 ) const 
 {
@@ -196,27 +200,23 @@ double NeuralNetwork::calculate_batch_rmse_error(
 }
 
 double NeuralNetwork::calculate_batch_mse_error(
-  const std::vector<std::vector<double>>& targets,
+  const std::vector<double>& targets,
   const Neuron::Layer& output_layer
 ) const
 {
-  const size_t num_samples = targets.size();
   const size_t num_output_neurons = output_layer.size() - 1; // exclude bias
 
   double total_error = 0.0;
 
-  for (size_t i = 0; i < num_samples; ++i) 
+  for (size_t n = 0; n < num_output_neurons; ++n) 
   {
-    for (size_t n = 0; n < num_output_neurons; ++n) 
-    {
-      double predicted = output_layer[n].get_output_value();
-      double actual = targets[i][n];
-      double delta = predicted - actual;
-      total_error += delta * delta;
-    }
+    double predicted = output_layer[n].get_output_value();
+    double actual = targets[n];
+    double delta = actual - predicted;
+    total_error += delta * delta;
   }
 
-  double mean_squared_error = total_error / (num_samples * num_output_neurons);
+  double mean_squared_error = total_error / num_output_neurons;
   return mean_squared_error; // MSE
 }
 
