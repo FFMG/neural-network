@@ -45,9 +45,9 @@ private:
   static void calculate_output_gradients(const std::vector<double>& current_output, Neuron::Layer& output_layer);
   static double norm_output_gradients(Neuron::Layer& output_layer);
 
-  double calculate_batch_error(const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
-  double calculate_batch_mse_error( const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
-  double calculate_batch_rmse_error(const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
+  static double calculate_batch_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
+  static double calculate_batch_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
+  static double calculate_batch_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
   
   long double _error;
   std::vector<Neuron::Layer>* _layers;
