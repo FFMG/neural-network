@@ -107,11 +107,9 @@ std::vector<double> NeuralNetwork::think(
   const std::vector<double>& inputs
 ) const
 {
-  std::vector<double> outputs;
   auto layers = *_layers;
   forward_feed(inputs, layers);
-  get_outputs(outputs, layers.back());
-  return outputs;
+  return get_outputs(layers.back());
 }
 
 long double NeuralNetwork::get_error() const
@@ -233,7 +231,7 @@ double NeuralNetwork::calculate_batch_mse_error(
 void NeuralNetwork::back_propagation(
   const std::vector<double>& current_output,
   std::vector<Neuron::Layer>& layers_src
-) const
+)
 {
   auto& output_layer = layers_src.back();
   
@@ -266,10 +264,7 @@ void NeuralNetwork::back_propagation(
   }
 }
 
-void NeuralNetwork::forward_feed(
-  const std::vector<double>& inputs,
-  std::vector<Neuron::Layer>& layers
-) const
+void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector<Neuron::Layer>& layers )
 {
   // Assign (latch) the input values into the input neurons
   for (size_t i = 0; i < inputs.size(); ++i)
@@ -288,19 +283,18 @@ void NeuralNetwork::forward_feed(
   }
 }
 
-void NeuralNetwork::get_outputs(std::vector<double>& outputs, const Neuron::Layer& output_layer) const
+std::vector<double> NeuralNetwork::get_outputs(const Neuron::Layer& output_layer) const
 {
-  outputs.erase(outputs.begin(), outputs.end());
-  for (auto neuron : output_layer)
+  std::vector<double> outputs;
+  outputs.reserve(output_layer.size() - 1); //  exclude the bias Neuron
+  for (auto it = output_layer.begin(); it != output_layer.end() - 1; ++it) 
   {
-    outputs.push_back(neuron.get_output_value());
+    outputs.push_back(it->get_output_value());
   }
+  return outputs;
 }
 
-void NeuralNetwork::calculate_output_gradients(
-  const std::vector<double>& targetVals,
-  Neuron::Layer& output_layer
-  ) const
+void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targetVals, Neuron::Layer& output_layer)
 {
   for (size_t n = 0; n < output_layer.size() - 1; ++n)
   {
@@ -324,7 +318,7 @@ void NeuralNetwork::calculate_output_gradients(
   }
 }
 
-double NeuralNetwork::norm_output_gradients(Neuron::Layer& output_layer) const
+double NeuralNetwork::norm_output_gradients(Neuron::Layer& output_layer)
 {
   auto acc = std::accumulate(
     output_layer.begin(),

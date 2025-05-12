@@ -36,19 +36,19 @@ public:
   double get_learning_rate() const;
 
 private:
-  void get_outputs( std::vector<double>& outputs, const Neuron::Layer& output_layers) const;
-  void forward_feed(const std::vector<double>& inputs, std::vector<Neuron::Layer>& layers_src) const;
-  void back_propagation(
+  std::vector<double> get_outputs(const Neuron::Layer& output_layers) const;
+  static void forward_feed(const std::vector<double>& inputs, std::vector<Neuron::Layer>& layers_src);
+  static void back_propagation(
     const std::vector<double>& current_output, 
     std::vector<Neuron::Layer>& layers_src
-  ) const;
+  );
+  static void calculate_output_gradients(const std::vector<double>& current_output, Neuron::Layer& output_layer);
+  static double norm_output_gradients(Neuron::Layer& output_layer);
+
   double calculate_batch_error(const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
   double calculate_batch_mse_error( const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
   double calculate_batch_rmse_error(const std::vector<double>& targets, const Neuron::Layer& output_layer) const;
-
-  void calculate_output_gradients(const std::vector<double>& current_output, Neuron::Layer& output_layer) const;
-  double norm_output_gradients(Neuron::Layer& output_layer) const;
-
+  
   long double _error;
   std::vector<Neuron::Layer>* _layers;
   const activation::method _activation_method;
