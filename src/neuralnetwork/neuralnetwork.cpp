@@ -148,24 +148,21 @@ void NeuralNetwork::train(
     }
   }
   const auto& output_layer = _layers->back();
+
   for (auto i = 0; i < number_of_epoch; ++i)
   {
-    std::vector<double> epoch_errors = {};
+    std::vector<std::vector<double>> predictions = {};
     for (size_t j = 0; j < training_inputs.size(); ++j)
     {
       const auto& inputs = training_inputs[j];
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
-      epoch_errors.push_back( calculate_batch_error(outputs, output_layer));
+      predictions.push_back(get_outputs(output_layer));
       back_propagation(outputs, *_layers);
     }
 
-    if(epoch_errors.size() > 0 )
-    {
-      auto sum = std::accumulate(epoch_errors.begin(), epoch_errors.end(), 0.0);
-      _error = sum / epoch_errors.size();
-    }
+    _error = calculate_batch_error(training_outputs, predictions);
 
     if (progress_callback != nullptr)
     {
@@ -190,42 +187,63 @@ void NeuralNetwork::train(
   }
 }
 
-double NeuralNetwork::calculate_batch_error(
-  const std::vector<double>& targets,
-  const Neuron::Layer& output_layer
-) const
+double NeuralNetwork::calculate_batch_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
-  return calculate_batch_rmse_error(targets, output_layer);
+  return calculate_batch_rmse_error(ground_truth, predictions);
 }
 
-double NeuralNetwork::calculate_batch_rmse_error(
-  const std::vector<double>& targets,
-  const Neuron::Layer& output_layer
-) const 
+double NeuralNetwork::calculate_batch_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
-  auto mean_squared_error = calculate_batch_mse_error(targets, output_layer);
+  auto mean_squared_error = calculate_batch_mse_error(ground_truth, predictions);
   return std::sqrt(mean_squared_error); // RMSE
 }
 
-double NeuralNetwork::calculate_batch_mse_error(
-  const std::vector<double>& targets,
-  const Neuron::Layer& output_layer
-) const
+double NeuralNetwork::calculate_batch_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
-  const size_t num_output_neurons = output_layer.size() - 1; // exclude bias
-
-  double total_error = 0.0;
-
-  for (size_t n = 0; n < num_output_neurons; ++n) 
+  if (ground_truth.size() != predictions.size()) 
   {
-    double predicted = output_layer[n].get_output_value();
-    double actual = targets[n];
-    double delta = actual - predicted;
-    total_error += delta * delta;
+    std::cerr << "Mismatch in batch sizes.\n";
+    return std::numeric_limits<double>::quiet_NaN();
   }
 
-  double mean_squared_error = total_error / num_output_neurons;
-  return mean_squared_error; // MSE
+  double mean_squared_error = 0.0;
+  size_t valid_count = 0;
+
+  for (size_t i = 0; i < ground_truth.size(); ++i) 
+  {
+    const auto& true_output = ground_truth[i];
+    const auto& predicted_output = predictions[i];
+
+    if (true_output.size() != predicted_output.size()) 
+    {
+      std::cerr << "Mismatch in output vector sizes at index " << i << "\n";
+      continue;
+    }
+
+    for (size_t j = 0; j < true_output.size(); ++j) 
+    {
+      double error = predicted_output[j] - true_output[j];
+
+      if (!std::isfinite(error))
+      {
+        continue;
+      }
+
+      double squared_error = error * error;
+      if (!std::isfinite(squared_error))
+      {
+        continue;
+      }
+      ++valid_count;
+      mean_squared_error += (squared_error - mean_squared_error) / valid_count;
+    }
+  }
+
+  if (valid_count == 0)
+  {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return mean_squared_error;
 }
 
 void NeuralNetwork::back_propagation(
