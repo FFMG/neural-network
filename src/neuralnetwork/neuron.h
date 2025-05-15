@@ -111,11 +111,12 @@ public:
   }
   std::vector<std::array<double, 2>> get_weights() const;
 
-  double get_output_weight(int index) const;
-
 private:
   void Clean();
   double sum_of_derivatives_of_weights(const Layer& nextLayer) const;
+  double get_output_weight(int index) const;
+
+  static double clip_gradient(double val, double clip_val);
   
   // data to save...
   unsigned _index;
