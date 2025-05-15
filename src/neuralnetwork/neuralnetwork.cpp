@@ -16,30 +16,31 @@ NeuralNetwork::NeuralNetwork(
   _activation_method(activation),
   _learning_rate(learning_rate)
 {
+  if(topology.size() < 2)
+  {
+    std::cerr << "The topology is not value, you must have at lease 2 layers." << std::endl;
+    throw std::invalid_argument("The topology is not value, you must have at lease 2 layers.");
+  }
   const auto& number_of_layers = topology.size();
   _layers = new std::vector<Layer>();
-  for (size_t layer_number = 0; layer_number < number_of_layers; ++layer_number)
+
+  // add the input layer
+  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method, _learning_rate);
+  _layers->push_back(layer);
+  
+  // then the hidden layers
+  for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
   {
-    auto num_neurons_next_layer = layer_number == number_of_layers - 1 ? 0 : topology[layer_number + 1];
     auto num_neurons_current_layer = topology[layer_number];
-    if(layer_number == 0)
-    {
-      auto layer = Layer::create_input_layer(num_neurons_current_layer, num_neurons_next_layer, _activation_method, _learning_rate);
-      _layers->push_back(layer);
-      continue;
-    }
-
+    auto num_neurons_next_layer = topology[layer_number + 1];
     const auto& previous_layer = _layers->back();
-    if(layer_number == layer_number-1)
-    {
-      auto layer = Layer::create_output_layer(num_neurons_current_layer, previous_layer, _activation_method, _learning_rate);
-      _layers->push_back(layer);
-      continue;
-    }
-
-    auto layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _learning_rate);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _learning_rate);
     _layers->push_back(layer);
   }
+
+  // finally, the output layer
+  layer = Layer::create_output_layer(topology.back(), _layers->back(), _activation_method, _learning_rate);
+  _layers->push_back(layer);
 }
 
 NeuralNetwork::NeuralNetwork(
