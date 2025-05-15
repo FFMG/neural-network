@@ -17,30 +17,33 @@ NeuralNetwork::NeuralNetwork(
   _learning_rate(learning_rate)
 {
   const auto& number_of_layers = topology.size();
-  _layers = new std::vector<Neuron::Layer>();
+  _layers = new std::vector<Layer>();
   for (size_t layer_number = 0; layer_number < number_of_layers; ++layer_number)
   {
-    auto num_neurons_prev_layer = layer_number == topology.size() - 1 ? 0 : topology[layer_number + 1];
-    auto num_neurons_current_layer = layer_number == topology.size() ? 0 : topology[layer_number];
-    auto layer = Neuron::Layer();
-
-    // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
-    for (unsigned neuronNum = 0; neuronNum <= topology[layer_number]; ++neuronNum)
+    auto num_neurons_next_layer = layer_number == number_of_layers - 1 ? 0 : topology[layer_number + 1];
+    auto num_neurons_current_layer = topology[layer_number];
+    if(layer_number == 0)
     {
-      // force the bias node's output to 1.0
-      auto neuron = Neuron(
-        num_neurons_prev_layer,
-        num_neurons_current_layer,
-        neuronNum, activation, learning_rate);
-      neuron.set_output_value(1.0);
-      layer.push_back(neuron);
+      auto layer = Layer::create_input_layer(num_neurons_current_layer, num_neurons_next_layer, _activation_method, _learning_rate);
+      _layers->push_back(layer);
+      continue;
     }
+
+    const auto& previous_layer = _layers->back();
+    if(layer_number == layer_number-1)
+    {
+      auto layer = Layer::create_output_layer(num_neurons_current_layer, previous_layer, _activation_method, _learning_rate);
+      _layers->push_back(layer);
+      continue;
+    }
+
+    auto layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _learning_rate);
     _layers->push_back(layer);
   }
 }
 
 NeuralNetwork::NeuralNetwork(
-  const std::vector<Neuron::Layer>& layers, 
+  const std::vector<Layer>& layers, 
   const activation::method& activation,
   double learning_rate,
   double error
@@ -50,10 +53,10 @@ NeuralNetwork::NeuralNetwork(
   _activation_method(activation),
   _learning_rate(learning_rate)
 {
-  _layers = new std::vector<Neuron::Layer>();
+  _layers = new std::vector<Layer>();
   for (auto layer : layers)
   {
-    auto copy_layer = Neuron::Layer(layer);
+    auto copy_layer = Layer(layer);
     _layers->push_back(copy_layer);
   }
 }
@@ -64,10 +67,10 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _activation_method(src._activation_method),
   _learning_rate(src._learning_rate)
 {
-  _layers = new std::vector<Neuron::Layer>();
+  _layers = new std::vector<Layer>();
   for (const auto& layer : *src._layers)
   {
-    auto copy_layer = Neuron::Layer(layer);
+    auto copy_layer = Layer(layer);
     _layers->push_back(copy_layer);
   }
 }
@@ -87,7 +90,7 @@ activation::method NeuralNetwork::get_activation_method() const
   return _activation_method;
 }
 
-const std::vector<Neuron::Layer>& NeuralNetwork::get_layers() const
+const std::vector<Layer>& NeuralNetwork::get_layers() const
 {
   return *_layers;
 }
@@ -109,7 +112,7 @@ std::vector<double> NeuralNetwork::think(
 {
   auto layers = *_layers;
   forward_feed(inputs, layers);
-  return get_outputs(layers.back());
+  return layers.back().get_outputs();
 }
 
 long double NeuralNetwork::get_error() const
@@ -158,7 +161,7 @@ void NeuralNetwork::train(
       const auto& outputs = training_outputs[j];
 
       forward_feed(inputs, *_layers);
-      predictions.push_back(get_outputs(output_layer));
+      predictions.push_back(output_layer.get_outputs());
       back_propagation(outputs, *_layers);
     }
 
@@ -248,7 +251,7 @@ double NeuralNetwork::calculate_batch_mse_error(const std::vector<std::vector<do
 
 void NeuralNetwork::back_propagation(
   const std::vector<double>& current_output,
-  std::vector<Neuron::Layer>& layers_src
+  std::vector<Layer>& layers_src
 )
 {
   auto& output_layer = layers_src.back();
@@ -265,7 +268,7 @@ void NeuralNetwork::back_propagation(
 
     for (size_t n = 0; n < hidden_layer.size(); ++n)
     {
-      hidden_layer[n].calculate_hidden_gradients(next_layer);
+      hidden_layer.get_neuron(n).calculate_hidden_gradients(next_layer);
     }
   }
 
@@ -277,74 +280,38 @@ void NeuralNetwork::back_propagation(
 
     for (unsigned n = 0; n < layer.size() - 1; ++n) 
     {
-      layer[n].update_input_weights(prevLayer);
+      layer.get_neuron(n).update_input_weights(prevLayer);
     }
   }
 }
 
-void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector<Neuron::Layer>& layers )
+void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector<Layer>& layers )
 {
   // Assign (latch) the input values into the input neurons
-  for (size_t i = 0; i < inputs.size(); ++i)
+  auto& input_layer = layers.front();
+  for (unsigned i = 0; i < inputs.size(); ++i)
   {
-    layers[0][i].set_output_value(inputs[i]);
+    input_layer.get_neuron(i).set_output_value(inputs[i]);
   }
 
   // forward propagate
   for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
   {
     const auto& previous_layer = layers[layer_number - 1];
+    auto& this_layer = layers[layer_number];
     for (size_t n = 0; n < layers[layer_number].size() - 1; ++n)
     {
-      layers[layer_number][n].forward_feed(previous_layer);
+      this_layer.get_neuron(n).forward_feed(previous_layer);
     }
   }
 }
 
-std::vector<double> NeuralNetwork::get_outputs(const Neuron::Layer& output_layer) const
-{
-  std::vector<double> outputs;
-  outputs.reserve(output_layer.size() - 1); //  exclude the bias Neuron
-  for (auto it = output_layer.begin(); it != output_layer.end() - 1; ++it) 
-  {
-    outputs.push_back(it->get_output_value());
-  }
-  return outputs;
-}
-
-void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targetVals, Neuron::Layer& output_layer)
+void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targetVals, Layer& output_layer)
 {
   for (size_t n = 0; n < output_layer.size() - 1; ++n)
   {
-    output_layer[n].calculate_output_gradients(targetVals[n]);
+    output_layer.get_neuron(n).calculate_output_gradients(targetVals[n]);
   }
 
-  const double max_norm = 10.0;
-  auto norm = norm_output_gradients(output_layer);
-  if (norm < max_norm)
-  {
-    return;
-  }
-
-  // update all the gradients.
-  double scale = max_norm / (norm == 0 ? 1e-8 : norm);
-  for (size_t n = 0; n < output_layer.size() - 1; ++n)
-  {
-    auto gradient = output_layer[n].get_gradient();
-    gradient *= scale;
-    output_layer[n].set_gradient_value(gradient);
-  }
-}
-
-double NeuralNetwork::norm_output_gradients(Neuron::Layer& output_layer)
-{
-  auto acc = std::accumulate(
-    output_layer.begin(),
-    output_layer.end(),
-    0.0,
-    [](double sum, Neuron& n) {
-      auto grad = n.get_gradient();
-      return sum + grad * grad;
-    });
-  return std::sqrt(acc);
+  output_layer.normalise_gradients();
 }
