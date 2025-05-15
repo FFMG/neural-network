@@ -62,7 +62,7 @@ Layer& Layer::operator=(const Layer& src)
 
 unsigned Layer::size() const
 {
-  return _number_output_neurons;
+  return _number_output_neurons + 1;  //  add one for the bias
 }
 
 void Layer::add_neuron(const Neuron& neuron)

@@ -289,6 +289,7 @@ void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector
 {
   // Assign (latch) the input values into the input neurons
   auto& input_layer = layers.front();
+  assert(inputs.size() == input_layer.size() - 1); //  last one is bias.
   for (unsigned i = 0; i < inputs.size(); ++i)
   {
     input_layer.get_neuron(i).set_output_value(inputs[i]);
