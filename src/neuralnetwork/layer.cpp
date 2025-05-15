@@ -6,9 +6,7 @@
 Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, double learning_rate) :
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
-  _layer_type(layer_type),
-  _activation(activation),
-  _learning_rate(learning_rate)
+  _layer_type(layer_type)
 {
   if (num_neurons_in_this_layer == 0) 
   {
@@ -39,9 +37,7 @@ Layer::Layer(const Layer& src) :
   _neurons(src._neurons),
   _number_input_neurons(src._number_input_neurons),
   _number_output_neurons(src._number_output_neurons),
-  _layer_type(src._layer_type),
-  _activation(src._activation),
-  _learning_rate(src._learning_rate)
+  _layer_type(src._layer_type)
 {
 }
 
@@ -53,8 +49,6 @@ Layer& Layer::operator=(const Layer& src)
     _number_input_neurons = src._number_input_neurons;
     _number_output_neurons = src._number_output_neurons;
     _layer_type = src._layer_type;
-    _activation = src._activation;
-    _learning_rate = src._learning_rate;
   }
   return *this;
 }
