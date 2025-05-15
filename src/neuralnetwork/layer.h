@@ -45,6 +45,4 @@ private:
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer
   LayerType _layer_type;
-  activation::method _activation; 
-  double _learning_rate;
 };
