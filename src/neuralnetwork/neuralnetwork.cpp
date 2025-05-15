@@ -165,7 +165,7 @@ void NeuralNetwork::train(
       back_propagation(outputs, *_layers);
     }
 
-    _error = calculate_batch_error(training_outputs, predictions);
+    _error = calculate_error(training_outputs, predictions);
 
     if (progress_callback != nullptr)
     {
@@ -190,18 +190,85 @@ void NeuralNetwork::train(
   }
 }
 
-double NeuralNetwork::calculate_batch_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
-  return calculate_batch_rmse_error(ground_truth, predictions);
+  // return calculate_rmse_error(ground_truth, predictions);
+  // return calculate_mae_error(ground_truth, predictions);
+  return calculate_huber_loss(ground_truth, predictions);
 }
 
-double NeuralNetwork::calculate_batch_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta)
 {
-  auto mean_squared_error = calculate_batch_mse_error(ground_truth, predictions);
+  if (ground_truth.size() != predictions.size())
+  {
+    std::cerr << "Mismatched number of samples" << std::endl;
+    throw std::invalid_argument("Mismatched number of samples");
+  }
+
+  double total_loss = 0.0;
+  size_t count = 0;
+
+  for (size_t i = 0; i < ground_truth.size(); ++i)
+  {
+    if (ground_truth[i].size() != predictions[i].size())
+    {
+      std::cerr << "Mismatched vector sizes at index " << std::to_string(i) << std::endl;
+      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
+    }
+
+    for (size_t j = 0; j < ground_truth[i].size(); ++j)
+    {
+      double error = ground_truth[i][j] - predictions[i][j];
+      double abs_error = std::abs(error);
+
+      if (abs_error <= delta)
+      {
+          total_loss += 0.5 * error * error;
+      }
+      else
+      {
+          total_loss += delta * (abs_error - 0.5 * delta);
+      }
+      ++count;
+    }
+  }
+  return (count > 0) ? (total_loss / count) : 0.0;
+}
+
+double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+{
+  if (ground_truth.size() != predictions.size())
+  {
+    std::cerr << "Mismatched number of samples" << std::endl;
+    throw std::invalid_argument("Mismatched number of samples");
+  }
+  
+
+  double total_abs_error = 0.0;
+  size_t count = 0;
+  for (size_t i = 0; i < ground_truth.size(); ++i)
+  {
+    if (ground_truth[i].size() != predictions[i].size())
+    {
+      std::cerr << "Mismatched vector sizes at index " << std::to_string(i) << std::endl;
+      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
+    }
+    for (size_t j = 0; j < ground_truth[i].size(); ++j)
+    {
+      total_abs_error += std::abs(ground_truth[i][j] - predictions[i][j]);
+      ++count;
+    }
+  }
+  return (count > 0) ? (total_abs_error / count) : 0.0;
+}
+
+double NeuralNetwork::calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+{
+  auto mean_squared_error = calculate_mse_error(ground_truth, predictions);
   return std::sqrt(mean_squared_error); // RMSE
 }
 
-double NeuralNetwork::calculate_batch_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
   if (ground_truth.size() != predictions.size()) 
   {

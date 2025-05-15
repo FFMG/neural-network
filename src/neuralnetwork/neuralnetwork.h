@@ -45,9 +45,16 @@ private:
   static void calculate_output_gradients(const std::vector<double>& current_output, Layer& output_layer);
   static double norm_output_gradients(Layer& output_layer);
 
-  static double calculate_batch_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
-  static double calculate_batch_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
-  static double calculate_batch_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
+  // Todo this should be moved to a static class a passed as an object.
+  static double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
+
+  // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
+  static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
+
+  // MAE is more robust to outliers than RMSE.
+  static double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
+  static double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
+  static double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
   
   long double _error;
   std::vector<Layer>* _layers;
