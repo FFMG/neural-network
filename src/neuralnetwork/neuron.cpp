@@ -165,6 +165,19 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
   return sum;
 }
 
+void Neuron::calculate_output_gradients(double targetVal)
+{
+  double delta = targetVal - get_output_value();
+  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
+  if (!std::isfinite(gradient))
+  {
+    std::cout << "Error while calculating output gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating output gradients.");
+    return;
+  }
+  set_gradient_value(gradient);
+}
+
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
   auto derivatives_of_weights = sum_of_derivatives_of_weights(nextLayer);
@@ -197,19 +210,6 @@ void Neuron::set_output_value(double val)
 double Neuron::get_output_value() const
 { 
   return _output_value; 
-}
-
-void Neuron::calculate_output_gradients(double targetVal)
-{
-  double delta = targetVal - get_output_value();
-  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
-  if (!std::isfinite(gradient))
-  {
-    std::cout << "Error while calculating output gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating output gradients.");
-    return;
-  }
-  _gradient = gradient;
 }
 
 void Neuron::forward_feed(const Layer& prevLayer)
