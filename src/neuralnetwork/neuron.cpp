@@ -4,7 +4,7 @@
 #include <iostream>
 
 Neuron::Neuron(
-  unsigned num_neurons_prev_layer,
+  unsigned num_neurons_next_layer,
   unsigned num_neurons_current_layer,
   unsigned index,
   const activation::method& activation,
@@ -19,7 +19,7 @@ Neuron::Neuron(
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
-  auto weights = activation::weight_initialization(num_neurons_prev_layer, num_neurons_current_layer, activation);
+  auto weights = activation::weight_initialization(num_neurons_next_layer, num_neurons_current_layer, activation);
   for (auto weight : weights)
   {
     _output_weights->push_back(Connection( weight));
@@ -117,7 +117,7 @@ void Neuron::Clean()
 
 void Neuron::update_input_weights(Layer& previous_layer)
 {
-  for (auto& neuron : previous_layer)
+  for (auto& neuron : previous_layer.get_neurons())
   {
     auto& connection = neuron._output_weights->at(_index);
     
@@ -153,7 +153,7 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
   double sum = 0.0;
   for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
   {
-    auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer[n]._gradient;
+    auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer.get_neuron(n).get_gradient();
     sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
   }
   if (!std::isfinite(sum))
@@ -219,10 +219,10 @@ void Neuron::forward_feed(const Layer& prevLayer)
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  for (const auto& layer : prevLayer) 
+  for (const auto& previous_layer_neuron : prevLayer.get_neurons()) 
   {
-    const auto weight = layer._output_weights->at(_index).weight();
-    sum += layer.get_output_value() * weight;
+    const auto weight = previous_layer_neuron._output_weights->at(_index).weight();
+    sum += previous_layer_neuron.get_output_value() * weight;
 
     if (!std::isfinite(sum))
     {
