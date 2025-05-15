@@ -148,23 +148,6 @@ void Neuron::update_input_weights(Layer& previous_layer)
   }
 }
 
-double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
-{
-  double sum = 0.0;
-  for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
-  {
-    auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer.get_neuron(n).get_gradient();
-    sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
-  }
-  if (!std::isfinite(sum))
-  {
-    std::cout << "Error while calculating sum of the derivatives of the weights." << std::endl;
-    throw std::invalid_argument("Error while calculating sum of the derivatives of the weights.");
-    return 0.0;
-  }
-  return sum;
-}
-
 void Neuron::calculate_output_gradients(double targetVal)
 {
   double delta = targetVal - get_output_value();
@@ -176,6 +159,27 @@ void Neuron::calculate_output_gradients(double targetVal)
     return;
   }
   set_gradient_value(gradient);
+}
+double Neuron::get_output_weight(int index) const
+{
+  return _output_weights->at(index).weight();
+}
+
+double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
+{
+  double sum = 0.0;
+  for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
+  {
+    auto weights_and_gradients = get_output_weight(n) * nextLayer.get_neuron(n).get_gradient();
+    sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
+  }
+  if (!std::isfinite(sum))
+  {
+    std::cout << "Error while calculating sum of the derivatives of the weights." << std::endl;
+    throw std::invalid_argument("Error while calculating sum of the derivatives of the weights.");
+    return 0.0;
+  }
+  return sum;
 }
 
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
@@ -221,7 +225,7 @@ void Neuron::forward_feed(const Layer& prevLayer)
 
   for (const auto& previous_layer_neuron : prevLayer.get_neurons()) 
   {
-    const auto weight = previous_layer_neuron._output_weights->at(_index).weight();
+    const auto weight = previous_layer_neuron.get_output_weight(_index);
     sum += previous_layer_neuron.get_output_value() * weight;
 
     if (!std::isfinite(sum))
