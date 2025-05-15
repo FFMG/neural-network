@@ -313,6 +313,5 @@ void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targe
   {
     output_layer.get_neuron(n).calculate_output_gradients(targetVals[n]);
   }
-
   output_layer.normalise_gradients();
 }

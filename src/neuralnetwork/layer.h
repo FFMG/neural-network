@@ -35,7 +35,7 @@ public:
   std::vector<double> get_outputs() const;
   void normalise_gradients();
   void add_neuron(const Neuron& neuron);
-
+  
 private:
   const LayerType&  get_layer_type()const{ return _layer_type;}
 
