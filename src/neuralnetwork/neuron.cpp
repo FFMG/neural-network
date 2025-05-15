@@ -3,6 +3,8 @@
 #include <cmath>
 #include <iostream>
 
+#define GRADIENT_CLIP double(1.0)
+
 Neuron::Neuron(
   unsigned num_neurons_next_layer,
   unsigned num_neurons_current_layer,
@@ -148,18 +150,6 @@ void Neuron::update_input_weights(Layer& previous_layer)
   }
 }
 
-void Neuron::calculate_output_gradients(double targetVal)
-{
-  double delta = targetVal - get_output_value();
-  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
-  if (!std::isfinite(gradient))
-  {
-    std::cout << "Error while calculating output gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating output gradients.");
-    return;
-  }
-  set_gradient_value(gradient);
-}
 double Neuron::get_output_weight(int index) const
 {
   return _output_weights->at(index).weight();
@@ -182,10 +172,35 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
   return sum;
 }
 
+double Neuron::clip_gradient(double val, double clip_val) 
+{
+  return std::max(-clip_val, std::min(clip_val, val));
+}
+
+void Neuron::calculate_output_gradients(double targetVal)
+{
+  double delta = targetVal - get_output_value();
+  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
+  if (!std::isfinite(gradient))
+  {
+    std::cout << "Error while calculating output gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating output gradients.");
+    return;
+  }
+  set_gradient_value(gradient);
+}
+
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
   auto derivatives_of_weights = sum_of_derivatives_of_weights(nextLayer);
   auto gradient = derivatives_of_weights * activation::activate_derivative(_activation_method, get_output_value());
+  gradient = clip_gradient(gradient, GRADIENT_CLIP);
+  if (!std::isfinite(gradient))
+  {
+    std::cout << "Error while calculating hidden gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating hidden gradients.");
+    return;
+  }  
   set_gradient_value(gradient);
 }
 
@@ -193,8 +208,8 @@ void Neuron::set_gradient_value(double val)
 {
   if (!std::isfinite(val))
   {
-    std::cout << "Error while calculating hidden gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating hidden gradients.");
+    std::cout << "Error while calculating gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating gradients.");
     return;
   }
   _gradient = val;
