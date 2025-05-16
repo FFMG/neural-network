@@ -3,8 +3,10 @@
 #include <cmath>
 #include <iostream>
 
+#define GRADIENT_CLIP double(1.0)
+
 Neuron::Neuron(
-  unsigned num_neurons_prev_layer,
+  unsigned num_neurons_next_layer,
   unsigned num_neurons_current_layer,
   unsigned index,
   const activation::method& activation,
@@ -19,7 +21,7 @@ Neuron::Neuron(
   _alpha(LEARNING_ALPHA)
 {
   _output_weights = new std::vector<Connection>();
-  auto weights = activation::weight_initialization(num_neurons_prev_layer, num_neurons_current_layer, activation);
+  auto weights = activation::weight_initialization(num_neurons_next_layer, num_neurons_current_layer, activation);
   for (auto weight : weights)
   {
     _output_weights->push_back(Connection( weight));
@@ -117,7 +119,7 @@ void Neuron::Clean()
 
 void Neuron::update_input_weights(Layer& previous_layer)
 {
-  for (auto& neuron : previous_layer)
+  for (auto& neuron : previous_layer.get_neurons())
   {
     auto& connection = neuron._output_weights->at(_index);
     
@@ -148,12 +150,17 @@ void Neuron::update_input_weights(Layer& previous_layer)
   }
 }
 
+double Neuron::get_output_weight(int index) const
+{
+  return _output_weights->at(index).weight();
+}
+
 double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
 {
   double sum = 0.0;
   for (unsigned n = 0; n < nextLayer.size() - 1; ++n) 
   {
-    auto weights_and_gradients = _output_weights->at(n).weight() * nextLayer[n]._gradient;
+    auto weights_and_gradients = get_output_weight(n) * nextLayer.get_neuron(n).get_gradient();
     sum += std::isinf(weights_and_gradients) ? 0 : weights_and_gradients;
   }
   if (!std::isfinite(sum))
@@ -165,10 +172,35 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
   return sum;
 }
 
+double Neuron::clip_gradient(double val, double clip_val) 
+{
+  return std::max(-clip_val, std::min(clip_val, val));
+}
+
+void Neuron::calculate_output_gradients(double targetVal)
+{
+  double delta = targetVal - get_output_value();
+  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
+  if (!std::isfinite(gradient))
+  {
+    std::cout << "Error while calculating output gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating output gradients.");
+    return;
+  }
+  set_gradient_value(gradient);
+}
+
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
   auto derivatives_of_weights = sum_of_derivatives_of_weights(nextLayer);
   auto gradient = derivatives_of_weights * activation::activate_derivative(_activation_method, get_output_value());
+  gradient = clip_gradient(gradient, GRADIENT_CLIP);
+  if (!std::isfinite(gradient))
+  {
+    std::cout << "Error while calculating hidden gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating hidden gradients.");
+    return;
+  }  
   set_gradient_value(gradient);
 }
 
@@ -176,8 +208,8 @@ void Neuron::set_gradient_value(double val)
 {
   if (!std::isfinite(val))
   {
-    std::cout << "Error while calculating hidden gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating hidden gradients.");
+    std::cout << "Error while calculating gradients." << std::endl;
+    throw std::invalid_argument("Error while calculating gradients.");
     return;
   }
   _gradient = val;
@@ -199,19 +231,6 @@ double Neuron::get_output_value() const
   return _output_value; 
 }
 
-void Neuron::calculate_output_gradients(double targetVal)
-{
-  double delta = targetVal - get_output_value();
-  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
-  if (!std::isfinite(gradient))
-  {
-    std::cout << "Error while calculating output gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating output gradients.");
-    return;
-  }
-  _gradient = gradient;
-}
-
 void Neuron::forward_feed(const Layer& prevLayer)
 {
   double sum = 0.0;
@@ -219,10 +238,10 @@ void Neuron::forward_feed(const Layer& prevLayer)
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  for (const auto& layer : prevLayer) 
+  for (const auto& previous_layer_neuron : prevLayer.get_neurons()) 
   {
-    const auto weight = layer._output_weights->at(_index).weight();
-    sum += layer.get_output_value() * weight;
+    const auto weight = previous_layer_neuron.get_output_weight(_index);
+    sum += previous_layer_neuron.get_output_value() * weight;
 
     if (!std::isfinite(sum))
     {
