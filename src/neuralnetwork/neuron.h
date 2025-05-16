@@ -1,5 +1,6 @@
 #pragma once
 #include "activation.h"
+#include "layer.h"
 
 #include <array>
 #include <cmath>
@@ -11,6 +12,7 @@
                                       // but the bigger the learning rate, the more likely are exploding weights.
 #define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
+class Layer;
 class Neuron
 {
 private:
@@ -68,8 +70,6 @@ private:
   };
 
 public:
-  typedef std::vector<Neuron> Layer;
-
   Neuron(
     unsigned index, 
     double output_value,
@@ -110,9 +110,13 @@ public:
     return _learning_rate;
   }
   std::vector<std::array<double, 2>> get_weights() const;
+
 private:
   void Clean();
   double sum_of_derivatives_of_weights(const Layer& nextLayer) const;
+  double get_output_weight(int index) const;
+
+  static double clip_gradient(double val, double clip_val);
   
   // data to save...
   unsigned _index;

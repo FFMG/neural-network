@@ -22,35 +22,64 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   auto activation_method = get_activation_method(*tj);
 
   // get the weights...
-  std::vector<Neuron::Layer*> players;
-  std::vector<Neuron::Layer> layers;
+  std::vector<std::vector<Neuron>> array_of_neurons;
   for(auto layer_number = 0; ;++layer_number)
   {
-    auto layer = get_layer(*tj, layer_number, activation_method);
-    if(layer == nullptr)
+    auto neurons = get_neurons(*tj, layer_number, activation_method);
+    if(neurons.size() == 0)
     {
       break;
     }
-    layers.push_back(*layer);
-    players.push_back(layer);
+    array_of_neurons.push_back(neurons);
   }
 
   auto error = get_error(*tj);
   auto learning_rate = get_learning_rate(*tj);
 
-  // validate that the topology matches.
+  // create the layer and validate that the topology matches.
+  auto layers = create_layers(array_of_neurons);
+  if(layers.size() == 0 )
+  {
+    delete tj;
+    return nullptr;
+  }
 
   // create the NN
   auto nn = new NeuralNetwork(layers, activation_method, learning_rate, error);
-  for(auto layer : players)
-  {
-    delete layer;
-  }
-  layers.clear();
 
   // cleanup
   delete tj;
   return nn;
+}
+
+std::vector<Layer> NeuralNetworkSerializer::create_layers(std::vector<std::vector<Neuron>> array_of_neurons)
+{
+  std::vector<Layer> layers = {};
+  auto number_of_layers = array_of_neurons.size();
+  if(number_of_layers <= 2)
+  {
+    std::cerr << "The number of layers must be at least 2, (input+output)";
+    return {};
+  }
+
+  // add the input layer
+  auto input_neurons = array_of_neurons.front();
+  layers.push_back(Layer::create_input_layer(input_neurons));
+  
+  // create the hidden layers.
+  for(size_t i = 1; i < number_of_layers -1; ++i)
+  {
+    const auto num_neurons_in_previous_layer = array_of_neurons[i - 1].size();
+    const auto& this_neurons = array_of_neurons[i];
+    layers.push_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer));
+  }
+
+  // finally, the output layer.
+  auto output_neurons = array_of_neurons.back();
+  const auto num_neurons_in_previous_layer = array_of_neurons[array_of_neurons.size()-2].size();
+  layers.push_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer));
+  
+  return layers;
 }
 
 void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& path)
@@ -90,64 +119,56 @@ double NeuralNetworkSerializer::get_learning_rate(const TinyJSON::TJValue& json)
   return object->get_float("learning-rate", true, false);
 }
 
-Neuron::Layer* NeuralNetworkSerializer::get_layer(
-  const TinyJSON::TJValue& json, 
-  unsigned layer_number,
-  const activation::method& activation_method)
+std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if(nullptr == object)
   {
-    return nullptr;
+    return {};
   }
   auto array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("layers"));
   if(nullptr == array)
   {
-    return nullptr;
+    return {};
   }
   if(layer_number >= unsigned(array->get_number_of_items()))
   {
-    return nullptr;    
+    return {};
   }
 
   auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(array->at(layer_number));
   if(nullptr == layer_array)
   {
-    return nullptr;    
+    return {};
   }
 
-  auto layer = new Neuron::Layer();
+  std::vector<Neuron> neurons;
   for( unsigned i = 0; i < layer_array->get_number_of_items(); ++i)
   {
     auto neuron_object = dynamic_cast<const TinyJSON::TJValueObject*>(layer_array->at(i));
     if(nullptr == neuron_object)
     {
-      delete layer;
-      return nullptr;
+      return {};
     }
     auto index_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("index"));
     if(nullptr == index_object)
     {
-      delete layer;
-      return nullptr;
+      return {};
     }
     auto learning_rate_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("learning_rate"));
     if(nullptr == learning_rate_object)
     {
-      delete layer;
-      return nullptr;
+      return {};
     }
     auto gradient_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("gradient"));
     if(nullptr == gradient_object)
     {
-      delete layer;
-      return nullptr;
+      return {};
     }
     auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output_value"));
     if(nullptr == output_value_object)
     {
-      delete layer;
-      return nullptr;
+      return {};
     }
 
     auto index = index_object->get_number();
@@ -167,9 +188,9 @@ Neuron::Layer* NeuralNetworkSerializer::get_layer(
       weights,
       learning_rate
     );
-    layer->push_back(neuron);
+    neurons.push_back(neuron);
   }
-  return layer;
+  return neurons;
 }
 
 std::vector<std::array<double,2>> NeuralNetworkSerializer::get_weights(const TinyJSON::TJValueObject& neuron)
@@ -278,10 +299,10 @@ void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValue
   delete neuron_object;
 }
 
-void NeuralNetworkSerializer::add_layer(const Neuron::Layer& layer, TinyJSON::TJValueArray& layers)
+void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArray& layers)
 {
   auto layer_array = new TinyJSON::TJValueArray();
-  for(auto neuron : layer)
+  for(auto neuron : layer.get_neurons())
   {
     add_neuron(neuron, *layer_array);
   }
