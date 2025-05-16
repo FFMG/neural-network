@@ -3,6 +3,14 @@
 #include <iostream>
 #include <numeric>
 
+Layer::Layer(LayerType layer_type) :
+  _number_input_neurons(0),
+  _number_output_neurons(0),
+  _layer_type(layer_type)
+{
+
+}
+
 Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, double learning_rate) :
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
@@ -64,19 +72,61 @@ void Layer::add_neuron(const Neuron& neuron)
   _neurons.push_back(neuron);
 }
 
+Layer Layer::create_input_layer(const std::vector<Neuron>& neurons)
+{
+  if (neurons.size() <= 1) 
+  {
+    std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
+    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+  }
+  auto layer = Layer(LayerType::Input);
+  layer._number_input_neurons = 0;
+  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
+  layer._neurons = neurons;
+  return layer;
+}
+
 Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, double learning_rate)
 {
   return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation, learning_rate);
 }
 
-Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate)
+Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer)
 {
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, learning_rate);
+  if (neurons.size() <= 1) 
+  {
+    std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
+    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+  }
+  auto layer = Layer(LayerType::Hidden);
+  layer._number_input_neurons = num_neurons_in_previous_layer;
+  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
+  layer._neurons = neurons;
+  return layer;
 }
 
 Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate)
 {
   return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Hidden, activation, learning_rate);
+}
+
+Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer)
+{
+  if (neurons.size() <= 1) 
+  {
+    std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
+    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+  }
+  auto layer = Layer(LayerType::Output);
+  layer._number_input_neurons = num_neurons_in_previous_layer;
+  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
+  layer._neurons = neurons;
+  return layer;
+}
+
+Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate)
+{
+  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, learning_rate);
 }
 
 std::vector<double> Layer::get_outputs() const

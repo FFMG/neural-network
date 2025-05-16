@@ -5,6 +5,7 @@
 
 #include "layer.h"
 #include "neuralnetwork.h"
+#include "neuron.h"
 #include "libraries/TinyJSON.h"
 
 class NeuralNetworkSerializer
@@ -23,12 +24,9 @@ private:
   static double get_learning_rate(const TinyJSON::TJValue& json);
   static std::vector<unsigned> get_topology(const TinyJSON::TJValue& json );
   static activation::method get_activation_method(const TinyJSON::TJValue& json );
-  static Layer* get_layer(
-    const TinyJSON::TJValue& json, 
-    unsigned layer_number,
-    const activation::method& activation_method
-  );
   static std::vector<std::array<double,2>> get_weights(const TinyJSON::TJValueObject& neuron);
+  static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method);
+  static std::vector<Layer> create_layers(std::vector<std::vector<Neuron>> array_of_neurons);
 
   static void add_basic(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);

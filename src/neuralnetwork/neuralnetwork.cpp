@@ -224,11 +224,11 @@ double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>
 
       if (abs_error <= delta)
       {
-          total_loss += 0.5 * error * error;
+        total_loss += 0.5 * error * error;
       }
       else
       {
-          total_loss += delta * (abs_error - 0.5 * delta);
+        total_loss += delta * (abs_error - 0.5 * delta);
       }
       ++count;
     }

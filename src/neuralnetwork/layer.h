@@ -14,9 +14,9 @@ private:
       Output
   };
   Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, double learning_rate);
-
+  Layer(LayerType layer_type);
 public:  
-  Layer();
+  
   Layer(const Layer& src);
   Layer& operator=(const Layer& src);
   virtual ~Layer() = default;
@@ -28,15 +28,20 @@ public:
   const Neuron& get_neuron(unsigned index) const { return _neurons[index];}
   Neuron& get_neuron(unsigned index) { return _neurons[index];}
 
+  static Layer create_input_layer(const std::vector<Neuron>& neurons);
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, double learning_rate);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
+
+  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer);
   static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
+
+  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
 
   std::vector<double> get_outputs() const;
   void normalise_gradients();
-  void add_neuron(const Neuron& neuron);
   
 private:
+  void add_neuron(const Neuron& neuron);
   const LayerType&  get_layer_type()const{ return _layer_type;}
 
   double calulcate_normalised_gradients();
