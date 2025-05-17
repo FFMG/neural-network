@@ -16,15 +16,14 @@ Neuron::Neuron(
   _output_value(0),
   _gradient(0),
   _activation_method(activation),
-  _output_weights(nullptr),
+  _output_weights({}),
   _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
-  _output_weights = new std::vector<Connection>();
   auto weights = activation::weight_initialization(num_neurons_next_layer, num_neurons_current_layer, activation);
   for (auto weight : weights)
   {
-    _output_weights->push_back(Connection( weight));
+    _output_weights.push_back(Connection(weight, 0.0));
   }
 }
 
@@ -40,16 +39,14 @@ Neuron::Neuron(
   _output_value(output_value),
   _gradient(gradient),
   _activation_method(activation),
-  _output_weights(nullptr),
+  _output_weights({}),
   _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
-  _output_weights = new std::vector<Connection>();
   for (auto& weights : output_weights)
   {
-    auto connection = Connection(weights[0]);
-    connection.set_delta_weight(weights[1]);
-    _output_weights->push_back(connection);
+    auto connection = Connection(weights[0], weights[1]);
+    _output_weights.push_back(connection);
   }
 }
 
@@ -58,15 +55,11 @@ Neuron::Neuron(const Neuron& src) :
   _output_value(src._output_value),
   _gradient(src._gradient),
   _activation_method(src._activation_method),
-  _output_weights(nullptr),
+  _output_weights({}),
   _learning_rate(src._learning_rate),
   _alpha(LEARNING_ALPHA)
 {
-  _output_weights = new std::vector<Connection>();
-  for (auto& connection : *src._output_weights)
-  {
-    _output_weights->push_back(connection);
-  }
+  _output_weights = src._output_weights;
 }
 
 const Neuron& Neuron::operator=(const Neuron& src)
@@ -79,15 +72,7 @@ const Neuron& Neuron::operator=(const Neuron& src)
     _output_value = src._output_value;
     _gradient = src._gradient;
     _activation_method = src._activation_method;
-
-    _output_weights = new std::vector<Connection>();
-    if (src._output_weights != nullptr)
-    {
-      for (auto& connection : *src._output_weights)
-      {
-        _output_weights->push_back(connection);
-      }
-    }
+    _output_weights = src._output_weights;
   }
   return *this;
 }
@@ -100,11 +85,7 @@ Neuron::~Neuron()
 std::vector<std::array<double, 2>> Neuron::get_weights() const
 {
   std::vector<std::array<double, 2>> weights;
-  if(nullptr == _output_weights)
-  {
-    return weights;
-  }
-  for(const auto& output_weight : *_output_weights)
+  for(const auto& output_weight : _output_weights)
   {
     weights.push_back({output_weight.weight(), output_weight.delta_weight()});
   }
@@ -113,15 +94,13 @@ std::vector<std::array<double, 2>> Neuron::get_weights() const
 
 void Neuron::Clean()
 {
-  delete _output_weights;
-  _output_weights = nullptr;
 }
 
 void Neuron::update_input_weights(Layer& previous_layer)
 {
   for (auto& neuron : previous_layer.get_neurons())
   {
-    auto& connection = neuron._output_weights->at(_index);
+    auto& connection = neuron._output_weights[_index];
     
     auto gradient = _gradient;
     if (!std::isfinite(gradient))
@@ -152,7 +131,7 @@ void Neuron::update_input_weights(Layer& previous_layer)
 
 double Neuron::get_output_weight(int index) const
 {
-  return _output_weights->at(index).weight();
+  return _output_weights[index].weight();
 }
 
 double Neuron::sum_of_derivatives_of_weights(const Layer& nextLayer) const
@@ -240,9 +219,9 @@ void Neuron::forward_feed(const Layer& prevLayer)
 
   for (const auto& previous_layer_neuron : prevLayer.get_neurons()) 
   {
-    const auto weight = previous_layer_neuron.get_output_weight(_index);
-    sum += previous_layer_neuron.get_output_value() * weight;
-
+    const auto output_weight = previous_layer_neuron.get_output_weight(_index);
+    const auto output_value  = previous_layer_neuron.get_output_value();
+    sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
     {
       std::cout << "Error while calculating forward feed." << std::endl;
@@ -250,6 +229,5 @@ void Neuron::forward_feed(const Layer& prevLayer)
       return;
     }
   }
-
   set_output_value( activation::activate(_activation_method, sum) );
 }

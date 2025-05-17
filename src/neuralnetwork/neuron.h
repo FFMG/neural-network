@@ -19,9 +19,9 @@ private:
   class Connection
   {
   public:
-    Connection(double weight) : 
+    Connection(double weight, double delta_weight) : 
       _weight(weight), 
-      _delta_weight(0.0)
+      _delta_weight(delta_weight)
     {
     }
     Connection(const Connection& connection) : 
@@ -123,7 +123,7 @@ private:
   double _output_value;
   double _gradient;
   activation::method _activation_method;
-  std::vector<Connection>* _output_weights;
+  std::vector<Connection> _output_weights;
   double _learning_rate;   // [0.0..1.0] overall net training rate
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
 };
