@@ -7,6 +7,31 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
+activation::activation(const method method, double alpha) : 
+  _method(method),
+  _alpha(alpha)
+{
+
+}
+
+activation::activation(const activation& src) : 
+  _method(src._method),
+  _alpha(src._alpha)
+{
+
+}
+
+activation& activation::operator=(const activation& src)
+{
+  if(this != &src)
+  {
+    _method = src._method;
+    _alpha = src._alpha;
+  }
+  return *this;
+}
+
+
 // Sigmoid function
 double activation::sigmoid(double x)
 {
@@ -71,21 +96,21 @@ double activation::PReLU_derivative(double x, double alpha)
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::activate(method method, double x)
+double activation::activate(double x) const
 {
-  switch (method)
+  switch (_method)
   {
   case activation::relu_activation:
     return activation::relu(x);
 
   case activation::leakyRelu_activation:
-    return activation::leakyRelu(x);
+    return activation::leakyRelu(x, _alpha);
 
   case activation::tanh_activation:
     return activation::tanh(x);
 
   case activation::PRelu_activation:
-    return activation::PReLU(x);
+    return activation::PReLU(x, _alpha);
 
   case activation::Selu_activation:
     return activation::selu(x);
@@ -96,21 +121,21 @@ double activation::activate(method method, double x)
   }
 }
 
-double activation::activate_derivative(method method, double x)
+double activation::activate_derivative(double x) const
 {
-  switch (method)
+  switch (_method)
   {
   case activation::relu_activation:
     return activation::relu_derivative(x);
 
   case activation::leakyRelu_activation:
-    return activation::leakyRelu_derivative(x);
+    return activation::leakyRelu_derivative(x, _alpha);
 
   case activation::tanh_activation:
     return activation::tanh_derivative(x);
 
   case activation::PRelu_activation:
-    return activation::PReLU_derivative(x);
+    return activation::PReLU_derivative(x, _alpha);
 
   case activation::Selu_activation:
     return activation::selu_derivative(x);
@@ -121,12 +146,9 @@ double activation::activate_derivative(method method, double x)
   }
 }
 
-std::vector<double> activation::weight_initialization(
-  int num_neurons_prev_layer, 
-  int num_neurons_current_layer,
-  const activation::method& activation)
+std::vector<double> activation::weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const
 {
-  switch (activation)
+  switch (_method)
   {
   case activation::method::sigmoid_activation:
   case activation::method::tanh_activation:
