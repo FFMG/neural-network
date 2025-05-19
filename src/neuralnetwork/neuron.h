@@ -19,9 +19,9 @@ private:
   class Connection
   {
   public:
-    Connection(double weight) : 
+    Connection(double weight, double delta_weight) : 
       _weight(weight), 
-      _delta_weight(0.0)
+      _delta_weight(delta_weight)
     {
     }
     Connection(const Connection& connection) : 
