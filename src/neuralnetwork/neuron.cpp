@@ -24,7 +24,7 @@ Neuron::Neuron(
   auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (auto weight : weights)
   {
-    _output_weights->push_back(Connection( weight));
+    _output_weights->push_back(Connection(weight, 0.0));
   }
 }
 
@@ -47,8 +47,7 @@ Neuron::Neuron(
   _output_weights = new std::vector<Connection>();
   for (auto& weights : output_weights)
   {
-    auto connection = Connection(weights[0]);
-    connection.set_delta_weight(weights[1]);
+    auto connection = Connection(weights[0], weights[1]);
     _output_weights->push_back(connection);
   }
 }
