@@ -43,7 +43,6 @@ private:
     std::vector<Layer>& layers_src
   );
   static void calculate_output_gradients(const std::vector<double>& current_output, Layer& output_layer);
-  static double norm_output_gradients(Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
   static double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
