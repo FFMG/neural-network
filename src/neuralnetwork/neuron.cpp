@@ -20,7 +20,7 @@ Neuron::Neuron(
   _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
-  auto weights = activation::weight_initialization(num_neurons_next_layer, num_neurons_current_layer, activation);
+  auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (auto weight : weights)
   {
     _output_weights.push_back(Connection(weight, 0.0));
@@ -159,7 +159,7 @@ double Neuron::clip_gradient(double val, double clip_val)
 void Neuron::calculate_output_gradients(double targetVal)
 {
   double delta = targetVal - get_output_value();
-  auto gradient = delta * activation::activate_derivative(_activation_method, get_output_value());
+  auto gradient = delta * _activation_method.activate_derivative(get_output_value());
   if (!std::isfinite(gradient))
   {
     std::cout << "Error while calculating output gradients." << std::endl;
@@ -172,7 +172,7 @@ void Neuron::calculate_output_gradients(double targetVal)
 void Neuron::calculate_hidden_gradients(const Layer& nextLayer)
 {
   auto derivatives_of_weights = sum_of_derivatives_of_weights(nextLayer);
-  auto gradient = derivatives_of_weights * activation::activate_derivative(_activation_method, get_output_value());
+  auto gradient = derivatives_of_weights * _activation_method.activate_derivative(get_output_value());
   gradient = clip_gradient(gradient, GRADIENT_CLIP);
   if (!std::isfinite(gradient))
   {
@@ -229,5 +229,5 @@ void Neuron::forward_feed(const Layer& prevLayer)
       return;
     }
   }
-  set_output_value( activation::activate(_activation_method, sum) );
+  set_output_value(_activation_method.activate(sum) );
 }

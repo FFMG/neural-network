@@ -69,14 +69,14 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(std::vector<std::vecto
   // create the hidden layers.
   for(size_t i = 1; i < number_of_layers -1; ++i)
   {
-    const auto num_neurons_in_previous_layer = array_of_neurons[i - 1].size();
+    const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[i - 1].size());
     const auto& this_neurons = array_of_neurons[i];
     layers.push_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer));
   }
 
   // finally, the output layer.
   auto output_neurons = array_of_neurons.back();
-  const auto num_neurons_in_previous_layer = array_of_neurons[array_of_neurons.size()-2].size();
+  const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[array_of_neurons.size()-2].size());
   layers.push_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer));
   
   return layers;
@@ -171,7 +171,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
       return {};
     }
 
-    auto index = index_object->get_number();
+    auto index = static_cast<unsigned>(index_object->get_number());
     auto output_value = output_value_object->get_float();
     auto gradient = gradient_object->get_float();
     auto learning_rate = learning_rate_object->get_float();
@@ -242,7 +242,7 @@ std::vector<unsigned> NeuralNetworkSerializer::get_topology(const TinyJSON::TJVa
     {
       return {};
     }
-    topology.push_back(number->get_number());
+    topology.push_back(static_cast<unsigned>(number->get_number()));
   }
   return topology;
 }

@@ -122,8 +122,9 @@ private:
   unsigned _index;
   double _output_value;
   double _gradient;
-  activation::method _activation_method;
   std::vector<Connection> _output_weights;
+  activation _activation_method;
+
   double _learning_rate;   // [0.0..1.0] overall net training rate
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
 };
