@@ -37,11 +37,12 @@ public:
   double get_learning_rate() const;
 
 private:
-  static void forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers_src);
-  static void back_propagation(
-    const std::vector<double>& current_output, 
-    std::vector<Layer>& layers_src
-  );
+  static std::vector<double> forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers_src);
+  static std::vector<std::vector<double>> forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers_src);
+  
+  static void back_propagation( const std::vector<double>& current_output,  std::vector<Layer>& layers_src );
+  static void back_propagation(const std::vector<double>& current_output, std::vector<Layer>& layers_src);
+
   static void calculate_output_gradients(const std::vector<double>& current_output, Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
@@ -54,6 +55,8 @@ private:
   static double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
   static double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
   static double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
+
+  static std::vector<size_t> get_suffled_indexes(size_t raw_size);
   
   long double _error;
   std::vector<Layer>* _layers;
