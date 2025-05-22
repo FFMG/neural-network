@@ -3,6 +3,8 @@
 #include <chrono>
 #include <cmath>
 #include <numeric>
+#include <random>
+#include <string>
 
 static const double RecentAverageSmoothingFactor = 100.0;
 
@@ -107,13 +109,21 @@ std::vector<unsigned> NeuralNetwork::get_topology() const
   return topology;
 }
 
-std::vector<double> NeuralNetwork::think(
-  const std::vector<double>& inputs
-) const
+std::vector<size_t> NeuralNetwork::get_suffled_indexes(size_t raw_size)
+{
+  std::vector<size_t> shuffled_indexes(raw_size);
+  std::iota(shuffled_indexes.begin(), shuffled_indexes.end(), 0);
+
+  std::random_device rd;
+  std::mt19937 gen(rd()); // Mersenne Twister RNG
+  std::shuffle(shuffled_indexes.begin(), shuffled_indexes.end(), gen);
+  return shuffled_indexes;
+}
+
+std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   auto layers = *_layers;
-  forward_feed(inputs, layers);
-  return layers.back().get_outputs();
+  return forward_feed(inputs, layers);
 }
 
 long double NeuralNetwork::get_error() const
@@ -153,20 +163,49 @@ void NeuralNetwork::train(
   }
   const auto& output_layer = _layers->back();
 
+  // get the indexes
+  auto suffled_indexes = get_suffled_indexes(training_inputs.size());
+  assert(training_inputs.size() == suffled_indexes.size());
+
+  // break the indexes into parts
+  size_t total_size = suffled_indexes.size();
+  size_t training_size = static_cast<size_t>(std::round(total_size * 0.80));
+  size_t checking_size = static_cast<size_t>(std::round(total_size * 0.15));
+  assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
+  size_t final_check_size = total_size - training_size - checking_size; // make sure nothing left over
+
+  // then build the various indexes that will be used during testing.
+  std::vector<size_t> training_indexes;
+  training_indexes.assign(suffled_indexes.begin(), suffled_indexes.begin() + training_size);
+
+  std::vector<size_t> checking_indexes;
+  checking_indexes.assign(suffled_indexes.begin() + training_size, suffled_indexes.begin() + training_size + checking_size);
+
+  std::vector<size_t> final_check_indexes;
+  final_check_indexes.assign(suffled_indexes.begin() + training_size + checking_size, suffled_indexes.end());
+
+  // build the trainning output batch so we can use it for error calculations
+  std::vector<std::vector<double>> training_outputs_batch = {};
+  training_outputs_batch.reserve(training_indexes.size());
+  for (auto training_index : training_indexes)
+  {
+    const auto& outputs = training_outputs[training_index];
+    training_outputs_batch.push_back(outputs);
+  }  
+
   for (auto i = 0; i < number_of_epoch; ++i)
   {
     std::vector<std::vector<double>> predictions = {};
-    for (size_t j = 0; j < training_inputs.size(); ++j)
+    for (auto training_index : training_indexes)
     {
-      const auto& inputs = training_inputs[j];
-      const auto& outputs = training_outputs[j];
+      const auto& inputs = training_inputs[training_index];
+      const auto& outputs = training_outputs[training_index];
 
-      forward_feed(inputs, *_layers);
-      predictions.push_back(output_layer.get_outputs());
+      predictions.push_back(forward_feed(inputs, *_layers));
       back_propagation(outputs, *_layers);
     }
 
-    _error = calculate_error(training_outputs, predictions);
+    _error = calculate_error(training_outputs_batch, predictions);
 
     if (progress_callback != nullptr)
     {
@@ -353,7 +392,23 @@ void NeuralNetwork::back_propagation(
   }
 }
 
-void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector<Layer>& layers )
+std::vector<std::vector<double>> NeuralNetwork::forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers)
+{
+  std::vector<std::vector<double>> batch_predictions;
+  batch_predictions.reserve(inputs_batch.size()); // Pre-allocate memory for efficiency
+
+  // Loop through each individual input vector in the batch
+  for (const auto& single_input_vector : inputs_batch)
+  {
+    // Call the existing single-example forward_feed for each input
+    std::vector<double> prediction_for_single_example = forward_feed(single_input_vector, layers);
+    batch_predictions.push_back(prediction_for_single_example);
+  }
+
+  return batch_predictions;
+}
+
+std::vector<double> NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector<Layer>& layers)
 {
   // Assign (latch) the input values into the input neurons
   auto& input_layer = layers.front();
@@ -373,6 +428,8 @@ void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector
       this_layer.get_neuron(unsigned(n)).forward_feed(previous_layer);
     }
   }
+  // return the output layers outputs.
+  return layers.back().get_outputs();  
 }
 
 void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targetVals, Layer& output_layer)
