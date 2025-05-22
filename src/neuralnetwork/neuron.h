@@ -100,7 +100,7 @@ public:
   
   double calculate_output_gradients(double target_value, double output_value) const;
   
-  double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
+  double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
   void set_hidden_gradients(const Layer& next_layer);
 
   void update_input_weights(Layer& previous_layer);

@@ -171,10 +171,10 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   return gradient;
 }
 
-double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients) const
+double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const
 {
   auto derivatives_of_weights = sum_of_derivatives_of_weights(next_layer, activation_gradients);
-  auto gradient = derivatives_of_weights * _activation_method.activate_derivative(get_output_value());
+  auto gradient = derivatives_of_weights * _activation_method.activate_derivative(output_value);
   gradient = clip_gradient(gradient, GRADIENT_CLIP);
   if (!std::isfinite(gradient))
   {
@@ -194,7 +194,7 @@ void Neuron::set_hidden_gradients(const Layer& next_layer)
     const auto& neuron = next_layer.get_neuron(n);
     activation_gradients.push_back(neuron.get_gradient());
   }
-  auto gradient = calculate_hidden_gradients(next_layer, activation_gradients);
+  auto gradient = calculate_hidden_gradients(next_layer, activation_gradients, get_output_value());
   set_gradient_value(gradient);
 }
 
