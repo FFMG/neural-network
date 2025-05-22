@@ -34,10 +34,13 @@ public:
 private:
   void train( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, const std::function<bool(int, NeuralNetwork&)>& progress_callback);
   void train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, const std::function<bool(int, NeuralNetwork&)>& progress_callback);
-  static std::vector<double> forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers_src);
-  static std::vector<std::vector<double>> forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers_src);
+
+  static std::vector<std::vector<double>> calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers);
+
+  static std::vector<double> forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers);
+  static std::vector<std::vector<double>> forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers);
   
-  static void back_propagation( const std::vector<double>& current_output,  std::vector<Layer>& layers_src );
+  static void back_propagation( const std::vector<double>& current_output,  std::vector<Layer>& layers);
 
   static void calculate_output_gradients(const std::vector<double>& current_output, Layer& output_layer);
 
