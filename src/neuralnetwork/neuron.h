@@ -94,10 +94,15 @@ public:
   void set_gradient_value(double val);
   void set_output_value(double val);
   double get_output_value() const;
-  double calculate_forward_feed(const Layer& prevLayer, std::vector<double> previous_layer_output_values ) const;
+  
+  double calculate_forward_feed(const Layer& prevLayer, const std::vector<double>& previous_layer_output_values ) const;
   void forward_feed(const Layer& prevLayer);
-  void calculate_output_gradients(double targetVal);
-  void calculate_hidden_gradients(const Layer& nextLayer);
+  
+  double calculate_output_gradients(double target_value, double output_value) const;
+  
+  double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
+  void set_hidden_gradients(const Layer& next_layer);
+
   void update_input_weights(Layer& previous_layer);
 
   double get_gradient() const {
@@ -114,7 +119,7 @@ public:
 
 private:
   void Clean();
-  double sum_of_derivatives_of_weights(const Layer& nextLayer) const;
+  double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
 
   static double clip_gradient(double val, double clip_val);
