@@ -9,7 +9,7 @@ Neuron::Neuron(
   unsigned num_neurons_next_layer,
   unsigned num_neurons_current_layer,
   unsigned index,
-  const activation::method& activation,
+  const activation& activation,
   double learning_rate
 ) :
   _index(index),
@@ -31,7 +31,7 @@ Neuron::Neuron(
   unsigned index,
   double output_value,
   double gradient,
-  const activation::method& activation,
+  const activation& activation,
   const std::vector<std::array<double,2>>& output_weights,
   double learning_rate
 ) :

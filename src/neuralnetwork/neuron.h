@@ -74,7 +74,7 @@ public:
     unsigned index, 
     double output_value,
     double gradient,
-    const activation::method& activation,
+    const activation& activation,
     const std::vector<std::array<double,2>>& output_weights,
     double learning_rate
     );
@@ -83,7 +83,7 @@ public:
     unsigned num_neurons_prev_layer,
     unsigned num_neurons_current_layer,
     unsigned index, 
-    const activation::method& activation,
+    const activation& activation,
     double learning_rate
     );
 
@@ -122,8 +122,8 @@ private:
   unsigned _index;
   double _output_value;
   double _gradient;
-  std::vector<Connection> _output_weights;
   activation _activation_method;
+  std::vector<Connection> _output_weights;
 
   double _learning_rate;   // [0.0..1.0] overall net training rate
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
