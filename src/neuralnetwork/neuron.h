@@ -94,6 +94,7 @@ public:
   void set_gradient_value(double val);
   void set_output_value(double val);
   double get_output_value() const;
+  double calculate_forward_feed(const Layer& prevLayer, std::vector<double> previous_layer_output_values ) const;
   void forward_feed(const Layer& prevLayer);
   void calculate_output_gradients(double targetVal);
   void calculate_hidden_gradients(const Layer& nextLayer);
