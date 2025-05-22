@@ -232,9 +232,9 @@ void NeuralNetwork::train(
 
 double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
-  // return calculate_rmse_error(ground_truth, predictions);
+  return calculate_rmse_error(ground_truth, predictions);
   // return calculate_mae_error(ground_truth, predictions);
-  return calculate_huber_loss(ground_truth, predictions);
+  //return calculate_huber_loss(ground_truth, predictions);
 }
 
 double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta)
@@ -356,10 +356,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   return mean_squared_error;
 }
 
-void NeuralNetwork::back_propagation(
-  const std::vector<double>& current_output,
-  std::vector<Layer>& layers_src
-)
+void NeuralNetwork::back_propagation( const std::vector<double>& current_output, std::vector<Layer>& layers_src)
 {
   auto& output_layer = layers_src.back();
   
