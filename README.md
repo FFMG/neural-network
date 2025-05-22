@@ -154,7 +154,7 @@ int main()
   };
 
   auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation);
-  nn->train(training_inputs, training_outputs, 10000, show_progress_bar);
+  nn->train(training_inputs, training_outputs, 10000, -1, show_progress_bar);
 
   std::vector<std::vector<double>> inputs = {
       {0, 0, 1},
