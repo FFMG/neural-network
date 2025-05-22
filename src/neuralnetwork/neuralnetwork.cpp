@@ -109,7 +109,7 @@ std::vector<unsigned> NeuralNetwork::get_topology() const
   return topology;
 }
 
-std::vector<size_t> NeuralNetwork::get_suffled_indexes(size_t raw_size)
+std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
 {
   std::vector<size_t> shuffled_indexes(raw_size);
   std::iota(shuffled_indexes.begin(), shuffled_indexes.end(), 0);
@@ -118,6 +118,55 @@ std::vector<size_t> NeuralNetwork::get_suffled_indexes(size_t raw_size)
   std::mt19937 gen(rd()); // Mersenne Twister RNG
   std::shuffle(shuffled_indexes.begin(), shuffled_indexes.end(), gen);
   return shuffled_indexes;
+}
+
+void NeuralNetwork::create_shuffled_indexes(size_t raw_size, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+{
+  auto shuffled_indexes = get_shuffled_indexes(raw_size);
+  assert(raw_size == shuffled_indexes.size());
+
+  break_shuffled_indexes(shuffled_indexes, training_indexes, checking_indexes, final_check_indexes);
+}
+
+void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+{
+  // break the indexes into parts
+  size_t total_size = shuffled_indexes.size();
+  size_t training_size = static_cast<size_t>(std::round(total_size * 0.80));
+  size_t checking_size = static_cast<size_t>(std::round(total_size * 0.15));
+  if(training_size+checking_size == total_size || checking_size == 0)
+  {
+    // in the case of small training models we might not have enough to split anything
+    std::cout << "Training batch size does not allow for error checking batche!" << std::endl;
+    training_indexes = shuffled_indexes;
+    checking_indexes = {shuffled_indexes.front()};
+    final_check_indexes = {shuffled_indexes.back()};
+    return;
+  }
+  assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
+  if(training_size + checking_size < total_size) // make sure we don't get more than 100%
+  {
+    std::cerr << "Logic error, unable to do a final batch error check." << std::endl;
+    throw std::invalid_argument("Logic error, unable to do a final batch error check.");
+  }
+
+  // then build the various indexes that will be used during testing.
+  training_indexes.assign(shuffled_indexes.begin(), shuffled_indexes.begin() + training_size);
+  checking_indexes.assign(shuffled_indexes.begin() + training_size, shuffled_indexes.begin() + training_size + checking_size);
+  final_check_indexes.assign(shuffled_indexes.begin() + training_size + checking_size, shuffled_indexes.end());
+}
+
+void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs)
+{
+  shuffled_training_inputs = {};
+  shuffled_training_outputs = {};
+  shuffled_training_inputs.reserve(shuffled_indexes.size());
+  shuffled_training_outputs.reserve(shuffled_indexes.size());
+  for( auto shuffled_index : shuffled_indexes)
+  {
+    shuffled_training_inputs.push_back(training_inputs[shuffled_index]);
+    shuffled_training_outputs.push_back(training_outputs[shuffled_index]);
+  }
 }
 
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
@@ -131,9 +180,7 @@ long double NeuralNetwork::get_error() const
   return _error;
 }
 
-std::vector<std::vector<double>> NeuralNetwork::think(
-  const std::vector<std::vector<double>>& inputs
-) const
+std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   std::vector<std::vector<double>> outputs(inputs.size(), std::vector<double>(1));
   for (size_t i = 0; i < inputs.size(); ++i)
@@ -147,8 +194,32 @@ void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
   int number_of_epoch,
+  int batch_size,
   const std::function<bool(int, NeuralNetwork&)>& progress_callback
 )
+{
+  if(batch_size < -1 || batch_size > static_cast<int>(training_inputs.size()))
+  {
+    std::cerr << "The batch size if either -ve or too large for the training sample." << std::endl;
+    throw std::invalid_argument("The batch size if either -ve or too large for the training sample.");
+  }
+  if(training_outputs.size() != training_inputs.size())
+  {
+    std::cerr << "The number of training samples does not match the number of expected outputs." << std::endl;
+    throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
+  }
+
+  if(batch_size == -1)
+  {
+    // no batch training
+    train( training_inputs, training_outputs,number_of_epoch, progress_callback);
+    return;
+  }
+  // run in batch
+  train_in_batch( training_inputs, training_outputs,number_of_epoch, batch_size, progress_callback);
+}
+
+void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
 {
   const auto interval = std::chrono::seconds(5);
   auto last_callback_time = std::chrono::high_resolution_clock::now();
@@ -161,28 +232,16 @@ void NeuralNetwork::train(
       return;
     }
   }
-  const auto& output_layer = _layers->back();
 
   // get the indexes
-  auto suffled_indexes = get_suffled_indexes(training_inputs.size());
-  assert(training_inputs.size() == suffled_indexes.size());
-
-  // break the indexes into parts
-  size_t total_size = suffled_indexes.size();
-  size_t training_size = static_cast<size_t>(std::round(total_size * 0.80));
-  size_t checking_size = static_cast<size_t>(std::round(total_size * 0.15));
-  assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
-  size_t final_check_size = total_size - training_size - checking_size; // make sure nothing left over
-
-  // then build the various indexes that will be used during testing.
   std::vector<size_t> training_indexes;
-  training_indexes.assign(suffled_indexes.begin(), suffled_indexes.begin() + training_size);
-
   std::vector<size_t> checking_indexes;
-  checking_indexes.assign(suffled_indexes.begin() + training_size, suffled_indexes.begin() + training_size + checking_size);
-
   std::vector<size_t> final_check_indexes;
-  final_check_indexes.assign(suffled_indexes.begin() + training_size + checking_size, suffled_indexes.end());
+  create_shuffled_indexes(training_inputs.size(), training_indexes, checking_indexes, final_check_indexes);
+
+  std::vector<std::vector<double>> checking_training_inputs = {};
+  std::vector<std::vector<double>> checking_training_outputs = {};
+  create_batch_from_indexes(checking_indexes, training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
 
   // build the trainning output batch so we can use it for error calculations
   std::vector<std::vector<double>> training_outputs_batch = {};
@@ -191,21 +250,29 @@ void NeuralNetwork::train(
   {
     const auto& outputs = training_outputs[training_index];
     training_outputs_batch.push_back(outputs);
-  }  
+  }
 
+  const auto training_indexes_size = training_indexes.size();
   for (auto i = 0; i < number_of_epoch; ++i)
   {
-    std::vector<std::vector<double>> predictions = {};
-    for (auto training_index : training_indexes)
+    for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
-      const auto& inputs = training_inputs[training_index];
-      const auto& outputs = training_outputs[training_index];
+      size_t end_size = j + batch_size > training_indexes_size ? training_indexes_size -j : j + batch_size;
 
-      predictions.push_back(forward_feed(inputs, *_layers));
-      back_propagation(outputs, *_layers);
+      // create the batch input/outputs
+      std::vector<std::vector<double>> batch_inputs = {};
+      batch_inputs.insert(batch_inputs.end(), training_inputs.begin() + j, training_inputs.begin() + end_size );
+
+      std::vector<std::vector<double>> batch_outputs = {};
+      batch_inputs.insert(batch_outputs.end(), training_outputs.begin() + j, training_outputs.begin() + end_size );
+
+      auto batch_predictions = forward_feed(batch_inputs, *_layers);
+      //predictions.push_back(forward_feed(inputs, *_layers));
+      //back_propagation(outputs, *_layers);
     }
 
-    _error = calculate_error(training_outputs_batch, predictions);
+    // do a batch check to see where we are at ...
+    _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
 
     if (progress_callback != nullptr)
     {
@@ -223,6 +290,13 @@ void NeuralNetwork::train(
     }
   }
 
+  // final error checking
+  std::vector<std::vector<double>> final_training_inputs = {};
+  std::vector<std::vector<double>> final_training_outputs = {};
+  create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
+  _error = calculate_error(final_training_inputs, final_training_outputs, *_layers);
+  std::cout << "Final Test Error: " << _error << std::endl;
+
   // final callback if needed
   if (progress_callback != nullptr)
   {
@@ -230,9 +304,96 @@ void NeuralNetwork::train(
   }
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
 {
-  return calculate_rmse_error(ground_truth, predictions);
+  const auto interval = std::chrono::seconds(5);
+  auto last_callback_time = std::chrono::high_resolution_clock::now();
+  // initial callback
+  _error = 0.0;
+  if (progress_callback != nullptr)
+  {
+    if( !progress_callback(0, *this))
+    {
+      return;
+    }
+  }
+
+  // get the indexes
+  std::vector<size_t> training_indexes;
+  std::vector<size_t> checking_indexes;
+  std::vector<size_t> final_check_indexes;
+  create_shuffled_indexes(training_inputs.size(), training_indexes, checking_indexes, final_check_indexes);
+
+  std::vector<std::vector<double>> checking_training_inputs = {};
+  std::vector<std::vector<double>> checking_training_outputs = {};
+  create_batch_from_indexes(checking_indexes, training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
+
+  // build the trainning output batch so we can use it for error calculations
+  std::vector<std::vector<double>> training_outputs_batch = {};
+  training_outputs_batch.reserve(training_indexes.size());
+  for (auto training_index : training_indexes)
+  {
+    const auto& outputs = training_outputs[training_index];
+    training_outputs_batch.push_back(outputs);
+  }  
+
+  for (auto i = 0; i < number_of_epoch; ++i)
+  {
+    for (auto training_index : training_indexes)
+    {
+      const auto& inputs = training_inputs[training_index];
+      const auto& outputs = training_outputs[training_index];
+
+      forward_feed(inputs, *_layers);
+      back_propagation(outputs, *_layers);
+    }
+
+    // do a batch check to see where we are at ...
+    _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
+
+    if (progress_callback != nullptr)
+    {
+      auto current_time = std::chrono::high_resolution_clock::now();
+      auto elapsed_time = current_time - last_callback_time;
+      auto percent = (int)(((float)i / number_of_epoch)*100);
+      if (elapsed_time >= interval)
+      {
+        if( !progress_callback(percent, *this))
+        {
+          return;
+        }
+        last_callback_time = current_time;
+      }
+    }
+  }
+
+  // final error checking
+  std::vector<std::vector<double>> final_training_inputs = {};
+  std::vector<std::vector<double>> final_training_outputs = {};
+  create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
+  _error = calculate_error(final_training_inputs, final_training_outputs, *_layers);
+  std::cout << "Final Test Error: " << _error << std::endl;
+
+  // final callback if needed
+  if (progress_callback != nullptr)
+  {
+    progress_callback(100, *this);
+  }
+}
+
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers)
+{
+  std::vector<std::vector<double>> predictions = {};
+  int batch_size = training_inputs.size();
+  for (auto index = 0; index < batch_size; ++index)
+  {
+    const auto& inputs = training_inputs[index];
+    const auto& outputs = training_outputs[index];
+
+    predictions.push_back(forward_feed(inputs, layers));
+    back_propagation(outputs, layers);
+  }
+  return calculate_rmse_error(training_outputs, predictions);
   // return calculate_mae_error(ground_truth, predictions);
   //return calculate_huber_loss(ground_truth, predictions);
 }
