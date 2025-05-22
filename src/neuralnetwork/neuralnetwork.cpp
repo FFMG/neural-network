@@ -336,7 +336,7 @@ void NeuralNetwork::back_propagation(
 
     for (size_t n = 0; n < hidden_layer.size(); ++n)
     {
-      hidden_layer.get_neuron(n).calculate_hidden_gradients(next_layer);
+      hidden_layer.get_neuron(unsigned(n)).calculate_hidden_gradients(next_layer);
     }
   }
 
@@ -370,7 +370,7 @@ void NeuralNetwork::forward_feed( const std::vector<double>& inputs, std::vector
     auto& this_layer = layers[layer_number];
     for (size_t n = 0; n < layers[layer_number].size() - 1; ++n)
     {
-      this_layer.get_neuron(n).forward_feed(previous_layer);
+      this_layer.get_neuron(unsigned(n)).forward_feed(previous_layer);
     }
   }
 }
@@ -379,7 +379,7 @@ void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targe
 {
   for (size_t n = 0; n < output_layer.size() - 1; ++n)
   {
-    output_layer.get_neuron(n).calculate_output_gradients(targetVals[n]);
+    output_layer.get_neuron(unsigned(n)).calculate_output_gradients(targetVals[n]);
   }
   output_layer.normalise_gradients();
 }

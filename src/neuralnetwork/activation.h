@@ -5,8 +5,6 @@
 class activation
 {
 public:
-  activation() = delete;
-
   enum method
   {
     sigmoid_activation,
@@ -17,10 +15,14 @@ public:
     Selu_activation,
   };
 
-  static double activate(method method, double x);
-  static double activate_derivative(method method, double x);
+  activation(const method method, double alpha = 0.001);
+  activation(const activation& src);
+  activation& operator=(const activation& src);
 
-  static std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer, const method& activation);
+  double activate(double x) const;
+  double activate_derivative(double x) const;
+
+  std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
 
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);
@@ -36,9 +38,12 @@ private:
   static double tanh_derivative(double x);
   static double relu(double x);
   static double relu_derivative(double x);
-  static double leakyRelu(double x, double alpha = 0.01);
-  static double leakyRelu_derivative(double x, double alpha = 0.01);
-  static double PReLU(double x, double alpha = 0.01);
-  static double PReLU_derivative(double x, double alpha = 0.01);
+  static double leakyRelu(double x, double alpha);
+  static double leakyRelu_derivative(double x, double alpha);
+  static double PReLU(double x, double alpha);
+  static double PReLU_derivative(double x, double alpha);
+
+  method _method;
+  double _alpha;
 };
 
