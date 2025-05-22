@@ -1,5 +1,6 @@
 #include "neuron.h"
 
+#include <cassert>
 #include <cmath>
 #include <iostream>
 
@@ -210,24 +211,38 @@ double Neuron::get_output_value() const
   return _output_value; 
 }
 
-void Neuron::forward_feed(const Layer& prevLayer)
+double Neuron::calculate_forward_feed(const Layer& prevLayer, std::vector<double> previous_layer_output_values) const
 {
   double sum = 0.0;
 
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  for (const auto& previous_layer_neuron : prevLayer.get_neurons()) 
+  assert(previous_layer_output_values.size() == prevLayer.size());
+  for (unsigned neuron_index = 0; neuron_index < prevLayer.size(); ++neuron_index) 
   {
+    const auto& previous_layer_neuron = prevLayer.get_neuron(neuron_index);
     const auto output_weight = previous_layer_neuron.get_output_weight(_index);
-    const auto output_value  = previous_layer_neuron.get_output_value();
+    const auto output_value  = previous_layer_output_values[neuron_index];
     sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
     {
       std::cout << "Error while calculating forward feed." << std::endl;
       throw std::invalid_argument("Error while calculating forward feed.");
-      return;
+      return std::numeric_limits<double>::quiet_NaN();
     }
   }
-  set_output_value(_activation_method.activate(sum) );
+  return _activation_method.activate(sum);
+}
+
+void Neuron::forward_feed(const Layer& prevLayer)
+{
+  // build the output values
+  std::vector<double> previous_layer_output_values;
+  previous_layer_output_values.reserve(prevLayer.size());
+  for(auto neuron : prevLayer.get_neurons())
+  {
+    previous_layer_output_values.push_back(neuron.get_output_value());
+  }
+  set_output_value(calculate_forward_feed(prevLayer, previous_layer_output_values));
 }
