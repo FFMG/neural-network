@@ -20,8 +20,8 @@ NeuralNetwork::NeuralNetwork(
 {
   if(topology.size() < 2)
   {
-    std::cerr << "The topology is not value, you must have at lease 2 layers." << std::endl;
-    throw std::invalid_argument("The topology is not value, you must have at lease 2 layers.");
+    std::cerr << "The topology is not value, you must have at least 2 layers." << std::endl;
+    throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
   }
   const auto& number_of_layers = topology.size();
   _layers = new std::vector<Layer>();
@@ -137,7 +137,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   if(training_size+checking_size == total_size || checking_size == 0)
   {
     // in the case of small training models we might not have enough to split anything
-    std::cout << "Training batch size does not allow for error checking batche!" << std::endl;
+    std::cout << "Training batch size does not allow for error checking batch!" << std::endl;
     training_indexes = shuffled_indexes;
     checking_indexes = {shuffled_indexes.front()};
     final_check_indexes = {shuffled_indexes.back()};
@@ -388,10 +388,8 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
   for (auto index = 0; index < batch_size; ++index)
   {
     const auto& inputs = training_inputs[index];
-    const auto& outputs = training_outputs[index];
-
-    predictions.push_back(forward_feed(inputs, layers));
-    back_propagation(outputs, layers);
+    auto all_outputs = calculate_forward_feed(inputs, layers);
+    predictions.push_back(all_outputs.back());
   }
   return calculate_rmse_error(training_outputs, predictions);
   // return calculate_mae_error(ground_truth, predictions);
@@ -473,7 +471,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 {
   if (ground_truth.size() != predictions.size()) 
   {
-    std::cerr << "Mismatch in batch sizes.\n";
+    std::cerr << "Mismatch in batch sizes." << std::endl;
     return std::numeric_limits<double>::quiet_NaN();
   }
 
@@ -487,7 +485,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 
     if (true_output.size() != predicted_output.size()) 
     {
-      std::cerr << "Mismatch in output vector sizes at index " << i << "\n";
+      std::cerr << "Mismatch in output vector sizes at index " << i << std::endl;
       continue;
     }
 
@@ -517,23 +515,24 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   return mean_squared_error;
 }
 
-void NeuralNetwork::back_propagation( const std::vector<double>& current_output, std::vector<Layer>& layers)
+void NeuralNetwork::back_propagation(const std::vector<double>& target_outputs, std::vector<Layer>& layers)
 {
   auto& output_layer = layers.back();
   
   // Calculate output layer gradients
-  calculate_output_gradients(current_output, output_layer);
+  set_output_gradients(target_outputs, output_layer);
 
   // Calculate hidden layer gradients
 
   for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
   {
     auto& hidden_layer = layers[layer_number];
-    auto& next_layer = layers[layer_number + 1];
+    const auto& next_layer = layers[layer_number + 1];
 
     for (size_t n = 0; n < hidden_layer.size(); ++n)
     {
-      hidden_layer.get_neuron(unsigned(n)).calculate_hidden_gradients(next_layer);
+      auto& neuron = hidden_layer.get_neuron(unsigned(n));
+      neuron.set_hidden_gradients(next_layer);
     }
   }
 
@@ -614,11 +613,31 @@ std::vector<double> NeuralNetwork::forward_feed( const std::vector<double>& inpu
   return layers.back().get_outputs();
 }
 
-void NeuralNetwork::calculate_output_gradients( const std::vector<double>& targetVals, Layer& output_layer)
+std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, Layer& output_layer)
 {
-  for (size_t n = 0; n < output_layer.size() - 1; ++n)
+  std::vector<double> activation_gradients = {};
+  for (size_t n = 0; n < output_layer.size() - 1; ++n) // ignore bias
   {
-    output_layer.get_neuron(unsigned(n)).calculate_output_gradients(targetVals[n]);
+    const auto& neuron = output_layer.get_neuron(unsigned(n));
+    activation_gradients.push_back(neuron.calculate_output_gradients(target_outputs[n], given_outputs[n]));
+  }
+  activation_gradients.push_back(0);  //  add bias we ignored above
+  return activation_gradients;
+}
+
+void NeuralNetwork::set_output_gradients(const std::vector<double>& current_outputs, Layer& output_layer)
+{
+  std::vector<double> given_outputs;
+  for(const auto& output_layer_neuron : output_layer.get_neurons())
+  {
+    given_outputs.push_back(output_layer_neuron.get_output_value());
+  }
+  auto activation_gradients = caclulate_output_gradients(current_outputs, given_outputs, output_layer);
+  assert(activation_gradients.size() == output_layer.size());
+  for (unsigned n = 0; n < activation_gradients.size(); ++n)
+  {
+    auto& neuron = output_layer.get_neuron(unsigned(n));
+    neuron.set_gradient_value(activation_gradients[n]);
   }
   output_layer.normalise_gradients();
 }
