@@ -36,14 +36,20 @@ private:
   void train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, const std::function<bool(int, NeuralNetwork&)>& progress_callback);
 
   static std::vector<std::vector<double>> calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers);
+  static std::vector<std::vector<std::vector<double>>> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers);
 
   static std::vector<double> forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers);
   static std::vector<std::vector<double>> forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers);
   
-  static void back_propagation(const std::vector<double>& target_outputs,  std::vector<Layer>& layers);
+  static std::vector<std::vector<double>> average_batch_gradients(const std::vector<std::vector<std::vector<double>>>& batch_activation_gradients);
+  static void batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, const std::vector<std::vector<std::vector<double>>>& batch_given_outputs, std::vector<Layer>& layers);
+  static void back_propagation(const std::vector<double>& target_outputs, const std::vector<std::vector<double>>& given_outputs, std::vector<Layer>& layers);
+  static void update_layers_with_gradients(const std::vector<std::vector<double>>& activation_gradients, std::vector<Layer>& layers);
+  static std::vector<std::vector<double>> calculate_back_propagation_gradients(const std::vector<double>& target_outputs, const std::vector<std::vector<double>>& layers_given_outputs, const std::vector<Layer>& layers);
+  static std::vector<std::vector<std::vector<double>>> calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, const std::vector<std::vector<std::vector<double>>>& layers_given_outputs, const std::vector<Layer>& layers);
 
   static void set_output_gradients(const std::vector<double>& target_outputs, Layer& output_layer);
-  static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, Layer& output_layer);
+  static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
   static double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers);
