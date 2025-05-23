@@ -8,6 +8,113 @@
 
 class NeuralNetwork
 {
+private:
+  class GradientsAndOutputs
+  {
+    public:
+      GradientsAndOutputs(){};
+      GradientsAndOutputs(const GradientsAndOutputs& src) :
+        _activation_gradients(src._activation_gradients),
+        _activation_outputs(src._activation_outputs)
+      {
+      };
+      GradientsAndOutputs& operator=(const GradientsAndOutputs& src)
+      {
+        if( &src != this)
+        {
+          _activation_gradients = src._activation_gradients;
+          _activation_outputs = src._activation_outputs;
+        }
+        return *this;
+      }
+      virtual ~GradientsAndOutputs() = default;
+
+      unsigned num_layers() const { return static_cast<unsigned>(_activation_gradients.size());}
+      unsigned num_neurons(unsigned layer) const 
+      { 
+        if(_activation_gradients.size() <= layer)
+        {
+          return 0;
+        }
+        return static_cast<unsigned>(_activation_gradients[layer].size());}
+
+      double get_gradient(unsigned layer, unsigned neuron) const
+      {
+        if(_activation_gradients.size() <= layer)
+        {
+          return 0;
+        }
+        if(_activation_gradients[layer].size() <= neuron)
+        {
+          return 0;
+        }
+        return _activation_gradients[layer][neuron];
+      }
+      void set_gradient(unsigned layer, unsigned neuron, double gradient)
+      {
+        while(_activation_gradients.size() <= layer)
+        {
+          _activation_gradients.push_back({});
+        }
+        while(_activation_gradients[layer].size() <= neuron)
+        {
+          _activation_gradients[layer].push_back(0.0);
+        }
+        _activation_gradients[layer][neuron] = gradient;
+      }
+
+      void set_gradients(unsigned layer, const std::vector<double>& gradients)
+      {
+        while(_activation_gradients.size() <= layer)
+        {
+          _activation_gradients.push_back({});
+        }
+        _activation_gradients[layer] = gradients;
+      }
+
+      double get_output(unsigned layer, unsigned neuron) const
+      {
+        if(_activation_outputs.size() <= layer)
+        {
+          return 0;
+        }
+        if(_activation_outputs[layer].size() <= neuron)
+        {
+          return 0;
+        }
+        return _activation_outputs[layer][neuron];
+      }
+      void set_output(unsigned layer, unsigned neuron, double output)
+      {
+        while(_activation_outputs.size() <= layer)
+        {
+          _activation_outputs.push_back({});
+        }
+        while(_activation_outputs[layer].size() <= neuron)
+        {
+          _activation_outputs[layer].push_back(0.0);
+        }
+        _activation_outputs[layer][neuron] = output;
+      }
+      void set_outputs(unsigned layer, const std::vector<double>& outputs)
+      {
+        while(_activation_outputs.size() <= layer)
+        {
+          _activation_outputs.push_back({});
+        }
+        _activation_outputs[layer] = outputs;
+      }
+
+      void zero_gradients(){ _activation_gradients = {};};
+      void zero_outputs(){ _activation_outputs = {};};
+
+      const std::vector<double>& back() const{
+        return _activation_outputs.back();
+      }
+
+      std::vector<std::vector<double>> _activation_gradients;
+      std::vector<std::vector<double>> _activation_outputs;
+  };
 public:
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation, double learning_rate);
   NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, double learning_rate, double error);
@@ -35,18 +142,19 @@ private:
   void train( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, const std::function<bool(int, NeuralNetwork&)>& progress_callback);
   void train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, const std::function<bool(int, NeuralNetwork&)>& progress_callback);
 
-  static std::vector<std::vector<double>> calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers);
-  static std::vector<std::vector<std::vector<double>>> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers);
+  static GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers);
+  static std::vector<GradientsAndOutputs> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers);
 
   static std::vector<double> forward_feed(const std::vector<double>& inputs, std::vector<Layer>& layers);
   static std::vector<std::vector<double>> forward_feed(const std::vector<std::vector<double>>& inputs_batch, std::vector<Layer>& layers);
   
-  static std::vector<std::vector<double>> average_batch_gradients(const std::vector<std::vector<std::vector<double>>>& batch_activation_gradients);
-  static void batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, const std::vector<std::vector<std::vector<double>>>& batch_given_outputs, std::vector<Layer>& layers);
-  static void back_propagation(const std::vector<double>& target_outputs, const std::vector<std::vector<double>>& given_outputs, std::vector<Layer>& layers);
-  static void update_layers_with_gradients(const std::vector<std::vector<double>>& activation_gradients, std::vector<Layer>& layers);
-  static std::vector<std::vector<double>> calculate_back_propagation_gradients(const std::vector<double>& target_outputs, const std::vector<std::vector<double>>& layers_given_outputs, const std::vector<Layer>& layers);
-  static std::vector<std::vector<std::vector<double>>> calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, const std::vector<std::vector<std::vector<double>>>& layers_given_outputs, const std::vector<Layer>& layers);
+  static GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients);
+  static void batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, std::vector<Layer>& layers);
+  static void back_propagation(const std::vector<double>& target_outputs, GradientsAndOutputs& given_outputs, std::vector<Layer>& layers);
+  static void update_layers_with_gradients(const GradientsAndOutputs& activation_gradients, std::vector<Layer>& layers);
+  
+  static void calculate_back_propagation_gradients(const std::vector<double>& target_outputs, GradientsAndOutputs& layers_given_outputs, const std::vector<Layer>& layers);
+  static void calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers);
 
   static void set_output_gradients(const std::vector<double>& target_outputs, Layer& output_layer);
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
