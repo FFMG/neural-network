@@ -104,6 +104,7 @@ public:
   void set_hidden_gradients(const Layer& next_layer);
 
   void update_input_weights(Layer& previous_layer);
+  void update_input_weights(Layer& previous_layer, double gradient, const std::vector<double>& weights_gradients);
 
   double get_gradient() const {
     return _gradient;
