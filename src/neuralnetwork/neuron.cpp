@@ -97,6 +97,38 @@ void Neuron::Clean()
 {
 }
 
+void Neuron::update_input_weights(Layer& previous_layer, double gradient, const std::vector<double>& weights_gradients)
+{
+  assert(weights_gradients.size() == previous_layer.size());
+  for (size_t i = 0; i < weights_gradients.size(); ++i) 
+  {
+    auto& neuron = previous_layer.get_neuron(i);
+    auto& connection = neuron._output_weights[_index];
+
+    const auto& weights_gradient = weights_gradients[i];         // from prev layer, averaged over batch
+    if (!std::isfinite(gradient))
+    {
+      gradient = 0.0;
+      std::cout << "Error while calculating input weigh gradient it invalid." << std::endl;
+      throw std::invalid_argument("Error while calculating input weight.");
+    }
+    auto old_delta_weight = connection.delta_weight();
+    if (!std::isfinite(old_delta_weight))
+    {
+      old_delta_weight = 0.0;
+      std::cout << "Error while calculating input weigh old weight is invalid." << std::endl;
+      throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
+    }
+
+    double new_delta_weight =
+      _learning_rate * weights_gradient +   // batch-based weight update
+      _alpha * old_delta_weight;            // momentum term
+
+    connection.set_delta_weight(new_delta_weight);
+    connection.set_weight(connection.weight() + new_delta_weight);
+  }
+}
+
 void Neuron::update_input_weights(Layer& previous_layer)
 {
   for (auto& neuron : previous_layer.get_neurons())
