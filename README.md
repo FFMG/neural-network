@@ -109,7 +109,27 @@ int main()
 }
 ```
 
-#### Trainning callback method
+#### Trainning function variables
+
+```c++
+train(
+  const std::vector<std::vector<double>>& training_inputs, 
+  const std::vector<std::vector<double>>& training_outputs, 
+  int number_of_epoch, 
+  int batch_size = -1, 
+  bool data_is_unique = true, 
+  const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr
+  );
+```
+
+* training_inputs: this is a vector of one or more `doubles` that will be used for each epoch as input data.
+* training_output: this is a vector of one or more `doubles` that will be used for each epoch as expected output.
+* number_of_epoch: number of epoch we will be training for, the more epoch the better the learning, (unless your data is garbage)
+* data_is_unique = true: In some cases all the input/ouput data is unique and must be used for training, if this is set to false, then some random data will *not* be used for training but will rather be used for error checking, (how well the model is trained).
+* batch_size=-1: if -1 then all the data will be used per epoch. otherwise muliple threads will be used for training.
+* progress_callback=null_ptr: the callback function, so you can tell how far the training is (see below).
+
+##### Trainning callback method
 
 You can use a tainning callback method to see how the NN is training ...
 

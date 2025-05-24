@@ -120,15 +120,15 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
   return shuffled_indexes;
 }
 
-void NeuralNetwork::create_shuffled_indexes(size_t raw_size, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
 {
   auto shuffled_indexes = get_shuffled_indexes(raw_size);
   assert(raw_size == shuffled_indexes.size());
 
-  break_shuffled_indexes(shuffled_indexes, training_indexes, checking_indexes, final_check_indexes);
+  break_shuffled_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 }
 
-void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
 {
   // break the indexes into parts
   size_t total_size = shuffled_indexes.size();
@@ -151,7 +151,18 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   }
 
   // then build the various indexes that will be used during testing.
+  if(data_is_unique)
+  {
+    // because the data is uniqe we must use all of it for training
+    // this is important in some cases where the NN needs all the data to train
+    // otherwise we will ony train on some of the data.
+    // the classic XOR example is a good use case ... 
+    training_indexes = shuffled_indexes;
+  }
+  else
+  {
   training_indexes.assign(shuffled_indexes.begin(), shuffled_indexes.begin() + training_size);
+  }
   checking_indexes.assign(shuffled_indexes.begin() + training_size, shuffled_indexes.begin() + training_size + checking_size);
   final_check_indexes.assign(shuffled_indexes.begin() + training_size + checking_size, shuffled_indexes.end());
 }
@@ -195,6 +206,7 @@ void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_outputs,
   int number_of_epoch,
   int batch_size,
+  bool data_is_unique,
   const std::function<bool(int, NeuralNetwork&)>& progress_callback
 )
 {
@@ -212,14 +224,14 @@ void NeuralNetwork::train(
   if(batch_size == -1)
   {
     // no batch training
-    train( training_inputs, training_outputs,number_of_epoch, progress_callback);
+    train( training_inputs, training_outputs,number_of_epoch, data_is_unique, progress_callback);
     return;
   }
   // run in batch
-  train_in_batch( training_inputs, training_outputs,number_of_epoch, batch_size, progress_callback);
+  train_in_batch( training_inputs, training_outputs,number_of_epoch, batch_size, data_is_unique, progress_callback);
 }
 
-void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
+void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size, bool data_is_unique, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
 {
   const auto interval = std::chrono::seconds(5);
   auto last_callback_time = std::chrono::high_resolution_clock::now();
@@ -237,13 +249,13 @@ void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& trai
   std::vector<size_t> training_indexes;
   std::vector<size_t> checking_indexes;
   std::vector<size_t> final_check_indexes;
-  create_shuffled_indexes(training_inputs.size(), training_indexes, checking_indexes, final_check_indexes);
+  create_shuffled_indexes(training_inputs.size(), data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
   create_batch_from_indexes(checking_indexes, training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
 
-  // build the trainning output batch so we can use it for error calculations
+  // build the training output batch so we can use it for error calculations
   std::vector<std::vector<double>> training_outputs_batch = {};
   training_outputs_batch.reserve(training_indexes.size());
   for (auto training_index : training_indexes)
@@ -305,7 +317,7 @@ void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& trai
   }
 }
 
-void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
+void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, bool data_is_unique, const std::function<bool(int, NeuralNetwork&)>& progress_callback)
 {
   const auto interval = std::chrono::seconds(5);
   auto last_callback_time = std::chrono::high_resolution_clock::now();
@@ -323,13 +335,13 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<size_t> training_indexes;
   std::vector<size_t> checking_indexes;
   std::vector<size_t> final_check_indexes;
-  create_shuffled_indexes(training_inputs.size(), training_indexes, checking_indexes, final_check_indexes);
+  create_shuffled_indexes(training_inputs.size(), data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
   create_batch_from_indexes(checking_indexes, training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
 
-  // build the trainning output batch so we can use it for error calculations
+  // build the training output batch so we can use it for error calculations
   std::vector<std::vector<double>> training_outputs_batch = {};
   training_outputs_batch.reserve(training_indexes.size());
   for (auto training_index : training_indexes)
