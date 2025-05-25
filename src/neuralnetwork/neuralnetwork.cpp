@@ -666,8 +666,29 @@ void NeuralNetwork::back_propagation(const std::vector<double>& target_outputs, 
     }
   }
   
-  given_outputs.update_outputs_gradients();
-  update_layers_with_gradients(given_outputs, layers);
+  // set up the gradients that we just calculated.
+  for (size_t layer_number = 0; layer_number < layers.size(); ++layer_number)
+  {
+    auto& layer = layers[layer_number];
+    for (size_t neuron_number = 0; neuron_number < layer.size(); ++neuron_number)
+    {
+      auto& neuron = layer.get_neuron(unsigned(neuron_number));
+      neuron.set_gradient_value(given_outputs.get_gradient(layer_number, neuron_number));
+    }
+  }
+
+  // update the weights in reverse
+  for (auto layer_number = layers.size() - 1; layer_number > 0; --layer_number) 
+  {
+    auto& layer = layers[layer_number];
+    auto& previous_layer = layers[layer_number - 1];
+
+    for (unsigned neuron_number = 0; neuron_number < layer.size() - 1; ++neuron_number) 
+    {
+      auto& neuron = layer.get_neuron(neuron_number);
+      neuron.update_input_weights(previous_layer);
+    }
+  }
 }
 
 void NeuralNetwork::update_layers_with_gradients(GradientsAndOutputs& activation_gradients, std::vector<Layer>& layers)
