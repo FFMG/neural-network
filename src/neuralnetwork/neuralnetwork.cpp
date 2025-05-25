@@ -557,16 +557,17 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients(const 
     }
   }
 
-  // we now want to update the outputgradients.
+  // we get the output to the connecting layer
+  // so this layer will have then number of outputs to the _next_ layer.
   for (size_t layer = 0; layer < num_gradient_layers -1; ++layer)
   {
-    size_t number_neurons = batch_activation_gradients[0].num_gradient_neurons(layer);
+    // number of neurons to the next layer
+    const size_t number_neurons = batch_activation_gradients[0].num_gradient_neurons(layer+1);
     for( size_t target_neuron = 0; target_neuron < number_neurons; ++target_neuron )
     {
-      // bias is added by the get_outputs( ... ) method.
-      size_t number_outputs = batch_activation_gradients[0].get_outputs(layer).size();
-      std::vector<double> outputs_gradients;
-      outputs_gradients.resize(number_outputs, 0.0);
+      // bias is added by the get_outputs( ... ) method for _this_ layer.
+      const size_t number_outputs = batch_activation_gradients[0].get_outputs(layer).size();
+      std::vector<double> outputs_gradients(number_outputs, 0.0);
       for (size_t batch = 0; batch < batch_size; ++batch)
       {
         const auto& gradientsAndOutputs = batch_activation_gradients[batch];
