@@ -88,11 +88,10 @@ private:
 
       void set_gradients(unsigned layer, const std::vector<double>& gradients)
       {
-        while(_gradients.size() <= layer)
+        for( unsigned neuron = 0; neuron < gradients.size(); ++neuron)
         {
-          _gradients.push_back({});
+          set_gradient(layer, neuron, gradients[neuron]);
         }
-        _gradients[layer] = gradients;
       }
 
       double get_output(unsigned layer, unsigned neuron) const
@@ -196,11 +195,10 @@ private:
       
       void set_outputs(unsigned layer, const std::vector<double>& outputs)
       {
-        while(_outputs.size() <= layer)
+        for(unsigned neuron = 0; neuron < outputs.size(); ++neuron)
         {
-          _outputs.push_back({});
+          set_output(layer, neuron, outputs[neuron]);
         }
-        _outputs[layer] = outputs;
       }
 
       void zero(){
