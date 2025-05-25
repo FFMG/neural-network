@@ -161,7 +161,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   }
   else
   {
-  training_indexes.assign(shuffled_indexes.begin(), shuffled_indexes.begin() + training_size);
+    training_indexes.assign(shuffled_indexes.begin(), shuffled_indexes.begin() + training_size);
   }
   checking_indexes.assign(shuffled_indexes.begin() + training_size, shuffled_indexes.begin() + training_size + checking_size);
   final_check_indexes.assign(shuffled_indexes.begin() + training_size + checking_size, shuffled_indexes.end());
@@ -258,18 +258,18 @@ void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& trai
   // build the training output batch so we can use it for error calculations
   std::vector<std::vector<double>> training_outputs_batch = {};
   training_outputs_batch.reserve(training_indexes.size());
-  for (auto training_index : training_indexes)
+  for (const auto& training_index : training_indexes)
   {
     const auto& outputs = training_outputs[training_index];
     training_outputs_batch.push_back(outputs);
   }
 
   const auto training_indexes_size = training_indexes.size();
-  for (auto i = 0; i < number_of_epoch; ++i)
+  for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
-      size_t end_size = j + batch_size > training_indexes_size ? training_indexes_size -j : j + batch_size;
+      const size_t end_size = j + batch_size > training_indexes_size ? training_indexes_size : j + batch_size;
 
       // create the batch input/outputs
       std::vector<std::vector<double>> batch_inputs = {};
@@ -280,8 +280,6 @@ void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& trai
 
       auto batch_predictions = calculate_forward_feed(batch_inputs, *_layers);
       batch_back_propagation(batch_outputs, batch_predictions, *_layers);
-      //auto batch_predictions = calculate_forward_feed(batch_inputs.front(), *_layers);
-      //back_propagation(batch_outputs.front(), batch_predictions, *_layers);
     }
 
     // do a batch check to see where we are at ...
@@ -291,7 +289,7 @@ void NeuralNetwork::train_in_batch( const std::vector<std::vector<double>>& trai
     {
       auto current_time = std::chrono::high_resolution_clock::now();
       auto elapsed_time = current_time - last_callback_time;
-      auto percent = (int)(((float)i / number_of_epoch)*100);
+      auto percent = (int)(((float)epoch / number_of_epoch)*100);
       if (elapsed_time >= interval)
       {
         if( !progress_callback(percent, *this))
