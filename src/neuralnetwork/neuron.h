@@ -73,7 +73,6 @@ public:
   Neuron(
     unsigned index, 
     double output_value,
-    double gradient,
     const activation& activation,
     const std::vector<std::array<double,2>>& output_weights,
     double learning_rate
@@ -91,7 +90,6 @@ public:
   const Neuron& operator=(const Neuron& src);
   virtual ~Neuron();
 
-  void set_gradient_value(double val);
   void set_output_value(double val);
   double get_output_value() const;
   
@@ -101,14 +99,8 @@ public:
   double calculate_output_gradients(double target_value, double output_value) const;
   
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
-  void set_hidden_gradients(const Layer& next_layer);
 
-  void update_input_weights(Layer& previous_layer);
-  void update_input_weights(Layer& previous_layer, double gradient, const std::vector<double>& weights_gradients);
-
-  double get_gradient() const {
-    return _gradient;
-  }
+  void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients);
 
   unsigned get_index() const {
     return _index;
@@ -128,7 +120,6 @@ private:
   // data to save...
   unsigned _index;
   double _output_value;
-  double _gradient;
   activation _activation_method;
   std::vector<Connection> _output_weights;
 
