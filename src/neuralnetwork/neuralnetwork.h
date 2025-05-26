@@ -135,7 +135,7 @@ private:
     {
       if( &src != this)
       {
-        GradientsAndOutputs::operator=(src);
+        AverageGradientsAndOutputs::operator=(src);
         _outputs = src._outputs;
         _gradients = src._gradients;
       }
@@ -203,7 +203,7 @@ private:
     { 
       return static_cast<unsigned>(_gradients.size());
     }
-    
+
     unsigned num_gradient_neurons(unsigned layer) const 
     { 
       if(_gradients.size() <= layer)
