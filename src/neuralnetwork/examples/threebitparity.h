@@ -55,7 +55,7 @@ public:
       {
         std::cout << "Batch size=" << batch_size <<":" << std::endl;
         auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation, learning_rate);
-        nn->train(training_inputs, training_outputs, number_of_epoch);
+        nn->train(training_inputs, training_outputs, number_of_epoch, batch_size);
 
         std::vector<double> test_input1 = {1, 1, 1};
         //std::vector<double> expected_output1 = {1};
