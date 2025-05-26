@@ -38,13 +38,10 @@ public:
   static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
 
   std::vector<double> get_outputs() const;
-  void normalise_gradients();
   
 private:
   void add_neuron(const Neuron& neuron);
   const LayerType&  get_layer_type()const{ return _layer_type;}
-
-  double calulcate_normalised_gradients();
 
   std::vector<Neuron> _neurons;
   unsigned _number_input_neurons;  //  number of neurons in previous layer

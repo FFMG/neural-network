@@ -139,35 +139,3 @@ std::vector<double> Layer::get_outputs() const
   }
   return outputs;
 }
-
-void Layer::normalise_gradients()
-{
-  const double max_norm = 10.0;
-  auto norm = calulcate_normalised_gradients();
-  if (norm < max_norm)
-  {
-    return;
-  }
-
-  // update all the gradients.
-  double scale = max_norm / (norm == 0 ? 1e-8 : norm);
-  for (size_t n = 0; n < _neurons.size() - 1; ++n)
-  {
-    auto gradient = _neurons[n].get_gradient();
-    gradient *= scale;
-    _neurons[n].set_gradient_value(gradient);
-  }
-}
-
-double Layer::calulcate_normalised_gradients()
-{
-  auto acc = std::accumulate(
-    _neurons.begin(),
-    _neurons.end(),
-    0.0,
-    [](double sum, Neuron& n) {
-      auto grad = n.get_gradient();
-      return sum + grad * grad;
-    });
-  return std::sqrt(acc);
-}

@@ -15,7 +15,6 @@ Neuron::Neuron(
 ) :
   _index(index),
   _output_value(0),
-  _gradient(0),
   _activation_method(activation),
   _output_weights({}),
   _learning_rate(learning_rate),
@@ -31,14 +30,12 @@ Neuron::Neuron(
 Neuron::Neuron(
   unsigned index,
   double output_value,
-  double gradient,
   const activation& activation,
   const std::vector<std::array<double,2>>& output_weights,
   double learning_rate
 ) :
   _index(index),
   _output_value(output_value),
-  _gradient(gradient),
   _activation_method(activation),
   _output_weights({}),
   _learning_rate(learning_rate),
@@ -54,7 +51,6 @@ Neuron::Neuron(
 Neuron::Neuron(const Neuron& src) : 
   _index(src._index),
   _output_value(src._output_value),
-  _gradient(src._gradient),
   _activation_method(src._activation_method),
   _output_weights({}),
   _learning_rate(src._learning_rate),
@@ -71,7 +67,6 @@ const Neuron& Neuron::operator=(const Neuron& src)
 
     _index = src._index;
     _output_value = src._output_value;
-    _gradient = src._gradient;
     _activation_method = src._activation_method;
     _output_weights = src._output_weights;
   }
@@ -97,7 +92,7 @@ void Neuron::Clean()
 {
 }
 
-void Neuron::update_input_weights(Layer& previous_layer, double gradient, const std::vector<double>& weights_gradients)
+void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients)
 {
   assert(weights_gradients.size() == previous_layer.size());
   for (size_t i = 0; i < weights_gradients.size(); ++i) 
@@ -106,9 +101,8 @@ void Neuron::update_input_weights(Layer& previous_layer, double gradient, const 
     auto& connection = neuron._output_weights[_index];
 
     const auto& weights_gradient = weights_gradients[i];         // from prev layer, averaged over batch
-    if (!std::isfinite(gradient))
+    if (!std::isfinite(weights_gradient))
     {
-      gradient = 0.0;
       std::cout << "Error while calculating input weigh gradient it invalid." << std::endl;
       throw std::invalid_argument("Error while calculating input weight.");
     }
@@ -125,39 +119,6 @@ void Neuron::update_input_weights(Layer& previous_layer, double gradient, const 
       _alpha * old_delta_weight;            // momentum term
 
     connection.set_delta_weight(new_delta_weight);
-    connection.set_weight(connection.weight() + new_delta_weight);
-  }
-}
-
-void Neuron::update_input_weights(Layer& previous_layer)
-{
-  for (auto& neuron : previous_layer.get_neurons())
-  {
-    auto& connection = neuron._output_weights[_index];
-    
-    auto gradient = _gradient;
-    if (!std::isfinite(gradient))
-    {
-      gradient = 0.0;
-      std::cout << "Error while calculating input weigh gradient it invalid." << std::endl;
-      throw std::invalid_argument("Error while calculating input weight.");
-    }
-    auto old_delta_weight = connection.delta_weight();
-    if (!std::isfinite(old_delta_weight))
-    {
-      old_delta_weight = 0.0;
-      std::cout << "Error while calculating input weigh old weight is invalid." << std::endl;
-      throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
-    }
-
-    auto new_delta_weight =
-      _learning_rate  // Individual input, magnified by the gradient and train rate:
-      * neuron.get_output_value()
-      * gradient
-      + _alpha  // momentum = a fraction of the previous delta weight;
-      * old_delta_weight;
-
-    connection.set_delta_weight( new_delta_weight );
     connection.set_weight(connection.weight() + new_delta_weight);
   }
 }
@@ -215,30 +176,6 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
     return std::numeric_limits<double>::quiet_NaN();
   }  
   return gradient;
-}
-
-void Neuron::set_hidden_gradients(const Layer& next_layer)
-{
-  std::vector<double> activation_gradients = {};
-  activation_gradients.reserve(next_layer.size());
-  for (unsigned n = 0; n < next_layer.size(); ++n) 
-  {
-    const auto& neuron = next_layer.get_neuron(n);
-    activation_gradients.push_back(neuron.get_gradient());
-  }
-  auto gradient = calculate_hidden_gradients(next_layer, activation_gradients, get_output_value());
-  set_gradient_value(gradient);
-}
-
-void Neuron::set_gradient_value(double val)
-{
-  if (!std::isfinite(val))
-  {
-    std::cout << "Error while calculating gradients." << std::endl;
-    throw std::invalid_argument("Error while calculating gradients.");
-    return;
-  }
-  _gradient = val;
 }
 
 void Neuron::set_output_value(double val) 
