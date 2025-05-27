@@ -14,7 +14,11 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 
 ## How to use
 
-### XOR example with multiple hidden layers
+### Examples
+
+#### XOR example with multiple hidden layers
+
+See the example in the `./example/xor.h` file.
 
 ```c++
 #include <iostream>
@@ -72,6 +76,13 @@ int main()
   return 0;
 }
 ```
+
+#### Three bit parity
+
+See the example in the `./example/threebitparity.h` file.
+
+Similar example to the xor sample, but it uses batches.
+
 
 ### Save/Load the Neural Network
 
