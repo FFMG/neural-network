@@ -1,4 +1,5 @@
 #include "../neuralnetworkserializer.h"
+#include "helper.h"
 
 #include <iomanip>
 #include <iostream>
@@ -49,6 +50,8 @@ private:
 public:
   static void Xor( bool use_file)
   {
+    TEST_START("Xor test.")
+
     // the file we will be loading from
     const char* file_name = "./xor.nn";
     const unsigned epoch = 100000;
@@ -105,5 +108,7 @@ public:
     std::cout << t2.front() << " (should be close to 1)" << std::endl; //  should be close to 1
 
     delete nn;
+    TEST_END
+    std::cout << std::endl;
   }
 };
