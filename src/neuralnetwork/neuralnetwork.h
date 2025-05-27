@@ -307,6 +307,9 @@ private:
   static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
   static void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers);
 
+  static void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, const std::vector<std::vector<double>>& averages, std::vector<Layer>& layers);
+
+  static GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages);
   static GradientsAndOutputs average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages);
   static std::vector<std::vector<double>> recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs);
   
