@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "../neuralnetwork.h"
+#include "helper.h"
 
 class ExampleThreebitParity
 {
@@ -33,6 +34,7 @@ public:
     const int number_of_epoch = 10000;
     const double learning_rate = 0.1;
     {
+      TEST_START("ThreebitParity test - No Batch.")
       std::cout << "No Batch:" << std::endl;
       auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation, learning_rate);
       nn->train(training_inputs, training_outputs, number_of_epoch);
@@ -48,11 +50,14 @@ public:
       std::cout << output2.front() << " (should be close to 0)" << std::endl; //  should be close to 0
 
       delete nn;
+      TEST_END
+      std::cout << std::endl;
     }
 
     {
       for( int batch_size = 1; batch_size <= 4; ++batch_size)
       {
+        TEST_START("ThreebitParity test - Batch.")
         std::cout << "Batch size=" << batch_size <<":" << std::endl;
         auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation, learning_rate);
         nn->train(training_inputs, training_outputs, number_of_epoch);
@@ -68,6 +73,8 @@ public:
         std::cout << output2.front() << " (should be close to 0)" << std::endl; //  should be close to 0
 
         delete nn;
+        TEST_END
+        std::cout << std::endl;
       }
     }  
   }
