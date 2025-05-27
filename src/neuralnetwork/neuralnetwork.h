@@ -199,6 +199,15 @@ private:
       }
     }
 
+    void set_gradients(const std::vector<std::vector<double>>& gradients)
+    {
+      // if we are calling 'set' then it is for a single batch
+      // otherwise call the add_outputs_gradients(...)
+      assert(_batch_size== 0 || _batch_size == 1);
+      _gradients = gradients;
+      _batch_size = 1;
+    }
+
     unsigned num_gradient_layers() const 
     { 
       return static_cast<unsigned>(_gradients.size());
@@ -215,6 +224,10 @@ private:
 
     double get_output(unsigned layer, unsigned neuron) const
     {
+      if(_outputs[layer].size()+1 == neuron)
+      {
+        return 1; //  bias
+      }
       if(_outputs.size() <= layer)
       {
         return 0;
@@ -237,6 +250,17 @@ private:
       auto outputs = _outputs[layer];
       outputs.push_back(1.0);
       return outputs;
+    }
+
+    unsigned num_outputs(unsigned layer) const
+    {
+      if(_outputs.size() <= layer)
+      {
+        //  just the bias
+        return 1;
+      }
+      //  add the bias
+      return static_cast<unsigned>(_outputs[layer].size() + 1);
     }
 
     void set_output(unsigned layer, unsigned neuron, double output)
@@ -305,9 +329,9 @@ private:
   
   static GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients);
   static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
-  static void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers);
 
-  static void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, const std::vector<std::vector<double>>& averages, std::vector<Layer>& layers);
+  static void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers);
+  static void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers);
 
   static GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages);
   static GradientsAndOutputs average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages);
