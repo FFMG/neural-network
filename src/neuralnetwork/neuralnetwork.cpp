@@ -532,7 +532,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_a
       std::vector<double> outputs_gradients(number_outputs, 0.0);
 
       // get the gradient this neuron in the next layer
-      const auto& next_layer_neuron_gradient = layers_neurons_averages[layer_number+1][target_neuron];
+      const auto& next_layer_neuron_gradient = activation_gradients.get_gradient(layer_number+1, target_neuron);
       for (size_t output_number = 0; output_number < number_outputs; ++output_number)
       {
         const auto& layer_neuron_output = activation_gradients.get_output(layer_number, output_number);
