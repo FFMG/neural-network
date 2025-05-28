@@ -674,7 +674,8 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients(const 
 void NeuralNetwork::calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers)
 {
   assert(target_outputs.size() == layers_given_outputs.size());
-  for(size_t i = 0; i < target_outputs.size(); ++i)
+  const auto& target_outputs_size = target_outputs.size();
+  for(size_t i = 0; i < target_outputs_size; ++i)
   {
     calculate_back_propagation_gradients(target_outputs[i], layers_given_outputs[i], layers);
   }
@@ -697,12 +698,15 @@ void NeuralNetwork::calculate_back_propagation_gradients(const std::vector<doubl
     const auto& hidden_layer = layers[layer_number];
     const auto& next_layer = layers[layer_number + 1];
 
+    const auto& hidden_layer_size = hidden_layer.size();
     std::vector<double> current_activation_gradients;
-    for (size_t n = 0; n < hidden_layer.size(); ++n)
+    current_activation_gradients.resize(hidden_layer_size, 0.0);
+    for (size_t hidden_layer_number = 0; hidden_layer_number < hidden_layer_size; ++hidden_layer_number)
     {
-      const auto& neuron = hidden_layer.get_neuron(unsigned(n));
-      const auto output_value = layers_given_outputs.get_output(layer_number, n);
-      current_activation_gradients.push_back(neuron.calculate_hidden_gradients(next_layer, next_activation_gradients, output_value));
+      const auto& neuron = hidden_layer.get_neuron(unsigned(hidden_layer_number));
+      const auto output_value = layers_given_outputs.get_output(layer_number, hidden_layer_number);
+      const auto& gradient = neuron.calculate_hidden_gradients(next_layer, next_activation_gradients, output_value);
+      current_activation_gradients[hidden_layer_number] = gradient;
     }
     layers_given_outputs.set_gradients(layer_number, current_activation_gradients);
     next_activation_gradients = current_activation_gradients;
