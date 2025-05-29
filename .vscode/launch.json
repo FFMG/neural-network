@@ -6,7 +6,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/src/neuralnetwork/main",
-      "args": [],
+      "args": ["-g", "-O0"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
