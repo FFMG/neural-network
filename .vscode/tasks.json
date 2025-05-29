@@ -18,6 +18,7 @@
         "${workspaceFolder}/src/neuralnetwork/neuralnetwork.cpp",
         "${workspaceFolder}/src/neuralnetwork/neuralnetworkserializer.cpp",        
         "${workspaceFolder}/src/neuralnetwork/neuron.cpp",
+        "${workspaceFolder}/src/neuralnetwork/threadpool.cpp",
         "${workspaceFolder}/src/neuralnetwork/libraries/TinyJSON.cpp",
         "-o",
         "${fileDirname}/main"
@@ -52,6 +53,7 @@
         "${workspaceFolder}/src/neuralnetwork/neuralnetwork.cpp",
         "${workspaceFolder}/src/neuralnetwork/neuralnetworkserializer.cpp",        
         "${workspaceFolder}/src/neuralnetwork/neuron.cpp",
+        "${workspaceFolder}/src/neuralnetwork/threadpool.cpp",
         "${workspaceFolder}/src/neuralnetwork/libraries/TinyJSON.cpp",
         "-o",
         "${fileDirname}/main"
