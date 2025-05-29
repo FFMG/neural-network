@@ -1,4 +1,6 @@
 #include "neuralnetwork.h"
+#include "threadpool.h"
+
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -261,6 +263,7 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
+  ThreadPool threadpool;
   const auto training_indexes_size = training_indexes.size();
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -273,19 +276,19 @@ void NeuralNetwork::train(
       const size_t start = j;
       const size_t end_size = std::min(j + batch_size, training_indexes_size);
 
-      futures.emplace_back(std::async(std::launch::async, [=]() 
-      {
-        std::vector<std::vector<double>> batch_inputs(
-            training_inputs.begin() + start,
-            training_inputs.begin() + end_size
-        );
+      futures.emplace_back(
+        threadpool.enqueue( [=](){
+          std::vector<std::vector<double>> batch_inputs(
+              training_inputs.begin() + start,
+              training_inputs.begin() + end_size
+          );
 
-        std::vector<std::vector<double>> batch_outputs(
-            training_outputs.begin() + start,
-            training_outputs.begin() + end_size
-        );
+          std::vector<std::vector<double>> batch_outputs(
+              training_outputs.begin() + start,
+              training_outputs.begin() + end_size
+          );
 
-        return train_single_batch(batch_inputs, batch_outputs);
+          return train_single_batch(batch_inputs, batch_outputs);
       }));
     }
 
