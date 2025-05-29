@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <execution>
+#include <future>
 #include <numeric>
 #include <random>
 #include <string>
@@ -202,6 +203,13 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
   return outputs;
 }
 
+std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batch(const std::vector<std::vector<double>>& batch_inputs, const std::vector<std::vector<double>>& batch_outputs) const
+{
+  auto batch_gradients_outputs = calculate_forward_feed(batch_inputs, *_layers);
+  calculate_batch_back_propagation(batch_outputs, batch_gradients_outputs, *_layers);
+  return batch_gradients_outputs;
+}
+
 void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
@@ -256,50 +264,39 @@ void NeuralNetwork::train(
   const auto training_indexes_size = training_indexes.size();
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs = {};
+    size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
+    std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
+    futures.reserve(num_batches);
+
     for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
-      const size_t end_size = j + batch_size > training_indexes_size ? training_indexes_size : j + batch_size;
+      const size_t start = j;
+      const size_t end_size = std::min(j + batch_size, training_indexes_size);
 
-      // create the batch input/outputs
-      std::vector<std::vector<double>> batch_inputs = {};
-      batch_inputs.insert(batch_inputs.end(), training_inputs.begin() + j, training_inputs.begin() + end_size );
-
-      std::vector<std::vector<double>> batch_outputs = {};
-      batch_outputs.insert(batch_outputs.end(), training_outputs.begin() + j, training_outputs.begin() + end_size );
-
-      auto batch_gradients_outputs = calculate_forward_feed(batch_inputs, *_layers);
-      calculate_batch_back_propagation(batch_outputs, batch_gradients_outputs, *_layers);
-
-      // we now need to calculate the average of all the gradients
-      // so we will sum them all up and devide by our batch size;
-      epoch_gradients_outputs.push_back(batch_gradients_outputs);
-    }
-
-    /*
-    // finally, set all the gradient outputs from all the gradients.
-    AverageGradientsAndOutputs consolidated_outputs_gradients;
-    for(const auto& epoch_go : epoch_gradients_outputs)
-    {
-      auto average_batch_gradient = average_batch_gradients_with_averages(epoch_go, averages);
-      //auto average_batch_gradient = average_batch_gradients(epoch_go);
-      consolidated_outputs_gradients.add_outputs_gradients(average_batch_gradient);
-    }
-    update_layers_with_gradients(consolidated_outputs_gradients, *_layers);
-    */
-
-    /*
-    for(const auto& epoch_go : epoch_gradients_outputs)
-    {
-      for(const auto& epoch_go1 : epoch_go)
+      futures.emplace_back(std::async(std::launch::async, [=]() 
       {
-        auto epoch_go2 = average_batch_gradients_with_averages({epoch_go1}, averages);
-        //auto epoch_go2 = average_batch_gradients({epoch_go1});
-        update_layers_with_gradients(epoch_go2, *_layers);
-      }
+        std::vector<std::vector<double>> batch_inputs(
+            training_inputs.begin() + start,
+            training_inputs.begin() + end_size
+        );
+
+        std::vector<std::vector<double>> batch_outputs(
+            training_outputs.begin() + start,
+            training_outputs.begin() + end_size
+        );
+
+        return train_single_batch(batch_inputs, batch_outputs);
+      }));
     }
-    */
-   update_layers_with_gradients(epoch_gradients_outputs, *_layers);
+
+    // Collect the results
+    std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs = {};
+    epoch_gradients_outputs.reserve(num_batches);
+    for (auto& f : futures) 
+    {
+      epoch_gradients_outputs.emplace_back(f.get());
+    }    
+    update_layers_with_gradients(epoch_gradients_outputs, *_layers);
     
     // do a batch check to see where we are at ...
     _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
