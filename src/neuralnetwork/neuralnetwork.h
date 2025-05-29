@@ -44,7 +44,7 @@ private:
       _data(data)
     {
     }
-    LayersAndNeurons(const std::vector<std::vector<double>>&& data) noexcept :
+    LayersAndNeurons(std::vector<std::vector<double>>&& data) noexcept :
       _data(std::move(data))
     {
     }
