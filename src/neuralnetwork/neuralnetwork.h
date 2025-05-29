@@ -10,25 +10,147 @@
 class NeuralNetwork
 {
 private:
+  class LayersAndNeurons
+  {
+  public:
+    LayersAndNeurons()
+    {
+    }
+    LayersAndNeurons(const LayersAndNeurons& src) :
+      _data(src._data)
+    {
+    }
+    LayersAndNeurons(LayersAndNeurons&& src) noexcept:
+      _data(std::move(src._data))
+    {
+    }
+    LayersAndNeurons& operator=(const LayersAndNeurons&src)
+    {
+      if(this != &src)
+      {
+        _data = src._data;
+      }
+      return *this;
+    }
+    LayersAndNeurons& operator=(LayersAndNeurons&& src) noexcept
+    {
+      if(this != &src)
+      {
+        _data = std::move(src._data);
+      }
+      return *this;
+    }
+    LayersAndNeurons(const std::vector<std::vector<double>>& data)
+    {
+      *this = data;
+    }
+    LayersAndNeurons& operator=(const std::vector<std::vector<double>>& data) noexcept
+    {
+      _data = data;
+      return *this;
+    }
+    LayersAndNeurons& operator=(std::vector<std::vector<double>>&& data) noexcept
+    {
+      _data = std::move(data);
+      return *this;
+    }
+    void zero()
+    {
+      _data = {};
+    }
+
+    std::vector<double> get_neurons(size_t layer) const 
+    {
+      if (layer >= number_layers())
+      {
+        throw std::out_of_range("LayersAndNeurons::get_row() - layer out of range");
+      }
+      return _data[layer];
+    }
+
+    void set(size_t layer, size_t neuron, double value) 
+    {
+      ensure_size(layer, neuron);
+      _data[layer][neuron] = value;
+    }
+
+    double get(size_t layer, size_t neuron) const 
+    {
+      if (layer >= number_layers())
+      {
+        throw std::out_of_range("LayersAndNeurons::get() - index out of range");
+      }
+      if (neuron >= number_neurons(layer))
+      {
+        if (neuron == number_neurons(layer))
+        {
+          return 1; //  bias
+        }
+        throw std::out_of_range("LayersAndNeurons::get(layer) - index out of range");
+      }
+      return _data[layer][neuron];
+    }
+
+    size_t number_layers() const { return _data.size(); }
+    size_t number_neurons(size_t layer) const 
+    { 
+      return layer >= number_layers() ? 0 : _data[layer].size();
+    }
+
+  private:
+    void ensure_size(size_t layer, size_t neuron)
+    {
+      if (layer >= _data.size())
+      {
+        // Resize 'data' to accommodate the new layer index.
+        // All new layers will be empty vectors initially.
+        _data.resize(layer + 1);
+      }      
+      if (neuron >= _data[layer].size()) 
+      {
+        // Resize the specific layer's neuron vector.
+        // New neurons are default-initialized to 0.0.
+        _data[layer].resize(neuron + 1, 0.0);
+      }      
+    }
+    std::vector<std::vector<double>> _data;
+  };
+
   class AverageGradientsAndOutputs
   {
   public:
-    AverageGradientsAndOutputs() :
+    AverageGradientsAndOutputs() noexcept:
       _batch_size(0)
     {
 
     };
-    AverageGradientsAndOutputs(const AverageGradientsAndOutputs& src) :
-      _outputs_gradients(src._outputs_gradients),
+    AverageGradientsAndOutputs(const AverageGradientsAndOutputs& src) noexcept:
+      _data(src._data),
       _batch_size(src._batch_size)
     {
     }
-    AverageGradientsAndOutputs& operator=(const AverageGradientsAndOutputs& src)
+    AverageGradientsAndOutputs(AverageGradientsAndOutputs&& src) noexcept
+    {
+      _data = std::move(src._data);
+      _batch_size = src._batch_size;
+      src._batch_size = 0;
+    }
+    AverageGradientsAndOutputs& operator=(const AverageGradientsAndOutputs& src) noexcept
     {
       if( &src != this)
       {
-        _outputs_gradients = src._outputs_gradients;
+        _data = src._data;
         _batch_size = src._batch_size;
+      }
+      return *this;
+    }
+    AverageGradientsAndOutputs& operator=(AverageGradientsAndOutputs&& src) noexcept
+    {
+      if( &src != this)
+      {
+        _data = std::move(src._data);
+        _batch_size = src._batch_size;
+        src._batch_size = 0;
       }
       return *this;
     }
@@ -38,26 +160,18 @@ private:
       const auto& outputs_gradients = average_outputs_gradients.get_outputs_gradients();
       for(size_t layer = 0; layer < outputs_gradients.size(); ++layer)
       {
-        while(_outputs_gradients.size() <= layer)
-        {
-          _outputs_gradients.push_back({});
-        }
         for(size_t neuron = 0; neuron < outputs_gradients[layer].size(); ++neuron)
         {
-          while(_outputs_gradients[layer].size() <= neuron)
-          {
-            _outputs_gradients[layer].push_back({});
-          }
-
+          ensure_size(layer, neuron);
           size_t number_outputs = outputs_gradients[layer][neuron].size();
-          if(_outputs_gradients[layer][neuron].size() == 0 )
+          if(_data[layer][neuron].size() == 0 )
           {
-            _outputs_gradients[layer][neuron].resize(number_outputs, 0.0);
+            _data[layer][neuron].resize(number_outputs, 0.0);
           }
 
           for(size_t i = 0; i < number_outputs; ++i)
           {
-            _outputs_gradients[layer][neuron][i] += outputs_gradients[layer][neuron][i];
+            _data[layer][neuron][i] += outputs_gradients[layer][neuron][i];
           }
         }
       }
@@ -69,15 +183,8 @@ private:
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
       assert(_batch_size== 0 || _batch_size == 1);
-      while(_outputs_gradients.size() <= layer)
-      {
-        _outputs_gradients.push_back({});
-      }
-      while(_outputs_gradients[layer].size() <= target_neuron)
-      {
-        _outputs_gradients[layer].push_back({});
-      }
-      _outputs_gradients[layer][target_neuron] = outputs_gradients;
+      ensure_size(layer, target_neuron);
+      _data[layer][target_neuron] = outputs_gradients;
       _batch_size = 1;
     }
 
@@ -87,35 +194,54 @@ private:
       {
         return {};
       }
-      if(_outputs_gradients.size() <= layer)
+      if(_data.size() <= layer)
       {
         return {};
       }
-      if(_outputs_gradients[layer].size() <= target_neuron)
+      if(_data[layer].size() <= target_neuron)
       {
         return {};
       }
       if(_batch_size == 1)
       {
-        return _outputs_gradients[layer][target_neuron];
+        return _data[layer][target_neuron];
       }
-      std::vector<double> average_output_gradient = {};
-      for( const auto& output : _outputs_gradients[layer][target_neuron])
+      const size_t output_size = _data[layer][target_neuron].size();
+      std::vector<double> average_output_gradient;
+      average_output_gradient.reserve(output_size);
+      for( size_t output_number = 0; output_number < output_size; ++output_number )
       {
-        average_output_gradient.push_back(output / static_cast<double>(_batch_size));
+        const auto& output = _data[layer][target_neuron][output_number];
+        average_output_gradient.emplace_back(output / static_cast<double>(_batch_size));
       }
       return average_output_gradient;
     }
 
   protected:
-    void zero_outputs_gradients(){ _outputs_gradients = {};};
+    void zero_outputs_gradients(){ _data = {};};
 
     const std::vector<std::vector<std::vector<double>>>& get_outputs_gradients() const
     {
-      return _outputs_gradients;
+      return _data;
     }
 
-    std::vector<std::vector<std::vector<double>>> _outputs_gradients;
+    void ensure_size(size_t layer, size_t neuron)
+    {
+      if (layer >= _data.size())
+      {
+        // Resize 'data' to accommodate the new layer index.
+        // All new layers will be empty vectors initially.
+        _data.resize(layer + 1);
+      }      
+      if (neuron >= _data[layer].size()) 
+      {
+        // Resize the specific layer's neuron vector.
+        // New neurons are default-initialized to 0.0.
+        _data[layer].resize(neuron + 1, {});
+      }      
+    }
+
+    std::vector<std::vector<std::vector<double>>> _data;
     int _batch_size = 0;
   };
 
@@ -131,7 +257,13 @@ private:
       _gradients(src._gradients)
     {
     };
-    GradientsAndOutputs& operator=(const GradientsAndOutputs& src)
+    GradientsAndOutputs(GradientsAndOutputs&& src) noexcept: 
+      AverageGradientsAndOutputs(std::move(src)),
+      _outputs(std::move(src._outputs)),
+      _gradients(std::move(src._gradients))
+    {
+    };
+    GradientsAndOutputs& operator=(const GradientsAndOutputs& src) noexcept
     {
       if( &src != this)
       {
@@ -141,20 +273,26 @@ private:
       }
       return *this;
     }
+    GradientsAndOutputs& operator=(GradientsAndOutputs&& src) noexcept
+    {
+      if( &src != this)
+      {
+        AverageGradientsAndOutputs::operator=(std::move(src));
+        _outputs = std::move(src._outputs);
+        _gradients = std::move(src._gradients);
+      }
+      return *this;
+    }
     virtual ~GradientsAndOutputs() = default;
 
     unsigned num_output_layers() const 
     { 
-      return static_cast<unsigned>(_outputs.size());
+      return static_cast<unsigned>(_outputs.number_layers());
     }
 
     unsigned num_output_neurons(unsigned layer) const 
     { 
-      if(_outputs.size() <= layer)
-      {
-        return 0;
-      }
-      return static_cast<unsigned>(_outputs[layer].size());
+      return static_cast<unsigned>(_outputs.number_neurons(layer));
     }
 
     double get_gradient(unsigned layer, unsigned neuron) const
@@ -163,15 +301,7 @@ private:
       {
         return 0.0;
       }
-      if(_gradients.size() <= layer)
-      {
-        return 0.0;
-      }
-      if(_gradients[layer].size() <= neuron)
-      {
-        return 0.0;
-      }
-      return _gradients[layer][neuron] / static_cast<double>(_batch_size);
+      return _gradients.get(layer, neuron)/ static_cast<double>(_batch_size);
     }
 
     void set_gradient(unsigned layer, unsigned neuron, double gradient)
@@ -179,15 +309,7 @@ private:
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
       assert(_batch_size== 0 || _batch_size == 1);
-      while(_gradients.size() <= layer)
-      {
-        _gradients.push_back({});
-      }
-      while(_gradients[layer].size() <= neuron)
-      {
-        _gradients[layer].push_back(0.0);
-      }
-      _gradients[layer][neuron] = gradient;
+      _gradients.set(layer, neuron, gradient);
       _batch_size = 1;
     }
 
@@ -210,70 +332,45 @@ private:
 
     unsigned num_gradient_layers() const 
     { 
-      return static_cast<unsigned>(_gradients.size());
+      return static_cast<unsigned>(_gradients.number_layers());
     }
 
     unsigned num_gradient_neurons(unsigned layer) const 
     { 
-      if(_gradients.size() <= layer)
-      {
-        return 0;
-      }
-      return static_cast<unsigned>(_gradients[layer].size());
+      return static_cast<unsigned>(_gradients.number_neurons(layer));
     }
 
     double get_output(unsigned layer, unsigned neuron) const
     {
-      if(_outputs[layer].size()+1 == neuron)
+      if(_outputs.number_neurons(layer) == neuron)
       {
-        return 1; //  bias
-      }
-      if(_outputs.size() <= layer)
-      {
-        return 0;
-      }
-      if(_outputs[layer].size() <= neuron)
-      {
-        return 0;
-      }
-      return _outputs[layer][neuron];
+        return 1.0; //  bias
+      }      
+      return _outputs.get(layer, neuron);
     }
 
     std::vector<double> get_outputs(unsigned layer) const
     {
-      if(_outputs.size() <= layer)
+      if(_outputs.number_layers() <= layer)
       {
         //  just the bias
         return {1.0};
       }
       //  add the bias
-      auto outputs = _outputs[layer];
+      auto outputs = _outputs.get_neurons(layer);
       outputs.push_back(1.0);
       return outputs;
     }
 
     unsigned num_outputs(unsigned layer) const
     {
-      if(_outputs.size() <= layer)
-      {
-        //  just the bias
-        return 1;
-      }
       //  add the bias
-      return static_cast<unsigned>(_outputs[layer].size() + 1);
+      return static_cast<unsigned>(_outputs.number_neurons(layer) + 1);
     }
 
     void set_output(unsigned layer, unsigned neuron, double output)
     {
-      while(_outputs.size() <= layer)
-      {
-        _outputs.push_back({});
-      }
-      while(_outputs[layer].size() <= neuron)
-      {
-        _outputs[layer].push_back(0.0);
-      }
-      _outputs[layer][neuron] = output;
+      _outputs.set(layer, neuron, output);
     }
     
     void set_outputs(unsigned layer, const std::vector<double>& outputs)
@@ -284,20 +381,30 @@ private:
       }
     }
 
-    void zero(){
-      zero_gradients();
-      zero_outputs();
+    void zero()
+    {
+      _gradients.zero();
+      _outputs.zero();
       zero_outputs_gradients();
     }
-    const std::vector<double>& back() const{
-      return _outputs.back();
+    const std::vector<double> output_layer_outputs(bool include_bias) const
+    {
+      const size_t size = _outputs.number_layers();
+      if(size == 0)
+      {
+        return {};
+      }
+      auto output = _outputs.get_neurons(size -1);
+      if(true == include_bias)
+      {
+        output.push_back(1.0);
+      }
+      return output;
     }
 
   private:
-    void zero_outputs(){ _outputs = {};};
-    void zero_gradients(){ _gradients = {};};
-    std::vector<std::vector<double>> _outputs;
-    std::vector<std::vector<double>> _gradients;
+    LayersAndNeurons _outputs;
+    LayersAndNeurons _gradients;
   };
 
 public:
