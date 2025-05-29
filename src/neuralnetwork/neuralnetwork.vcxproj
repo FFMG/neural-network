@@ -144,6 +144,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="activation.h" />
+    <ClInclude Include="examples\helper.h" />
+    <ClInclude Include="examples\threebitparity.h" />
+    <ClInclude Include="examples\xor.h" />
+    <ClInclude Include="layer.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
