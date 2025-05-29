@@ -13,10 +13,10 @@ private:
   class LayersAndNeurons
   {
   public:
-    LayersAndNeurons()
+    LayersAndNeurons() noexcept
     {
     }
-    LayersAndNeurons(const LayersAndNeurons& src) :
+    LayersAndNeurons(const LayersAndNeurons& src) noexcept:
       _data(src._data)
     {
     }
@@ -24,7 +24,7 @@ private:
       _data(std::move(src._data))
     {
     }
-    LayersAndNeurons& operator=(const LayersAndNeurons&src)
+    LayersAndNeurons& operator=(const LayersAndNeurons&src) noexcept
     {
       if(this != &src)
       {
@@ -40,9 +40,13 @@ private:
       }
       return *this;
     }
-    LayersAndNeurons(const std::vector<std::vector<double>>& data)
+    LayersAndNeurons(const std::vector<std::vector<double>>& data) noexcept :
+      _data(data)
     {
-      *this = data;
+    }
+    LayersAndNeurons(const std::vector<std::vector<double>>&& data) noexcept :
+      _data(std::move(data))
+    {
     }
     LayersAndNeurons& operator=(const std::vector<std::vector<double>>& data) noexcept
     {
