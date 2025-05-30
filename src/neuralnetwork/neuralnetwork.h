@@ -140,19 +140,23 @@ private:
       _batch_size(0)
     {
       _data.resize(topology.size() + 1);
+      _average_data.resize(topology.size() + 1);
       for(size_t layer = 0; layer < topology.size(); ++layer)
       {
         _data[layer].resize(topology[layer]+1, {});
+        _average_data[layer].resize(topology[layer]+1, {});
       }
     }
     AverageGradientsAndOutputs(const AverageGradientsAndOutputs& src) noexcept:
       _batch_size(src._batch_size),
-      _data(src._data)
+      _data(src._data),
+      _average_data(src._average_data)
     {
     }
     AverageGradientsAndOutputs(AverageGradientsAndOutputs&& src) noexcept
     {
       _data = std::move(src._data);
+      _average_data = std::move(src._average_data);
       _batch_size = src._batch_size;
       src._batch_size = 0;
     }
@@ -162,6 +166,7 @@ private:
       {
         _data = src._data;
         _batch_size = src._batch_size;
+        _average_data = src._average_data;
       }
       return *this;
     }
@@ -170,6 +175,7 @@ private:
       if( &src != this)
       {
         _data = std::move(src._data);
+        _average_data = std::move(src._average_data);
         _batch_size = src._batch_size;
         src._batch_size = 0;
       }
@@ -209,26 +215,25 @@ private:
       _batch_size = 1;
     }
 
-    std::vector<double> get_outputs_gradients(unsigned layer, unsigned target_neuron) const
+    const std::vector<double>& get_outputs_gradients(unsigned layer, unsigned target_neuron) const
     {
-      if(_batch_size == 0 )
+      if(_batch_size == 0 || _data.size() <= layer || _data[layer].size() <= target_neuron)
       {
-        return {};
-      }
-      if(_data.size() <= layer)
-      {
-        return {};
-      }
-      if(_data[layer].size() <= target_neuron)
-      {
-        return {};
+        std::cerr << "Trying to get invalid/out of range output values!" << std::endl;
+        throw new std::invalid_argument("Trying to get invalid/out of range output values!");
       }
       if(_batch_size == 1)
       {
         return _data[layer][target_neuron];
       }
+
       const size_t output_size = _data[layer][target_neuron].size();
-      std::vector<double> average_output_gradient;
+      if(_average_data[layer][target_neuron].size() == output_size )
+      {
+        return _average_data[layer][target_neuron];
+      }
+      
+      std::vector<double>& average_output_gradient = _average_data[layer][target_neuron];
       average_output_gradient.reserve(output_size);
       for( size_t output_number = 0; output_number < output_size; ++output_number )
       {
@@ -253,18 +258,21 @@ private:
         // Resize 'data' to accommodate the new layer index.
         // All new layers will be empty vectors initially.
         _data.resize(layer + 1);
+        _average_data.resize(layer + 1);
       }      
       if (neuron >= _data[layer].size()) 
       {
         // Resize the specific layer's neuron vector.
         // New neurons are default-initialized to 0.0.
         _data[layer].resize(neuron + 1, {});
+        _average_data[layer].resize(neuron + 1, {});
       }      
     }
 
     int _batch_size = 0;
   private:
     std::vector<std::vector<std::vector<double>>> _data;
+    mutable std::vector<std::vector<std::vector<double>>> _average_data;
   };
 
   class GradientsAndOutputs : public AverageGradientsAndOutputs
