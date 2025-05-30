@@ -136,6 +136,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="activation.cpp" />
+    <ClCompile Include="layer.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
@@ -144,6 +145,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="activation.h" />
+    <ClInclude Include="layer.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkserializer.h" />

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <numeric>
+#include <string>
 
 static const double RecentAverageSmoothingFactor = 100.0;
 
