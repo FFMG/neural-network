@@ -18,6 +18,7 @@ NeuralNetwork::NeuralNetwork(
   double learning_rate
   ) :
   _error(0.0),
+  _topology(topology),
   _layers(nullptr),
   _activation_method(activation),
   _learning_rate(learning_rate)
@@ -65,11 +66,15 @@ NeuralNetwork::NeuralNetwork(
   {
     auto copy_layer = Layer(layer);
     _layers->push_back(copy_layer);
+
+    // remove the bias Neuron.
+    _topology.push_back(copy_layer.size() -1);
   }
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
+  _topology(src._topology),
   _layers(nullptr),
   _activation_method(src._activation_method),
   _learning_rate(src._learning_rate)
@@ -102,15 +107,9 @@ const std::vector<Layer>& NeuralNetwork::get_layers() const
   return *_layers;
 }
 
-std::vector<unsigned> NeuralNetwork::get_topology() const
+const std::vector<unsigned>& NeuralNetwork::get_topology() const
 {
-  std::vector<unsigned> topology = {};
-  for(const auto& layer : *_layers)
-  {
-    // remove the bias Neuron.
-    topology.push_back(layer.size() -1);
-  }
-  return topology;
+  return _topology;
 }
 
 std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
@@ -295,15 +294,12 @@ void NeuralNetwork::train(
     // Collect the results
     std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs = {};
     epoch_gradients_outputs.reserve(num_batches);
-    for (auto& f : futures) 
+    for (auto& f : futures)
     {
-      epoch_gradients_outputs.emplace_back(f.get());
-    }    
+      epoch_gradients_outputs.emplace_back(std::move(f.get()));
+    }
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
     
-    // do a batch check to see where we are at ...
-    _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
-
     if (progress_callback != nullptr)
     {
       auto current_time = std::chrono::high_resolution_clock::now();
@@ -311,6 +307,8 @@ void NeuralNetwork::train(
       auto percent = (int)(((float)epoch / number_of_epoch)*100);
       if (elapsed_time >= interval)
       {
+        // do a batch check to see where we are at ...
+        _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
         if( !progress_callback(percent, *this))
         {
           return;
@@ -377,15 +375,15 @@ std::vector<std::vector<double>> NeuralNetwork::recalculate_gradient_avergages(c
   return averages;
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers)
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const
 {
-  std::vector<std::vector<double>> predictions = {};
-  int batch_size = training_inputs.size();
-  for (auto index = 0; index < batch_size; ++index)
+  size_t batch_size = training_inputs.size();
+  std::vector<std::vector<double>> predictions(batch_size);
+  for (size_t index = 0; index < batch_size; ++index)
   {
     const auto& inputs = training_inputs[index];
     auto all_outputs = calculate_forward_feed(inputs, layers);
-    predictions.push_back(all_outputs.output_layer_outputs(false));
+    predictions[index] = std::move(all_outputs.output_layer_outputs(false));
   }
   return calculate_rmse_error(training_outputs, predictions);
   // return calculate_mae_error(ground_truth, predictions);
@@ -511,10 +509,10 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   return mean_squared_error;
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& layers_neurons_averages)
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& layers_neurons_averages) const
 {
   // Prepare result vector with proper dimensions
-  GradientsAndOutputs gradients_and_outputs;
+  GradientsAndOutputs gradients_and_outputs(get_topology());
 
   // gradients
   gradients_and_outputs.set_gradients(layers_neurons_averages);
@@ -547,17 +545,17 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_a
   return gradients_and_outputs;
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages)
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages) const
 {
   if (batch_activation_gradients.empty()) 
   {
-    return GradientsAndOutputs();
+    return GradientsAndOutputs(get_topology());
   }
 
   size_t batch_size = batch_activation_gradients.size();
   
   // Prepare result vector with proper dimensions
-  GradientsAndOutputs activation_gradients;
+  GradientsAndOutputs activation_gradients(get_topology());
 
   // gradients
   size_t num_gradient_layers = batch_activation_gradients[0].num_gradient_layers();
@@ -607,17 +605,17 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_a
   return activation_gradients;
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients)
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients) const
 {
   if (batch_activation_gradients.empty()) 
   {
-    return GradientsAndOutputs();
+    return GradientsAndOutputs(get_topology());
   }
 
   size_t batch_size = batch_activation_gradients.size();
   
   // Prepare result vector with proper dimensions
-  GradientsAndOutputs activation_gradients;
+  GradientsAndOutputs activation_gradients(get_topology());
 
   // gradients
   size_t num_gradient_layers = batch_activation_gradients[0].num_gradient_layers();
@@ -729,7 +727,7 @@ void NeuralNetwork::calculate_batch_back_propagation(const std::vector<std::vect
   calculate_batch_back_propagation_gradients(target_outputs, batch_given_outputs, layers);
 }
 
-void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers)
+void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
 {
   // get the average gradient for all the batches for that epoch
   auto averages = recalculate_gradient_avergages(epoch_gradients_outputs);
@@ -744,7 +742,7 @@ void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<G
   }
 }
 
-void NeuralNetwork::update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers)
+void NeuralNetwork::update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers) const
 {
   // update the weights in reverse
   for (auto layer_number = layers.size() - 1; layer_number > 0; --layer_number) 
@@ -761,7 +759,7 @@ void NeuralNetwork::update_layers_with_gradients(const AverageGradientsAndOutput
   }
 }
 
-std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers)
+std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const
 {
   const size_t inputs_size = inputs.size();
   std::vector<GradientsAndOutputs> activations_per_layer_per_input(inputs_size);
@@ -771,15 +769,15 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward
         inputs.begin(), 
         inputs.end(),
         activations_per_layer_per_input.begin(),
-        [&layers](const auto& i) { return calculate_forward_feed(i, layers); }
+        [&layers, this](const auto& i) { return calculate_forward_feed(i, layers); }
     );  
   return activations_per_layer_per_input;
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers)
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
 {
   // the return value is the activation values per layers.
-  GradientsAndOutputs activations_per_layer;
+  GradientsAndOutputs activations_per_layer(get_topology());
 
   //  the initial set of output values where we are starting from.
   activations_per_layer.set_outputs(0, inputs);
@@ -789,7 +787,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
   {
     const auto& previous_layer = layers[layer_number - 1];
     auto& this_layer = layers[layer_number];
-    auto previous_layer_output_values = activations_per_layer.output_layer_outputs(true);
+    const auto previous_layer_output_values = activations_per_layer.output_layer_outputs(true);
     for (size_t neuron_number = 0; neuron_number < this_layer.size() - 1; ++neuron_number)
     {
       const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
