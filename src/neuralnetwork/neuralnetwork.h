@@ -16,6 +16,14 @@ private:
     LayersAndNeurons() noexcept
     {
     }
+    LayersAndNeurons(const std::vector<unsigned>& topology) noexcept
+    {
+      _data.resize(topology.size() + 1);
+      for(size_t layer = 0; layer < topology.size(); ++layer)
+      {
+        _data[layer].resize(topology[layer]+1, {});
+      }
+    }
     LayersAndNeurons(const LayersAndNeurons& src) noexcept:
       _data(src._data)
     {
@@ -123,14 +131,23 @@ private:
   class AverageGradientsAndOutputs
   {
   public:
-    AverageGradientsAndOutputs() noexcept:
+    AverageGradientsAndOutputs()  noexcept:
       _batch_size(0)
     {
+    }
 
-    };
+    AverageGradientsAndOutputs(const std::vector<unsigned>& topology) noexcept:
+      _batch_size(0)
+    {
+      _data.resize(topology.size() + 1);
+      for(size_t layer = 0; layer < topology.size(); ++layer)
+      {
+        _data[layer].resize(topology[layer]+1, {});
+      }
+    }
     AverageGradientsAndOutputs(const AverageGradientsAndOutputs& src) noexcept:
-      _data(src._data),
-      _batch_size(src._batch_size)
+      _batch_size(src._batch_size),
+      _data(src._data)
     {
     }
     AverageGradientsAndOutputs(AverageGradientsAndOutputs&& src) noexcept
@@ -245,17 +262,25 @@ private:
       }      
     }
 
-    std::vector<std::vector<std::vector<double>>> _data;
     int _batch_size = 0;
+  private:
+    std::vector<std::vector<std::vector<double>>> _data;
   };
 
   class GradientsAndOutputs : public AverageGradientsAndOutputs
   {
   public:
-    GradientsAndOutputs() : AverageGradientsAndOutputs()
+    GradientsAndOutputs() noexcept: AverageGradientsAndOutputs()
     {
-    };
-    GradientsAndOutputs(const GradientsAndOutputs& src) : 
+    }
+
+    GradientsAndOutputs(const std::vector<unsigned>& topology) noexcept: 
+      AverageGradientsAndOutputs(topology),
+      _gradients(topology)
+    {
+    }
+
+    GradientsAndOutputs(const GradientsAndOutputs& src) noexcept:
       AverageGradientsAndOutputs(src),
       _outputs(src._outputs),
       _gradients(src._gradients)
@@ -428,7 +453,7 @@ public:
     const std::vector<double>& inputs
   ) const;
 
-  std::vector<unsigned> get_topology() const;
+  const std::vector<unsigned>& get_topology() const;
   const std::vector<Layer>& get_layers() const;
   activation::method get_activation_method() const;
   long double get_error() const;
@@ -437,17 +462,17 @@ public:
 private:
   std::vector<GradientsAndOutputs> train_single_batch(const std::vector<std::vector<double>>& batch_inputs, const std::vector<std::vector<double>>& batch_outputs) const;
 
-  static GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers);
-  static std::vector<GradientsAndOutputs> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers);
+  GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
+  std::vector<GradientsAndOutputs> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const;
   
-  static GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients);
+  GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients) const;
   static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
 
-  static void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers);
-  static void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers);
+  void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers) const;
+  void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers) const;
 
-  static GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages);
-  static GradientsAndOutputs average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages);
+  GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages) const;
+  GradientsAndOutputs average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages) const;
   static std::vector<std::vector<double>> recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs);
   
   static void calculate_back_propagation_gradients(const std::vector<double>& target_outputs, GradientsAndOutputs& layers_given_outputs, const std::vector<Layer>& layers);
@@ -456,7 +481,7 @@ private:
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
-  static double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers);
+  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const;
 
   // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
   static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
@@ -472,6 +497,7 @@ private:
   static std::vector<size_t> get_shuffled_indexes(size_t raw_size);
   
   long double _error;
+  std::vector<unsigned> _topology;
   std::vector<Layer>* _layers;
   const activation::method _activation_method;
   double _learning_rate;
