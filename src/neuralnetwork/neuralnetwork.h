@@ -10,130 +10,6 @@
 class NeuralNetwork
 {
 private:
-  class LayersAndNeurons2
-  {
-  public:
-    LayersAndNeurons2() noexcept
-    {
-    }
-    LayersAndNeurons2(const std::vector<unsigned>& topology) noexcept
-    {
-      _data.reserve(topology.size());
-      for(size_t layer = 0; layer < topology.size(); ++layer)
-      {
-        _data.emplace_back(topology[layer]);
-      }
-    }
-    LayersAndNeurons2(const LayersAndNeurons2& src) noexcept:
-      _data(src._data)
-    {
-    }
-    LayersAndNeurons2(LayersAndNeurons2&& src) noexcept:
-      _data(std::move(src._data))
-    {
-    }
-    LayersAndNeurons2& operator=(const LayersAndNeurons2&src) noexcept
-    {
-      if(this != &src)
-      {
-        _data = src._data;
-      }
-      return *this;
-    }
-    LayersAndNeurons2& operator=(LayersAndNeurons2&& src) noexcept
-    {
-      if(this != &src)
-      {
-        _data = std::move(src._data);
-      }
-      return *this;
-    }
-    LayersAndNeurons2(const std::vector<std::vector<double>>& data) noexcept :
-      _data(data)
-    {
-    }
-    LayersAndNeurons2(std::vector<std::vector<double>>&& data) noexcept :
-      _data(std::move(data))
-    {
-    }
-    LayersAndNeurons2& operator=(const std::vector<std::vector<double>>& data) noexcept
-    {
-      _data = data;
-      return *this;
-    }
-    LayersAndNeurons2& operator=(std::vector<std::vector<double>>&& data) noexcept
-    {
-      _data = std::move(data);
-      return *this;
-    }
-    void zero()
-    {
-      _data = {};
-    }
-
-    const std::vector<double>& get_neurons(size_t layer) const 
-    {
-      if (layer >= number_layers())
-      {
-        throw std::out_of_range("LayersAndNeurons2::get_row() - layer out of range");
-      }
-      return _data[layer];
-    }
-
-    void set(size_t layer, size_t neuron, double value) 
-    {
-      ensure_size(layer, neuron);
-      _data[layer][neuron] = value;
-    }
-
-    void set(size_t layer, const std::vector<double> values) 
-    {
-      ensure_size(layer, values.size()-1);
-      _data[layer] = values;
-    }
-
-    double get(size_t layer, size_t neuron) const 
-    {
-      if (layer >= number_layers())
-      {
-        throw std::out_of_range("LayersAndNeurons2::get() - index out of range");
-      }
-      if (neuron >= number_neurons(layer))
-      {
-        if (neuron == number_neurons(layer))
-        {
-          return 1; //  bias
-        }
-        throw std::out_of_range("LayersAndNeurons2::get(layer) - index out of range");
-      }
-      return _data[layer][neuron];
-    }
-
-    size_t number_layers() const { return _data.size(); }
-    size_t number_neurons(size_t layer) const 
-    { 
-      return layer >= number_layers() ? 0 : _data[layer].size();
-    }
-
-  private:
-    void ensure_size(size_t layer, size_t neuron)
-    {
-      if (layer >= _data.size())
-      {
-        // Resize 'data' to accommodate the new layer index.
-        // All new layers will be empty vectors initially.
-        _data.resize(layer + 1);
-      }      
-      if (neuron >= _data[layer].size()) 
-      {
-        // Resize the specific layer's neuron vector.
-        // New neurons are default-initialized to 0.0.
-        _data[layer].resize(neuron + 1, 0.0);
-      }      
-    }
-    std::vector<std::vector<double>> _data;
-  };
-
   template <typename T>
   class LayersAndNeurons
   {
@@ -303,6 +179,7 @@ private:
 
     GradientsAndOutputs(const std::vector<unsigned>& topology) noexcept: 
       _batch_size(0),
+      _outputs(topology, false, false),
       _gradients(topology, false, true),
       _gradients_and_outputs(topology, true, true)
     {
@@ -445,7 +322,7 @@ private:
 
   private:
     int _batch_size;
-    LayersAndNeurons2 _outputs;
+    LayersAndNeurons<double> _outputs;
     LayersAndNeurons<double> _gradients;
     LayersAndNeurons<std::vector<double>> _gradients_and_outputs;
   };
