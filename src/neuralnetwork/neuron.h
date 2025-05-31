@@ -93,8 +93,8 @@ public:
   void set_output_value(double val);
   double get_output_value() const;
   
-  double calculate_forward_feed(const Layer& prevLayer, const std::vector<double>& previous_layer_output_values ) const;
-  void forward_feed(const Layer& prevLayer);
+  double calculate_forward_feed(const Layer& , const std::vector<double>& previous_layer_output_values ) const;
+  void forward_feed(const Layer& previous_layer);
   
   double calculate_output_gradients(double target_value, double output_value) const;
   
