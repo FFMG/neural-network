@@ -46,7 +46,7 @@ private:
       return *this;
     }
 
-    LayersAndNeurons(const std::vector<unsigned>& topology, bool shifted_by_one, bool add_bias) noexcept
+    LayersAndNeurons(const std::vector<unsigned>& topology, bool shifted_by_one=false, bool add_bias=false) noexcept
     {
       size_t offset = 0;
       if(shifted_by_one)
@@ -109,6 +109,7 @@ private:
       ensure_size(layer, neuron);
       _data[_offsets[layer][neuron]] = data;
     }
+
     inline void set( unsigned layer, const std::vector<T>& data)
     {
       assert(number_neurons(layer) == data.size());
@@ -139,6 +140,7 @@ private:
     {
       return _offsets.size();
     }
+
     size_t number_neurons(size_t layer) const
     {
       if(layer >= _offsets.size())
@@ -270,6 +272,12 @@ private:
       _batch_size = 1;
     }
 
+    void set_gradients(const LayersAndNeurons<double>& gradients)
+    {
+      _gradients = gradients;
+      _batch_size = 1;
+    }
+
     void set_gradients(const std::vector<std::vector<double>>& gradients)
     {
       // if we are calling 'set' then it is for a single batch
@@ -362,9 +370,8 @@ private:
   void update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers) const;
   void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers) const;
 
-  GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages) const;
-  GradientsAndOutputs average_batch_gradients_with_averages(const std::vector<GradientsAndOutputs>& batch_activation_gradients, const std::vector<std::vector<double>>& averages) const;
-  static std::vector<std::vector<double>> recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs);
+  GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const LayersAndNeurons<double>& averages) const;
+  LayersAndNeurons<double> recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs) const;
   
   static void calculate_back_propagation_gradients(const std::vector<double>& target_outputs, GradientsAndOutputs& layers_given_outputs, const std::vector<Layer>& layers);
   static void calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers);

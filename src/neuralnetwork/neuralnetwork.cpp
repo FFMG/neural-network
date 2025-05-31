@@ -331,32 +331,28 @@ void NeuralNetwork::train(
   }
 }
 
-std::vector<std::vector<double>> NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs)
+NeuralNetwork::LayersAndNeurons<double> NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs) const
 {
+  LayersAndNeurons<double> averages(get_topology(), false, true);
+
   // this is the number of batches we had this epoch
   const size_t epoch_gradients_outputs_size = epoch_gradients_outputs.size();
   if( 0 == epoch_gradients_outputs_size)
   {
-    return {};
+    return averages;
   }
 
-  // then get he layer size off the first batch
-  const auto layers_size = epoch_gradients_outputs[0][0].num_gradient_layers();
-
-  // we can use it to build out vector of avergaes.
-  std::vector<std::vector<double>> averages;
-  averages.resize(layers_size, {});
+  // go around all the layers/neurons to get the averages per batch
+  const auto layers_size = averages.number_layers();
   for(unsigned layer_number = 0; layer_number < layers_size; ++layer_number)
   {
     // we get the number of neurons from the first batch.
-    const auto neurons_size = epoch_gradients_outputs[0][0].num_gradient_neurons(layer_number);
+    const auto neurons_size = averages.number_neurons(layer_number);
 
-    // and make space for it.
-    averages[layer_number].resize(neurons_size, 0.0);
-
-    double sum = 0.0;
     for(unsigned neuron_number = 0; neuron_number < neurons_size; ++neuron_number)
     {
+      double epoch_sum = 0.0;
+      double total_epoch_size = 0.0;
       // then we look at all the batches to get the gradients.
       for(size_t epoch_gradients_outputs_number = 0; epoch_gradients_outputs_number < epoch_gradients_outputs_size; ++epoch_gradients_outputs_number)
       {
@@ -364,11 +360,12 @@ std::vector<std::vector<double>> NeuralNetwork::recalculate_gradient_avergages(c
         const size_t actual_batch_size = epoch_gradients_outputs[epoch_gradients_outputs_number].size();          
         for(size_t batch_index = 0; batch_index < actual_batch_size; ++batch_index)
         {
-          sum += epoch_gradients_outputs[epoch_gradients_outputs_number][batch_index].get_gradient(layer_number, neuron_number);
+          epoch_sum += epoch_gradients_outputs[epoch_gradients_outputs_number][batch_index].get_gradient(layer_number, neuron_number);
         }
-        auto average_gradient = sum / static_cast<double>(actual_batch_size);
-        averages[layer_number][neuron_number] = average_gradient;
+        total_epoch_size += static_cast<double>(actual_batch_size);
       }
+      auto average_gradient = (epoch_sum / static_cast<double>(total_epoch_size));
+      averages.set(layer_number, neuron_number, average_gradient);
     }
   }
   return averages;
@@ -508,7 +505,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   return mean_squared_error;
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& layers_neurons_averages) const
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const LayersAndNeurons<double>& layers_neurons_averages) const
 {
   // Prepare result vector with proper dimensions
   GradientsAndOutputs gradients_and_outputs(get_topology());
@@ -518,11 +515,11 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients_with_a
 
   // we get the output to the connecting layer
   // so this layer will have then number of outputs to the _next_ layer.
-  const size_t layers_size = layers_neurons_averages.size();
+  const size_t layers_size = layers_neurons_averages.number_layers();
   for (size_t layer_number = 0; layer_number < layers_size -1; ++layer_number)
   {
     // number of neurons to the next layer
-    const size_t neurons_size = layers_neurons_averages[layer_number+1].size();
+    const size_t neurons_size = layers_neurons_averages.number_neurons(layer_number+1);
     for( size_t neuron_number = 0; neuron_number < neurons_size; ++neuron_number )
     {
       // bias is added by the get_outputs( ... ) method for _this_ layer.
