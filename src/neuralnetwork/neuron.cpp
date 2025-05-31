@@ -194,17 +194,17 @@ double Neuron::get_output_value() const
   return _output_value; 
 }
 
-double Neuron::calculate_forward_feed(const Layer& prevLayer, const std::vector<double>& previous_layer_output_values) const
+double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values) const
 {
   double sum = 0.0;
 
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
 
-  assert(previous_layer_output_values.size() == prevLayer.size());
-  for (unsigned neuron_index = 0; neuron_index < prevLayer.size(); ++neuron_index) 
+  assert(previous_layer_output_values.size() == previous_layer.size());
+  for (unsigned neuron_index = 0; neuron_index < previous_layer.size(); ++neuron_index) 
   {
-    const auto& previous_layer_neuron = prevLayer.get_neuron(neuron_index);
+    const auto& previous_layer_neuron = previous_layer.get_neuron(neuron_index);
     const auto output_weight = previous_layer_neuron.get_output_weight(_index);
     const auto output_value  = previous_layer_output_values[neuron_index];
     sum +=  output_value * output_weight;
@@ -218,14 +218,14 @@ double Neuron::calculate_forward_feed(const Layer& prevLayer, const std::vector<
   return _activation_method.activate(sum);
 }
 
-void Neuron::forward_feed(const Layer& prevLayer)
+void Neuron::forward_feed(const Layer& previous_layer)
 {
   // build the output values
   std::vector<double> previous_layer_output_values;
-  previous_layer_output_values.reserve(prevLayer.size());
-  for(auto neuron : prevLayer.get_neurons())
+  previous_layer_output_values.reserve(previous_layer.size());
+  for(auto neuron : previous_layer.get_neurons())
   {
     previous_layer_output_values.push_back(neuron.get_output_value());
   }
-  set_output_value(calculate_forward_feed(prevLayer, previous_layer_output_values));
+  set_output_value(calculate_forward_feed(previous_layer, previous_layer_output_values));
 }
