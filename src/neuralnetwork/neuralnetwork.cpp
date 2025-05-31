@@ -741,7 +741,7 @@ void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<G
   }
 }
 
-void NeuralNetwork::update_layers_with_gradients(const FlatAverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers) const
+void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers) const
 {
   // update the weights in reverse
   for (auto layer_number = layers.size() - 1; layer_number > 0; --layer_number) 
