@@ -18,10 +18,10 @@ private:
     }
     LayersAndNeurons(const std::vector<unsigned>& topology) noexcept
     {
-      _data.resize(topology.size() + 1);
+      _data.reserve(topology.size());
       for(size_t layer = 0; layer < topology.size(); ++layer)
       {
-        _data[layer].resize(topology[layer]+1, {});
+        _data.emplace_back(topology[layer]);
       }
     }
     LayersAndNeurons(const LayersAndNeurons& src) noexcept:
@@ -71,7 +71,7 @@ private:
       _data = {};
     }
 
-    std::vector<double> get_neurons(size_t layer) const 
+    const std::vector<double>& get_neurons(size_t layer) const 
     {
       if (layer >= number_layers())
       {
@@ -84,6 +84,12 @@ private:
     {
       ensure_size(layer, neuron);
       _data[layer][neuron] = value;
+    }
+
+    void set(size_t layer, const std::vector<double> values) 
+    {
+      ensure_size(layer, values.size()-1);
+      _data[layer] = values;
     }
 
     double get(size_t layer, size_t neuron) const 
@@ -128,185 +134,164 @@ private:
     std::vector<std::vector<double>> _data;
   };
 
-  class AverageGradientsAndOutputs
+  class FlatAverageGradientsAndOutputs
   {
   public:
-    AverageGradientsAndOutputs()  noexcept:
-      _batch_size(0)
+    FlatAverageGradientsAndOutputs(const FlatAverageGradientsAndOutputs& src) noexcept :
+      _batch_size(src._batch_size),
+      _data(src._data),
+      _offsets(src._offsets)
     {
     }
 
-    AverageGradientsAndOutputs(const std::vector<unsigned>& topology) noexcept:
-      _batch_size(0)
-    {
-      _data.resize(topology.size() + 1);
-      _average_data.resize(topology.size() + 1);
-      for(size_t layer = 0; layer < topology.size(); ++layer)
-      {
-        _data[layer].resize(topology[layer]+1, {});
-        _average_data[layer].resize(topology[layer]+1, {});
-      }
-    }
-    AverageGradientsAndOutputs(const AverageGradientsAndOutputs& src) noexcept:
+    FlatAverageGradientsAndOutputs(FlatAverageGradientsAndOutputs&& src) noexcept :
       _batch_size(src._batch_size),
-      _data(src._data),
-      _average_data(src._average_data)
+      _data(std::move(src._data)),
+      _offsets(std::move(src._offsets))
     {
-    }
-    AverageGradientsAndOutputs(AverageGradientsAndOutputs&& src) noexcept
-    {
-      _data = std::move(src._data);
-      _average_data = std::move(src._average_data);
-      _batch_size = src._batch_size;
       src._batch_size = 0;
     }
-    AverageGradientsAndOutputs& operator=(const AverageGradientsAndOutputs& src) noexcept
+
+    FlatAverageGradientsAndOutputs& operator=(const FlatAverageGradientsAndOutputs& src) noexcept
     {
-      if( &src != this)
+      if(this != &src)
       {
-        _data = src._data;
         _batch_size = src._batch_size;
-        _average_data = src._average_data;
+        _data = src._data;
+        _offsets = src._offsets;
       }
       return *this;
     }
-    AverageGradientsAndOutputs& operator=(AverageGradientsAndOutputs&& src) noexcept
+
+    FlatAverageGradientsAndOutputs& operator=(FlatAverageGradientsAndOutputs&& src) noexcept
     {
-      if( &src != this)
+      if(this != &src)
       {
-        _data = std::move(src._data);
-        _average_data = std::move(src._average_data);
         _batch_size = src._batch_size;
+        _data = std::move(src._data);
+        _offsets = std::move(src._offsets);
         src._batch_size = 0;
       }
       return *this;
     }
 
-    void add_outputs_gradients(const AverageGradientsAndOutputs& average_outputs_gradients)
+    FlatAverageGradientsAndOutputs(const std::vector<unsigned>& topology) noexcept :
+      _batch_size(0)
     {
-      const auto& outputs_gradients = average_outputs_gradients.get_outputs_gradients();
-      for(size_t layer = 0; layer < outputs_gradients.size(); ++layer)
+      size_t offset = 0;
+      // the offset size is the nuber of layers.
+      _offsets.reserve(topology.size() -1);
+      for (size_t layer = 1; layer < topology.size(); ++layer)
       {
-        for(size_t neuron = 0; neuron < outputs_gradients[layer].size(); ++neuron)
+        _offsets.emplace_back(topology[layer]+1);
+        for (size_t neuron = 0; neuron < topology[layer]; ++neuron) 
+        {
+          _offsets[layer-1][neuron] = offset;
+          ++offset;
+        }
+        _offsets[layer-1][topology[layer]] = offset;  //  bias
+        ++offset;
+      }
+      _data.resize(offset);
+    }
+
+    inline void add( const FlatAverageGradientsAndOutputs& src)
+    {
+      for(size_t layer = 0; layer < src._data.size(); ++layer)
+      {
+        for(size_t neuron = 0; neuron < src._data[layer].size(); ++neuron)
         {
           ensure_size(layer, neuron);
-          size_t number_outputs = outputs_gradients[layer][neuron].size();
-          if(_data[layer][neuron].size() == 0 )
+          for( size_t raw_data = 0; raw_data < src._data[_offsets[layer][neuron]].size(); ++raw_data )
           {
-            _data[layer][neuron].resize(number_outputs, 0.0);
-          }
-
-          for(size_t i = 0; i < number_outputs; ++i)
-          {
-            _data[layer][neuron][i] += outputs_gradients[layer][neuron][i];
+            if(_data[_offsets[layer][neuron]].size() <= raw_data)
+            {
+              _data[_offsets[layer][neuron]].push_back(src._data[src._offsets[layer][neuron]][raw_data]);
+            }
+            else
+            {
+              _data[_offsets[layer][neuron]][raw_data] += src._data[src._offsets[layer][neuron]][raw_data];
+            }
           }
         }
       }
       ++_batch_size;
     }
 
-    void set_outputs_gradients(unsigned layer, unsigned target_neuron, const std::vector<double>& outputs_gradients)
+    inline void set( unsigned layer, unsigned neuron, const std::vector<double>&& data)
     {
-      // if we are calling 'set' then it is for a single batch
-      // otherwise call the add_outputs_gradients(...)
-      assert(_batch_size== 0 || _batch_size == 1);
-      ensure_size(layer, target_neuron);
-      _data[layer][target_neuron] = outputs_gradients;
+      ensure_size(layer, neuron);
+      _data[_offsets[layer][neuron]] = std::move(data);
       _batch_size = 1;
     }
 
-    const std::vector<double>& get_outputs_gradients(unsigned layer, unsigned target_neuron) const
+    inline void set( unsigned layer, unsigned neuron, const std::vector<double>& data)
     {
-      if(_batch_size == 0 || _data.size() <= layer || _data[layer].size() <= target_neuron)
-      {
-        std::cerr << "Trying to get invalid/out of range output values!" << std::endl;
-        throw new std::invalid_argument("Trying to get invalid/out of range output values!");
-      }
-      if(_batch_size == 1)
-      {
-        return _data[layer][target_neuron];
-      }
-
-      const size_t output_size = _data[layer][target_neuron].size();
-      if(_average_data[layer][target_neuron].size() == output_size )
-      {
-        return _average_data[layer][target_neuron];
-      }
-      
-      std::vector<double>& average_output_gradient = _average_data[layer][target_neuron];
-      average_output_gradient.reserve(output_size);
-      for( size_t output_number = 0; output_number < output_size; ++output_number )
-      {
-        const auto& output = _data[layer][target_neuron][output_number];
-        average_output_gradient.emplace_back(output / static_cast<double>(_batch_size));
-      }
-      return average_output_gradient;
+      ensure_size(layer, neuron);
+      _data[_offsets[layer][neuron]] = data;
+      _batch_size = 1;
     }
 
-  protected:
-    void zero_outputs_gradients(){ _data = {};};
-
-    const std::vector<std::vector<std::vector<double>>>& get_outputs_gradients() const
+    inline const std::vector<double>& get( unsigned layer, unsigned neuron) const
     {
-      return _data;
+      ensure_size(layer, neuron);
+      return _data[_offsets[layer][neuron]];
     }
 
-    void ensure_size(size_t layer, size_t neuron)
+    inline int get_batch_size() const 
     {
-      if (layer >= _data.size())
-      {
-        // Resize 'data' to accommodate the new layer index.
-        // All new layers will be empty vectors initially.
-        _data.resize(layer + 1);
-        _average_data.resize(layer + 1);
-      }      
-      if (neuron >= _data[layer].size()) 
-      {
-        // Resize the specific layer's neuron vector.
-        // New neurons are default-initialized to 0.0.
-        _data[layer].resize(neuron + 1, {});
-        _average_data[layer].resize(neuron + 1, {});
-      }      
+      return _batch_size;
     }
-
-    int _batch_size = 0;
+    inline void set_batch_size(int batch_size)
+    {
+      _batch_size = batch_size;
+    }
   private:
-    std::vector<std::vector<std::vector<double>>> _data;
-    mutable std::vector<std::vector<std::vector<double>>> _average_data;
+    void ensure_size(size_t layer, size_t neuron) const
+    {
+      if(layer >= _offsets.size() || neuron >= _offsets[layer].size())
+      {
+        std::cerr << "The layer/neuron is out of bound!" << std::endl;
+        throw new std::invalid_argument("The layer/neuron is out of bound!");
+      }
+    }
+
+    // the values
+    int _batch_size = 0;
+    std::vector<std::vector<double>> _data;
+    std::vector<std::vector<size_t>> _offsets;
   };
 
-  class GradientsAndOutputs : public AverageGradientsAndOutputs
+  class GradientsAndOutputs
   {
   public:
-    GradientsAndOutputs() noexcept: AverageGradientsAndOutputs()
-    {
-    }
+    GradientsAndOutputs() = delete;
 
     GradientsAndOutputs(const std::vector<unsigned>& topology) noexcept: 
-      AverageGradientsAndOutputs(topology),
-      _gradients(topology)
+      _gradients(topology),
+      _gradients_and_outputs(topology)
     {
     }
 
     GradientsAndOutputs(const GradientsAndOutputs& src) noexcept:
-      AverageGradientsAndOutputs(src),
       _outputs(src._outputs),
-      _gradients(src._gradients)
+      _gradients(src._gradients),
+      _gradients_and_outputs(src._gradients_and_outputs)
     {
     };
     GradientsAndOutputs(GradientsAndOutputs&& src) noexcept: 
-      AverageGradientsAndOutputs(std::move(src)),
       _outputs(std::move(src._outputs)),
-      _gradients(std::move(src._gradients))
+      _gradients(std::move(src._gradients)),
+      _gradients_and_outputs(std::move(src._gradients_and_outputs))
     {
     };
     GradientsAndOutputs& operator=(const GradientsAndOutputs& src) noexcept
     {
       if( &src != this)
       {
-        AverageGradientsAndOutputs::operator=(src);
         _outputs = src._outputs;
         _gradients = src._gradients;
+        _gradients_and_outputs = src._gradients_and_outputs;
       }
       return *this;
     }
@@ -314,9 +299,9 @@ private:
     {
       if( &src != this)
       {
-        AverageGradientsAndOutputs::operator=(std::move(src));
         _outputs = std::move(src._outputs);
         _gradients = std::move(src._gradients);
+        _gradients_and_outputs = std::move(src._gradients_and_outputs);
       }
       return *this;
     }
@@ -332,39 +317,48 @@ private:
       return static_cast<unsigned>(_outputs.number_neurons(layer));
     }
 
+    inline const FlatAverageGradientsAndOutputs& get_gradients_and_outputs() const
+    {
+      return _gradients_and_outputs;
+    } 
+
+    inline void set_gradients_and_outputs(unsigned layer, unsigned neuron, const std::vector<double>& data)
+    {
+      return _gradients_and_outputs.set(layer, neuron, data);
+    } 
+
     double get_gradient(unsigned layer, unsigned neuron) const
     {
-      if(_batch_size == 0 )
+      auto batch_size = _gradients_and_outputs.get_batch_size();
+      if(batch_size == 0 )
       {
         return 0.0;
       }
-      return _gradients.get(layer, neuron)/ static_cast<double>(_batch_size);
+      return _gradients.get(layer, neuron)/ static_cast<double>(batch_size);
     }
 
     void set_gradient(unsigned layer, unsigned neuron, double gradient)
     {
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
-      assert(_batch_size== 0 || _batch_size == 1);
+      assert(_gradients_and_outputs.get_batch_size()== 0 || _gradients_and_outputs.get_batch_size()==1);
       _gradients.set(layer, neuron, gradient);
-      _batch_size = 1;
+      _gradients_and_outputs.set_batch_size(1);
     }
 
     void set_gradients(unsigned layer, const std::vector<double>& gradients)
     {
-      for( unsigned neuron = 0; neuron < gradients.size(); ++neuron)
-      {
-        set_gradient(layer, neuron, gradients[neuron]);
-      }
+      _gradients.set(layer, gradients);
+      _gradients_and_outputs.set_batch_size(1);
     }
 
     void set_gradients(const std::vector<std::vector<double>>& gradients)
     {
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
-      assert(_batch_size== 0 || _batch_size == 1);
+      assert(_gradients_and_outputs.get_batch_size()== 0 || _gradients_and_outputs.get_batch_size()==1);
       _gradients = gradients;
-      _batch_size = 1;
+      _gradients_and_outputs.set_batch_size(1);
     }
 
     unsigned num_gradient_layers() const 
@@ -386,62 +380,32 @@ private:
       return _outputs.get(layer, neuron);
     }
 
-    std::vector<double> get_outputs(unsigned layer) const
-    {
-      if(_outputs.number_layers() <= layer)
-      {
-        //  just the bias
-        return {1.0};
-      }
-      //  add the bias
-      auto outputs = _outputs.get_neurons(layer);
-      outputs.push_back(1.0);
-      return outputs;
-    }
-
     unsigned num_outputs(unsigned layer) const
     {
       //  add the bias
       return static_cast<unsigned>(_outputs.number_neurons(layer) + 1);
     }
-
-    void set_output(unsigned layer, unsigned neuron, double output)
-    {
-      _outputs.set(layer, neuron, output);
-    }
     
     void set_outputs(unsigned layer, const std::vector<double>& outputs)
     {
-      for(unsigned neuron = 0; neuron < outputs.size(); ++neuron)
-      {
-        set_output(layer, neuron, outputs[neuron]);
-      }
+      _outputs.set(layer, outputs);
     }
 
-    void zero()
-    {
-      _gradients.zero();
-      _outputs.zero();
-      zero_outputs_gradients();
-    }
-    const std::vector<double> output_layer_outputs(bool include_bias) const
+    const std::vector<double>& output_back() const
     {
       const size_t size = _outputs.number_layers();
       if(size == 0)
       {
-        return {};
+        std::cerr << "Trying to get the last output but none available!" << std::endl;
+        throw new std::invalid_argument("Trying to get the last output but none available!");
       }
-      auto output = _outputs.get_neurons(size -1);
-      if(true == include_bias)
-      {
-        output.push_back(1.0);
-      }
-      return output;
+      return _outputs.get_neurons(size -1);
     }
 
   private:
     LayersAndNeurons _outputs;
     LayersAndNeurons _gradients;
+    FlatAverageGradientsAndOutputs _gradients_and_outputs;
   };
 
 public:
@@ -476,7 +440,7 @@ private:
   GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients) const;
   static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
 
-  void update_layers_with_gradients(const AverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers) const;
+  void update_layers_with_gradients(const FlatAverageGradientsAndOutputs& activation_gradients, std::vector<Layer>& layers) const;
   void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers) const;
 
   GradientsAndOutputs average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const std::vector<std::vector<double>>& averages) const;
