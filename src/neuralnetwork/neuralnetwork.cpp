@@ -210,6 +210,17 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
   return batch_gradients_outputs;
 }
 
+std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batch(
+    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    const std::vector<std::vector<double>>::const_iterator outputs_begin,
+    const size_t size
+  ) const
+{
+  auto batch_gradients_outputs = calculate_forward_feed(inputs_begin, inputs_begin+size, *_layers);
+  calculate_batch_back_propagation(outputs_begin, size, batch_gradients_outputs, *_layers);
+  return batch_gradients_outputs;
+}
+
 void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
@@ -268,13 +279,17 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  ThreadPool threadpool;
+  ThreadPool threadpool(1);
   const auto training_indexes_size = training_indexes.size();
+
+  size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
+  std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
+  futures.reserve(num_batches);
+  
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
-    std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
-    futures.reserve(num_batches);
+    // reset the futures.
+    futures.clear();
 
     for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
@@ -283,6 +298,7 @@ void NeuralNetwork::train(
 
       futures.emplace_back(
         threadpool.enqueue( [=](){
+          /*
           std::vector<std::vector<double>> batch_inputs(
               training_inputs.begin() + start,
               training_inputs.begin() + end_size
@@ -294,6 +310,11 @@ void NeuralNetwork::train(
           );
 
           return train_single_batch(batch_inputs, batch_outputs);
+          */
+         return train_single_batch(
+          training_inputs.begin() + start,
+          training_outputs.begin() + start,
+          end_size - start);
       }));
     }
 
@@ -626,6 +647,20 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::average_batch_gradients(const 
   return activation_gradients;
 }
 
+void NeuralNetwork::calculate_batch_back_propagation_gradients(
+    const std::vector<std::vector<double>>::const_iterator outputs_begin, 
+    const size_t outputs_size, 
+    std::vector<GradientsAndOutputs>& layers_given_outputs, 
+    const std::vector<Layer>& layers)
+{
+  assert(outputs_size == layers_given_outputs.size());
+  for(size_t i = 0; i < outputs_size; ++i)
+  {
+    const auto& output = outputs_begin + i;
+    calculate_back_propagation_gradients(*output, layers_given_outputs[i], layers);
+  }
+}
+
 void NeuralNetwork::calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers)
 {
   assert(target_outputs.size() == layers_given_outputs.size());
@@ -667,6 +702,24 @@ void NeuralNetwork::calculate_back_propagation_gradients(const std::vector<doubl
     next_activation_gradients = current_activation_gradients;
     current_activation_gradients = {};
   }
+}
+
+void NeuralNetwork::calculate_batch_back_propagation(
+    const std::vector<std::vector<double>>::const_iterator outputs_begin, 
+    const size_t outputs_size,
+    std::vector<GradientsAndOutputs>& batch_given_outputs, 
+    const std::vector<Layer>& layers)
+{
+  auto batch_size = batch_given_outputs.size();
+  if(batch_size == 0)
+  {
+    std::cerr << "Batch size is 0 so we cannot do back propagation!" << std::endl;
+    throw new std::invalid_argument("Batch size is 0 so we cannot do back propagation!");
+    return;
+  }
+
+  // calculate all the gradients in the batch.
+  calculate_batch_back_propagation_gradients(outputs_begin, outputs_size, batch_given_outputs, layers);
 }
 
 void NeuralNetwork::calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers)
@@ -713,6 +766,23 @@ void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vec
       neuron.update_input_weights(previous_layer, weights_gradients);
     }
   }
+}
+
+std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(
+    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    const std::vector<std::vector<double>>::const_iterator inputs_end, 
+    const std::vector<Layer>& layers) const
+{
+  size_t size = inputs_end - inputs_begin;
+  std::vector<GradientsAndOutputs> activations_per_layer_per_input;
+  activations_per_layer_per_input.reserve(size);
+
+  for(size_t input_number = 0; input_number < size; ++input_number)
+  {
+    const auto& input = inputs_begin+input_number;
+    activations_per_layer_per_input.emplace_back(calculate_forward_feed(*input, layers));
+  }
+  return activations_per_layer_per_input;
 }
 
 std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const
