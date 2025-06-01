@@ -9,6 +9,7 @@
 #include <string>
 
 static const double RecentAverageSmoothingFactor = 100.0;
+static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
@@ -229,7 +230,9 @@ void NeuralNetwork::train(
     throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
   }
 
-  const auto interval = std::chrono::seconds(5);
+  std::cout << "Started trainning with " << training_inputs.size() << " inputs, " << number_of_epoch << " epoch and batch size " << batch_size << "." << std::endl;
+
+  const auto interval = std::chrono::seconds(IntervalErorCheckInSeconds);
   auto last_callback_time = std::chrono::high_resolution_clock::now();
   // initial callback
   _error = 0.0;
@@ -246,6 +249,11 @@ void NeuralNetwork::train(
   std::vector<size_t> checking_indexes;
   std::vector<size_t> final_check_indexes;
   create_shuffled_indexes(training_inputs.size(), data_is_unique, training_indexes, checking_indexes, final_check_indexes);
+
+  std::cout << "Tainning will use: " << std::endl;
+  std::cout << "  " << training_indexes .size() << " training indexes." << std::endl;
+  std::cout << "  " << checking_indexes.size() << " in training error check indexes." << std::endl;
+  std::cout << "  " << final_check_indexes.size() << " final error check indexes." << std::endl;
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
