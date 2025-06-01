@@ -361,9 +361,19 @@ public:
 
 private:
   std::vector<GradientsAndOutputs> train_single_batch(const std::vector<std::vector<double>>& batch_inputs, const std::vector<std::vector<double>>& batch_outputs) const;
-
   GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
   std::vector<GradientsAndOutputs> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const;
+
+  std::vector<GradientsAndOutputs> train_single_batch(
+    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    const std::vector<std::vector<double>>::const_iterator outputs_begin,
+    const size_t size
+  ) const;
+  std::vector<GradientsAndOutputs> calculate_forward_feed(
+    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    const std::vector<std::vector<double>>::const_iterator inputs_end, 
+    const std::vector<Layer>& layers) const;
+  
   
   GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients) const;
   static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
