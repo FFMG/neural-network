@@ -14,8 +14,9 @@ ThreadPool::ThreadPool(size_t threads) :
   {
     // Fallback for systems that might report 0 or if user passes 0
     threads = 1;
-    std::cerr << "Warning: ThreadPool initialized with 0 threads. Setting to 1.\n";
+    std::cerr << "Warning: ThreadPool initialized with 0 threads. Setting to 1." << std::endl;
   }
+  std::cout << "ThreadPool initialized with " << threads << " worker threads." << std::endl;
 
   // Create the worker threads
   for (size_t i = 0; i < threads; ++i) 
