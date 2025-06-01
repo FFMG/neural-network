@@ -1,5 +1,4 @@
 #include "neuralnetwork.h"
-#include "threadpool.h"
 
 #include <cassert>
 #include <chrono>
@@ -307,7 +306,7 @@ void NeuralNetwork::train(
       if (elapsed_time >= interval)
       {
         // do a batch check to see where we are at ...
-        _error = calculate_error(checking_training_inputs, checking_training_outputs, *_layers);
+        _error = calculate_error(threadpool, checking_training_inputs, checking_training_outputs, *_layers);
         if( !progress_callback(percent, *this))
         {
           return;
@@ -321,7 +320,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
-  _error = calculate_error(final_training_inputs, final_training_outputs, *_layers);
+  _error = calculate_error(threadpool, final_training_inputs, final_training_outputs, *_layers);
   std::cout << "Final Test Error: " << _error << std::endl;
 
   // final callback if needed
@@ -371,16 +370,29 @@ NeuralNetwork::LayersAndNeurons<double> NeuralNetwork::recalculate_gradient_aver
   return averages;
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const
+double NeuralNetwork::calculate_error(ThreadPool& threadpool, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const
 {
   size_t batch_size = training_inputs.size();
-  std::vector<std::vector<double>> predictions(batch_size);
+  std::vector<std::future<std::vector<double>>> futures;
+  futures.reserve(batch_size);
+
   for (size_t index = 0; index < batch_size; ++index)
   {
-    const auto& inputs = training_inputs[index];
-    auto all_outputs = calculate_forward_feed(inputs, layers);
-    predictions[index] = std::move(all_outputs.output_back());
+    futures.emplace_back(
+      threadpool.enqueue( [=](){
+        const auto& inputs = training_inputs[index];
+        auto all_outputs = calculate_forward_feed(inputs, layers);
+        return all_outputs.output_back();
+    }));
   }
+
+  std::vector<std::vector<double>> predictions;
+  predictions.reserve(batch_size);
+  for (auto& f : futures)
+  {
+    predictions.emplace_back(std::move(f.get()));
+  }
+
   return calculate_rmse_error(training_outputs, predictions);
   // return calculate_mae_error(ground_truth, predictions);
   //return calculate_huber_loss(ground_truth, predictions);
