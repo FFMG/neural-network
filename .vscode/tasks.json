@@ -11,7 +11,7 @@
         "-Werror",
         "-Wunused-function",
         "-Wunused-value",
-        "-O3",
+        "-Og",
         "${workspaceFolder}/src/neuralnetwork/activation.cpp",
         "${workspaceFolder}/src/neuralnetwork/layer.cpp",
         "${workspaceFolder}/src/neuralnetwork/main.cpp",
