@@ -6,6 +6,7 @@
 #include "activation.h"
 #include "layer.h"
 #include "neuron.h"
+#include "threadpool.h"
 
 class NeuralNetwork
 {
@@ -379,7 +380,7 @@ private:
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
-  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const;
+  double calculate_error(ThreadPool& threadpool, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const;
 
   // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
   static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
