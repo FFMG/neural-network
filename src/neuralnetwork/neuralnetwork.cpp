@@ -270,11 +270,15 @@ void NeuralNetwork::train(
 
   ThreadPool threadpool;
   const auto training_indexes_size = training_indexes.size();
+
+  size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
+  std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
+  futures.reserve(num_batches);
+  
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
-    std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
-    futures.reserve(num_batches);
+    // reset the futures.
+    futures.clear();
 
     for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
@@ -283,6 +287,7 @@ void NeuralNetwork::train(
 
       futures.emplace_back(
         threadpool.enqueue( [=](){
+          /*
           std::vector<std::vector<double>> batch_inputs(
               training_inputs.begin() + start,
               training_inputs.begin() + end_size
@@ -294,6 +299,11 @@ void NeuralNetwork::train(
           );
 
           return train_single_batch(batch_inputs, batch_outputs);
+          */
+         return train_single_batch(
+          training_inputs.begin() + start,
+          training_outputs.begin() + start,
+          end_size);
       }));
     }
 
@@ -713,6 +723,23 @@ void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vec
       neuron.update_input_weights(previous_layer, weights_gradients);
     }
   }
+}
+
+std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(
+    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    const std::vector<std::vector<double>>::const_iterator inputs_end, 
+    const std::vector<Layer>& layers) const
+{
+  size_t size = inputs_end - inputs_begin;
+  std::vector<GradientsAndOutputs> activations_per_layer_per_input;
+  activations_per_layer_per_input.reserve(size);
+
+  for(size_t input_number = 0; input_number < size; ++input_number)
+  {
+    const auto& input = inputs_begin+input_number;
+    activations_per_layer_per_input.emplace_back(calculate_forward_feed(*input, layers));
+  }
+  return activations_per_layer_per_input;
 }
 
 std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const
