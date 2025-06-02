@@ -373,6 +373,7 @@ private:
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator inputs_end, 
     const std::vector<Layer>& layers) const;
+
   static void calculate_batch_back_propagation(
     const std::vector<std::vector<double>>::const_iterator outputs_begin, 
     const size_t outputs_size, 
