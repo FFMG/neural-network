@@ -239,6 +239,16 @@ private:
       return static_cast<unsigned>(_outputs.number_neurons(layer));
     }
 
+    unsigned num_gradients_and_outputs_layers() const 
+    { 
+      return static_cast<unsigned>(_gradients_and_outputs.number_layers());
+    }
+
+    unsigned num_gradients_and_outputs_neurons(unsigned layer) const 
+    { 
+      return static_cast<unsigned>(_gradients_and_outputs.number_neurons(layer));
+    }
+
     inline const LayersAndNeurons<std::vector<double>>& get_gradients_and_outputs() const
     {
       return _gradients_and_outputs;
@@ -327,6 +337,32 @@ private:
         throw new std::invalid_argument("Trying to get the last output but none available!");
       }
       return _outputs.get_neurons(size -1);
+    }
+
+    void zero()
+    {
+      for( size_t layer = 0; layer < num_gradient_layers(); ++layer)
+      {
+        for( size_t neuron = 0; neuron < num_gradient_neurons(layer); ++layer)
+        {
+          _gradients.set(layer, neuron, 0);
+        }
+      }
+      for( size_t layer = 0; layer < num_output_layers(); ++layer)
+      {
+        for( size_t neuron = 0; neuron < num_output_neurons(layer); ++layer)
+        {
+          _outputs.set(layer, neuron, 0);
+        }
+      }
+      for( size_t layer = 0; layer < num_gradients_and_outputs_layers(); ++layer)
+      {
+        for( size_t neuron = 0; neuron < num_gradients_and_outputs_neurons(layer); ++layer)
+        {
+          _gradients_and_outputs.set(layer, neuron, {});
+        }
+      }
+      _batch_size = 0;
     }
 
   private:
