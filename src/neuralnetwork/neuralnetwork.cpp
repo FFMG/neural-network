@@ -279,7 +279,7 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  ThreadPool threadpool(1);
+  ThreadPool threadpool;
   const auto training_indexes_size = training_indexes.size();
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
