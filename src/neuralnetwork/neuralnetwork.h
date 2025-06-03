@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 
 #include "activation.h"
@@ -17,13 +18,13 @@ private:
   public:
     LayersAndNeurons(const LayersAndNeurons& src) noexcept :
       _data(src._data),
-      _offsets(src._offsets)
+      _topology(src._topology)
     {
     }
 
     LayersAndNeurons(LayersAndNeurons&& src) noexcept :
       _data(std::move(src._data)),
-      _offsets(std::move(src._offsets))
+      _topology(std::move(src._topology))
     {
     }
 
@@ -32,7 +33,7 @@ private:
       if(this != &src)
       {
         _data = src._data;
-        _offsets = src._offsets;
+        _topology = src._topology;
       }
       return *this;
     }
@@ -42,56 +43,33 @@ private:
       if(this != &src)
       {
         _data = std::move(src._data);
-        _offsets = std::move(src._offsets);
+        _topology = std::move(src._topology);
       }
       return *this;
     }
 
     LayersAndNeurons(const std::vector<unsigned>& topology, bool shifted_by_one=false, bool add_bias=false) noexcept
     {
-      size_t offset = 0;
       if(shifted_by_one)
       {
-        _offsets.reserve(topology.size() -1);
-        for (size_t layer = 1; layer < topology.size(); ++layer)
-        {
-          _offsets.emplace_back(topology[layer]+(add_bias?1:0));
-          for (size_t neuron = 0; neuron < topology[layer]; ++neuron) 
-          {
-            _offsets[layer-1][neuron] = offset;
-            ++offset;
-          }
-          if(add_bias)
-          {
-            _offsets[layer-1][topology[layer]] = offset;  //  bias
-            ++offset;
-          }
-        }
+        _topology.insert(_topology.begin(), topology.begin()+1, topology.end());
       }
       else
       {
-        _offsets.reserve(topology.size());
-        for (size_t layer = 0; layer < topology.size(); ++layer)
+        _topology.insert(_topology.begin(), topology.begin(), topology.end());
+      }
+      if(add_bias)
+      {
+        for (auto& t : _topology)
         {
-          _offsets.emplace_back(topology[layer]+(add_bias?1:0));
-          for (size_t neuron = 0; neuron < topology[layer]; ++neuron) 
-          {
-            _offsets[layer][neuron] = offset;
-            ++offset;
-          }
-          if(add_bias)
-          {
-            _offsets[layer][topology[layer]] = offset;  //  bias
-            ++offset;
-          }          
+          ++t;  //  bias
         }
       }
-      _data.resize(offset);
     }
 
     LayersAndNeurons& operator=(const std::vector<std::vector<T>>& data)
     {
-      assert(_offsets.size() == data.size());
+      assert(_topology.size() == data.size());
       for(size_t layer = 0; layer < data.size(); ++layer)
       {
         set(layer, data[layer]);
@@ -102,13 +80,13 @@ private:
     inline void set( unsigned layer, unsigned neuron, T&& data)
     {
       ensure_size(layer, neuron);
-      _data[_offsets[layer][neuron]] = std::move(data);
+      _data.insert_or_assign(key(layer, neuron), std::move(data));
     }
 
     inline void set( unsigned layer, unsigned neuron, const T& data)
     {
       ensure_size(layer, neuron);
-      _data[_offsets[layer][neuron]] = data;
+      _data.insert_or_assign(key(layer, neuron), data);
     }
 
     inline void set( unsigned layer, const std::vector<T>& data)
@@ -116,63 +94,64 @@ private:
       assert(number_neurons(layer) == data.size());
       for(size_t neuron = 0; neuron < data.size(); ++neuron)
       {
-        _data[_offsets[layer][neuron]] = data[neuron];
+        _data.insert_or_assign(key(layer, neuron), data[neuron]);
       }
     }
     
-    inline const T& get( unsigned layer, unsigned neuron) const
+    inline const T& get(unsigned layer, unsigned neuron) const
     {
       ensure_size(layer, neuron);
-      return _data[_offsets[layer][neuron]];
+      return _data.at(key(layer, neuron));
     }
 
     std::vector<T> get_neurons( unsigned layer) const
     {
       std::vector<T> data;
-      data.reserve(_offsets[layer].size());
-      for(size_t neuron = 0; neuron < _offsets[layer].size(); ++neuron)
+      data.reserve(_topology[layer]);
+      for(size_t neuron = 0; neuron < _topology[layer]; ++neuron)
       {
-        data.emplace_back(_data[_offsets[layer][neuron]]);
+        data.emplace_back(_data.at(key(layer, neuron)));
       }
       return data;
     }
 
     size_t number_layers() const
     {
-      return _offsets.size();
+      return _topology.size();
     }
 
     size_t number_neurons(size_t layer) const
     {
-      if(layer >= _offsets.size())
+      if(layer >= _topology.size())
       {
         return 0;
       }
-      // if we have a topology of  {1,2,6}
-      // then the number of neurons at layer 1 = 2
-      // the offset are
-      // layer[0][0] = 0
-      // layer[1][0] = 1
-      // layer[1][1] = 2
-      // layer[2][0] = 3
-      // layer[2][1] = 4
-      // ...
-      // so the number of neurons is the number of offsets at that layer
-      return _offsets[layer].size();
+      return _topology[layer];
     }
   private:
+    #ifndef NDEBUG
     void ensure_size(size_t layer, size_t neuron) const
     {
-      if(layer >= _offsets.size() || neuron >= _offsets[layer].size())
+      if(layer >= _topology.size() || neuron >= _topology[layer])
       {
         std::cerr << "The layer/neuron is out of bound!" << std::endl;
         throw new std::invalid_argument("The layer/neuron is out of bound!");
       }
     }
+    #else
+    void ensure_size(size_t, size_t) const
+    {
+    }
+    #endif
+
+    inline unsigned int key(unsigned short layer, unsigned short neuron) const
+    {
+      return (layer << 16) | (neuron);
+    }
 
     // the values
-    std::vector<T> _data;
-    std::vector<std::vector<size_t>> _offsets;
+    std::unordered_map<unsigned int, T> _data;
+    std::vector<unsigned short> _topology;
   };
 
   class GradientsAndOutputs
