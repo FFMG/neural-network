@@ -396,10 +396,7 @@ public:
   double get_learning_rate() const;
 
 private:
-  std::vector<GradientsAndOutputs> train_single_batch(const std::vector<std::vector<double>>& batch_inputs, const std::vector<std::vector<double>>& batch_outputs) const;
   GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
-  std::vector<GradientsAndOutputs> calculate_forward_feed(const std::vector<std::vector<double>>& inputs, const std::vector<Layer>& layers) const;
-
   std::vector<GradientsAndOutputs> train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,
@@ -420,9 +417,6 @@ private:
     const size_t outputs_size, 
     std::vector<GradientsAndOutputs>& layers_given_outputs, 
     const std::vector<Layer>& layers);
-  
-  GradientsAndOutputs average_batch_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients) const;
-  static void calculate_batch_back_propagation(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& batch_given_outputs, const std::vector<Layer>& layers);
 
   void update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers) const;
   void update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, std::vector<Layer>& layers) const;
