@@ -290,11 +290,11 @@ void NeuralNetwork::train(
     // and the epoch outputs
     epoch_gradients_outputs.clear();
 
+    // create the batches
     for( size_t j = 0; j < training_indexes_size; j += batch_size)
     {
       const size_t start = j;
       const size_t end_size = std::min(j + batch_size, training_indexes_size);
-
       futures.emplace_back(
         threadpool.enqueue( [=](){
          return train_single_batch(
@@ -343,15 +343,13 @@ void NeuralNetwork::train(
   }
 }
 
-NeuralNetwork::LayersAndNeurons<double> NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs) const
-{
-  LayersAndNeurons<double> averages(get_topology(), false, true);
-
+void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, LayersAndNeurons<double>& averages) const
+{  
   // this is the number of batches we had this epoch
   const size_t epoch_gradients_outputs_size = epoch_gradients_outputs.size();
   if( 0 == epoch_gradients_outputs_size)
   {
-    return averages;
+    return;
   }
 
   // go around all the layers/neurons to get the averages per batch
@@ -380,7 +378,6 @@ NeuralNetwork::LayersAndNeurons<double> NeuralNetwork::recalculate_gradient_aver
       averages.set(layer_number, neuron_number, average_gradient);
     }
   }
-  return averages;
 }
 
 double NeuralNetwork::calculate_error(ThreadPool& threadpool, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const
@@ -641,9 +638,10 @@ void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<G
 {
   // Prepare result vector with proper dimensions
   LayersAndNeurons<std::vector<double>> gradients_and_outputs(get_topology(), true, true);
+  LayersAndNeurons<double> averages(get_topology(), false, true);
 
   // get the average gradient for all the batches for that epoch
-  auto averages = recalculate_gradient_avergages(epoch_gradients_outputs);
+  recalculate_gradient_avergages(epoch_gradients_outputs, averages);
 
   for(const auto& this_epoch_gradients_outputs : epoch_gradients_outputs)
   {
