@@ -99,7 +99,7 @@ private:
       return *this;
     }
 
-    inline void set( unsigned layer, unsigned neuron, const T&& data)
+    inline void set( unsigned layer, unsigned neuron, T&& data)
     {
       ensure_size(layer, neuron);
       _data[_offsets[layer][neuron]] = std::move(data);
