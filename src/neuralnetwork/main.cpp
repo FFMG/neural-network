@@ -9,7 +9,7 @@ int main()
   ExampleXor::Xor(false);
 
   // Problem: 3-bit Parity
-  ExampleThreebitParity::ThreebitParity();
+  // ExampleThreebitParity::ThreebitParity();
 
   return 0;
 }
