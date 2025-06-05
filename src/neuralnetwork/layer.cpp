@@ -1,3 +1,4 @@
+#include "./libraries/instrumentor.h"
 #include "layer.h"
 
 #include <iostream>
@@ -8,7 +9,7 @@ Layer::Layer(LayerType layer_type) :
   _number_output_neurons(0),
   _layer_type(layer_type)
 {
-
+  MYODDWEB_PROFILE_FUNCTION("Layer");
 }
 
 Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, double learning_rate) :
@@ -16,6 +17,7 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
   _number_output_neurons(num_neurons_in_this_layer),
   _layer_type(layer_type)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (num_neurons_in_this_layer == 0) 
   {
     std::cerr << "Warning: Creating a layer with 0 neurons." << std::endl;
@@ -47,10 +49,23 @@ Layer::Layer(const Layer& src) :
   _number_output_neurons(src._number_output_neurons),
   _layer_type(src._layer_type)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+}
+
+Layer::Layer(Layer&& src) :
+  _neurons(std::move(src._neurons)),
+  _number_input_neurons(src._number_input_neurons),
+  _number_output_neurons(src._number_output_neurons),
+  _layer_type(src._layer_type)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  src._number_output_neurons = 0;
+  src._number_input_neurons = 0;
 }
 
 Layer& Layer::operator=(const Layer& src)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if(this != &src)
   {
     _neurons = src._neurons;
@@ -61,19 +76,36 @@ Layer& Layer::operator=(const Layer& src)
   return *this;
 }
 
+Layer& Layer::operator=(Layer&& src)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  if(this != &src)
+  {
+    _neurons = std::move(src._neurons);
+    _number_input_neurons = src._number_input_neurons;
+    _number_output_neurons = src._number_output_neurons;
+    _layer_type = src._layer_type;
+    src._number_output_neurons = 0;
+    src._number_input_neurons = 0;
+  }
+  return *this;
+}
 
 unsigned Layer::size() const
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   return _number_output_neurons + 1;  //  add one for the bias
 }
 
 void Layer::add_neuron(const Neuron& neuron)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   _neurons.push_back(neuron);
 }
 
 Layer Layer::create_input_layer(const std::vector<Neuron>& neurons)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
     std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
@@ -88,11 +120,13 @@ Layer Layer::create_input_layer(const std::vector<Neuron>& neurons)
 
 Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, double learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation, learning_rate);
 }
 
 Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
     std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
@@ -107,11 +141,13 @@ Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned nu
 
 Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Hidden, activation, learning_rate);
 }
 
 Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
     std::cerr << "Warning: Creating a layer with 1 neurons, (bias is needed)." << std::endl;
@@ -126,16 +162,42 @@ Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned nu
 
 Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, learning_rate);
 }
 
 std::vector<double> Layer::get_outputs() const
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   std::vector<double> outputs;
   outputs.reserve(size() - 1); //  exclude the bias Neuron
   for (auto it = _neurons.begin(); it != _neurons.end() - 1; ++it) 
   {
-    outputs.push_back(it->get_output_value());
+    outputs.emplace_back(it->get_output_value());
   }
   return outputs;
+}
+
+const std::vector<Neuron>& Layer::get_neurons() const 
+{ 
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  return _neurons;
+}
+
+std::vector<Neuron>& Layer::get_neurons() 
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  return _neurons;
+}
+
+const Neuron& Layer::get_neuron(unsigned index) const 
+{ 
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  return _neurons[index];
+}
+
+Neuron& Layer::get_neuron(unsigned index) 
+{ 
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  return _neurons[index];
 }

@@ -20,6 +20,7 @@ Neuron::Neuron(
   _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (auto weight : weights)
   {
@@ -41,6 +42,7 @@ Neuron::Neuron(
   _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   for (auto& weights : output_weights)
   {
     auto connection = Connection(weights[0], weights[1]);
@@ -56,11 +58,13 @@ Neuron::Neuron(const Neuron& src) :
   _learning_rate(src._learning_rate),
   _alpha(LEARNING_ALPHA)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   _output_weights = src._output_weights;
 }
 
 const Neuron& Neuron::operator=(const Neuron& src)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (this != &src)
   {
     Clean();
@@ -75,11 +79,13 @@ const Neuron& Neuron::operator=(const Neuron& src)
 
 Neuron::~Neuron()
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   Clean();
 }
 
 std::vector<std::array<double, 2>> Neuron::get_weights() const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   std::vector<std::array<double, 2>> weights;
   for(const auto& output_weight : _output_weights)
   {
@@ -90,10 +96,12 @@ std::vector<std::array<double, 2>> Neuron::get_weights() const
 
 void Neuron::Clean()
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
 }
 
 void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(weights_gradients.size() == previous_layer.size());
   for (size_t i = 0; i < weights_gradients.size(); ++i) 
   {
@@ -125,11 +133,13 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
 
 double Neuron::get_output_weight(int index) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   return _output_weights[index].weight();
 }
 
 double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   double sum = 0.0;
   assert(activation_gradients.size() == next_layer.size());
   for (unsigned n = 0; n < next_layer.size() - 1; ++n) 
@@ -148,11 +158,13 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
 
 double Neuron::clip_gradient(double val, double clip_val) 
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   return std::max(-clip_val, std::min(clip_val, val));
 }
 
 double Neuron::calculate_output_gradients(double target_value, double output_value) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   double delta = target_value - output_value;
   auto gradient = delta * _activation_method.activate_derivative(output_value);
   if (!std::isfinite(gradient))
@@ -166,6 +178,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
 
 double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   auto derivatives_of_weights = sum_of_derivatives_of_weights(next_layer, activation_gradients);
   auto gradient = derivatives_of_weights * _activation_method.activate_derivative(output_value);
   gradient = clip_gradient(gradient, GRADIENT_CLIP);
@@ -180,6 +193,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
 
 void Neuron::set_output_value(double val) 
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (!std::isfinite(val))
   {
     std::cout << "Error while calculating output values." << std::endl;
@@ -191,16 +205,17 @@ void Neuron::set_output_value(double val)
 
 double Neuron::get_output_value() const
 { 
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   return _output_value; 
 }
 
 double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   double sum = 0.0;
 
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
-
   assert(previous_layer_output_values.size() == previous_layer.size());
   for (unsigned neuron_index = 0; neuron_index < previous_layer.size(); ++neuron_index) 
   {
@@ -220,6 +235,7 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
 
 void Neuron::forward_feed(const Layer& previous_layer)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   // build the output values
   std::vector<double> previous_layer_output_values;
   previous_layer_output_values.reserve(previous_layer.size());
