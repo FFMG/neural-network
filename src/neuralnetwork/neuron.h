@@ -2,6 +2,8 @@
 #include "activation.h"
 #include "layer.h"
 
+#include "./libraries/instrumentor.h"
+
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -23,15 +25,17 @@ private:
       _weight(weight), 
       _delta_weight(delta_weight)
     {
+      MYODDWEB_PROFILE_FUNCTION("Connection");
     }
     Connection(const Connection& connection) : 
       _weight(connection._weight),
       _delta_weight(connection._delta_weight)
     {
-
+      MYODDWEB_PROFILE_FUNCTION("Connection");
     }
     Connection& operator=(const Connection& connection)
     {
+      MYODDWEB_PROFILE_FUNCTION("Connection");
       if (this != &connection)
       {
         set_weight(connection._weight);
@@ -41,10 +45,19 @@ private:
     }
     virtual ~Connection() = default;
 
-    double weight() const { return _weight; };
-    double delta_weight() const { return _delta_weight; };
+    double weight() const 
+    { 
+      MYODDWEB_PROFILE_FUNCTION("Connection");
+      return _weight; 
+    };
+    double delta_weight() const 
+    { 
+      MYODDWEB_PROFILE_FUNCTION("Connection");
+      return _delta_weight; 
+    };
     void set_weight( double weight) 
     { 
+      MYODDWEB_PROFILE_FUNCTION("Connection");
       if (!std::isfinite(weight))
       {
         std::cout << "Error while setting weight." << std::endl;
@@ -55,6 +68,7 @@ private:
     };
     void set_delta_weight(double delta_weight)
     {
+      MYODDWEB_PROFILE_FUNCTION("Connection");
       if (!std::isfinite(delta_weight))
       {
         std::cout << "Error while setting delta weight." << std::endl;
@@ -102,10 +116,14 @@ public:
 
   void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients);
 
-  unsigned get_index() const {
+  unsigned get_index() const 
+  {
+    MYODDWEB_PROFILE_FUNCTION("Neuron");
     return _index;
   }
-  double get_learning_rate() const {
+  double get_learning_rate() const 
+  {
+    MYODDWEB_PROFILE_FUNCTION("Neuron");
     return _learning_rate;
   }
   std::vector<std::array<double, 2>> get_weights() const;

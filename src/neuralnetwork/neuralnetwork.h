@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "./libraries/instrumentor.h"
+
 #include "activation.h"
 #include "layer.h"
 #include "neuron.h"
@@ -20,16 +22,19 @@ private:
       _data(src._data),
       _topology(src._topology)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
     }
 
     LayersAndNeurons(LayersAndNeurons&& src) noexcept :
       _data(std::move(src._data)),
       _topology(std::move(src._topology))
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
     }
 
     LayersAndNeurons& operator=(const LayersAndNeurons& src) noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(this != &src)
       {
         _data = src._data;
@@ -40,6 +45,7 @@ private:
 
     LayersAndNeurons& operator=(LayersAndNeurons&& src) noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(this != &src)
       {
         _data = std::move(src._data);
@@ -50,6 +56,7 @@ private:
 
     LayersAndNeurons(const std::vector<unsigned>& topology, bool shifted_by_one=false, bool add_bias=false) noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(shifted_by_one)
       {
         _topology.insert(_topology.begin(), topology.begin()+1, topology.end());
@@ -69,6 +76,7 @@ private:
 
     LayersAndNeurons& operator=(const std::vector<std::vector<T>>& data)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(_topology.size() == data.size());
       for(size_t layer = 0; layer < data.size(); ++layer)
       {
@@ -79,18 +87,21 @@ private:
 
     inline void set( unsigned layer, unsigned neuron, T&& data)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
       _data.insert_or_assign(key(layer, neuron), std::move(data));
     }
 
     inline void set( unsigned layer, unsigned neuron, const T& data)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
       _data.insert_or_assign(key(layer, neuron), data);
     }
 
     inline void set( unsigned layer, const std::vector<T>& data)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(number_neurons(layer) == data.size());
       for(size_t neuron = 0; neuron < data.size(); ++neuron)
       {
@@ -100,12 +111,14 @@ private:
     
     inline const T& get(unsigned layer, unsigned neuron) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
       return _data.at(key(layer, neuron));
     }
 
     std::vector<T> get_neurons( unsigned layer) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       std::vector<T> data;
       data.reserve(_topology[layer]);
       for(size_t neuron = 0; neuron < _topology[layer]; ++neuron)
@@ -117,11 +130,13 @@ private:
 
     size_t number_layers() const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return _topology.size();
     }
 
     size_t number_neurons(size_t layer) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(layer >= _topology.size())
       {
         return 0;
@@ -129,9 +144,10 @@ private:
       return _topology[layer];
     }
   private:
-    #ifndef NDEBUG
+    #ifdef NDEBUG
     void ensure_size(size_t layer, size_t neuron) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(layer >= _topology.size() || neuron >= _topology[layer])
       {
         std::cerr << "The layer/neuron is out of bound!" << std::endl;
@@ -146,6 +162,7 @@ private:
 
     inline unsigned int key(unsigned short layer, unsigned short neuron) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return (layer << 16) | (neuron);
     }
 
@@ -165,6 +182,7 @@ private:
       _gradients(topology, false, true),
       _gradients_and_outputs(topology, true, true)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
     }
 
     GradientsAndOutputs(const GradientsAndOutputs& src) noexcept:
@@ -173,18 +191,22 @@ private:
       _gradients(src._gradients),
       _gradients_and_outputs(src._gradients_and_outputs)
     {
-    };
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+    }
+
     GradientsAndOutputs(GradientsAndOutputs&& src) noexcept: 
       _batch_size(src._batch_size),
       _outputs(std::move(src._outputs)),
       _gradients(std::move(src._gradients)),
       _gradients_and_outputs(std::move(src._gradients_and_outputs))
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       src._batch_size = 0;
     }
 
     GradientsAndOutputs& operator=(const GradientsAndOutputs& src) noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if( &src != this)
       {
         _batch_size = src._batch_size;
@@ -196,6 +218,7 @@ private:
     }
     GradientsAndOutputs& operator=(GradientsAndOutputs&& src) noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if( &src != this)
       {
         _batch_size = src._batch_size;
@@ -210,36 +233,43 @@ private:
 
     unsigned num_output_layers() const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_outputs.number_layers());
     }
 
     unsigned num_output_neurons(unsigned layer) const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_outputs.number_neurons(layer));
     }
 
     unsigned num_gradients_and_outputs_layers() const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_gradients_and_outputs.number_layers());
     }
 
     unsigned num_gradients_and_outputs_neurons(unsigned layer) const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_gradients_and_outputs.number_neurons(layer));
     }
 
     inline const LayersAndNeurons<std::vector<double>>& get_gradients_and_outputs() const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return _gradients_and_outputs;
     } 
 
     inline void set_gradients_and_outputs(unsigned layer, unsigned neuron, const std::vector<double>& data)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return _gradients_and_outputs.set(layer, neuron, data);
     } 
 
     double get_gradient(unsigned layer, unsigned neuron) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(_batch_size == 0 )
       {
         return 0.0;
@@ -249,6 +279,7 @@ private:
 
     void set_gradient(unsigned layer, unsigned neuron, double gradient)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
       assert(_batch_size == 0 || _batch_size == 1);
@@ -258,18 +289,21 @@ private:
 
     void set_gradients(unsigned layer, const std::vector<double>& gradients)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       _gradients.set(layer, gradients);
       _batch_size = 1;
     }
 
     void set_gradients(const LayersAndNeurons<double>& gradients)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       _gradients = gradients;
       _batch_size = 1;
     }
 
     void set_gradients(const std::vector<std::vector<double>>& gradients)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       // if we are calling 'set' then it is for a single batch
       // otherwise call the add_outputs_gradients(...)
       assert(_batch_size == 0 || _batch_size == 1);
@@ -279,16 +313,19 @@ private:
 
     unsigned num_gradient_layers() const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_gradients.number_layers());
     }
 
     unsigned num_gradient_neurons(unsigned layer) const 
     { 
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       return static_cast<unsigned>(_gradients.number_neurons(layer));
     }
 
     double get_output(unsigned layer, unsigned neuron) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(_outputs.number_neurons(layer) == neuron)
       {
         return 1.0; //  bias
@@ -298,17 +335,20 @@ private:
 
     unsigned num_outputs(unsigned layer) const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       //  add the bias
       return static_cast<unsigned>(_outputs.number_neurons(layer) + 1);
     }
     
     void set_outputs(unsigned layer, const std::vector<double>& outputs)
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       _outputs.set(layer, outputs);
     }
 
     std::vector<double> output_back() const
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       const size_t size = _outputs.number_layers();
       if(size == 0)
       {
@@ -320,6 +360,7 @@ private:
 
     void zero()
     {
+      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       for( size_t layer = 0; layer < num_gradient_layers(); ++layer)
       {
         for( size_t neuron = 0; neuron < num_gradient_neurons(layer); ++layer)
@@ -409,7 +450,7 @@ private:
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
-  double calculate_error(ThreadPool& threadpool, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const;
+  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers) const;
 
   // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
   static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);

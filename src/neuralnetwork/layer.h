@@ -18,15 +18,17 @@ private:
 public:  
   
   Layer(const Layer& src);
+  Layer(Layer&& src);
   Layer& operator=(const Layer& src);
+  Layer& operator=(Layer&& src);
   virtual ~Layer() = default;
 
   unsigned size() const;
-  const std::vector<Neuron>& get_neurons() const { return _neurons;}
-  std::vector<Neuron>& get_neurons() { return _neurons;}
+  const std::vector<Neuron>& get_neurons() const;
+  std::vector<Neuron>& get_neurons();
 
-  const Neuron& get_neuron(unsigned index) const { return _neurons[index];}
-  Neuron& get_neuron(unsigned index) { return _neurons[index];}
+  const Neuron& get_neuron(unsigned index) const;
+  Neuron& get_neuron(unsigned index);
 
   static Layer create_input_layer(const std::vector<Neuron>& neurons);
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, double learning_rate);
@@ -41,7 +43,7 @@ public:
   
 private:
   void add_neuron(const Neuron& neuron);
-  const LayerType&  get_layer_type()const{ return _layer_type;}
+  const LayerType&  get_layer_type()const;
 
   std::vector<Neuron> _neurons;
   unsigned _number_input_neurons;  //  number of neurons in previous layer

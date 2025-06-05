@@ -22,6 +22,7 @@ NeuralNetwork::NeuralNetwork(
   _activation_method(activation),
   _learning_rate(learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(topology.size() < 2)
   {
     std::cerr << "The topology is not value, you must have at least 2 layers." << std::endl;
@@ -60,6 +61,7 @@ NeuralNetwork::NeuralNetwork(
   _activation_method(activation),
   _learning_rate(learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers = new std::vector<Layer>();
   for (auto layer : layers)
   {
@@ -78,6 +80,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _activation_method(src._activation_method),
   _learning_rate(src._learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers = new std::vector<Layer>();
   for (const auto& layer : *src._layers)
   {
@@ -93,16 +96,19 @@ NeuralNetwork::~NeuralNetwork()
 
 double NeuralNetwork::get_learning_rate() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _learning_rate;
 }
 
 activation::method NeuralNetwork::get_activation_method() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _activation_method;
 }
 
 const std::vector<Layer>& NeuralNetwork::get_layers() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return *_layers;
 }
 
@@ -113,6 +119,7 @@ const std::vector<unsigned>& NeuralNetwork::get_topology() const
 
 std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> shuffled_indexes(raw_size);
   std::iota(shuffled_indexes.begin(), shuffled_indexes.end(), 0);
 
@@ -124,6 +131,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
 
 void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto shuffled_indexes = get_shuffled_indexes(raw_size);
   assert(raw_size == shuffled_indexes.size());
 
@@ -132,6 +140,7 @@ void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique
 
 void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // break the indexes into parts
   size_t total_size = shuffled_indexes.size();
   size_t training_size = static_cast<size_t>(std::round(total_size * 0.80));
@@ -171,6 +180,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
 
 void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   shuffled_training_inputs = {};
   shuffled_training_outputs = {};
   shuffled_training_inputs.reserve(shuffled_indexes.size());
@@ -184,17 +194,20 @@ void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffle
 
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto layers = *_layers;
   return calculate_forward_feed(inputs, layers).output_back();
 }
 
 long double NeuralNetwork::get_error() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _error;
 }
 
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<std::vector<double>> outputs(inputs.size(), std::vector<double>(1));
   for (size_t i = 0; i < inputs.size(); ++i)
   {
@@ -209,6 +222,7 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
     const size_t size
   ) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto batch_gradients_outputs = calculate_forward_feed(inputs_begin, inputs_begin+size, *_layers);
   calculate_batch_back_propagation(outputs_begin, size, batch_gradients_outputs, *_layers);
   return batch_gradients_outputs;
@@ -223,6 +237,7 @@ void NeuralNetwork::train(
   const std::function<bool(int, NeuralNetwork&)>& progress_callback
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
     std::cerr << "The batch size if either -ve or too large for the training sample." << std::endl;
@@ -279,7 +294,7 @@ void NeuralNetwork::train(
   std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
   futures.reserve(num_batches);
 
-  std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs = {};
+  std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
@@ -291,17 +306,31 @@ void NeuralNetwork::train(
     epoch_gradients_outputs.clear();
 
     // create the batches
-    for( size_t j = 0; j < training_indexes_size; j += batch_size)
+    for( size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
-      const size_t start = j;
-      const size_t end_size = std::min(j + batch_size, training_indexes_size);
-      futures.emplace_back(
-        threadpool.enqueue( [=](){
-         return train_single_batch(
-          training_inputs.begin() + start,
-          training_outputs.begin() + start,
-          end_size - start);
-      }));
+      if(batch_size > 1)
+      {
+        const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
+        const size_t total_size = end_size - start_index;
+        futures.emplace_back(
+          threadpool.enqueue( [=](){
+          return train_single_batch(
+            training_inputs.begin() + start_index,
+            training_outputs.begin() + start_index,
+            total_size);
+        }));
+      }
+      else
+      {
+        //  size is 1, it is faster to not use a thread.
+        const size_t total_size = 1;
+        epoch_gradients_outputs.emplace_back(
+          train_single_batch(
+            training_inputs.begin() + start_index,
+            training_outputs.begin() + start_index,
+            total_size)
+        );
+      }
     }
 
     // Collect the results
@@ -319,7 +348,7 @@ void NeuralNetwork::train(
       if (elapsed_time >= interval)
       {
         // do a batch check to see where we are at ...
-        _error = calculate_error(threadpool, checking_training_inputs, checking_training_outputs, *_layers);
+        _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers);
         if( !progress_callback(percent, *this))
         {
           return;
@@ -333,7 +362,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
-  _error = calculate_error(threadpool, final_training_inputs, final_training_outputs, *_layers);
+  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, *_layers);
   std::cout << "Final Test Error: " << _error << std::endl;
 
   // final callback if needed
@@ -345,12 +374,19 @@ void NeuralNetwork::train(
 
 void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, LayersAndNeurons<double>& averages) const
 {  
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // this is the number of batches we had this epoch
-  const size_t epoch_gradients_outputs_size = epoch_gradients_outputs.size();
-  if( 0 == epoch_gradients_outputs_size)
+  if( 0 == epoch_gradients_outputs.size())
   {
     return;
   }
+
+  size_t total_epoch_size = std::accumulate(
+    epoch_gradients_outputs.begin(), epoch_gradients_outputs.end(), size_t(0),
+    [](size_t sum, const auto& v) {
+        return sum + v.size();
+    }
+  );
 
   // go around all the layers/neurons to get the averages per batch
   const auto layers_size = averages.number_layers();
@@ -358,21 +394,17 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
   {
     // we get the number of neurons from the first batch.
     const auto neurons_size = averages.number_neurons(layer_number);
-
     for(unsigned neuron_number = 0; neuron_number < neurons_size; ++neuron_number)
     {
       double epoch_sum = 0.0;
-      double total_epoch_size = 0.0;
       // then we look at all the batches to get the gradients.
-      for(size_t epoch_gradients_outputs_number = 0; epoch_gradients_outputs_number < epoch_gradients_outputs_size; ++epoch_gradients_outputs_number)
+      for(const auto& epoch_gradient_output : epoch_gradients_outputs)
       {
         // make sure that we get the actual size as they might not all be the same size.
-        const size_t actual_batch_size = epoch_gradients_outputs[epoch_gradients_outputs_number].size();          
-        for(size_t batch_index = 0; batch_index < actual_batch_size; ++batch_index)
+        for(const auto& epoch_gradient_output_batch : epoch_gradient_output)
         {
-          epoch_sum += epoch_gradients_outputs[epoch_gradients_outputs_number][batch_index].get_gradient(layer_number, neuron_number);
+          epoch_sum += epoch_gradient_output_batch.get_gradient(layer_number, neuron_number);
         }
-        total_epoch_size += static_cast<double>(actual_batch_size);
       }
       auto average_gradient = (epoch_sum / static_cast<double>(total_epoch_size));
       averages.set(layer_number, neuron_number, average_gradient);
@@ -380,27 +412,45 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
   }
 }
 
-double NeuralNetwork::calculate_error(ThreadPool& threadpool, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<Layer>& layers) const
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers) const
 {
-  size_t batch_size = training_inputs.size();
-  std::vector<std::future<std::vector<double>>> futures;
-  futures.reserve(batch_size);
-
-  for (size_t index = 0; index < batch_size; ++index)
-  {
-    futures.emplace_back(
-      threadpool.enqueue( [=](){
-        const auto& inputs = training_inputs[index];
-        auto all_outputs = calculate_forward_feed(inputs, layers);
-        return all_outputs.output_back();
-    }));
-  }
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  const size_t training_indexes_size = training_inputs.size();
+  std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
+  futures.reserve(training_indexes_size);
 
   std::vector<std::vector<double>> predictions;
-  predictions.reserve(batch_size);
-  for (auto& f : futures)
+  predictions.reserve(training_indexes_size);
+
+  for (size_t start_index = 0; start_index < training_indexes_size; start_index+= batch_size)
   {
-    predictions.emplace_back(std::move(f.get()));
+    if(batch_size > 1)
+    {
+      const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
+      futures.emplace_back(
+        std::async(std::launch::async,
+        [=](){
+          return calculate_forward_feed(
+            training_inputs.begin() + start_index,
+            training_inputs.begin() + start_index+end_size,
+            layers);
+      }));
+    }
+    else
+    {
+      const auto& inputs = training_inputs[start_index];
+      auto all_outputs = calculate_forward_feed(inputs, layers);
+      predictions.emplace_back(all_outputs.output_back());
+    }
+  }
+
+  for (auto& future : futures)
+  {
+    auto all_future_outputs = future.get();
+    for(auto& all_outputs : all_future_outputs )
+    {
+      predictions.emplace_back(all_outputs.output_back());
+    }
   }
 
   return calculate_rmse_error(training_outputs, predictions);
@@ -410,6 +460,7 @@ double NeuralNetwork::calculate_error(ThreadPool& threadpool, const std::vector<
 
 double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
     std::cerr << "Mismatched number of samples" << std::endl;
@@ -448,6 +499,7 @@ double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>
 
 double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
     std::cerr << "Mismatched number of samples" << std::endl;
@@ -475,12 +527,14 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
 
 double NeuralNetwork::calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto mean_squared_error = calculate_mse_error(ground_truth, predictions);
   return std::sqrt(mean_squared_error); // RMSE
 }
 
 double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size()) 
   {
     std::cerr << "Mismatch in batch sizes." << std::endl;
@@ -529,6 +583,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 
 void NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const LayersAndNeurons<double>& layers_neurons_averages, LayersAndNeurons<std::vector<double>>& gradients_and_outputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<double> outputs_gradients;
   
   // we get the output to the connecting layer
@@ -565,6 +620,7 @@ void NeuralNetwork::calculate_batch_back_propagation_gradients(
     std::vector<GradientsAndOutputs>& layers_given_outputs, 
     const std::vector<Layer>& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   assert(outputs_size == layers_given_outputs.size());
   for(size_t i = 0; i < outputs_size; ++i)
   {
@@ -575,6 +631,7 @@ void NeuralNetwork::calculate_batch_back_propagation_gradients(
 
 void NeuralNetwork::calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   assert(target_outputs.size() == layers_given_outputs.size());
   const auto& target_outputs_size = target_outputs.size();
   for(size_t i = 0; i < target_outputs_size; ++i)
@@ -585,6 +642,7 @@ void NeuralNetwork::calculate_batch_back_propagation_gradients(const std::vector
 
 void NeuralNetwork::calculate_back_propagation_gradients(const std::vector<double>& target_outputs, GradientsAndOutputs& layers_given_outputs, const std::vector<Layer>& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   assert(target_outputs.size() == layers_given_outputs.output_back().size());
 
   // input layer is all 0, (bias is included)
@@ -622,6 +680,7 @@ void NeuralNetwork::calculate_batch_back_propagation(
     std::vector<GradientsAndOutputs>& batch_given_outputs, 
     const std::vector<Layer>& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto batch_size = batch_given_outputs.size();
   if(batch_size == 0)
   {
@@ -634,8 +693,10 @@ void NeuralNetwork::calculate_batch_back_propagation(
   calculate_batch_back_propagation_gradients(outputs_begin, outputs_size, batch_given_outputs, layers);
 }
 
+/*
 void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // Prepare result vector with proper dimensions
   LayersAndNeurons<std::vector<double>> gradients_and_outputs(get_topology(), true, true);
   LayersAndNeurons<double> averages(get_topology(), false, true);
@@ -643,25 +704,67 @@ void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<G
   // get the average gradient for all the batches for that epoch
   recalculate_gradient_avergages(epoch_gradients_outputs, averages);
 
+  size_t total_epoch_size = std::accumulate(
+    epoch_gradients_outputs.begin(), epoch_gradients_outputs.end(), size_t(0),
+    [](size_t sum, const auto& v) {
+        return sum + v.size();
+    }
+  );  
+
+  std::vector<std::future<LayersAndNeurons<std::vector<double>>>> futures;
+  futures.reserve(total_epoch_size);
+  for(const auto& this_epoch_gradients_outputs : epoch_gradients_outputs)
+  {
+    for(const auto& this_batch_gradients_outputs : this_epoch_gradients_outputs)
+    {
+      futures.emplace_back(
+          std::async(std::launch::async,
+          [=]{
+            auto copy_gradients_and_outputs = gradients_and_outputs;
+            average_batch_gradients_with_averages(this_batch_gradients_outputs, averages, copy_gradients_and_outputs);
+            return copy_gradients_and_outputs;
+          }));
+    }
+  }
+
+  // then update them all.
+  for( auto& future : futures )
+  {
+    update_layers_with_gradients(std::move(future.get()), layers);
+  }
+}
+*/
+
+void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  // Prepare result vector with proper dimensions
+  LayersAndNeurons<std::vector<double>> gradients_and_outputs(get_topology(), true, true);
+  LayersAndNeurons<double> averages(get_topology(), false, true);
+
+  // get the average gradient for all the batches for that epoch
+  recalculate_gradient_avergages(epoch_gradients_outputs, averages);
   for(const auto& this_epoch_gradients_outputs : epoch_gradients_outputs)
   {
     for(const auto& this_batch_gradients_outputs : this_epoch_gradients_outputs)
     {
       average_batch_gradients_with_averages(this_batch_gradients_outputs, averages, gradients_and_outputs);
-      update_layers_with_gradients(gradients_and_outputs, layers);
+      update_layers_with_gradients(gradients_and_outputs, layers);      
     }
   }
 }
 
 void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // update the weights in reverse
   for (auto layer_number = layers.size() - 1; layer_number > 0; --layer_number) 
   {
     auto& layer = layers[layer_number];
     auto& previous_layer = layers[layer_number - 1];
 
-    for (unsigned neuron_number = 0; neuron_number < layer.size() - 1; ++neuron_number) 
+    const size_t layer_size = layer.size() - 1; //  exclude bia
+    for (unsigned neuron_number = 0; neuron_number < layer_size; ++neuron_number) 
     {
       auto& neuron = layer.get_neuron(neuron_number);
       const auto& weights_gradients = activation_gradients.get(layer_number-1, neuron_number);
@@ -675,6 +778,7 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward
     const std::vector<std::vector<double>>::const_iterator inputs_end, 
     const std::vector<Layer>& layers) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   size_t size = inputs_end - inputs_begin;
   std::vector<GradientsAndOutputs> activations_per_layer_per_input;
   activations_per_layer_per_input.reserve(size);
@@ -689,6 +793,7 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward
 
 NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // the return value is the activation values per layers.
   GradientsAndOutputs activations_per_layer(get_topology());
 
@@ -702,6 +807,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
   {
     const auto& previous_layer = layers[layer_number - 1];
     auto& this_layer = layers[layer_number];
+    
     std::vector<double> this_output_values;
     this_output_values.reserve(this_layer.size() - 1);
     for (size_t neuron_number = 0; neuron_number < this_layer.size() - 1; ++neuron_number)
@@ -717,12 +823,68 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
     previous_layer_output_values = std::move(this_output_values);
     previous_layer_output_values.push_back(1.0);
   }
+  
   // return the output values per layer.
   return activations_per_layer;
 }
 
+/*
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  // the return value is the activation values per layers.
+  GradientsAndOutputs activations_per_layer(get_topology());
+
+  //  the initial set of output values where we are starting from.
+  activations_per_layer.set_outputs(0, inputs);
+
+  // then forward propagate from the input to ... hopefully, the output.
+  std::vector<std::future<double>> futures;
+  auto previous_layer_output_values = inputs;
+  previous_layer_output_values.push_back(1.0);
+  for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
+  {
+    const auto& previous_layer = layers[layer_number - 1];
+    auto& this_layer = layers[layer_number];
+
+    const size_t this_layer_size = this_layer.size() - 1;
+
+    futures.clear();
+    futures.reserve(this_layer_size);
+
+    for (size_t neuron_number = 0; neuron_number < this_layer_size; ++neuron_number)
+    {
+      futures.emplace_back(
+        std::async(std::launch::async,
+        [=]{
+        const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
+        return neuron.calculate_forward_feed(previous_layer, previous_layer_output_values);
+      }));
+    }
+
+    std::vector<double> this_output_values;
+    this_output_values.reserve(this_layer_size);
+    for( auto& future : futures)
+    {
+      this_output_values.emplace_back(future.get());
+    }
+
+    activations_per_layer.set_outputs(
+        layer_number,
+        this_output_values
+        );
+    previous_layer_output_values = std::move(this_output_values);
+    previous_layer_output_values.push_back(1.0);
+  }
+  
+  // return the output values per layer.
+  return activations_per_layer;
+}
+*/
+
 std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const size_t output_layer_size = output_layer.size();
   std::vector<double> activation_gradients = {};
   activation_gradients.reserve(output_layer_size);
