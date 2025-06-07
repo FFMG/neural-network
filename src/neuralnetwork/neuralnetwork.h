@@ -9,7 +9,6 @@
 #include "activation.h"
 #include "layer.h"
 #include "neuron.h"
-#include "threadpool.h"
 
 class NeuralNetwork
 {
