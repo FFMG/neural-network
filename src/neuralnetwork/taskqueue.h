@@ -149,10 +149,8 @@ public:
     _task_queues.reserve(_number_of_threads);
     for(int i = 0; i < _number_of_threads; ++i)
     {
-      _task_queues.emplace_back( new TaskQueue<R>());
-    }
-    for(auto& task_queue : _task_queues)
-    {
+      auto task_queue = new TaskQueue<R>();
+      _task_queues.emplace_back(task_queue);
       task_queue->start();
     }
     std::cout << "ThreadPool initialized with " << _number_of_threads << " worker threads." << std::endl;    
