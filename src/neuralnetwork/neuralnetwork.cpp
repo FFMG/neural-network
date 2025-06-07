@@ -332,9 +332,12 @@ void NeuralNetwork::train(
     }
 
     // Collect the results
-    epoch_gradients_outputs = task_queues.get();
+    if (batch_size > 1)
+    {
+      epoch_gradients_outputs = task_queues.get();
+    }
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
-    
+
     if (progress_callback != nullptr)
     {
       auto current_time = std::chrono::high_resolution_clock::now();
