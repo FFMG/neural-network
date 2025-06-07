@@ -79,7 +79,7 @@ private:
       assert(_topology.size() == data.size());
       for(size_t layer = 0; layer < data.size(); ++layer)
       {
-        set(layer, data[layer]);
+        set(static_cast<unsigned>(layer), data[layer]);
       }
       return *this;
     }
@@ -102,7 +102,7 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(number_neurons(layer) == data.size());
-      size_t neuron = 0;
+      unsigned neuron = 0;
       for( const auto& d : data )
       {
         _data.insert_or_assign(key(layer, neuron), d);
@@ -124,7 +124,7 @@ private:
       data.reserve(_topology[layer]);
       for(size_t neuron = 0; neuron < _topology[layer]; ++neuron)
       {
-        data.emplace_back(_data.at(key(layer, neuron)));
+        data.emplace_back(_data.at(key(layer, static_cast<unsigned>(neuron))));
       }
       return data;
     }
@@ -356,7 +356,7 @@ private:
         std::cerr << "Trying to get the last output but none available!" << std::endl;
         throw new std::invalid_argument("Trying to get the last output but none available!");
       }
-      return _outputs.get_neurons(size -1);
+      return _outputs.get_neurons(static_cast<unsigned>(size -1));
     }
 
     void zero()
@@ -364,23 +364,23 @@ private:
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       for( size_t layer = 0; layer < num_gradient_layers(); ++layer)
       {
-        for( size_t neuron = 0; neuron < num_gradient_neurons(layer); ++layer)
+        for( size_t neuron = 0; neuron < num_gradient_neurons(static_cast<unsigned>(layer)); ++layer)
         {
-          _gradients.set(layer, neuron, 0);
+          _gradients.set(static_cast<unsigned>(layer), static_cast<unsigned>(neuron), 0);
         }
       }
       for( size_t layer = 0; layer < num_output_layers(); ++layer)
       {
-        for( size_t neuron = 0; neuron < num_output_neurons(layer); ++layer)
+        for( size_t neuron = 0; neuron < num_output_neurons(static_cast<unsigned>(layer)); ++layer)
         {
-          _outputs.set(layer, neuron, 0);
+          _outputs.set(static_cast<unsigned>(layer), static_cast<unsigned>(neuron), 0);
         }
       }
       for( size_t layer = 0; layer < num_gradients_and_outputs_layers(); ++layer)
       {
-        for( size_t neuron = 0; neuron < num_gradients_and_outputs_neurons(layer); ++layer)
+        for( size_t neuron = 0; neuron < num_gradients_and_outputs_neurons(static_cast<unsigned>(layer)); ++layer)
         {
-          _gradients_and_outputs.set(layer, neuron, {});
+          _gradients_and_outputs.set(static_cast<unsigned>(layer), static_cast<unsigned>(neuron), {});
         }
       }
       _batch_size = 0;

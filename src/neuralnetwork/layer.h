@@ -17,10 +17,10 @@ private:
   Layer(LayerType layer_type);
 public:  
   
-  Layer(const Layer& src);
-  Layer(Layer&& src);
-  Layer& operator=(const Layer& src);
-  Layer& operator=(Layer&& src);
+  Layer(const Layer& src) noexcept;
+  Layer(Layer&& src) noexcept;
+  Layer& operator=(const Layer& src) noexcept;
+  Layer& operator=(Layer&& src) noexcept;
   virtual ~Layer() = default;
 
   unsigned size() const;
@@ -43,7 +43,6 @@ public:
   
 private:
   void add_neuron(const Neuron& neuron);
-  const LayerType&  get_layer_type()const;
 
   std::vector<Neuron> _neurons;
   unsigned _number_input_neurons;  //  number of neurons in previous layer
