@@ -13,7 +13,7 @@ private:
     return new NeuralNetwork(topology, activation::sigmoid_activation, 0.15);
   }
 
-  static void train_neural_network( NeuralNetwork& nn, unsigned epoch)
+  static void train_neural_network( NeuralNetwork& nn, unsigned epoch, unsigned batch_size)
   {
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {
@@ -29,7 +29,7 @@ private:
     };
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs, epoch);
+    nn.train(training_inputs, training_outputs, epoch, batch_size);
     std::cout << std::endl;
 
     // pass an array of array to think about
@@ -55,6 +55,7 @@ public:
     // the file we will be loading from
     const char* file_name = "./xor.nn";
     const unsigned epoch = 100000;
+    const unsigned batch_size = 1;
 
     // assume that it does not exist
     NeuralNetwork* nn = nullptr;
@@ -67,7 +68,7 @@ public:
         nn = create_neural_network();
 
         // train it
-        train_neural_network(*nn, epoch);
+        train_neural_network(*nn, epoch, batch_size);
 
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
@@ -89,7 +90,7 @@ public:
       nn = create_neural_network();
 
       // train it
-      train_neural_network(*nn, epoch);
+      train_neural_network(*nn, epoch, batch_size);
     }
 
     std::cout << "Error: " << nn->get_error() << std::endl;
