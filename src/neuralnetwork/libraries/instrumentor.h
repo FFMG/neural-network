@@ -9,7 +9,20 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <unistd.h>  // for getpid()
+
+#ifdef _WIN32
+  #define NOMINMAX // we don't want to use the MS version of std::min/max
+                   // use #include <algorithm> rather.
+  #include <windows.h>
+  #define safe_getpid() GetCurrentProcessId()
+  #define pid_t unsigned long
+  #ifndef __PRETTY_FUNCTION__
+    #define __PRETTY_FUNCTION__ __FUNCSIG__
+  #endif
+#else
+  #include <unistd.h>
+  #define safe_getpid() getpid()
+#endif
 
 /**
  * \brief how often we want to flush log data to disk.
@@ -166,7 +179,7 @@ namespace myoddweb
       m_stopped(false)
     {
       _thread_id = std::this_thread::get_id();
-      _process_id = getpid();
+      _process_id = safe_getpid();
       _start_time = std::chrono::steady_clock::now();;
     }
 
@@ -229,14 +242,14 @@ namespace myoddweb
      *        go to chrome://tracing/
      *        open Profile-Global.json
      */
-    #define MYODDWEB_PROFILE 1
-  #else
     #define MYODDWEB_PROFILE 0
+  #else
+    #define MYODDWEB_PROFILE 1
   #endif // DEBUG
 #endif
 
 #if MYODDWEB_PROFILE
-  #ifndef NDEBUG
+  #ifdef NDEBUG
     #error "You cannot use profiling in release mode!"
   #endif
   #define MYODDWEB_CONCAT_IMPL(x, y) x##y
