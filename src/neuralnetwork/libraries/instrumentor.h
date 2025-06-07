@@ -94,8 +94,8 @@ namespace myoddweb
         json << ",{";
       }
 
-      auto start_since_session = std::chrono::duration_cast<std::chrono::nanoseconds>(result.Start - _session_start_time).count();
-      auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(result.End - result.Start).count();
+      auto start_since_session = std::chrono::duration_cast<std::chrono::microseconds>(result.Start - _session_start_time).count();
+      auto duration_ns = std::chrono::duration_cast<std::chrono::microseconds>(result.End - result.Start).count();
       
       json << "\"cat\":\"" << (result.Category) << "\",";
       json << "\"dur\":" << duration_ns << ',';
