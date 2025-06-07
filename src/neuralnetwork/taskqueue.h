@@ -1,12 +1,13 @@
 #pragma once
-#include <thread>
-#include <mutex>
-#include <queue>
-#include <vector>
+#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <future>
-#include <atomic>
+#include <iostream>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 template <typename R>
 class TaskQueue 
@@ -22,6 +23,9 @@ public:
   {
     stop();
   }
+
+  TaskQueue(const TaskQueue&) = delete;
+  TaskQueue& operator=(const TaskQueue&) = delete;
 
   void start() 
   {
@@ -117,5 +121,104 @@ private:
         _results.push_back(std::move(result));
       }
     }
+  }
+};
+
+template <typename R>
+class TaskQueuePool
+{
+public:
+  TaskQueuePool(int number_of_thread = 0) :
+    _number_of_threads(number_of_thread),
+    _threads_index(0)
+  {
+    if(number_of_thread == 0)
+    {
+      _number_of_threads = std::thread::hardware_concurrency() -1;
+    }
+  }
+
+  ~TaskQueuePool()
+  {
+    clean();
+  }
+
+  void start() 
+  {
+    clean();
+    _task_queues.reserve(_number_of_threads);
+    for(int i = 0; i < _number_of_threads; ++i)
+    {
+      _task_queues.emplace_back( new TaskQueue<R>());
+    }
+    for(auto& task_queue : _task_queues)
+    {
+      task_queue->start();
+    }
+    std::cout << "ThreadPool initialized with " << _number_of_threads << " worker threads." << std::endl;    
+  }
+
+  void stop() 
+  {
+    for(auto& task_queue : _task_queues)
+    {
+      task_queue->stop();
+    }
+    std::cout << "ThreadPool stop." << std::endl;
+  }
+
+  inline int total_tasks()
+  {
+    int total_num_tasks = 0;
+    for(auto& task_queue : _task_queues)
+    {
+      total_num_tasks += task_queue->total_tasks();
+    }
+    return total_num_tasks;
+  }
+
+  inline double average()
+  {
+    double average = 0.0;
+    for(auto& task_queue : _task_queues)
+    {
+      average += task_queue->average();
+    }
+    return _number_of_threads > 0 ? average / _number_of_threads : 0.0;
+  }
+
+  template <class F, class... Args>
+  void enqueue(F&& f, Args&&... args) 
+  {
+    _task_queues[_threads_index++]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
+    if(_threads_index >= _number_of_threads)
+    {
+      _threads_index = 0;
+    }
+  }
+
+  std::vector<R> get() 
+  {
+    std::vector<R> output;
+    for(auto& task_queue : _task_queues)
+    {
+      auto this_output = task_queue->get();
+      output.insert(output.end(), this_output.begin(), this_output.end());
+    }
+    return output;
+  }
+
+private:
+  int _number_of_threads;
+  std::vector<TaskQueue<R>*> _task_queues;
+  int _threads_index;
+
+  void clean()
+  {
+    for(auto& task_queue : _task_queues)
+    {
+      delete task_queue;
+    }
+    _task_queues.clear();
   }
 };
