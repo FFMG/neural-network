@@ -43,7 +43,7 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
   }
 }
 
-Layer::Layer(const Layer& src) :
+Layer::Layer(const Layer& src) noexcept :
   _neurons(src._neurons),
   _number_input_neurons(src._number_input_neurons),
   _number_output_neurons(src._number_output_neurons),
@@ -52,7 +52,7 @@ Layer::Layer(const Layer& src) :
   MYODDWEB_PROFILE_FUNCTION("Layer");
 }
 
-Layer::Layer(Layer&& src) :
+Layer::Layer(Layer&& src) noexcept :
   _neurons(std::move(src._neurons)),
   _number_input_neurons(src._number_input_neurons),
   _number_output_neurons(src._number_output_neurons),
@@ -63,7 +63,7 @@ Layer::Layer(Layer&& src) :
   src._number_input_neurons = 0;
 }
 
-Layer& Layer::operator=(const Layer& src)
+Layer& Layer::operator=(const Layer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(this != &src)
@@ -76,7 +76,7 @@ Layer& Layer::operator=(const Layer& src)
   return *this;
 }
 
-Layer& Layer::operator=(Layer&& src)
+Layer& Layer::operator=(Layer&& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(this != &src)

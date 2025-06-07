@@ -105,7 +105,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
   assert(weights_gradients.size() == previous_layer.size());
   for (size_t i = 0; i < weights_gradients.size(); ++i) 
   {
-    auto& neuron = previous_layer.get_neuron(i);
+    auto& neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
     auto& connection = neuron._output_weights[_index];
 
     const auto& weights_gradient = weights_gradients[i];         // from prev layer, averaged over batch
