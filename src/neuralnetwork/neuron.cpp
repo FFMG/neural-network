@@ -10,14 +10,12 @@ Neuron::Neuron(
   unsigned num_neurons_next_layer,
   unsigned num_neurons_current_layer,
   unsigned index,
-  const activation& activation,
-  double learning_rate
+  const activation& activation
 ) :
   _index(index),
   _output_value(0),
   _activation_method(activation),
   _output_weights({}),
-  _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -32,14 +30,12 @@ Neuron::Neuron(
   unsigned index,
   double output_value,
   const activation& activation,
-  const std::vector<std::array<double,2>>& output_weights,
-  double learning_rate
+  const std::vector<std::array<double,2>>& output_weights
 ) :
   _index(index),
   _output_value(output_value),
   _activation_method(activation),
   _output_weights({}),
-  _learning_rate(learning_rate),
   _alpha(LEARNING_ALPHA)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -55,7 +51,6 @@ Neuron::Neuron(const Neuron& src) :
   _output_value(src._output_value),
   _activation_method(src._activation_method),
   _output_weights({}),
-  _learning_rate(src._learning_rate),
   _alpha(LEARNING_ALPHA)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -99,7 +94,7 @@ void Neuron::Clean()
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 }
 
-void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients)
+void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(weights_gradients.size() == previous_layer.size());
@@ -123,7 +118,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
     }
 
     double new_delta_weight =
-      _learning_rate * weights_gradient +   // batch-based weight update
+      learning_rate * weights_gradient +   // batch-based weight update
       _alpha * old_delta_weight;            // momentum term
 
     connection.set_delta_weight(new_delta_weight);
