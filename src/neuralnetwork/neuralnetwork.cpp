@@ -697,48 +697,6 @@ void NeuralNetwork::calculate_batch_back_propagation(
   calculate_batch_back_propagation_gradients(outputs_begin, outputs_size, batch_given_outputs, layers);
 }
 
-/*
-void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  // Prepare result vector with proper dimensions
-  LayersAndNeurons<std::vector<double>> gradients_and_outputs(get_topology(), true, true);
-  LayersAndNeurons<double> averages(get_topology(), false, true);
-
-  // get the average gradient for all the batches for that epoch
-  recalculate_gradient_avergages(epoch_gradients_outputs, averages);
-
-  size_t total_epoch_size = std::accumulate(
-    epoch_gradients_outputs.begin(), epoch_gradients_outputs.end(), size_t(0),
-    [](size_t sum, const auto& v) {
-        return sum + v.size();
-    }
-  );  
-
-  std::vector<std::future<LayersAndNeurons<std::vector<double>>>> futures;
-  futures.reserve(total_epoch_size);
-  for(const auto& this_epoch_gradients_outputs : epoch_gradients_outputs)
-  {
-    for(const auto& this_batch_gradients_outputs : this_epoch_gradients_outputs)
-    {
-      futures.emplace_back(
-          std::async(std::launch::async,
-          [=]{
-            auto copy_gradients_and_outputs = gradients_and_outputs;
-            average_batch_gradients_with_averages(this_batch_gradients_outputs, averages, copy_gradients_and_outputs);
-            return copy_gradients_and_outputs;
-          }));
-    }
-  }
-
-  // then update them all.
-  for( auto& future : futures )
-  {
-    update_layers_with_gradients(std::move(future.get()), layers);
-  }
-}
-*/
-
 void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -832,60 +790,6 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
   // return the output values per layer.
   return activations_per_layer;
 }
-
-/*
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  // the return value is the activation values per layers.
-  GradientsAndOutputs activations_per_layer(get_topology());
-
-  //  the initial set of output values where we are starting from.
-  activations_per_layer.set_outputs(0, inputs);
-
-  // then forward propagate from the input to ... hopefully, the output.
-  std::vector<std::future<double>> futures;
-  auto previous_layer_output_values = inputs;
-  previous_layer_output_values.push_back(1.0);
-  for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
-  {
-    const auto& previous_layer = layers[layer_number - 1];
-    auto& this_layer = layers[layer_number];
-
-    const size_t this_layer_size = this_layer.size() - 1;
-
-    futures.clear();
-    futures.reserve(this_layer_size);
-
-    for (size_t neuron_number = 0; neuron_number < this_layer_size; ++neuron_number)
-    {
-      futures.emplace_back(
-        std::async(std::launch::async,
-        [=]{
-        const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
-        return neuron.calculate_forward_feed(previous_layer, previous_layer_output_values);
-      }));
-    }
-
-    std::vector<double> this_output_values;
-    this_output_values.reserve(this_layer_size);
-    for( auto& future : futures)
-    {
-      this_output_values.emplace_back(future.get());
-    }
-
-    activations_per_layer.set_outputs(
-        layer_number,
-        this_output_values
-        );
-    previous_layer_output_values = std::move(this_output_values);
-    previous_layer_output_values.push_back(1.0);
-  }
-  
-  // return the output values per layer.
-  return activations_per_layer;
-}
-*/
 
 std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer)
 {
