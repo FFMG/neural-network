@@ -288,14 +288,8 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  const auto threads = std::thread::hardware_concurrency() -1;
-  size_t threads_index = 0;
-  auto task_queues = std::vector<TaskQueue<std::vector<GradientsAndOutputs>>>(threads);
-  for(auto& task_queue : task_queues)
-  {
-    task_queue.start();
-  }
-  std::cout << "ThreadPool initialized with " << threads << " worker threads." << std::endl;
+  auto task_queues = TaskQueuePool<std::vector<GradientsAndOutputs>>();
+  task_queues.start();
 
   const auto training_indexes_size = training_indexes.size();
 
@@ -311,17 +305,11 @@ void NeuralNetwork::train(
     // create the batches
     for( size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
-      ++threads_index;
-      if(threads_index >= threads)
-      {
-        threads_index = 0;
-      }
-      auto& task_queue = task_queues[threads_index];
       if(batch_size > 1)
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
-        task_queue.enqueue([=]()
+        task_queues.enqueue([=]()
           {
             auto train = train_single_batch(
               training_inputs.begin() + start_index,
@@ -344,11 +332,7 @@ void NeuralNetwork::train(
     }
 
     // Collect the results
-    for(auto& task_queue : task_queues)
-    {
-      auto output = task_queue.get();
-      epoch_gradients_outputs.insert(epoch_gradients_outputs.end(), output.begin(), output.end());
-    }
+    epoch_gradients_outputs = task_queues.get();
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
     
     if (progress_callback != nullptr)
@@ -369,15 +353,9 @@ void NeuralNetwork::train(
     }
   }
 
-  double avg_ns = 0;
-  int total_epoch_duration_size = 0;
-  for(auto& task_queue : task_queues)
-  {
-    task_queue.stop();
-    avg_ns += task_queue.average();
-    total_epoch_duration_size+= task_queue.total_tasks();
-  }
-  avg_ns /= task_queues.size();
+  task_queues.stop();
+  double avg_ns = task_queues.average();
+  auto total_epoch_duration_size = task_queues.total_tasks();
   std::cout << "Average time per call: " << std::fixed << std::setprecision (2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
 
   // final error checking
