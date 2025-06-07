@@ -1,4 +1,5 @@
 #include "neuralnetwork.h"
+#include "taskqueue.h"
 
 #include <cassert>
 #include <chrono>
@@ -287,38 +288,47 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  ThreadPool threadpool;
+  const auto threads = std::thread::hardware_concurrency() -1;
+  size_t threads_index = 0;
+  auto task_queues = std::vector<TaskQueue<std::vector<GradientsAndOutputs>>>(threads);
+  for(auto& task_queue : task_queues)
+  {
+    task_queue.start();
+  }
+  std::cout << "ThreadPool initialized with " << threads << " worker threads." << std::endl;
+
   const auto training_indexes_size = training_indexes.size();
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
-  std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
-  futures.reserve(num_batches);
-
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    // reset the futures.
-    futures.clear();
-
     // and the epoch outputs
     epoch_gradients_outputs.clear();
 
     // create the batches
     for( size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
+      ++threads_index;
+      if(threads_index >= threads)
+      {
+        threads_index = 0;
+      }
+      auto& task_queue = task_queues[threads_index];
       if(batch_size > 1)
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
-        futures.emplace_back(
-          threadpool.enqueue( [=](){
-          return train_single_batch(
-            training_inputs.begin() + start_index,
-            training_outputs.begin() + start_index,
-            total_size);
-        }));
+        task_queue.enqueue([=]()
+          {
+            auto train = train_single_batch(
+              training_inputs.begin() + start_index,
+              training_outputs.begin() + start_index,
+              total_size);
+          return train;
+        });
       }
       else
       {
@@ -334,9 +344,10 @@ void NeuralNetwork::train(
     }
 
     // Collect the results
-    for (auto& f : futures)
+    for(auto& task_queue : task_queues)
     {
-      epoch_gradients_outputs.emplace_back(std::move(f.get()));
+      auto output = task_queue.get();
+      epoch_gradients_outputs.insert(epoch_gradients_outputs.end(), output.begin(), output.end());
     }
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
     
@@ -358,12 +369,23 @@ void NeuralNetwork::train(
     }
   }
 
+  double avg_ns = 0;
+  int total_epoch_duration_size = 0;
+  for(auto& task_queue : task_queues)
+  {
+    task_queue.stop();
+    avg_ns += task_queue.average();
+    total_epoch_duration_size+= task_queue.total_tasks();
+  }
+  avg_ns /= task_queues.size();
+  std::cout << "Average time per call: " << std::fixed << std::setprecision (2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
+
   // final error checking
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
   _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, *_layers);
-  std::cout << "Final Test Error: " << _error << std::endl;
+  std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
 
   // final callback if needed
   if (progress_callback != nullptr)
@@ -429,12 +451,13 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
       const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
       futures.emplace_back(
         std::async(std::launch::async,
-        [=](){
+        [=]()
+        {
           return calculate_forward_feed(
             training_inputs.begin() + start_index,
             training_inputs.begin() + start_index+end_size,
             layers);
-      }));
+        }));
     }
     else
     {
@@ -794,6 +817,7 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward
 NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
   // the return value is the activation values per layers.
   GradientsAndOutputs activations_per_layer(get_topology());
 

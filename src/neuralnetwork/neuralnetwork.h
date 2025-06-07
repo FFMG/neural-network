@@ -98,13 +98,15 @@ private:
       _data.insert_or_assign(key(layer, neuron), data);
     }
 
-    inline void set( unsigned layer, const std::vector<T>& data)
+    inline void set(unsigned layer, const std::vector<T>& data)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(number_neurons(layer) == data.size());
-      for(size_t neuron = 0; neuron < data.size(); ++neuron)
+      size_t neuron = 0;
+      for( const auto& d : data )
       {
-        _data.insert_or_assign(key(layer, neuron), data[neuron]);
+        _data.insert_or_assign(key(layer, neuron), d);
+        ++neuron;
       }
     }
     
