@@ -338,6 +338,13 @@ void NeuralNetwork::train(
     }
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
 
+    if (epoch % 10000 == 0)
+    {
+      double avg_ns = task_queues.average();
+      auto total_epoch_duration_size = task_queues.total_tasks();
+      std::cout << "Average time per call: " << std::fixed << std::setprecision(2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
+    }
+
     if (progress_callback != nullptr)
     {
       auto current_time = std::chrono::high_resolution_clock::now();
@@ -429,14 +436,14 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
   {
     if(batch_size > 1)
     {
-      const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
+      const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
       futures.emplace_back(
         std::async(std::launch::async,
         [=]()
         {
           return calculate_forward_feed(
             training_inputs.begin() + start_index,
-            training_inputs.begin() + start_index+end_size,
+            training_inputs.begin() + end_index,
             layers);
         }));
     }
