@@ -32,7 +32,7 @@ NeuralNetwork::NeuralNetwork(
   _layers = new std::vector<Layer>();
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method, _learning_rate);
+  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method);
   _layers->push_back(layer);
   
   // then the hidden layers
@@ -41,12 +41,12 @@ NeuralNetwork::NeuralNetwork(
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
     const auto& previous_layer = _layers->back();
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _learning_rate);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method);
     _layers->push_back(layer);
   }
 
   // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers->back(), _activation_method, _learning_rate);
+  layer = Layer::create_output_layer(topology.back(), _layers->back(), _activation_method);
   _layers->push_back(layer);
 }
 
@@ -338,7 +338,7 @@ void NeuralNetwork::train(
     {
       epoch_gradients_outputs = task_pool.get();
     }
-    update_layers_with_gradients(epoch_gradients_outputs, *_layers);
+    update_layers_with_gradients(epoch_gradients_outputs, *_layers, get_learning_rate());
 
     if (epoch % 10000 == 0)
     {
@@ -712,7 +712,7 @@ void NeuralNetwork::calculate_batch_back_propagation(
   calculate_batch_back_propagation_gradients(outputs_begin, outputs_size, batch_given_outputs, layers);
 }
 
-void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers) const
+void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers, double learning_rate) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // Prepare result vector with proper dimensions
@@ -726,12 +726,12 @@ void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<G
     for(const auto& this_batch_gradients_outputs : this_epoch_gradients_outputs)
     {
       average_batch_gradients_with_averages(this_batch_gradients_outputs, averages, gradients_and_outputs);
-      update_layers_with_gradients(gradients_and_outputs, layers);      
+      update_layers_with_gradients(gradients_and_outputs, layers, learning_rate);      
     }
   }
 }
 
-void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers) const
+void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers, double learning_rate) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // update the weights in reverse
@@ -745,7 +745,7 @@ void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vec
     {
       auto& neuron = layer.get_neuron(neuron_number);
       const auto& weights_gradients = activation_gradients.get(layer_number-1, neuron_number);
-      neuron.update_input_weights(previous_layer, weights_gradients);
+      neuron.update_input_weights(previous_layer, weights_gradients, learning_rate);
     }
   }
 }

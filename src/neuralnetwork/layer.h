@@ -13,7 +13,7 @@ private:
       Hidden,
       Output
   };
-  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, double learning_rate);
+  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation);
   Layer(LayerType layer_type);
 public:  
   
@@ -31,13 +31,13 @@ public:
   Neuron& get_neuron(unsigned index);
 
   static Layer create_input_layer(const std::vector<Neuron>& neurons);
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, double learning_rate);
+  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation);
 
   static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
+  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation);
 
   static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, double learning_rate);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation);
 
   std::vector<double> get_outputs() const;
   

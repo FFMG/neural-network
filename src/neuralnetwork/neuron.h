@@ -9,9 +9,6 @@
 #include <iostream>
 #include <vector>
 
-#define LEARNING_RATE double(0.15)    // overall net learning rate, [0.0..1.0]
-                                      // the smaller the learning rate, the more epoch are needed.
-                                      // but the bigger the learning rate, the more likely are exploding weights.
 #define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
 
 class Layer;
@@ -88,16 +85,14 @@ public:
     unsigned index, 
     double output_value,
     const activation& activation,
-    const std::vector<std::array<double,2>>& output_weights,
-    double learning_rate
+    const std::vector<std::array<double,2>>& output_weights
     );
     
   Neuron(
     unsigned num_neurons_prev_layer,
     unsigned num_neurons_current_layer,
     unsigned index, 
-    const activation& activation,
-    double learning_rate
+    const activation& activation
     );
 
   Neuron(const Neuron& src);
@@ -114,17 +109,12 @@ public:
   
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
 
-  void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients);
+  void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate);
 
   unsigned get_index() const 
   {
     MYODDWEB_PROFILE_FUNCTION("Neuron");
     return _index;
-  }
-  double get_learning_rate() const 
-  {
-    MYODDWEB_PROFILE_FUNCTION("Neuron");
-    return _learning_rate;
   }
   std::vector<std::array<double, 2>> get_weights() const;
 
@@ -141,6 +131,5 @@ private:
   activation _activation_method;
   std::vector<Connection> _output_weights;
 
-  double _learning_rate;   // [0.0..1.0] overall net training rate
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
 };

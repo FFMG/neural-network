@@ -112,10 +112,6 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
 double NeuralNetworkSerializer::get_learning_rate(const TinyJSON::TJValue& json)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
-  {
-    return LEARNING_RATE;
-  }
   return object->get_float("learning-rate", true, false);
 }
 
@@ -155,11 +151,6 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
     {
       return {};
     }
-    auto learning_rate_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("learning-rate"));
-    if(nullptr == learning_rate_object)
-    {
-      return {};
-    }
     auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output-value"));
     if(nullptr == output_value_object)
     {
@@ -168,7 +159,6 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
     auto index = static_cast<unsigned>(index_object->get_number());
     auto output_value = output_value_object->get_float();
-    auto learning_rate = learning_rate_object->get_float();
 
     // then the weights
     // the output layer can have zero weights
@@ -178,8 +168,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
       index,
       output_value,
       activation_method,
-      weights,
-      learning_rate
+      weights
     );
     neurons.push_back(neuron);
   }
@@ -284,7 +273,6 @@ void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValue
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
-  neuron_object->set_float("learning-rate", neuron.get_learning_rate());
   neuron_object->set_float("output-value", neuron.get_output_value());
   add_weights(neuron.get_weights(), *neuron_object);
   layer.add(neuron_object);
