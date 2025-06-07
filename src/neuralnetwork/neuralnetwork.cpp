@@ -4,7 +4,6 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
-#include <future>
 #include <numeric>
 #include <random>
 #include <string>
@@ -288,8 +287,11 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  auto task_queues = TaskQueuePool<std::vector<GradientsAndOutputs>>();
-  task_queues.start();
+  auto task_pool = TaskQueuePool<std::vector<GradientsAndOutputs>>();
+  if(batch_size > 1)
+  {
+    task_pool.start();
+  }
 
   const auto training_indexes_size = training_indexes.size();
 
@@ -309,7 +311,7 @@ void NeuralNetwork::train(
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
-        task_queues.enqueue([=]()
+        task_pool.enqueue([=]()
           {
             auto train = train_single_batch(
               training_inputs.begin() + start_index,
@@ -334,14 +336,14 @@ void NeuralNetwork::train(
     // Collect the results
     if (batch_size > 1)
     {
-      epoch_gradients_outputs = task_queues.get();
+      epoch_gradients_outputs = task_pool.get();
     }
     update_layers_with_gradients(epoch_gradients_outputs, *_layers);
 
     if (epoch % 10000 == 0)
     {
-      double avg_ns = task_queues.average();
-      auto total_epoch_duration_size = task_queues.total_tasks();
+      double avg_ns = task_pool.average();
+      auto total_epoch_duration_size = task_pool.total_tasks();
       std::cout << "Average time per call: " << std::fixed << std::setprecision(2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
     }
 
@@ -363,9 +365,9 @@ void NeuralNetwork::train(
     }
   }
 
-  task_queues.stop();
-  double avg_ns = task_queues.average();
-  auto total_epoch_duration_size = task_queues.total_tasks();
+  task_pool.stop();
+  double avg_ns = task_pool.average();
+  auto total_epoch_duration_size = task_pool.total_tasks();
   std::cout << "Average time per call: " << std::fixed << std::setprecision (2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
 
   // final error checking
@@ -426,8 +428,11 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const size_t training_indexes_size = training_inputs.size();
-  std::vector<std::future<std::vector<GradientsAndOutputs>>> futures;
-  futures.reserve(training_indexes_size);
+  auto task_pool = TaskQueuePool<std::vector<double>>();
+  if(batch_size > 1)
+  {
+    task_pool.start();
+  }
 
   std::vector<std::vector<double>> predictions;
   predictions.reserve(training_indexes_size);
@@ -437,15 +442,21 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
     if(batch_size > 1)
     {
       const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
-      futures.emplace_back(
-        std::async(std::launch::async,
+      task_pool.enqueue(
         [=]()
         {
-          return calculate_forward_feed(
+          auto outputs = calculate_forward_feed(
             training_inputs.begin() + start_index,
             training_inputs.begin() + end_index,
             layers);
-        }));
+          std::vector<double> predictions;
+          for(const auto&output : outputs)
+          {
+            const auto& local_predictions = output.output_back();
+            predictions.insert(predictions.end(), local_predictions.begin(), local_predictions.end());
+          }
+          return predictions;
+        });
     }
     else
     {
@@ -455,13 +466,10 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
     }
   }
 
-  for (auto& future : futures)
+  if(batch_size > 1)
   {
-    auto all_future_outputs = future.get();
-    for(auto& all_outputs : all_future_outputs )
-    {
-      predictions.emplace_back(all_outputs.output_back());
-    }
+    task_pool.stop();
+    predictions = task_pool.get();
   }
 
   return calculate_rmse_error(training_outputs, predictions);
