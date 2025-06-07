@@ -62,7 +62,7 @@ public:
     _condition_variable.notify_one();
   }
 
-  std::vector<R> get() 
+  std::vector<R> get()
   {
     std::unique_lock<std::mutex> lock(_mutext);
     std::vector<R> output;
