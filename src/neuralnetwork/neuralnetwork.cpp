@@ -428,7 +428,7 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const size_t training_indexes_size = training_inputs.size();
-  auto task_pool = TaskQueuePool<std::vector<double>>();
+  auto task_pool = TaskQueuePool<std::vector<std::vector<double>>>();
   if(batch_size > 1)
   {
     task_pool.start();
@@ -449,11 +449,12 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
             training_inputs.begin() + start_index,
             training_inputs.begin() + end_index,
             layers);
-          std::vector<double> predictions;
+          std::vector<std::vector<double>> predictions;
+          predictions.reserve(outputs.size());
           for(const auto&output : outputs)
           {
-            const auto& local_predictions = output.output_back();
-            predictions.insert(predictions.end(), local_predictions.begin(), local_predictions.end());
+            auto local_predictions = output.output_back();
+            predictions.emplace_back(std::move(local_predictions));
           }
           return predictions;
         });
@@ -469,7 +470,13 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
   if(batch_size > 1)
   {
     task_pool.stop();
-    predictions = task_pool.get();
+    auto task_predictions = task_pool.get();
+    for (auto& task_prediction : task_predictions)
+    {
+      predictions.insert(predictions.end(), 
+        std::make_move_iterator(task_prediction.begin()), 
+        std::make_move_iterator(task_prediction.end()));
+    }
   }
 
   return calculate_rmse_error(training_outputs, predictions);
