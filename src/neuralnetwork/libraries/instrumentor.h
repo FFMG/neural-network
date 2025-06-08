@@ -119,7 +119,7 @@ namespace myoddweb
       json << "\"ts\":" << start_since_session;
       json << "}";
 
-      const std::string json_string = std::move(json.str());
+      const std::string json_string = json.str();
 
       {
         std::lock_guard lock(_mutex);
