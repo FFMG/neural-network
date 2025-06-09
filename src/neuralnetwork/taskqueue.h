@@ -9,6 +9,8 @@
 #include <thread>
 #include <vector>
 
+#include "./libraries/instrumentor.h"
+
 template <typename R>
 class TaskQueue
 {
@@ -27,9 +29,11 @@ public:
     _total_num_tasks(0),
     _busy_task(0)
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
   }
   ~TaskQueue()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     stop();
   }
 
@@ -38,6 +42,7 @@ public:
 
   void start()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     if (_running == State::Starting || _running == State::Running)
     {
       return;
@@ -48,6 +53,7 @@ public:
 
   void stop() 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     {
       std::unique_lock<std::mutex> lock(_mutext);
       if (_running != State::Stopped)
@@ -74,6 +80,7 @@ public:
   template <class F, class... Args>
   void enqueue(F&& f, Args&&... args) 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
       std::unique_lock<std::mutex> lock(_mutext);
@@ -85,6 +92,7 @@ public:
 
   std::vector<R> get()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutext);
     if (_busy_task > 0)
     {
@@ -99,12 +107,14 @@ public:
 
   inline int total_tasks()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutext);
     return _total_num_tasks;
   }
 
   inline double average()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutext);
     return _total_num_tasks > 0 ? static_cast<double>(_total_tasks_durations) / _total_num_tasks : 0.0;
   }
@@ -112,6 +122,7 @@ public:
 private:
   void run() 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     _running = State::Running;
     while (true)
     {
@@ -166,6 +177,7 @@ public:
     _number_of_threads(number_of_thread),
     _threads_index(0)
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     if(number_of_thread == 0)
     {
       _number_of_threads = std::thread::hardware_concurrency() -1;
@@ -174,11 +186,13 @@ public:
 
   ~TaskQueuePool()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     clean();
   }
 
   void start() 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     clean();
     _task_queues.reserve(_number_of_threads);
     for(int i = 0; i < _number_of_threads; ++i)
@@ -192,6 +206,7 @@ public:
 
   void stop() 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     for(auto& task_queue : _task_queues)
     {
       task_queue->stop();
@@ -201,6 +216,7 @@ public:
 
   inline int total_tasks()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     int total_num_tasks = 0;
     for(auto& task_queue : _task_queues)
     {
@@ -211,6 +227,7 @@ public:
 
   inline double average()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     double average = 0.0;
     for(auto& task_queue : _task_queues)
     {
@@ -222,6 +239,7 @@ public:
   template <class F, class... Args>
   void enqueue(F&& f, Args&&... args) 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     _task_queues[_threads_index++]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
     if(_threads_index >= _number_of_threads)
     {
@@ -231,6 +249,7 @@ public:
 
   std::vector<R> get() 
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::vector<R> output;
     for(auto& task_queue : _task_queues)
     {
@@ -247,6 +266,7 @@ private:
 
   void clean()
   {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     for(auto& task_queue : _task_queues)
     {
       delete task_queue;
