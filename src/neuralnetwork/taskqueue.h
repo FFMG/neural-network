@@ -110,27 +110,6 @@ public:
   }
 
 private:
-  void wait_for_busy_tasks( bool has_lock)
-  {
-    if (!has_lock)
-    {
-      std::unique_lock<std::mutex> lock(_mutext);
-      wait_for_busy_tasks(true);
-    }
-
-  }
-  int _busy_task;
-  std::atomic<State> _running;
-  std::thread _worker;
-  std::mutex _mutext;
-  std::condition_variable _condition_busy_task_complete;
-  std::condition_variable _condition_new_task;
-  std::chrono::nanoseconds::rep _total_tasks_durations;
-  int _total_num_tasks;
-
-  std::queue<std::function<R()>> _tasks;
-  std::vector<R> _results;
-
   void run() 
   {
     _running = State::Running;
@@ -164,6 +143,19 @@ private:
       }
     }
   }
+
+  std::thread _worker;
+  std::mutex _mutext;
+  std::condition_variable _condition_busy_task_complete;
+  std::condition_variable _condition_new_task;
+
+  std::atomic<State> _running;
+  std::chrono::nanoseconds::rep _total_tasks_durations;
+  int _total_num_tasks;
+  int _busy_task;
+
+  std::queue<std::function<R()>> _tasks;
+  std::vector<R> _results;
 };
 
 template <typename R>

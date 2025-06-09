@@ -27,7 +27,7 @@ private:
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method);
   static std::vector<Layer> create_layers(std::vector<std::vector<Neuron>> array_of_neurons);
 
-  static void add_basic(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_basic(TinyJSON::TJValueObject& json);
   static void add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
