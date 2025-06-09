@@ -34,7 +34,6 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   auto error = get_error(*tj);
-  auto learning_rate = get_learning_rate(*tj);
 
   // create the layer and validate that the topology matches.
   auto layers = create_layers(array_of_neurons);
@@ -45,7 +44,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, activation_method, learning_rate, error);
+  auto nn = new NeuralNetwork(layers, activation_method, error);
 
   // cleanup
   delete tj;
@@ -107,12 +106,6 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
     return 0.0;
   }
   return object->get_float("error", true, false);
-}
-
-double NeuralNetworkSerializer::get_learning_rate(const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  return object->get_float("learning-rate", true, false);
 }
 
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
@@ -266,7 +259,6 @@ void NeuralNetworkSerializer::add_basic(const NeuralNetwork& nn, TinyJSON::TJVal
   long long current_timestamp = now_seconds.time_since_epoch().count();
 
   json.set_number("created", current_timestamp);
-  json.set_float("learning-rate", nn.get_learning_rate());
 }
 
 void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer)

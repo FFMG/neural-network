@@ -9,6 +9,7 @@
 #include "activation.h"
 #include "layer.h"
 #include "neuron.h"
+#include "taskqueue.h"
 
 class NeuralNetwork
 {
@@ -394,14 +395,14 @@ private:
   };
 
 public:
-  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation, double learning_rate);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, double learning_rate, double error);
+  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
+  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, double error);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
   virtual ~NeuralNetwork();
 
-  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr);
+  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, double learning_rate, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr);
 
   std::vector<std::vector<double>> think(
     const std::vector<std::vector<double>>& inputs
@@ -414,7 +415,6 @@ public:
   const std::vector<Layer>& get_layers() const;
   activation::method get_activation_method() const;
   long double get_error() const;
-  double get_learning_rate() const;
 
 private:
   GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
@@ -451,7 +451,7 @@ private:
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
   // Todo this should be moved to a static class a passed as an object.
-  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers) const;
+  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool) const;
 
   // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
   static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
@@ -470,5 +470,4 @@ private:
   std::vector<unsigned> _topology;
   std::vector<Layer>* _layers;
   const activation::method _activation_method;
-  double _learning_rate;
 };
