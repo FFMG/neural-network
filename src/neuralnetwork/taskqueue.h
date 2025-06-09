@@ -10,16 +10,25 @@
 #include <vector>
 
 template <typename R>
-class TaskQueue 
+class TaskQueue
 {
+private:
+  enum class State {
+    Starting,
+    Running,
+    Stopping,
+    Stopped
+  };
+
 public:
-  TaskQueue() : 
-    _running(false),
+  TaskQueue() :
+    _running(State::Stopped),
     _total_tasks_durations(0),
-    _total_num_tasks(0)
+    _total_num_tasks(0),
+    _busy_task(0)
   {
   }
-  ~TaskQueue() 
+  ~TaskQueue()
   {
     stop();
   }
@@ -27,13 +36,13 @@ public:
   TaskQueue(const TaskQueue&) = delete;
   TaskQueue& operator=(const TaskQueue&) = delete;
 
-  void start() 
+  void start()
   {
-    if (_running) 
+    if (_running == State::Starting || _running == State::Running)
     {
       return;
     }
-    _running = true;
+    _running = State::Starting;
     _worker = std::thread([this] { this->run(); });
   }
 
@@ -41,13 +50,24 @@ public:
   {
     {
       std::unique_lock<std::mutex> lock(_mutext);
-      _running = false;
+      if (_running != State::Stopped)
+      {
+        _running = State::Stopping;
+        if (_busy_task > 0)
+        {
+          _condition_busy_task_complete.wait(lock, [this] {
+            return _busy_task == 0;
+            });
+        }
+      }
     }
-    _condition_variable.notify_all();
+    // tell everyone about this
+    _condition_new_task.notify_all();
     if (_worker.joinable()) 
     {
       _worker.join();
     }
+    _running = State::Stopped;
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -59,12 +79,19 @@ public:
       std::unique_lock<std::mutex> lock(_mutext);
       _tasks.emplace([task]() -> R { return task(); });
     }
-    _condition_variable.notify_one();
+    // tell one thread about this.
+    _condition_new_task.notify_one();
   }
 
   std::vector<R> get()
   {
     std::unique_lock<std::mutex> lock(_mutext);
+    if (_busy_task > 0)
+    {
+      _condition_busy_task_complete.wait(lock, [this] {
+        return _busy_task == 0;
+      });
+    }
     std::vector<R> output;
     output.swap(_results); // clear and return
     return output;
@@ -83,10 +110,21 @@ public:
   }
 
 private:
-  std::atomic<bool> _running;
+  void wait_for_busy_tasks( bool has_lock)
+  {
+    if (!has_lock)
+    {
+      std::unique_lock<std::mutex> lock(_mutext);
+      wait_for_busy_tasks(true);
+    }
+
+  }
+  int _busy_task;
+  std::atomic<State> _running;
   std::thread _worker;
   std::mutex _mutext;
-  std::condition_variable _condition_variable;
+  std::condition_variable _condition_busy_task_complete;
+  std::condition_variable _condition_new_task;
   std::chrono::nanoseconds::rep _total_tasks_durations;
   int _total_num_tasks;
 
@@ -95,20 +133,22 @@ private:
 
   void run() 
   {
-    while (true) 
+    _running = State::Running;
+    while (true)
     {
       std::function<R()> task;
       {
         std::unique_lock<std::mutex> lock(_mutext);
-        _condition_variable.wait(lock, [this] 
-          { 
-            return !_tasks.empty() || !_running; }
-          );
-        if (!_running && _tasks.empty()) 
+        _condition_new_task.wait(lock, [this]
+          {
+            return !_tasks.empty() || (_running == State::Stopped || _running == State::Stopping);
+          });
+        if ((_running == State::Stopped || _running == State::Stopping) && _tasks.empty())
         {
           return;
         }
         task = std::move(_tasks.front());
+        ++_busy_task; // this task is now busy
         _tasks.pop();
       }
       auto start = std::chrono::steady_clock::now();
@@ -119,6 +159,8 @@ private:
         _total_tasks_durations += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         ++_total_num_tasks;
         _results.push_back(std::move(result));
+        --_busy_task; //  this task is no longer busy.
+        _condition_busy_task_complete.notify_all();
       }
     }
   }
