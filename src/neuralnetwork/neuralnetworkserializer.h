@@ -21,7 +21,6 @@ public:
 
 private:
   static double get_error(const TinyJSON::TJValue& json);
-  static double get_learning_rate(const TinyJSON::TJValue& json);
   static std::vector<unsigned> get_topology(const TinyJSON::TJValue& json );
   static activation::method get_activation_method(const TinyJSON::TJValue& json );
   static std::vector<std::array<double,2>> get_weights(const TinyJSON::TJValueObject& neuron);

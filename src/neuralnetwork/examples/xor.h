@@ -10,7 +10,7 @@ private:
   static NeuralNetwork* create_neural_network()
   {
     std::vector<unsigned> topology = {3,2,1};
-    return new NeuralNetwork(topology, activation::sigmoid_activation, 0.15);
+    return new NeuralNetwork(topology, activation::sigmoid_activation);
   }
 
   static void train_neural_network( NeuralNetwork& nn, unsigned epoch, unsigned batch_size)
@@ -29,7 +29,7 @@ private:
     };
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs, epoch, batch_size);
+    nn.train(training_inputs, training_outputs, 0.15, epoch, batch_size);
     std::cout << std::endl;
 
     // pass an array of array to think about

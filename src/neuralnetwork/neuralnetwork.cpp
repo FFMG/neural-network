@@ -1,5 +1,4 @@
 #include "neuralnetwork.h"
-#include "taskqueue.h"
 
 #include <cassert>
 #include <chrono>
@@ -13,14 +12,12 @@ static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
-  const activation::method& activation,
-  double learning_rate
+  const activation::method& activation
   ) :
   _error(0.0),
   _topology(topology),
   _layers(nullptr),
-  _activation_method(activation),
-  _learning_rate(learning_rate)
+  _activation_method(activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(topology.size() < 2)
@@ -53,13 +50,11 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
   const activation::method& activation,
-  double learning_rate,
   double error
   ) :
   _error(error),
   _layers(nullptr),
-  _activation_method(activation),
-  _learning_rate(learning_rate)
+  _activation_method(activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers = new std::vector<Layer>();
@@ -77,8 +72,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _topology(src._topology),
   _layers(nullptr),
-  _activation_method(src._activation_method),
-  _learning_rate(src._learning_rate)
+  _activation_method(src._activation_method)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers = new std::vector<Layer>();
@@ -92,12 +86,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
 NeuralNetwork::~NeuralNetwork()
 {
   delete _layers;
-}
-
-double NeuralNetwork::get_learning_rate() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _learning_rate;
 }
 
 activation::method NeuralNetwork::get_activation_method() const
@@ -231,6 +219,7 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
 void NeuralNetwork::train(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
+  double learning_rate,
   int number_of_epoch,
   int batch_size,
   bool data_is_unique,
@@ -263,6 +252,13 @@ void NeuralNetwork::train(
     }
   }
 
+  TaskQueuePool<std::vector<std::vector<double>>>* errorPool = nullptr;
+  if (batch_size > 1)
+  {
+    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>();
+    errorPool->start();
+  }
+
   // get the indexes
   std::vector<size_t> training_indexes;
   std::vector<size_t> checking_indexes;
@@ -273,6 +269,7 @@ void NeuralNetwork::train(
   std::cout << "  " << training_indexes .size() << " training indexes." << std::endl;
   std::cout << "  " << checking_indexes.size() << " in training error check indexes." << std::endl;
   std::cout << "  " << final_check_indexes.size() << " final error check indexes." << std::endl;
+  std::cout << "  " << "Learning rate:" << std::fixed << std::setprecision(15) << learning_rate << std::endl;
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
@@ -338,7 +335,7 @@ void NeuralNetwork::train(
     {
       epoch_gradients_outputs = task_pool.get();
     }
-    update_layers_with_gradients(epoch_gradients_outputs, *_layers, get_learning_rate());
+    update_layers_with_gradients(epoch_gradients_outputs, *_layers, learning_rate);
 
     if (epoch % 10000 == 0)
     {
@@ -355,7 +352,7 @@ void NeuralNetwork::train(
       if (elapsed_time >= interval)
       {
         // do a batch check to see where we are at ...
-        _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers);
+        _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers, errorPool);
         if( !progress_callback(percent, *this))
         {
           return;
@@ -374,8 +371,14 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
-  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, *_layers);
+  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, *_layers, errorPool);
   std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
+
+  if (errorPool != nullptr)
+  {
+    errorPool->stop();
+    delete errorPool;
+  }
 
   // final callback if needed
   if (progress_callback != nullptr)
@@ -424,25 +427,20 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
   }
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers) const
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const size_t training_indexes_size = training_inputs.size();
-  auto task_pool = TaskQueuePool<std::vector<std::vector<double>>>();
-  if(batch_size > 1)
-  {
-    task_pool.start();
-  }
 
   std::vector<std::vector<double>> predictions;
   predictions.reserve(training_indexes_size);
 
   for (size_t start_index = 0; start_index < training_indexes_size; start_index+= batch_size)
   {
-    if(batch_size > 1)
+    if(errorPool != nullptr)
     {
       const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
-      task_pool.enqueue(
+      errorPool->enqueue(
         [=]()
         {
           auto outputs = calculate_forward_feed(
@@ -467,10 +465,9 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& tr
     }
   }
 
-  if(batch_size > 1)
+  if(errorPool != nullptr)
   {
-    task_pool.stop();
-    auto task_predictions = task_pool.get();
+    auto task_predictions = errorPool->get();
     for (auto& task_prediction : task_predictions)
     {
       predictions.insert(predictions.end(), 
