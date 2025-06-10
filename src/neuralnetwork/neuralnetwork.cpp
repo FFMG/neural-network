@@ -1,3 +1,4 @@
+#include "adaptivelearningratescheduler.h"
 #include "neuralnetwork.h"
 
 #include <cassert>
@@ -295,6 +296,8 @@ void NeuralNetwork::train(
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
+
+  AdaptiveLearningRateScheduler learning_rate_scheduler;
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -344,21 +347,23 @@ void NeuralNetwork::train(
       std::cout << "Average time per call: " << std::fixed << std::setprecision(2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
     }
 
-    if (progress_callback != nullptr)
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto elapsed_time = current_time - last_callback_time;
+    if (elapsed_time >= interval)
     {
-      auto current_time = std::chrono::high_resolution_clock::now();
-      auto elapsed_time = current_time - last_callback_time;
-      auto percent = (int)(((float)epoch / number_of_epoch)*100);
-      if (elapsed_time >= interval)
+      // do an error check to see if we need to adapt.
+      _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers, errorPool);
+      learning_rate = learning_rate_scheduler.update(_error, learning_rate);
+
+      if (progress_callback != nullptr)
       {
-        // do a batch check to see where we are at ...
-        _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers, errorPool);
+        auto percent = (int)(((float)epoch / number_of_epoch)*100);
         if( !progress_callback(percent, *this))
         {
           return;
         }
-        last_callback_time = current_time;
       }
+      last_callback_time = current_time;
     }
   }
 
