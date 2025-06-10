@@ -5,7 +5,7 @@
       "label": "C/C++: g++ build perfomance",
       "command": "/usr/bin/g++",
       "args": [
-        "-g",       
+        "-g",
         "-Wall",
         "-Wextra",
         "-Werror",
@@ -43,7 +43,6 @@
         "-Wunused-function",
         "-Wunused-value",
         "-Wtype-limits",
-        "-DNDEBUG",
         "-DMYODDWEB_PROFILE=0",
         "-O0",
         "${workspaceFolder}/src/neuralnetwork/*.cpp",
