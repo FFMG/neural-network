@@ -46,7 +46,7 @@ Neuron::Neuron(
   }
 }
 
-Neuron::Neuron(const Neuron& src) : 
+Neuron::Neuron(const Neuron& src)  noexcept : 
   _index(src._index),
   _output_value(src._output_value),
   _activation_method(src._activation_method),
@@ -57,7 +57,7 @@ Neuron::Neuron(const Neuron& src) :
   _output_weights = src._output_weights;
 }
 
-const Neuron& Neuron::operator=(const Neuron& src)
+Neuron& Neuron::operator=(const Neuron& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (this != &src)
@@ -68,6 +68,35 @@ const Neuron& Neuron::operator=(const Neuron& src)
     _output_value = src._output_value;
     _activation_method = src._activation_method;
     _output_weights = src._output_weights;
+  }
+  return *this;
+}
+
+Neuron::Neuron(Neuron&& src) noexcept :
+  _index(src._index),
+  _output_value(src._output_value),
+  _activation_method(src._activation_method),
+  _output_weights({}),
+  _alpha(LEARNING_ALPHA)
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  _output_weights = std::move(src._output_weights);
+}
+
+Neuron& Neuron::operator=(Neuron&& src) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  if (this != &src)
+  {
+    Clean();
+
+    _index = src._index;
+    _output_value = src._output_value;
+    _activation_method = src._activation_method;
+    _output_weights = std::move(src._output_weights);
+
+    src._output_value = 0;
+    src._index = 0;
   }
   return *this;
 }

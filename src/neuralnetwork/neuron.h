@@ -95,8 +95,11 @@ public:
     const activation& activation
     );
 
-  Neuron(const Neuron& src);
-  const Neuron& operator=(const Neuron& src);
+  Neuron(const Neuron& src) noexcept;
+  Neuron& operator=(const Neuron& src) noexcept;
+  Neuron(Neuron&& src) noexcept;
+  Neuron& operator=(Neuron&& src) noexcept;
+
   virtual ~Neuron();
 
   void set_output_value(double val);
