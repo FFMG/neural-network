@@ -142,10 +142,10 @@
     <ClCompile Include="neuralnetwork.cpp" />
     <ClCompile Include="neuralnetworkserializer.cpp" />
     <ClCompile Include="neuron.cpp" />
-    <ClCompile Include="threadpool.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="activation.h" />
+    <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\xor.h" />
