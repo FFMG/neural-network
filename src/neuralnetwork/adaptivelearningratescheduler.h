@@ -1,9 +1,10 @@
-#include <iostream>
-#include <vector>
+#include <algorithm>
 #include <deque>
-#include <numeric>   // For std::accumulate
-#include <algorithm> // For std::min_element and std::max
-#include <functional> // For std::function
+#include <functional>
+#include <iomanip>
+#include <iostream>
+#include <numeric>
+#include <vector>
 
 class AdaptiveLearningRateScheduler 
 {
@@ -16,11 +17,11 @@ public:
    * @param min_learning_rate The lowest the learning rate can go.
    * @param explosion_factor If current error is this many times the average, it's growing (e.g., 2.0).
    */
-  AdaptiveLearningRateScheduler(size_t patience = 10,
-                                double reduction_factor = 0.5,
-                                double min_improvement = 1e-4,
-                                double min_learning_rate = 1e-6,
-                                double explosion_factor = 2.0) : 
+  AdaptiveLearningRateScheduler(size_t patience          = 10,
+                                double reduction_factor  = 0.9,
+                                double min_improvement   = 0.000001,
+                                double min_learning_rate = 0.000001,
+                                double explosion_factor  = 2.0) : 
       _patience(patience),
       _reduction_factor(reduction_factor),
       _min_improvement(min_improvement),
@@ -56,8 +57,7 @@ public:
     // --- We need enough history to make a decision ---
     if (_error_history.size() < _patience) 
     {
-      std::cout << "[Scheduler] Gathering history... ("
-                << _error_history.size() << "/" << _patience << ")\n";
+      // [Scheduler] Gathering history... (" << _error_history.size() << "/" << _patience << ")"
       return current_learning_rate;
     }
 
@@ -68,10 +68,18 @@ public:
 
     if (current_rmse > avg_past_error * _explosion_factor) 
     {
-      std::cout << "[Scheduler] WARNING: Error is growing! Drastically reducing LR.\n";
       // Make a more drastic cut for explosions
-      double new_lr = current_learning_rate * 0.1; // Aggressive reduction
-      return std::max(new_lr, _min_learning_rate);
+      double new_learning_rate = current_learning_rate * 0.1; // Aggressive reduction
+      if (new_learning_rate < _min_learning_rate)
+      {
+        new_learning_rate = _min_learning_rate;
+        std::cerr << "[Scheduler] WARNING: Error is growing but has reached minimums: " << std::fixed << std::setprecision(15) << new_learning_rate << std::endl;
+      }
+      else
+      {
+        std::cerr << "[Scheduler] WARNING: Error is growing! Drastically reducing learning rate to: " << std::fixed << std::setprecision(15) << new_learning_rate << std::endl;
+      }
+      return new_learning_rate;
     }
 
     // --- Rule 2: Check for stalled learning (plateau) ---
@@ -82,14 +90,24 @@ public:
 
     if (improvement < _min_improvement) 
     {
-      std::cout << "[Scheduler] Learning has stalled (plateau). Reducing LR.\n";
-      double new_lr = current_learning_rate * _reduction_factor;
-      // Don't let the learning rate go below the defined minimum
-      return std::max(new_lr, _min_learning_rate);
+      if (_min_learning_rate == current_learning_rate)
+      {
+        return _min_learning_rate;
+      }
+      double new_learning_rate = current_learning_rate * _reduction_factor;
+      if (new_learning_rate < _min_learning_rate)
+      {
+        new_learning_rate = _min_learning_rate;
+        std::cout << "[Scheduler] Learning has stalled (plateau) but rate has reached minimum to: " << std::fixed << std::setprecision(15) << new_learning_rate << std::endl;
+      }
+      else
+      {
+        std::cout << "[Scheduler] Learning has stalled (plateau), reducing learning rate to: " << std::fixed << std::setprecision(15) << new_learning_rate << std::endl;
+        _error_history.clear();
+      }      
+      return new_learning_rate;
     }
-        
-    // --- If neither rule is met, learning is progressing well ---
-    std::cout << "[Scheduler] Error is improving. Keeping current LR.\n";
+    // [Scheduler] Error is improving. Keeping current learning rate at: " << std::fixed << std::setprecision(15) << current_learning_rate
     return current_learning_rate;
   }
 
