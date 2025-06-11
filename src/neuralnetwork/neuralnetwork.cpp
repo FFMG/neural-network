@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <numeric>
 #include <random>
 #include <string>
@@ -27,25 +28,25 @@ NeuralNetwork::NeuralNetwork(
     throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
   }
   const auto& number_of_layers = topology.size();
-  _layers = new std::vector<Layer>();
+  _layers.reserve(number_of_layers);
 
   // add the input layer
   auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method);
-  _layers->push_back(layer);
+  _layers.emplace_back(std::move(layer));
   
   // then the hidden layers
   for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
   {
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
-    const auto& previous_layer = _layers->back();
+    const auto& previous_layer = _layers.back();
     layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method);
-    _layers->push_back(layer);
+    _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers->back(), _activation_method);
-  _layers->push_back(layer);
+  layer = Layer::create_output_layer(topology.back(), _layers.back(), _activation_method);
+  _layers.emplace_back(std::move(layer));
 }
 
 NeuralNetwork::NeuralNetwork(
@@ -54,39 +55,32 @@ NeuralNetwork::NeuralNetwork(
   double error
   ) :
   _error(error),
-  _layers(nullptr),
   _activation_method(activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  _layers = new std::vector<Layer>();
+  _layers.reserve(layers.size());
   for (auto layer : layers)
   {
     auto copy_layer = Layer(layer);
-    _layers->push_back(copy_layer);
 
     // remove the bias Neuron.
     _topology.push_back(copy_layer.size() -1);
+    _layers.emplace_back(std::move(copy_layer));
   }
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _topology(src._topology),
-  _layers(nullptr),
   _activation_method(src._activation_method)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  _layers = new std::vector<Layer>();
-  for (const auto& layer : *src._layers)
+  _layers.reserve(src._layers.size());
+  for (const auto& layer : src._layers)
   {
     auto copy_layer = Layer(layer);
-    _layers->push_back(copy_layer);
+    _layers.emplace_back(std::move(copy_layer));
   }
-}
-
-NeuralNetwork::~NeuralNetwork()
-{
-  delete _layers;
 }
 
 activation::method NeuralNetwork::get_activation_method() const
@@ -98,7 +92,7 @@ activation::method NeuralNetwork::get_activation_method() const
 const std::vector<Layer>& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return *_layers;
+  return _layers;
 }
 
 const std::vector<unsigned>& NeuralNetwork::get_topology() const
@@ -184,8 +178,7 @@ void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffle
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto layers = *_layers;
-  return calculate_forward_feed(inputs, layers).output_back();
+  return calculate_forward_feed(inputs, _layers).output_back();
 }
 
 long double NeuralNetwork::get_error() const
@@ -212,8 +205,8 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
   ) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto batch_gradients_outputs = calculate_forward_feed(inputs_begin, inputs_begin+size, *_layers);
-  calculate_batch_back_propagation(outputs_begin, size, batch_gradients_outputs, *_layers);
+  auto batch_gradients_outputs = calculate_forward_feed(inputs_begin, inputs_begin+size, _layers);
+  calculate_batch_back_propagation(outputs_begin, size, batch_gradients_outputs, _layers);
   return batch_gradients_outputs;
 }
 
@@ -267,10 +260,22 @@ void NeuralNetwork::train(
   create_shuffled_indexes(training_inputs.size(), data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
   std::cout << "Tainning will use: " << std::endl;
-  std::cout << "  " << training_indexes .size() << " training indexes." << std::endl;
-  std::cout << "  " << checking_indexes.size() << " in training error check indexes." << std::endl;
-  std::cout << "  " << final_check_indexes.size() << " final error check indexes." << std::endl;
+  std::cout << "  " << training_indexes.size() << " training samples." << std::endl;
+  std::cout << "  " << checking_indexes.size() << " in training error check samples." << std::endl;
+  std::cout << "  " << final_check_indexes.size() << " final error check samples." << std::endl;
   std::cout << "  " << "Learning rate:" << std::fixed << std::setprecision(15) << learning_rate << std::endl;
+  std::cout << "  " << "Input size:" <<  training_inputs.front().size() << std::endl;
+  std::cout << "  " << "Output size:" << training_outputs.front().size() << std::endl;
+  std::cout << "  " << "Hidden layers: {";
+  for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
+  {
+    std::cout << (_layers[layer].size() -1); // remove the bias
+    if (layer < _layers.size() - 2)
+    {
+      std::cout << ", ";
+    }
+  }
+  std::cout << "}" << std::endl;
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
@@ -338,7 +343,7 @@ void NeuralNetwork::train(
     {
       epoch_gradients_outputs = task_pool.get();
     }
-    update_layers_with_gradients(epoch_gradients_outputs, *_layers, learning_rate);
+    update_layers_with_gradients(epoch_gradients_outputs, _layers, learning_rate);
 
     if (epoch % 10000 == 0)
     {
@@ -352,7 +357,7 @@ void NeuralNetwork::train(
     if (elapsed_time >= interval)
     {
       // do an error check to see if we need to adapt.
-      _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, *_layers, errorPool);
+      _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
       learning_rate = learning_rate_scheduler.update(_error, learning_rate);
 
       if (progress_callback != nullptr)
@@ -376,7 +381,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
-  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, *_layers, errorPool);
+  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
   std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
 
   if (errorPool != nullptr)

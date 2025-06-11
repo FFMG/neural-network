@@ -400,7 +400,7 @@ public:
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
-  virtual ~NeuralNetwork();
+  virtual ~NeuralNetwork() = default;
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, double learning_rate, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr);
 
@@ -468,6 +468,6 @@ private:
   
   long double _error;
   std::vector<unsigned> _topology;
-  std::vector<Layer>* _layers;
+  std::vector<Layer> _layers;
   const activation::method _activation_method;
 };
