@@ -229,11 +229,17 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     double average = 0.0;
+    int used_averages = 0;
     for(auto& task_queue : _task_queues)
     {
+      if (task_queue->total_tasks() == 0)
+      {
+        continue;
+      }
+      ++used_averages;
       average += task_queue->average();
     }
-    return _number_of_threads > 0 ? average / _number_of_threads : 0.0;
+    return used_averages > 0 ? average / used_averages : 0.0;
   }
 
   template <class F, class... Args>
