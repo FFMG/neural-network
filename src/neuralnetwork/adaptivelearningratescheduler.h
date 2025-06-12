@@ -45,6 +45,11 @@ public:
    */
   double update(double current_rmse, double current_learning_rate) 
   {
+    if (!std::isfinite(current_rmse))
+    {
+      std::cerr << "[Scheduler] WARNING: Invalid Error: " << std::fixed << std::setprecision(15) << current_rmse << std::endl;
+      return current_learning_rate;
+    }
     // Add current error to our history
     _error_history.push_back(current_rmse);
         
