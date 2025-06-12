@@ -16,15 +16,14 @@ class TaskQueue
 {
 private:
   enum class State {
-    Starting,
-    Running,
+    Started,
     Stopping,
     Stopped
   };
 
 public:
   TaskQueue() :
-    _running(State::Stopped),
+    _state(State::Stopped),
     _total_tasks_durations(0),
     _total_num_tasks(0),
     _busy_task(0)
@@ -40,31 +39,15 @@ public:
   TaskQueue(const TaskQueue&) = delete;
   TaskQueue& operator=(const TaskQueue&) = delete;
 
-  void start()
-  {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
-    if (_running == State::Starting || _running == State::Running)
-    {
-      return;
-    }
-    _running = State::Starting;
-    _worker = std::thread([this] { this->run(); });
-  }
-
   void stop() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     {
       std::unique_lock<std::mutex> lock(_mutext);
-      if (_running != State::Stopped)
+      _state = State::Stopping;
+      if (_state != State::Stopped)
       {
-        _running = State::Stopping;
-        if (_busy_task > 0)
-        {
-          _condition_busy_task_complete.wait(lock, [this] {
-            return _busy_task == 0;
-            });
-        }
+        wait_for_all_tasks(lock);
       }
     }
     // tell everyone about this
@@ -73,7 +56,7 @@ public:
     {
       _worker.join();
     }
-    _running = State::Stopped;
+    _state = State::Stopped;
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -84,6 +67,15 @@ public:
     auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
       std::unique_lock<std::mutex> lock(_mutext);
+      if(_state == State::Stopping)
+      {
+        throw new std::invalid_argument("The task queue is stopping!");
+      }
+      if(_state == State::Stopped)
+      {
+        _worker = std::thread([this] { this->run(); });
+        _state = State::Started;
+      }
       _tasks.emplace([task]() -> R { return task(); });
     }
     // tell one thread about this.
@@ -94,12 +86,8 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutext);
-    if (_busy_task > 0)
-    {
-      _condition_busy_task_complete.wait(lock, [this] {
-        return _busy_task == 0 && _tasks.size() == 0;
-      });
-    }
+    wait_for_all_tasks(lock);
+
     std::vector<R> output;
     output.swap(_results); // clear and return
     return output;
@@ -120,10 +108,22 @@ public:
   }
 
 private:
+  void wait_for_all_tasks(std::unique_lock<std::mutex>& lock)
+  {
+    if (_busy_task ==0 && _tasks.empty())
+    {
+      return;
+    }
+    _condition_busy_task_complete.wait(lock, [this] 
+    {
+      return _busy_task == 0 && _tasks.empty();
+    });
+  }
+
   void run() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
-    _running = State::Running;
+    _state = State::Started;
     while (true)
     {
       std::function<R()> task;
@@ -131,9 +131,9 @@ private:
         std::unique_lock<std::mutex> lock(_mutext);
         _condition_new_task.wait(lock, [this]
           {
-            return !_tasks.empty() || (_running == State::Stopped || _running == State::Stopping);
+            return !_tasks.empty() || (_state == State::Stopped || _state == State::Stopping);
           });
-        if ((_running == State::Stopped || _running == State::Stopping) && _tasks.empty())
+        if ((_state == State::Stopped || _state == State::Stopping) && _tasks.empty())
         {
           return;
         }
@@ -153,6 +153,7 @@ private:
         _condition_busy_task_complete.notify_all();
       }
     }
+    _state = State::Stopped;
   }
 
   std::thread _worker;
@@ -160,7 +161,7 @@ private:
   std::condition_variable _condition_busy_task_complete;
   std::condition_variable _condition_new_task;
 
-  std::atomic<State> _running;
+  std::atomic<State> _state;
   std::chrono::nanoseconds::rep _total_tasks_durations;
   int _total_num_tasks;
   int _busy_task;
@@ -182,26 +183,13 @@ public:
     {
       _number_of_threads = std::thread::hardware_concurrency() -1;
     }
+    start();
   }
 
   ~TaskQueuePool()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     clean();
-  }
-
-  void start() 
-  {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    clean();
-    _task_queues.reserve(_number_of_threads);
-    for(int i = 0; i < _number_of_threads; ++i)
-    {
-      auto task_queue = new TaskQueue<R>();
-      _task_queues.emplace_back(task_queue);
-      task_queue->start();
-    }
-    std::cout << "ThreadPool initialized with " << _number_of_threads << " worker threads." << std::endl;    
   }
 
   void stop() 
@@ -262,6 +250,8 @@ public:
       auto this_output = task_queue->get();
       output.insert(output.end(), this_output.begin(), this_output.end());
     }
+    // reset the thread index so we don't start new threads for no reason.
+    _threads_index = 0;
     return output;
   }
 
@@ -279,4 +269,17 @@ private:
     }
     _task_queues.clear();
   }
+
+  void start() 
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    clean();
+    _task_queues.reserve(_number_of_threads);
+    for(int i = 0; i < _number_of_threads; ++i)
+    {
+      auto task_queue = new TaskQueue<R>();
+      _task_queues.emplace_back(task_queue);
+    }
+    std::cout << "ThreadPool initialized with " << _number_of_threads << " worker threads." << std::endl;    
+  }  
 };
