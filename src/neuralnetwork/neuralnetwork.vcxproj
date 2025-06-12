@@ -106,7 +106,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -145,11 +145,17 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="activation.h" />
+    <ClInclude Include="adaptivelearningratescheduler.h" />
+    <ClInclude Include="examples\helper.h" />
+    <ClInclude Include="examples\threebitparity.h" />
+    <ClInclude Include="examples\xor.h" />
     <ClInclude Include="layer.h" />
+    <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
+    <ClInclude Include="taskqueue.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

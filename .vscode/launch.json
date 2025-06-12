@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug NeuralNetwork Main",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/neuralnetwork/main",
+      "args": ["-g", "-O0"],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "C/C++: g++ build main"
+    }
+  ]
+}
