@@ -18,7 +18,6 @@ NeuralNetwork::NeuralNetwork(
   ) :
   _error(0.0),
   _topology(topology),
-  _layers(nullptr),
   _activation_method(activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
