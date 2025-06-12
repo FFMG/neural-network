@@ -34,7 +34,6 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   auto error = get_error(*tj);
-  auto learning_rate = get_learning_rate(*tj);
 
   // create the layer and validate that the topology matches.
   auto layers = create_layers(array_of_neurons);
@@ -45,7 +44,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, activation_method, learning_rate, error);
+  auto nn = new NeuralNetwork(layers, activation_method, error);
 
   // cleanup
   delete tj;
@@ -86,7 +85,7 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
 {
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
-  add_basic(nn, *tj);
+  add_basic(*tj);
   add_topology(nn, *tj);
   add_activation_method(nn, *tj);
   add_error(nn, *tj);
@@ -107,16 +106,6 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
     return 0.0;
   }
   return object->get_float("error", true, false);
-}
-
-double NeuralNetworkSerializer::get_learning_rate(const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
-  {
-    return LEARNING_RATE;
-  }
-  return object->get_float("learning-rate", true, false);
 }
 
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
@@ -155,17 +144,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
     {
       return {};
     }
-    auto learning_rate_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("learning_rate"));
-    if(nullptr == learning_rate_object)
-    {
-      return {};
-    }
-    auto gradient_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("gradient"));
-    if(nullptr == gradient_object)
-    {
-      return {};
-    }
-    auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output_value"));
+    auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output-value"));
     if(nullptr == output_value_object)
     {
       return {};
@@ -173,8 +152,6 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
     auto index = static_cast<unsigned>(index_object->get_number());
     auto output_value = output_value_object->get_float();
-    auto gradient = gradient_object->get_float();
-    auto learning_rate = learning_rate_object->get_float();
 
     // then the weights
     // the output layer can have zero weights
@@ -183,10 +160,8 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
     auto neuron = Neuron(
       index,
       output_value,
-      gradient,
       activation_method,
-      weights,
-      learning_rate
+      weights
     );
     neurons.push_back(neuron);
   }
@@ -277,23 +252,20 @@ void NeuralNetworkSerializer::add_weights(const std::vector<std::array<double,2>
   delete weights_array;
 }
 
-void NeuralNetworkSerializer::add_basic(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
 {
   auto now = std::chrono::system_clock::now();
   auto now_seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
   long long current_timestamp = now_seconds.time_since_epoch().count();
 
   json.set_number("created", current_timestamp);
-  json.set_float("learning-rate", nn.get_learning_rate());
 }
 
 void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer)
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
-  neuron_object->set_float("learning_rate", neuron.get_learning_rate());
-  neuron_object->set_float("output_value", neuron.get_output_value());
-  neuron_object->set_float("gradient", neuron.get_gradient());
+  neuron_object->set_float("output-value", neuron.get_output_value());
   add_weights(neuron.get_weights(), *neuron_object);
   layer.add(neuron_object);
   delete neuron_object;
