@@ -249,7 +249,6 @@ void NeuralNetwork::train(
   if (batch_size > 1)
   {
     errorPool = new TaskQueuePool<std::vector<std::vector<double>>>();
-    errorPool->start();
   }
 
   // get the indexes
@@ -290,11 +289,6 @@ void NeuralNetwork::train(
   }
 
   auto task_pool = TaskQueuePool<std::vector<GradientsAndOutputs>>();
-  if(batch_size > 1)
-  {
-    task_pool.start();
-  }
-
   const auto training_indexes_size = training_indexes.size();
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
