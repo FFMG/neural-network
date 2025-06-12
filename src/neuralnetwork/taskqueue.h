@@ -97,7 +97,7 @@ public:
     if (_busy_task > 0)
     {
       _condition_busy_task_complete.wait(lock, [this] {
-        return _busy_task == 0;
+        return _busy_task == 0 && _tasks.size() == 0;
       });
     }
     std::vector<R> output;
@@ -177,7 +177,7 @@ public:
     _number_of_threads(number_of_thread),
     _threads_index(0)
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     if(number_of_thread == 0)
     {
       _number_of_threads = std::thread::hardware_concurrency() -1;
@@ -186,13 +186,13 @@ public:
 
   ~TaskQueuePool()
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     clean();
   }
 
   void start() 
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     clean();
     _task_queues.reserve(_number_of_threads);
     for(int i = 0; i < _number_of_threads; ++i)
@@ -206,7 +206,7 @@ public:
 
   void stop() 
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     for(auto& task_queue : _task_queues)
     {
       task_queue->stop();
@@ -216,7 +216,7 @@ public:
 
   inline int total_tasks()
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     int total_num_tasks = 0;
     for(auto& task_queue : _task_queues)
     {
@@ -227,7 +227,7 @@ public:
 
   inline double average()
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     double average = 0.0;
     for(auto& task_queue : _task_queues)
     {
@@ -239,7 +239,7 @@ public:
   template <class F, class... Args>
   void enqueue(F&& f, Args&&... args) 
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     _task_queues[_threads_index++]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
     if(_threads_index >= _number_of_threads)
     {
@@ -247,9 +247,9 @@ public:
     }
   }
 
-  std::vector<R> get() 
+  std::vector<R> get()
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     std::vector<R> output;
     for(auto& task_queue : _task_queues)
     {
@@ -266,7 +266,7 @@ private:
 
   void clean()
   {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     for(auto& task_queue : _task_queues)
     {
       delete task_queue;
