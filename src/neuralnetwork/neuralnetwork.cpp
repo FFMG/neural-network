@@ -330,6 +330,7 @@ void NeuralNetwork::train(
         );
       }
     }
+    MYODDWEB_PROFILE_MARK();
 
     // Collect the results
     if (batch_size > 1)
@@ -363,6 +364,7 @@ void NeuralNetwork::train(
       }
       last_callback_time = current_time;
     }
+    MYODDWEB_PROFILE_MARK();
   }
 
   task_pool.stop();
@@ -388,6 +390,7 @@ void NeuralNetwork::train(
   {
     progress_callback(100, *this);
   }
+  MYODDWEB_PROFILE_MARK();
 }
 
 void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, LayersAndNeurons<double>& averages) const
