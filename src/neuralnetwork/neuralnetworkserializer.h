@@ -21,6 +21,7 @@ public:
 
 private:
   static double get_error(const TinyJSON::TJValue& json);
+  static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
   static std::vector<unsigned> get_topology(const TinyJSON::TJValue& json );
   static activation::method get_activation_method(const TinyJSON::TJValue& json );
   static std::vector<std::array<double,2>> get_weights(const TinyJSON::TJValueObject& neuron);
@@ -30,7 +31,7 @@ private:
   static void add_basic(TinyJSON::TJValueObject& json);
   static void add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
-  static void add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layer(const Layer& layer, TinyJSON::TJValueArray& layers);
   static void add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer);

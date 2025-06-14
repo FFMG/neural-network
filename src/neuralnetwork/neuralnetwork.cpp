@@ -17,6 +17,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& activation
   ) :
   _error(0.0),
+  _mean_absolute_percentage_error(0.0),
   _topology(topology),
   _activation_method(activation)
 {
@@ -51,9 +52,11 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
   const activation::method& activation,
-  double error
+  long double error,
+  long mean_absolute_percentage_error
   ) :
   _error(error),
+  _mean_absolute_percentage_error(mean_absolute_percentage_error),
   _activation_method(activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -70,6 +73,7 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
+  _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
   _topology(src._topology),
   _activation_method(src._activation_method)
 {
@@ -178,6 +182,12 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return calculate_forward_feed(inputs, _layers).output_back();
+}
+
+long double NeuralNetwork::get_mean_absolute_percentage_error() const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _mean_absolute_percentage_error;
 }
 
 long double NeuralNetwork::get_error() const
@@ -350,7 +360,7 @@ void NeuralNetwork::train(
     if (elapsed_time >= interval)
     {
       // do an error check to see if we need to adapt.
-      _error = calculate_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
+      update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
       learning_rate = learning_rate_scheduler.update(_error, learning_rate);
 
       if (progress_callback != nullptr)
@@ -374,8 +384,9 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
-  _error = calculate_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
+  update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
   std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
+  std::cout << "Final Test Mean Absolute Percentage Error: " << std::fixed << std::setprecision (15) << _mean_absolute_percentage_error << std::endl;
 
   if (errorPool != nullptr)
   {
@@ -430,56 +441,10 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
   }
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool) const
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const size_t training_indexes_size = training_inputs.size();
-
-  std::vector<std::vector<double>> predictions;
-  predictions.reserve(training_indexes_size);
-
-  for (size_t start_index = 0; start_index < training_indexes_size; start_index+= batch_size)
-  {
-    if(errorPool != nullptr)
-    {
-      const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
-      errorPool->enqueue(
-        [=]()
-        {
-          auto outputs = calculate_forward_feed(
-            training_inputs.begin() + start_index,
-            training_inputs.begin() + end_index,
-            layers);
-          std::vector<std::vector<double>> predictions;
-          predictions.reserve(outputs.size());
-          for(const auto&output : outputs)
-          {
-            auto local_predictions = output.output_back();
-            predictions.emplace_back(std::move(local_predictions));
-          }
-          return predictions;
-        });
-    }
-    else
-    {
-      const auto& inputs = training_inputs[start_index];
-      auto all_outputs = calculate_forward_feed(inputs, layers);
-      predictions.emplace_back(all_outputs.output_back());
-    }
-  }
-
-  if(errorPool != nullptr)
-  {
-    auto task_predictions = errorPool->get();
-    for (auto& task_prediction : task_predictions)
-    {
-      predictions.insert(predictions.end(), 
-        std::make_move_iterator(task_prediction.begin()), 
-        std::make_move_iterator(task_prediction.end()));
-    }
-  }
-
-  return calculate_rmse_error(training_outputs, predictions);
+  return calculate_rmse_error(ground_truth, predictions);
   // return calculate_mae_error(ground_truth, predictions);
   //return calculate_huber_loss(ground_truth, predictions);
 }
@@ -827,4 +792,105 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
   }
   activation_gradients.emplace_back(0);  //  add bias we ignored above
   return activation_gradients;
+}
+
+double NeuralNetwork::calculate_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
+{
+  if (predictions.size() != ground_truths.size() || predictions.empty()) 
+  {
+    std::cerr << "Input vectors must have the same, non-zero size." << std::endl;
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double average_total = 0;
+  double average_size = 0;
+  for (size_t index = 0; index < ground_truths.size(); ++index)
+  {
+    auto percentage = calculate_mape(ground_truths[index], predictions[index]);
+    if(percentage == 0)
+    {
+      continue;
+    }
+    average_total += percentage;
+    ++average_size;
+  }
+  return average_size > 0 ? average_total / average_size : 0.0;
+}
+
+double NeuralNetwork::calculate_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
+{
+  if (predictions.size() != ground_truth.size() || predictions.empty()) 
+  {
+    std::cerr << "Input vectors must have the same, non-zero size." << std::endl;
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double sum_of_percentage_errors = 0.0;
+  const double epsilon = 1e-8; // Small value to avoid division by zero
+
+  for (size_t i = 0; i < predictions.size(); ++i) 
+  {
+    if (std::abs(ground_truth[i]) < epsilon) 
+    {
+      // If actual value is very close to zero, this pair is often skipped
+      // or handled differently to avoid astronomical percentage errors.
+      // Here, we'll just skip it to not skew the result.
+      continue; 
+    }
+    sum_of_percentage_errors += std::abs((ground_truth[i] - predictions[i]) / ground_truth[i]);
+  }
+  return sum_of_percentage_errors / predictions.size();
+}
+
+void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  const size_t training_indexes_size = training_inputs.size();
+
+  std::vector<std::vector<double>> predictions;
+  predictions.reserve(training_indexes_size);
+
+  for (size_t start_index = 0; start_index < training_indexes_size; start_index+= batch_size)
+  {
+    if(errorPool != nullptr)
+    {
+      const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
+      errorPool->enqueue(
+        [=]()
+        {
+          auto outputs = calculate_forward_feed(
+            training_inputs.begin() + start_index,
+            training_inputs.begin() + end_index,
+            layers);
+          std::vector<std::vector<double>> predictions;
+          predictions.reserve(outputs.size());
+          for(const auto&output : outputs)
+          {
+            auto local_predictions = output.output_back();
+            predictions.emplace_back(std::move(local_predictions));
+          }
+          return predictions;
+        });
+    }
+    else
+    {
+      const auto& inputs = training_inputs[start_index];
+      auto all_outputs = calculate_forward_feed(inputs, layers);
+      predictions.emplace_back(all_outputs.output_back());
+    }
+  }
+
+  if(errorPool != nullptr)
+  {
+    auto task_predictions = errorPool->get();
+    for (auto& task_prediction : task_predictions)
+    {
+      predictions.insert(predictions.end(), 
+        std::make_move_iterator(task_prediction.begin()), 
+        std::make_move_iterator(task_prediction.end()));
+    }
+  }
+
+  _error = calculate_error(training_outputs, predictions);
+  _mean_absolute_percentage_error = calculate_mape(training_outputs, predictions);
 }

@@ -396,7 +396,7 @@ private:
 
 public:
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, double error);
+  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, long double error, long mean_absolute_percentage_error);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -415,6 +415,7 @@ public:
   const std::vector<Layer>& get_layers() const;
   activation::method get_activation_method() const;
   long double get_error() const;
+  long double get_mean_absolute_percentage_error() const;
 
 private:
   GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
@@ -450,13 +451,18 @@ private:
 
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
+  // Calculates the Mean Absolute Percentage Error (MAPE)
+  double calculate_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
+  double calculate_mape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+
+  void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool);
+
+  // Error calculations
   // Todo this should be moved to a static class a passed as an object.
-  double calculate_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool) const;
-
-  // Huber Loss blends MAE and RMSE — it uses squared error when the difference is small (|error| < delta), and absolute error when it’s large.
+  // Todo: The user should be able to choose what error they want to use.
+  // Todo: Should those be public so the called _could_ use them to compare a prediction?
+  static double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
   static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
-
-  // MAE is more robust to outliers than RMSE.
   static double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
   static double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
   static double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
@@ -465,8 +471,9 @@ private:
   static void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes);
   static void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes);
   static std::vector<size_t> get_shuffled_indexes(size_t raw_size);
-  
+
   long double _error;
+  long double _mean_absolute_percentage_error;
   std::vector<unsigned> _topology;
   std::vector<Layer> _layers;
   const activation::method _activation_method;
