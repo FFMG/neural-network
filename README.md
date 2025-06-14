@@ -237,3 +237,18 @@ While the classes do not force you to normalise your data ... I strongly suggest
 Normalise the input output between -1 and 1 or 0 and 1
 
 This will save you a lot of headache ...
+
+## Error Functions
+
+After training you can get the calculated error as well as the mean absolute percentage error
+
+
+```c++
+...
+auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation);
+
+...
+auto error = nn.get_error();
+auto mean = get_mean_absolute_percentage_error();
+...
+```

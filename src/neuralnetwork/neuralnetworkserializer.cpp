@@ -34,6 +34,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   auto error = get_error(*tj);
+  auto mean_absolute_percentage_error = get_mean_absolute_percentage_error(*tj);
 
   // create the layer and validate that the topology matches.
   auto layers = create_layers(array_of_neurons);
@@ -44,7 +45,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, activation_method, error);
+  auto nn = new NeuralNetwork(layers, activation_method, error, mean_absolute_percentage_error);
 
   // cleanup
   delete tj;
@@ -88,7 +89,7 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   add_basic(*tj);
   add_topology(nn, *tj);
   add_activation_method(nn, *tj);
-  add_error(nn, *tj);
+  add_errors(nn, *tj);
   add_layers(nn, *tj);
   
   // save it.
@@ -96,6 +97,16 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   
   // cleanup
   delete tj;
+}
+
+double NeuralNetworkSerializer::get_mean_absolute_percentage_error(const TinyJSON::TJValue& json)
+{
+  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  if (nullptr == object)
+  {
+    return 0.0;
+  }
+  return object->get_float("mean-absolute-percentage-error", true, false);
 }
 
 double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
@@ -293,11 +304,10 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   delete layers_array;
 }
 
-void NeuralNetworkSerializer::add_error(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
-  auto error = new TinyJSON::TJValueNumberFloat(nn.get_error());
-  json.set("error", error);
-  delete error;
+  json.set_float("error", nn.get_error());
+  json.set_float("mean-absolute-percentage-error", nn.get_mean_absolute_percentage_error());
 }
 
 void NeuralNetworkSerializer::add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
