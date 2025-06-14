@@ -305,7 +305,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler;
+  AdaptiveLearningRateScheduler learning_rate_scheduler(learning_rate);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -387,6 +387,9 @@ void NeuralNetwork::train(
   update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
   std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
   std::cout << "Final Test Mean Absolute Percentage Error: " << std::fixed << std::setprecision (15) << _mean_absolute_percentage_error << std::endl;
+
+  // finaly learning rate
+  std::cout << "Final Learning rate: " << std::fixed << std::setprecision(15) << learning_rate << std::endl;
 
   if (errorPool != nullptr)
   {
