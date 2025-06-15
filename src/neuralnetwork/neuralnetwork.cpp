@@ -311,7 +311,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(learning_rate);
+  AdaptiveLearningRateScheduler learning_rate_scheduler(2*learning_rate);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -361,6 +361,10 @@ void NeuralNetwork::train(
       _logger.log_debug("Average time per call: ", std::fixed, std::setprecision(2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
     }
 
+    if (epoch % 100 == 0)
+    {
+      std::cout << "Mean Absolute Percentage Error: " << std::fixed << std::setprecision(4) << (_mean_absolute_percentage_error*100.0) << "%" << std::endl;
+    }
     auto current_time = std::chrono::high_resolution_clock::now();
     auto elapsed_time = current_time - last_callback_time;
     if (elapsed_time >= interval)

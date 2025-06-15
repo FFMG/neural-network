@@ -134,6 +134,10 @@ void Neuron::Clean()
 void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+
+  const double gradient_clip_threshold = 1.0;
+  const double weight_decay_factor = 0.0001;
+
   assert(weights_gradients.size() == previous_layer.size());
   for (size_t i = 0; i < weights_gradients.size(); ++i) 
   {
@@ -154,11 +158,24 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
     }
 
+    double clipped_gradient = weights_gradient;
+    if (clipped_gradient > gradient_clip_threshold) 
+    {
+      clipped_gradient = gradient_clip_threshold;
+    }
+    else if (clipped_gradient < -gradient_clip_threshold) 
+    {
+      clipped_gradient = -gradient_clip_threshold;
+    }
+
     double new_delta_weight =
-      learning_rate * weights_gradient +   // batch-based weight update
+      learning_rate * clipped_gradient +   // batch-based weight update
       _alpha * old_delta_weight;            // momentum term
 
     connection.set_delta_weight(new_delta_weight);
+
+    double current_weight = connection.weight();
+    double new_weight = current_weight * (1.0 - weight_decay_factor) + new_delta_weight;
     connection.set_weight(connection.weight() + new_delta_weight);
   }
 }
