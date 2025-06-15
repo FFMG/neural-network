@@ -305,7 +305,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(learning_rate);
+  AdaptiveLearningRateScheduler learning_rate_scheduler(2*learning_rate);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
