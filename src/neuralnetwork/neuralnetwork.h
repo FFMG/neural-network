@@ -8,6 +8,7 @@
 
 #include "activation.h"
 #include "layer.h"
+#include "logger.h"
 #include "neuron.h"
 #include "taskqueue.h"
 
@@ -395,8 +396,8 @@ private:
   };
 
 public:
-  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, long double error, long mean_absolute_percentage_error);
+  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation, const Logger& logger);
+  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, const Logger& logger, long double error, long mean_absolute_percentage_error);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -429,11 +430,11 @@ private:
     const std::vector<std::vector<double>>::const_iterator inputs_end, 
     const std::vector<Layer>& layers) const;
 
-  static void calculate_batch_back_propagation(
+  void calculate_batch_back_propagation(
     const std::vector<std::vector<double>>::const_iterator outputs_begin, 
     const size_t outputs_size, 
     std::vector<GradientsAndOutputs>& batch_given_outputs, 
-    const std::vector<Layer>& layers);
+    const std::vector<Layer>& layers) const;
   static void calculate_batch_back_propagation_gradients(
     const std::vector<std::vector<double>>::const_iterator outputs_begin, 
     const size_t outputs_size, 
@@ -461,20 +462,22 @@ private:
   // Todo this should be moved to a static class a passed as an object.
   // Todo: The user should be able to choose what error they want to use.
   // Todo: Should those be public so the called _could_ use them to compare a prediction?
-  static double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
-  static double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0);
-  static double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
-  static double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions);
-  static double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions );
+  double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0) const;
+  double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions ) const;
 
-  static void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs);
-  static void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes);
-  static void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes);
-  static std::vector<size_t> get_shuffled_indexes(size_t raw_size);
+  void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
+  void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
+  void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
+  std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
   long double _error;
   long double _mean_absolute_percentage_error;
   std::vector<unsigned> _topology;
   std::vector<Layer> _layers;
   const activation::method _activation_method;
+
+  Logger _logger;
 };
