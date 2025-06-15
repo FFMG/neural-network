@@ -355,6 +355,10 @@ void NeuralNetwork::train(
       std::cout << "Average time per call: " << std::fixed << std::setprecision(2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
     }
 
+    if (epoch % 100 == 0)
+    {
+      std::cout << "Mean Absolute Percentage Error: " << std::fixed << std::setprecision(4) << (_mean_absolute_percentage_error*100.0) << "%" << std::endl;
+    }
     auto current_time = std::chrono::high_resolution_clock::now();
     auto elapsed_time = current_time - last_callback_time;
     if (elapsed_time >= interval)
