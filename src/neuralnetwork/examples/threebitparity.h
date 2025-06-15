@@ -31,12 +31,13 @@ public:
         {1}   // 3 ones → odd
     };
 
+    auto logger = Logger(Logger::LogLevel::Debug);
     const int number_of_epoch = 10000;
     const double learning_rate = 0.1;
     {
       TEST_START("ThreebitParity test - No Batch.")
       std::cout << "No Batch:" << std::endl;
-      auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation);
+      auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation, logger);
       nn->train(training_inputs, training_outputs, learning_rate, number_of_epoch);
 
       std::vector<double> test_input1 = {1, 1, 1};
@@ -59,7 +60,7 @@ public:
       {
         TEST_START("ThreebitParity test - Batch.")
         std::cout << "Batch size=" << batch_size <<":" << std::endl;
-        auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation);
+        auto* nn = new NeuralNetwork(topology, activation::sigmoid_activation, logger);
         nn->train(training_inputs, training_outputs, learning_rate, number_of_epoch, batch_size);
 
         std::vector<double> test_input1 = {1, 1, 1};
