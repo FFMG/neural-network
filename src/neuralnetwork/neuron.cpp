@@ -168,7 +168,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
 
     double current_weight = connection.weight();
     double new_weight = current_weight * (1.0 - weight_decay_factor) + new_delta_weight;
-    connection.set_weight(connection.weight() + new_delta_weight);
+    connection.set_weight(new_weight);
   }
 }
 
