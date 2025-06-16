@@ -25,14 +25,14 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
     }
-    Connection(const Connection& connection) : 
+    Connection(const Connection& connection) noexcept :
       _weight(connection._weight),
       _delta_weight(connection._delta_weight),
       _logger(connection._logger)
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
     }
-    Connection(Connection&& connection) : 
+    Connection(Connection&& connection) noexcept: 
       _weight(connection._weight),
       _delta_weight(connection._delta_weight),
       _logger(connection._logger)
@@ -41,7 +41,7 @@ private:
       connection._weight = 0.0;
       connection._delta_weight = 0.0;
     }
-    Connection& operator=(const Connection& connection)
+    Connection& operator=(const Connection& connection) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
       if (this != &connection)
@@ -52,7 +52,7 @@ private:
       }
       return *this;
     }
-    Connection& operator=(Connection&& connection)
+    Connection& operator=(Connection&& connection)  noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
       if (this != &connection)
