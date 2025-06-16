@@ -3,19 +3,23 @@
 #include <deque>
 #include <functional>
 #include <iomanip>
-#include <iostream>
 #include <numeric>
 #include <vector>
+
+#include "logger.h"
 
 class AdaptiveLearningRateScheduler 
 {
 public:
   AdaptiveLearningRateScheduler(
+    Logger& logger,
     double max_learning_rate,
     size_t history_size = 10,
     double min_percent_change = 0.5, // percent
     double adjustment_rate = 0.1)
-    : _history_size(history_size),
+    : 
+    _logger(logger),
+    _history_size(history_size),
     _min_percent_change(min_percent_change),
     _adjustmentRate(adjustment_rate),
     _cool_down(0),
@@ -66,11 +70,10 @@ public:
       {
         return current_learning_rate;
       }
-      std::cout << "Learning is increasing! Changing learning rate from "
-        << std::fixed << std::setprecision(15) << current_learning_rate
-        << " to "
-        << std::fixed << std::setprecision(15) << new_learning_rate
-        << std::endl;
+      _logger.log_warning("Learning is increasing! Changing learning rate from "
+        , std::fixed, std::setprecision(15), current_learning_rate
+        , " to "
+        , std::fixed, std::setprecision(15), new_learning_rate);
       _cool_down = 10;
       return new_learning_rate;
     }
@@ -99,24 +102,23 @@ public:
     if (plateauing)
     {
       _cool_down = 10;
-      std::cout << "Learning is plateauing. Decreasing learning rate from "
-                << std::fixed << std::setprecision(15) << current_learning_rate
-                << " to "
-                << std::fixed << std::setprecision(15) << new_learning_rate
-                << std::endl;
+      _logger.log_info("Learning is plateauing. Decreasing learning rate from "
+                ,std::fixed, std::setprecision(15), current_learning_rate
+                ," to "
+                ,std::fixed, std::setprecision(15), new_learning_rate);
       return new_learning_rate;
     }
 
     _cool_down = 5;
-    std::cout << "Learning is increasing! Changing learning rate from "
-      << std::fixed << std::setprecision(15) << current_learning_rate
-      << " to "
-      << std::fixed << std::setprecision(15) << new_learning_rate
-      << std::endl;
+    _logger.log_info("Learning is increasing! Changing learning rate from "
+      , std::fixed, std::setprecision(15), current_learning_rate
+      , " to "
+      , std::fixed, std::setprecision(15), new_learning_rate);
     return new_learning_rate;
   }
 
 private:
+  Logger& _logger;
   std::deque<double> _error_history;
   size_t _history_size;
   double _min_percent_change;  // Minimum % change to consider it significant
@@ -131,7 +133,10 @@ private:
 
   double percent_change(double from, double to) const
   {
-    if (from == 0.0) return 0.0;
+    if (from == 0.0)
+    {
+      return 0.0;
+    }
     return ((from - to) / from) * 100.0;
   }
 
