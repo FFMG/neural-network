@@ -403,7 +403,7 @@ public:
 
   virtual ~NeuralNetwork() = default;
 
-  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, double learning_rate, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr);
+  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, double learning_rate, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, int, NeuralNetwork&)>& progress_callback = nullptr);
 
   std::vector<std::vector<double>> think(
     const std::vector<std::vector<double>>& inputs

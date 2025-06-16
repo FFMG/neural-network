@@ -2,7 +2,6 @@
 #include "neuralnetwork.h"
 
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -231,7 +230,7 @@ void NeuralNetwork::train(
   int number_of_epoch,
   int batch_size,
   bool data_is_unique,
-  const std::function<bool(int, NeuralNetwork&)>& progress_callback
+  const std::function<bool(int, int, NeuralNetwork&)>& progress_callback
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -248,14 +247,13 @@ void NeuralNetwork::train(
 
   _logger.log_info("Started trainning with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-  const auto interval = std::chrono::seconds(IntervalErorCheckInSeconds);
-  auto last_callback_time = std::chrono::high_resolution_clock::now();
   // initial callback
   _error = 0.0;
   if (progress_callback != nullptr)
   {
-    if( !progress_callback(0, *this))
+    if( !progress_callback(0, number_of_epoch, *this))
     {
+      _logger.log_warning("Progress callback function returned before training started, closing now!");
       return;
     }
   }
@@ -311,7 +309,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(2*learning_rate);
+  AdaptiveLearningRateScheduler learning_rate_scheduler(_logger, 2 * learning_rate);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -361,29 +359,18 @@ void NeuralNetwork::train(
       _logger.log_debug("Average time per call: ", std::fixed, std::setprecision(2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
     }
 
-    if (epoch % 100 == 0)
-    {
-      std::cout << "Mean Absolute Percentage Error: " << std::fixed << std::setprecision(4) << (_mean_absolute_percentage_error*100.0) << "%" << std::endl;
-    }
-    auto current_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = current_time - last_callback_time;
-    if (elapsed_time >= interval)
-    {
       // do an error check to see if we need to adapt.
       update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
       learning_rate = learning_rate_scheduler.update(_error, learning_rate);
-
       if (progress_callback != nullptr)
       {
-        auto percent = (int)(((float)epoch / number_of_epoch)*100);
-        if( !progress_callback(percent, *this))
+      if (!progress_callback(epoch, number_of_epoch, *this))
         {
+        _logger.log_warning("Progress callback function returned durring training started, closing now!");
           return;
         }
       }
-      last_callback_time = current_time;
     }
-  }
 
   task_pool.stop();
   double avg_ns = task_pool.average();
@@ -395,8 +382,8 @@ void NeuralNetwork::train(
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
   update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
-  _logger.log_info("Final Test Error: ", std::fixed, std::setprecision (15), _error);
-  _logger.log_info("Final Test Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
+  _logger.log_info("Final Error: ", std::fixed, std::setprecision (15), _error);
+  _logger.log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
 
   // finaly learning rate
   _logger.log_info("Final Learning rate: ", std::fixed, std::setprecision(15), learning_rate);
@@ -407,10 +394,10 @@ void NeuralNetwork::train(
     delete errorPool;
   }
 
-  // final callback if needed
+  // final callback to show 100% done.
   if (progress_callback != nullptr)
   {
-    progress_callback(100, *this);
+    progress_callback(number_of_epoch, number_of_epoch, *this);
   }
 }
 
