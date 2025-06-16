@@ -47,36 +47,34 @@ public:
       return current_learning_rate; // Cooling down
     }
 
+    double new_learning_rate = current_learning_rate;
+
     // Analyze trend
     bool decreasing = is_decreasing();
     if (decreasing) 
     {
-      if (is_improving())
+      if (!is_improving())
       {
-        double new_learning_rate = current_learning_rate;
-        if (current_learning_rate >= _max_learning_rate)
-        {
-          return _max_learning_rate;
-        }
-
-        // Increase learning rate if training is improving steadily
-        new_learning_rate *= (1.0 + (_adjustmentRate / 2.0));
-        if (new_learning_rate >= _max_learning_rate)
-        {
-          new_learning_rate = _max_learning_rate;
-        }
-        std::cout << "Learning is increasing! Changing learning rate from "
-          << std::fixed << std::setprecision(15) << current_learning_rate
-          << " to "
-          << std::fixed << std::setprecision(15) << new_learning_rate
-          << std::endl;
-        _cool_down = 10;
-        return new_learning_rate;
+        // simple decrease, no change
+        return current_learning_rate;
       }
-      return current_learning_rate; // Good progress
+
+      // Increase learning rate if training is improving steadily
+      new_learning_rate *= (1.0 + (_adjustmentRate / 2.0));
+      new_learning_rate = std::clamp(new_learning_rate, 1e-6, _max_learning_rate);
+      if (!will_change(current_learning_rate, new_learning_rate))
+      {
+        return current_learning_rate;
+      }
+      std::cout << "Learning is increasing! Changing learning rate from "
+        << std::fixed << std::setprecision(15) << current_learning_rate
+        << " to "
+        << std::fixed << std::setprecision(15) << new_learning_rate
+        << std::endl;
+      _cool_down = 10;
+      return new_learning_rate;
     }
 
-    double new_learning_rate = current_learning_rate;
     bool increasing = is_increasing();
     bool plateauing = is_plateauing();
     if (plateauing) 
@@ -93,10 +91,14 @@ public:
       return current_learning_rate;
     }
 
-    _cool_down = 10;
     new_learning_rate = std::clamp(new_learning_rate, 1e-6, 1.0);
+    if (!will_change(current_learning_rate, new_learning_rate))
+    {
+      return current_learning_rate;
+    }
     if (plateauing)
     {
+      _cool_down = 10;
       std::cout << "Learning is plateauing. Decreasing learning rate from "
                 << std::fixed << std::setprecision(15) << current_learning_rate
                 << " to "
@@ -105,6 +107,7 @@ public:
       return new_learning_rate;
     }
 
+    _cool_down = 5;
     std::cout << "Learning is increasing! Changing learning rate from "
       << std::fixed << std::setprecision(15) << current_learning_rate
       << " to "
@@ -120,6 +123,11 @@ private:
   double _adjustmentRate;
   int _cool_down;
   const double _max_learning_rate;
+
+  bool will_change(double current_rate, double new_rate) const
+  {
+    return current_rate != new_rate;
+  }
 
   double percent_change(double from, double to) const
   {
