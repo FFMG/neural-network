@@ -5,17 +5,18 @@
 #include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
 #include <sstream>    // Required for std::stringstream to build the time string
 
-// ANSI escape codes for text colors. These codes work on most modern terminals
-// (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
-// They instruct the terminal to change the color of subsequent text.
-#define RESET   "\033[0m"   // Resets text color to default
-#define RED     "\033[31m"  // Red text
-#define GREEN   "\033[32m"  // Green text
-#define YELLOW  "\033[33m"  // Yellow text
-#define BLUE    "\033[34m"  // Blue text
-
 class Logger
 {
+private:
+    // ANSI escape codes for text colors. These codes work on most modern terminals
+    // (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
+    // They instruct the terminal to change the color of subsequent text.
+    static constexpr const char* LogColorReset = "\033[0m";   // Resets text color to default
+    static constexpr const char* LogColorRed   = "\033[31m";
+    static constexpr const char* LogColorGreen = "\033[32m";
+    static constexpr const char* LogColorYellow = "\033[33m";
+    static constexpr const char* LogColorBlue   = "\033[34m";
+
 public:
   enum class LogLevel 
   {
@@ -116,25 +117,25 @@ private:
     std::cout << get_current_time_string() << " ";
 
     // 2. Determine color and tag based on log level
-    const char* color_code = RESET; // Default to no color
+    const char* color_code = LogColorReset; // Default to no color
     std::string tag;
 
     switch (level) 
     {
     case LogLevel::Debug:
-      color_code = GREEN;
+      color_code = LogColorGreen;
       tag = "[DBG]";
       break;
     case LogLevel::Information:
-      color_code = BLUE;
+      color_code = LogColorBlue;
       tag = "[INF]";
       break;
     case LogLevel::Warning:
-        color_code = YELLOW;
+        color_code = LogColorYellow;
         tag = "[WRN]";
         break;
     case LogLevel::Error:
-        color_code = RED;
+        color_code = LogColorRed;
         tag = "[ERR]";
         break;
     case LogLevel::None: // Should not be reached for logging, but included for completeness
@@ -142,7 +143,7 @@ private:
     }
 
     // 3. Output the color-coded tag, then reset color
-    std::cout << color_code << tag << RESET << " ";
+    std::cout << color_code << tag << LogColorReset << " ";
 
     // 4. Output the user's message arguments
     print_args(std::forward<Args>(args)...);
@@ -151,4 +152,3 @@ private:
     std::cout << std::endl;
   }
 };
-

@@ -139,7 +139,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
   const double weight_decay_factor = 0.0001;
 
   assert(weights_gradients.size() == previous_layer.size());
-  for (size_t i = 0; i < weights_gradients.size(); ++i) 
+  for (size_t i = 0; i < weights_gradients.size(); ++i)
   {
     auto& neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
     auto& connection = neuron._output_weights[_index];
@@ -158,14 +158,17 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
     }
 
+    double weight_decay = 0.0;
     double clipped_gradient = weights_gradient;
-    if (clipped_gradient > gradient_clip_threshold) 
+    if (clipped_gradient > gradient_clip_threshold)
     {
       clipped_gradient = gradient_clip_threshold;
+      weight_decay = weight_decay_factor;
     }
-    else if (clipped_gradient < -gradient_clip_threshold) 
+    else if (clipped_gradient < -gradient_clip_threshold)
     {
       clipped_gradient = -gradient_clip_threshold;
+      weight_decay = weight_decay_factor;
     }
 
     double new_delta_weight =
@@ -175,7 +178,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
     connection.set_delta_weight(new_delta_weight);
 
     double current_weight = connection.weight();
-    double new_weight = current_weight * (1.0 - weight_decay_factor) + new_delta_weight;
+    double new_weight = current_weight * (1.0 - weight_decay) + new_delta_weight;
     connection.set_weight(new_weight);
   }
 }
