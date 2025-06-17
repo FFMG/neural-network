@@ -31,7 +31,7 @@ private:
     };
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs, 0.15, epoch, batch_size);
+    nn.train(training_inputs, training_outputs, 0.98, epoch, batch_size);
     std::cout << std::endl;
 
     // pass an array of array to think about

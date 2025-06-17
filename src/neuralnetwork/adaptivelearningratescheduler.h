@@ -29,13 +29,15 @@ public:
   AdaptiveLearningRateScheduler(
     Logger& logger,
     size_t history_size = 10,
+    double min_plateau_percent_change = 0.0001, // percent (0 <> 1)
     double min_percent_change = 0.005, // percent (0 <> 1)
     double adjustment_rate = 0.1)
     : 
     _logger(logger),
     _history_size(history_size),
+    _min_plateau_percent_change(min_plateau_percent_change),
     _min_percent_change(min_percent_change),
-    _adjustmentRate(adjustment_rate),
+    _adjustment_rate(adjustment_rate),
     _cool_down(0),
     _max_learning_rate(0.0)
   {
@@ -53,7 +55,7 @@ public:
     if (_max_learning_rate == 0)
     {
       //  set the max learning rate.
-      _max_learning_rate = 10* current_learning_rate;
+      _max_learning_rate = std::clamp(10* current_learning_rate, current_learning_rate, 0.99);
     }
 
     // Store error history
@@ -74,7 +76,6 @@ public:
       return current_learning_rate; // Cooling down
     }
 
-    double new_learning_rate = current_learning_rate;
     switch (get_rate_change())
     {
     case RateState::Stable:
@@ -82,7 +83,7 @@ public:
 
     case RateState::Decreasing:
     {
-      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 + (_adjustmentRate / 2.0)));
+      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 + (_adjustment_rate / 2.0)));
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
@@ -98,7 +99,7 @@ public:
 
     case RateState::Plateauing:
     {
-      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustmentRate)); // Mild reduce
+      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustment_rate)); // Mild reduce
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
@@ -114,7 +115,7 @@ public:
 
     case RateState::Increasing:
     {
-      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustmentRate * 1.5)); // Reduce faster
+      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustment_rate * 1.5)); // Reduce faster
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
@@ -130,7 +131,7 @@ public:
 
     case RateState::Exploding:
     {
-      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustmentRate * 2.0)); // Reduce even faster
+      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustment_rate * 2.0)); // Reduce even faster
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
@@ -154,8 +155,9 @@ private:
   Logger& _logger;
   std::deque<double> _error_history;
   size_t _history_size;
+  double _min_plateau_percent_change;
   double _min_percent_change;  // Minimum % change to consider it significant
-  double _adjustmentRate;
+  double _adjustment_rate;
   int _cool_down;
   double _max_learning_rate;
 
@@ -190,7 +192,7 @@ private:
       auto change = percent_change(_error_history[i], _error_history[i + 1]);
 
       // increasing or decreasing less than the percent request
-      if (std::fabs(change) <= _min_percent_change)
+      if (std::fabs(change) <= _min_plateau_percent_change)
       {
         ++plateauCount;
       }
