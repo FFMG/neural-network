@@ -55,7 +55,7 @@ void activation::set_alpha(double alpha)
   _alpha = alpha;
 }
 
-double activation::get_alpha(double alpha) const
+double activation::get_alpha() const
 {
   return _alpha;
 }
