@@ -106,10 +106,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TRACY_ENABLE;MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -138,6 +139,7 @@
     <ClCompile Include="activation.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
+    <ClCompile Include="libraries\tracy\TracyClient.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
     <ClCompile Include="neuralnetworkserializer.cpp" />
@@ -152,6 +154,8 @@
     <ClInclude Include="layer.h" />
     <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
+    <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
+    <ClInclude Include="logger.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />

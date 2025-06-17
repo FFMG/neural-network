@@ -2,7 +2,6 @@
 #include "neuralnetwork.h"
 
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -14,24 +13,26 @@ static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
-  const activation::method& activation
+  const activation::method& activation,
+  const Logger& logger
   ) :
   _error(0.0),
   _mean_absolute_percentage_error(0.0),
   _topology(topology),
-  _activation_method(activation)
+  _activation_method(activation),
+  _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(topology.size() < 2)
   {
-    std::cerr << "The topology is not value, you must have at least 2 layers." << std::endl;
+    _logger.log_error("The topology is not value, you must have at least 2 layers.");
     throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
   }
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method);
+  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method, _logger);
   _layers.emplace_back(std::move(layer));
   
   // then the hidden layers
@@ -40,24 +41,26 @@ NeuralNetwork::NeuralNetwork(
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
     const auto& previous_layer = _layers.back();
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _logger);
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), _activation_method);
+  layer = Layer::create_output_layer(topology.back(), _layers.back(), _activation_method, _logger);
   _layers.emplace_back(std::move(layer));
 }
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
   const activation::method& activation,
+  const Logger& logger,
   long double error,
   long mean_absolute_percentage_error
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
-  _activation_method(activation)
+  _activation_method(activation),
+  _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(layers.size());
@@ -75,7 +78,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
   _topology(src._topology),
-  _activation_method(src._activation_method)
+  _activation_method(src._activation_method),
+  _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(src._layers.size());
@@ -103,7 +107,7 @@ const std::vector<unsigned>& NeuralNetwork::get_topology() const
   return _topology;
 }
 
-std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
+std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> shuffled_indexes(raw_size);
@@ -115,7 +119,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size)
   return shuffled_indexes;
 }
 
-void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto shuffled_indexes = get_shuffled_indexes(raw_size);
@@ -124,7 +128,7 @@ void NeuralNetwork::create_shuffled_indexes(size_t raw_size, bool data_is_unique
   break_shuffled_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 }
 
-void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes)
+void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // break the indexes into parts
@@ -134,7 +138,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   if(training_size+checking_size == total_size || checking_size == 0)
   {
     // in the case of small training models we might not have enough to split anything
-    std::cout << "Training batch size does not allow for error checking batch!" << std::endl;
+    _logger.log_warning("Training batch size does not allow for error checking batch!");
     training_indexes = shuffled_indexes;
     checking_indexes = {shuffled_indexes.front()};
     final_check_indexes = {shuffled_indexes.back()};
@@ -143,7 +147,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
-    std::cerr << "Logic error, unable to do a final batch error check." << std::endl;
+    _logger.log_error("Logic error, unable to do a final batch error check.");
     throw std::invalid_argument("Logic error, unable to do a final batch error check.");
   }
 
@@ -164,7 +168,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   final_check_indexes.assign(shuffled_indexes.begin() + training_size + checking_size, shuffled_indexes.end());
 }
 
-void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs)
+void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   shuffled_training_inputs = {};
@@ -226,31 +230,30 @@ void NeuralNetwork::train(
   int number_of_epoch,
   int batch_size,
   bool data_is_unique,
-  const std::function<bool(int, NeuralNetwork&)>& progress_callback
+  const std::function<bool(int, int, NeuralNetwork&)>& progress_callback
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
-    std::cerr << "The batch size if either -ve or too large for the training sample." << std::endl;
+    _logger.log_error("The batch size if either -ve or too large for the training sample.");
     throw std::invalid_argument("The batch size if either -ve or too large for the training sample.");
   }
   if(training_outputs.size() != training_inputs.size())
   {
-    std::cerr << "The number of training samples does not match the number of expected outputs." << std::endl;
+    _logger.log_error("The number of training samples does not match the number of expected outputs.");
     throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
   }
 
-  std::cout << "Started trainning with " << training_inputs.size() << " inputs, " << number_of_epoch << " epoch and batch size " << batch_size << "." << std::endl;
+  _logger.log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-  const auto interval = std::chrono::seconds(IntervalErorCheckInSeconds);
-  auto last_callback_time = std::chrono::high_resolution_clock::now();
   // initial callback
   _error = 0.0;
   if (progress_callback != nullptr)
   {
-    if( !progress_callback(0, *this))
+    if( !progress_callback(0, number_of_epoch, *this))
     {
+      _logger.log_warning("Progress callback function returned false before training started, closing now!");
       return;
     }
   }
@@ -258,7 +261,7 @@ void NeuralNetwork::train(
   TaskQueuePool<std::vector<std::vector<double>>>* errorPool = nullptr;
   if (batch_size > 1)
   {
-    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>();
+    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>(_logger);
   }
 
   // get the indexes
@@ -267,23 +270,24 @@ void NeuralNetwork::train(
   std::vector<size_t> final_check_indexes;
   create_shuffled_indexes(training_inputs.size(), data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
-  std::cout << "Tainning will use: " << std::endl;
-  std::cout << "  " << training_indexes.size() << " training samples." << std::endl;
-  std::cout << "  " << checking_indexes.size() << " in training error check samples." << std::endl;
-  std::cout << "  " << final_check_indexes.size() << " final error check samples." << std::endl;
-  std::cout << "  " << "Learning rate:" << std::fixed << std::setprecision(15) << learning_rate << std::endl;
-  std::cout << "  " << "Input size:" <<  training_inputs.front().size() << std::endl;
-  std::cout << "  " << "Output size:" << training_outputs.front().size() << std::endl;
-  std::cout << "  " << "Hidden layers: {";
+  _logger.log_info("Tainning will use: ");
+  _logger.log_info(training_indexes.size(), " training samples.");
+  _logger.log_info(checking_indexes.size(), " in training error check samples.");
+  _logger.log_info(final_check_indexes.size(), " final error check samples.");
+  _logger.log_info("Learning rate:", std::fixed, std::setprecision(15), learning_rate);
+  _logger.log_info("Input size:", training_inputs.front().size());
+  _logger.log_info("Output size:", training_outputs.front().size());
+  std::string hidden_layer_message = "Hidden layers: {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
-    std::cout << (_layers[layer].size() -1); // remove the bias
+    hidden_layer_message += std::to_string(_layers[layer].size() -1); // remove the bias
     if (layer < _layers.size() - 2)
     {
-      std::cout << ", ";
+      hidden_layer_message += ", ";
     }
   }
-  std::cout << "}" << std::endl;
+  hidden_layer_message += "}";
+  _logger.log_info(hidden_layer_message);
 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
@@ -298,14 +302,14 @@ void NeuralNetwork::train(
     training_outputs_batch.push_back(outputs);
   }
 
-  auto task_pool = TaskQueuePool<std::vector<GradientsAndOutputs>>();
+  auto task_pool = TaskQueuePool<std::vector<GradientsAndOutputs>>(_logger);
   const auto training_indexes_size = training_indexes.size();
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(2*learning_rate);
+  AdaptiveLearningRateScheduler learning_rate_scheduler(_logger);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -313,9 +317,9 @@ void NeuralNetwork::train(
     epoch_gradients_outputs.clear();
 
     // create the batches
-    for( size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
+    for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
-      if(batch_size > 1)
+      if (batch_size > 1)
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
@@ -325,8 +329,8 @@ void NeuralNetwork::train(
               training_inputs.begin() + start_index,
               training_outputs.begin() + start_index,
               total_size);
-          return train;
-        });
+            return train;
+          });
       }
       else
       {
@@ -340,6 +344,7 @@ void NeuralNetwork::train(
         );
       }
     }
+    MYODDWEB_PROFILE_MARK();
 
     // Collect the results
     if (batch_size > 1)
@@ -352,48 +357,38 @@ void NeuralNetwork::train(
     {
       double avg_ns = task_pool.average();
       auto total_epoch_duration_size = task_pool.total_tasks();
-      std::cout << "Average time per call: " << std::fixed << std::setprecision(2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
+      _logger.log_debug("Average time per call: ", std::fixed, std::setprecision(2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
     }
 
-    if (epoch % 100 == 0)
+    // do an error check to see if we need to adapt.
+    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
+    learning_rate = learning_rate_scheduler.update(_error, learning_rate);
+    if (progress_callback != nullptr)
     {
-      std::cout << "Mean Absolute Percentage Error: " << std::fixed << std::setprecision(4) << (_mean_absolute_percentage_error*100.0) << "%" << std::endl;
-    }
-    auto current_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = current_time - last_callback_time;
-    if (elapsed_time >= interval)
-    {
-      // do an error check to see if we need to adapt.
-      update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
-      learning_rate = learning_rate_scheduler.update(_error, learning_rate);
-
-      if (progress_callback != nullptr)
+      if (!progress_callback(epoch, number_of_epoch, *this))
       {
-        auto percent = (int)(((float)epoch / number_of_epoch)*100);
-        if( !progress_callback(percent, *this))
-        {
-          return;
-        }
+        _logger.log_warning("Progress callback function returned false during training, closing now!");
+        return;
       }
-      last_callback_time = current_time;
     }
+    MYODDWEB_PROFILE_MARK();
   }
 
   task_pool.stop();
   double avg_ns = task_pool.average();
   auto total_epoch_duration_size = task_pool.total_tasks();
-  std::cout << "Average time per call: " << std::fixed << std::setprecision (2) << avg_ns << " ns (" << total_epoch_duration_size << " calls)." << std::endl;
+  _logger.log_debug("Average time per call: ", std::fixed, std::setprecision (2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
 
   // final error checking
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
   update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
-  std::cout << "Final Test Error: " << std::fixed << std::setprecision (15) << _error << std::endl;
-  std::cout << "Final Test Mean Absolute Percentage Error: " << std::fixed << std::setprecision (15) << _mean_absolute_percentage_error << std::endl;
+  _logger.log_info("Final Error: ", std::fixed, std::setprecision (15), _error);
+  _logger.log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
 
   // finaly learning rate
-  std::cout << "Final Learning rate: " << std::fixed << std::setprecision(15) << learning_rate << std::endl;
+  _logger.log_info("Final Learning rate: ", std::fixed, std::setprecision(15), learning_rate);
 
   if (errorPool != nullptr)
   {
@@ -401,11 +396,12 @@ void NeuralNetwork::train(
     delete errorPool;
   }
 
-  // final callback if needed
+  // final callback to show 100% done.
   if (progress_callback != nullptr)
   {
-    progress_callback(100, *this);
+    progress_callback(number_of_epoch, number_of_epoch, *this);
   }
+  MYODDWEB_PROFILE_MARK();
 }
 
 void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, LayersAndNeurons<double>& averages) const
@@ -448,7 +444,7 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
   }
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return calculate_rmse_error(ground_truth, predictions);
@@ -456,12 +452,12 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& gr
   //return calculate_huber_loss(ground_truth, predictions);
 }
 
-double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta)
+double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
-    std::cerr << "Mismatched number of samples" << std::endl;
+    _logger.log_error("Mismatched number of samples");
     throw std::invalid_argument("Mismatched number of samples");
   }
 
@@ -472,7 +468,7 @@ double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>
   {
     if (ground_truth[i].size() != predictions[i].size())
     {
-      std::cerr << "Mismatched vector sizes at index " << std::to_string(i) << std::endl;
+      _logger.log_error("Mismatched vector sizes at index ", i);
       throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
     }
 
@@ -495,12 +491,12 @@ double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>
   return (count > 0) ? (total_loss / count) : 0.0;
 }
 
-double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
-    std::cerr << "Mismatched number of samples" << std::endl;
+    _logger.log_error("Mismatched number of samples");
     throw std::invalid_argument("Mismatched number of samples");
   }
   
@@ -511,7 +507,7 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   {
     if (ground_truth[i].size() != predictions[i].size())
     {
-      std::cerr << "Mismatched vector sizes at index " << std::to_string(i) << std::endl;
+      _logger.log_error("Mismatched vector sizes at index ", i);
       throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
     }
     for (size_t j = 0; j < ground_truth[i].size(); ++j)
@@ -523,19 +519,19 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   return (count > 0) ? (total_abs_error / count) : 0.0;
 }
 
-double NeuralNetwork::calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto mean_squared_error = calculate_mse_error(ground_truth, predictions);
   return std::sqrt(mean_squared_error); // RMSE
 }
 
-double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size()) 
   {
-    std::cerr << "Mismatch in batch sizes." << std::endl;
+    _logger.log_error("Mismatch in batch sizes.");
     return std::numeric_limits<double>::quiet_NaN();
   }
 
@@ -549,7 +545,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 
     if (true_output.size() != predicted_output.size()) 
     {
-      std::cerr << "Mismatch in output vector sizes at index " << i << std::endl;
+      _logger.log_warning("Mismatch in output vector sizes at index ",i);
       continue;
     }
 
@@ -676,15 +672,14 @@ void NeuralNetwork::calculate_batch_back_propagation(
     const std::vector<std::vector<double>>::const_iterator outputs_begin, 
     const size_t outputs_size,
     std::vector<GradientsAndOutputs>& batch_given_outputs, 
-    const std::vector<Layer>& layers)
+    const std::vector<Layer>& layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto batch_size = batch_given_outputs.size();
   if(batch_size == 0)
   {
-    std::cerr << "Batch size is 0 so we cannot do back propagation!" << std::endl;
+    _logger.log_error("Batch size is 0 so we cannot do back propagation!");
     throw new std::invalid_argument("Batch size is 0 so we cannot do back propagation!");
-    return;
   }
 
   // calculate all the gradients in the batch.
@@ -805,7 +800,7 @@ double NeuralNetwork::calculate_mape(const std::vector<std::vector<double>>& gro
 {
   if (predictions.size() != ground_truths.size() || predictions.empty()) 
   {
-    std::cerr << "Input vectors must have the same, non-zero size." << std::endl;
+    _logger.log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -828,7 +823,7 @@ double NeuralNetwork::calculate_mape(const std::vector<double>& ground_truth, co
 {
   if (predictions.size() != ground_truth.size() || predictions.empty()) 
   {
-    std::cerr << "Input vectors must have the same, non-zero size." << std::endl;
+    _logger.log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 

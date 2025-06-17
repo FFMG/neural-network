@@ -1,7 +1,7 @@
 #pragma once
 #include "activation.h"
 #include "layer.h"
-
+#include "logger.h"
 #include "./libraries/instrumentor.h"
 
 #include <array>
@@ -18,25 +18,50 @@ private:
   class Connection
   {
   public:
-    Connection(double weight, double delta_weight) : 
+    Connection(double weight, double delta_weight, Logger& logger) : 
       _weight(weight), 
-      _delta_weight(delta_weight)
+      _delta_weight(delta_weight),
+      _logger(logger)
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
     }
-    Connection(const Connection& connection) : 
+    Connection(const Connection& connection) noexcept :
       _weight(connection._weight),
-      _delta_weight(connection._delta_weight)
+      _delta_weight(connection._delta_weight),
+      _logger(connection._logger)
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
     }
-    Connection& operator=(const Connection& connection)
+    Connection(Connection&& connection) noexcept: 
+      _weight(connection._weight),
+      _delta_weight(connection._delta_weight),
+      _logger(connection._logger)
+    {
+      MYODDWEB_PROFILE_FUNCTION("Connection");
+      connection._weight = 0.0;
+      connection._delta_weight = 0.0;
+    }
+    Connection& operator=(const Connection& connection) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("Connection");
       if (this != &connection)
       {
-        set_weight(connection._weight);
-        set_delta_weight( connection._delta_weight);
+        _weight = connection._weight;
+        _delta_weight = connection._delta_weight;
+        _logger = connection._logger;
+      }
+      return *this;
+    }
+    Connection& operator=(Connection&& connection)  noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("Connection");
+      if (this != &connection)
+      {
+        _weight = connection._weight;
+        _delta_weight = connection._delta_weight;
+        _logger = connection._logger;
+        connection._weight = 0.0;
+        connection._delta_weight = 0.0;
       }
       return *this;
     }
@@ -57,7 +82,7 @@ private:
       MYODDWEB_PROFILE_FUNCTION("Connection");
       if (!std::isfinite(weight))
       {
-        std::cout << "Error while setting weight." << std::endl;
+        _logger.log_error("Error while setting weight.");
         throw std::invalid_argument("Error while setting weight.");
         return;
       }
@@ -68,7 +93,7 @@ private:
       MYODDWEB_PROFILE_FUNCTION("Connection");
       if (!std::isfinite(delta_weight))
       {
-        std::cout << "Error while setting delta weight." << std::endl;
+        _logger.log_error("Error while setting delta weight.");
         throw std::invalid_argument("Error while setting delta weight.");
         return;
       }
@@ -78,6 +103,7 @@ private:
   private:
     double _weight;
     double _delta_weight;
+    Logger& _logger;
   };
 
 public:
@@ -85,14 +111,16 @@ public:
     unsigned index, 
     double output_value,
     const activation& activation,
-    const std::vector<std::array<double,2>>& output_weights
+    const std::vector<std::array<double,2>>& output_weights,
+    Logger& logger
     );
     
   Neuron(
     unsigned num_neurons_prev_layer,
     unsigned num_neurons_current_layer,
     unsigned index, 
-    const activation& activation
+    const activation& activation,
+    Logger& logger
     );
 
   Neuron(const Neuron& src) noexcept;
@@ -135,4 +163,5 @@ private:
   std::vector<Connection> _output_weights;
 
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
+  Logger& _logger;
 };

@@ -1,5 +1,6 @@
 #include "../neuralnetworkserializer.h"
 #include "helper.h"
+#include "../logger.h"
 
 #include <iomanip>
 #include <iostream>
@@ -9,8 +10,9 @@ class ExampleXor
 private:
   static NeuralNetwork* create_neural_network()
   {
+    auto logger = Logger(Logger::LogLevel::Debug);
     std::vector<unsigned> topology = {3,2,1};
-    return new NeuralNetwork(topology, activation::sigmoid_activation);
+    return new NeuralNetwork(topology, activation::sigmoid_activation, logger);
   }
 
   static void train_neural_network( NeuralNetwork& nn, unsigned epoch, unsigned batch_size)
@@ -29,7 +31,7 @@ private:
     };
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs, 0.15, epoch, batch_size);
+    nn.train(training_inputs, training_outputs, 0.98, epoch, batch_size);
     std::cout << std::endl;
 
     // pass an array of array to think about
