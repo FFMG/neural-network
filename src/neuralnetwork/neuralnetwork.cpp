@@ -317,9 +317,9 @@ void NeuralNetwork::train(
     epoch_gradients_outputs.clear();
 
     // create the batches
-    for( size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
+    for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
-      if(batch_size > 1)
+      if (batch_size > 1)
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
@@ -329,8 +329,8 @@ void NeuralNetwork::train(
               training_inputs.begin() + start_index,
               training_outputs.begin() + start_index,
               total_size);
-          return train;
-        });
+            return train;
+          });
       }
       else
       {
@@ -359,18 +359,18 @@ void NeuralNetwork::train(
       _logger.log_debug("Average time per call: ", std::fixed, std::setprecision(2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
     }
 
-      // do an error check to see if we need to adapt.
-      update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
-      learning_rate = learning_rate_scheduler.update(_error, learning_rate);
-      if (progress_callback != nullptr)
-      {
+    // do an error check to see if we need to adapt.
+    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
+    learning_rate = learning_rate_scheduler.update(_error, learning_rate);
+    if (progress_callback != nullptr)
+    {
       if (!progress_callback(epoch, number_of_epoch, *this))
-        {
+      {
         _logger.log_warning("Progress callback function returned false during training, closing now!");
-          return;
-        }
+        return;
       }
     }
+  }
 
   task_pool.stop();
   double avg_ns = task_pool.average();
