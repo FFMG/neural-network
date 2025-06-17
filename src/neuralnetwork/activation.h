@@ -29,7 +29,7 @@ public:
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
 
   void set_alpha(double alpha);
-  double get_alpha(double alpha) const;
+  double get_alpha() const;
 
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);
