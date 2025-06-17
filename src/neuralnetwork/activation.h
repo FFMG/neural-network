@@ -16,14 +16,20 @@ public:
     Selu_activation,
   };
 
-  activation(const method method, double alpha = 0.001);
-  activation(const activation& src);
-  activation& operator=(const activation& src);
+  activation(const method method, double alpha = 0.01) noexcept;
+  activation(const activation& src) noexcept;
+  activation(activation&& src) noexcept;
+  activation& operator=(const activation& src) noexcept;
+  activation& operator=(activation&& src) noexcept;
+  ~activation() = default;
 
   double activate(double x) const;
   double activate_derivative(double x) const;
 
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
+
+  void set_alpha(double alpha);
+  double get_alpha(double alpha) const;
 
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);

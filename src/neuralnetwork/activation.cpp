@@ -7,21 +7,28 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation(const method method, double alpha) : 
+activation::activation(const method method, double alpha)  noexcept :
   _method(method),
   _alpha(alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
 
-activation::activation(const activation& src) : 
+activation::activation(const activation& src) noexcept :
   _method(src._method),
   _alpha(src._alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
 
-activation& activation::operator=(const activation& src)
+activation::activation(activation&& src) noexcept :
+  _method(src._method),
+  _alpha(src._alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+}
+
+activation& activation::operator=(const activation& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if(this != &src)
@@ -32,6 +39,26 @@ activation& activation::operator=(const activation& src)
   return *this;
 }
 
+activation& activation::operator=(activation&& src) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  if (this != &src)
+  {
+    _method = src._method;
+    _alpha = src._alpha;
+  }
+  return *this;
+}
+
+void activation::set_alpha(double alpha)
+{
+  _alpha = alpha;
+}
+
+double activation::get_alpha(double alpha) const
+{
+  return _alpha;
+}
 
 // Sigmoid function
 double activation::sigmoid(double x)
