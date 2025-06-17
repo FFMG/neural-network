@@ -245,7 +245,7 @@ void NeuralNetwork::train(
     throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
   }
 
-  _logger.log_info("Started trainning with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
+  _logger.log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
   // initial callback
   _error = 0.0;
@@ -253,7 +253,7 @@ void NeuralNetwork::train(
   {
     if( !progress_callback(0, number_of_epoch, *this))
     {
-      _logger.log_warning("Progress callback function returned before training started, closing now!");
+      _logger.log_warning("Progress callback function returned false before training started, closing now!");
       return;
     }
   }
@@ -309,7 +309,7 @@ void NeuralNetwork::train(
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(_logger, 2 * learning_rate);
+  AdaptiveLearningRateScheduler learning_rate_scheduler(_logger);
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -366,7 +366,7 @@ void NeuralNetwork::train(
       {
       if (!progress_callback(epoch, number_of_epoch, *this))
         {
-        _logger.log_warning("Progress callback function returned durring training started, closing now!");
+        _logger.log_warning("Progress callback function returned false during training, closing now!");
           return;
         }
       }
