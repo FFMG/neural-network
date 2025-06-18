@@ -63,22 +63,24 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(std::vector<std::vecto
     return {};
   }
 
+  layers.reserve(number_of_layers);
+
   // add the input layer
   auto input_neurons = array_of_neurons.front();
-  layers.push_back(Layer::create_input_layer(input_neurons, logger));
+  layers.emplace_back(Layer::create_input_layer(input_neurons, logger));
   
   // create the hidden layers.
   for(size_t i = 1; i < number_of_layers -1; ++i)
   {
     const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[i - 1].size());
     const auto& this_neurons = array_of_neurons[i];
-    layers.push_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer, logger));
+    layers.emplace_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer, logger));
   }
 
   // finally, the output layer.
   auto output_neurons = array_of_neurons.back();
   const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[array_of_neurons.size()-2].size());
-  layers.push_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, logger));
+  layers.emplace_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, logger));
   
   return layers;
 }
@@ -298,7 +300,7 @@ void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArr
 void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
   auto layers_array = new TinyJSON::TJValueArray();
-  for(auto layer : nn.get_layers())
+  for(const auto& layer : nn.get_layers())
   {
     add_layer(layer, *layers_array);
   }
