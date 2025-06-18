@@ -43,10 +43,11 @@ Neuron::Neuron(
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  _output_weights.reserve(output_weights.size());
   for (auto& weights : output_weights)
   {
     auto connection = Connection(weights[0], weights[1], logger);
-    _output_weights.push_back(connection);
+    _output_weights.emplace_back(std::move(connection));
   }
 }
 
