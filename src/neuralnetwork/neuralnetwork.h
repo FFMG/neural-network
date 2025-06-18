@@ -1,7 +1,6 @@
 #pragma once
 #include <cassert>
 #include <functional>
-#include <unordered_map>
 #include <vector>
 
 #include "./libraries/instrumentor.h"
@@ -20,6 +19,8 @@ private:
   {
   public:
     LayersAndNeurons(const LayersAndNeurons& src) noexcept :
+      _offsets(src._offsets),
+      _total_size(src._total_size),
       _data(src._data),
       _topology(src._topology)
     {
@@ -27,6 +28,8 @@ private:
     }
 
     LayersAndNeurons(LayersAndNeurons&& src) noexcept :
+      _offsets(std::move(src._offsets)),
+      _total_size(src._total_size),
       _data(std::move(src._data)),
       _topology(std::move(src._topology))
     {
@@ -38,6 +41,8 @@ private:
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(this != &src)
       {
+        _offsets = src._offsets;
+        _total_size = src._total_size;
         _data = src._data;
         _topology = src._topology;
       }
@@ -49,6 +54,8 @@ private:
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       if(this != &src)
       {
+        _offsets = std::move(src._offsets);
+        _total_size = src._total_size;
         _data = std::move(src._data);
         _topology = std::move(src._topology);
       }
@@ -73,6 +80,17 @@ private:
           ++t;  //  bias
         }
       }
+
+      // finaly populate the data
+      const auto& size = _topology.size();
+      _offsets.resize(size);
+      _total_size = 0;
+      for(size_t layer = 0; layer < size; ++layer)
+      {
+        _offsets[layer] = _total_size;
+        _total_size+= _topology[layer];
+      }
+      _data.resize(_total_size);
     }
 
     LayersAndNeurons& operator=(const std::vector<std::vector<T>>& data)
@@ -90,14 +108,14 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
-      _data.insert_or_assign(key(layer, neuron), std::move(data));
+      _data[_offsets[layer]+neuron] = std::move(data);
     }
 
     inline void set( unsigned layer, unsigned neuron, const T& data)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
-      _data.insert_or_assign(key(layer, neuron), data);
+      _data[_offsets[layer]+neuron] = data;
     }
 
     inline void set(unsigned layer, const std::vector<T>& data)
@@ -105,9 +123,10 @@ private:
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(number_neurons(layer) == data.size());
       unsigned neuron = 0;
+      const auto& layer_offset = _offsets[layer];
       for( const auto& d : data )
       {
-        _data.insert_or_assign(key(layer, neuron), d);
+        _data[layer_offset+neuron] = d;
         ++neuron;
       }
     }
@@ -116,17 +135,18 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       ensure_size(layer, neuron);
-      return _data.at(key(layer, neuron));
+      return _data[_offsets[layer]+neuron];
     }
 
-    std::vector<T> get_neurons( unsigned layer) const
+    std::vector<T> get_neurons(unsigned layer) const
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       std::vector<T> data;
       data.reserve(_topology[layer]);
+      const auto layer_offset = _offsets[layer];
       for(size_t neuron = 0; neuron < _topology[layer]; ++neuron)
       {
-        data.emplace_back(_data.at(key(layer, static_cast<unsigned>(neuron))));
+        data.emplace_back(_data[layer_offset+neuron]);
       }
       return data;
     }
@@ -163,14 +183,9 @@ private:
     }
     #endif
 
-    inline unsigned int key(unsigned short layer, unsigned short neuron) const
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-      return (layer << 16) | (neuron);
-    }
-
-    // the values
-    std::unordered_map<unsigned int, T> _data;
+    std::vector<size_t> _offsets;
+    size_t _total_size;
+    std::vector<T> _data;
     std::vector<unsigned short> _topology;
   };
 
