@@ -1,13 +1,14 @@
 #include <iostream>
 #include <vector>
 
+#include "../logger.h"
 #include "../neuralnetwork.h"
 #include "helper.h"
 
 class ExampleThreebitParity
 {
 public:
-  static void ThreebitParity()
+  static void ThreebitParity(Logger& logger)
   {
     std::vector<unsigned> topology = {3, 6, 1};
     std::vector<std::vector<double>> training_inputs = {
@@ -31,7 +32,6 @@ public:
         {1}   // 3 ones → odd
     };
 
-    auto logger = Logger(Logger::LogLevel::Debug);
     const int number_of_epoch = 10000;
     const double learning_rate = 0.1;
     {

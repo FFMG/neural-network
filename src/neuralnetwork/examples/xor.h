@@ -8,9 +8,8 @@
 class ExampleXor
 {
 private:
-  static NeuralNetwork* create_neural_network()
+  static NeuralNetwork* create_neural_network(Logger& logger)
   {
-    auto logger = Logger(Logger::LogLevel::Debug);
     std::vector<unsigned> topology = {3,2,1};
     return new NeuralNetwork(topology, activation::sigmoid_activation, logger);
   }
@@ -50,7 +49,7 @@ private:
   }
 
 public:
-  static void Xor( bool use_file)
+  static void Xor(Logger& logger, bool use_file)
   {
     TEST_START("Xor test.")
 
@@ -67,7 +66,7 @@ public:
       if( nullptr == nn )
       {
         // we need to create it
-        nn = create_neural_network();
+        nn = create_neural_network(logger);
 
         // train it
         train_neural_network(*nn, epoch, batch_size);
@@ -89,7 +88,7 @@ public:
     else
     {
       // we need to create it
-      nn = create_neural_network();
+      nn = create_neural_network(logger);
 
       // train it
       train_neural_network(*nn, epoch, batch_size);
