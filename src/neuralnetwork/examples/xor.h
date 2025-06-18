@@ -62,7 +62,7 @@ public:
     NeuralNetwork* nn = nullptr;
     if(use_file)
     {
-      nn = NeuralNetworkSerializer::load(file_name);
+      nn = NeuralNetworkSerializer::load(logger, file_name);
       if( nullptr == nn )
       {
         // we need to create it
@@ -74,7 +74,7 @@ public:
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
 
-        auto nn_saved = NeuralNetworkSerializer::load(file_name);
+        auto nn_saved = NeuralNetworkSerializer::load(logger, file_name);
         std::cout << "Output from saved file:" << std::endl;
         std::cout << std::fixed << std::setprecision(10);
         auto t1 = nn_saved->think({ 0, 0, 1 });
