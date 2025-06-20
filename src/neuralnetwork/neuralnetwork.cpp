@@ -55,7 +55,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& activation,
   const Logger& logger,
   long double error,
-  long mean_absolute_percentage_error
+  long double mean_absolute_percentage_error
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
