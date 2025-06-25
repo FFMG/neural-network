@@ -362,7 +362,7 @@ void NeuralNetwork::train(
 
     // do an error check to see if we need to adapt.
     update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
-    learning_rate = learning_rate_scheduler.update(_error, learning_rate);
+    learning_rate = learning_rate_scheduler.update(_error, learning_rate, epoch, number_of_epoch);
     if (progress_callback != nullptr)
     {
       if (!progress_callback(epoch, number_of_epoch, *this))
