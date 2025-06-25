@@ -8,6 +8,7 @@ class activation
 public:
   enum method
   {
+    linear_activation,
     sigmoid_activation,
     tanh_activation,
     relu_activation,
@@ -49,6 +50,8 @@ private:
   static double leakyRelu_derivative(double x, double alpha);
   static double PReLU(double x, double alpha);
   static double PReLU_derivative(double x, double alpha);
+  static double linear(double x);
+  static double linear_derivative(double x);
 
   method _method;
   double _alpha;
