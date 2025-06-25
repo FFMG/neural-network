@@ -3,14 +3,22 @@
 // See the LICENSE file in the project root for more information.
 #pragma once
 #ifdef TRACY_ENABLE
-  #include "../libraries/tracy/tracy/Tracy.hpp"
-
-  #define MYODDWEB_PROFILE_BEGIN_SESSION(name, filepath)
-  #define MYODDWEB_PROFILE_END_SESSION() FrameMark
-  #define MYODDWEB_PROFILE_SCOPE(name, category)
-  #define MYODDWEB_PROFILE_FUNCTIONF() ZoneScoped
-  #define MYODDWEB_PROFILE_FUNCTION(category) ZoneScoped
-  #define MYODDWEB_PROFILE_MARK() FrameMark
+  #if MYODDWEB_PROFILE
+    #include "../libraries/tracy/tracy/Tracy.hpp"
+    #define MYODDWEB_PROFILE_BEGIN_SESSION(name, filepath)
+    #define MYODDWEB_PROFILE_END_SESSION() FrameMark
+    #define MYODDWEB_PROFILE_SCOPE(name, category)
+    #define MYODDWEB_PROFILE_FUNCTIONF() ZoneScoped
+    #define MYODDWEB_PROFILE_FUNCTION(category) ZoneScoped
+    #define MYODDWEB_PROFILE_MARK() FrameMark
+  #else
+    #define MYODDWEB_PROFILE_BEGIN_SESSION(name, filepath)
+    #define MYODDWEB_PROFILE_END_SESSION()
+    #define MYODDWEB_PROFILE_SCOPE(name, category)
+    #define MYODDWEB_PROFILE_FUNCTIONF()
+    #define MYODDWEB_PROFILE_FUNCTION(category)
+    #define MYODDWEB_PROFILE_MARK()
+  #endif
 #else
   #include <chrono>
   #include <fstream>
