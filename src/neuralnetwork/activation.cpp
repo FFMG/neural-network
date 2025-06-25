@@ -60,6 +60,18 @@ double activation::get_alpha() const
   return _alpha;
 }
 
+double activation::linear(double x)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  return x;
+}
+
+double activation::linear_derivative(double /*x*/)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  return 1.0;
+}
+
 // Sigmoid function
 double activation::sigmoid(double x)
 {
@@ -141,6 +153,9 @@ double activation::activate(double x) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
+  case activation::linear_activation:
+    return activation::linear(x);
+
   case activation::relu_activation:
     return activation::relu(x);
 
@@ -167,6 +182,9 @@ double activation::activate_derivative(double x) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
+  case activation::linear_activation:
+    return activation::linear_derivative(x);
+
   case activation::relu_activation:
     return activation::relu_derivative(x);
 
@@ -201,6 +219,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_prev_layer
   case activation::Selu_activation:
     return selu_initialization(num_neurons_prev_layer);
 
+  case activation::method::linear_activation:
   case activation::method::relu_activation:
   case activation::method::leakyRelu_activation:
   case activation::method::PRelu_activation:
