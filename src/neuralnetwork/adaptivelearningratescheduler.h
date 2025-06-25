@@ -12,10 +12,10 @@
 class AdaptiveLearningRateScheduler 
 {
 private:
-  static constexpr int CoolDownExploding = 2;
-  static constexpr int CoolDownPlateau = 10;
-  static constexpr int CoolDownDecreasing = 20;
-  static constexpr int CoolDownIncrease = 10;
+  static constexpr size_t CoolDownExploding = 1;
+  static constexpr size_t CoolDownIncrease = 10;
+  static constexpr size_t CoolDownPlateau = 3;
+  static constexpr size_t CoolDownDecreasing = 10;
 
   enum RateState
   {
@@ -28,8 +28,8 @@ private:
 public:
   AdaptiveLearningRateScheduler(
     Logger& logger,
-    size_t history_size = 10,
-    double min_plateau_percent_change = 0.0001, // percent (0 <> 1)
+    size_t history_size = 25,
+    double min_plateau_percent_change = 0.0005, // percent (0 <> 1)
     double min_percent_change = 0.005, // percent (0 <> 1)
     double adjustment_rate = 0.1)
     : 
@@ -50,12 +50,13 @@ public:
   AdaptiveLearningRateScheduler(AdaptiveLearningRateScheduler&&) = delete;
   AdaptiveLearningRateScheduler& operator=(AdaptiveLearningRateScheduler&&) = delete;
 
-  double update(double currentError, double current_learning_rate) 
+  double update(double currentError, double current_learning_rate, int epoch, int number_of_epoch)
   {
     if (_max_learning_rate == 0)
     {
       //  set the max learning rate.
-      _max_learning_rate = std::clamp(10* current_learning_rate, current_learning_rate, 0.99);
+      _max_learning_rate = std::clamp(2* current_learning_rate, current_learning_rate, 0.99);
+      _logger.log_debug("Adaptive Learning Rate max value set to: ", std::fixed, std::setprecision(15), _max_learning_rate);
     }
 
     // Store error history
@@ -88,28 +89,28 @@ public:
       {
         return current_learning_rate;
       }
-      _cool_down = CoolDownDecreasing;
+      _cool_down = static_cast<int>( CoolDownDecreasing * _history_size);
       _logger.log_info("Learning is improving. Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      _logger.log_info("Cooldown set to ", _cool_down);
+      _logger.log_debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
     case RateState::Plateauing:
     {
-      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - _adjustment_rate)); // Mild reduce
+      double new_learning_rate = clamp_learning_rate(linear_decay(current_learning_rate, epoch, number_of_epoch)); // Mild reduce
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
       }
-      _cool_down = CoolDownPlateau;
-      _logger.log_info("Learning is plateauing. Decreasing learning rate from "
+      _cool_down = static_cast<int>(CoolDownPlateau * _history_size);
+      _logger.log_info("Learning is plateauing. Changing learning down rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      _logger.log_info("Cooldown set to ", _cool_down);
+      _logger.log_debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -120,12 +121,12 @@ public:
       {
         return current_learning_rate;
       }
-      _cool_down = CoolDownIncrease;
+      _cool_down = static_cast<int>(CoolDownIncrease * _history_size);
       _logger.log_warning("Learning is increasing! Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      _logger.log_info("Cooldown set to ", _cool_down);
+      _logger.log_debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -136,12 +137,12 @@ public:
       {
         return current_learning_rate;
       }
-      _cool_down = CoolDownExploding;
-      _logger.log_warning("Learning is increasing! Changing learning rate from "
+      _cool_down = static_cast<int>(CoolDownExploding * _history_size);
+      _logger.log_error("Exploding pattern detected! Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      _logger.log_info("Cooldown set to ", _cool_down);
+      _logger.log_debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -175,17 +176,21 @@ private:
   RateState get_rate_change() const
   {
     const size_t error_size = _error_history.size();
-    if (error_size < 2)
+    if (error_size < _history_size)
     {
       return RateState::Stable;
     }
 
     size_t decreaseCount = 0;
-    size_t plateauCount = 0;
+    size_t plateau = 0;
     size_t increaseCount = 0;
     size_t explodingCount = 0;
     size_t explodingPattern = 0;
     size_t comparisons = error_size / 2;
+    size_t plateau_comparisons = error_size / 4;
+    size_t exploding_comparisons = error_size / 4;
+    plateau_comparisons = std::max(plateau_comparisons, size_t(4));
+    exploding_comparisons = std::max(exploding_comparisons, size_t(4));
 
     for (size_t i = error_size - comparisons; i < error_size - 1; ++i)
     {
@@ -194,11 +199,13 @@ private:
       // increasing or decreasing less than the percent request
       if (std::fabs(change) <= _min_plateau_percent_change)
       {
-        ++plateauCount;
+        ++plateau;
       }
 
       // decreasing
-      if (change < 0 && change <= -_min_percent_change)
+      // for decrease to cause a change we must be doing really well.
+      // so we will be looking for 2x the percent change
+      if (change < 0 && change <= (- 2 * _min_percent_change))
       {
         ++decreaseCount;
       }
@@ -210,7 +217,7 @@ private:
       }
 
       // exploding
-      if (change > 0 && change >= 2*_min_percent_change)
+      if (change > 0 && change >= (2*_min_percent_change))
       {
         ++explodingCount;
       }
@@ -223,10 +230,9 @@ private:
     }
     if (explodingPattern >= comparisons - 1)
     {
-      _logger.log_warning("Exploding pattern detected!");
       return RateState::Exploding;
     }
-    if (explodingCount >= comparisons - 1)
+    if (explodingCount >= exploding_comparisons - 1)
     {
       return RateState::Exploding;
     }
@@ -238,7 +244,7 @@ private:
     {
       return RateState::Decreasing;
     }
-    if (plateauCount >= comparisons - 1)
+    if (plateau >= plateau_comparisons - 1)
     {
       return RateState::Plateauing;
     }
@@ -266,5 +272,10 @@ private:
     // Apply the standard formula for percent change.
     double change = newValue - oldValue;
     return (change / oldValue) * 100.0;
+  }
+
+  double linear_decay(double current_learning_rate, int epoch, int number_of_epoch)
+  {
+    return current_learning_rate * (1.0 - static_cast<double>(epoch) / number_of_epoch);
   }
 };
