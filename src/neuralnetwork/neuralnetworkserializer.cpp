@@ -14,7 +14,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   auto* tj = TinyJSON::TJ::parse_file(path.c_str(), options_parse);
   if(nullptr == tj)
   {
-    logger.log_warning( "Unable to open '", path, "'.");
+    logger.log_warning("Could not load Neural Network from file (", path, ").");
     return nullptr;
   }
 
