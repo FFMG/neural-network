@@ -411,8 +411,8 @@ private:
   };
 
 public:
-  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& activation, const Logger& logger);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& activation, const Logger& logger, long double error, long double mean_absolute_percentage_error);
+  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
+  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger, long double error, long double mean_absolute_percentage_error);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -429,7 +429,8 @@ public:
 
   const std::vector<unsigned>& get_topology() const;
   const std::vector<Layer>& get_layers() const;
-  activation::method get_activation_method() const;
+  const activation::method& get_output_activation_method() const;
+  const activation::method& get_hidden_activation_method() const;
   long double get_error() const;
   long double get_mean_absolute_percentage_error() const;
 
@@ -492,7 +493,9 @@ private:
   long double _mean_absolute_percentage_error;
   std::vector<unsigned> _topology;
   std::vector<Layer> _layers;
-  const activation::method _activation_method;
 
+  const activation::method _hidden_activation_method;
+  const activation::method _output_activation_method;
+  
   Logger _logger;
 };

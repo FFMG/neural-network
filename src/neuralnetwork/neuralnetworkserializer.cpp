@@ -19,12 +19,23 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   }
 
   auto topology = get_topology(logger, *tj);
-  auto activation_method = get_activation_method(logger, *tj);
+  auto hidden_activation_method = get_hidden_activation_method(logger, *tj);
+  auto output_activation_method = get_output_activation_method(logger, *tj);
 
   // get the weights...
   std::vector<std::vector<Neuron>> array_of_neurons;
   for(auto layer_number = 0; ;++layer_number)
   {
+    auto activation_method = hidden_activation_method;
+    if (layer_number == 0)
+    {
+      activation_method = activation::method::linear_activation;
+    }
+    if (layer_number == topology.size() -1)
+    {
+      activation_method = output_activation_method;
+    }
+
     auto neurons = get_neurons(logger, *tj, layer_number, activation_method);
     if(neurons.size() == 0)
     {
@@ -46,7 +57,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, activation_method, logger, error, mean_absolute_percentage_error);
+  auto nn = new NeuralNetwork(layers, hidden_activation_method, output_activation_method, logger, error, mean_absolute_percentage_error);
   logger.log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));  
 
   // cleanup
@@ -248,18 +259,35 @@ std::vector<unsigned> NeuralNetworkSerializer::get_topology(Logger& logger, cons
   return topology;
 }
 
-activation::method NeuralNetworkSerializer::get_activation_method(Logger& logger, const TinyJSON::TJValue& json )
+activation::method NeuralNetworkSerializer::get_hidden_activation_method(Logger& logger, const TinyJSON::TJValue& json )
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if(nullptr == object)
   {
-    logger.log_warning("Could not find a valid 'activation-method' node, defaulting to sigmoid.");
+    logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
     return activation::method::sigmoid_activation;
   }
-  auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("activation-method"));
+  auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("hidden-activation-method"));
   if(nullptr == number)
   {
-    logger.log_warning("Could not find a valid 'activation-method' node, defaulting to sigmoid.");
+    logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
+    return activation::method::sigmoid_activation;
+  }
+  return static_cast<activation::method>(number->get_number());
+}
+
+activation::method NeuralNetworkSerializer::get_output_activation_method(Logger& logger, const TinyJSON::TJValue& json)
+{
+  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  if (nullptr == object)
+  {
+    logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
+    return activation::method::sigmoid_activation;
+  }
+  auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("output-activation-method"));
+  if (nullptr == number)
+  {
+    logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
     return activation::method::sigmoid_activation;
   }
   return static_cast<activation::method>(number->get_number());
@@ -329,9 +357,13 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
 
 void NeuralNetworkSerializer::add_activation_method(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
-  auto activation_method = new TinyJSON::TJValueNumberInt( static_cast<unsigned>(nn.get_activation_method()));
-  json.set("activation-method", activation_method);
-  delete activation_method;
+  auto hidden_activation_method = new TinyJSON::TJValueNumberInt(static_cast<unsigned>(nn.get_hidden_activation_method()));
+  json.set("hidden-activation-method", hidden_activation_method);
+  delete hidden_activation_method;
+
+  auto output_activation_method = new TinyJSON::TJValueNumberInt( static_cast<unsigned>(nn.get_output_activation_method()));
+  json.set("output-activation-method", output_activation_method);
+  delete output_activation_method;
 }
 
 void NeuralNetworkSerializer::add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

@@ -24,7 +24,8 @@ private:
   static double get_error(const TinyJSON::TJValue& json);
   static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
   static std::vector<unsigned> get_topology(Logger& logger, const TinyJSON::TJValue& json);
-  static activation::method get_activation_method(Logger& logger, const TinyJSON::TJValue& json );
+  static activation::method get_hidden_activation_method(Logger& logger, const TinyJSON::TJValue& json );
+  static activation::method get_output_activation_method(Logger& logger, const TinyJSON::TJValue& json);
   static std::vector<std::array<double,2>> get_weights(Logger& logger, const TinyJSON::TJValueObject& neuron);
   static std::vector<Neuron> get_neurons(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method);
   static std::vector<Layer> create_layers(Logger& logger, std::vector<std::vector<Neuron>> array_of_neurons);
