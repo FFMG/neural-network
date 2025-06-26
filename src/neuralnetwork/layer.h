@@ -10,9 +10,9 @@ class Layer
 private:  
   enum class LayerType 
   {
-      Input,
-      Hidden,
-      Output
+    Input,
+    Hidden,
+    Output
   };
   Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, Logger& logger);
   Layer(LayerType layer_type, Logger& logger);
@@ -32,7 +32,7 @@ public:
   Neuron& get_neuron(unsigned index);
 
   static Layer create_input_layer(const std::vector<Neuron>& neurons, Logger& logger);
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const activation::method& activation, Logger& logger);
+  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, Logger& logger);
 
   static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer,Logger& logger);
   static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, Logger& logger);

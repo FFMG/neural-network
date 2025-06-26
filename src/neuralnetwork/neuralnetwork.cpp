@@ -13,14 +13,16 @@ static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<unsigned>& topology, 
-  const activation::method& activation,
+  const activation::method& hidden_layer_activation, 
+  const activation::method& output_layer_activation,
   const Logger& logger
   ) :
   _error(0.0),
   _mean_absolute_percentage_error(0.0),
   _topology(topology),
-  _activation_method(activation),
-  _logger(logger)
+  _logger(logger),
+  _output_activation_method(output_layer_activation),
+  _hidden_activation_method(hidden_layer_activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(topology.size() < 2)
@@ -32,7 +34,7 @@ NeuralNetwork::NeuralNetwork(
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], _activation_method, _logger);
+  auto layer = Layer::create_input_layer(topology[0], topology[1], _logger);
   _layers.emplace_back(std::move(layer));
   
   // then the hidden layers
@@ -41,26 +43,28 @@ NeuralNetwork::NeuralNetwork(
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
     const auto& previous_layer = _layers.back();
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, _activation_method, _logger);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_layer_activation, _logger);
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), _activation_method, _logger);
+  layer = Layer::create_output_layer(topology.back(), _layers.back(), output_layer_activation, _logger);
   _layers.emplace_back(std::move(layer));
 }
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
-  const activation::method& activation,
+  const activation::method& hidden_layer_activation, 
+  const activation::method& output_layer_activation,
   const Logger& logger,
   long double error,
   long double mean_absolute_percentage_error
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
-  _activation_method(activation),
-  _logger(logger)
+  _logger(logger),
+  _output_activation_method(output_layer_activation),
+  _hidden_activation_method(hidden_layer_activation)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(layers.size());
@@ -78,8 +82,9 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
   _topology(src._topology),
-  _activation_method(src._activation_method),
-  _logger(src._logger)
+  _logger(src._logger),
+  _output_activation_method(src._output_activation_method),
+  _hidden_activation_method(src._hidden_activation_method)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(src._layers.size());
@@ -90,10 +95,14 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   }
 }
 
-activation::method NeuralNetwork::get_activation_method() const
+const activation::method& NeuralNetwork::get_output_activation_method() const
 {
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _activation_method;
+  return _output_activation_method;
+}
+
+const activation::method& NeuralNetwork::get_hidden_activation_method() const
+{
+  return _hidden_activation_method;
 }
 
 const std::vector<Layer>& NeuralNetwork::get_layers() const
