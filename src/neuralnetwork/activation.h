@@ -14,7 +14,9 @@ public:
     relu_activation,
     leakyRelu_activation,
     PRelu_activation,
-    Selu_activation,
+    selu_activation,
+    swish_activation,
+    gelu_activation
   };
 
   activation(const method method, double alpha = 0.01) noexcept;
@@ -52,6 +54,10 @@ private:
   static double PReLU_derivative(double x, double alpha);
   static double linear(double x);
   static double linear_derivative(double x);
+  static double swish(double x);
+  static double swish_derivative(double x);
+  static double gelu(double x);
+  static double gelu_derivative(double x);
 
   method _method;
   double _alpha;
