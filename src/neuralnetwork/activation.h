@@ -8,15 +8,15 @@ class activation
 public:
   enum method
   {
-    linear_activation,
-    sigmoid_activation,
-    tanh_activation,
-    relu_activation,
-    leakyRelu_activation,
-    PRelu_activation,
-    selu_activation,
-    swish_activation,
-    gelu_activation
+    linear,
+    sigmoid,
+    tanh,
+    relu,
+    leakyRelu,
+    PRelu,
+    selu,
+    swish,
+    gelu
   };
 
   activation(const method method, double alpha = 0.01) noexcept;
@@ -40,24 +40,24 @@ private:
   static std::vector<double> lecun_initialization(int num_neurons_prev_layer);
   static std::vector<double> selu_initialization(int num_neurons_prev_layer);
 
-  static double selu(double x);
-  static double selu_derivative(double x);
-  static double sigmoid(double x);
-  static double sigmoid_derivative(double x);
-  static double tanh(double x);
-  static double tanh_derivative(double x);
-  static double relu(double x);
-  static double relu_derivative(double x);
-  static double leakyRelu(double x, double alpha);
-  static double leakyRelu_derivative(double x, double alpha);
-  static double PReLU(double x, double alpha);
-  static double PReLU_derivative(double x, double alpha);
-  static double linear(double x);
-  static double linear_derivative(double x);
-  static double swish(double x);
-  static double swish_derivative(double x);
-  static double gelu(double x);
-  static double gelu_derivative(double x);
+  static double calculate_selu(double x);
+  static double calculate_selu_derivative(double x);
+  static double calculate_sigmoid(double x);
+  static double calculate_sigmoid_derivative(double x);
+  static double calculate_tanh(double x);
+  static double calculate_tanh_derivative(double x);
+  static double calculate_relu(double x);
+  static double calculate_relu_derivative(double x);
+  static double calculate_leakyRelu(double x, double alpha);
+  static double calculate_leakyRelu_derivative(double x, double alpha);
+  static double calculate_PReLU(double x, double alpha);
+  static double calculate_PReLU_derivative(double x, double alpha);
+  static double calculate_linear(double x);
+  static double calculate_linear_derivative(double x);
+  static double calculate_swish(double x);
+  static double calculate_swish_derivative(double x);
+  static double calculate_gelu(double x);
+  static double calculate_gelu_derivative(double x);
 
   method _method;
   double _alpha;

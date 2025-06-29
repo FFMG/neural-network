@@ -56,7 +56,7 @@ int main()
 
   // the topology we create this NN with is
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
-  auto* nnl = new NeuralNetwork({ 3,4,1 }, , activation::sigmoid_activation, activation::sigmoid_activation, logger);
+  auto* nnl = new NeuralNetwork({ 3,4,1 }, , activation::method::sigmoid, activation::method::sigmoid, logger);
   nnl->train(training_inputs, training_outputs, 10000);
 
   std::vector<std::vector<double>> inputs = {
@@ -118,7 +118,7 @@ int main()
 
   // create the NN
   std::vector<unsigned> topology = {3,2,1};
-  auto nn = new NeuralNetwork(topology, activation::sigmoid_activation, activation::sigmoid_activation, logger);
+  auto nn = new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
 
   // train it 
   ...
@@ -203,7 +203,7 @@ int main()
   };
 
   auto logger = Logger(Logger::LogLevel::Information);
-  auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation, activation::sigmoid_activation, logger);
+  auto* nn = new NeuralNetwork({1, 4, 1}, activation::method::sigmoid, activation::method::sigmoid, logger);
   nn->train(training_inputs, training_outputs, 10000, -1, show_progress_bar);
 
   std::vector<std::vector<double>> inputs = {
@@ -265,7 +265,7 @@ After training you can get the calculated error as well as the mean absolute per
 ```c++
 ...
 auto logger = Logger(Logger::LogLevel::Information);
-auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation, activation::tanh, logger);
+auto* nn = new NeuralNetwork({1, 4, 1}, activation::method::sigmoid, activation::method::tanh, logger);
 
 ...
 auto error = nn.get_error();
