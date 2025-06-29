@@ -20,9 +20,9 @@ NeuralNetwork::NeuralNetwork(
   _error(0.0),
   _mean_absolute_percentage_error(0.0),
   _topology(topology),
-  _logger(logger),
+  _hidden_activation_method(hidden_layer_activation),
   _output_activation_method(output_layer_activation),
-  _hidden_activation_method(hidden_layer_activation)
+  _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if(topology.size() < 2)
@@ -62,9 +62,9 @@ NeuralNetwork::NeuralNetwork(
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
-  _logger(logger),
+  _hidden_activation_method(hidden_layer_activation),
   _output_activation_method(output_layer_activation),
-  _hidden_activation_method(hidden_layer_activation)
+  _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(layers.size());
@@ -82,9 +82,9 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
   _topology(src._topology),
-  _logger(src._logger),
+  _hidden_activation_method(src._hidden_activation_method),
   _output_activation_method(src._output_activation_method),
-  _hidden_activation_method(src._hidden_activation_method)
+  _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(src._layers.size());
