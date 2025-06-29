@@ -31,7 +31,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
     {
       activation_method = activation::method::linear_activation;
     }
-    if (layer_number == topology.size() -1)
+    if (layer_number == static_cast<int>(topology.size() -1))
     {
       activation_method = output_activation_method;
     }
