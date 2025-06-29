@@ -472,6 +472,9 @@ private:
   double calculate_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
   double calculate_mape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
+  double calculate_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
+  double calculate_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+
   void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool);
 
   // Error calculations
@@ -484,9 +487,17 @@ private:
   double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions ) const;
 
+  void recreate_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
   void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
+
+  void log_training_info(
+    double learning_rate,
+    const std::vector<std::vector<double>>& training_inputs,
+    const std::vector<std::vector<double>>& training_outputs,
+    const std::vector<size_t>& training_indexes, const std::vector<size_t>& checking_indexes, const std::vector<size_t>& final_check_indexes) const;
+
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
   long double _error;
