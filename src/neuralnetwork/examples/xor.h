@@ -11,7 +11,7 @@ private:
   static NeuralNetwork* create_neural_network(Logger& logger)
   {
     std::vector<unsigned> topology = {3,2,1};
-    return new NeuralNetwork(topology, activation::sigmoid_activation, activation::sigmoid_activation, logger);
+    return new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
   }
 
   static void train_neural_network( NeuralNetwork& nn, unsigned epoch, unsigned batch_size)

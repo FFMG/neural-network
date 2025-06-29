@@ -64,112 +64,112 @@ double activation::get_alpha() const
   return _alpha;
 }
 
-double activation::linear(double x)
+double activation::calculate_linear(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x;
 }
 
-double activation::linear_derivative(double /*x*/)
+double activation::calculate_linear_derivative(double /*x*/)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1.0;
 }
 
 // Sigmoid function
-double activation::sigmoid(double x)
+double activation::calculate_sigmoid(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1 / (1 + std::exp(-x));
 }
 
 // Sigmoid derivative
-double activation::sigmoid_derivative(double x)
+double activation::calculate_sigmoid_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x * (1 - x);
 }
 
-double activation::selu(double x) 
+double activation::calculate_selu(double x) 
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? x : SELU_ALPHA * (std::exp(x) - 1));
 }
 
-double activation::selu_derivative(double x) 
+double activation::calculate_selu_derivative(double x) 
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? 1.0 : SELU_ALPHA * std::exp(x));
 }
 
-double activation::relu(double x)
+double activation::calculate_relu(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::max(0.0, x);
 }
 
-double activation::relu_derivative(double x)
+double activation::calculate_relu_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0.0) ? 1.0 : 0.0;
 }
 
-double activation::leakyRelu(double x, double alpha)
+double activation::calculate_leakyRelu(double x, double alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
-double activation::leakyRelu_derivative(double x, double alpha)
+double activation::calculate_leakyRelu_derivative(double x, double alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::tanh(double x)
+double activation::calculate_tanh(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (std::exp(x) - std::exp(-x)) / (std::exp(x) + std::exp(-x));
 }
 
-double activation::tanh_derivative(double x)
+double activation::calculate_tanh_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return 1 - std::pow(tanh(x), 2);
+  return 1 - std::pow(std::tanh(x), 2);
 }
 
 // PReLU Activation Function
-double activation::PReLU(double x, double alpha)
+double activation::calculate_PReLU(double x, double alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
 // PReLU Derivative Function
-double activation::PReLU_derivative(double x, double alpha)
+double activation::calculate_PReLU_derivative(double x, double alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::swish(double x) 
+double activation::calculate_swish(double x) 
 {
   return x / (1.0 + std::exp(-x));
 }
 
-double activation::swish_derivative(double x) 
+double activation::calculate_swish_derivative(double x) 
 {
   double sigmoid = 1.0 / (1.0 + std::exp(-x));
   return sigmoid + x * sigmoid * (1 - sigmoid);
 }
 
 // Approximate GELU (fast, used in transformers)
-double activation::gelu(double x) 
+double activation::calculate_gelu(double x) 
 {
   return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
 }
 
-double activation::gelu_derivative(double x)
+double activation::calculate_gelu_derivative(double x)
 {
   // Optional: derivative is complex; can use numerical approximation or skip exact
   const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
@@ -182,32 +182,32 @@ double activation::activate(double x) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
-  case activation::linear_activation:
-    return activation::linear(x);
+  case activation::method::linear:
+    return calculate_linear(x);
 
-  case activation::relu_activation:
-    return activation::relu(x);
+  case activation::method::relu:
+    return calculate_relu(x);
 
-  case activation::leakyRelu_activation:
-    return activation::leakyRelu(x, _alpha);
+  case activation::method::leakyRelu:
+    return calculate_leakyRelu(x, _alpha);
 
-  case activation::tanh_activation:
-    return activation::tanh(x);
+  case activation::method::tanh:
+    return calculate_tanh(x);
 
-  case activation::PRelu_activation:
-    return activation::PReLU(x, _alpha);
+  case activation::method::PRelu:
+    return calculate_PReLU(x, _alpha);
 
-  case activation::selu_activation:
-    return activation::selu(x);
+  case activation::method::selu:
+    return calculate_selu(x);
 
-  case activation::gelu_activation:
-    return activation::gelu(x);
+  case activation::method::gelu:
+    return calculate_gelu(x);
 
-  case activation::swish_activation:
-    return activation::swish(x);
+  case activation::method::swish:
+    return calculate_swish(x);
 
-  case activation::sigmoid_activation:
-    return activation::sigmoid(x);
+  case activation::method::sigmoid:
+    return calculate_sigmoid(x);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
@@ -219,32 +219,32 @@ double activation::activate_derivative(double x) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
-  case activation::linear_activation:
-    return activation::linear_derivative(x);
+  case activation::method::linear:
+    return calculate_linear_derivative(x);
 
-  case activation::relu_activation:
-    return activation::relu_derivative(x);
+  case activation::method::relu:
+    return calculate_relu_derivative(x);
 
-  case activation::leakyRelu_activation:
-    return activation::leakyRelu_derivative(x, _alpha);
+  case activation::method::leakyRelu:
+    return calculate_leakyRelu_derivative(x, _alpha);
 
-  case activation::tanh_activation:
-    return activation::tanh_derivative(x);
+  case activation::method::tanh:
+    return calculate_tanh_derivative(x);
 
-  case activation::PRelu_activation:
-    return activation::PReLU_derivative(x, _alpha);
+  case activation::method::PRelu:
+    return calculate_PReLU_derivative(x, _alpha);
 
-  case activation::selu_activation:
-    return activation::selu_derivative(x);
+  case activation::method::selu:
+    return calculate_selu_derivative(x);
 
-  case activation::gelu_activation:
-    return activation::gelu_derivative(x);
+  case activation::method::gelu:
+    return calculate_gelu_derivative(x);
 
-  case activation::swish_activation:
-    return activation::swish_derivative(x);
+  case activation::method::swish:
+    return calculate_swish_derivative(x);
 
-  case activation::sigmoid_activation:
-    return activation::sigmoid_derivative(x);
+  case activation::method::sigmoid:
+    return calculate_sigmoid_derivative(x);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
@@ -256,20 +256,20 @@ std::vector<double> activation::weight_initialization(int num_neurons_prev_layer
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
-  case activation::method::sigmoid_activation:
-  case activation::method::tanh_activation:
+  case activation::method::sigmoid:
+  case activation::method::tanh:
     // return lecun_initialization(num_neurons_current_layer);
     return xavier_initialization(num_neurons_prev_layer, num_neurons_current_layer);
 
-  case activation::selu_activation:
+  case activation::method::selu:
     return selu_initialization(num_neurons_prev_layer);
 
-  case activation::method::linear_activation:
-  case activation::method::relu_activation:
-  case activation::method::leakyRelu_activation:
-  case activation::method::PRelu_activation:
-  case activation::method::gelu_activation:
-  case activation::method::swish_activation:
+  case activation::method::linear:
+  case activation::method::relu:
+  case activation::method::leakyRelu:
+  case activation::method::PRelu:
+  case activation::method::gelu:
+  case activation::method::swish:
     return he_initialization(num_neurons_prev_layer);
 
   default:

@@ -29,7 +29,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
     auto activation_method = hidden_activation_method;
     if (layer_number == 0)
     {
-      activation_method = activation::method::linear_activation;
+      activation_method = activation::method::linear;
     }
     if (layer_number == static_cast<int>(topology.size() -1))
     {
@@ -265,13 +265,13 @@ activation::method NeuralNetworkSerializer::get_hidden_activation_method(Logger&
   if(nullptr == object)
   {
     logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid_activation;
+    return activation::method::sigmoid;
   }
   auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("hidden-activation-method"));
   if(nullptr == number)
   {
     logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid_activation;
+    return activation::method::sigmoid;
   }
   return static_cast<activation::method>(number->get_number());
 }
@@ -282,13 +282,13 @@ activation::method NeuralNetworkSerializer::get_output_activation_method(Logger&
   if (nullptr == object)
   {
     logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid_activation;
+    return activation::method::sigmoid;
   }
   auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("output-activation-method"));
   if (nullptr == number)
   {
     logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid_activation;
+    return activation::method::sigmoid;
   }
   return static_cast<activation::method>(number->get_number());
 }
