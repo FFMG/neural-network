@@ -4,6 +4,10 @@
 #include <stdexcept>
 #include <utility>
 
+#ifndef M_PI
+# define M_PI   3.141592653589793238462643383279502884
+#endif
+
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
@@ -148,6 +152,31 @@ double activation::PReLU_derivative(double x, double alpha)
   return (x > 0) ? 1.0 : alpha;
 }
 
+double activation::swish(double x) 
+{
+  return x / (1.0 + std::exp(-x));
+}
+
+double activation::swish_derivative(double x) 
+{
+  double sigmoid = 1.0 / (1.0 + std::exp(-x));
+  return sigmoid + x * sigmoid * (1 - sigmoid);
+}
+
+// Approximate GELU (fast, used in transformers)
+double activation::gelu(double x) 
+{
+  return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
+}
+
+double activation::gelu_derivative(double x)
+{
+  // Optional: derivative is complex; can use numerical approximation or skip exact
+  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
+  return 0.5 * tanh_term +
+    (0.5 * x * (1 - tanh_term * tanh_term) *
+      std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
+}
 double activation::activate(double x) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -168,12 +197,20 @@ double activation::activate(double x) const
   case activation::PRelu_activation:
     return activation::PReLU(x, _alpha);
 
-  case activation::Selu_activation:
+  case activation::selu_activation:
     return activation::selu(x);
 
+  case activation::gelu_activation:
+    return activation::gelu(x);
+
+  case activation::swish_activation:
+    return activation::swish(x);
+
   case activation::sigmoid_activation:
-  default:
     return activation::sigmoid(x);
+
+  default:
+    throw std::invalid_argument("Unknown activation type!");
   }
 }
 
@@ -197,12 +234,20 @@ double activation::activate_derivative(double x) const
   case activation::PRelu_activation:
     return activation::PReLU_derivative(x, _alpha);
 
-  case activation::Selu_activation:
+  case activation::selu_activation:
     return activation::selu_derivative(x);
 
+  case activation::gelu_activation:
+    return activation::gelu_derivative(x);
+
+  case activation::swish_activation:
+    return activation::swish_derivative(x);
+
   case activation::sigmoid_activation:
-  default:
     return activation::sigmoid_derivative(x);
+
+  default:
+    throw std::invalid_argument("Unknown activation type!");
   }
 }
 
@@ -216,13 +261,15 @@ std::vector<double> activation::weight_initialization(int num_neurons_prev_layer
     // return lecun_initialization(num_neurons_current_layer);
     return xavier_initialization(num_neurons_prev_layer, num_neurons_current_layer);
 
-  case activation::Selu_activation:
+  case activation::selu_activation:
     return selu_initialization(num_neurons_prev_layer);
 
   case activation::method::linear_activation:
   case activation::method::relu_activation:
   case activation::method::leakyRelu_activation:
   case activation::method::PRelu_activation:
+  case activation::method::gelu_activation:
+  case activation::method::swish_activation:
     return he_initialization(num_neurons_prev_layer);
 
   default:
@@ -233,8 +280,8 @@ std::vector<double> activation::weight_initialization(int num_neurons_prev_layer
 std::vector<double> activation::xavier_initialization(int num_neurons_prev_layer, int num_neurons_current_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
 
   // Glorot/Xavier initialization uses a uniform distribution:
   double limit = std::sqrt(6.0 / (num_neurons_prev_layer + num_neurons_current_layer));
@@ -251,8 +298,9 @@ std::vector<double> activation::xavier_initialization(int num_neurons_prev_layer
 std::vector<double> activation::he_initialization(int num_neurons_prev_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+
   std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / num_neurons_prev_layer));
 
   std::vector<double> weights(num_neurons_prev_layer);
@@ -265,8 +313,8 @@ std::vector<double> activation::he_initialization(int num_neurons_prev_layer)
 std::vector<double> activation::selu_initialization(int num_neurons_prev_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
 
   // Same as LeCun normal
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_prev_layer));
@@ -282,8 +330,8 @@ std::vector<double> activation::selu_initialization(int num_neurons_prev_layer)
 std::vector<double> activation::lecun_initialization(int num_neurons_prev_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
 
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_prev_layer));
 
