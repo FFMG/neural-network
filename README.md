@@ -14,6 +14,18 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 
 ## How to use
 
+### Activation methods.
+
+* linear_activation
+* sigmoid_activation
+* tanh_activation
+* relu_activation
+* leakyRelu_activation
+* PRelu_activation
+* selu_activation
+* swish_activation
+* gelu_activation
+
 ### Examples
 
 #### XOR example with multiple hidden layers
@@ -39,9 +51,12 @@ int main()
       {0}, {1}, {1}, {0}
   };
 
+  // just log information
+  auto logger = Logger(Logger::LogLevel::Information);
+
   // the topology we create this NN with is
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
-  auto* nnl = new NeuralNetwork({ 3,4,1 }, activation::sigmoid_activation);
+  auto* nnl = new NeuralNetwork({ 3,4,1 }, , activation::sigmoid_activation, activation::sigmoid_activation, logger);
   nnl->train(training_inputs, training_outputs, 10000);
 
   std::vector<std::vector<double>> inputs = {
@@ -98,9 +113,12 @@ You can use `NeuralNetworkSerializer::save( ... )` to save a trained network and
 
 int main()
 {
+  // just log information
+  auto logger = Logger(Logger::LogLevel::Information);
+
   // create the NN
   std::vector<unsigned> topology = {3,2,1};
-  auto nn = new NeuralNetwork(topology, activation::sigmoid_activation);
+  auto nn = new NeuralNetwork(topology, activation::sigmoid_activation, activation::sigmoid_activation, logger);
 
   // train it 
   ...
@@ -184,7 +202,8 @@ int main()
       {0}, {1}, {1}, {0}
   };
 
-  auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation);
+  auto logger = Logger(Logger::LogLevel::Information);
+  auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation, activation::sigmoid_activation, logger);
   nn->train(training_inputs, training_outputs, 10000, -1, show_progress_bar);
 
   std::vector<std::vector<double>> inputs = {
@@ -245,7 +264,8 @@ After training you can get the calculated error as well as the mean absolute per
 
 ```c++
 ...
-auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation);
+auto logger = Logger(Logger::LogLevel::Information);
+auto* nn = new NeuralNetwork({1, 4, 1}, activation::sigmoid_activation, activation::tanh, logger);
 
 ...
 auto error = nn.get_error();
