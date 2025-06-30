@@ -8,13 +8,21 @@
 class ExampleXor
 {
 private:
-  static NeuralNetwork* create_neural_network(Logger& logger)
+  static NeuralNetwork* create_neural_network(Logger& logger, unsigned epoch, unsigned batch_size)
   {
     std::vector<unsigned> topology = {3,2,1};
-    return new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
+    auto options = NeuralNetworkOptions::Create(topology)
+      .with_batch_size(batch_size)
+      .with_hidden_activation_method(activation::method::sigmoid)
+      .with_output_activation_method(activation::method::sigmoid)
+      .with_logger(logger)
+      .with_learning_rate(0.1)
+      .with_number_of_epoch(epoch);
+
+    return new NeuralNetwork(options);
   }
 
-  static void train_neural_network( NeuralNetwork& nn, unsigned epoch, unsigned batch_size)
+  static void train_neural_network( NeuralNetwork& nn)
   {
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {
@@ -30,7 +38,7 @@ private:
     };
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs, 0.98, epoch, batch_size);
+    nn.train(training_inputs, training_outputs);
     std::cout << std::endl;
 
     // pass an array of array to think about
@@ -66,10 +74,10 @@ public:
       if( nullptr == nn )
       {
         // we need to create it
-        nn = create_neural_network(logger);
+        nn = create_neural_network(logger, epoch, batch_size);
 
         // train it
-        train_neural_network(*nn, epoch, batch_size);
+        train_neural_network(*nn);
 
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
@@ -88,10 +96,10 @@ public:
     else
     {
       // we need to create it
-      nn = create_neural_network(logger);
+      nn = create_neural_network(logger, epoch, batch_size);
 
       // train it
-      train_neural_network(*nn, epoch, batch_size);
+      train_neural_network(*nn);
     }
 
     std::cout << "Error: " << nn->get_error() << std::endl;

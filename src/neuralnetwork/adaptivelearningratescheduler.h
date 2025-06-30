@@ -27,7 +27,7 @@ private:
   };
 public:
   AdaptiveLearningRateScheduler(
-    Logger& logger,
+    const Logger& logger,
     size_t history_size = 25,
     double min_plateau_percent_change = 0.0005, // percent (0 <> 1)
     double min_percent_change = 0.005, // percent (0 <> 1)
@@ -153,7 +153,7 @@ public:
   }
 
 private:
-  Logger& _logger;
+  const Logger& _logger;
   std::deque<double> _error_history;
   size_t _history_size;
   double _min_plateau_percent_change;

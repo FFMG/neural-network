@@ -11,6 +11,147 @@
 #include "neuron.h"
 #include "taskqueue.h"
 
+class NeuralNetwork;
+class NeuralNetworkOptions
+{
+private:
+  NeuralNetworkOptions(const std::vector<unsigned>& topology) : 
+    _topology(topology),
+    _hidden_activation(activation::method::sigmoid),
+    _output_activation(activation::method::sigmoid),
+    _learning_rate(0.15),
+    _number_of_epoch(1000),
+    _batch_size(1),
+    _data_is_unique(true),
+    _progress_callback(nullptr),
+    _logger(Logger::LogLevel::None)
+  {
+  }
+
+public:
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno)
+  {
+    *this = nno;
+  }
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno)
+  {
+    *this = std::move(nno);
+  }
+  NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno)
+  {
+    if( this != &nno)
+    {
+      _topology = nno._topology;
+      _hidden_activation = nno._hidden_activation;
+      _output_activation = nno._output_activation;
+      _learning_rate = nno._learning_rate;
+      _number_of_epoch = nno._number_of_epoch;
+      _batch_size = nno._batch_size;
+      _data_is_unique = nno._data_is_unique;
+      _progress_callback = nno._progress_callback;
+      _logger = nno._logger;
+    }
+    return *this;
+  }
+  NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno)
+  {
+    if( this != &nno)
+    {
+      _topology = std::move(nno._topology);
+      _hidden_activation = nno._hidden_activation;
+      _output_activation = nno._output_activation;
+      _learning_rate = nno._learning_rate;
+      _number_of_epoch = nno._number_of_epoch;
+      _batch_size = nno._batch_size;
+      _data_is_unique = nno._data_is_unique;
+      _progress_callback = nno._progress_callback;
+      _logger = nno._logger;
+
+      nno._number_of_epoch = 0;
+      nno._batch_size = 0;
+      nno._learning_rate = 0.00;
+      nno._data_is_unique = false;
+    }
+    return *this;
+  }
+
+  NeuralNetworkOptions& with_learning_rate(double learning_rate)
+  {
+    _learning_rate = learning_rate;
+    return *this;
+  }
+  NeuralNetworkOptions& with_hidden_activation_method(const activation::method& activation)
+  {
+    _hidden_activation = activation;
+    return *this;
+  }
+  NeuralNetworkOptions& with_output_activation_method(const activation::method& activation)
+  {
+    _output_activation = activation;
+    return *this;
+  }
+  NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
+  {
+    _number_of_epoch = number_of_epoch;
+    return *this;
+  }
+  NeuralNetworkOptions& with_batch_size(int batch_size)
+  {
+    _batch_size = batch_size;
+    return *this;
+  }
+  NeuralNetworkOptions& with_data_is_unique(bool data_is_unique)
+  {
+    // unique training data means that we cannot have
+    // data split for epoch error checking and final error checking.
+    _data_is_unique = data_is_unique;
+    return *this;
+  }
+  NeuralNetworkOptions& with_progress_callback(const std::function<bool(int, int, NeuralNetwork&)>& progress_callback)
+  {
+    _progress_callback = progress_callback;
+    return *this;
+  }
+  NeuralNetworkOptions& with_logger(const Logger& logger)
+  {
+    _logger = logger;
+    return *this;
+  }
+
+  static NeuralNetworkOptions Create(const std::vector<unsigned>& topology)
+  {
+    return NeuralNetworkOptions(topology)
+      .with_learning_rate(0.1)
+      .with_hidden_activation_method(activation::method::sigmoid)
+      .with_output_activation_method(activation::method::sigmoid)
+      .with_number_of_epoch(1000)
+      .with_batch_size(1)
+      .with_data_is_unique(true)
+      .with_progress_callback(nullptr);
+  }
+
+  inline const std::vector<unsigned>& topology() const { return _topology;}
+  inline const activation::method& hidden_activation_method() const{ return _hidden_activation;}
+  inline const activation::method& output_activation_method() const{ return _output_activation;}
+  inline double learning_rate() const{ return _learning_rate;}
+  inline int number_of_epoch() const { return _number_of_epoch;}
+  inline int batch_size() const { return _batch_size; }
+  inline bool data_is_unique() const { return _data_is_unique; }
+  inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const{ return _progress_callback; }
+  inline const Logger& logger() const { return _logger; }
+
+private:
+  std::vector<unsigned> _topology;
+  activation::method _hidden_activation;
+  activation::method _output_activation;
+  double _learning_rate;
+  int _number_of_epoch;
+  int _batch_size;
+  bool _data_is_unique;
+  std::function<bool(int, int, NeuralNetwork&)> _progress_callback;
+  Logger _logger;
+};
+
 class NeuralNetwork
 {
 private:
@@ -411,6 +552,7 @@ private:
   };
 
 public:
+  NeuralNetwork(const NeuralNetworkOptions options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
   NeuralNetwork(const std::vector<Layer>& layers, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger, long double error, long double mean_absolute_percentage_error);
   NeuralNetwork(const NeuralNetwork& src);
@@ -418,14 +560,10 @@ public:
 
   virtual ~NeuralNetwork() = default;
 
-  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, double learning_rate, int number_of_epoch, int batch_size = 1, bool data_is_unique = true, const std::function<bool(int, int, NeuralNetwork&)>& progress_callback = nullptr);
+  void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
-  std::vector<std::vector<double>> think(
-    const std::vector<std::vector<double>>& inputs
-  ) const;
-  std::vector<double> think(
-    const std::vector<double>& inputs
-  ) const;
+  std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
+  std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
   const std::vector<Layer>& get_layers() const;
@@ -502,11 +640,7 @@ private:
 
   long double _error;
   long double _mean_absolute_percentage_error;
-  std::vector<unsigned> _topology;
   std::vector<Layer> _layers;
 
-  const activation::method _hidden_activation_method;
-  const activation::method _output_activation_method;
-  
-  Logger _logger;
+  NeuralNetworkOptions _options;
 };

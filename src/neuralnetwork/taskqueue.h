@@ -175,7 +175,7 @@ template <typename R>
 class TaskQueuePool
 {
 public:
-  TaskQueuePool(Logger& logger, 
+  TaskQueuePool(const Logger& logger, 
     int number_of_thread = 0) :
     _number_of_threads(number_of_thread),
     _threads_index(0),
@@ -263,7 +263,7 @@ private:
   int _number_of_threads;
   std::vector<TaskQueue<R>*> _task_queues;
   int _threads_index;
-  Logger& _logger;
+  const Logger& _logger;
 
   void clean()
   {

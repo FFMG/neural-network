@@ -18,7 +18,7 @@ private:
   class Connection
   {
   public:
-    Connection(double weight, double delta_weight, Logger& logger) : 
+    Connection(double weight, double delta_weight, const Logger& logger) : 
       _weight(weight), 
       _delta_weight(delta_weight),
       _logger(logger)
@@ -103,7 +103,7 @@ private:
   private:
     double _weight;
     double _delta_weight;
-    Logger& _logger;
+    Logger _logger;
   };
 
 public:
@@ -112,7 +112,7 @@ public:
     double output_value,
     const activation& activation,
     const std::vector<std::array<double,2>>& output_weights,
-    Logger& logger
+    const Logger& logger
     );
     
   Neuron(
@@ -120,7 +120,7 @@ public:
     unsigned num_neurons_current_layer,
     unsigned index, 
     const activation& activation,
-    Logger& logger
+    const Logger& logger
     );
 
   Neuron(const Neuron& src) noexcept;
@@ -163,5 +163,5 @@ private:
   std::vector<Connection> _output_weights;
 
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
-  Logger& _logger;
+  Logger _logger;
 };

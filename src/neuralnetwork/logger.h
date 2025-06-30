@@ -51,7 +51,7 @@ public:
   Logger& operator=(Logger&&) = delete;
 
   template <typename... Args>
-  void log_debug(Args&&... args) 
+  void log_debug(Args&&... args) const
   {
     log(LogLevel::Debug, std::forward<Args>(args)...);
   }

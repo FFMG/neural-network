@@ -11,7 +11,7 @@ Neuron::Neuron(
   unsigned num_neurons_current_layer,
   unsigned index,
   const activation& activation,
-  Logger& logger
+  const Logger& logger
 ) :
   _index(index),
   _output_value(0),
@@ -33,7 +33,7 @@ Neuron::Neuron(
   double output_value,
   const activation& activation,
   const std::vector<std::array<double,2>>& output_weights,
-  Logger& logger
+  const Logger& logger
 ) :
   _index(index),
   _output_value(output_value),
