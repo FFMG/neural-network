@@ -68,25 +68,18 @@ NeuralNetwork::NeuralNetwork(
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
-  _options(NeuralNetworkOptions::Create({}))
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto topology = std::vector<unsigned>();
-  topology.reserve(layers.size());
-  _layers.reserve(layers.size());
-  for (auto layer : layers)
-  {
-    auto copy_layer = Layer(layer);
-
-    // remove the bias Neuron.
-    topology.emplace_back(copy_layer.size() -1);
-    _layers.emplace_back(std::move(copy_layer));
-  }
-
-  _options.Create(topology)
+  _options(NeuralNetworkOptions::Create(layers)    
     .with_hidden_activation_method(hidden_layer_activation)
     .with_hidden_activation_method(output_layer_activation)
-    .with_logger(logger);
+    .with_logger(logger))
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  _layers.reserve(layers.size());
+  for (const auto& layer : layers)
+  {
+    auto copy_layer = Layer(layer);
+    _layers.emplace_back(std::move(copy_layer));
+  }
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :

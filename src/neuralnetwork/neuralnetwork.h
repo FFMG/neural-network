@@ -117,6 +117,18 @@ public:
     _logger = logger;
     return *this;
   }
+  
+  static NeuralNetworkOptions Create(const std::vector<Layer>& layers)
+  {
+    auto topology = std::vector<unsigned>();
+    topology.reserve(layers.size());
+    for (const auto& layer : layers)
+    {
+      // remove the bias Neuron.
+      topology.emplace_back(layer.size() -1);
+    }
+    return Create(topology);
+  }
 
   static NeuralNetworkOptions Create(const std::vector<unsigned>& topology)
   {
