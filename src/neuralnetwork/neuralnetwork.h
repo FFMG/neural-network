@@ -118,7 +118,7 @@ private:
       _data[_offsets[layer]+neuron] = data;
     }
 
-    inline void set(unsigned layer, const std::vector<T>& data)
+    void set(unsigned layer, const std::vector<T>& data)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
       assert(number_neurons(layer) == data.size());
@@ -168,18 +168,18 @@ private:
     }
   private:
     #ifdef NDEBUG
+    void ensure_size(size_t, size_t) const
+    {
+    }
+    #else
     void ensure_size(size_t layer, size_t neuron) const
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-      if(layer >= _topology.size() || neuron >= _topology[layer])
+      if (layer >= _topology.size() || neuron >= _topology[layer])
       {
         std::cerr << "The layer/neuron is out of bound!" << std::endl;
         throw new std::invalid_argument("The layer/neuron is out of bound!");
       }
-    }
-    #else
-    void ensure_size(size_t, size_t) const
-    {
     }
     #endif
 
