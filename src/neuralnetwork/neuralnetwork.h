@@ -24,7 +24,8 @@ private:
     _batch_size(1),
     _data_is_unique(true),
     _progress_callback(nullptr),
-    _logger(Logger::LogLevel::None)
+    _logger(Logger::LogLevel::None),
+    _number_of_threads(0)
   {
   }
 
@@ -50,6 +51,7 @@ public:
       _data_is_unique = nno._data_is_unique;
       _progress_callback = nno._progress_callback;
       _logger = nno._logger;
+      _number_of_threads = nno._number_of_threads;
     }
     return *this;
   }
@@ -66,6 +68,7 @@ public:
       _data_is_unique = nno._data_is_unique;
       _progress_callback = nno._progress_callback;
       _logger = nno._logger;
+      _number_of_threads = nno._number_of_threads;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -117,8 +120,27 @@ public:
     _logger = logger;
     return *this;
   }
+  NeuralNetworkOptions& with_number_of_threads(int number_of_threads)
+  {
+    _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
+    return *this;
+  }
+
+  NeuralNetworkOptions& build()
+  {
+    if(topology().size() < 2)
+    {
+      logger().log_error("The topology is not value, you must have at least 2 layers.");
+      throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
+    }
+    if(number_of_threads() > 0 && batch_size() <= 1 )
+    {
+      logger().log_warning("because the batch size is 1, the number of threads is ignored." );
+    }
+    return *this;
+  }
   
-  static NeuralNetworkOptions Create(const std::vector<Layer>& layers)
+  static NeuralNetworkOptions create(const std::vector<Layer>& layers)
   {
     auto topology = std::vector<unsigned>();
     topology.reserve(layers.size());
@@ -127,10 +149,10 @@ public:
       // remove the bias Neuron.
       topology.emplace_back(layer.size() -1);
     }
-    return Create(topology);
+    return create(topology);
   }
 
-  static NeuralNetworkOptions Create(const std::vector<unsigned>& topology)
+  static NeuralNetworkOptions create(const std::vector<unsigned>& topology)
   {
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
@@ -151,6 +173,7 @@ public:
   inline bool data_is_unique() const { return _data_is_unique; }
   inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const{ return _progress_callback; }
   inline const Logger& logger() const { return _logger; }
+  inline int number_of_threads() const {return _number_of_threads; }
 
 private:
   std::vector<unsigned> _topology;
@@ -162,6 +185,7 @@ private:
   bool _data_is_unique;
   std::function<bool(int, int, NeuralNetwork&)> _progress_callback;
   Logger _logger;
+  int _number_of_threads;
 };
 
 class NeuralNetwork

@@ -17,11 +17,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
   _options(options)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if(options.topology().size() < 2)
-  {
-    options.logger().log_error("The topology is not value, you must have at least 2 layers.");
-    throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
-  }
   const auto& topology = options.topology();
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
@@ -51,10 +46,11 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation,
   const Logger& logger
   ) :
-  NeuralNetwork(NeuralNetworkOptions::Create(topology)    
+  NeuralNetwork(NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_layer_activation)
     .with_hidden_activation_method(output_layer_activation)
-    .with_logger(logger))
+    .with_logger(logger)
+    .build())
 {
 }
 
@@ -68,10 +64,11 @@ NeuralNetwork::NeuralNetwork(
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
-  _options(NeuralNetworkOptions::Create(layers)    
+  _options(NeuralNetworkOptions::create(layers)    
     .with_hidden_activation_method(hidden_layer_activation)
     .with_hidden_activation_method(output_layer_activation)
-    .with_logger(logger))
+    .with_logger(logger)
+    .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(layers.size());
@@ -268,9 +265,7 @@ void NeuralNetwork::log_training_info(
   _options.logger().log_info(hidden_layer_message);
 }
 
-void NeuralNetwork::train(
-  const std::vector<std::vector<double>>& training_inputs,
-  const std::vector<std::vector<double>>& training_outputs)
+void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -306,7 +301,9 @@ void NeuralNetwork::train(
   TaskQueuePool<std::vector<std::vector<double>>>* errorPool = nullptr;
   if (batch_size > 1)
   {
-    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>(_options.logger());
+    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>(
+      _options.logger(),
+      _options.number_of_threads());
   }
 
   // get the indexes

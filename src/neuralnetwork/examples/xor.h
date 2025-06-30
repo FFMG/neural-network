@@ -11,13 +11,14 @@ private:
   static NeuralNetwork* create_neural_network(Logger& logger, unsigned epoch, unsigned batch_size)
   {
     std::vector<unsigned> topology = {3,2,1};
-    auto options = NeuralNetworkOptions::Create(topology)
+    auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::sigmoid)
       .with_output_activation_method(activation::method::sigmoid)
       .with_logger(logger)
       .with_learning_rate(0.1)
-      .with_number_of_epoch(epoch);
+      .with_number_of_epoch(epoch)
+      .build();
 
     return new NeuralNetwork(options);
   }

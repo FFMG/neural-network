@@ -37,13 +37,14 @@ public:
     {
       TEST_START("ThreebitParity test - No Batch.")
       std::cout << "No Batch:" << std::endl;
-      auto options = NeuralNetworkOptions::Create(topology)
+      auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(1)
         .with_hidden_activation_method(activation::method::sigmoid)
         .with_output_activation_method(activation::method::sigmoid)
         .with_logger(logger)
         .with_learning_rate(learning_rate)
-        .with_number_of_epoch(number_of_epoch);
+        .with_number_of_epoch(number_of_epoch)
+        .build();
 
       auto* nn = new NeuralNetwork(options);
       nn->train(training_inputs, training_outputs);
@@ -69,13 +70,14 @@ public:
         TEST_START("ThreebitParity test - Batch.")
         std::cout << "Batch size=" << batch_size <<":" << std::endl;
 
-        auto options = NeuralNetworkOptions::Create(topology)
+        auto options = NeuralNetworkOptions::create(topology)
           .with_batch_size(batch_size)
           .with_hidden_activation_method(activation::method::sigmoid)
           .with_output_activation_method(activation::method::sigmoid)
           .with_logger(logger)
           .with_learning_rate(learning_rate)
-          .with_number_of_epoch(number_of_epoch);
+          .with_number_of_epoch(number_of_epoch)
+          .build();
 
         auto* nn = new NeuralNetwork(options);
         nn->train(training_inputs, training_outputs);

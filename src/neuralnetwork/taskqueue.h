@@ -175,8 +175,7 @@ template <typename R>
 class TaskQueuePool
 {
 public:
-  TaskQueuePool(const Logger& logger, 
-    int number_of_thread = 0) :
+  TaskQueuePool(const Logger& logger, int number_of_thread = 0) :
     _number_of_threads(number_of_thread),
     _threads_index(0),
     _logger(logger)
