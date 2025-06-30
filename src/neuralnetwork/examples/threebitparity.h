@@ -37,8 +37,16 @@ public:
     {
       TEST_START("ThreebitParity test - No Batch.")
       std::cout << "No Batch:" << std::endl;
-      auto* nn = new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
-      nn->train(training_inputs, training_outputs, learning_rate, number_of_epoch);
+      auto options = NeuralNetworkOptions::Create(topology)
+        .with_batch_size(1)
+        .with_hidden_activation_method(activation::method::sigmoid)
+        .with_output_activation_method(activation::method::sigmoid)
+        .with_logger(logger)
+        .with_learning_rate(learning_rate)
+        .with_number_of_epoch(number_of_epoch);
+
+      auto* nn = new NeuralNetwork(options);
+      nn->train(training_inputs, training_outputs);
 
       std::vector<double> test_input1 = {1, 1, 1};
       //std::vector<double> expected_output1 = {1};
@@ -60,8 +68,17 @@ public:
       {
         TEST_START("ThreebitParity test - Batch.")
         std::cout << "Batch size=" << batch_size <<":" << std::endl;
-        auto* nn = new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
-        nn->train(training_inputs, training_outputs, learning_rate, number_of_epoch, batch_size);
+
+        auto options = NeuralNetworkOptions::Create(topology)
+          .with_batch_size(batch_size)
+          .with_hidden_activation_method(activation::method::sigmoid)
+          .with_output_activation_method(activation::method::sigmoid)
+          .with_logger(logger)
+          .with_learning_rate(learning_rate)
+          .with_number_of_epoch(number_of_epoch);
+
+        auto* nn = new NeuralNetwork(options);
+        nn->train(training_inputs, training_outputs);
 
         std::vector<double> test_input1 = {1, 1, 1};
         //std::vector<double> expected_output1 = {1};
