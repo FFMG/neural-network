@@ -29,15 +29,17 @@ private:
   }
 
 public:
-  NeuralNetworkOptions(const NeuralNetworkOptions& nno)
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
   {
     *this = nno;
   }
-  NeuralNetworkOptions(NeuralNetworkOptions&& nno)
+
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
   {
     *this = std::move(nno);
   }
-  NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno)
+  
+  NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
   {
     if( this != &nno)
     {
@@ -53,7 +55,7 @@ public:
     }
     return *this;
   }
-  NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno)
+  NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno) noexcept
   {
     if( this != &nno)
     {
