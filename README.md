@@ -56,8 +56,16 @@ int main()
 
   // the topology we create this NN with is
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
-  auto* nnl = new NeuralNetwork({ 3,4,1 }, , activation::method::sigmoid, activation::method::sigmoid, logger);
-  nnl->train(training_inputs, training_outputs, 10000);
+  auto options = NeuralNetworkOptions::Create({ 3,4,1 })
+    .with_batch_size(batch_size)
+    .with_hidden_activation_method(activation::method::sigmoid)
+    .with_output_activation_method(activation::method::sigmoid)
+    .with_logger(logger)
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(10000);
+
+  auto* nnl = new NeuralNetwork(options);
+  nnl->train(training_inputs, training_outputs);
 
   std::vector<std::vector<double>> inputs = {
       {0, 0, 1},
@@ -117,8 +125,14 @@ int main()
   auto logger = Logger(Logger::LogLevel::Information);
 
   // create the NN
-  std::vector<unsigned> topology = {3,2,1};
-  auto nn = new NeuralNetwork(topology, activation::method::sigmoid, activation::method::sigmoid, logger);
+  auto options = NeuralNetworkOptions::Create({ 3,2,1 })
+  .with_batch_size(batch_size)
+  .with_hidden_activation_method(activation::method::sigmoid)
+  .with_output_activation_method(activation::method::sigmoid)
+  .with_logger(logger)
+  .with_learning_rate(0.1)
+  .with_number_of_epoch(10000);
+  auto nn = new NeuralNetwork(options);
 
   // train it 
   ...
@@ -143,20 +157,12 @@ int main()
 ```c++
 train(
   const std::vector<std::vector<double>>& training_inputs, 
-  const std::vector<std::vector<double>>& training_outputs, 
-  int number_of_epoch, 
-  int batch_size = -1, 
-  bool data_is_unique = true, 
-  const std::function<bool(int, NeuralNetwork&)>& progress_callback = nullptr
+  const std::vector<std::vector<double>>& training_outputs
   );
 ```
 
 * training_inputs: this is a vector of one or more `doubles` that will be used for each epoch as input data.
 * training_output: this is a vector of one or more `doubles` that will be used for each epoch as expected output.
-* number_of_epoch: number of epoch we will be training for, the more epoch the better the learning, (unless your data is garbage)
-* data_is_unique = true: In some cases all the input/ouput data is unique and must be used for training, if this is set to false, then some random data will *not* be used for training but will rather be used for error checking, (how well the model is trained).
-* batch_size=-1: if -1 then all the data will be used per epoch. otherwise muliple threads will be used for training.
-* progress_callback=null_ptr: the callback function, so you can tell how far the training is (see below).
 
 ##### Trainning callback method
 
@@ -172,20 +178,9 @@ The value is between 0% and 100%
 #include "neuralnetwork.h"
 ...
 
-void show_progress_bar(int progress, double error)
+void show_progress_bar(int current_epoch, int total_number_of_epoch, NeuralNetwork& nn)
 {
-  int barWidth = 50;
-  int pos = barWidth * (progress / 100.0);
-
-  std::cout << "[";
-  for (int i = 0; i < barWidth; ++i) 
-  {
-    if (i < pos) std::cout << "=";
-    else if (i == pos) std::cout << ">";
-    else std::cout << " ";
-  }
-  std::cout << "] " << progress << " %(error:" << error << ")   \r";
-  std::cout.flush();
+  // you can use the values to display pretty things.
 }
 
 int main()
@@ -203,8 +198,17 @@ int main()
   };
 
   auto logger = Logger(Logger::LogLevel::Information);
-  auto* nn = new NeuralNetwork({1, 4, 1}, activation::method::sigmoid, activation::method::sigmoid, logger);
-  nn->train(training_inputs, training_outputs, 10000, -1, show_progress_bar);
+  auto options = NeuralNetworkOptions::Create({1, 4, 1})
+    .with_batch_size(batch_size)
+    .with_hidden_activation_method(activation::method::sigmoid)
+    .with_output_activation_method(activation::method::sigmoid)
+    .with_logger(logger)
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(10000)
+    .with_progress_callback(show_progress_bar);
+
+  auto* nn = new NeuralNetwork(options);
+  nn->train(training_inputs, training_outputs);
 
   std::vector<std::vector<double>> inputs = {
       {0, 0, 1},
@@ -239,21 +243,46 @@ int main()
 }
 ```
 
+## Neural Network Options
+
+You can create your Neural network with one or more of the following options, the only required value is the topology.
+But some values don't really make sense to be left as default, (learning rate and epoch for example).
+
+```c++
+auto options = NeuralNetworkOptions::Create({1, 4, 1})
+...
+
+```
+
+* hidden_activation_method[=sigmoid]
+* output_activation_method[=sigmoid]
+* learning_rate[=0.15]: The starting learning rate.
+* number_of_epoch[=1000]: The number of epoch we want to train for. This value is really specific to your data.
+* batch_size[=1]: The default number of batches we want to split the epochs in.
+* data_is_unique[=true]: By default we assume that the input data is unique and cannot be split for in-batch validation and final error validation.
+* progress_callback[=null]: The callback.
+* logger[=none]: Your logger.
+
+
 ## Activation methods
 
 The availables activation methods are:
 
+* linear
 * sigmoid
 * tanh
 * relu
 * leakyRelu
 * PRelu
+* selu
+* swish
+* gelu
 
 ## Data Normalisation
 
 While the classes do not force you to normalise your data ... I strongly suggest you do :)
 
-Normalise the input output between -1 and 1 or 0 and 1
+Normalise the input output between -1 and 1 or 0 and 1 and make sure that you use the proper activation method for your data.
 
 This will save you a lot of headache ...
 
@@ -265,7 +294,15 @@ After training you can get the calculated error as well as the mean absolute per
 ```c++
 ...
 auto logger = Logger(Logger::LogLevel::Information);
-auto* nn = new NeuralNetwork({1, 4, 1}, activation::method::sigmoid, activation::method::tanh, logger);
+auto options = NeuralNetworkOptions::Create({1, 4, 1})
+  .with_batch_size(batch_size)
+  .with_hidden_activation_method(activation::method::sigmoid)
+  .with_output_activation_method(activation::method::sigmoid)
+  .with_logger(logger)
+  .with_learning_rate(0.1)
+  .with_number_of_epoch(10000);
+
+auto* nn = new NeuralNetwork(options);
 
 ...
 auto error = nn.get_error();

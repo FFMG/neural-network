@@ -16,7 +16,7 @@ int main()
   ExampleXor::Xor(logger, false);
 
   // Problem: 3-bit Parity
-  // ExampleThreebitParity::ThreebitParity(logger);
+  ExampleThreebitParity::ThreebitParity(logger);
 
   MYODDWEB_PROFILE_END_SESSION();
 
