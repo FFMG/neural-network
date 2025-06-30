@@ -584,7 +584,8 @@ public:
   long double get_error() const;
   long double get_mean_absolute_percentage_error() const;
 
-  NeuralNetworkOptions options() const { return _options;}
+  NeuralNetworkOptions& options() { return _options;}
+  const NeuralNetworkOptions& options() const { return _options;}
 
 private:
   GradientsAndOutputs calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const;
