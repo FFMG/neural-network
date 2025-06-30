@@ -56,13 +56,13 @@ int main()
 
   // the topology we create this NN with is
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
-  auto options = NeuralNetworkOptions::Create({ 3,4,1 })
+  auto options = NeuralNetworkOptions::create({ 3,4,1 })
     .with_batch_size(batch_size)
     .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
     .with_logger(logger)
     .with_learning_rate(0.1)
-    .with_number_of_epoch(10000);
+    .with_number_of_epoch(10000).build();
 
   auto* nnl = new NeuralNetwork(options);
   nnl->train(training_inputs, training_outputs);
@@ -125,13 +125,13 @@ int main()
   auto logger = Logger(Logger::LogLevel::Information);
 
   // create the NN
-  auto options = NeuralNetworkOptions::Create({ 3,2,1 })
+  auto options = NeuralNetworkOptions::create({ 3,2,1 })
   .with_batch_size(batch_size)
   .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
   .with_logger(logger)
   .with_learning_rate(0.1)
-  .with_number_of_epoch(10000);
+  .with_number_of_epoch(10000).build();
   auto nn = new NeuralNetwork(options);
 
   // train it 
@@ -198,14 +198,14 @@ int main()
   };
 
   auto logger = Logger(Logger::LogLevel::Information);
-  auto options = NeuralNetworkOptions::Create({1, 4, 1})
+  auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
     .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
     .with_logger(logger)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
-    .with_progress_callback(show_progress_bar);
+    .with_progress_callback(show_progress_bar).build();
 
   auto* nn = new NeuralNetwork(options);
   nn->train(training_inputs, training_outputs);
@@ -249,7 +249,7 @@ You can create your Neural network with one or more of the following options, th
 But some values don't really make sense to be left as default, (learning rate and epoch for example).
 
 ```c++
-auto options = NeuralNetworkOptions::Create({1, 4, 1})
+auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 ...
 
 ```
@@ -262,7 +262,9 @@ auto options = NeuralNetworkOptions::Create({1, 4, 1})
 * data_is_unique[=true]: By default we assume that the input data is unique and cannot be split for in-batch validation and final error validation.
 * progress_callback[=null]: The callback.
 * logger[=none]: Your logger.
+* number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
 
+Remember to call `.build()` to create your option as it does error checking.
 
 ## Activation methods
 
@@ -294,13 +296,13 @@ After training you can get the calculated error as well as the mean absolute per
 ```c++
 ...
 auto logger = Logger(Logger::LogLevel::Information);
-auto options = NeuralNetworkOptions::Create({1, 4, 1})
+auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
   .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
   .with_logger(logger)
   .with_learning_rate(0.1)
-  .with_number_of_epoch(10000);
+  .with_number_of_epoch(10000).build();
 
 auto* nn = new NeuralNetwork(options);
 
