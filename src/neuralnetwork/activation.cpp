@@ -129,13 +129,14 @@ double activation::calculate_leakyRelu_derivative(double x, double alpha)
 double activation::calculate_tanh(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return (std::exp(x) - std::exp(-x)) / (std::exp(x) + std::exp(-x));
+  return std::tanh(x);
 }
 
 double activation::calculate_tanh_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return 1 - std::pow(std::tanh(x), 2);
+  const auto t = std::tanh(x);
+  return 1.0 - t * t;
 }
 
 // PReLU Activation Function
@@ -154,13 +155,17 @@ double activation::calculate_PReLU_derivative(double x, double alpha)
 
 double activation::calculate_swish(double x) 
 {
-  return x / (1.0 + std::exp(-x));
+  constexpr double MAX_EXP_INPUT = 60.0;
+  const double exp_term = std::exp(std::clamp(-x, -MAX_EXP_INPUT, MAX_EXP_INPUT));
+  return x / (1.0 + exp_term);
 }
 
 double activation::calculate_swish_derivative(double x) 
 {
-  double sigmoid = 1.0 / (1.0 + std::exp(-x));
-  return sigmoid + x * sigmoid * (1 - sigmoid);
+  constexpr double MAX_EXP_INPUT = 60.0;
+  double clamped_x = std::clamp(x, -MAX_EXP_INPUT, MAX_EXP_INPUT);
+  double sigmoid = 1.0 / (1.0 + std::exp(-clamped_x));
+  return sigmoid + x * sigmoid * (1.0 - sigmoid);
 }
 
 // Approximate GELU (fast, used in transformers)
@@ -288,7 +293,8 @@ std::vector<double> activation::xavier_initialization(int num_neurons_prev_layer
   std::uniform_real_distribution<double> dist(-limit, limit);
 
   std::vector<double> weights(num_neurons_prev_layer);
-  for (double& w : weights) {
+  for (double& w : weights) 
+  {
     w = dist(gen);
   }
 
