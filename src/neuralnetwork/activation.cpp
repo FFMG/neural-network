@@ -1,4 +1,5 @@
 #include "activation.h"
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <stdexcept>

@@ -137,6 +137,8 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
+void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
+{
   const double gradient_clip_threshold = 1.0;
   const double weight_decay_factor = 0.0001;
 
