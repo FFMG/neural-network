@@ -142,11 +142,7 @@ public:
 
   void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate);
 
-  unsigned get_index() const 
-  {
-    MYODDWEB_PROFILE_FUNCTION("Neuron");
-    return _index;
-  }
+  unsigned get_index() const;
   std::vector<std::array<double, 2>> get_weights() const;
 
 private:
@@ -154,7 +150,7 @@ private:
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
 
-  static double clip_gradient(double val, double clip_val);
+  double clip_gradient(double gradient) const;
   
   // data to save...
   unsigned _index;

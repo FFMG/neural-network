@@ -1,10 +1,9 @@
 #include "neuron.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
-
-#define GRADIENT_CLIP double(1.0)
 
 Neuron::Neuron(
   unsigned num_neurons_next_layer,
@@ -132,9 +131,11 @@ void Neuron::Clean()
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 }
 
-void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
+unsigned Neuron::get_index() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  return _index;
+}
 
   const double gradient_clip_threshold = 1.0;
   const double weight_decay_factor = 0.0001;
@@ -209,10 +210,11 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
   return sum;
 }
 
-double Neuron::clip_gradient(double val, double clip_val) 
+double Neuron::clip_gradient(double gradient) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return std::max(-clip_val, std::min(clip_val, val));
+  constexpr double GRADIENT_CLIP_THRESHOLD = 1.0;
+  return std::clamp(gradient, -GRADIENT_CLIP_THRESHOLD, GRADIENT_CLIP_THRESHOLD);
 }
 
 double Neuron::calculate_output_gradients(double target_value, double output_value) const
@@ -220,6 +222,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   double delta = target_value - output_value;
   auto gradient = delta * _activation_method.activate_derivative(output_value);
+  gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating output gradients.");
@@ -234,7 +237,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   auto derivatives_of_weights = sum_of_derivatives_of_weights(next_layer, activation_gradients);
   auto gradient = derivatives_of_weights * _activation_method.activate_derivative(output_value);
-  gradient = clip_gradient(gradient, GRADIENT_CLIP);
+  gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating hidden gradients.");
@@ -274,13 +277,17 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
   {
     const auto& previous_layer_neuron = previous_layer.get_neuron(neuron_index);
     const auto output_weight = previous_layer_neuron.get_output_weight(_index);
+    if (std::abs(output_weight) > 1e5)
+    {
+      _logger.log_error("Exploding weight detected");
+      throw std::runtime_error("Exploding weight detected");
+    }
     const auto output_value  = previous_layer_output_values[neuron_index];
     sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
     {
       _logger.log_error("Error while calculating forward feed.");
       throw std::invalid_argument("Error while calculating forward feed.");
-      return std::numeric_limits<double>::quiet_NaN();
     }
   }
   return _activation_method.activate(sum);
