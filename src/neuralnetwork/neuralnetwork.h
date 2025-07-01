@@ -25,7 +25,8 @@ private:
     _data_is_unique(true),
     _progress_callback(nullptr),
     _logger(Logger::LogLevel::None),
-    _number_of_threads(0)
+    _number_of_threads(0),
+    _learning_rate_decay_rate(0.0)
   {
   }
 
@@ -54,6 +55,7 @@ public:
       _progress_callback = nno._progress_callback;
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
+      _learning_rate_decay_rate = nno._learning_rate_decay_rate;
     }
     return *this;
   }
@@ -71,6 +73,7 @@ public:
       _progress_callback = nno._progress_callback;
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
+      _learning_rate_decay_rate = nno._learning_rate_decay_rate;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -127,6 +130,11 @@ public:
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
     return *this;
   }
+  NeuralNetworkOptions& with_learning_rate_decay_rate(double learning_rate_decay_rate)
+  {
+    _learning_rate_decay_rate = learning_rate_decay_rate;
+    return *this;
+  }
 
   NeuralNetworkOptions& build()
   {
@@ -137,7 +145,12 @@ public:
     }
     if(number_of_threads() > 0 && batch_size() <= 1 )
     {
-      logger().log_warning("because the batch size is 1, the number of threads is ignored." );
+      logger().log_warning("Because the batch size is 1, the number of threads is ignored." );
+    }
+    if (learning_rate_decay_rate() < 0)
+    {
+      logger().log_error("The learning rate decay rate cannot be negative!");
+      throw std::invalid_argument("The learning rate decay rate cannot be negative!");
     }
     return *this;
   }
@@ -163,7 +176,8 @@ public:
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
-      .with_progress_callback(nullptr);
+      .with_progress_callback(nullptr)
+      .with_learning_rate_decay_rate(0.0);
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology;}
@@ -176,6 +190,7 @@ public:
   inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const{ return _progress_callback; }
   inline const Logger& logger() const { return _logger; }
   inline int number_of_threads() const {return _number_of_threads; }
+  inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
 
 private:
   std::vector<unsigned> _topology;
@@ -188,6 +203,7 @@ private:
   std::function<bool(int, int, NeuralNetwork&)> _progress_callback;
   Logger _logger;
   int _number_of_threads;
+  double _learning_rate_decay_rate;
 };
 
 class NeuralNetwork
@@ -672,7 +688,6 @@ private:
   void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
 
   void log_training_info(
-    double learning_rate,
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs,
     const std::vector<size_t>& training_indexes, const std::vector<size_t>& checking_indexes, const std::vector<size_t>& final_check_indexes) const;

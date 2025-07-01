@@ -240,16 +240,18 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
 }
 
 void NeuralNetwork::log_training_info(
-  double learning_rate,
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs,
-  const std::vector<size_t>& training_indexes, const std::vector<size_t>& checking_indexes, const std::vector<size_t>& final_check_indexes) const
+  const std::vector<size_t>& training_indexes, 
+  const std::vector<size_t>& checking_indexes, 
+  const std::vector<size_t>& final_check_indexes) const
 {
   _options.logger().log_info("Tainning will use: ");
   _options.logger().log_info(training_indexes.size(), " training samples.");
   _options.logger().log_info(checking_indexes.size(), " in training error check samples.");
   _options.logger().log_info(final_check_indexes.size(), " final error check samples.");
-  _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), learning_rate);
+  _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
+  _options.logger().log_info("Learning rate decay rate:", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
   _options.logger().log_info("Input size:", training_inputs.front().size());
   _options.logger().log_info("Output size:", training_outputs.front().size());
   std::string hidden_layer_message = "Hidden layers: {";
@@ -340,7 +342,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<std::vector<double>> final_training_outputs = {};
   create_batch_from_indexes(final_check_indexes, training_inputs, training_outputs, final_training_inputs, final_training_outputs);
 
-  log_training_info(learning_rate, training_inputs, training_outputs, training_indexes, checking_indexes, final_check_indexes);
+  // add a log message.
+  log_training_info(training_inputs, training_outputs, training_indexes, checking_indexes, final_check_indexes);
 
   // build the training output batch so we can use it for error calculations
   std::vector<std::vector<double>> training_outputs_batch = {};
@@ -357,6 +360,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
+
+  const auto initial_learning_rate = learning_rate;
+  const auto learning_rate_decay_epoch = 100;
+  const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch) * learning_rate_decay_epoch;
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
   
@@ -414,6 +421,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     // do an error check to see if we need to adapt.
     update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
+
+    // decay the learning rate.
+    if (learning_rate_decay_rate > 0 && epoch % learning_rate_decay_epoch == 0)
+    {
+      learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
+      _options.logger().log_debug("Learning rate decay to:", std::fixed, std::setprecision(15), learning_rate);
+    }
+
+    // then get the scheduler if we can improve it further.
     learning_rate = learning_rate_scheduler.update(_error, learning_rate, epoch, number_of_epoch);
     if (progress_callback != nullptr)
     {
