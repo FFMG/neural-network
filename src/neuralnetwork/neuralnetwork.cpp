@@ -263,6 +263,19 @@ void NeuralNetwork::log_training_info(
   }
   hidden_layer_message += "}";
   _options.logger().log_info(hidden_layer_message);
+
+  _options.logger().log_info("Batch size: ", _options.batch_size());
+  if (_options.batch_size() > 1)
+  {
+    if (_options.number_of_threads() <= 0)
+    {
+      _options.logger().log_info("Number of threads: ", (std::thread::hardware_concurrency() - 1));
+    }
+    else
+    {
+      _options.logger().log_info("Number of threads: ", _options.number_of_threads());
+    }
+}
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
