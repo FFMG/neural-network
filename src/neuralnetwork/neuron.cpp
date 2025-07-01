@@ -82,7 +82,6 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _index(src._index),
   _output_value(src._output_value),
   _activation_method(src._activation_method),
-  _output_weights({}),
   _alpha(LEARNING_ALPHA),
   _logger(src._logger)
 {
