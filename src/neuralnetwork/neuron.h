@@ -18,9 +18,10 @@ private:
   class WeightParam
   {
   public:
-    WeightParam(double value, double gradient, const Logger& logger) : 
+    WeightParam(double value, double gradient, double velocity, const Logger& logger) : 
       _value(value), 
       _gradient(gradient),
+      _velocity(velocity),
       _logger(logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -28,6 +29,7 @@ private:
     WeightParam(const WeightParam& src) noexcept :
       _value(src._value),
       _gradient(src._gradient),
+      _velocity(src._velocity),
       _logger(src._logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -35,11 +37,13 @@ private:
     WeightParam(WeightParam&& src) noexcept: 
       _value(src._value),
       _gradient(src._gradient),
+      _velocity(src._velocity),
       _logger(src._logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       src._value = 0.0;
       src._gradient = 0.0;
+      src._velocity = 0.0;
     }
     WeightParam& operator=(const WeightParam& src) noexcept
     {
@@ -48,6 +52,7 @@ private:
       {
         _value = src._value;
         _gradient = src._gradient;
+        _velocity = src._velocity;
         _logger = src._logger;
       }
       return *this;
@@ -62,6 +67,7 @@ private:
         _logger = src._logger;
         src._value = 0.0;
         src._gradient = 0.0;
+        src._velocity = 0.0;
       }
       return *this;
     }
@@ -76,7 +82,12 @@ private:
     { 
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       return _gradient; 
-    };
+    }
+    double velocity() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _velocity;
+    }
     void set_value( double value) 
     { 
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -87,7 +98,7 @@ private:
         return;
       }
       _value = value; 
-    };
+    }
     void set_gradient(double gradient)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -99,10 +110,22 @@ private:
       }
       _gradient = gradient; 
     };
+    void set_velocity(double velocity)
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (!std::isfinite(velocity))
+      {
+        _logger.log_error("Error while setting velocity.");
+        throw std::invalid_argument("Error while setting velocity.");
+        return;
+      }
+      _velocity = velocity;
+    }
 
   private:
     double _value;
     double _gradient;
+    double _velocity;
     Logger _logger;
   };
 
@@ -150,7 +173,7 @@ private:
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
 
-  double clip_gradient(double gradient) const;
+  std::pair<double, double> clip_gradient(double gradient) const;
   
   // data to save...
   unsigned _index;

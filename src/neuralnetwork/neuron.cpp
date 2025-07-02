@@ -23,7 +23,7 @@ Neuron::Neuron(
   auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (auto weight : weights)
   {
-    _weight_params.push_back(WeightParam(weight, 0.0, logger));
+    _weight_params.push_back(WeightParam(weight, 0.0, 0.0, logger));
   }
 }
 
@@ -45,7 +45,7 @@ Neuron::Neuron(
   _weight_params.reserve(output_weights.size());
   for (auto& weights : output_weights)
   {
-    auto weightParam = WeightParam(weights[0], weights[1], logger);
+    auto weightParam = WeightParam(weights[0], weights[1], 0.0, logger);
     _weight_params.emplace_back(std::move(weightParam));
   }
 }
@@ -138,14 +138,12 @@ unsigned Neuron::get_index() const
 
 void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
 {
-  const double gradient_clip_threshold = 1.0;
-  const double weight_decay_factor = 0.0001;
-
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(weights_gradients.size() == previous_layer.size());
   for (size_t i = 0; i < weights_gradients.size(); ++i)
   {
     auto& neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
-    auto& WeightParam = neuron._weight_params[_index];
+    auto& weight_param = neuron._weight_params[_index];
 
     const auto& weights_gradient = weights_gradients[i];         // from prev layer, averaged over batch
     if (!std::isfinite(weights_gradient))
@@ -153,35 +151,28 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    auto old_gradient = WeightParam.gradient();
-    if (!std::isfinite(old_gradient))
+    auto old_velocity = weight_param.velocity();
+    if (!std::isfinite(old_velocity))
     {
-      _logger.log_error("Error while calculating input weigh old gradient is invalid.");
-      throw std::invalid_argument("Error while calculating input weigh old gradient is invalid.");
+      _logger.log_error("Error while calculating input weigh old velocity is invalid.");
+      throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
     }
 
-    double weight_decay = 0.0;
-    double clipped_gradient = weights_gradient;
-    if (clipped_gradient > gradient_clip_threshold)
-    {
-      clipped_gradient = gradient_clip_threshold;
-      weight_decay = weight_decay_factor;
-    }
-    else if (clipped_gradient < -gradient_clip_threshold)
-    {
-      clipped_gradient = -gradient_clip_threshold;
-      weight_decay = weight_decay_factor;
-    }
+    auto [clipped_gradient, weight_decay] = clip_gradient(weights_gradient);
 
-    double new_gradient =
+    // calcuate the new velocity 
+    const auto velocity =
       learning_rate * clipped_gradient +  // batch-based weight update
-      _alpha * old_gradient;              // momentum term
+      _alpha * old_velocity;              // momentum term
 
-    WeightParam.set_gradient(new_gradient);
+    // calculate the weight.
+    const auto& current_weight = weight_param.value();
+    const auto& new_weight = current_weight * (1.0 - weight_decay) + velocity;
 
-    double current_weight = WeightParam.value();
-    double new_weight = current_weight * (1.0 - weight_decay) + new_gradient;
-    WeightParam.set_value(new_weight);
+    // set the values.
+    weight_param.set_velocity(velocity);
+    weight_param.set_gradient(clipped_gradient);
+    weight_param.set_value(new_weight);
   }
 }
 
@@ -210,11 +201,28 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
   return sum;
 }
 
-double Neuron::clip_gradient(double gradient) const
+std::pair<double, double> Neuron::clip_gradient(double gradient) const
 {
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  constexpr double GRADIENT_CLIP_THRESHOLD = 1.0;
-  return std::clamp(gradient, -GRADIENT_CLIP_THRESHOLD, GRADIENT_CLIP_THRESHOLD);
+  constexpr double gradient_clip_threshold = 1.0;
+  constexpr double weight_decay_factor = 0.0001;
+
+  if (!std::isfinite(gradient))
+  {
+    throw std::invalid_argument("Gradient is not finite.");
+  }
+
+  double decay = 0.0;
+  if (gradient > gradient_clip_threshold) 
+  {
+    gradient = gradient_clip_threshold;
+    decay = weight_decay_factor;
+  } 
+  else if (gradient < -gradient_clip_threshold) 
+  {
+    gradient = -gradient_clip_threshold;
+    decay = weight_decay_factor;
+  }
+  return {gradient, decay};
 }
 
 double Neuron::calculate_output_gradients(double target_value, double output_value) const
@@ -222,7 +230,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   double delta = target_value - output_value;
   auto gradient = delta * _activation_method.activate_derivative(output_value);
-  gradient = clip_gradient(gradient);
+  gradient = clip_gradient(gradient).first;
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating output gradients.");
@@ -237,7 +245,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   auto derivatives_of_weights = sum_of_derivatives_of_weights(next_layer, activation_gradients);
   auto gradient = derivatives_of_weights * _activation_method.activate_derivative(output_value);
-  gradient = clip_gradient(gradient);
+  gradient = clip_gradient(gradient).first;
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating hidden gradients.");
