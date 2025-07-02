@@ -159,6 +159,7 @@
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
+    <ClInclude Include="optimiser.h" />
     <ClInclude Include="taskqueue.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

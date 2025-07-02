@@ -10,12 +10,14 @@ Neuron::Neuron(
   unsigned num_neurons_current_layer,
   unsigned index,
   const activation& activation,
+  const OptimiserType& optimiser_type,
   const Logger& logger
 ) :
   _index(index),
   _output_value(0),
   _activation_method(activation),
   _weight_params({}),
+  _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _logger(logger)
 {
@@ -32,12 +34,14 @@ Neuron::Neuron(
   double output_value,
   const activation& activation,
   const std::vector<std::array<double,2>>& output_weights,
+  const OptimiserType& optimiser_type,
   const Logger& logger
 ) :
   _index(index),
   _output_value(output_value),
   _activation_method(activation),
   _weight_params({}),
+  _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _logger(logger)
 {
@@ -56,6 +60,7 @@ Neuron::Neuron(const Neuron& src)  noexcept :
   _activation_method(src._activation_method),
   _weight_params({}),
   _alpha(LEARNING_ALPHA),
+  _optimiser_type(src._optimiser_type),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -73,6 +78,7 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     _output_value = src._output_value;
     _activation_method = src._activation_method;
     _weight_params = src._weight_params;
+    _optimiser_type = src._optimiser_type;
     _logger = src._logger;
   }
   return *this;
@@ -83,6 +89,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _output_value(src._output_value),
   _activation_method(src._activation_method),
   _alpha(LEARNING_ALPHA),
+  _optimiser_type(src._optimiser_type),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -100,8 +107,10 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     _output_value = src._output_value;
     _activation_method = src._activation_method;
     _weight_params = std::move(src._weight_params);
+    _optimiser_type = src._optimiser_type;
     _logger = src._logger;
 
+    src._optimiser_type = OptimiserType::None;
     src._output_value = 0;
     src._index = 0;
   }
@@ -160,20 +169,79 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
 
     auto [clipped_gradient, weight_decay] = clip_gradient(weights_gradient);
 
-    // calcuate the new velocity 
-    const auto velocity =
-      learning_rate * clipped_gradient +  // batch-based weight update
-      _alpha * old_velocity;              // momentum term
+    switch( _optimiser_type)
+    {
+    case OptimiserType::None:
+      // Skip update
+      break;
 
-    // calculate the weight.
-    const auto& current_weight = weight_param.value();
-    const auto& new_weight = current_weight * (1.0 - weight_decay) + velocity;
+    case OptimiserType::SGD:
+      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, weight_decay);
+      break;
 
-    // set the values.
-    weight_param.set_velocity(velocity);
-    weight_param.set_gradient(clipped_gradient);
-    weight_param.set_value(new_weight);
+    case OptimiserType::Adam:
+      apply_adam_update(weight_param, clipped_gradient, learning_rate, weight_decay);
+      break;
+
+    default:
+      throw std::runtime_error("Unknown optimizer type.");
+    }
   }
+}
+
+void Neuron::apply_adam_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double weight_decay) const
+{
+  // Update timestep
+  weight_param.increment_timestep();
+
+  // Adam hyperparameters
+  const double beta1 = 0.9;
+  const double beta2 = 0.999;
+  const double epsilon = 1e-8;
+
+  // Update biased first moment estimate (EMA of gradient)
+  double first_moment_estimate =
+    beta1 * weight_param.first_moment_estimate() +
+    (1.0 - beta1) * clipped_gradient;
+  weight_param.set_first_moment_estimate(first_moment_estimate);
+
+  // Update biased second raw moment estimate (EMA of squared gradient)
+  double second_moment_estimate =
+    beta2 * weight_param.second_moment_estimate() +
+    (1.0 - beta2) * clipped_gradient * clipped_gradient;
+  weight_param.set_second_moment_estimate(second_moment_estimate);
+
+  // Compute bias-corrected estimates
+  auto timestep = weight_param.timestep();
+  double first_unbiased =
+    first_moment_estimate / (1.0 - std::pow(beta1, timestep));
+  double second_unbiased =
+    second_moment_estimate / (1.0 - std::pow(beta2, timestep));
+
+  // Compute update
+  double adam_update = learning_rate * first_unbiased /
+    (std::sqrt(second_unbiased) + epsilon);
+
+  // Apply weight decay and update weight
+  double new_weight =
+    weight_param.value() * (1.0 - weight_decay) + adam_update;
+
+  weight_param.set_value(new_weight);
+  weight_param.set_gradient(clipped_gradient); // Store raw gradient    
+}
+
+void Neuron::apply_sgd_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double momentum, double weight_decay) const
+{
+  double previous_velocity = weight_param.velocity();
+
+  double velocity = learning_rate * clipped_gradient +
+    momentum * previous_velocity;
+
+  double new_weight = weight_param.value() * (1.0 - weight_decay) + velocity;
+
+  weight_param.set_velocity(velocity);
+  weight_param.set_gradient(clipped_gradient);
+  weight_param.set_value(new_weight);
 }
 
 double Neuron::get_output_weight(int index) const
