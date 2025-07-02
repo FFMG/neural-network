@@ -277,7 +277,7 @@ void NeuralNetwork::log_training_info(
     {
       _options.logger().log_info("Number of threads: ", _options.number_of_threads());
     }
-}
+  }
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -362,7 +362,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   epoch_gradients_outputs.reserve(num_batches);
 
   const auto initial_learning_rate = learning_rate;
+  const auto learning_rate_reset_interval = 500;
   const auto learning_rate_decay_epoch = 100;
+  const auto learning_rate_reset_factor_up = 1.5;
   const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch) * learning_rate_decay_epoch;
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
@@ -428,9 +430,17 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
       _options.logger().log_debug("Learning rate decay to:", std::fixed, std::setprecision(15), learning_rate);
     }
+    if (epoch % learning_rate_reset_interval == 0) 
+    {
+      learning_rate = std::min(initial_learning_rate, learning_rate * learning_rate_reset_factor_up);
+      _options.logger().log_debug("Learning rate reset to:", std::fixed, std::setprecision(15), learning_rate);
+    }
 
     // then get the scheduler if we can improve it further.
-    learning_rate = learning_rate_scheduler.update(_error, learning_rate, epoch, number_of_epoch);
+    if (_options.adaptive_learning_rate())
+    {
+      learning_rate = learning_rate_scheduler.update(_error, learning_rate, epoch, number_of_epoch);
+    }    
     if (progress_callback != nullptr)
     {
       if (!progress_callback(epoch, number_of_epoch, *this))
@@ -511,12 +521,26 @@ void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector
 double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_rmse_error(ground_truth, predictions);
-  // return calculate_mae_error(ground_truth, predictions);
-  //return calculate_huber_loss(ground_truth, predictions);
+  switch (_options.error_calculation())
+  {
+  case NeuralNetworkOptions::ErrorCalculation::none:
+    return 0.0;
+
+  case NeuralNetworkOptions::ErrorCalculation::huber_loss:
+    return calculate_huber_loss_error(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::mae:
+    return calculate_mae_error(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::mse:
+    return calculate_mse_error(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::rmse:
+    return calculate_rmse_error(ground_truth, predictions);
+  }
 }
 
-double NeuralNetwork::calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
+double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
@@ -830,7 +854,17 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
     for (size_t neuron_number = 0; neuron_number < this_layer.size() - 1; ++neuron_number)
     {
       const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
+#ifdef NDEBUG
       this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values));
+#else
+      auto output_value = neuron.calculate_forward_feed(previous_layer, previous_layer_output_values);
+      if (!std::isfinite(output_value))
+      {
+        _options.logger().log_error("Error while calculating forward feed.");
+        throw std::invalid_argument("Error while calculating forward feed.");
+      }
+      this_output_values.emplace_back(output_value);
+#endif
     }
 
     activations_per_layer.set_outputs(
@@ -861,7 +895,22 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
   return activation_gradients;
 }
 
-double NeuralNetwork::calculate_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
+double NeuralNetwork::calculate_forecast_accuracy(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
+{
+  switch (_options.forecast_accuracy())
+  {
+  case NeuralNetworkOptions::ForecastAccuracy::none:
+    return 0.0;
+
+  case NeuralNetworkOptions::ForecastAccuracy::mape:
+    return calculate_forecast_accuracy_mape(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ForecastAccuracy::smape:
+    return calculate_forecast_accuracy_smape(ground_truth, predictions);
+  }
+}
+
+double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
 {
   if (predictions.size() != ground_truth.size() || predictions.empty())
   {
@@ -888,7 +937,7 @@ double NeuralNetwork::calculate_smape(const std::vector<double>& ground_truth, c
   return (sum / n);
 }
 
-double NeuralNetwork::calculate_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
 {
   if (predictions.size() != ground_truths.size() || predictions.empty())
   {
@@ -900,7 +949,7 @@ double NeuralNetwork::calculate_smape(const std::vector<std::vector<double>>& gr
   double average_size = 0;
   for (size_t index = 0; index < ground_truths.size(); ++index)
   {
-    auto percentage = calculate_smape(ground_truths[index], predictions[index]);
+    auto percentage = calculate_forecast_accuracy_smape(ground_truths[index], predictions[index]);
     if (percentage == 0)
     {
       continue;
@@ -911,7 +960,7 @@ double NeuralNetwork::calculate_smape(const std::vector<std::vector<double>>& gr
   return average_size > 0 ? average_total / average_size : 0.0;
 }
 
-double NeuralNetwork::calculate_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
 {
   if (predictions.size() != ground_truths.size() || predictions.empty()) 
   {
@@ -923,7 +972,7 @@ double NeuralNetwork::calculate_mape(const std::vector<std::vector<double>>& gro
   double average_size = 0;
   for (size_t index = 0; index < ground_truths.size(); ++index)
   {
-    auto percentage = calculate_mape(ground_truths[index], predictions[index]);
+    auto percentage = calculate_forecast_accuracy_mape(ground_truths[index], predictions[index]);
     if(percentage == 0)
     {
       continue;
@@ -934,7 +983,7 @@ double NeuralNetwork::calculate_mape(const std::vector<std::vector<double>>& gro
   return average_size > 0 ? average_total / average_size : 0.0;
 }
 
-double NeuralNetwork::calculate_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
+double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
 {
   if (predictions.size() != ground_truth.size() || predictions.empty()) 
   {
@@ -1009,5 +1058,5 @@ void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vec
   }
 
   _error = calculate_error(training_outputs, predictions);
-  _mean_absolute_percentage_error = calculate_smape(training_outputs, predictions);
+  _mean_absolute_percentage_error = calculate_forecast_accuracy(training_outputs, predictions);
 }

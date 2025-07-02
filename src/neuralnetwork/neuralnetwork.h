@@ -26,11 +26,30 @@ private:
     _progress_callback(nullptr),
     _logger(Logger::LogLevel::None),
     _number_of_threads(0),
-    _learning_rate_decay_rate(0.0)
+    _learning_rate_decay_rate(0.0),
+    _error_calculation(ErrorCalculation::none),
+    _forecast_accuracy(ForecastAccuracy::none),
+    _adaptive_learning_rate(false)
   {
   }
 
 public:
+  enum class ForecastAccuracy
+  {
+    none,
+    mape,
+    smape,
+  };
+
+  enum class ErrorCalculation
+  {
+    none,
+    huber_loss,
+    mae,
+    mse,
+    rmse
+  };
+
   NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
   {
     *this = nno;
@@ -56,6 +75,9 @@ public:
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
+      _error_calculation = nno._error_calculation;
+      _forecast_accuracy = nno._forecast_accuracy;
+      _adaptive_learning_rate = nno._adaptive_learning_rate;
     }
     return *this;
   }
@@ -74,11 +96,16 @@ public:
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
+      _error_calculation = nno._error_calculation;
+      _forecast_accuracy = nno._forecast_accuracy;
+      _adaptive_learning_rate = nno._adaptive_learning_rate;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
       nno._data_is_unique = false;
+      nno._error_calculation = ErrorCalculation::none;
+      nno._forecast_accuracy = ForecastAccuracy::none;
     }
     return *this;
   }
@@ -135,6 +162,53 @@ public:
     _learning_rate_decay_rate = learning_rate_decay_rate;
     return *this;
   }
+  NeuralNetworkOptions& with_no_error_calculation()
+  {
+    return with_error_calculation(ErrorCalculation::none);
+  }
+  NeuralNetworkOptions& with_huber_loss_error_calculation()
+  {
+    return with_error_calculation(ErrorCalculation::huber_loss);
+  }
+  NeuralNetworkOptions& with_mae_error_calculation()
+  {
+    return with_error_calculation(ErrorCalculation::mae);
+  }
+  NeuralNetworkOptions& with_mse_error_calculation()
+  {
+    return with_error_calculation(ErrorCalculation::mse);
+  }
+  NeuralNetworkOptions& with_rmse_error_calculation()
+  {
+    return with_error_calculation(ErrorCalculation::rmse);
+  }
+  NeuralNetworkOptions& with_error_calculation(const ErrorCalculation& error_calculation)
+  {
+    _error_calculation = error_calculation;
+    return *this;
+  }
+  NeuralNetworkOptions& with_no_forecast_accuracy()
+  {
+    return with_forecast_accuracy(ForecastAccuracy::none);
+  }
+  NeuralNetworkOptions& with_mape_forecast_accuracy()
+  {
+    return with_forecast_accuracy(ForecastAccuracy::mape);
+  }
+  NeuralNetworkOptions& with_smape_forecast_accuracy()
+  {
+    return with_forecast_accuracy(ForecastAccuracy::smape);
+  }
+  NeuralNetworkOptions& with_forecast_accuracy(const ForecastAccuracy& forecast_accuracy)
+  {
+    _forecast_accuracy = forecast_accuracy;
+    return *this;
+  }
+  NeuralNetworkOptions& with_adaptive_learning_rates(bool adaptive_learning_rate)
+  {
+    _adaptive_learning_rate = adaptive_learning_rate;
+    return *this;
+  }
 
   NeuralNetworkOptions& build()
   {
@@ -177,7 +251,10 @@ public:
       .with_batch_size(1)
       .with_data_is_unique(true)
       .with_progress_callback(nullptr)
-      .with_learning_rate_decay_rate(0.0);
+      .with_learning_rate_decay_rate(0.0)
+      .with_rmse_error_calculation()
+      .with_mape_forecast_accuracy()
+      .with_adaptive_learning_rates(false);
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology;}
@@ -191,6 +268,9 @@ public:
   inline const Logger& logger() const { return _logger; }
   inline int number_of_threads() const {return _number_of_threads; }
   inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
+  inline const ErrorCalculation& error_calculation() const { return _error_calculation; }
+  inline const ForecastAccuracy& forecast_accuracy() const { return _forecast_accuracy; }
+  inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
 
 private:
   std::vector<unsigned> _topology;
@@ -204,6 +284,9 @@ private:
   Logger _logger;
   int _number_of_threads;
   double _learning_rate_decay_rate;
+  ErrorCalculation _error_calculation;
+  ForecastAccuracy _forecast_accuracy;
+  bool _adaptive_learning_rate;
 };
 
 class NeuralNetwork
@@ -606,12 +689,14 @@ private:
 
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
-  // Calculates the Mean Absolute Percentage Error (MAPE)
-  double calculate_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
-  double calculate_mape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_forecast_accuracy(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
-  double calculate_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
-  double calculate_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  // Calculates the Mean Absolute Percentage Error (MAPE)
+  double calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
+  double calculate_forecast_accuracy_mape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+
+  double calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
+  double calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
   void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool);
 
@@ -620,7 +705,7 @@ private:
   // Todo: The user should be able to choose what error they want to use.
   // Todo: Should those be public so the called _could_ use them to compare a prediction?
   double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_huber_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0) const;
+  double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0) const;
   double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions ) const;
