@@ -15,7 +15,7 @@ Neuron::Neuron(
   _index(index),
   _output_value(0),
   _activation_method(activation),
-  _output_weights({}),
+  _weight_params({}),
   _alpha(LEARNING_ALPHA),
   _logger(logger)
 {
@@ -23,7 +23,7 @@ Neuron::Neuron(
   auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (auto weight : weights)
   {
-    _output_weights.push_back(Connection(weight, 0.0, logger));
+    _weight_params.push_back(WeightParam(weight, 0.0, logger));
   }
 }
 
@@ -37,16 +37,16 @@ Neuron::Neuron(
   _index(index),
   _output_value(output_value),
   _activation_method(activation),
-  _output_weights({}),
+  _weight_params({}),
   _alpha(LEARNING_ALPHA),
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _output_weights.reserve(output_weights.size());
+  _weight_params.reserve(output_weights.size());
   for (auto& weights : output_weights)
   {
-    auto connection = Connection(weights[0], weights[1], logger);
-    _output_weights.emplace_back(std::move(connection));
+    auto weightParam = WeightParam(weights[0], weights[1], logger);
+    _weight_params.emplace_back(std::move(weightParam));
   }
 }
 
@@ -54,12 +54,12 @@ Neuron::Neuron(const Neuron& src)  noexcept :
   _index(src._index),
   _output_value(src._output_value),
   _activation_method(src._activation_method),
-  _output_weights({}),
+  _weight_params({}),
   _alpha(LEARNING_ALPHA),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _output_weights = src._output_weights;
+  _weight_params = src._weight_params;
 }
 
 Neuron& Neuron::operator=(const Neuron& src) noexcept
@@ -72,7 +72,7 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     _index = src._index;
     _output_value = src._output_value;
     _activation_method = src._activation_method;
-    _output_weights = src._output_weights;
+    _weight_params = src._weight_params;
     _logger = src._logger;
   }
   return *this;
@@ -86,7 +86,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _output_weights = std::move(src._output_weights);
+  _weight_params = std::move(src._weight_params);
 }
 
 Neuron& Neuron::operator=(Neuron&& src) noexcept
@@ -99,7 +99,7 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     _index = src._index;
     _output_value = src._output_value;
     _activation_method = src._activation_method;
-    _output_weights = std::move(src._output_weights);
+    _weight_params = std::move(src._weight_params);
     _logger = src._logger;
 
     src._output_value = 0;
@@ -114,13 +114,13 @@ Neuron::~Neuron()
   Clean();
 }
 
-std::vector<std::array<double, 2>> Neuron::get_weights() const
+std::vector<std::array<double, 2>> Neuron::get_weight_params() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   std::vector<std::array<double, 2>> weights;
-  for(const auto& output_weight : _output_weights)
+  for(const auto& output_weight : _weight_params)
   {
-    weights.push_back({output_weight.weight(), output_weight.delta_weight()});
+    weights.push_back({output_weight.value(), output_weight.gradient()});
   }
   return weights;
 }
@@ -145,7 +145,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
   for (size_t i = 0; i < weights_gradients.size(); ++i)
   {
     auto& neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
-    auto& connection = neuron._output_weights[_index];
+    auto& WeightParam = neuron._weight_params[_index];
 
     const auto& weights_gradient = weights_gradients[i];         // from prev layer, averaged over batch
     if (!std::isfinite(weights_gradient))
@@ -153,7 +153,7 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    auto old_delta_weight = connection.delta_weight();
+    auto old_delta_weight = WeightParam.gradient();
     if (!std::isfinite(old_delta_weight))
     {
       old_delta_weight = 0.0;
@@ -178,18 +178,18 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       learning_rate * clipped_gradient +   // batch-based weight update
       _alpha * old_delta_weight;            // momentum term
 
-    connection.set_delta_weight(new_delta_weight);
+    WeightParam.set_gradient(new_delta_weight);
 
-    double current_weight = connection.weight();
+    double current_weight = WeightParam.value();
     double new_weight = current_weight * (1.0 - weight_decay) + new_delta_weight;
-    connection.set_weight(new_weight);
+    WeightParam.set_value(new_weight);
   }
 }
 
 double Neuron::get_output_weight(int index) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _output_weights[index].weight();
+  return _weight_params[index].value();
 }
 
 double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const
