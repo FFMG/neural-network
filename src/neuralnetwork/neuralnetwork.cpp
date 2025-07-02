@@ -538,6 +538,9 @@ double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& gr
   case NeuralNetworkOptions::ErrorCalculation::rmse:
     return calculate_rmse_error(ground_truth, predictions);
   }
+
+  _options.logger().log_error("Unknown ErrorCalculation type!");
+  throw std::invalid_argument("Unknown ErrorCalculation type!");
 }
 
 double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
@@ -908,6 +911,9 @@ double NeuralNetwork::calculate_forecast_accuracy(const std::vector<std::vector<
   case NeuralNetworkOptions::ForecastAccuracy::smape:
     return calculate_forecast_accuracy_smape(ground_truth, predictions);
   }
+
+  _options.logger().log_error("Unknown ForecastAccuracy type!");
+  throw std::invalid_argument("Unknown ForecastAccuracy type!");
 }
 
 double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
