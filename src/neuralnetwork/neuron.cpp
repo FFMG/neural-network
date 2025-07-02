@@ -59,8 +59,8 @@ Neuron::Neuron(const Neuron& src)  noexcept :
   _output_value(src._output_value),
   _activation_method(src._activation_method),
   _weight_params({}),
-  _alpha(LEARNING_ALPHA),
   _optimiser_type(src._optimiser_type),
+  _alpha(LEARNING_ALPHA),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -88,8 +88,8 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _index(src._index),
   _output_value(src._output_value),
   _activation_method(src._activation_method),
-  _alpha(LEARNING_ALPHA),
   _optimiser_type(src._optimiser_type),
+  _alpha(LEARNING_ALPHA),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
