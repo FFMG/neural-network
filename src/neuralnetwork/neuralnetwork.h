@@ -542,26 +542,6 @@ private:
       return _outputs.get_neurons(static_cast<unsigned>(size -1));
     }
 
-    void zero()
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-      for( size_t layer = 0; layer < num_gradient_layers(); ++layer)
-      {
-        for( size_t neuron = 0; neuron < num_gradient_neurons(static_cast<unsigned>(layer)); ++layer)
-        {
-          _gradients.set(static_cast<unsigned>(layer), static_cast<unsigned>(neuron), 0);
-        }
-      }
-      for( size_t layer = 0; layer < num_output_layers(); ++layer)
-      {
-        for( size_t neuron = 0; neuron < num_output_neurons(static_cast<unsigned>(layer)); ++layer)
-        {
-          _outputs.set(static_cast<unsigned>(layer), static_cast<unsigned>(neuron), 0);
-        }
-      }
-      _batch_size = 0;
-    }
-
   private:
     int _batch_size;
     LayersAndNeurons<double> _outputs;
