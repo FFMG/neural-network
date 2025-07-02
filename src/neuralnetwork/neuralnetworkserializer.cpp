@@ -169,7 +169,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     {
       return {};
     }
-    auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output-value"));
+    auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("weight-params"));
     if(nullptr == output_value_object)
     {
       return {};
@@ -321,8 +321,8 @@ void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValue
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
-  neuron_object->set_float("output-value", neuron.get_output_value());
-  add_weights(neuron.get_weights(), *neuron_object);
+  neuron_object->set_float("weight-params", neuron.get_output_value());
+  add_weights(neuron.get_weight_params(), *neuron_object);
   layer.add(neuron_object);
   delete neuron_object;
 }

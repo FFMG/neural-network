@@ -15,94 +15,94 @@ class Layer;
 class Neuron
 {
 private:
-  class Connection
+  class WeightParam
   {
   public:
-    Connection(double weight, double delta_weight, const Logger& logger) : 
-      _weight(weight), 
-      _delta_weight(delta_weight),
+    WeightParam(double value, double gradient, const Logger& logger) : 
+      _value(value), 
+      _gradient(gradient),
       _logger(logger)
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
-    Connection(const Connection& connection) noexcept :
-      _weight(connection._weight),
-      _delta_weight(connection._delta_weight),
-      _logger(connection._logger)
+    WeightParam(const WeightParam& src) noexcept :
+      _value(src._value),
+      _gradient(src._gradient),
+      _logger(src._logger)
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
-    Connection(Connection&& connection) noexcept: 
-      _weight(connection._weight),
-      _delta_weight(connection._delta_weight),
-      _logger(connection._logger)
+    WeightParam(WeightParam&& src) noexcept: 
+      _value(src._value),
+      _gradient(src._gradient),
+      _logger(src._logger)
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      connection._weight = 0.0;
-      connection._delta_weight = 0.0;
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      src._value = 0.0;
+      src._gradient = 0.0;
     }
-    Connection& operator=(const Connection& connection) noexcept
+    WeightParam& operator=(const WeightParam& src) noexcept
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      if (this != &connection)
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (this != &src)
       {
-        _weight = connection._weight;
-        _delta_weight = connection._delta_weight;
-        _logger = connection._logger;
+        _value = src._value;
+        _gradient = src._gradient;
+        _logger = src._logger;
       }
       return *this;
     }
-    Connection& operator=(Connection&& connection)  noexcept
+    WeightParam& operator=(WeightParam&& src)  noexcept
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      if (this != &connection)
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (this != &src)
       {
-        _weight = connection._weight;
-        _delta_weight = connection._delta_weight;
-        _logger = connection._logger;
-        connection._weight = 0.0;
-        connection._delta_weight = 0.0;
+        _value = src._value;
+        _gradient = src._gradient;
+        _logger = src._logger;
+        src._value = 0.0;
+        src._gradient = 0.0;
       }
       return *this;
     }
-    virtual ~Connection() = default;
+    virtual ~WeightParam() = default;
 
-    double weight() const 
+    double value() const 
     { 
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      return _weight; 
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _value; 
     };
-    double delta_weight() const 
+    double gradient() const 
     { 
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      return _delta_weight; 
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _gradient; 
     };
-    void set_weight( double weight) 
+    void set_value( double value) 
     { 
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      if (!std::isfinite(weight))
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (!std::isfinite(value))
       {
-        _logger.log_error("Error while setting weight.");
-        throw std::invalid_argument("Error while setting weight.");
+        _logger.log_error("Error while setting value.");
+        throw std::invalid_argument("Error while setting value.");
         return;
       }
-      _weight = weight; 
+      _value = value; 
     };
-    void set_delta_weight(double delta_weight)
+    void set_gradient(double gradient)
     {
-      MYODDWEB_PROFILE_FUNCTION("Connection");
-      if (!std::isfinite(delta_weight))
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (!std::isfinite(gradient))
       {
-        _logger.log_error("Error while setting delta weight.");
-        throw std::invalid_argument("Error while setting delta weight.");
+        _logger.log_error("Error while setting gradient.");
+        throw std::invalid_argument("Error while setting gradient.");
         return;
       }
-      _delta_weight = delta_weight; 
+      _gradient = gradient; 
     };
 
   private:
-    double _weight;
-    double _delta_weight;
+    double _value;
+    double _gradient;
     Logger _logger;
   };
 
@@ -111,7 +111,7 @@ public:
     unsigned index, 
     double output_value,
     const activation& activation,
-    const std::vector<std::array<double,2>>& output_weights,
+    const std::vector<std::array<double,2>>& weights_params,
     const Logger& logger
     );
     
@@ -143,7 +143,7 @@ public:
   void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate);
 
   unsigned get_index() const;
-  std::vector<std::array<double, 2>> get_weights() const;
+  std::vector<std::array<double, 2>> get_weight_params() const;
 
 private:
   void Clean();
@@ -156,7 +156,7 @@ private:
   unsigned _index;
   double _output_value;
   activation _activation_method;
-  std::vector<Connection> _output_weights;
+  std::vector<WeightParam> _weight_params;
 
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   Logger _logger;
