@@ -136,7 +136,7 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate)
+void Neuron::update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, const double learning_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(weights_gradients.size() == previous_layer.size());

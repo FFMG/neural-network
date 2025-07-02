@@ -163,7 +163,7 @@ public:
   
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
 
-  void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, double learning_rate);
+  void update_input_weights(Layer& previous_layer, const std::vector<double>& weights_gradients, const double learning_rate);
 
   unsigned get_index() const;
   std::vector<std::array<double, 2>> get_weight_params() const;
