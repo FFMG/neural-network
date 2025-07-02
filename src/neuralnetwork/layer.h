@@ -1,6 +1,7 @@
 #pragma once
 #include "logger.h"
 #include "neuron.h"
+#include "optimiser.h"
 
 #include <vector>
 
@@ -14,7 +15,7 @@ private:
     Hidden,
     Output
   };
-  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, const Logger& logger);
+  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger);
   Layer(LayerType layer_type, const Logger& logger);
 
 public:  
@@ -35,10 +36,10 @@ public:
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger);
 
   static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const Logger& logger);
+  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger);
 
   static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const Logger& logger);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger);
 
   std::vector<double> get_outputs() const;
   

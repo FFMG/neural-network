@@ -13,7 +13,7 @@ Layer::Layer(LayerType layer_type, const Logger& logger) :
   MYODDWEB_PROFILE_FUNCTION("Layer");
 }
 
-Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, const Logger& logger) :
+Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger) :
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
   _layer_type(layer_type),
@@ -39,6 +39,7 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
       _number_output_neurons,
       neuron_number, 
       activation,
+      optimiser_type,
       logger);
     neuron.set_output_value(1.0);
     add_neuron(neuron);
@@ -127,7 +128,7 @@ Layer Layer::create_input_layer(const std::vector<Neuron>& neurons, const Logger
 Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation::linear, logger);
+  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation::linear, OptimiserType::None, logger);
 }
 
 Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger)
@@ -145,10 +146,10 @@ Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned nu
   return layer;
 }
 
-Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const Logger& logger)
+Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Hidden, activation, logger);
+  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Hidden, activation, optimiser_type, logger);
 }
 
 Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger)
@@ -166,10 +167,10 @@ Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned nu
   return layer;
 }
 
-Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const Logger& logger)
+Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, logger);
+  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, optimiser_type, logger);
 }
 
 std::vector<double> Layer::get_outputs() const
