@@ -9,6 +9,7 @@
 #include "layer.h"
 #include "logger.h"
 #include "neuron.h"
+#include "optimiser.h"
 #include "taskqueue.h"
 
 class NeuralNetwork;
@@ -29,7 +30,8 @@ private:
     _learning_rate_decay_rate(0.0),
     _error_calculation(ErrorCalculation::none),
     _forecast_accuracy(ForecastAccuracy::none),
-    _adaptive_learning_rate(false)
+    _adaptive_learning_rate(false),
+    _optimiser_type(OptimiserType::Adam)
   {
   }
 
@@ -78,6 +80,7 @@ public:
       _error_calculation = nno._error_calculation;
       _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
+      _optimiser_type = nno._optimiser_type;
     }
     return *this;
   }
@@ -99,6 +102,7 @@ public:
       _error_calculation = nno._error_calculation;
       _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
+      _optimiser_type = nno._optimiser_type;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -106,6 +110,7 @@ public:
       nno._data_is_unique = false;
       nno._error_calculation = ErrorCalculation::none;
       nno._forecast_accuracy = ForecastAccuracy::none;
+      nno._optimiser_type = OptimiserType::None;
     }
     return *this;
   }
@@ -209,7 +214,12 @@ public:
     _adaptive_learning_rate = adaptive_learning_rate;
     return *this;
   }
-
+  NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
+  {
+    _optimiser_type = optimiser_type;
+    return *this;
+  }
+  
   NeuralNetworkOptions& build()
   {
     if(topology().size() < 2)
@@ -254,7 +264,8 @@ public:
       .with_learning_rate_decay_rate(0.0)
       .with_rmse_error_calculation()
       .with_mape_forecast_accuracy()
-      .with_adaptive_learning_rates(false);
+      .with_adaptive_learning_rates(false)
+      .with_optimiser_type(OptimiserType::Adam);
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology;}
@@ -271,6 +282,7 @@ public:
   inline const ErrorCalculation& error_calculation() const { return _error_calculation; }
   inline const ForecastAccuracy& forecast_accuracy() const { return _forecast_accuracy; }
   inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
+  inline OptimiserType optimiser_type() const { return _optimiser_type; }
 
 private:
   std::vector<unsigned> _topology;
@@ -287,6 +299,7 @@ private:
   ErrorCalculation _error_calculation;
   ForecastAccuracy _forecast_accuracy;
   bool _adaptive_learning_rate;
+  OptimiserType _optimiser_type;
 };
 
 class NeuralNetwork
@@ -651,6 +664,7 @@ public:
   const activation::method& get_hidden_activation_method() const;
   long double get_error() const;
   long double get_mean_absolute_percentage_error() const;
+  double get_learning_rate() const;
 
   NeuralNetworkOptions& options() { return _options;}
   const NeuralNetworkOptions& options() const { return _options;}
@@ -724,6 +738,7 @@ private:
 
   long double _error;
   long double _mean_absolute_percentage_error;
+  double _learning_rate;
   std::vector<Layer> _layers;
 
   NeuralNetworkOptions _options;

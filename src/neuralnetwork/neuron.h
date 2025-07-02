@@ -2,6 +2,7 @@
 #include "activation.h"
 #include "layer.h"
 #include "logger.h"
+#include "optimiser.h"
 #include "./libraries/instrumentor.h"
 
 #include <array>
@@ -22,7 +23,10 @@ private:
       _value(value), 
       _gradient(gradient),
       _velocity(velocity),
-      _logger(logger)
+      _logger(logger),
+      _first_moment_estimate(0.0),
+      _second_moment_estimate(0.0),
+      _time_step(0)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
@@ -30,7 +34,10 @@ private:
       _value(src._value),
       _gradient(src._gradient),
       _velocity(src._velocity),
-      _logger(src._logger)
+      _logger(src._logger),
+      _first_moment_estimate(src._first_moment_estimate),
+      _second_moment_estimate(src._second_moment_estimate),
+      _time_step(src._time_step)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
@@ -38,12 +45,18 @@ private:
       _value(src._value),
       _gradient(src._gradient),
       _velocity(src._velocity),
-      _logger(src._logger)
+      _logger(src._logger),
+      _first_moment_estimate(src._first_moment_estimate),
+      _second_moment_estimate(src._second_moment_estimate),
+      _time_step(src._time_step)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       src._value = 0.0;
       src._gradient = 0.0;
       src._velocity = 0.0;
+      _first_moment_estimate = 0.0;
+      _second_moment_estimate = 0.0;
+      _time_step = 0;
     }
     WeightParam& operator=(const WeightParam& src) noexcept
     {
@@ -54,6 +67,9 @@ private:
         _gradient = src._gradient;
         _velocity = src._velocity;
         _logger = src._logger;
+        _first_moment_estimate = src._first_moment_estimate;
+        _second_moment_estimate = src._second_moment_estimate;
+        _time_step = src._time_step;
       }
       return *this;
     }
@@ -65,9 +81,15 @@ private:
         _value = src._value;
         _gradient = src._gradient;
         _logger = src._logger;
+        _first_moment_estimate = src._first_moment_estimate;
+        _second_moment_estimate = src._second_moment_estimate;
+        _time_step = src._time_step;
         src._value = 0.0;
         src._gradient = 0.0;
         src._velocity = 0.0;
+        _first_moment_estimate = 0.0;
+        _second_moment_estimate = 0.0;
+        _time_step = 0;
       }
       return *this;
     }
@@ -87,6 +109,21 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       return _velocity;
+    }
+    long timestep() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _time_step;
+    }
+    double first_moment_estimate() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _first_moment_estimate;
+    }
+    double second_moment_estimate() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _second_moment_estimate;
     }
     void set_value( double value) 
     { 
@@ -121,12 +158,45 @@ private:
       }
       _velocity = velocity;
     }
+    void set_first_moment_estimate(double first_moment_estimate)
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (!std::isfinite(first_moment_estimate))
+      {
+        _logger.log_error("Error while setting first_moment_estimate.");
+        throw std::invalid_argument("Error while setting first_moment_estimate.");
+        return;
+      }
+      _first_moment_estimate = first_moment_estimate;
+    }
+    void set_second_moment_estimate(double second_moment_estimate)
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      if (!std::isfinite(second_moment_estimate))
+      {
+        _logger.log_error("Error while setting second_moment_estimate.");
+        throw std::invalid_argument("Error while setting second_moment_estimate.");
+        return;
+      }
+      _second_moment_estimate = second_moment_estimate;
+    }
+
+    void increment_timestep()
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      ++_time_step;
+    }
 
   private:
     double _value;
     double _gradient;
     double _velocity;
     Logger _logger;
+
+    // For Adam:
+    double _first_moment_estimate = 0.0;
+    double _second_moment_estimate = 0.0;
+    long _time_step = 0;
   };
 
 public:
@@ -135,6 +205,7 @@ public:
     double output_value,
     const activation& activation,
     const std::vector<std::array<double,2>>& weights_params,
+    const OptimiserType& optimiser_type,
     const Logger& logger
     );
     
@@ -143,6 +214,7 @@ public:
     unsigned num_neurons_current_layer,
     unsigned index, 
     const activation& activation,
+    const OptimiserType& optimiser_type,
     const Logger& logger
     );
 
@@ -168,10 +240,16 @@ public:
   unsigned get_index() const;
   std::vector<std::array<double, 2>> get_weight_params() const;
 
+  const OptimiserType& get_optimiser_type() const { return _optimiser_type; }
+
 private:
   void Clean();
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
+
+  // optimisers
+  void apply_sgd_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double momentum, double weight_decay) const;
+  void apply_adam_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double weight_decay) const;
 
   std::pair<double, double> clip_gradient(double gradient) const;
   
@@ -180,6 +258,7 @@ private:
   double _output_value;
   activation _activation_method;
   std::vector<WeightParam> _weight_params;
+  OptimiserType _optimiser_type;
 
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   Logger _logger;

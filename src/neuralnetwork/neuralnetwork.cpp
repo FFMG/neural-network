@@ -14,6 +14,7 @@ static const long long IntervalErorCheckInSeconds = 15;
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
   _error(0.0),
   _mean_absolute_percentage_error(0.0),
+  _learning_rate(0.0),
   _options(options)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -31,12 +32,12 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
     const auto& previous_layer = _layers.back();
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, options.hidden_activation_method(), options.logger());
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, options.hidden_activation_method(), options.optimiser_type(), options.logger());
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), options.output_activation_method(), options.logger());
+  layer = Layer::create_output_layer(topology.back(), _layers.back(), options.output_activation_method(), options.optimiser_type(), options.logger());
   _layers.emplace_back(std::move(layer));
 }
 
@@ -64,6 +65,7 @@ NeuralNetwork::NeuralNetwork(
   ) :
   _error(error),
   _mean_absolute_percentage_error(mean_absolute_percentage_error),
+  _learning_rate(0.0),
   _options(NeuralNetworkOptions::create(layers)    
     .with_hidden_activation_method(hidden_layer_activation)
     .with_hidden_activation_method(output_layer_activation)
@@ -82,6 +84,7 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _error(src._error),
   _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
+  _learning_rate(src._learning_rate),
   _options(src._options)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -210,6 +213,12 @@ long double NeuralNetwork::get_mean_absolute_percentage_error() const
   return _mean_absolute_percentage_error;
 }
 
+double NeuralNetwork::get_learning_rate() const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _learning_rate;
+}
+
 long double NeuralNetwork::get_error() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -285,7 +294,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   const auto& number_of_epoch = _options.number_of_epoch();
-  auto learning_rate = _options.learning_rate();
+  _learning_rate = _options.learning_rate();
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
 
@@ -361,11 +370,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
   epoch_gradients_outputs.reserve(num_batches);
 
-  const auto initial_learning_rate = learning_rate;
-  const auto learning_rate_reset_interval = 500;
-  const auto learning_rate_decay_epoch = 100;
-  const auto learning_rate_reset_factor_up = 1.5;
-  const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch) * learning_rate_decay_epoch;
+  const auto initial_learning_rate = _learning_rate;
+  const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch);
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
   
@@ -412,7 +418,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       // then re-shuffle everything
       recreate_batch_from_indexes(training_indexes, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
     }
-    update_layers_with_gradients(epoch_gradients_outputs, _layers, learning_rate);
+    update_layers_with_gradients(epoch_gradients_outputs, _layers, _learning_rate);
 
     if (epoch % 10000 == 0)
     {
@@ -425,21 +431,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
 
     // decay the learning rate.
-    if (learning_rate_decay_rate > 0 && epoch % learning_rate_decay_epoch == 0)
-    {
-      learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
-      _options.logger().log_debug("Learning rate decay to:", std::fixed, std::setprecision(15), learning_rate);
-    }
-    if (epoch % learning_rate_reset_interval == 0) 
-    {
-      learning_rate = std::min(initial_learning_rate, learning_rate * learning_rate_reset_factor_up);
-      _options.logger().log_debug("Learning rate reset to:", std::fixed, std::setprecision(15), learning_rate);
-    }
+    _learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
 
     // then get the scheduler if we can improve it further.
     if (_options.adaptive_learning_rate())
     {
-      learning_rate = learning_rate_scheduler.update(_error, learning_rate, epoch, number_of_epoch);
+      _learning_rate = learning_rate_scheduler.update(_error, _learning_rate, epoch, number_of_epoch);
     }    
     if (progress_callback != nullptr)
     {
@@ -462,7 +459,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   _options.logger().log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
 
   // finaly learning rate
-  _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), learning_rate);
+  _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _learning_rate);
 
   if (errorPool != nullptr)
   {
