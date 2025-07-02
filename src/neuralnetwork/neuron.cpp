@@ -153,12 +153,11 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    auto old_delta_weight = WeightParam.gradient();
-    if (!std::isfinite(old_delta_weight))
+    auto old_gradient = WeightParam.gradient();
+    if (!std::isfinite(old_gradient))
     {
-      old_delta_weight = 0.0;
-      _logger.log_error("Error while calculating input weigh old weight is invalid.");
-      throw std::invalid_argument("Error while calculating input weigh old weight is invalid.");
+      _logger.log_error("Error while calculating input weigh old gradient is invalid.");
+      throw std::invalid_argument("Error while calculating input weigh old gradient is invalid.");
     }
 
     double weight_decay = 0.0;
@@ -174,14 +173,14 @@ void Neuron::update_input_weights(Layer& previous_layer, const std::vector<doubl
       weight_decay = weight_decay_factor;
     }
 
-    double new_delta_weight =
-      learning_rate * clipped_gradient +   // batch-based weight update
-      _alpha * old_delta_weight;            // momentum term
+    double new_gradient =
+      learning_rate * clipped_gradient +  // batch-based weight update
+      _alpha * old_gradient;              // momentum term
 
-    WeightParam.set_gradient(new_delta_weight);
+    WeightParam.set_gradient(new_gradient);
 
     double current_weight = WeightParam.value();
-    double new_weight = current_weight * (1.0 - weight_decay) + new_delta_weight;
+    double new_weight = current_weight * (1.0 - weight_decay) + new_gradient;
     WeightParam.set_value(new_weight);
   }
 }
