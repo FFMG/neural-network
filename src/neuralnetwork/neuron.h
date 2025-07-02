@@ -9,7 +9,7 @@
 #include <iostream>
 #include <vector>
 
-#define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last deltaWeight, [0.0..1.0]
+#define LEARNING_ALPHA double(0.5)    // momentum, multiplier of last gradient, [0.0..1.0]
 
 class Layer;
 class Neuron
