@@ -188,9 +188,7 @@ private:
     size_t explodingPattern = 0;
     size_t comparisons = error_size / 2;
     size_t plateau_comparisons = error_size / 4;
-    size_t exploding_comparisons = error_size / 4;
     plateau_comparisons = std::max(plateau_comparisons, size_t(4));
-    exploding_comparisons = std::max(exploding_comparisons, size_t(4));
 
     for (size_t i = error_size - comparisons; i < error_size - 1; ++i)
     {
@@ -229,10 +227,6 @@ private:
       }
     }
     if (explodingPattern >= comparisons - 1)
-    {
-      return RateState::Exploding;
-    }
-    if (explodingCount >= exploding_comparisons - 1)
     {
       return RateState::Exploding;
     }
