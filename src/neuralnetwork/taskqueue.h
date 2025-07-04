@@ -250,7 +250,12 @@ public:
     for(auto& task_queue : _task_queues)
     {
       auto this_output = task_queue->get();
-      output.insert(output.end(), this_output.begin(), this_output.end());
+      if (!this_output.empty()) 
+      {
+        output.insert(output.end(), 
+          std::make_move_iterator(this_output.begin()), 
+          std::make_move_iterator(this_output.end()));
+      }
     }
 
     // reset the thread index so we don't start new threads for no reason.
