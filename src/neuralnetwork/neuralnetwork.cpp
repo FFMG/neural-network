@@ -204,7 +204,9 @@ void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffle
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_forward_feed(inputs, _layers).output_back();
+  GradientsAndOutputs gradients(get_topology());
+  calculate_forward_feed(gradients, inputs, _layers);
+  return gradients.output_back();
 }
 
 long double NeuralNetwork::get_mean_absolute_percentage_error() const
@@ -236,16 +238,29 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
   return outputs;
 }
 
-std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batch(
+NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,
     const size_t size
   ) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto batch_gradients_outputs = calculate_forward_feed(inputs_begin, inputs_begin+size, _layers);
-  calculate_batch_back_propagation(outputs_begin, size, batch_gradients_outputs, _layers);
-  return batch_gradients_outputs;
+  GradientsAndOutputs gradients(_options.topology(), size);
+  if(size == 1)
+  {
+    calculate_forward_feed(gradients, *inputs_begin, _layers);
+    calculate_back_propagation(gradients, *outputs_begin, _layers);
+    return gradients;
+  }
+
+  for(size_t index = 0; index < size; ++index)
+  {
+    GradientsAndOutputs this_gradients(_options.topology());
+    calculate_forward_feed(gradients, *inputs_begin, _layers);
+    calculate_back_propagation(gradients, *outputs_begin, _layers);
+    gradients.add(this_gradients);
+  } 
+  return gradients;
 }
 
 void NeuralNetwork::log_training_info(
@@ -322,10 +337,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
   }
 
-  TaskQueuePool<std::vector<std::vector<double>>>* errorPool = nullptr;
+  TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
+  TaskQueuePool<std::vector<std::vector<double>>>* error_pool = nullptr;
   if (batch_size > 1)
   {
-    errorPool = new TaskQueuePool<std::vector<std::vector<double>>>(
+    task_pool = new TaskQueuePool<GradientsAndOutputs>(
+      _options.logger(),
+      _options.number_of_threads());
+
+    error_pool = new TaskQueuePool<std::vector<std::vector<double>>>(
       _options.logger(),
       _options.number_of_threads());
   }
@@ -362,13 +382,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     const auto& outputs = training_outputs[training_index];
     training_outputs_batch.push_back(outputs);
   }
-
-  auto task_pool = TaskQueuePool<std::vector<GradientsAndOutputs>>(_options.logger());
+  
   const auto training_indexes_size = training_indexes.size();
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
-  std::vector<std::vector<GradientsAndOutputs>> epoch_gradients_outputs;
-  epoch_gradients_outputs.reserve(num_batches);
+  std::vector<GradientsAndOutputs> epoch_gradients;
+  epoch_gradients.reserve(num_batches);
 
   const auto initial_learning_rate = _learning_rate;
   const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch);
@@ -378,16 +397,16 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // and the epoch outputs
-    epoch_gradients_outputs.clear();
+    epoch_gradients.clear();
 
     // create the batches
     for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
-      if (batch_size > 1)
+      if (task_pool != nullptr)
       {
         const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
         const size_t total_size = end_size - start_index;
-        task_pool.enqueue([=]()
+        task_pool->enqueue([=]()
           {
             auto train = train_single_batch(
               batch_training_inputs.begin() + start_index,
@@ -400,35 +419,27 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       {
         //  size is 1, it is faster to not use a thread.
         const size_t total_size = 1;
-        epoch_gradients_outputs.emplace_back(
-          train_single_batch(
+        const auto& single_batch = train_single_batch(
             batch_training_inputs.begin() + start_index,
             batch_training_outputs.begin() + start_index,
-            total_size)
-        );
+            total_size);
+        update_layers_with_gradients(single_batch, _layers, _learning_rate);
       }
     }
     MYODDWEB_PROFILE_MARK();
 
     // Collect the results
-    if (batch_size > 1)
+    if (task_pool != nullptr)
     {
-      epoch_gradients_outputs = task_pool.get();
+      epoch_gradients = task_pool->get();
+      update_layers_with_gradients(epoch_gradients, _layers, _learning_rate);
 
       // then re-shuffle everything
       recreate_batch_from_indexes(training_indexes, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
     }
-    update_layers_with_gradients(epoch_gradients_outputs, _layers, _learning_rate);
-
-    if (epoch % 10000 == 0)
-    {
-      double avg_ns = task_pool.average();
-      auto total_epoch_duration_size = task_pool.total_tasks();
-      _options.logger().log_debug("Average time per call: ", std::fixed, std::setprecision(2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
-    }
 
     // do an error check to see if we need to adapt.
-    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, errorPool);
+    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, error_pool);
 
     // decay the learning rate.
     _learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
@@ -449,22 +460,26 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
   }
 
-  task_pool.stop();
-  double avg_ns = task_pool.average();
-  auto total_epoch_duration_size = task_pool.total_tasks();
-  _options.logger().log_debug("Average time per call: ", std::fixed, std::setprecision (2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
+  if(task_pool != nullptr)
+  {
+    task_pool->stop();
+    double avg_ns = task_pool->average();
+    auto total_epoch_duration_size = task_pool->total_tasks();
+    _options.logger().log_debug("Average time per call: ", std::fixed, std::setprecision (2), avg_ns, " ns (", total_epoch_duration_size, " calls).");
+    delete task_pool;
+  }
 
-  update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, errorPool);
+  update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, error_pool);
   _options.logger().log_info("Final Error: ", std::fixed, std::setprecision (15), _error);
   _options.logger().log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
 
   // finaly learning rate
   _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _learning_rate);
 
-  if (errorPool != nullptr)
+  if (error_pool != nullptr)
   {
-    errorPool->stop();
-    delete errorPool;
+    error_pool->stop();
+    delete error_pool;
   }
 
   // final callback to show 100% done.
@@ -473,46 +488,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     progress_callback(number_of_epoch, number_of_epoch, *this);
   }
   MYODDWEB_PROFILE_MARK();
-}
-
-void NeuralNetwork::recalculate_gradient_avergages(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, LayersAndNeurons<double>& averages) const
-{  
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  // this is the number of batches we had this epoch
-  if( 0 == epoch_gradients_outputs.size())
-  {
-    return;
-  }
-
-  size_t total_epoch_size = std::accumulate(
-    epoch_gradients_outputs.begin(), epoch_gradients_outputs.end(), size_t(0),
-    [](size_t sum, const auto& v) {
-        return sum + v.size();
-    }
-  );
-
-  // go around all the layers/neurons to get the averages per batch
-  const auto layers_size = averages.number_layers();
-  for(unsigned layer_number = 0; layer_number < layers_size; ++layer_number)
-  {
-    // we get the number of neurons from the first batch.
-    const auto neurons_size = averages.number_neurons(layer_number);
-    for(unsigned neuron_number = 0; neuron_number < neurons_size; ++neuron_number)
-    {
-      double epoch_sum = 0.0;
-      // then we look at all the batches to get the gradients.
-      for(const auto& epoch_gradient_output : epoch_gradients_outputs)
-      {
-        // make sure that we get the actual size as they might not all be the same size.
-        for(const auto& epoch_gradient_output_batch : epoch_gradient_output)
-        {
-          epoch_sum += epoch_gradient_output_batch.get_gradient(layer_number, neuron_number);
-        }
-      }
-      auto average_gradient = (epoch_sum / static_cast<double>(total_epoch_size));
-      averages.set(layer_number, neuron_number, average_gradient);
-    }
-  }
 }
 
 double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
@@ -646,8 +621,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
         continue;
       }
 
-      double squared_error =
-   error * error;
+      double squared_error = error * error;
       if (!std::isfinite(squared_error))
       {
         continue;
@@ -664,78 +638,62 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   return mean_squared_error;
 }
 
-void NeuralNetwork::average_batch_gradients_with_averages(const GradientsAndOutputs& activation_gradients, const LayersAndNeurons<double>& layers_neurons_averages, LayersAndNeurons<std::vector<double>>& gradients_and_outputs) const
+std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const
 {
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::vector<double> outputs_gradients;
-  
-  // we get the output to the connecting layer
-  // so this layer will have then number of outputs to the _next_ layer.
-  const size_t layers_size = layers_neurons_averages.number_layers();
-  for (size_t layer_number = 0; layer_number < layers_size -1; ++layer_number)
+  if (layer_number == 0 || layer_number > source.num_gradient_layers())
   {
-    // number of neurons to the next layer
-    const size_t neurons_size = layers_neurons_averages.number_neurons(layer_number+1);
-    for( size_t neuron_number = 0; neuron_number < neurons_size; ++neuron_number )
+    return {};
+  }
+  const auto batch_size = source.batch_size();
+  const auto number_outputs = source.num_outputs(layer_number - 1);
+  std::vector<double> gradients(number_outputs, 0.0);
+  const auto gradient = source.get_gradient(layer_number, neuron_number);
+  for (unsigned output_neuron_number = 0; output_neuron_number < number_outputs; ++output_neuron_number)
+  {
+    const auto& weight = source.get_output(layer_number-1, output_neuron_number);
+    gradients[output_neuron_number] = (weight * gradient) / batch_size;
+  }
+  return gradients;
+}
+
+// multiple batches
+void NeuralNetwork::update_layers_with_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients, std::vector<Layer>& layers, double learning_rate) const
+{
+  for(const auto& batch_activation_gradient : batch_activation_gradients)  
+  {
+    update_layers_with_gradients(batch_activation_gradient, layers, learning_rate);
+  }
+}
+
+// single batch
+void NeuralNetwork::update_layers_with_gradients(const GradientsAndOutputs& batch_activation_gradient, std::vector<Layer>& layers, double learning_rate) const
+{
+  const auto& layer_size = batch_activation_gradient.num_gradient_layers();
+  for (auto layer_number = layer_size-1; layer_number > 0; --layer_number)
+  {
+    const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
+    for (unsigned neuron_number = 0; neuron_number < neuron_size; ++neuron_number)
     {
-      // bias is added by the get_outputs( ... ) method for _this_ layer.
-      const size_t number_outputs = activation_gradients.num_outputs(static_cast<unsigned>(layer_number));
-      outputs_gradients.reserve(number_outputs);
-      
-      // get the gradient this neuron in the next layer
-      const auto& next_layer_neuron_gradient = activation_gradients.get_gradient(static_cast<unsigned>(layer_number+1), static_cast<unsigned>(neuron_number));
-      for (size_t output_number = 0; output_number < number_outputs; ++output_number)
-      {
-        const auto& layer_neuron_output = activation_gradients.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(output_number));
-        outputs_gradients.emplace_back(layer_neuron_output * next_layer_neuron_gradient);
-      }
-      
-      // we can now set the output + average gradient for that layer/neuron.
-      gradients_and_outputs.set(static_cast<unsigned>(layer_number), static_cast<unsigned>(neuron_number), std::move(outputs_gradients));
-      outputs_gradients.clear();
+      auto& neuron = layers[layer_number].get_neuron(neuron_number);
+      const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
+      neuron.apply_weight_gradients(layers[layer_number - 1], gradients, learning_rate);
     }
   }
 }
 
-void NeuralNetwork::calculate_batch_back_propagation_gradients(
-    const std::vector<std::vector<double>>::const_iterator outputs_begin, 
-    const size_t outputs_size, 
-    std::vector<GradientsAndOutputs>& layers_given_outputs, 
-    const std::vector<Layer>& layers)
+void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, const std::vector<double>& outputs, const std::vector<Layer>& layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  assert(outputs_size == layers_given_outputs.size());
-  for(size_t i = 0; i < outputs_size; ++i)
-  {
-    const auto& output = outputs_begin + i;
-    calculate_back_propagation_gradients(*output, layers_given_outputs[i], layers);
-  }
-}
-
-void NeuralNetwork::calculate_batch_back_propagation_gradients(const std::vector<std::vector<double>>& target_outputs, std::vector<GradientsAndOutputs>& layers_given_outputs, const std::vector<Layer>& layers)
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  assert(target_outputs.size() == layers_given_outputs.size());
-  const auto& target_outputs_size = target_outputs.size();
-  for(size_t i = 0; i < target_outputs_size; ++i)
-  {
-    calculate_back_propagation_gradients(target_outputs[i], layers_given_outputs[i], layers);
-  }
-}
-
-void NeuralNetwork::calculate_back_propagation_gradients(const std::vector<double>& target_outputs, GradientsAndOutputs& layers_given_outputs, const std::vector<Layer>& layers)
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  assert(target_outputs.size() == layers_given_outputs.output_back().size());
+  assert(outputs.size() == gradients.output_back().size());
 
   // input layer is all 0, (bias is included)
   auto input_gradients = std::vector<double>(layers.front().size(), 0.0);
-  layers_given_outputs.set_gradients(0, input_gradients);
+  gradients.set_gradients(0, input_gradients);
   
   // set the output gradient
   const auto& output_layer = layers.back();
-  auto next_activation_gradients = caclulate_output_gradients(target_outputs, layers_given_outputs.output_back(), output_layer);
-  layers_given_outputs.set_gradients(static_cast<unsigned>(layers.size()-1), next_activation_gradients);
+  auto next_activation_gradients = caclulate_output_gradients(outputs, gradients.output_back(), output_layer);
+  gradients.set_gradients(static_cast<unsigned>(layers.size()-1), next_activation_gradients);
   for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
   {
     const auto& hidden_layer = layers[layer_number];
@@ -747,99 +705,25 @@ void NeuralNetwork::calculate_back_propagation_gradients(const std::vector<doubl
     for (size_t hidden_layer_number = 0; hidden_layer_number < hidden_layer_size; ++hidden_layer_number)
     {
       const auto& neuron = hidden_layer.get_neuron(static_cast<unsigned>(hidden_layer_number));
-      const auto output_value = layers_given_outputs.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(hidden_layer_number));
+      const auto output_value = gradients.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(hidden_layer_number));
       const auto& gradient = neuron.calculate_hidden_gradients(next_layer, next_activation_gradients, output_value);
       current_activation_gradients[hidden_layer_number] = gradient;
     }
-    layers_given_outputs.set_gradients(static_cast<unsigned>(layer_number), current_activation_gradients);
+    gradients.set_gradients(static_cast<unsigned>(layer_number), current_activation_gradients);
     next_activation_gradients = current_activation_gradients;
     current_activation_gradients = {};
   }
 }
 
-void NeuralNetwork::calculate_batch_back_propagation(
-    const std::vector<std::vector<double>>::const_iterator outputs_begin, 
-    const size_t outputs_size,
-    std::vector<GradientsAndOutputs>& batch_given_outputs, 
-    const std::vector<Layer>& layers) const
+void NeuralNetwork::calculate_forward_feed(
+  NeuralNetwork::GradientsAndOutputs& gradients_outputs,
+  const std::vector<double>& inputs, 
+  const std::vector<Layer>& layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto batch_size = batch_given_outputs.size();
-  if(batch_size == 0)
-  {
-    _options.logger().log_error("Batch size is 0 so we cannot do back propagation!");
-    throw new std::invalid_argument("Batch size is 0 so we cannot do back propagation!");
-  }
-
-  // calculate all the gradients in the batch.
-  calculate_batch_back_propagation_gradients(outputs_begin, outputs_size, batch_given_outputs, layers);
-}
-
-void NeuralNetwork::update_layers_with_gradients(const std::vector<std::vector<GradientsAndOutputs>>& epoch_gradients_outputs, std::vector<Layer>& layers, double learning_rate) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  // Prepare result vector with proper dimensions
-  LayersAndNeurons<std::vector<double>> gradients_and_outputs(get_topology(), true, true);
-  LayersAndNeurons<double> averages(get_topology(), false, true);
-
-  // get the average gradient for all the batches for that epoch
-  recalculate_gradient_avergages(epoch_gradients_outputs, averages);
-  for(const auto& this_epoch_gradients_outputs : epoch_gradients_outputs)
-  {
-    for(const auto& this_batch_gradients_outputs : this_epoch_gradients_outputs)
-    {
-      average_batch_gradients_with_averages(this_batch_gradients_outputs, averages, gradients_and_outputs);
-      update_layers_with_gradients(gradients_and_outputs, layers, learning_rate);      
-    }
-  }
-}
-
-void NeuralNetwork::update_layers_with_gradients(const LayersAndNeurons<std::vector<double>>& activation_gradients, std::vector<Layer>& layers, double learning_rate) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  // update the weights in reverse
-  for (size_t layer_number = layers.size() - 1; layer_number > 0; --layer_number) 
-  {
-    auto& layer = layers[layer_number];
-    auto& previous_layer = layers[layer_number - 1];
-
-    const size_t layer_size = layer.size() - 1; //  exclude bia
-    for (size_t neuron_number = 0; neuron_number < layer_size; ++neuron_number) 
-    {
-      auto& neuron = layer.get_neuron(static_cast<unsigned>(neuron_number));
-      const auto& weights_gradients = activation_gradients.get(static_cast<unsigned>(layer_number-1), static_cast<unsigned>(neuron_number));
-      neuron.update_input_weights(previous_layer, weights_gradients, learning_rate);
-    }
-  }
-}
-
-std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::calculate_forward_feed(
-    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
-    const std::vector<std::vector<double>>::const_iterator inputs_end, 
-    const std::vector<Layer>& layers) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  size_t size = inputs_end - inputs_begin;
-  std::vector<GradientsAndOutputs> activations_per_layer_per_input;
-  activations_per_layer_per_input.reserve(size);
-
-  for(size_t input_number = 0; input_number < size; ++input_number)
-  {
-    const auto& input = inputs_begin+input_number;
-    activations_per_layer_per_input.emplace_back(calculate_forward_feed(*input, layers));
-  }
-  return activations_per_layer_per_input;
-}
-
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const std::vector<double>& inputs, const std::vector<Layer>& layers) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-
-  // the return value is the activation values per layers.
-  GradientsAndOutputs activations_per_layer(get_topology());
 
   //  the initial set of output values where we are starting from.
-  activations_per_layer.set_outputs(0, inputs);
+  gradients_outputs.set_outputs(0, inputs);
 
   // then forward propagate from the input to ... hopefully, the output.
   auto previous_layer_output_values = inputs;
@@ -854,29 +738,16 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::calculate_forward_feed(const s
     for (size_t neuron_number = 0; neuron_number < this_layer.size() - 1; ++neuron_number)
     {
       const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
-#ifdef NDEBUG
       this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values));
-#else
-      auto output_value = neuron.calculate_forward_feed(previous_layer, previous_layer_output_values);
-      if (!std::isfinite(output_value))
-      {
-        _options.logger().log_error("Error while calculating forward feed.");
-        throw std::invalid_argument("Error while calculating forward feed.");
-      }
-      this_output_values.emplace_back(output_value);
-#endif
     }
 
-    activations_per_layer.set_outputs(
+    gradients_outputs.set_outputs(
       static_cast<unsigned>(layer_number),
-        this_output_values
-        );
+      this_output_values
+    );
     previous_layer_output_values = std::move(this_output_values);
     previous_layer_output_values.push_back(1.0);
   }
-  
-  // return the output values per layer.
-  return activations_per_layer;
 }
 
 std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer)
@@ -1027,15 +898,13 @@ void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vec
       errorPool->enqueue(
         [=]()
         {
-          auto outputs = calculate_forward_feed(
-            training_inputs.begin() + start_index,
-            training_inputs.begin() + end_index,
-            layers);
           std::vector<std::vector<double>> predictions;
-          predictions.reserve(outputs.size());
-          for(const auto&output : outputs)
+          predictions.reserve(end_index - start_index);
+          for(size_t index = start_index; index < end_index; ++index)
           {
-            auto local_predictions = output.output_back();
+            GradientsAndOutputs gradients(get_topology());
+            calculate_forward_feed(gradients, *(training_inputs.begin()+index),  layers);
+            auto local_predictions = gradients.output_back();
             predictions.emplace_back(std::move(local_predictions));
           }
           return predictions;
@@ -1043,9 +912,10 @@ void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vec
     }
     else
     {
+      GradientsAndOutputs gradients(get_topology());
       const auto& inputs = training_inputs[start_index];
-      auto all_outputs = calculate_forward_feed(inputs, layers);
-      predictions.emplace_back(all_outputs.output_back());
+      calculate_forward_feed(gradients, inputs, layers);
+      predictions.emplace_back(gradients.output_back());
     }
   }
 
