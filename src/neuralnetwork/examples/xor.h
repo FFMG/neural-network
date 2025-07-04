@@ -18,6 +18,7 @@ private:
       .with_logger(logger)
       .with_learning_rate(0.1)
       .with_number_of_epoch(epoch)
+      .with_optimiser_type(OptimiserType::SGD)
       .build();
 
     return new NeuralNetwork(options);
