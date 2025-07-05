@@ -174,7 +174,7 @@ public:
   }
   NeuralNetworkOptions& with_learning_rate_boost_rate(double every_percent, double restart_boost)
   {
-    _learning_rate_restart_rate = restart_boost;
+    _learning_rate_restart_rate = every_percent;
     _learning_rate_restart_boost = restart_boost;
     return *this;
   }
