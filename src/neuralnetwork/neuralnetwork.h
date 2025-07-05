@@ -16,7 +16,7 @@ class NeuralNetwork;
 class NeuralNetworkOptions
 {
 private:
-  NeuralNetworkOptions(const std::vector<unsigned>& topology) : 
+  NeuralNetworkOptions(const std::vector<unsigned>& topology) :
     _topology(topology),
     _hidden_activation(activation::method::sigmoid),
     _output_activation(activation::method::sigmoid),
@@ -63,7 +63,7 @@ public:
   {
     *this = std::move(nno);
   }
-  
+
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
   {
     if (this != &nno)
@@ -230,7 +230,7 @@ public:
     _optimiser_type = optimiser_type;
     return *this;
   }
-  
+
   NeuralNetworkOptions& build()
   {
     if (topology().size() < 2)
@@ -259,7 +259,7 @@ public:
     }
     return *this;
   }
-  
+
   static NeuralNetworkOptions create(const std::vector<Layer>& layers)
   {
     auto topology = std::vector<unsigned>();
@@ -714,8 +714,8 @@ private:
 
   std::vector<double> calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
 
-  void update_layers_with_gradients(const GradientsAndOutputs& batch_activation_gradient, std::vector<Layer>& layers, double learning_rate) const;
-  void update_layers_with_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients, std::vector<Layer>& layers, double learning_rate) const;
+  void apply_weight_gradients(std::vector<Layer>& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
+  void apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
 
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
