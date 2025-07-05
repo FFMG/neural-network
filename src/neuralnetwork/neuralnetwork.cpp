@@ -263,47 +263,6 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   return gradients;
 }
 
-void NeuralNetwork::log_training_info(
-  const std::vector<std::vector<double>>& training_inputs,
-  const std::vector<std::vector<double>>& training_outputs,
-  const std::vector<size_t>& training_indexes, 
-  const std::vector<size_t>& checking_indexes, 
-  const std::vector<size_t>& final_check_indexes) const
-{
-  _options.logger().log_info("Tainning will use: ");
-  _options.logger().log_info(training_indexes.size(), " training samples.");
-  _options.logger().log_info(checking_indexes.size(), " in training error check samples.");
-  _options.logger().log_info(final_check_indexes.size(), " final error check samples.");
-  _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
-  _options.logger().log_info("Learning rate decay rate:", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
-  _options.logger().log_info("Input size:", training_inputs.front().size());
-  _options.logger().log_info("Output size:", training_outputs.front().size());
-  std::string hidden_layer_message = "Hidden layers: {";
-  for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
-  {
-    hidden_layer_message += std::to_string(_layers[layer].size() - 1); // remove the bias
-    if (layer < _layers.size() - 2)
-    {
-      hidden_layer_message += ", ";
-    }
-  }
-  hidden_layer_message += "}";
-  _options.logger().log_info(hidden_layer_message);
-
-  _options.logger().log_info("Batch size: ", _options.batch_size());
-  if (_options.batch_size() > 1)
-  {
-    if (_options.number_of_threads() <= 0)
-    {
-      _options.logger().log_info("Number of threads: ", (std::thread::hardware_concurrency() - 1));
-    }
-    else
-    {
-      _options.logger().log_info("Number of threads: ", _options.number_of_threads());
-    }
-  }
-}
-
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -389,8 +348,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<GradientsAndOutputs> epoch_gradients;
   epoch_gradients.reserve(num_batches);
 
+  // learning rate decay
   const auto initial_learning_rate = _learning_rate;
   const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch);
+
+  // learning rate boost.
+  const auto learning_rate_restart_rate = static_cast<int>(_options.learning_rate_restart_rate() / 100.0 * number_of_epoch); // every 10%
+
+  // the current learning rate base.
+  double learning_rate_base = initial_learning_rate;
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
   
@@ -442,7 +408,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, error_pool);
 
     // decay the learning rate.
-    _learning_rate = initial_learning_rate * exp(-learning_rate_decay_rate * epoch);
+    _learning_rate = learning_rate_base * exp(-learning_rate_decay_rate * epoch);
+
+    // Boost the baseline every N epochs
+    if (epoch != 0 && epoch % learning_rate_restart_rate == 0 && _options.learning_rate_restart_boost() != 1.0)
+    {
+      learning_rate_base *= _options.learning_rate_restart_boost();
+      _options.logger().log_debug("Learning rate boost to ", std::fixed, std::setprecision(15), learning_rate_base);
+    }
 
     // then get the scheduler if we can improve it further.
     if (_options.adaptive_learning_rate())
@@ -932,4 +905,46 @@ void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vec
 
   _error = calculate_error(training_outputs, predictions);
   _mean_absolute_percentage_error = calculate_forecast_accuracy(training_outputs, predictions);
+}
+
+void NeuralNetwork::log_training_info(
+  const std::vector<std::vector<double>>& training_inputs,
+  const std::vector<std::vector<double>>& training_outputs,
+  const std::vector<size_t>& training_indexes,
+  const std::vector<size_t>& checking_indexes,
+  const std::vector<size_t>& final_check_indexes) const
+{
+  _options.logger().log_info("Tainning will use: ");
+  _options.logger().log_info(training_indexes.size(), " training samples.");
+  _options.logger().log_info(checking_indexes.size(), " in training error check samples.");
+  _options.logger().log_info(final_check_indexes.size(), " final error check samples.");
+  _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
+  _options.logger().log_info("Learning rate decay rate:", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  _options.logger().log_info("Input size:", training_inputs.front().size());
+  _options.logger().log_info("Output size:", training_outputs.front().size());
+  _options.logger().log_info("Optimiser:", optimiser_type_to_string(_options.optimiser_type()));
+  std::string hidden_layer_message = "Hidden layers: {";
+  for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
+  {
+    hidden_layer_message += std::to_string(_layers[layer].size() - 1); // remove the bias
+    if (layer < _layers.size() - 2)
+    {
+      hidden_layer_message += ", ";
+    }
+  }
+  hidden_layer_message += "}";
+  _options.logger().log_info(hidden_layer_message);
+
+  _options.logger().log_info("Batch size: ", _options.batch_size());
+  if (_options.batch_size() > 1)
+  {
+    if (_options.number_of_threads() <= 0)
+    {
+      _options.logger().log_info("Number of threads: ", (std::thread::hardware_concurrency() - 1));
+    }
+    else
+    {
+      _options.logger().log_info("Number of threads: ", _options.number_of_threads());
+    }
+  }
 }
