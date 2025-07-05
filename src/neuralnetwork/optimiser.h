@@ -19,7 +19,7 @@ enum class OptimiserType
   None
 };
 
-std::string optimiser_type_to_string(OptimiserType type)
+inline std::string optimiser_type_to_string(OptimiserType type)
 {
   switch (type) 
   {
