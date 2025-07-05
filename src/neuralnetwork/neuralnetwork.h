@@ -31,7 +31,9 @@ private:
     _error_calculation(ErrorCalculation::none),
     _forecast_accuracy(ForecastAccuracy::none),
     _adaptive_learning_rate(false),
-    _optimiser_type(OptimiserType::Adam)
+    _optimiser_type(OptimiserType::SGD),
+    _learning_rate_restart_rate(1),
+    _learning_rate_restart_boost(1)
   {
   }
 
@@ -64,7 +66,7 @@ public:
   
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
   {
-    if( this != &nno)
+    if (this != &nno)
     {
       _topology = nno._topology;
       _hidden_activation = nno._hidden_activation;
@@ -81,12 +83,14 @@ public:
       _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
       _optimiser_type = nno._optimiser_type;
+      _learning_rate_restart_rate = nno._learning_rate_restart_rate;
+      _learning_rate_restart_boost = nno._learning_rate_restart_boost;
     }
     return *this;
   }
   NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno) noexcept
   {
-    if( this != &nno)
+    if (this != &nno)
     {
       _topology = std::move(nno._topology);
       _hidden_activation = nno._hidden_activation;
@@ -103,6 +107,8 @@ public:
       _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
       _optimiser_type = nno._optimiser_type;
+      _learning_rate_restart_rate = nno._learning_rate_restart_rate;
+      _learning_rate_restart_boost = nno._learning_rate_restart_boost;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -112,12 +118,6 @@ public:
       nno._forecast_accuracy = ForecastAccuracy::none;
       nno._optimiser_type = OptimiserType::None;
     }
-    return *this;
-  }
-
-  NeuralNetworkOptions& with_learning_rate(double learning_rate)
-  {
-    _learning_rate = learning_rate;
     return *this;
   }
   NeuralNetworkOptions& with_hidden_activation_method(const activation::method& activation)
@@ -162,9 +162,25 @@ public:
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
     return *this;
   }
+  NeuralNetworkOptions& with_learning_rate(double learning_rate)
+  {
+    _learning_rate = learning_rate;
+    return *this;
+  }
   NeuralNetworkOptions& with_learning_rate_decay_rate(double learning_rate_decay_rate)
   {
     _learning_rate_decay_rate = learning_rate_decay_rate;
+    return *this;
+  }
+  NeuralNetworkOptions& with_learning_rate_boost_rate(double every_percent, double restart_boost)
+  {
+    _learning_rate_restart_rate = restart_boost;
+    _learning_rate_restart_boost = restart_boost;
+    return *this;
+  }
+  NeuralNetworkOptions& with_adaptive_learning_rates(bool adaptive_learning_rate)
+  {
+    _adaptive_learning_rate = adaptive_learning_rate;
     return *this;
   }
   NeuralNetworkOptions& with_no_error_calculation()
@@ -209,11 +225,6 @@ public:
     _forecast_accuracy = forecast_accuracy;
     return *this;
   }
-  NeuralNetworkOptions& with_adaptive_learning_rates(bool adaptive_learning_rate)
-  {
-    _adaptive_learning_rate = adaptive_learning_rate;
-    return *this;
-  }
   NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
   {
     _optimiser_type = optimiser_type;
@@ -222,19 +233,29 @@ public:
   
   NeuralNetworkOptions& build()
   {
-    if(topology().size() < 2)
+    if (topology().size() < 2)
     {
       logger().log_error("The topology is not value, you must have at least 2 layers.");
       throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
     }
-    if(number_of_threads() > 0 && batch_size() <= 1 )
+    if (number_of_threads() > 0 && batch_size() <= 1)
     {
-      logger().log_warning("Because the batch size is 1, the number of threads is ignored." );
+      logger().log_warning("Because the batch size is 1, the number of threads is ignored.");
     }
     if (learning_rate_decay_rate() < 0)
     {
       logger().log_error("The learning rate decay rate cannot be negative!");
       throw std::invalid_argument("The learning rate decay rate cannot be negative!");
+    }
+    if (learning_rate_restart_rate() <= 0.0 || learning_rate_restart_rate() > 100)
+    {
+      logger().log_error("The learning rate has to be between 0% and 100%!");
+      throw std::invalid_argument("The learning rate has to be between 0% and 100%!");
+    }
+    if (learning_rate_restart_boost() < 1.0)
+    {
+      logger().log_error("The learning rate restart boost cannot be less than 1!");
+      throw std::invalid_argument("The learning rate restart boost cannot be less than 1!");
     }
     return *this;
   }
@@ -246,7 +267,7 @@ public:
     for (const auto& layer : layers)
     {
       // remove the bias Neuron.
-      topology.emplace_back(layer.size() -1);
+      topology.emplace_back(layer.size() - 1);
     }
     return create(topology);
   }
@@ -265,24 +286,27 @@ public:
       .with_rmse_error_calculation()
       .with_mape_forecast_accuracy()
       .with_adaptive_learning_rates(false)
-      .with_optimiser_type(OptimiserType::Adam);
+      .with_optimiser_type(OptimiserType::SGD)
+      .with_learning_rate_boost_rate(1.0, 1.0);
   }
 
-  inline const std::vector<unsigned>& topology() const { return _topology;}
-  inline const activation::method& hidden_activation_method() const{ return _hidden_activation;}
-  inline const activation::method& output_activation_method() const{ return _output_activation;}
-  inline double learning_rate() const{ return _learning_rate;}
-  inline int number_of_epoch() const { return _number_of_epoch;}
+  inline const std::vector<unsigned>& topology() const { return _topology; }
+  inline const activation::method& hidden_activation_method() const { return _hidden_activation; }
+  inline const activation::method& output_activation_method() const { return _output_activation; }
+  inline double learning_rate() const { return _learning_rate; }
+  inline int number_of_epoch() const { return _number_of_epoch; }
   inline int batch_size() const { return _batch_size; }
   inline bool data_is_unique() const { return _data_is_unique; }
-  inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const{ return _progress_callback; }
+  inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const { return _progress_callback; }
   inline const Logger& logger() const { return _logger; }
-  inline int number_of_threads() const {return _number_of_threads; }
+  inline int number_of_threads() const { return _number_of_threads; }
   inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
   inline const ErrorCalculation& error_calculation() const { return _error_calculation; }
   inline const ForecastAccuracy& forecast_accuracy() const { return _forecast_accuracy; }
   inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
   inline OptimiserType optimiser_type() const { return _optimiser_type; }
+  inline double learning_rate_restart_rate() const { return _learning_rate_restart_rate; }
+  inline double learning_rate_restart_boost() const { return _learning_rate_restart_boost; }
 
 private:
   std::vector<unsigned> _topology;
@@ -300,6 +324,8 @@ private:
   ForecastAccuracy _forecast_accuracy;
   bool _adaptive_learning_rate;
   OptimiserType _optimiser_type;
+  double _learning_rate_restart_rate;
+  double _learning_rate_restart_boost;
 };
 
 class NeuralNetwork
