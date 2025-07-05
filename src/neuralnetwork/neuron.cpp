@@ -145,7 +145,7 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate)
+void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(gradients.size() == previous_layer.size());
@@ -183,10 +183,50 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       apply_adam_update(weight_param, clipped_gradient, learning_rate, weight_decay);
       break;
 
+    case OptimiserType::AdamW:
+      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-8, epoch + 1);
+      break;
+
     default:
       throw std::runtime_error("Unknown optimizer type.");
     }
   }
+}
+
+void Neuron::apply_adamw_update(
+  WeightParam& weight_param,
+  double raw_gradient,           // unclipped, averaged over batch
+  double learning_rate,
+  double weight_decay,
+  double beta1,
+  double beta2,
+  double epsilon,
+  int time_step                  // Starts at 1
+) const
+{
+  // Update biased first and second moment estimates
+  weight_param.set_first_moment_estimate(beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient);
+  weight_param.set_second_moment_estimate(beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
+
+  // Compute bias-corrected moments
+  double first_moment_estimate = weight_param.first_moment_estimate();
+  double m_hat = first_moment_estimate / (1.0 - std::pow(beta1, time_step));
+
+  auto second_moment_estimate = weight_param.second_moment_estimate();
+  double v_hat = second_moment_estimate / (1.0 - std::pow(beta2, time_step));
+
+  // AdamW update rule
+  double weight_update = learning_rate * (m_hat / (std::sqrt(v_hat) + epsilon));
+
+  // Decoupled weight decay
+  auto new_weight = weight_param.value();
+  new_weight *= (1.0 - learning_rate * weight_decay);
+
+  // Apply update
+  new_weight -= weight_update;
+
+  weight_param.set_value(new_weight);
+  weight_param.set_gradient(raw_gradient);
 }
 
 void Neuron::apply_adam_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double weight_decay) const
@@ -200,15 +240,11 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double clipped_gradien
   const double epsilon = 1e-8;
 
   // Update biased first moment estimate (EMA of gradient)
-  double first_moment_estimate =
-    beta1 * weight_param.first_moment_estimate() +
-    (1.0 - beta1) * clipped_gradient;
+  double first_moment_estimate = beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * clipped_gradient;
   weight_param.set_first_moment_estimate(first_moment_estimate);
 
   // Update biased second raw moment estimate (EMA of squared gradient)
-  double second_moment_estimate =
-    beta2 * weight_param.second_moment_estimate() +
-    (1.0 - beta2) * clipped_gradient * clipped_gradient;
+  auto second_moment_estimate = beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * clipped_gradient * clipped_gradient;
   weight_param.set_second_moment_estimate(second_moment_estimate);
 
   // Compute bias-corrected estimates
@@ -223,8 +259,7 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double clipped_gradien
     (std::sqrt(second_unbiased) + epsilon);
 
   // Apply weight decay and update weight
-  double new_weight =
-    weight_param.value() * (1.0 - weight_decay) + adam_update;
+  double new_weight = weight_param.value() * (1.0 - weight_decay) + adam_update;
 
   weight_param.set_value(new_weight);
   weight_param.set_gradient(clipped_gradient); // Store raw gradient    

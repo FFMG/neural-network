@@ -245,7 +245,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   ) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  GradientsAndOutputs gradients(_options.topology(), size);
+  GradientsAndOutputs gradients(_options.topology(), static_cast<unsigned>(size));
   if(size == 1)
   {
     calculate_forward_feed(gradients, *inputs_begin, _layers);
@@ -389,7 +389,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
             batch_training_inputs.begin() + start_index,
             batch_training_outputs.begin() + start_index,
             total_size);
-        update_layers_with_gradients(single_batch, _layers, _learning_rate);
+        apply_weight_gradients(_layers, single_batch, _learning_rate, epoch);
       }
     }
     MYODDWEB_PROFILE_MARK();
@@ -398,7 +398,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     if (task_pool != nullptr)
     {
       epoch_gradients = task_pool->get();
-      update_layers_with_gradients(epoch_gradients, _layers, _learning_rate);
+      apply_weight_gradients(_layers, epoch_gradients, _learning_rate, epoch);
 
       // then re-shuffle everything
       recreate_batch_from_indexes(training_indexes, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
@@ -630,16 +630,16 @@ std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_num
 }
 
 // multiple batches
-void NeuralNetwork::update_layers_with_gradients(const std::vector<GradientsAndOutputs>& batch_activation_gradients, std::vector<Layer>& layers, double learning_rate) const
+void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const
 {
   for(const auto& batch_activation_gradient : batch_activation_gradients)  
   {
-    update_layers_with_gradients(batch_activation_gradient, layers, learning_rate);
+    apply_weight_gradients(layers, batch_activation_gradient, learning_rate, epoch);
   }
 }
 
 // single batch
-void NeuralNetwork::update_layers_with_gradients(const GradientsAndOutputs& batch_activation_gradient, std::vector<Layer>& layers, double learning_rate) const
+void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const
 {
   const auto& layer_size = batch_activation_gradient.num_gradient_layers();
   for (auto layer_number = layer_size-1; layer_number > 0; --layer_number)
@@ -649,7 +649,7 @@ void NeuralNetwork::update_layers_with_gradients(const GradientsAndOutputs& batc
     {
       auto& neuron = layers[layer_number].get_neuron(neuron_number);
       const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(layers[layer_number - 1], gradients, learning_rate);
+      neuron.apply_weight_gradients(layers[layer_number - 1], gradients, learning_rate, epoch);
     }
   }
 }

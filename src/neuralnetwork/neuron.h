@@ -235,7 +235,7 @@ public:
   
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
 
-  void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate);
+  void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch);
 
   unsigned get_index() const;
   std::vector<std::array<double, 2>> get_weight_params() const;
@@ -250,7 +250,17 @@ private:
   // optimisers
   void apply_sgd_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double momentum, double weight_decay) const;
   void apply_adam_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double weight_decay) const;
-
+  void apply_adamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double weight_decay,
+    double beta1,
+    double beta2,
+    double epsilon,
+    int time_step
+  ) const;
+  
   std::pair<double, double> clip_gradient(double gradient) const;
   
   // data to save...
