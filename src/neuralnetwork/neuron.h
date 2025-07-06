@@ -54,9 +54,9 @@ private:
       src._value = 0.0;
       src._gradient = 0.0;
       src._velocity = 0.0;
-      _first_moment_estimate = 0.0;
-      _second_moment_estimate = 0.0;
-      _time_step = 0;
+      src._first_moment_estimate = 0.0;
+      src._second_moment_estimate = 0.0;
+      src._time_step = 0;
     }
     WeightParam& operator=(const WeightParam& src) noexcept
     {
@@ -87,9 +87,9 @@ private:
         src._value = 0.0;
         src._gradient = 0.0;
         src._velocity = 0.0;
-        _first_moment_estimate = 0.0;
-        _second_moment_estimate = 0.0;
-        _time_step = 0;
+        src._first_moment_estimate = 0.0;
+        src._second_moment_estimate = 0.0;
+        src._time_step = 0;
       }
       return *this;
     }
