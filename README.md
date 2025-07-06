@@ -32,6 +32,8 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * SGD
 * Adam
 * AdamW
+* Nadam
+* NadamW
 
 #### Not supported (yet)
 
@@ -40,11 +42,9 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * RMSProp
 * AdaGrad
 * AdaDelta
-* Nadam
 * AMSGrad
 * LAMB
 * Lion
-
 
 ### Examples
 

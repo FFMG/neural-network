@@ -257,9 +257,25 @@ private:
     double weight_decay,
     double beta1,
     double beta2,
-    double epsilon,
-    int time_step
+    double epsilon
   ) const;
+  void apply_nadam_update(
+      WeightParam& weight_param,
+      double raw_gradient,
+      double learning_rate,
+      double beta1,
+      double beta2,
+      double epsilon
+  ) const;
+  void apply_nadamw_update(
+      WeightParam& weight_param,
+      double raw_gradient,
+      double learning_rate,
+      double weight_decay,
+      double beta1,
+      double beta2,
+      double epsilon
+  ) const;  
   
   std::pair<double, double> clip_gradient(double gradient) const;
   

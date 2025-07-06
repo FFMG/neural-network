@@ -13,6 +13,7 @@ enum class OptimiserType
   AdaGrad,
   AdaDelta,
   Nadam,
+  NadamW,
   AMSGrad,
   LAMB,
   Lion,
@@ -32,6 +33,7 @@ inline std::string optimiser_type_to_string(OptimiserType type)
   case OptimiserType::AdaGrad:   return "AdaGrad";
   case OptimiserType::AdaDelta:  return "AdaDelta";
   case OptimiserType::Nadam:     return "Nadam";
+  case OptimiserType::NadamW:    return "NadamW";
   case OptimiserType::AMSGrad:   return "AMSGrad";
   case OptimiserType::LAMB:      return "LAMB";
   case OptimiserType::Lion:      return "Lion";

@@ -145,7 +145,7 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch)
+void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(gradients.size() == previous_layer.size());
@@ -184,13 +184,100 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::AdamW:
-      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-8, epoch + 1);
+      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-8);
+      break;
+
+    case OptimiserType::Nadam:
+      apply_nadam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
+      break;
+
+    case OptimiserType::NadamW:
+      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-8);
       break;
 
     default:
       throw std::runtime_error("Unknown optimizer type.");
     }
   }
+}
+
+void Neuron::apply_nadam_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon
+) const
+{
+  // Update timestep
+  weight_param.increment_timestep();
+  const auto& time_step = weight_param.timestep();
+
+  // These moment estimate updates are identical to Adam
+  weight_param.set_first_moment_estimate(beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient);
+  weight_param.set_second_moment_estimate(beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
+
+  double m_hat = weight_param.first_moment_estimate() / (1.0 - std::pow(beta1, time_step));
+  double v_hat = weight_param.second_moment_estimate() / (1.0 - std::pow(beta2, time_step));
+
+  // Nadam's key difference:
+  // It combines the momentum from the historical gradient (m_hat) with the
+  // momentum from the current gradient.
+  double corrected_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
+
+  // The denominator is the same as Adam's
+  double weight_update = learning_rate * (corrected_gradient / (std::sqrt(v_hat) + epsilon));
+
+// Apply the final update (No decoupled weight decay)
+  double new_weight = weight_param.value() - weight_update;
+
+  weight_param.set_value(new_weight);
+  weight_param.set_gradient(raw_gradient);
+}
+
+void Neuron::apply_nadamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double weight_decay,
+    double beta1,
+    double beta2,
+    double epsilon
+) const
+{
+    // 1. Increment timestep
+    weight_param.increment_timestep();
+    const int time_step = weight_param.timestep();
+
+    // 2. Update biased first and second moment estimates
+    const double first_moment = beta1 * weight_param.first_moment_estimate() +
+                                (1.0 - beta1) * raw_gradient;
+    const double second_moment = beta2 * weight_param.second_moment_estimate() +
+                                 (1.0 - beta2) * (raw_gradient * raw_gradient);
+
+    weight_param.set_first_moment_estimate(first_moment);
+    weight_param.set_second_moment_estimate(second_moment);
+
+    // 3. Bias-corrected moments
+    const double bias_correction1 = 1.0 - std::pow(beta1, time_step);
+    const double bias_correction2 = 1.0 - std::pow(beta2, time_step);
+
+    const double m_hat = first_moment / bias_correction1;
+    const double v_hat = second_moment / bias_correction2;
+
+    // 4. NAdam momentum blend with decoupled weight decay (NAdamW)
+    const double blended_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient / bias_correction1);
+    const double adaptive_step = blended_gradient / (std::sqrt(v_hat) + epsilon);
+    const double weight_update = learning_rate * adaptive_step;
+
+    // 5. Apply weight decay (decoupled)
+    const double decayed_weight = weight_param.value() * (1.0 - learning_rate * weight_decay);
+    const double new_weight = decayed_weight - weight_update;
+
+    // 6. Store new values
+    weight_param.set_value(new_weight);
+    weight_param.set_gradient(raw_gradient);  // raw gradient, in case needed elsewhere
 }
 
 void Neuron::apply_adamw_update(
@@ -200,12 +287,12 @@ void Neuron::apply_adamw_update(
   double weight_decay,
   double beta1,
   double beta2,
-  double epsilon,
-  int time_step                  // Starts at 1
+  double epsilon
 ) const
 {
   // Update timestep
   weight_param.increment_timestep();
+  const auto& time_step = weight_param.timestep();
 
   // Update biased first and second moment estimates
   weight_param.set_first_moment_estimate(beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient);
