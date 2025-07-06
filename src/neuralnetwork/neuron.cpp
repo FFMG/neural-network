@@ -204,6 +204,9 @@ void Neuron::apply_adamw_update(
   int time_step                  // Starts at 1
 ) const
 {
+  // Update timestep
+  weight_param.increment_timestep();
+
   // Update biased first and second moment estimates
   weight_param.set_first_moment_estimate(beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient);
   weight_param.set_second_moment_estimate(beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
