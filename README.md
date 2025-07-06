@@ -26,6 +26,26 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * swish_activation
 * gelu_activation
 
+### Optimiser
+
+* None
+* SGD
+* Adam
+* AdamW
+
+#### Not supported (yet)
+
+* Momentum
+* Nesterov
+* RMSProp
+* AdaGrad
+* AdaDelta
+* Nadam
+* AMSGrad
+* LAMB
+* Lion
+
+
 ### Examples
 
 #### XOR example with multiple hidden layers
@@ -264,22 +284,21 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * logger[=none]: Your logger.
 * number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
 * learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training.
+* error_calculation[=rmse]: The error calculation that we will calculate durring training.
+  * none
+  * huber loss
+  * mae
+  * mse
+  * rmse
+* forecast_accuracy[=mape]
+  * none
+  * mape
+  * smape
+* adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
+* optimiser_type[=SGD]: The optimiser we will use during training.
+* learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 
 Remember to call `.build()` to create your option as it does error checking.
-
-## Activation methods
-
-The availables activation methods are:
-
-* linear
-* sigmoid
-* tanh
-* relu
-* leakyRelu
-* PRelu
-* selu
-* swish
-* gelu
 
 ## Data Normalisation
 
