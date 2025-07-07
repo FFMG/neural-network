@@ -247,6 +247,11 @@ public:
       logger().log_error("The learning rate decay rate cannot be negative!");
       throw std::invalid_argument("The learning rate decay rate cannot be negative!");
     }
+    if (learning_rate_decay_rate() >= 1.0) 
+    {
+      logger().log_error("The learning rate decay rate cannot be more than 1!");
+      throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
+    }    
     if (learning_rate_restart_rate() <= 0.0 || learning_rate_restart_rate() > 100)
     {
       logger().log_error("The learning rate has to be between 0% and 100%!");
