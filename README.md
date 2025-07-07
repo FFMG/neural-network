@@ -283,7 +283,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * progress_callback[=null]: The callback.
 * logger[=none]: Your logger.
 * number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
-* learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training.
+* learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training. The number must be between 0 and 1
 * error_calculation[=rmse]: The error calculation that we will calculate durring training.
   * none
   * huber loss

@@ -350,7 +350,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   // learning rate decay
   const auto initial_learning_rate = _learning_rate;
-  const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : (_options.learning_rate_decay_rate() / number_of_epoch);
+  const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : std::log(1.0 / _options.learning_rate_decay_rate()) / number_of_epoch;
 
   // learning rate boost.
   const auto learning_rate_restart_rate = static_cast<int>(_options.learning_rate_restart_rate() / 100.0 * number_of_epoch); // every 10%
@@ -408,8 +408,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, error_pool);
 
     // decay the learning rate.
-    _learning_rate = learning_rate_base * exp(-learning_rate_decay_rate * epoch);
-
+    if(learning_rate_decay_rate != 0 )
+    {
+      _learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
+    }
+    
     // Boost the baseline every N epochs
     if (epoch != 0 && epoch % learning_rate_restart_rate == 0 && _options.learning_rate_restart_boost() != 1.0)
     {
