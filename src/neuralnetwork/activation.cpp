@@ -351,7 +351,12 @@ std::vector<double> activation::lecun_initialization(int num_neurons_prev_layer)
 
 std::string activation::method_to_string() const
 {
-  switch (_method)
+  return method_to_string(_method);
+}
+
+std::string activation::method_to_string(method m)
+{
+  switch (m)
   {
   case linear:    return "linear";
   case sigmoid:   return "sigmoid";

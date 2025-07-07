@@ -35,6 +35,7 @@ public:
   double get_alpha() const;
 
   std::string method_to_string() const;
+  static std::string method_to_string(method m);
 
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);
