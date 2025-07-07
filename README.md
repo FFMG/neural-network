@@ -188,17 +188,16 @@ train(
 
 You can use a tainning callback method to see how the NN is training ...
 
-Simply pass a function pointer to the train method and it will be called after each percent change.
-The value is between 0% and 100%
+The helper method is to help you control how much data you want to pull while training.
 
-0% and 100% are always called.
+Training is very CPU bound so it helps to limit what is being calculated per epoch.
 
 ```c++
 #include <iostream>
 #include "neuralnetwork.h"
 ...
 
-void show_progress_bar(int current_epoch, int total_number_of_epoch, NeuralNetwork& nn)
+void show_progress_bar(NeuralNetworkHelper& nn)
 {
   // you can use the values to display pretty things.
 }
