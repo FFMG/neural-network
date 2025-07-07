@@ -297,14 +297,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
-  TaskQueuePool<std::vector<std::vector<double>>>* error_pool = nullptr;
   if (batch_size > 1)
   {
     task_pool = new TaskQueuePool<GradientsAndOutputs>(
-      _options.logger(),
-      _options.number_of_threads());
-
-    error_pool = new TaskQueuePool<std::vector<std::vector<double>>>(
       _options.logger(),
       _options.number_of_threads());
   }
@@ -389,6 +384,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
             batch_training_inputs.begin() + start_index,
             batch_training_outputs.begin() + start_index,
             total_size);
+
         apply_weight_gradients(_layers, single_batch, _learning_rate, epoch);
       }
     }
@@ -405,7 +401,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
 
     // do an error check to see if we need to adapt.
-    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, batch_size, _layers, error_pool);
+    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, _layers);
 
     // decay the learning rate.
     if(learning_rate_decay_rate != 0 )
@@ -445,18 +441,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete task_pool;
   }
 
-  update_error_and_percentage_error(final_training_inputs, final_training_outputs, batch_size, _layers, error_pool);
+  update_error_and_percentage_error(final_training_inputs, final_training_outputs, _layers);
   _options.logger().log_info("Final Error: ", std::fixed, std::setprecision (15), _error);
   _options.logger().log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
 
   // finaly learning rate
   _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _learning_rate);
-
-  if (error_pool != nullptr)
-  {
-    error_pool->stop();
-    delete error_pool;
-  }
 
   // final callback to show 100% done.
   if (progress_callback != nullptr)
@@ -858,7 +848,7 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>
   return sum_of_percentage_errors / predictions.size();
 }
 
-void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool)
+void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, const std::vector<Layer>& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const size_t training_indexes_size = training_inputs.size();
@@ -866,46 +856,14 @@ void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vec
   std::vector<std::vector<double>> predictions;
   predictions.reserve(training_indexes_size);
 
-  for (size_t start_index = 0; start_index < training_indexes_size; start_index+= batch_size)
-  {
-    if(errorPool != nullptr)
-    {
-      const size_t end_index = std::min(start_index + batch_size, training_indexes_size);
-      errorPool->enqueue(
-        [=]()
-        {
-          std::vector<std::vector<double>> predictions;
-          predictions.reserve(end_index - start_index);
-          for(size_t index = start_index; index < end_index; ++index)
-          {
             GradientsAndOutputs gradients(get_topology());
-            calculate_forward_feed(gradients, *(training_inputs.begin()+index),  layers);
-            auto local_predictions = gradients.output_back();
-            predictions.emplace_back(std::move(local_predictions));
-          }
-          return predictions;
-        });
-    }
-    else
+  for (size_t start_index = 0; start_index < training_indexes_size; ++start_index)
     {
-      GradientsAndOutputs gradients(get_topology());
       const auto& inputs = training_inputs[start_index];
       calculate_forward_feed(gradients, inputs, layers);
       predictions.emplace_back(gradients.output_back());
-    }
+    gradients.zero();
   }
-
-  if(errorPool != nullptr)
-  {
-    auto task_predictions = errorPool->get();
-    for (auto& task_prediction : task_predictions)
-    {
-      predictions.insert(predictions.end(), 
-        std::make_move_iterator(task_prediction.begin()), 
-        std::make_move_iterator(task_prediction.end()));
-    }
-  }
-
   _error = calculate_error(training_outputs, predictions);
   _mean_absolute_percentage_error = calculate_forecast_accuracy(training_outputs, predictions);
 }

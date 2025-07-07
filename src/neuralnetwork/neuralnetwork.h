@@ -425,6 +425,11 @@ private:
       return *this;
     }
 
+    inline void zero()
+    {
+      std::fill(_data.begin(), _data.end(), 0.0);
+    }
+
     inline void set( unsigned layer, unsigned neuron, double&& data)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -572,6 +577,12 @@ private:
       return *this;
     }
     virtual ~GradientsAndOutputs() = default;
+    void zero()
+    {
+      _batch_size = 0;
+      _outputs.zero();
+      _gradients.zero();
+    }
     void add(const GradientsAndOutputs& src)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -733,7 +744,7 @@ private:
   double calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
   double calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
-  void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, int batch_size, std::vector<Layer>& layers, TaskQueuePool<std::vector<std::vector<double>>>* errorPool);
+  void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, const std::vector<Layer>& layers);
 
   // Error calculations
   // Todo this should be moved to a static class a passed as an object.
