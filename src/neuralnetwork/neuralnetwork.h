@@ -13,6 +13,117 @@
 #include "taskqueue.h"
 
 class NeuralNetwork;
+class NeuralNetworkHelper
+{
+public:
+  NeuralNetworkHelper() = delete;
+  NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept
+  {
+    *this = src;
+  }
+  NeuralNetworkHelper(NeuralNetworkHelper&& src) noexcept
+  {
+    *this = std::move(src);
+  }
+  NeuralNetworkHelper& operator=(const NeuralNetworkHelper& src) noexcept
+  {
+    if (this != &src)
+    {
+      _neural_network = src._neural_network;
+      _learning_rate = src._learning_rate;
+      _number_of_epoch = src._number_of_epoch;
+      _epoch = src._epoch;
+      _training_indexes = src._training_indexes;
+      _checking_indexes = src._checking_indexes;
+      _final_check_indexes = src._final_check_indexes;
+      _training_inputs = src._training_inputs;
+      _training_outputs = src._training_outputs;
+    }
+    return *this;
+  }
+  NeuralNetworkHelper& operator=(NeuralNetworkHelper&& src) noexcept
+  {
+    if (this != &src)
+    {
+      _neural_network = src._neural_network;
+      _learning_rate = src._learning_rate;
+      _number_of_epoch = src._number_of_epoch;
+      _epoch = src._epoch;
+      _training_indexes = std::move(src._training_indexes);
+      _checking_indexes = std::move(src._checking_indexes);
+      _final_check_indexes = std::move(src._final_check_indexes);
+      _training_inputs = std::move(src._training_inputs);
+      _training_outputs = std::move(src._training_outputs);
+      src._neural_network = nullptr;
+      src._learning_rate = 0;
+      src._number_of_epoch = 0;
+      src._epoch = 0;
+    }
+    return *this;
+  }
+  virtual ~NeuralNetworkHelper() = default;
+
+  double learning_rate() const { return _learning_rate; }
+  void set_learning_rate(double learning_rate) { _learning_rate = learning_rate; }
+
+  unsigned number_of_epoch() const { return _number_of_epoch; }
+  unsigned epoch() const { return _epoch; }
+
+  const NeuralNetwork& neural_network() const { return *_neural_network; }
+
+protected:
+  NeuralNetworkHelper(
+    NeuralNetwork& neural_network,
+    double learning_rate,
+    unsigned number_of_epoch,
+    const std::vector<std::vector<double>>& training_inputs,
+    const std::vector<std::vector<double>>& training_outputs
+  ) :
+    _neural_network(&neural_network),
+    _learning_rate(learning_rate),
+    _number_of_epoch(number_of_epoch),
+    _epoch(0),
+    _training_inputs(training_inputs),
+    _training_outputs(training_outputs)
+  {
+  }
+
+  void set_epoch(unsigned epoch) { _epoch = epoch; }
+
+  void move_indexes(
+    std::vector<size_t>&& training_indexes,
+    std::vector<size_t>&& checking_indexes,
+    std::vector<size_t>&& final_check_indexes
+  )
+  {
+    _training_indexes = training_indexes;
+    _checking_indexes = checking_indexes;
+    _final_check_indexes = final_check_indexes;
+  }
+
+  void move_training_indexes(std::vector<size_t>&& training_indexes)
+  {
+    _training_indexes = training_indexes;
+  }
+
+  const std::vector<size_t>& training_indexes() const { return _training_indexes; }
+  const std::vector<size_t>& checking_indexes() const { return _checking_indexes; }
+  const std::vector<size_t>& final_check_indexes() const { return _final_check_indexes; }
+
+  friend class NeuralNetwork;
+
+private:
+  NeuralNetwork* _neural_network;
+  double _learning_rate;
+  unsigned _number_of_epoch;
+  unsigned _epoch;
+  std::vector<std::vector<double>> _training_inputs;
+  std::vector<std::vector<double>> _training_outputs;
+  std::vector<size_t> _training_indexes;
+  std::vector<size_t> _checking_indexes;
+  std::vector<size_t> _final_check_indexes;
+};
+
 class NeuralNetworkOptions
 {
 private:
@@ -88,6 +199,7 @@ public:
     }
     return *this;
   }
+
   NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno) noexcept
   {
     if (this != &nno)
@@ -147,7 +259,8 @@ public:
     _data_is_unique = data_is_unique;
     return *this;
   }
-  NeuralNetworkOptions& with_progress_callback(const std::function<bool(int, int, NeuralNetwork&)>& progress_callback)
+
+  NeuralNetworkOptions& with_progress_callback(const std::function<bool(NeuralNetworkHelper&)>& progress_callback)
   {
     _progress_callback = progress_callback;
     return *this;
@@ -302,7 +415,7 @@ public:
   inline int number_of_epoch() const { return _number_of_epoch; }
   inline int batch_size() const { return _batch_size; }
   inline bool data_is_unique() const { return _data_is_unique; }
-  inline const std::function<bool(int, int, NeuralNetwork&)>& progress_callback() const { return _progress_callback; }
+  inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
   inline const Logger& logger() const { return _logger; }
   inline int number_of_threads() const { return _number_of_threads; }
   inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
@@ -321,7 +434,7 @@ private:
   int _number_of_epoch;
   int _batch_size;
   bool _data_is_unique;
-  std::function<bool(int, int, NeuralNetwork&)> _progress_callback;
+  std::function<bool(NeuralNetworkHelper&)> _progress_callback;
   Logger _logger;
   int _number_of_threads;
   double _learning_rate_decay_rate;
@@ -756,15 +869,15 @@ private:
   double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions ) const;
 
-  void recreate_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
+  void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
-  void create_shuffled_indexes(size_t raw_size, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
+  void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, size_t raw_size, bool data_is_unique) const;
 
   void log_training_info(
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs,
-    const std::vector<size_t>& training_indexes, const std::vector<size_t>& checking_indexes, const std::vector<size_t>& final_check_indexes) const;
+    const NeuralNetworkHelper& neural_network_helper) const;
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
