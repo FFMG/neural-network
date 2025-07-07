@@ -34,6 +34,8 @@ public:
   void set_alpha(double alpha);
   double get_alpha() const;
 
+  std::string method_to_string() const;
+
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);
   static std::vector<double> xavier_initialization(int num_neurons_prev_layer, int num_neurons_current_layer);

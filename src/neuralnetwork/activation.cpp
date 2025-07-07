@@ -348,3 +348,23 @@ std::vector<double> activation::lecun_initialization(int num_neurons_prev_layer)
   }
   return weights;
 }
+
+std::string activation::method_to_string() const
+{
+  switch (_method)
+  {
+  case linear:    return "linear";
+  case sigmoid:   return "sigmoid";
+  case tanh:      return "tanh";
+  case relu:      return "relu";
+  case leakyRelu: return "leakyRelu";
+  case PRelu:     return "PRelu";
+  case selu:      return "selu";
+  case swish:     return "swish";
+  case gelu:      return "gelu";
+  default:
+    // Handle unknown enum values by throwing an exception
+    throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
+  }
+}
+

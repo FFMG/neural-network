@@ -16,15 +16,15 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 
 ### Activation methods.
 
-* linear_activation
-* sigmoid_activation
-* tanh_activation
-* relu_activation
-* leakyRelu_activation
-* PRelu_activation
-* selu_activation
-* swish_activation
-* gelu_activation
+* linear
+* sigmoid
+* tanh
+* relu
+* leakyRelu
+* PRelu
+* selu
+* swish
+* gelu
 
 ### Optimiser
 
