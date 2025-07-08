@@ -192,6 +192,26 @@ The helper method is to help you control how much data you want to pull while tr
 
 Training is very CPU bound so it helps to limit what is being calculated per epoch.
 
+You can use the `NeuralNetworkHelper& nn` to get metrics.
+
+```c++
+
+// how far along are we?
+auto current_epoch_number = nn.epoch();
+auto total_number_of_epoch = nn.number_of_epoch();
+
+auto metrics = nn.get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape);
+
+// use the rmse error and mape
+
+metrics = nn.get_metrics(NeuralNetworkOptions::ErrorCalculation::huber_loss, NeuralNetworkOptions::ForecastAccuracy::smape);
+
+// use the hubber loss error and smape
+```
+
+**NB:** Remember that calling those methods will impact training, so limit the number of calls to something once every 10 epoch, (for example).
+
+
 ```c++
 #include <iostream>
 #include "neuralnetwork.h"
