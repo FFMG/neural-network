@@ -49,7 +49,7 @@ NeuralNetwork::NeuralNetwork(
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_layer_activation)
-    .with_hidden_activation_method(output_layer_activation)
+    .with_output_activation_method(output_layer_activation)
     .with_logger(logger)
     .build())
 {
@@ -68,7 +68,7 @@ NeuralNetwork::NeuralNetwork(
   _learning_rate(0.0),
   _options(NeuralNetworkOptions::create(layers)    
     .with_hidden_activation_method(hidden_layer_activation)
-    .with_hidden_activation_method(output_layer_activation)
+    .with_output_activation_method(output_layer_activation)
     .with_logger(logger)
     .build())
 {
