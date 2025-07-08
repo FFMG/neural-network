@@ -792,7 +792,7 @@ private:
 public:
   NeuralNetwork(const NeuralNetworkOptions options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger, long double error, long double mean_absolute_percentage_error);
+  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 

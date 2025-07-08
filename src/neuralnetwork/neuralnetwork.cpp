@@ -63,9 +63,7 @@ NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
   const activation::method& hidden_layer_activation, 
   const activation::method& output_layer_activation,
-  const Logger& logger,
-  long double error,
-  long double mean_absolute_percentage_error
+  const Logger& logger
   ) :
   _learning_rate(0.0),
   _options(NeuralNetworkOptions::create(layers)    
@@ -258,7 +256,7 @@ NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(Neura
   const auto& taining_outputs = helper.training_outputs();
 
   const std::vector<size_t>* checks_indexes = 0;
-  auto prediction_size = 0;
+  size_t prediction_size = 0;
   if (final_check)
   {
     checks_indexes = &helper.final_check_indexes();
@@ -267,7 +265,7 @@ NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(Neura
   {
     checks_indexes = &helper.checking_indexes();
   }
-  prediction_size = static_cast<int>(checks_indexes->size());
+  prediction_size = checks_indexes->size();
   if (prediction_size == 0)
   {
     return NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, 0.0);
