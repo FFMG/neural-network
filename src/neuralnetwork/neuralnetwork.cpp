@@ -11,11 +11,15 @@
 static const double RecentAverageSmoothingFactor = 100.0;
 static const long long IntervalErorCheckInSeconds = 15;
 
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetworkHelper::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const
+{
+  return _neural_network->get_metrics(error_type, forecast_type);
+}
+
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
-  _error(0.0),
-  _mean_absolute_percentage_error(0.0),
   _learning_rate(0.0),
-  _options(options)
+  _options(options),
+  _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto& topology = options.topology();
@@ -63,14 +67,13 @@ NeuralNetwork::NeuralNetwork(
   long double error,
   long double mean_absolute_percentage_error
   ) :
-  _error(error),
-  _mean_absolute_percentage_error(mean_absolute_percentage_error),
   _learning_rate(0.0),
   _options(NeuralNetworkOptions::create(layers)    
     .with_hidden_activation_method(hidden_layer_activation)
     .with_output_activation_method(output_layer_activation)
     .with_logger(logger)
-    .build())
+    .build()),
+  _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   _layers.reserve(layers.size());
@@ -82,18 +85,28 @@ NeuralNetwork::NeuralNetwork(
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
-  _error(src._error),
-  _mean_absolute_percentage_error(src._mean_absolute_percentage_error),
   _learning_rate(src._learning_rate),
-  _options(src._options)
+  _options(src._options),
+  _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (src._neural_network_helper != nullptr)
+  {
+    _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
+  }
+
   _layers.reserve(src._layers.size());
   for (const auto& layer : src._layers)
   {
     auto copy_layer = Layer(layer);
     _layers.emplace_back(std::move(copy_layer));
   }
+}
+
+NeuralNetwork::~NeuralNetwork()
+{
+  delete _neural_network_helper;
+  _neural_network_helper = nullptr;
 }
 
 const activation::method& NeuralNetwork::get_output_activation_method() const
@@ -212,14 +225,11 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   GradientsAndOutputs gradients(get_topology());
-  calculate_forward_feed(gradients, inputs, _layers);
+  {
+    std::shared_lock lock(_mutex);
+    calculate_forward_feed(gradients, inputs, _layers);
+  }
   return gradients.output_back();
-}
-
-long double NeuralNetwork::get_mean_absolute_percentage_error() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _mean_absolute_percentage_error;
 }
 
 double NeuralNetwork::get_learning_rate() const
@@ -228,10 +238,64 @@ double NeuralNetwork::get_learning_rate() const
   return _learning_rate;
 }
 
-long double NeuralNetwork::get_error() const
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _error;
+  return get_metrics(error_type, forecast_type, false);
+}
+
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (nullptr == _neural_network_helper)
+  {
+    _options.logger().log_warning("Trying to get training metrics when no training was done!");
+    return NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, 0.0);
+  }
+
+  const NeuralNetworkHelper& helper = *_neural_network_helper;
+  const auto& training_inputs = helper.training_inputs();
+  const auto& taining_outputs = helper.training_outputs();
+
+  const std::vector<size_t>* checks_indexes = 0;
+  auto prediction_size = 0;
+  if (final_check)
+  {
+    checks_indexes = &helper.final_check_indexes();
+  }
+  else
+  {
+    checks_indexes = &helper.checking_indexes();
+  }
+  prediction_size = static_cast<int>(checks_indexes->size());
+  if (prediction_size == 0)
+  {
+    return NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, 0.0);
+  }
+
+  std::vector<std::vector<double>> predictions;
+  std::vector<std::vector<double>> checking_outputs;
+  predictions.reserve(prediction_size);
+  checking_outputs.reserve(prediction_size);
+
+  GradientsAndOutputs gradients(get_topology());
+  std::shared_lock lock(_mutex);
+  {
+    for (size_t index = 0; index < prediction_size; ++index)
+    {
+      const auto& checks_index = (*checks_indexes)[index];
+      const auto& inputs = training_inputs[checks_index];
+      calculate_forward_feed(gradients, inputs, _layers);
+      predictions.emplace_back(gradients.output_back());
+      gradients.zero();
+
+      // set the output we will need it just now.
+      checking_outputs.emplace_back(taining_outputs[checks_index]);
+    }
+  }// release the lock
+  return NeuralNetworkHelper::NeuralNetworkHelperMetrics(
+    calculate_error(error_type, checking_outputs, predictions),
+    calculate_forecast_accuracy(forecast_type, checking_outputs, predictions));
 }
 
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
@@ -292,8 +356,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   _options.logger().log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-  _error = 0.0;
-
   TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
   if (batch_size > 1)
   {
@@ -302,52 +364,52 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       _options.number_of_threads());
   }
 
-  // get the indexes
-  auto neural_network_helper = NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+  delete _neural_network_helper;
+  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
   if (progress_callback != nullptr)
   {
-    if (!progress_callback(neural_network_helper))
+    if (!progress_callback(*_neural_network_helper))
     {
       _options.logger().log_warning("Progress callback function returned false before training started, closing now!");
       return;
     }
   }
-  create_shuffled_indexes(neural_network_helper, training_inputs.size(), _options.data_is_unique());
+  create_shuffled_indexes(*_neural_network_helper, training_inputs.size(), _options.data_is_unique());
 
   // with the indexes, create the check training 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
-  create_batch_from_indexes(neural_network_helper.checking_indexes(), training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
+  create_batch_from_indexes(_neural_network_helper->checking_indexes(), training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
 
   // create the batch training
   std::vector<std::vector<double>> batch_training_inputs = {};
   std::vector<std::vector<double>> batch_training_outputs = {};
-  create_batch_from_indexes(neural_network_helper.training_indexes(), training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
+  create_batch_from_indexes(_neural_network_helper->training_indexes(), training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
 
   // final error checking
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
-  create_batch_from_indexes(neural_network_helper.final_check_indexes(), training_inputs, training_outputs, final_training_inputs, final_training_outputs);
+  create_batch_from_indexes(_neural_network_helper->final_check_indexes(), training_inputs, training_outputs, final_training_inputs, final_training_outputs);
 
   // add a log message.
-  log_training_info(training_inputs, training_outputs, neural_network_helper);
+  log_training_info(training_inputs, training_outputs);
 
   // build the training output batch so we can use it for error calculations
-  const auto training_indexes_size = neural_network_helper.training_indexes().size();
+  const auto training_indexes_size = _neural_network_helper->training_indexes().size();
   std::vector<std::vector<double>> training_outputs_batch = {};
   training_outputs_batch.reserve(training_indexes_size);
-  for (const auto& training_index : neural_network_helper.training_indexes())
+  for (const auto& training_index : _neural_network_helper->training_indexes())
   {
     const auto& outputs = training_outputs[training_index];
     training_outputs_batch.push_back(outputs);
   }
-  
+
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
   std::vector<GradientsAndOutputs> epoch_gradients;
   epoch_gradients.reserve(num_batches);
 
   // learning rate decay
-  const auto initial_learning_rate = neural_network_helper.learning_rate();
+  const auto initial_learning_rate = _neural_network_helper->learning_rate();
   const auto learning_rate_decay_rate = _options.learning_rate_decay_rate() == 0 ? 0 : std::log(1.0 / _options.learning_rate_decay_rate()) / number_of_epoch;
 
   // learning rate boost.
@@ -360,8 +422,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    neural_network_helper.set_epoch(epoch);
-    _learning_rate = neural_network_helper.learning_rate();
+    _neural_network_helper->set_epoch(epoch);
+    _learning_rate = _neural_network_helper->learning_rate();
 
     // create the batches
     for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
@@ -388,7 +450,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
             batch_training_outputs.begin() + start_index,
             total_size);
 
-        apply_weight_gradients(_layers, single_batch, neural_network_helper.learning_rate(), epoch);
+        apply_weight_gradients(_layers, single_batch, _neural_network_helper->learning_rate(), epoch);
       }
     }
     MYODDWEB_PROFILE_MARK();
@@ -397,22 +459,19 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     if (task_pool != nullptr)
     {
       epoch_gradients = task_pool->get();
-      apply_weight_gradients(_layers, epoch_gradients, neural_network_helper.learning_rate(), epoch);
+      apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch);
 
       // then re-shuffle everything
-      recreate_batch_from_indexes(neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
+      recreate_batch_from_indexes(*_neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
 
       // clear it for next time
       epoch_gradients.clear();
     }
 
-    // do an error check to see if we need to adapt.
-    update_error_and_percentage_error(checking_training_inputs, checking_training_outputs, _layers);
-
     // decay the learning rate.
     if(learning_rate_decay_rate != 0 )
     {
-      neural_network_helper.set_learning_rate(learning_rate_base * std::exp(-learning_rate_decay_rate * epoch));
+      _neural_network_helper->set_learning_rate(learning_rate_base * std::exp(-learning_rate_decay_rate * epoch));
     }
     
     // Boost the baseline every N epochs
@@ -425,11 +484,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // then get the scheduler if we can improve it further.
     if (_options.adaptive_learning_rate())
     {
-      neural_network_helper.set_learning_rate(learning_rate_scheduler.update(_error, neural_network_helper.learning_rate(), epoch, number_of_epoch));
+      auto metrics = get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape, true);
+      _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metrics.error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
     }    
     if (progress_callback != nullptr)
     {
-      if (!progress_callback(neural_network_helper))
+      if (!progress_callback(*_neural_network_helper))
       {
         _options.logger().log_warning("Progress callback function returned false during training, closing now!");
         return;
@@ -447,25 +507,26 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete task_pool;
   }
 
-  update_error_and_percentage_error(final_training_inputs, final_training_outputs, _layers);
-  _options.logger().log_info("Final Error: ", std::fixed, std::setprecision (15), _error);
-  _options.logger().log_info("Final Mean Absolute Percentage Error: ", std::fixed, std::setprecision (15), _mean_absolute_percentage_error);
+  auto metrics = get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape, true);
+
+  _options.logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics.error());
+  _options.logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics.forecast());
 
   // finaly learning rate
-  _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), neural_network_helper.learning_rate());
+  _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
   // final callback to show 100% done.
   if (progress_callback != nullptr)
   {
-    progress_callback(neural_network_helper);
+    progress_callback(*_neural_network_helper);
   }
   MYODDWEB_PROFILE_MARK();
 }
 
-double NeuralNetwork::calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  switch (_options.error_calculation())
+  switch (error_type)
   {
   case NeuralNetworkOptions::ErrorCalculation::none:
     return 0.0;
@@ -641,6 +702,9 @@ void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const std
 void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const
 {
   const auto& layer_size = batch_activation_gradient.num_gradient_layers();
+
+  // we need to obtain write lock here as we are about to change the neurons
+  std::unique_lock lock(_mutex);
   for (auto layer_number = layer_size-1; layer_number > 0; --layer_number)
   {
     const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
@@ -738,9 +802,9 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
   return activation_gradients;
 }
 
-double NeuralNetwork::calculate_forecast_accuracy(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_forecast_accuracy(NeuralNetworkOptions::ForecastAccuracy forecast_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
 {
-  switch (_options.forecast_accuracy())
+  switch (forecast_type)
   {
   case NeuralNetworkOptions::ForecastAccuracy::none:
     return 0.0;
@@ -854,35 +918,15 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>
   return sum_of_percentage_errors / predictions.size();
 }
 
-void NeuralNetwork::update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, const std::vector<Layer>& layers)
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const size_t training_indexes_size = training_inputs.size();
-
-  std::vector<std::vector<double>> predictions;
-  predictions.reserve(training_indexes_size);
-
-            GradientsAndOutputs gradients(get_topology());
-  for (size_t start_index = 0; start_index < training_indexes_size; ++start_index)
-    {
-      const auto& inputs = training_inputs[start_index];
-      calculate_forward_feed(gradients, inputs, layers);
-      predictions.emplace_back(gradients.output_back());
-    gradients.zero();
-  }
-  _error = calculate_error(training_outputs, predictions);
-  _mean_absolute_percentage_error = calculate_forecast_accuracy(training_outputs, predictions);
-}
-
 void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_inputs,
-  const std::vector<std::vector<double>>& training_outputs,
-  const NeuralNetworkHelper& neural_network_helper) const
+  const std::vector<std::vector<double>>& training_outputs) const
 {
+  assert(_neural_network_helper != nullptr);
   _options.logger().log_info("Tainning will use: ");
-  _options.logger().log_info(neural_network_helper.training_indexes().size(), " training samples.");
-  _options.logger().log_info(neural_network_helper.checking_indexes().size(), " in training error check samples.");
-  _options.logger().log_info(neural_network_helper.final_check_indexes().size(), " final error check samples.");
+  _options.logger().log_info(_neural_network_helper->training_indexes().size(), " training samples.");
+  _options.logger().log_info(_neural_network_helper->checking_indexes().size(), " in training error check samples.");
+  _options.logger().log_info(_neural_network_helper->final_check_indexes().size(), " final error check samples.");
   _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
   _options.logger().log_info("Learning rate decay rate:", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
   _options.logger().log_info("Hidden activation method:", activation::method_to_string(get_hidden_activation_method()));
