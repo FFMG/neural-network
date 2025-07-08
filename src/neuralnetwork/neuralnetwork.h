@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <functional>
+#include <shared_mutex>
 #include <vector>
 
 #include "./libraries/instrumentor.h"
@@ -13,116 +14,7 @@
 #include "taskqueue.h"
 
 class NeuralNetwork;
-class NeuralNetworkHelper
-{
-public:
-  NeuralNetworkHelper() = delete;
-  NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept
-  {
-    *this = src;
-  }
-  NeuralNetworkHelper(NeuralNetworkHelper&& src) noexcept
-  {
-    *this = std::move(src);
-  }
-  NeuralNetworkHelper& operator=(const NeuralNetworkHelper& src) noexcept
-  {
-    if (this != &src)
-    {
-      _neural_network = src._neural_network;
-      _learning_rate = src._learning_rate;
-      _number_of_epoch = src._number_of_epoch;
-      _epoch = src._epoch;
-      _training_indexes = src._training_indexes;
-      _checking_indexes = src._checking_indexes;
-      _final_check_indexes = src._final_check_indexes;
-      _training_inputs = src._training_inputs;
-      _training_outputs = src._training_outputs;
-    }
-    return *this;
-  }
-  NeuralNetworkHelper& operator=(NeuralNetworkHelper&& src) noexcept
-  {
-    if (this != &src)
-    {
-      _neural_network = src._neural_network;
-      _learning_rate = src._learning_rate;
-      _number_of_epoch = src._number_of_epoch;
-      _epoch = src._epoch;
-      _training_indexes = std::move(src._training_indexes);
-      _checking_indexes = std::move(src._checking_indexes);
-      _final_check_indexes = std::move(src._final_check_indexes);
-      _training_inputs = std::move(src._training_inputs);
-      _training_outputs = std::move(src._training_outputs);
-      src._neural_network = nullptr;
-      src._learning_rate = 0;
-      src._number_of_epoch = 0;
-      src._epoch = 0;
-    }
-    return *this;
-  }
-  virtual ~NeuralNetworkHelper() = default;
-
-  double learning_rate() const { return _learning_rate; }
-  void set_learning_rate(double learning_rate) { _learning_rate = learning_rate; }
-
-  unsigned number_of_epoch() const { return _number_of_epoch; }
-  unsigned epoch() const { return _epoch; }
-
-  const NeuralNetwork& neural_network() const { return *_neural_network; }
-
-protected:
-  NeuralNetworkHelper(
-    NeuralNetwork& neural_network,
-    double learning_rate,
-    unsigned number_of_epoch,
-    const std::vector<std::vector<double>>& training_inputs,
-    const std::vector<std::vector<double>>& training_outputs
-  ) :
-    _neural_network(&neural_network),
-    _learning_rate(learning_rate),
-    _number_of_epoch(number_of_epoch),
-    _epoch(0),
-    _training_inputs(training_inputs),
-    _training_outputs(training_outputs)
-  {
-  }
-
-  void set_epoch(unsigned epoch) { _epoch = epoch; }
-
-  void move_indexes(
-    std::vector<size_t>&& training_indexes,
-    std::vector<size_t>&& checking_indexes,
-    std::vector<size_t>&& final_check_indexes
-  )
-  {
-    _training_indexes = training_indexes;
-    _checking_indexes = checking_indexes;
-    _final_check_indexes = final_check_indexes;
-  }
-
-  void move_training_indexes(std::vector<size_t>&& training_indexes)
-  {
-    _training_indexes = training_indexes;
-  }
-
-  const std::vector<size_t>& training_indexes() const { return _training_indexes; }
-  const std::vector<size_t>& checking_indexes() const { return _checking_indexes; }
-  const std::vector<size_t>& final_check_indexes() const { return _final_check_indexes; }
-
-  friend class NeuralNetwork;
-
-private:
-  NeuralNetwork* _neural_network;
-  double _learning_rate;
-  unsigned _number_of_epoch;
-  unsigned _epoch;
-  std::vector<std::vector<double>> _training_inputs;
-  std::vector<std::vector<double>> _training_outputs;
-  std::vector<size_t> _training_indexes;
-  std::vector<size_t> _checking_indexes;
-  std::vector<size_t> _final_check_indexes;
-};
+class NeuralNetworkHelper;
 
 class NeuralNetworkOptions
 {
@@ -139,8 +31,6 @@ private:
     _logger(Logger::LogLevel::None),
     _number_of_threads(0),
     _learning_rate_decay_rate(0.0),
-    _error_calculation(ErrorCalculation::none),
-    _forecast_accuracy(ForecastAccuracy::none),
     _adaptive_learning_rate(false),
     _optimiser_type(OptimiserType::SGD),
     _learning_rate_restart_rate(1),
@@ -190,8 +80,6 @@ public:
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
-      _error_calculation = nno._error_calculation;
-      _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
       _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
@@ -215,8 +103,6 @@ public:
       _logger = nno._logger;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
-      _error_calculation = nno._error_calculation;
-      _forecast_accuracy = nno._forecast_accuracy;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
       _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
@@ -226,8 +112,6 @@ public:
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
       nno._data_is_unique = false;
-      nno._error_calculation = ErrorCalculation::none;
-      nno._forecast_accuracy = ForecastAccuracy::none;
       nno._optimiser_type = OptimiserType::None;
     }
     return *this;
@@ -296,48 +180,6 @@ public:
     _adaptive_learning_rate = adaptive_learning_rate;
     return *this;
   }
-  NeuralNetworkOptions& with_no_error_calculation()
-  {
-    return with_error_calculation(ErrorCalculation::none);
-  }
-  NeuralNetworkOptions& with_huber_loss_error_calculation()
-  {
-    return with_error_calculation(ErrorCalculation::huber_loss);
-  }
-  NeuralNetworkOptions& with_mae_error_calculation()
-  {
-    return with_error_calculation(ErrorCalculation::mae);
-  }
-  NeuralNetworkOptions& with_mse_error_calculation()
-  {
-    return with_error_calculation(ErrorCalculation::mse);
-  }
-  NeuralNetworkOptions& with_rmse_error_calculation()
-  {
-    return with_error_calculation(ErrorCalculation::rmse);
-  }
-  NeuralNetworkOptions& with_error_calculation(const ErrorCalculation& error_calculation)
-  {
-    _error_calculation = error_calculation;
-    return *this;
-  }
-  NeuralNetworkOptions& with_no_forecast_accuracy()
-  {
-    return with_forecast_accuracy(ForecastAccuracy::none);
-  }
-  NeuralNetworkOptions& with_mape_forecast_accuracy()
-  {
-    return with_forecast_accuracy(ForecastAccuracy::mape);
-  }
-  NeuralNetworkOptions& with_smape_forecast_accuracy()
-  {
-    return with_forecast_accuracy(ForecastAccuracy::smape);
-  }
-  NeuralNetworkOptions& with_forecast_accuracy(const ForecastAccuracy& forecast_accuracy)
-  {
-    _forecast_accuracy = forecast_accuracy;
-    return *this;
-  }
   NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
   {
     _optimiser_type = optimiser_type;
@@ -360,11 +202,11 @@ public:
       logger().log_error("The learning rate decay rate cannot be negative!");
       throw std::invalid_argument("The learning rate decay rate cannot be negative!");
     }
-    if (learning_rate_decay_rate() >= 1.0) 
+    if (learning_rate_decay_rate() >= 1.0)
     {
       logger().log_error("The learning rate decay rate cannot be more than 1!");
       throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
-    }    
+    }
     if (learning_rate_restart_rate() <= 0.0 || learning_rate_restart_rate() > 100)
     {
       logger().log_error("The learning rate has to be between 0% and 100%!");
@@ -401,8 +243,6 @@ public:
       .with_data_is_unique(true)
       .with_progress_callback(nullptr)
       .with_learning_rate_decay_rate(0.0)
-      .with_rmse_error_calculation()
-      .with_mape_forecast_accuracy()
       .with_adaptive_learning_rates(false)
       .with_optimiser_type(OptimiserType::SGD)
       .with_learning_rate_boost_rate(1.0, 1.0);
@@ -419,8 +259,6 @@ public:
   inline const Logger& logger() const { return _logger; }
   inline int number_of_threads() const { return _number_of_threads; }
   inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
-  inline const ErrorCalculation& error_calculation() const { return _error_calculation; }
-  inline const ForecastAccuracy& forecast_accuracy() const { return _forecast_accuracy; }
   inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
   inline OptimiserType optimiser_type() const { return _optimiser_type; }
   inline double learning_rate_restart_rate() const { return _learning_rate_restart_rate; }
@@ -438,12 +276,162 @@ private:
   Logger _logger;
   int _number_of_threads;
   double _learning_rate_decay_rate;
-  ErrorCalculation _error_calculation;
-  ForecastAccuracy _forecast_accuracy;
   bool _adaptive_learning_rate;
   OptimiserType _optimiser_type;
   double _learning_rate_restart_rate;
   double _learning_rate_restart_boost;
+};
+
+class NeuralNetworkHelper
+{
+public:
+  class NeuralNetworkHelperMetrics
+  {
+  public:
+    long double error() const { return _error; }
+    long double forecast() const { return _forecast; }
+
+    virtual ~NeuralNetworkHelperMetrics() = default;
+
+  protected:
+    friend class NeuralNetworkHelper;
+    friend class NeuralNetwork;
+
+    NeuralNetworkHelperMetrics(long double error, long double forecast) :
+      _error(error),
+      _forecast(forecast)
+    {
+    }
+    NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src)
+    {
+      *this = src;
+    }
+    NeuralNetworkHelperMetrics& operator=(const NeuralNetworkHelperMetrics& src)
+    {
+      if (this != &src)
+      {
+        _error = src._error;
+        _forecast = src._forecast;
+      }
+      return *this;
+    }
+    NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) = delete;
+    NeuralNetworkHelperMetrics& operator=(NeuralNetworkHelperMetrics&& src) = delete;
+
+    long double _error;
+    long double _forecast;
+  };
+
+  NeuralNetworkHelper() = delete;
+  NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept
+  {
+    *this = src;
+  }
+  NeuralNetworkHelper(NeuralNetworkHelper&& src) noexcept
+  {
+    *this = std::move(src);
+  }
+  NeuralNetworkHelper& operator=(const NeuralNetworkHelper& src) noexcept
+  {
+    if (this != &src)
+    {
+      _neural_network = src._neural_network;
+      _learning_rate = src._learning_rate;
+      _number_of_epoch = src._number_of_epoch;
+      _epoch = src._epoch;
+      _training_indexes = src._training_indexes;
+      _checking_indexes = src._checking_indexes;
+      _final_check_indexes = src._final_check_indexes;
+      _training_inputs = src._training_inputs;
+      _training_outputs = src._training_outputs;
+    }
+    return *this;
+  }
+
+  NeuralNetworkHelper& operator=(NeuralNetworkHelper&& src) noexcept
+  {
+    if (this != &src)
+    {
+      _neural_network = src._neural_network;
+      _learning_rate = src._learning_rate;
+      _number_of_epoch = src._number_of_epoch;
+      _epoch = src._epoch;
+      _training_indexes = std::move(src._training_indexes);
+      _checking_indexes = std::move(src._checking_indexes);
+      _final_check_indexes = std::move(src._final_check_indexes);
+      _training_inputs = std::move(src._training_inputs);
+      _training_outputs = std::move(src._training_outputs);
+      src._neural_network = nullptr;
+      src._learning_rate = 0;
+      src._number_of_epoch = 0;
+      src._epoch = 0;
+    }
+    return *this;
+  }
+  virtual ~NeuralNetworkHelper() = default;
+
+  double learning_rate() const { return _learning_rate; }
+  void set_learning_rate(double learning_rate) { _learning_rate = learning_rate; }
+
+  unsigned number_of_epoch() const { return _number_of_epoch; }
+  unsigned epoch() const { return _epoch; }
+
+  NeuralNetworkHelperMetrics get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const;
+
+protected:
+  NeuralNetworkHelper(
+    NeuralNetwork& neural_network,
+    double learning_rate,
+    unsigned number_of_epoch,
+    const std::vector<std::vector<double>>& training_inputs,
+    const std::vector<std::vector<double>>& training_outputs
+  ) :
+    _neural_network(&neural_network),
+    _learning_rate(learning_rate),
+    _number_of_epoch(number_of_epoch),
+    _epoch(0),
+    _training_inputs(training_inputs),
+    _training_outputs(training_outputs)
+  {
+  }
+
+  void set_epoch(unsigned epoch) { _epoch = epoch; }
+
+  void move_indexes(
+    std::vector<size_t>&& training_indexes,
+    std::vector<size_t>&& checking_indexes,
+    std::vector<size_t>&& final_check_indexes
+  )
+  {
+    _training_indexes = training_indexes;
+    _checking_indexes = checking_indexes;
+    _final_check_indexes = final_check_indexes;
+  }
+
+  void move_training_indexes(std::vector<size_t>&& training_indexes)
+  {
+    _training_indexes = training_indexes;
+  }
+
+  const std::vector<size_t>& training_indexes() const { return _training_indexes; }
+  const std::vector<size_t>& checking_indexes() const { return _checking_indexes; }
+  const std::vector<size_t>& final_check_indexes() const { return _final_check_indexes; }
+
+  const std::vector<std::vector<double>>& training_inputs() const { return _training_inputs; }
+  const std::vector<std::vector<double>>& training_outputs() const { return _training_outputs; }
+
+  friend class NeuralNetwork;
+
+private:
+  NeuralNetwork* _neural_network;
+  double _learning_rate;
+  unsigned _number_of_epoch;
+  unsigned _epoch;
+  std::vector<std::vector<double>> _training_inputs;
+  std::vector<std::vector<double>> _training_outputs;
+  std::vector<size_t> _training_indexes;
+  std::vector<size_t> _checking_indexes;
+  std::vector<size_t> _final_check_indexes;
 };
 
 class NeuralNetwork
@@ -808,7 +796,7 @@ public:
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
-  virtual ~NeuralNetwork() = default;
+  virtual ~NeuralNetwork();
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
@@ -819,8 +807,8 @@ public:
   const std::vector<Layer>& get_layers() const;
   const activation::method& get_output_activation_method() const;
   const activation::method& get_hidden_activation_method() const;
-  long double get_error() const;
-  long double get_mean_absolute_percentage_error() const;
+  
+  NeuralNetworkHelper::NeuralNetworkHelperMetrics get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const;
   double get_learning_rate() const;
 
   NeuralNetworkOptions& options() { return _options;}
@@ -848,7 +836,9 @@ private:
 
   static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
 
-  double calculate_forecast_accuracy(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  NeuralNetworkHelper::NeuralNetworkHelperMetrics get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type, bool final_check) const;
+
+  double calculate_forecast_accuracy(NeuralNetworkOptions::ForecastAccuracy forecast_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
   // Calculates the Mean Absolute Percentage Error (MAPE)
   double calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
@@ -857,13 +847,11 @@ private:
   double calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
   double calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
 
-  void update_error_and_percentage_error(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, const std::vector<Layer>& layers);
-
   // Error calculations
   // Todo this should be moved to a static class a passed as an object.
   // Todo: The user should be able to choose what error they want to use.
   // Todo: Should those be public so the called _could_ use them to compare a prediction?
-  double calculate_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0) const;
   double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
@@ -876,15 +864,14 @@ private:
 
   void log_training_info(
     const std::vector<std::vector<double>>& training_inputs,
-    const std::vector<std::vector<double>>& training_outputs,
-    const NeuralNetworkHelper& neural_network_helper) const;
+    const std::vector<std::vector<double>>& training_outputs) const;
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
-  long double _error;
-  long double _mean_absolute_percentage_error;
   double _learning_rate;
   std::vector<Layer> _layers;
+  mutable std::shared_mutex _mutex;
 
   NeuralNetworkOptions _options;
+  NeuralNetworkHelper* _neural_network_helper;
 };
