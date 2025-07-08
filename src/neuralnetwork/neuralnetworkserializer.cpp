@@ -58,8 +58,8 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, hidden_activation_method, output_activation_method, logger, error, mean_absolute_percentage_error);
-  logger.log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));  
+  auto nn = new NeuralNetwork(layers, hidden_activation_method, output_activation_method, logger);
+  logger.log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));
 
   // cleanup
   delete tj;
