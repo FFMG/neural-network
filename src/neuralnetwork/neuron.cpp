@@ -33,7 +33,7 @@ Neuron::Neuron(
   unsigned index,
   double output_value,
   const activation& activation,
-  const std::vector<std::array<double,2>>& output_weights,
+  const std::vector<WeightParam>& weights_params,
   const OptimiserType& optimiser_type,
   const Logger& logger
 ) :
@@ -46,11 +46,10 @@ Neuron::Neuron(
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _weight_params.reserve(output_weights.size());
-  for (auto& weights : output_weights)
+  _weight_params.reserve(weights_params.size());
+  for (auto& weights_param : weights_params)
   {
-    auto weightParam = WeightParam(weights[0], weights[1], 0.0, logger);
-    _weight_params.emplace_back(std::move(weightParam));
+    _weight_params.emplace_back(std::move(weights_param));
   }
 }
 
@@ -123,15 +122,10 @@ Neuron::~Neuron()
   Clean();
 }
 
-std::vector<std::array<double, 2>> Neuron::get_weight_params() const
+const std::vector<Neuron::WeightParam>& Neuron::get_weight_params() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  std::vector<std::array<double, 2>> weights;
-  for(const auto& output_weight : _weight_params)
-  {
-    weights.push_back({output_weight.value(), output_weight.gradient()});
-  }
-  return weights;
+  return _weight_params;
 }
 
 void Neuron::Clean()
