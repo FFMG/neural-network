@@ -106,7 +106,7 @@ public:
       train_neural_network(*nn);
     }
 
-    auto metrics = nn->get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape);
+    auto metrics = nn->calculate_forecast_metric( NeuralNetworkOptions::ErrorCalculation::rmse);
 
     std::cout << "Error: " << metrics.error() << std::endl;
 
