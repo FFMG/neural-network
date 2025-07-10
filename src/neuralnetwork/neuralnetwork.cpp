@@ -11,9 +11,16 @@
 static const double RecentAverageSmoothingFactor = 100.0;
 static const long long IntervalErorCheckInSeconds = 15;
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetworkHelper::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetworkHelper::calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const
 {
-  return _neural_network->get_metrics(error_type, forecast_type);
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+  return _neural_network->calculate_forecast_metric(error_type);
+}
+
+std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetworkHelper::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+  return _neural_network->calculate_forecast_metrics(error_types);
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
@@ -236,19 +243,33 @@ double NeuralNetwork::get_learning_rate() const
   return _learning_rate;
 }
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type) const
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return get_metrics(error_type, forecast_type, false);
+  auto results = calculate_forecast_metrics({ error_type }, false);
+  return results.front();
 }
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(NeuralNetworkOptions::ErrorCalculation error_type, NeuralNetworkOptions::ForecastAccuracy forecast_type, bool final_check) const
+std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return calculate_forecast_metrics(error_types, false);
+}
+
+std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors = {};
+  errors.reserve(errors.size());
+
   if (nullptr == _neural_network_helper)
   {
+    for (size_t index = 0; index < error_types.size(); ++index)
+    {
+      errors.emplace_back( NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
+    }
     _options.logger().log_warning("Trying to get training metrics when no training was done!");
-    return NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, 0.0);
+    return errors;
   }
 
   const NeuralNetworkHelper& helper = *_neural_network_helper;
@@ -268,7 +289,11 @@ NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(Neura
   prediction_size = checks_indexes->size();
   if (prediction_size == 0)
   {
-    return NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, 0.0);
+    for (size_t index = 0; index < error_types.size(); ++index)
+    {
+      errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
+    }
+    return errors;
   }
 
   std::vector<std::vector<double>> predictions;
@@ -291,9 +316,16 @@ NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::get_metrics(Neura
       checking_outputs.emplace_back(taining_outputs[checks_index]);
     }
   }// release the lock
-  return NeuralNetworkHelper::NeuralNetworkHelperMetrics(
-    calculate_error(error_type, checking_outputs, predictions),
-    calculate_forecast_accuracy(forecast_type, checking_outputs, predictions));
+
+
+  for (size_t index = 0; index < error_types.size(); ++index)
+  {
+    errors.emplace_back(
+      NeuralNetworkHelper::NeuralNetworkHelperMetrics(
+      calculate_error(error_types[index], checking_outputs, predictions),
+        error_types[index]));
+  }
+  return errors;
 }
 
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
@@ -482,8 +514,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // then get the scheduler if we can improve it further.
     if (_options.adaptive_learning_rate())
     {
-      auto metrics = get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape, true);
-      _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metrics.error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
+      auto metric = calculate_forecast_metrics(
+        {
+          NeuralNetworkOptions::ErrorCalculation::rmse,
+        }, false);
+      _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metric[0].error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
     }    
     if (progress_callback != nullptr)
     {
@@ -505,10 +540,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete task_pool;
   }
 
-  auto metrics = get_metrics(NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape, true);
+  auto metrics = calculate_forecast_metrics(
+    {
+      NeuralNetworkOptions::ErrorCalculation::rmse,
+      NeuralNetworkOptions::ErrorCalculation::mape 
+    }, true);
 
-  _options.logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics.error());
-  _options.logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics.forecast());
+  _options.logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
+  _options.logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error());
 
   // finaly learning rate
   _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
@@ -540,6 +579,12 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
 
   case NeuralNetworkOptions::ErrorCalculation::rmse:
     return calculate_rmse_error(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::mape:
+    return calculate_forecast_accuracy_mape(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::smape:
+    return calculate_forecast_accuracy_smape(ground_truth, predictions);
   }
 
   _options.logger().log_error("Unknown ErrorCalculation type!");
@@ -800,24 +845,6 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
   return activation_gradients;
 }
 
-double NeuralNetwork::calculate_forecast_accuracy(NeuralNetworkOptions::ForecastAccuracy forecast_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  switch (forecast_type)
-  {
-  case NeuralNetworkOptions::ForecastAccuracy::none:
-    return 0.0;
-
-  case NeuralNetworkOptions::ForecastAccuracy::mape:
-    return calculate_forecast_accuracy_mape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ForecastAccuracy::smape:
-    return calculate_forecast_accuracy_smape(ground_truth, predictions);
-  }
-
-  _options.logger().log_error("Unknown ForecastAccuracy type!");
-  throw std::invalid_argument("Unknown ForecastAccuracy type!");
-}
-
 double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
 {
   if (predictions.size() != ground_truth.size() || predictions.empty())
@@ -826,23 +853,23 @@ double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
+  size_t non_zero_count = 0;
   const double epsilon = 1e-8; // To avoid divide-by-zero
-  double sum = 0.0;
-  size_t n = predictions.size();
+  double sum_of_percentage_errors = 0.0;
 
-  for (size_t i = 0; i < n; ++i) 
+  for (size_t i = 0; i < predictions.size(); ++i)
   {
-    const auto numerator = std::abs(predictions[i] - ground_truth[i]);
     const auto denominator = (std::abs(predictions[i]) + std::abs(ground_truth[i])) / 2.0;
 
     if (denominator < epsilon) 
     {
       continue; // Optionally skip (or count as 0 error)
     }
-
-    sum += numerator / denominator;
+    +non_zero_count;
+    const auto numerator = std::abs(predictions[i] - ground_truth[i]);
+    sum_of_percentage_errors += numerator / denominator;
   }
-  return (sum / n);
+  return non_zero_count == 0 ? 0.0 : (sum_of_percentage_errors / non_zero_count);
 }
 
 double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
@@ -899,6 +926,7 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
+  size_t non_zero_count = 0;
   double sum_of_percentage_errors = 0.0;
   const double epsilon = 1e-8; // Small value to avoid division by zero
 
@@ -911,9 +939,10 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>
       // Here, we'll just skip it to not skew the result.
       continue; 
     }
+    ++non_zero_count;
     sum_of_percentage_errors += std::abs((ground_truth[i] - predictions[i]) / ground_truth[i]);
   }
-  return sum_of_percentage_errors / predictions.size();
+  return non_zero_count == 0 ? 0.0 : sum_of_percentage_errors / non_zero_count;
 }
 
 void NeuralNetwork::log_training_info(
