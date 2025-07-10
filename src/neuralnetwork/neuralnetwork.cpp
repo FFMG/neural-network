@@ -865,7 +865,7 @@ double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double
     {
       continue; // Optionally skip (or count as 0 error)
     }
-    +non_zero_count;
+    ++non_zero_count;
     const auto numerator = std::abs(predictions[i] - ground_truth[i]);
     sum_of_percentage_errors += numerator / denominator;
   }
