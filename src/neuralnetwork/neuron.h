@@ -15,10 +15,28 @@
 class Layer;
 class Neuron
 {
-private:
+public:
   class WeightParam
   {
   public:
+    WeightParam(
+      double value, 
+      double gradient, 
+      double velocity, 
+      double first_moment_estimate,
+      double second_moment_estimate,
+      long long time_step,
+      const Logger& logger) :
+      _value(value),
+      _gradient(gradient),
+      _velocity(velocity),
+      _logger(logger),
+      _first_moment_estimate(first_moment_estimate),
+      _second_moment_estimate(second_moment_estimate),
+      _time_step(time_step)
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+    }
     WeightParam(double value, double gradient, double velocity, const Logger& logger) : 
       _value(value), 
       _gradient(gradient),
@@ -204,7 +222,7 @@ public:
     unsigned index, 
     double output_value,
     const activation& activation,
-    const std::vector<std::array<double,2>>& weights_params,
+    const std::vector<WeightParam>& weight_params,
     const OptimiserType& optimiser_type,
     const Logger& logger
     );
@@ -238,7 +256,7 @@ public:
   void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch);
 
   unsigned get_index() const;
-  std::vector<std::array<double, 2>> get_weight_params() const;
+  const std::vector<WeightParam>& get_weight_params() const;
 
   const OptimiserType& get_optimiser_type() const { return _optimiser_type; }
 

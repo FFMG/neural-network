@@ -198,13 +198,13 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
 
     // then the weights
     // the output layer can have zero weights
-    auto weights = get_weights(logger, *neuron_object);
+    auto weight_params = get_weight_params(logger, *neuron_object);
     
     auto neuron = Neuron(
       index,
       output_value,
       activation_method,
-      weights,
+      weight_params,
       optimiser_type,
       logger
 
@@ -214,7 +214,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
   return neurons;
 }
 
-std::vector<std::array<double,2>> NeuralNetworkSerializer::get_weights(Logger& logger, const TinyJSON::TJValueObject& neuron)
+std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logger, const TinyJSON::TJValueObject& neuron)
 {
   // the array of weight
   auto weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(neuron.try_get_value("weight-params"));
@@ -224,25 +224,34 @@ std::vector<std::array<double,2>> NeuralNetworkSerializer::get_weights(Logger& l
     return {};
   }
 
-  std::vector<std::array<double,2>> weights;
+  std::vector<Neuron::WeightParam> weight_params;
+  weight_params.reserve(weights_array->get_number_of_items());
   for(unsigned i = 0; i < weights_array->get_number_of_items(); ++i)
   {
-    auto inner_weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(weights_array->at(i));
-    if( nullptr == inner_weights_array || 2 != inner_weights_array->get_number_of_items())
+    auto weight_param_object = dynamic_cast<const TinyJSON::TJValueObject*>(weights_array->at(i));
+    if( nullptr == weight_param_object)
     {
-      logger.log_error("The 'weights' array was either empty or not a valid array with 2 numbers!");
+      logger.log_error("The 'weight-params' object was either empty or not a valid object!");
       return {};
     }
-    auto weight1 = dynamic_cast<const TinyJSON::TJValueNumber*>(inner_weights_array->at(0));
-    auto weight2 = dynamic_cast<const TinyJSON::TJValueNumber*>(inner_weights_array->at(1));
-    if( nullptr == weight1 || nullptr == weight2)
-    {
-      logger.log_error("The 'weights' array was either empty or not a valid array of numbers!");
-      return {};
-    }
-    weights.push_back({(double)weight1->get_float(), (double)weight2->get_float()});
+    auto value = weight_param_object->get_float("value");
+    auto gradient = weight_param_object->get_float("gradient");
+    auto velocity = weight_param_object->get_float("velocity");
+    auto first_moment_estimate = weight_param_object->get_float("first-moment-estimate");
+    auto second_moment_estimate = weight_param_object->get_float("second-moment-estimate");
+    auto time_step = weight_param_object->get_number("time-step");
+
+    weight_params.emplace_back(Neuron::WeightParam(
+      static_cast<double>(value),
+      static_cast<double>(gradient),
+      static_cast<double>(velocity),
+      static_cast<double>(first_moment_estimate),
+      static_cast<double>(second_moment_estimate),
+      time_step,
+      logger
+    ));
   }
-  return weights;
+  return weight_params;
 }
 
 std::vector<unsigned> NeuralNetworkSerializer::get_topology(Logger& logger, const TinyJSON::TJValue& json)
@@ -313,16 +322,20 @@ activation::method NeuralNetworkSerializer::get_output_activation_method(Logger&
   return static_cast<activation::method>(number->get_number());
 }
 
-void NeuralNetworkSerializer::add_weights(const std::vector<std::array<double,2>>& weights, TinyJSON::TJValueObject& neuron)
+void NeuralNetworkSerializer::add_weight_params(const std::vector<Neuron::WeightParam>& weight_params, TinyJSON::TJValueObject& neuron)
 {
   auto weights_array = new TinyJSON::TJValueArray();
-  for( auto weight : weights)
+  for( auto weight_param : weight_params)
   {
-    auto weight_array = new TinyJSON::TJValueArray();
-    weight_array->add_float(weight[0]);
-    weight_array->add_float(weight[1]);
-    weights_array->add(weight_array);
-    delete weight_array;
+    auto weight_param_object = new TinyJSON::TJValueObject();
+    weight_param_object->set_float("value", weight_param.value());
+    weight_param_object->set_float("gradient", weight_param.gradient());
+    weight_param_object->set_float("velocity", weight_param.velocity());
+    weight_param_object->set_float("first-moment-estimate", weight_param.first_moment_estimate());
+    weight_param_object->set_float("second-moment-estimate", weight_param.second_moment_estimate());
+    weight_param_object->set_number("time-step", weight_param.timestep());
+    weights_array->add(weight_param_object);
+    delete weight_param_object;
   }
   neuron.set("weight-params", weights_array);
   delete weights_array;
@@ -343,7 +356,7 @@ void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValue
   neuron_object->set_number("index", neuron.get_index());
   neuron_object->set_float("output", neuron.get_output_value());
   neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
-  add_weights(neuron.get_weight_params(), *neuron_object);
+  add_weight_params(neuron.get_weight_params(), *neuron_object);
   layer.add(neuron_object);
   delete neuron_object;
 }
