@@ -26,7 +26,7 @@ public:
       double first_moment_estimate,
       double second_moment_estimate,
       long long time_step,
-      const Logger& logger) :
+      const Logger& logger) noexcept :
       _value(value),
       _gradient(gradient),
       _velocity(velocity),
@@ -37,14 +37,8 @@ public:
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
-    WeightParam(double value, double gradient, double velocity, const Logger& logger) : 
-      _value(value), 
-      _gradient(gradient),
-      _velocity(velocity),
-      _logger(logger),
-      _first_moment_estimate(0.0),
-      _second_moment_estimate(0.0),
-      _time_step(0)
+    WeightParam(double value, double gradient, double velocity, const Logger& logger) noexcept :
+      WeightParam(value, gradient, velocity, 0.0, 0.0, 0, logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
