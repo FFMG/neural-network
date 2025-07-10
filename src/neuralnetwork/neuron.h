@@ -110,7 +110,7 @@ private:
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       return _velocity;
     }
-    long timestep() const
+    long long timestep() const
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       return _time_step;
@@ -196,7 +196,7 @@ private:
     // For Adam:
     double _first_moment_estimate = 0.0;
     double _second_moment_estimate = 0.0;
-    long _time_step = 0;
+    long long _time_step = 0;
   };
 
 public:
