@@ -95,8 +95,8 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _activation_method(src._activation_method),
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
-  _logger(src._logger),
-  _type(src._type)
+  _type(src._type),
+  _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   _weight_params = std::move(src._weight_params);
@@ -151,7 +151,6 @@ unsigned Neuron::get_index() const
 void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  const auto bias_neuron = previous_layer.size() - 1;
   assert(gradients.size() == previous_layer.size());
   for (size_t i = 0; i < gradients.size(); ++i)
   {
@@ -171,6 +170,8 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
     }
 
+    const auto& is_bias = neuron._type == Neuron::Type::Bias;
+
     auto [clipped_gradient, weight_decay] = clip_gradient(gradient);
     switch( _optimiser_type)
     {
@@ -179,7 +180,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::SGD:
-      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, weight_decay);
+      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, weight_decay, is_bias);
       break;
 
     case OptimiserType::Adam:
@@ -195,7 +196,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::NadamW:
-      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-4, neuron._type == Neuron::Type::Bias);
+      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-4, is_bias);
       break;
 
     default:
@@ -363,14 +364,17 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, d
   weight_param.set_gradient(raw_gradient); // Store raw gradient    
 }
 
-void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay) const
+void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay, bool is_bias) const
 {
   double previous_velocity = weight_param.velocity();
 
-  double velocity = learning_rate * raw_gradient +
-    momentum * previous_velocity;
+  double velocity = momentum * previous_velocity - learning_rate * raw_gradient;
 
-  double new_weight = weight_param.value() * (1.0 - weight_decay) + velocity;
+double decayed_weight = is_bias
+      ? weight_param.value()
+      : weight_param.value() * (1.0 - learning_rate * weight_decay);
+
+  double new_weight = decayed_weight + velocity;
 
   weight_param.set_velocity(velocity);
   weight_param.set_gradient(raw_gradient);

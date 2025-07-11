@@ -267,7 +267,7 @@ private:
   double get_output_weight(int index) const;
 
   // optimisers
-  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay) const;
+  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay, bool is_bias) const;
   void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const;
   void apply_adamw_update(
     WeightParam& weight_param,
