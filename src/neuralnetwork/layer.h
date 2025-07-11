@@ -44,8 +44,6 @@ public:
   std::vector<double> get_outputs() const;
   
 private:
-  void add_neuron(const Neuron& neuron);
-
   std::vector<Neuron> _neurons;
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer

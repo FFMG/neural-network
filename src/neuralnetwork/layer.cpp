@@ -31,7 +31,7 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
   }
 
   // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
-  for (unsigned neuron_number = 0; neuron_number <= _number_output_neurons; ++neuron_number) // +1 for bias
+  for (unsigned neuron_number = 0; neuron_number < _number_output_neurons; ++neuron_number)
   {
     // force the bias node's output to 1.0
     auto neuron = Neuron(
@@ -40,10 +40,23 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
       neuron_number, 
       activation,
       optimiser_type,
+      Neuron::Type::Normal,
       logger);
-    neuron.set_output_value(1.0);
-    add_neuron(neuron);
+    neuron.set_output_value(0.0);
+    _neurons.push_back(neuron);
   }
+
+  // +1 for bias
+  auto neuron = Neuron(
+    num_neurons_in_next_layer,
+    _number_output_neurons,
+    _number_output_neurons,
+    activation,
+    optimiser_type,
+    Neuron::Type::Bias,
+    logger);
+  neuron.set_output_value(0.0);
+  _neurons.push_back(neuron);
 }
 
 Layer::Layer(const Layer& src) noexcept :
@@ -102,12 +115,6 @@ unsigned Layer::size() const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   return _number_output_neurons + 1;  //  add one for the bias
-}
-
-void Layer::add_neuron(const Neuron& neuron)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  _neurons.push_back(neuron);
 }
 
 Layer Layer::create_input_layer(const std::vector<Neuron>& neurons, const Logger& logger)
