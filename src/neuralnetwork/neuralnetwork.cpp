@@ -789,7 +789,7 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
       current_activation_gradients[hidden_layer_number] = gradient;
     }
     gradients.set_gradients(static_cast<unsigned>(layer_number), current_activation_gradients);
-    next_activation_gradients = current_activation_gradients;
+    next_activation_gradients = std::move(current_activation_gradients);
     current_activation_gradients = {};
   }
 }

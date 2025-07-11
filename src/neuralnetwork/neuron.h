@@ -16,6 +16,11 @@ class Layer;
 class Neuron
 {
 public:
+  enum class Type
+  {
+    Normal,
+    Bias
+  };
   class WeightParam
   {
   public:
@@ -218,6 +223,7 @@ public:
     const activation& activation,
     const std::vector<WeightParam>& weight_params,
     const OptimiserType& optimiser_type,
+    const Type& type,
     const Logger& logger
     );
     
@@ -227,6 +233,7 @@ public:
     unsigned index, 
     const activation& activation,
     const OptimiserType& optimiser_type,
+    const Type& type,
     const Logger& logger
     );
 
@@ -260,8 +267,8 @@ private:
   double get_output_weight(int index) const;
 
   // optimisers
-  void apply_sgd_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double momentum, double weight_decay) const;
-  void apply_adam_update(WeightParam& weight_param, double clipped_gradient, double learning_rate, double weight_decay) const;
+  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay) const;
+  void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const;
   void apply_adamw_update(
     WeightParam& weight_param,
     double raw_gradient,
@@ -286,7 +293,8 @@ private:
       double weight_decay,
       double beta1,
       double beta2,
-      double epsilon
+      double epsilon,
+      bool is_bias
   ) const;  
   
   std::pair<double, double> clip_gradient(double gradient) const;
@@ -299,5 +307,6 @@ private:
   OptimiserType _optimiser_type;
 
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
+  Type _type;
   Logger _logger;
 };

@@ -169,7 +169,8 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
   }
 
   std::vector<Neuron> neurons;
-  for( unsigned i = 0; i < layer_array->get_number_of_items(); ++i)
+  unsigned total_number_of_neurons = layer_array->get_number_of_items();
+  for( unsigned i = 0; i < total_number_of_neurons; ++i)
   {
     auto neuron_object = dynamic_cast<const TinyJSON::TJValueObject*>(layer_array->at(i));
     if(nullptr == neuron_object)
@@ -206,8 +207,8 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
       activation_method,
       weight_params,
       optimiser_type,
+      i < total_number_of_neurons -1 ? Neuron::Type::Normal : Neuron::Type::Bias,
       logger
-
     );
     neurons.push_back(neuron);
   }
