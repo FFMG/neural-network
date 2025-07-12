@@ -7,7 +7,7 @@
 class activation
 {
 public:
-  enum method
+  enum class method
   {
     linear,
     sigmoid,
@@ -17,6 +17,7 @@ public:
     PRelu,
     selu,
     swish,
+    mish,
     gelu
   };
 
@@ -37,7 +38,8 @@ public:
 
   std::string method_to_string() const;
   static std::string method_to_string(method m);
-
+  static method string_to_method(const std::string& str);
+  
 private:
   static std::vector<double> he_initialization(int num_neurons_prev_layer);
   static std::vector<double> xavier_initialization(int num_neurons_prev_layer, int num_neurons_current_layer);
@@ -60,6 +62,8 @@ private:
   static double calculate_linear_derivative(double x);
   static double calculate_swish(double x);
   static double calculate_swish_derivative(double x);
+  static double calculate_mish(double x);
+  static double calculate_mish_derivative(double x);
   static double calculate_gelu(double x);
   static double calculate_gelu_derivative(double x);
 

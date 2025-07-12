@@ -154,6 +154,19 @@ double activation::calculate_PReLU_derivative(double x, double alpha)
   return (x > 0) ? 1.0 : alpha;
 }
 
+double activation::calculate_mish(double x)
+{
+  return x * std::tanh(std::log1p(std::exp(x)));
+}
+
+double activation::calculate_mish_derivative(double x)
+{
+  double sp = std::log1p(std::exp(x)); // softplus
+  double tanh_sp = std::tanh(sp);
+  double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
+  return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
+}
+
 double activation::calculate_swish(double x) 
 {
   constexpr double MAX_EXP_INPUT = 60.0;
@@ -212,6 +225,9 @@ double activation::activate(double x) const
   case activation::method::swish:
     return calculate_swish(x);
 
+  case activation::method::mish:
+    return calculate_mish(x);
+
   case activation::method::sigmoid:
     return calculate_sigmoid(x);
 
@@ -249,6 +265,9 @@ double activation::activate_derivative(double x) const
   case activation::method::swish:
     return calculate_swish_derivative(x);
 
+  case activation::method::mish:
+    return calculate_mish_derivative(x);
+
   case activation::method::sigmoid:
     return calculate_sigmoid_derivative(x);
 
@@ -276,6 +295,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_prev_layer
   case activation::method::PRelu:
   case activation::method::gelu:
   case activation::method::swish:
+  case activation::method::mish:
     return he_initialization(num_neurons_prev_layer);
 
   default:
@@ -354,19 +374,72 @@ std::string activation::method_to_string() const
   return method_to_string(_method);
 }
 
+activation::method activation::string_to_method(const std::string& str)
+{
+  std::string lower_str = str;
+  // Convert the string to lowercase for case-insensitive comparison
+  std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+    [](unsigned char c) { return std::tolower(c); });
+
+  if (lower_str == "linear")
+  {
+    return method::linear;
+  }
+  if (lower_str == "sigmoid")
+  {
+    return method::sigmoid;
+  }
+  if (lower_str == "tanh")
+  {
+    return method::tanh;
+  }
+  if (lower_str == "relu")
+  {
+    return method::relu;
+  }
+  if (lower_str == "leakyrelu")
+  {
+    return method::leakyRelu;
+  }
+  if (lower_str == "prelu")
+  {
+    return method::PRelu;
+  }
+  if (lower_str == "selu")
+  {
+    return method::selu;
+  }
+  if (lower_str == "swish")
+  {
+    return method::swish;
+  }
+  if (lower_str == "mish")
+  {
+    return method::mish;
+  }
+  if (lower_str == "gelu")
+  {
+    return method::gelu;
+  }
+
+  // If no match is found, throw an exception
+  throw std::invalid_argument("Unknown method: " + str);
+}
+
 std::string activation::method_to_string(method m)
 {
   switch (m)
   {
-  case linear:    return "linear";
-  case sigmoid:   return "sigmoid";
-  case tanh:      return "tanh";
-  case relu:      return "relu";
-  case leakyRelu: return "leakyRelu";
-  case PRelu:     return "PRelu";
-  case selu:      return "selu";
-  case swish:     return "swish";
-  case gelu:      return "gelu";
+  case method::linear:    return "linear";
+  case method::sigmoid:   return "sigmoid";
+  case method::tanh:      return "tanh";
+  case method::relu:      return "relu";
+  case method::leakyRelu: return "leakyRelu";
+  case method::PRelu:     return "PRelu";
+  case method::selu:      return "selu";
+  case method::swish:     return "swish";
+  case method::mish:      return "mish";
+  case method::gelu:      return "gelu";
   default:
     // Handle unknown enum values by throwing an exception
     throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
