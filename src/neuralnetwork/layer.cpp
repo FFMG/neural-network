@@ -135,7 +135,7 @@ Layer Layer::create_input_layer(const std::vector<Neuron>& neurons, const Logger
 Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation::linear, OptimiserType::None, logger);
+  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, LayerType::Input, activation::method::linear, OptimiserType::None, logger);
 }
 
 Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger)
