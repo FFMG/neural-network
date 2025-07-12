@@ -25,6 +25,7 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * selu
 * swish
 * gelu
+* mish
 
 ### Optimiser
 
