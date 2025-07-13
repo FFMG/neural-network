@@ -31,6 +31,7 @@ public:
       double first_moment_estimate,
       double second_moment_estimate,
       long long time_step,
+      double weight_decay,
       const Logger& logger) noexcept :
       _value(value),
       _gradient(gradient),
@@ -38,12 +39,13 @@ public:
       _logger(logger),
       _first_moment_estimate(first_moment_estimate),
       _second_moment_estimate(second_moment_estimate),
-      _time_step(time_step)
+      _time_step(time_step),
+      _weight_decay(weight_decay)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
     WeightParam(double value, double gradient, double velocity, const Logger& logger) noexcept :
-      WeightParam(value, gradient, velocity, 0.0, 0.0, 0, logger)
+      WeightParam(value, gradient, velocity, 0.0, 0.0, 0, 0.01, logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
@@ -54,7 +56,8 @@ public:
       _logger(src._logger),
       _first_moment_estimate(src._first_moment_estimate),
       _second_moment_estimate(src._second_moment_estimate),
-      _time_step(src._time_step)
+      _time_step(src._time_step),
+      _weight_decay(src._weight_decay)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
@@ -142,6 +145,12 @@ public:
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
       return _second_moment_estimate;
     }
+
+    double weight_decay() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("WeightParam");
+      return _weight_decay;
+    }
     void set_value( double value) 
     { 
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -214,6 +223,7 @@ public:
     double _first_moment_estimate = 0.0;
     double _second_moment_estimate = 0.0;
     long long _time_step = 0;
+    double _weight_decay = 0.01;
   };
 
 public:
@@ -267,13 +277,12 @@ private:
   double get_output_weight(int index) const;
 
   // optimisers
-  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay, bool is_bias) const;
-  void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const;
+  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const;
+  void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, bool is_bias) const;
   void apply_adamw_update(
     WeightParam& weight_param,
     double raw_gradient,
     double learning_rate,
-    double weight_decay,
     double beta1,
     double beta2,
     double epsilon
@@ -290,14 +299,13 @@ private:
       WeightParam& weight_param,
       double raw_gradient,
       double learning_rate,
-      double weight_decay,
       double beta1,
       double beta2,
       double epsilon,
       bool is_bias
   ) const;  
   
-  std::pair<double, double> clip_gradient(double gradient) const;
+  double clip_gradient(double gradient) const;
   
   // data to save...
   unsigned _index;

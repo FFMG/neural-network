@@ -172,7 +172,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
 
     const auto& is_bias = neuron._type == Neuron::Type::Bias;
 
-    auto [clipped_gradient, weight_decay] = clip_gradient(gradient);
+    auto clipped_gradient = clip_gradient(gradient);
     switch( _optimiser_type)
     {
     case OptimiserType::None:
@@ -180,15 +180,15 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::SGD:
-      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, weight_decay, is_bias);
+      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, is_bias);
       break;
 
     case OptimiserType::Adam:
-      apply_adam_update(weight_param, clipped_gradient, learning_rate);
+      apply_adam_update(weight_param, clipped_gradient, learning_rate, is_bias);
       break;
 
     case OptimiserType::AdamW:
-      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-8);
+      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
       break;
 
     case OptimiserType::Nadam:
@@ -196,7 +196,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::NadamW:
-      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.01, 0.9, 0.999, 1e-4, is_bias);
+      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-4, is_bias);
       break;
 
     default:
@@ -244,7 +244,6 @@ void Neuron::apply_nadamw_update(
     WeightParam& weight_param,
     double raw_gradient,
     double learning_rate,
-    double weight_decay,
     double beta1,
     double beta2,
     double epsilon,
@@ -281,7 +280,7 @@ void Neuron::apply_nadamw_update(
     is_bias ?
     weight_param.value()
       :
-    weight_param.value() * (1.0 - learning_rate * weight_decay);
+    weight_param.value() * (1.0 - learning_rate * weight_param.weight_decay());
   const double new_weight = decayed_weight - weight_update;
 
   // 6. Store new values
@@ -293,7 +292,6 @@ void Neuron::apply_adamw_update(
   WeightParam& weight_param,
   double raw_gradient,           // unclipped, averaged over batch
   double learning_rate,
-  double weight_decay,
   double beta1,
   double beta2,
   double epsilon
@@ -319,7 +317,7 @@ void Neuron::apply_adamw_update(
 
   // Decoupled weight decay
   auto new_weight = weight_param.value();
-  new_weight *= (1.0 - learning_rate * weight_decay);
+  new_weight *= (1.0 - learning_rate * weight_param.weight_decay());
 
   // Apply update
   new_weight -= weight_update;
@@ -328,7 +326,7 @@ void Neuron::apply_adamw_update(
   weight_param.set_gradient(raw_gradient);
 }
 
-void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const
+void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, bool is_bias) const
 {
   // Update timestep
   weight_param.increment_timestep();
@@ -339,32 +337,29 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, d
   const double beta2 = 0.999;
   const double epsilon = 1e-8;
 
-  // Update biased first moment estimate (EMA of gradient)
-  double first_moment_estimate = beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient;
-  weight_param.set_first_moment_estimate(first_moment_estimate);
+ // Update moments
+  double m = beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient;
+  double v = beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * raw_gradient * raw_gradient;
 
-  // Update biased second raw moment estimate (EMA of squared gradient)
-  auto second_moment_estimate = beta2 * weight_param.second_moment_estimate() + (1.0 - beta2) * raw_gradient * raw_gradient;
-  weight_param.set_second_moment_estimate(second_moment_estimate);
+  weight_param.set_first_moment_estimate(m);
+  weight_param.set_second_moment_estimate(v);
 
-  // Compute bias-corrected estimates
-  double first_unbiased =
-    first_moment_estimate / (1.0 - std::pow(beta1, time_step));
-  double second_unbiased =
-    second_moment_estimate / (1.0 - std::pow(beta2, time_step));
+  double m_hat = m / (1.0 - std::pow(beta1, time_step));
+  double v_hat = v / (1.0 - std::pow(beta2, time_step));
 
-  // Compute update
-  double adam_update = learning_rate * first_unbiased /
-    (std::sqrt(second_unbiased) + epsilon);
+  double adam_update = learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
 
-  // Apply weight decay and update weight
-  double new_weight = weight_param.value() - adam_update;
+  // Apply decoupled weight decay (skip if bias)
+  double decayed_weight = is_bias ? weight_param.value()
+                                   : weight_param.value() * (1.0 - learning_rate * weight_param.weight_decay());
+
+  double new_weight = decayed_weight - adam_update;
 
   weight_param.set_value(new_weight);
-  weight_param.set_gradient(raw_gradient); // Store raw gradient    
+  weight_param.set_gradient(raw_gradient);
 }
 
-void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, double weight_decay, bool is_bias) const
+void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const
 {
   double previous_velocity = weight_param.velocity();
 
@@ -372,7 +367,7 @@ void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, do
 
 double decayed_weight = is_bias
       ? weight_param.value()
-      : weight_param.value() * (1.0 - learning_rate * weight_decay);
+      : weight_param.value() * (1.0 - learning_rate * weight_param.weight_decay());
 
   double new_weight = decayed_weight + velocity;
 
@@ -406,28 +401,23 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
   return sum;
 }
 
-std::pair<double, double> Neuron::clip_gradient(double gradient) const
+double Neuron::clip_gradient(double gradient) const
 {
   constexpr double gradient_clip_threshold = 1.0;
-  constexpr double weight_decay_factor = 0.0001;
-
   if (!std::isfinite(gradient))
   {
     throw std::invalid_argument("Gradient is not finite.");
   }
 
-  double decay = 0.0;
   if (gradient > gradient_clip_threshold) 
   {
     gradient = gradient_clip_threshold;
-    decay = weight_decay_factor;
   } 
   else if (gradient < -gradient_clip_threshold) 
   {
     gradient = -gradient_clip_threshold;
-    decay = weight_decay_factor;
   }
-  return {gradient, decay};
+  return gradient;
 }
 
 double Neuron::calculate_output_gradients(double target_value, double output_value) const
@@ -435,7 +425,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   double delta = output_value - target_value;
   auto gradient = delta * _activation_method.activate_derivative(output_value);
-  gradient = clip_gradient(gradient).first;
+  gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating output gradients.");
@@ -450,7 +440,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   auto derivatives_of_weights = sum_of_derivatives_of_weights(next_layer, activation_gradients);
   auto gradient = derivatives_of_weights * _activation_method.activate_derivative(output_value);
-  gradient = clip_gradient(gradient).first;
+  gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating hidden gradients.");
