@@ -241,6 +241,7 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
     auto first_moment_estimate = weight_param_object->get_float("first-moment-estimate");
     auto second_moment_estimate = weight_param_object->get_float("second-moment-estimate");
     auto time_step = weight_param_object->get_number("time-step");
+    auto weight_decay = weight_param_object->get_float("weight-decay");
 
     weight_params.emplace_back(Neuron::WeightParam(
       static_cast<double>(value),
@@ -249,6 +250,7 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
       static_cast<double>(first_moment_estimate),
       static_cast<double>(second_moment_estimate),
       time_step,
+      static_cast<double>(weight_decay),
       logger
     ));
   }
@@ -335,6 +337,7 @@ void NeuralNetworkSerializer::add_weight_params(const std::vector<Neuron::Weight
     weight_param_object->set_float("first-moment-estimate", weight_param.first_moment_estimate());
     weight_param_object->set_float("second-moment-estimate", weight_param.second_moment_estimate());
     weight_param_object->set_number("time-step", weight_param.timestep());
+    weight_param_object->set_float("weight-decay", weight_param.weight_decay());
     weights_array->add(weight_param_object);
     delete weight_param_object;
   }
