@@ -373,6 +373,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
 
+  dump_layer_info();
+
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
     _options.logger().log_error("The batch size if either -ve or too large for the training sample.");
@@ -557,6 +559,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   {
     progress_callback(*_neural_network_helper);
   }
+
+  dump_layer_info();
+
   MYODDWEB_PROFILE_MARK();
 }
 
@@ -766,7 +771,7 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
   assert(outputs.size() == gradients.output_back().size());
 
   // input layer is all 0, (bias is included)
-  auto input_gradients = std::vector<double>(layers.front().size(), 0.0);
+  auto input_gradients = std::vector<double>(layers.front().number_neurons(), 0.0);
   gradients.set_gradients(0, input_gradients);
   
   // set the output gradient
@@ -778,7 +783,7 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
     const auto& hidden_layer = layers[layer_number];
     const auto& next_layer = layers[layer_number + 1];
 
-    const auto& hidden_layer_size = hidden_layer.size();
+    const auto& hidden_layer_size = hidden_layer.number_neurons();
     std::vector<double> current_activation_gradients;
     current_activation_gradients.resize(hidden_layer_size, 0.0);
     for (size_t hidden_layer_number = 0; hidden_layer_number < hidden_layer_size; ++hidden_layer_number)
@@ -810,13 +815,13 @@ void NeuralNetwork::calculate_forward_feed(
   for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
   {
     const auto& previous_layer = layers[layer_number - 1];
-    auto& this_layer = layers[layer_number];
+    auto& current_layer = layers[layer_number];
     
     std::vector<double> this_output_values;
-    this_output_values.reserve(this_layer.size() - 1);
-    for (size_t neuron_number = 0; neuron_number < this_layer.size() - 1; ++neuron_number)
+    this_output_values.reserve(current_layer.number_neurons() - 1);
+    for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
     {
-      const auto& neuron = this_layer.get_neuron(unsigned(neuron_number));
+      const auto& neuron = current_layer.get_neuron(unsigned(neuron_number));
       this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values));
     }
 
@@ -832,7 +837,7 @@ void NeuralNetwork::calculate_forward_feed(
 std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const size_t output_layer_size = output_layer.size();
+  const size_t output_layer_size = output_layer.number_neurons();
   std::vector<double> activation_gradients = {};
   activation_gradients.reserve(output_layer_size);
   for (size_t n = 0; n < output_layer_size - 1; ++n) // ignore bias
@@ -964,7 +969,7 @@ void NeuralNetwork::log_training_info(
   std::string hidden_layer_message = "Hidden layers: {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
-    hidden_layer_message += std::to_string(_layers[layer].size() - 1); // remove the bias
+    hidden_layer_message += std::to_string(_layers[layer].number_neurons() - 1); // remove the bias
     if (layer < _layers.size() - 2)
     {
       hidden_layer_message += ", ";
@@ -983,6 +988,31 @@ void NeuralNetwork::log_training_info(
     else
     {
       _options.logger().log_info("Number of threads: ", _options.number_of_threads());
+    }
+  }
+}
+
+void NeuralNetwork::dump_layer_info() const
+{
+  for(size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
+  {
+    _options.logger().log_debug("Layer ", layer_number );
+
+    auto& layer = _layers[layer_number];
+    for(size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number )
+    {
+      auto& neuron = layer.get_neuron(neuron_number);
+      _options.logger().log_debug("  → Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "" );
+
+      auto& wp = neuron.get_weight_params();
+      for(size_t index_number = 0; index_number < wp.size(); ++index_number )
+      {
+        _options.logger().log_debug(
+                     std::fixed, std::setprecision(15),
+                     "    → weight[", index_number,
+                     "] = ",
+                     wp[index_number].value());
+      }
     }
   }
 }

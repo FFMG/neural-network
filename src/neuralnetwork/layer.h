@@ -8,13 +8,14 @@
 class Neuron;
 class Layer
 {
-private:  
+public:
   enum class LayerType 
   {
     Input,
     Hidden,
     Output
   };
+private:  
   Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger);
   Layer(LayerType layer_type, const Logger& logger);
 
@@ -25,12 +26,14 @@ public:
   Layer& operator=(Layer&& src) noexcept;
   virtual ~Layer() = default;
 
-  unsigned size() const;
+  unsigned number_neurons() const;
   const std::vector<Neuron>& get_neurons() const;
   std::vector<Neuron>& get_neurons();
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
+
+  LayerType layer_type() const { return _layer_type;}
 
   static Layer create_input_layer(const std::vector<Neuron>& neurons, const Logger& logger);
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger);
