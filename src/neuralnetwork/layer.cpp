@@ -36,8 +36,9 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
   {
     // force the bias node's output to 1.0
     auto neuron = Neuron(
-      num_neurons_in_next_layer,
-      _number_output_neurons,
+      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer +1,  //  previous
+      _number_output_neurons,         //  current 
+      num_neurons_in_next_layer,      //  next
       neuron_number, 
       activation,
       optimiser_type,
@@ -47,10 +48,11 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
     _neurons.emplace_back(neuron);
   }
 
-  // +1 for bias
+  // +1 for bias neuron has no weights.
   auto neuron = Neuron(
-    num_neurons_in_next_layer,
-    _number_output_neurons,
+    layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer +1,  //  previous
+    _number_output_neurons,       //  current
+    num_neurons_in_next_layer,    //  next
     _number_output_neurons,
     activation,
     optimiser_type,

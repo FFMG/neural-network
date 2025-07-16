@@ -6,8 +6,9 @@
 #include <iostream>
 
 Neuron::Neuron(
-  unsigned num_neurons_next_layer,
+  unsigned num_neurons_prev_layer,
   unsigned num_neurons_current_layer,
+  unsigned /*num_neurons_next_layer*/,
   unsigned index,
   const activation& activation,
   const OptimiserType& optimiser_type,
@@ -92,6 +93,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _index(src._index),
   _output_value(src._output_value),
   _activation_method(src._activation_method),
+  _weight_params(std::move(src._weight_params)),
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(src._type),
@@ -388,9 +390,17 @@ double Neuron::get_output_weight(int index) const
 double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  if(is_bias())
+  {
+    //  bias neuron has not gradient.
+    return 0.0;
+  }
+  assert(activation_gradients.size() == next_layer.number_neurons());
+
   double sum = 0.0;
-  assert(activation_gradients.size() == next_layer.size());
-  for (unsigned n = 0; n < next_layer.size() - 1; ++n) 
+  const size_t num_next_neurons = next_layer.number_neurons();
+
+  for (unsigned neuron_index = 0; neuron_index < num_next_neurons; ++neuron_index) 
   {
     auto weights_and_gradients = get_output_weight(n) * activation_gradients[n];
     sum += std::isinf(weights_and_gradients) ? std::numeric_limits<double>::infinity() : weights_and_gradients;
@@ -474,6 +484,11 @@ double Neuron::get_output_value() const
 double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  if(is_bias())
+  {
+    return 1.0;  // Bias neurons always output 1
+  }
+
   double sum = 0.0;
 
   // Sum the previous layer's outputs (which are our inputs)
