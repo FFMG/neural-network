@@ -245,6 +245,7 @@ public:
   Neuron(
     unsigned num_neurons_prev_layer,
     unsigned num_neurons_current_layer,
+    unsigned num_neurons_next_layer,
     unsigned index, 
     const activation& activation,
     const OptimiserType& optimiser_type,
