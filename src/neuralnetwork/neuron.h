@@ -44,11 +44,13 @@ public:
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
+
     WeightParam(double value, double gradient, double velocity, const Logger& logger) noexcept :
       WeightParam(value, gradient, velocity, 0.0, 0.0, 0, 0.01, logger)
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
+
     WeightParam(const WeightParam& src) noexcept :
       _value(src._value),
       _gradient(src._gradient),
@@ -61,6 +63,7 @@ public:
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
     }
+
     WeightParam(WeightParam&& src) noexcept: 
       _value(src._value),
       _gradient(src._gradient),
@@ -78,6 +81,7 @@ public:
       src._second_moment_estimate = 0.0;
       src._time_step = 0;
     }
+
     WeightParam& operator=(const WeightParam& src) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -100,6 +104,7 @@ public:
       {
         _value = src._value;
         _gradient = src._gradient;
+        _velocity = src._velocity;
         _logger = src._logger;
         _first_moment_estimate = src._first_moment_estimate;
         _second_moment_estimate = src._second_moment_estimate;
@@ -269,7 +274,8 @@ public:
   unsigned get_index() const;
   const std::vector<WeightParam>& get_weight_params() const;
 
-  const OptimiserType& get_optimiser_type() const { return _optimiser_type; }
+  const OptimiserType& get_optimiser_type() const;
+  bool is_bias() const;
 
 private:
   void Clean();

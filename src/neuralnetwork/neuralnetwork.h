@@ -222,7 +222,7 @@ public:
     for (const auto& layer : layers)
     {
       // remove the bias Neuron.
-      topology.emplace_back(layer.size() - 1);
+      topology.emplace_back(layer.number_neurons() - 1);
     }
     return create(topology);
   }
@@ -930,6 +930,8 @@ private:
   void log_training_info(
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs) const;
+
+  void dump_layer_info() const;
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 

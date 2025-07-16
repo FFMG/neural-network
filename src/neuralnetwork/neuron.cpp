@@ -17,17 +17,17 @@ Neuron::Neuron(
   _index(index),
   _output_value(0),
   _activation_method(activation),
-  _weight_params({}),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
-  for (auto weight : weights)
+  _weight_params.reserve(num_neurons_prev_layer);
+  auto weights = _activation_method.weight_initialization(num_neurons_prev_layer, num_neurons_current_layer);
+  for (const auto& weight : weights)
   {
-    _weight_params.push_back(WeightParam(weight, 0.0, 0.0, logger));
+    _weight_params.emplace_back(WeightParam(weight, 0.0, 0.0, logger));
   }
 }
 
@@ -43,7 +43,6 @@ Neuron::Neuron(
   _index(index),
   _output_value(output_value),
   _activation_method(activation),
-  _weight_params({}),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
@@ -99,7 +98,11 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _weight_params = std::move(src._weight_params);
+
+  src._optimiser_type = OptimiserType::None;
+  src._output_value = 0;
+  src._index = 0;
+  src._type = Neuron::Type::Normal;
 }
 
 Neuron& Neuron::operator=(Neuron&& src) noexcept
@@ -170,8 +173,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
     }
 
-    const auto& is_bias = neuron._type == Neuron::Type::Bias;
-
+  const auto& is_bias = neuron.is_bias();
     auto clipped_gradient = clip_gradient(gradient);
     switch( _optimiser_type)
     {
@@ -379,6 +381,7 @@ double decayed_weight = is_bias
 double Neuron::get_output_weight(int index) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  assert(index < (int)_weight_params.size());
   return _weight_params[index].value();
 }
 
@@ -485,6 +488,8 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
       _logger.log_error("Exploding weight detected");
       throw std::runtime_error("Exploding weight detected");
     }
+
+    // get that neuron 
     const auto output_value  = previous_layer_output_values[neuron_index];
     sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
@@ -496,15 +501,14 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
   return _activation_method.activate(sum);
 }
 
-void Neuron::forward_feed(const Layer& previous_layer)
+const OptimiserType& Neuron::get_optimiser_type() const 
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  // build the output values
-  std::vector<double> previous_layer_output_values;
-  previous_layer_output_values.reserve(previous_layer.size());
-  for(auto neuron : previous_layer.get_neurons())
-  {
-    previous_layer_output_values.push_back(neuron.get_output_value());
-  }
-  set_output_value(calculate_forward_feed(previous_layer, previous_layer_output_values));
+  return _optimiser_type; 
+}
+
+bool Neuron::is_bias() const
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  return _type == Neuron::Type::Bias;
 }
