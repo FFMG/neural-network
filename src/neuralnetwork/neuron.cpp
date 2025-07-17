@@ -148,11 +148,14 @@ unsigned Neuron::get_index() const
 void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  assert(gradients.size() == previous_layer.size());
+
+  // we should not be doing anything with out weights.
+  assert(!is_bias());
+  assert(gradients.size() == previous_layer.number_neurons());
   for (size_t i = 0; i < gradients.size(); ++i)
   {
-    auto& neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
-    auto& weight_param = neuron._weight_params[_index];
+    auto& previous_layer_neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
+    auto& weight_param = previous_layer_neuron._weight_params[get_index()];
 
     const auto& gradient = gradients[i];         // from prev layer, averaged over batch
     if (!std::isfinite(gradient))
@@ -160,14 +163,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    auto old_velocity = weight_param.velocity();
-    if (!std::isfinite(old_velocity))
-    {
-      _logger.log_error("Error while calculating input weigh old velocity is invalid.");
-      throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
-    }
-
-  const auto& is_bias = neuron.is_bias();
+    const auto& is_bias = previous_layer_neuron.is_bias();
     auto clipped_gradient = clip_gradient(gradient);
     switch( _optimiser_type)
     {
@@ -176,7 +172,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::SGD:
-      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _alpha, is_bias);
+      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _activation_method.momentum(), is_bias);
       break;
 
     case OptimiserType::Adam:
@@ -356,12 +352,11 @@ void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, do
 
   double velocity = momentum * previous_velocity - learning_rate * raw_gradient;
 
-double decayed_weight = is_bias
-      ? weight_param.value()
-      : weight_param.value() * (1.0 - learning_rate * weight_param.weight_decay());
+  double decayed_weight = is_bias
+        ? weight_param.value()
+        : weight_param.value() * (1.0 - learning_rate * weight_param.weight_decay());
 
   double new_weight = decayed_weight + velocity;
-
   weight_param.set_velocity(velocity);
   weight_param.set_gradient(raw_gradient);
   weight_param.set_value(new_weight);
@@ -423,6 +418,11 @@ double Neuron::clip_gradient(double gradient) const
 double Neuron::calculate_output_gradients(double target_value, double output_value) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
+  if (is_bias())
+  {
+    return 0.0;
+  }
+
   double delta = output_value - target_value;
   auto gradient = delta * _activation_method.activate_derivative(output_value);
   gradient = clip_gradient(gradient);
@@ -450,24 +450,6 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   return gradient;
 }
 
-void Neuron::set_output_value(double val) 
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  if (!std::isfinite(val))
-  {
-    _logger.log_error("Error while calculating output values.");
-    throw std::invalid_argument("Error while calculating output values.");
-    return;
-  }
-  _output_value = val;
-}
-
-double Neuron::get_output_value() const
-{ 
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _output_value; 
-}
-
 double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -480,11 +462,11 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
 
   // Sum the previous layer's outputs (which are our inputs)
   // Include the bias node from the previous layer.
-  assert(previous_layer_output_values.size() == previous_layer.size());
-  for (unsigned neuron_index = 0; neuron_index < previous_layer.size(); ++neuron_index) 
+  assert(previous_layer_output_values.size() == previous_layer.number_neurons());
+  for (unsigned neuron_index = 0; neuron_index < previous_layer.number_neurons(); ++neuron_index) 
   {
     const auto& previous_layer_neuron = previous_layer.get_neuron(neuron_index);
-    const auto output_weight = previous_layer_neuron.get_output_weight(_index);
+    const auto output_weight = previous_layer_neuron.get_output_weight(get_index());
     if (std::abs(output_weight) > 1e5)
     {
       _logger.log_error("Exploding weight detected");

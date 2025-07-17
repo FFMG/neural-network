@@ -259,7 +259,7 @@ public:
   Neuron& operator=(Neuron&& src) noexcept;
 
   virtual ~Neuron();
-
+  
   double calculate_forward_feed(const Layer&, 
     const std::vector<double>& previous_layer_output_values
   ) const;
@@ -282,8 +282,13 @@ private:
   double get_output_weight(int index) const;
 
   // optimisers
-  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const;
-  void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, bool is_bias) const;
+  void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, 
+    double momentum, bool is_bias) const;
+  void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, 
+    double beta1,
+    double beta2,
+    double epsilon,
+    bool is_bias) const;
   void apply_adamw_update(
     WeightParam& weight_param,
     double raw_gradient,
@@ -314,7 +319,6 @@ private:
   
   // data to save...
   unsigned _index;
-  double _output_value;
   activation _activation_method;
   std::vector<WeightParam> _weight_params;
   OptimiserType _optimiser_type;
