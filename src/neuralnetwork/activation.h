@@ -31,6 +31,8 @@ public:
   double activate(double x) const;
   double activate_derivative(double x) const;
 
+  double momentum() const;
+
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
 
   void set_alpha(double alpha);
