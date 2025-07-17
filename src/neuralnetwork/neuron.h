@@ -234,7 +234,6 @@ public:
 public:
   Neuron(
     unsigned index, 
-    double output_value,
     const activation& activation,
     const std::vector<WeightParam>& weight_params,
     const OptimiserType& optimiser_type,
@@ -280,6 +279,8 @@ private:
   void Clean();
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
+
+  void apply_weight_gradient(const double gradient, const double learning_rate, const Neuron& previous_layer_neuron, WeightParam& weight_param);
 
   // optimisers
   void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, 

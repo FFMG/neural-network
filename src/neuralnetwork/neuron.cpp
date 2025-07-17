@@ -6,7 +6,7 @@
 #include <iostream>
 
 Neuron::Neuron(
-  unsigned num_neurons_prev_layer,
+  unsigned /*num_neurons_prev_layer*/,
   unsigned num_neurons_current_layer,
   unsigned num_neurons_next_layer,
   unsigned index,
@@ -33,7 +33,6 @@ Neuron::Neuron(
 
 Neuron::Neuron(
   unsigned index,
-  double output_value,
   const activation& activation,
   const std::vector<WeightParam>& weights_params,
   const OptimiserType& optimiser_type,
@@ -145,26 +144,23 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
+void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, const Neuron& previous_layer_neuron, WeightParam& weight_param)
 {
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-
-  // we should not be doing anything with out weights.
-  assert(!is_bias());
-  assert(gradients.size() == previous_layer.number_neurons());
-  for (size_t i = 0; i < gradients.size(); ++i)
-  {
-    auto& previous_layer_neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
-    auto& weight_param = previous_layer_neuron._weight_params[get_index()];
-
-    const auto& gradient = gradients[i];         // from prev layer, averaged over batch
     if (!std::isfinite(gradient))
     {
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
+  auto old_velocity = weight_param.velocity();
+  if (!std::isfinite(old_velocity))
+  {
+    _logger.log_error("Error while calculating input weigh old velocity is invalid.");
+    throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
+  }
+
     const auto& is_bias = previous_layer_neuron.is_bias();
     auto clipped_gradient = clip_gradient(gradient);
+
     switch( _optimiser_type)
     {
     case OptimiserType::None:
@@ -194,6 +190,27 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
     default:
       throw std::runtime_error("Unknown optimizer type.");
     }
+}
+
+void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+
+  // we should not be doing anything with out weights.
+  assert(!is_bias());
+  assert(gradients.size() == previous_layer.number_neurons());
+  for (size_t i = 0; i < gradients.size(); ++i)
+  {
+    auto& previous_layer_neuron = previous_layer.get_neuron(static_cast<unsigned>(i));
+    auto& weight_param = previous_layer_neuron._weight_params[get_index()];
+
+    const auto& gradient = gradients[i];         // from prev layer, averaged over batch
+    if (!std::isfinite(gradient))
+    {
+      _logger.log_error("Error while calculating input weigh gradient it invalid.");
+      throw std::invalid_argument("Error while calculating input weight.");
+    }
+    apply_weight_gradient(gradient, learning_rate, previous_layer_neuron, weight_param);
   }
 }
 
