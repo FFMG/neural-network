@@ -19,22 +19,21 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
     return nullptr;
   }
 
-  auto topology = get_topology(logger, *tj);
-  auto hidden_activation_method = get_hidden_activation_method(logger, *tj);
-  auto output_activation_method = get_output_activation_method(logger, *tj);
+  // get the options
+  auto options = get_options(logger, *tj);
 
   // get the weights...
   std::vector<std::vector<Neuron>> array_of_neurons;
   for(auto layer_number = 0; ;++layer_number)
   {
-    auto activation_method = hidden_activation_method;
+    auto activation_method = options.hidden_activation_method();
     if (layer_number == 0)
     {
       activation_method = activation::method::linear;
     }
-    if (layer_number == static_cast<int>(topology.size() -1))
+    if (layer_number == static_cast<int>(options.topology().size() - 1))
     {
-      activation_method = output_activation_method;
+      activation_method = options.output_activation_method();
     }
 
     auto neurons = get_neurons(logger, *tj, layer_number, activation_method);
@@ -58,7 +57,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, hidden_activation_method, output_activation_method, logger);
+  auto nn = new NeuralNetwork(layers, options);
   logger.log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));
 
   // cleanup
@@ -102,9 +101,8 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
   add_basic(*tj);
-  add_topology(nn, *tj);
-  add_learning_rate(nn, *tj);
-  add_activation_methods(nn, *tj);
+  add_options(nn.options(), *tj);
+  add_final_learning_rate(nn, *tj);
   add_errors(nn, *tj);
   add_layers(nn, *tj);
   
@@ -125,6 +123,75 @@ double NeuralNetworkSerializer::get_mean_absolute_percentage_error(const TinyJSO
   return object->get_float("mean-absolute-percentage-error", true, false);
 }
 
+NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const TinyJSON::TJValue& json)
+{
+  auto default_option = NeuralNetworkOptions::create({ 1,1 }).build();
+  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  if (nullptr == object)
+  {
+    logger.log_error("The given json root is not an object!");
+    return default_option;
+  }
+  auto options_object = dynamic_cast<const TinyJSON::TJValueObject*>(object->try_get_value("options"));
+  if (nullptr == object)
+  {
+    logger.log_error("The given json does not contain a valid option section!");
+    return default_option;
+  }
+
+  auto array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("topology"));
+  if (nullptr == array)
+  {
+    logger.log_error("Could not find a 'topology' node!");
+    return default_option;
+  }
+
+  std::vector<unsigned> topology;
+  for (unsigned i = 0; i < array->get_number_of_items(); ++i)
+  {
+    auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(array->at(i));
+    if (nullptr == number)
+    {
+      logger.log_error("The 'topology' node does not have a valid number at position ", i, "!");
+      return default_option;
+    }
+    topology.push_back(static_cast<unsigned>(number->get_number()));
+  }
+  
+  auto hidden_activation_string = options_object->try_get_string("hidden-activation", false);
+  auto output_activation_string = options_object->try_get_string("output-activation", false);
+  auto hidden_activation = activation::string_to_method(hidden_activation_string);
+  auto output_activation = activation::string_to_method(output_activation_string);
+  
+  auto learning_rate = options_object->get_float("learning-rate");
+  auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
+  auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
+  auto data_is_unique = options_object->get_boolean("data-is-unique");
+  auto number_of_threads = static_cast<int>(options_object->get_number("number-of-threads"));
+  auto learning_rate_decay_rate = options_object->get_float("learning-rate-decay-rate");
+  auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
+  auto optimiser_type_string = options_object->try_get_string("optimiser-type");
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto learning_rate_restart_rate = options_object->get_float("learning-rate-restart-rate");
+  auto learning_rate_restart_boost = options_object->get_float("learning-rate-restart-boost");
+
+  return NeuralNetworkOptions::create(topology)
+    .with_hidden_activation_method(hidden_activation)
+    .with_output_activation_method(output_activation)
+    .with_learning_rate(learning_rate)
+    .with_number_of_epoch(number_of_epoch)
+    .with_batch_size(batch_size)
+    .with_data_is_unique(data_is_unique)
+    .with_number_of_threads(number_of_threads)
+    .with_learning_rate_decay_rate(learning_rate_decay_rate)
+    .with_adaptive_learning_rates(adaptive_learning_rate)
+    .with_optimiser_type(optimiser_type)
+    .with_learning_rate_boost_rate(learning_rate_restart_rate, learning_rate_restart_boost)
+    .with_logger(logger)
+    .build();
+}
+
 double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
@@ -133,16 +200,6 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
     return 0.0;
   }
   return object->get_float("error", true, false);
-}
-
-double NeuralNetworkSerializer::get_learning_rate(const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
-  {
-    return 0.0;
-  }
-  return object->get_float("learning-rate", true, false);
 }
 
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
@@ -257,73 +314,6 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
   return weight_params;
 }
 
-std::vector<unsigned> NeuralNetworkSerializer::get_topology(Logger& logger, const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if(nullptr == object)
-  {
-    logger.log_error("Could not find a 'topology' node!");
-    return {};
-  }
-  auto array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("topology"));
-  if(nullptr == array)
-  {
-    logger.log_error("Could not find a 'topology' node!");
-    return {};
-  }
-
-  std::vector<unsigned> topology;
-  for( unsigned i = 0; i < array->get_number_of_items(); ++i)
-  {
-    auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(array->at(i));
-    if(nullptr == number)
-    {
-      logger.log_error("The 'topology' node does not have a valid number at position ", i, "!");
-      return {};
-    }
-    topology.push_back(static_cast<unsigned>(number->get_number()));
-  }
-
-  if(topology.empty())
-  {
-    logger.log_error("The 'topology' node is empty!");
-  }
-  return topology;
-}
-
-activation::method NeuralNetworkSerializer::get_hidden_activation_method(Logger& logger, const TinyJSON::TJValue& json )
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if(nullptr == object)
-  {
-    logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid;
-  }
-  auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("hidden-activation-method"));
-  if(nullptr == number)
-  {
-    logger.log_warning("Could not find a valid 'hidden-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid;
-  }
-  return static_cast<activation::method>(number->get_number());
-}
-
-activation::method NeuralNetworkSerializer::get_output_activation_method(Logger& logger, const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
-  {
-    logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid;
-  }
-  auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(object->try_get_value("output-activation-method"));
-  if (nullptr == number)
-  {
-    logger.log_warning("Could not find a valid 'output-activation-method' node, defaulting to sigmoid.");
-    return activation::method::sigmoid;
-  }
-  return static_cast<activation::method>(number->get_number());
-}
 
 void NeuralNetworkSerializer::add_weight_params(const std::vector<Neuron::WeightParam>& weight_params, TinyJSON::TJValueObject& neuron)
 {
@@ -343,6 +333,36 @@ void NeuralNetworkSerializer::add_weight_params(const std::vector<Neuron::Weight
   }
   neuron.set("weight-params", weights_array);
   delete weights_array;
+}
+
+void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json)
+{
+  auto options_object = new TinyJSON::TJValueObject();
+  json.set("options", options_object);
+
+  auto topology_list = new TinyJSON::TJValueArray();
+  for (auto topology : options.topology())
+  {
+    topology_list->add_number(topology);
+  }
+  options_object->set("topology", topology_list);
+  options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
+  options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
+  options_object->set_float("learning-rate", options.learning_rate());
+  options_object->set_number("number-of-epoch", options.number_of_epoch());
+  options_object->set_number("batch-size", options.batch_size());
+  options_object->set_boolean("data-is-unique", options.data_is_unique());
+  options_object->set_number("number-of-threads", options.number_of_threads());
+  options_object->set_float("learning-rate-decay-rate", options.learning_rate_decay_rate());
+  options_object->set_boolean("adaptive-learning-rate", options.adaptive_learning_rate());
+  options_object->set_string("optimiser-type", optimiser_type_to_string(options.optimiser_type()).c_str());
+  options_object->set_float("learning-rate-restart-rate", options.learning_rate_restart_rate());
+  options_object->set_float("learning-rate-restart-boost", options.learning_rate_restart_boost());
+
+  json.set("options", options_object);
+
+  delete topology_list;
+  delete options_object;
 }
 
 void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
@@ -393,29 +413,7 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   json.set_float("mean-absolute-percentage-error", metrics[0].error());
 }
 
-void NeuralNetworkSerializer::add_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
-  json.set_float("learning-rate", nn.get_learning_rate());
-}
-
-void NeuralNetworkSerializer::add_activation_methods(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
-{
-  auto hidden_activation_method = new TinyJSON::TJValueNumberInt(static_cast<unsigned>(nn.get_hidden_activation_method()));
-  json.set("hidden-activation-method", hidden_activation_method);
-  delete hidden_activation_method;
-
-  auto output_activation_method = new TinyJSON::TJValueNumberInt( static_cast<unsigned>(nn.get_output_activation_method()));
-  json.set("output-activation-method", output_activation_method);
-  delete output_activation_method;
-}
-
-void NeuralNetworkSerializer::add_topology(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
-{
-  auto topology_list = new TinyJSON::TJValueArray();
-  for(auto topology : nn.get_topology())
-  {
-    topology_list->add_number(topology);
-  }
-  json.set("topology", topology_list);
-  delete topology_list;
+  json.set_float("final-learning-rate", nn.get_learning_rate());
 }
