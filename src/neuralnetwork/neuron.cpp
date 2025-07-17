@@ -8,7 +8,7 @@
 Neuron::Neuron(
   unsigned num_neurons_prev_layer,
   unsigned num_neurons_current_layer,
-  unsigned /*num_neurons_next_layer*/,
+  unsigned num_neurons_next_layer,
   unsigned index,
   const activation& activation,
   const OptimiserType& optimiser_type,
@@ -16,7 +16,6 @@ Neuron::Neuron(
   const Logger& logger
 ) :
   _index(index),
-  _output_value(0),
   _activation_method(activation),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
@@ -24,8 +23,8 @@ Neuron::Neuron(
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  _weight_params.reserve(num_neurons_prev_layer);
-  auto weights = _activation_method.weight_initialization(num_neurons_prev_layer, num_neurons_current_layer);
+  _weight_params.reserve(num_neurons_next_layer);
+  auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (const auto& weight : weights)
   {
     _weight_params.emplace_back(WeightParam(weight, 0.0, 0.0, logger));
@@ -42,7 +41,6 @@ Neuron::Neuron(
   const Logger& logger
 ) :
   _index(index),
-  _output_value(output_value),
   _activation_method(activation),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
@@ -59,7 +57,6 @@ Neuron::Neuron(
 
 Neuron::Neuron(const Neuron& src)  noexcept : 
   _index(src._index),
-  _output_value(src._output_value),
   _activation_method(src._activation_method),
   _weight_params({}),
   _optimiser_type(src._optimiser_type),
@@ -79,7 +76,6 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     Clean();
 
     _index = src._index;
-    _output_value = src._output_value;
     _activation_method = src._activation_method;
     _weight_params = src._weight_params;
     _optimiser_type = src._optimiser_type;
@@ -91,7 +87,6 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
 
 Neuron::Neuron(Neuron&& src) noexcept :
   _index(src._index),
-  _output_value(src._output_value),
   _activation_method(src._activation_method),
   _weight_params(std::move(src._weight_params)),
   _optimiser_type(src._optimiser_type),
@@ -102,7 +97,6 @@ Neuron::Neuron(Neuron&& src) noexcept :
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 
   src._optimiser_type = OptimiserType::None;
-  src._output_value = 0;
   src._index = 0;
   src._type = Neuron::Type::Normal;
 }
@@ -115,7 +109,6 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     Clean();
 
     _index = src._index;
-    _output_value = src._output_value;
     _activation_method = src._activation_method;
     _weight_params = std::move(src._weight_params);
     _optimiser_type = src._optimiser_type;
@@ -123,7 +116,6 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     _type = src._type;
 
     src._optimiser_type = OptimiserType::None;
-    src._output_value = 0;
     src._index = 0;
     src._type = Neuron::Type::Normal;
   }
@@ -188,7 +180,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::Adam:
-      apply_adam_update(weight_param, clipped_gradient, learning_rate, is_bias);
+      apply_adam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
       break;
 
     case OptimiserType::AdamW:
@@ -200,7 +192,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       break;
 
     case OptimiserType::NadamW:
-      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-4, is_bias);
+      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
       break;
 
     default:
@@ -330,16 +322,11 @@ void Neuron::apply_adamw_update(
   weight_param.set_gradient(raw_gradient);
 }
 
-void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, bool is_bias) const
+void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon,  bool is_bias) const
 {
   // Update timestep
   weight_param.increment_timestep();
   const auto& time_step = weight_param.timestep();
-
-  // Adam hyperparameters
-  const double beta1 = 0.9;
-  const double beta2 = 0.999;
-  const double epsilon = 1e-8;
 
  // Update moments
   double m = beta1 * weight_param.first_moment_estimate() + (1.0 - beta1) * raw_gradient;
@@ -402,7 +389,7 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
 
   for (unsigned neuron_index = 0; neuron_index < num_next_neurons; ++neuron_index) 
   {
-    auto weights_and_gradients = get_output_weight(n) * activation_gradients[n];
+    auto weights_and_gradients = get_output_weight(neuron_index) * activation_gradients[neuron_index];
     sum += std::isinf(weights_and_gradients) ? std::numeric_limits<double>::infinity() : weights_and_gradients;
   }
   if (!std::isfinite(sum))
