@@ -183,18 +183,6 @@ Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer
   return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, LayerType::Output, activation, optimiser_type, logger);
 }
 
-std::vector<double> Layer::get_outputs() const
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  std::vector<double> outputs;
-  outputs.reserve(number_neurons() - 1); //  exclude the bias Neuron
-  for (auto it = _neurons.begin(); it != _neurons.end() - 1; ++it) 
-  {
-    outputs.emplace_back(it->get_output_value());
-  }
-  return outputs;
-}
-
 const std::vector<Neuron>& Layer::get_neurons() const 
 { 
   MYODDWEB_PROFILE_FUNCTION("Layer");

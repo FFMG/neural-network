@@ -358,7 +358,6 @@ void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValue
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
-  neuron_object->set_float("output", neuron.get_output_value());
   neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
   add_weight_params(neuron.get_weight_params(), *neuron_object);
   layer.add(neuron_object);

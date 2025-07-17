@@ -260,12 +260,8 @@ public:
 
   virtual ~Neuron();
 
-  void set_output_value(double val);
-  double get_output_value() const;
-  
   double calculate_forward_feed(const Layer&, 
-    const std::vector<double>& previous_layer_output_values,
-    const std::vector<double>* residual_input_values
+    const std::vector<double>& previous_layer_output_values
   ) const;
   
   double calculate_output_gradients(double target_value, double output_value) const;

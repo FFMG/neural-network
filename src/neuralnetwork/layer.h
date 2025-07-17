@@ -43,8 +43,6 @@ public:
 
   static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, const Logger& logger);
   static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger);
-
-  std::vector<double> get_outputs() const;
   
 private:
   std::vector<Neuron> _neurons;
