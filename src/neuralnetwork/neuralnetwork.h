@@ -852,7 +852,7 @@ private:
 public:
   NeuralNetwork(const NeuralNetworkOptions options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
-  NeuralNetwork(const std::vector<Layer>& layers, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
+  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions options);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -901,7 +901,7 @@ private:
   void apply_weight_gradients(std::vector<Layer>& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
   void apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
 
-  static std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer);
+  std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
 
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const;
 

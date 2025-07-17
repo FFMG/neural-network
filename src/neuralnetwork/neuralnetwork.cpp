@@ -68,16 +68,10 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
-  const activation::method& hidden_layer_activation, 
-  const activation::method& output_layer_activation,
-  const Logger& logger
+  const NeuralNetworkOptions options
   ) :
   _learning_rate(0.0),
-  _options(NeuralNetworkOptions::create(layers)    
-    .with_hidden_activation_method(hidden_layer_activation)
-    .with_output_activation_method(output_layer_activation)
-    .with_logger(logger)
-    .build()),
+  _options(options),
   _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -834,19 +828,24 @@ void NeuralNetwork::calculate_forward_feed(
   }
 }
 
-std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer)
+std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const size_t output_layer_size = output_layer.number_neurons();
+  const auto output_layer_size = output_layer.number_neurons();
   std::vector<double> activation_gradients = {};
   activation_gradients.reserve(output_layer_size);
-  for (size_t n = 0; n < output_layer_size - 1; ++n) // ignore bias
+  unsigned neuron_number_count = 0;
+  for (unsigned neuron_number = 0; neuron_number < output_layer_size; ++neuron_number)
   {
-    const auto& neuron = output_layer.get_neuron(unsigned(n));
-    activation_gradients.emplace_back(neuron.calculate_output_gradients(
-      target_outputs[n], given_outputs[n]));
+    const auto& neuron = output_layer.get_neuron(unsigned(neuron_number));
+    auto gradient = 0.0;
+    if (!neuron.is_bias())
+    {
+      gradient = neuron.calculate_output_gradients(target_outputs[neuron_number_count], given_outputs[neuron_number_count]);
+      ++neuron_number_count;
+    }
+    activation_gradients.emplace_back(gradient);
   }
-  activation_gradients.emplace_back(0);  //  add bias we ignored above
   return activation_gradients;
 }
 
@@ -994,25 +993,27 @@ void NeuralNetwork::log_training_info(
 
 void NeuralNetwork::dump_layer_info() const
 {
-  for(size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
+#ifndef NDEBUG
+  for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
   {
-    _options.logger().log_debug("Layer ", layer_number );
+    _options.logger().log_debug("Layer ", layer_number);
 
     auto& layer = _layers[layer_number];
-    for(size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number )
+    for (unsigned neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
     {
       auto& neuron = layer.get_neuron(neuron_number);
-      _options.logger().log_debug("  → Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "" );
+      _options.logger().log_debug("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
 
       auto& wp = neuron.get_weight_params();
-      for(size_t index_number = 0; index_number < wp.size(); ++index_number )
+      for (size_t index_number = 0; index_number < wp.size(); ++index_number)
       {
         _options.logger().log_debug(
                      std::fixed, std::setprecision(15),
-                     "    → weight[", index_number,
+          "    -> weight[", index_number,
                      "] = ",
                      wp[index_number].value());
       }
     }
   }
+#endif
 }
