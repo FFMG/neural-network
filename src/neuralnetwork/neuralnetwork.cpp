@@ -749,12 +749,14 @@ void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const Gra
   std::unique_lock lock(_mutex);
   for (auto layer_number = layer_size-1; layer_number > 0; --layer_number)
   {
+    auto& this_layer = layers[layer_number];
+    auto& prev_layer = layers[layer_number - 1];
     const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
     for (unsigned neuron_number = 0; neuron_number < neuron_size; ++neuron_number)
     {
-      auto& neuron = layers[layer_number].get_neuron(neuron_number);
+      auto& neuron = this_layer.get_neuron(neuron_number);
       const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(layers[layer_number - 1], gradients, learning_rate, epoch);
+      neuron.apply_weight_gradients(prev_layer, gradients, learning_rate, epoch);
     }
   }
 }
