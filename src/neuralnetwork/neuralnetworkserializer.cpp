@@ -251,7 +251,6 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     }
 
     auto index = static_cast<unsigned>(index_object->get_number());
-    auto output_value = output_value_object->get_float();
     auto optimiser_type = static_cast<OptimiserType>(optimiser_type_object->get_number());
 
     // then the weights
@@ -260,7 +259,6 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     
     auto neuron = Neuron(
       index,
-      output_value,
       activation_method,
       weight_params,
       optimiser_type,
