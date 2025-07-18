@@ -11,45 +11,18 @@
 static const double RecentAverageSmoothingFactor = 100.0;
 static const long long IntervalErorCheckInSeconds = 15;
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetworkHelper::calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-  return _neural_network->calculate_forecast_metric(error_type);
-}
-
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetworkHelper::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-  return _neural_network->calculate_forecast_metrics(error_types);
-}
-
-NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions options) :
+NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
+  _layers(
+    options.topology(), 
+    options.hidden_activation_method(), 
+    options.output_activation_method(),
+    options.optimiser_type(),
+    options.logger()),
   _options(options),
   _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto& topology = options.topology();
-  const auto& number_of_layers = topology.size();
-  _layers.reserve(number_of_layers);
-
-  // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], options.logger());
-  _layers.emplace_back(std::move(layer));
-  
-  // then the hidden layers
-  for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
-  {
-    auto num_neurons_current_layer = topology[layer_number];
-    auto num_neurons_next_layer = topology[layer_number + 1];
-    const auto& previous_layer = _layers.back();
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, options.hidden_activation_method(), options.optimiser_type(), options.logger());
-    _layers.emplace_back(std::move(layer));
-  }
-
-  // finally, the output layer
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), options.output_activation_method(), options.optimiser_type(), options.logger());
-  _layers.emplace_back(std::move(layer));
 }
 
 NeuralNetwork::NeuralNetwork(
@@ -68,23 +41,19 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
-  const NeuralNetworkOptions options
+  const NeuralNetworkOptions& options
   ) :
-  _learning_rate(0.0),
+  _learning_rate(options.learning_rate()),
+  _layers(layers),
   _options(options),
   _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  _layers.reserve(layers.size());
-  for (const auto& layer : layers)
-  {
-    auto copy_layer = Layer(layer);
-    _layers.emplace_back(std::move(copy_layer));
-  }
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _learning_rate(src._learning_rate),
+  _layers(src._layers),
   _options(src._options),
   _neural_network_helper(nullptr)
 {
@@ -92,13 +61,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   if (src._neural_network_helper != nullptr)
   {
     _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
-  }
-
-  _layers.reserve(src._layers.size());
-  for (const auto& layer : src._layers)
-  {
-    auto copy_layer = Layer(layer);
-    _layers.emplace_back(std::move(copy_layer));
   }
 }
 
@@ -121,7 +83,7 @@ const activation::method& NeuralNetwork::get_hidden_activation_method() const
 const std::vector<Layer>& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _layers;
+  return _layers.get_layers();
 }
 
 const std::vector<unsigned>& NeuralNetwork::get_topology() const
@@ -226,7 +188,7 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   GradientsAndOutputs gradients(get_topology());
   {
     std::shared_lock lock(_mutex);
-    calculate_forward_feed(gradients, inputs, _layers);
+    calculate_forward_feed(gradients, inputs, _layers.get_layers());
   }
   return gradients.output_back();
 }
@@ -302,7 +264,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     {
       const auto& checks_index = (*checks_indexes)[index];
       const auto& inputs = training_inputs[checks_index];
-      calculate_forward_feed(gradients, inputs, _layers);
+      calculate_forward_feed(gradients, inputs, _layers.get_layers());
       predictions.emplace_back(gradients.output_back());
       gradients.zero();
 
@@ -343,16 +305,16 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   GradientsAndOutputs gradients(_options.topology(), static_cast<unsigned>(size));
   if(size == 1)
   {
-    calculate_forward_feed(gradients, *inputs_begin, _layers);
-    calculate_back_propagation(gradients, *outputs_begin, _layers);
+    calculate_forward_feed(gradients, *inputs_begin, _layers.get_layers());
+    calculate_back_propagation(gradients, *outputs_begin, _layers.get_layers());
     return gradients;
   }
 
   for(size_t index = 0; index < size; ++index)
   {
     GradientsAndOutputs this_gradients(_options.topology());
-    calculate_forward_feed(gradients, *inputs_begin, _layers);
-    calculate_back_propagation(gradients, *outputs_begin, _layers);
+    calculate_forward_feed(gradients, *inputs_begin, _layers.get_layers());
+    calculate_back_propagation(gradients, *outputs_begin, _layers.get_layers());
     gradients.add(this_gradients);
   } 
   return gradients;
@@ -476,7 +438,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
             batch_training_outputs.begin() + start_index,
             total_size);
 
-        apply_weight_gradients(_layers, single_batch, _neural_network_helper->learning_rate(), epoch);
+        apply_weight_gradients(_layers.get_layers(), single_batch, _neural_network_helper->learning_rate(), epoch);
       }
     }
     MYODDWEB_PROFILE_MARK();
@@ -485,7 +447,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     if (task_pool != nullptr)
     {
       epoch_gradients = task_pool->get();
-      apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch);
+      apply_weight_gradients(_layers.get_layers(), epoch_gradients, _neural_network_helper->learning_rate(), epoch);
 
       // then re-shuffle everything
       recreate_batch_from_indexes(*_neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
@@ -715,6 +677,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 
 std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (layer_number == 0 || layer_number > source.num_gradient_layers())
   {
     return {};
@@ -734,16 +697,32 @@ std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_num
 // multiple batches
 void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   for(const auto& batch_activation_gradient : batch_activation_gradients)  
   {
     apply_weight_gradients(layers, batch_activation_gradient, learning_rate, epoch);
   }
 }
 
+const Layer* NeuralNetwork::get_residual_layer(unsigned from, unsigned jump) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  int target = static_cast<int>(from) - jump;
+  if (target < 0 || target >= static_cast<int>(_layers.size()))
+  {
+    return nullptr;
+  }
+
+  return &(_layers[target]);
+}
+
 // single batch
 void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto& layer_size = batch_activation_gradient.num_gradient_layers();
+
+  const int residual_jump = 2; // or a configurable value
 
   // we need to obtain write lock here as we are about to change the neurons
   std::unique_lock lock(_mutex);
@@ -751,12 +730,14 @@ void NeuralNetwork::apply_weight_gradients(std::vector<Layer>& layers, const Gra
   {
     auto& this_layer = layers[layer_number];
     auto& prev_layer = layers[layer_number - 1];
+    const auto* residual_layer = get_residual_layer(layer_number, residual_jump);
+
     const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
     for (unsigned neuron_number = 0; neuron_number < neuron_size; ++neuron_number)
     {
       auto& neuron = this_layer.get_neuron(neuron_number);
       const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(prev_layer, gradients, learning_rate, epoch);
+      neuron.apply_weight_gradients(prev_layer, residual_layer, gradients, learning_rate, epoch);
     }
   }
 }
@@ -805,6 +786,8 @@ void NeuralNetwork::calculate_forward_feed(
   //  the initial set of output values where we are starting from.
   gradients_outputs.set_outputs(0, inputs);
 
+  std::vector<double>* residual_input_values = nullptr;
+
   // then forward propagate from the input to ... hopefully, the output.
   auto previous_layer_output_values = inputs;
   previous_layer_output_values.push_back(1.0);
@@ -818,7 +801,7 @@ void NeuralNetwork::calculate_forward_feed(
     for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
     {
       const auto& neuron = current_layer.get_neuron(unsigned(neuron_number));
-      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values));
+      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_input_values));
     }
 
     gradients_outputs.set_outputs(
@@ -1015,7 +998,7 @@ void NeuralNetwork::dump_layer_info() const
                      "] = ",
                      wp[index_number].value());
       }
-    }
+    } 
   }
 #endif
 }
