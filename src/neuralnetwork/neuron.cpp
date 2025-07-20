@@ -164,7 +164,7 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
     switch( _optimiser_type)
     {
     case OptimiserType::None:
-      // Skip update
+      apply_none_update(weight_param, clipped_gradient, learning_rate);
       break;
 
     case OptimiserType::SGD:
@@ -362,6 +362,14 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, d
   weight_param.set_value(new_weight);
   weight_param.set_gradient(raw_gradient);
 }
+
+void Neuron::apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const
+{
+  double new_weight = weight_param.value() - learning_rate * raw_gradient;
+  weight_param.set_gradient(raw_gradient);
+  weight_param.set_value(new_weight);
+}
+
 
 void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const
 {

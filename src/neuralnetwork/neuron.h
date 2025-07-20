@@ -283,6 +283,7 @@ private:
   void apply_weight_gradient(const double gradient, const double learning_rate, const Neuron& previous_layer_neuron, WeightParam& weight_param);
 
   // optimisers
+  void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const;
   void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, 
     double momentum, bool is_bias) const;
   void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, 
