@@ -20,7 +20,7 @@ private:
       .with_learning_rate_decay_rate(0.4)
       .with_learning_rate_boost_rate(5, 1.05)
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::SGD)
+      .with_optimiser_type(OptimiserType::None)
       .build();
 
     return new NeuralNetwork(options);
@@ -67,7 +67,7 @@ public:
 
     // the file we will be loading from
     const char* file_name = "./xor.nn";
-    const unsigned epoch = 100000;
+    const unsigned epoch = 1500;
     const unsigned batch_size = 1;
 
     // assume that it does not exist
