@@ -44,11 +44,13 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
     array_of_neurons.push_back(neurons);
   }
 
+  auto residual_layers = get_residual_layers(logger, *tj);
+
   auto error = get_error(*tj);
   auto mean_absolute_percentage_error = get_mean_absolute_percentage_error(*tj);
 
   // create the layer and validate that the topology matches.
-  auto layers = create_layers(logger, array_of_neurons);
+  auto layers = create_layers(logger, array_of_neurons, residual_layers);
   if(layers.size() == 0 )
   {
     logger.log_error("Found no valid layers to load!");
@@ -65,7 +67,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   return nn;
 }
 
-std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, std::vector<std::vector<Neuron>> array_of_neurons)
+std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, std::vector<std::vector<Neuron>> array_of_neurons, const std::vector<int>& residual_layers)
 {
   std::vector<Layer> layers = {};
   auto number_of_layers = array_of_neurons.size();
@@ -84,15 +86,17 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, std::v
   // create the hidden layers.
   for(size_t i = 1; i < number_of_layers -1; ++i)
   {
+    const auto& residual_layer = residual_layers[i];
     const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[i - 1].size());
     const auto& this_neurons = array_of_neurons[i];
-    layers.emplace_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer, logger));
+    layers.emplace_back(Layer::create_hidden_layer(this_neurons, num_neurons_in_previous_layer, residual_layer, logger));
   }
 
   // finally, the output layer.
+  const auto& residual_layer = residual_layers.back();
   auto output_neurons = array_of_neurons.back();
   const auto num_neurons_in_previous_layer = static_cast<unsigned>(array_of_neurons[array_of_neurons.size()-2].size());
-  layers.emplace_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, logger));
+  layers.emplace_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, residual_layer, logger));
   return layers;
 }
 
@@ -202,6 +206,35 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
   return object->get_float("error", true, false);
 }
 
+std::vector<int> NeuralNetworkSerializer::get_residual_layers(Logger& logger, const TinyJSON::TJValue& json)
+{
+  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  if(nullptr == object)
+  {
+    return {};
+  }
+  auto array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("layers"));
+  if(nullptr == array)
+  {
+    return {};
+  }
+
+  std::vector<int> residual_layers;
+  unsigned total_number_of_residual_layers = array->get_number_of_items();
+  for( unsigned i = 0; i < total_number_of_residual_layers; ++i)
+  {
+    auto layer_object = dynamic_cast<const TinyJSON::TJValueObject*>(array->at(i));
+    if(nullptr == layer_object)
+    {
+      logger.log_warning("The 'layers' array did not contain valid layer objects!");
+      return {};
+    }
+    auto residual_layer = static_cast<int>(layer_object->get_number("residual-layer", true, true));
+    residual_layers.push_back(residual_layer);
+  }
+  return residual_layers;
+}
+
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
@@ -219,9 +252,17 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     return {};
   }
 
-  auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(array->at(layer_number));
+  auto layer_object = dynamic_cast<const TinyJSON::TJValueObject*>(array->at(layer_number));
+  if(nullptr == layer_object)
+  {
+    logger.log_error("Could not get layer object at position: ", layer_number);
+    return {};
+  }
+
+  auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object->try_get_value("neurons"));
   if(nullptr == layer_array)
   {
+    logger.log_error("Layer object at position: ", layer_number, " does not contain a valid neuron node!");
     return {};
   }
 
@@ -369,25 +410,30 @@ void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
   json.set_number("created", current_timestamp);
 }
 
-void NeuralNetworkSerializer::add_neuron(const Neuron& neuron, TinyJSON::TJValueArray& layer)
+TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuron)
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
   neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
   add_weight_params(neuron.get_weight_params(), *neuron_object);
-  layer.add(neuron_object);
-  delete neuron_object;
+  return neuron_object;
 }
 
 void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArray& layers)
 {
+  auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for(auto neuron : layer.get_neurons())
   {
-    add_neuron(neuron, *layer_array);
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
   }
-  layers.add(layer_array);
+  layer_object->set_number("residual-layer", layer.residual_layer_number());
+  layer_object->set("neurons", layer_array);
+  layers.add(layer_object);
   delete layer_array;
+  delete layer_object;
 }
 
 void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
