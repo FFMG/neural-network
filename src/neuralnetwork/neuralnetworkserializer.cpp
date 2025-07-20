@@ -133,13 +133,13 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     return default_option;
   }
   auto options_object = dynamic_cast<const TinyJSON::TJValueObject*>(object->try_get_value("options"));
-  if (nullptr == object)
+  if (nullptr == options_object)
   {
     logger.log_error("The given json does not contain a valid option section!");
     return default_option;
   }
 
-  auto array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("topology"));
+  auto array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("topology"));
   if (nullptr == array)
   {
     logger.log_error("Could not find a 'topology' node!");
@@ -237,16 +237,13 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     auto index_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("index"));
     if(nullptr == index_object)
     {
-      return {};
-    }
-    auto output_value_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("output"));
-    if(nullptr == output_value_object)
-    {
+      logger.log_error("Could not find neuron index!");
       return {};
     }
     auto optimiser_type_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("optimiser-type"));
     if (nullptr == optimiser_type_object)
     {
+      logger.log_error("Could not find neuron optimiser type!");
       return {};
     }
 
