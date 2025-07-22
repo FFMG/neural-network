@@ -127,7 +127,7 @@ Neuron::~Neuron()
   Clean();
 }
 
-const std::vector<Neuron::WeightParam>& Neuron::get_weight_params() const
+const std::vector<WeightParam>& Neuron::get_weight_params() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   return _weight_params;
@@ -369,7 +369,6 @@ void Neuron::apply_none_update(WeightParam& weight_param, double raw_gradient, d
   weight_param.set_gradient(raw_gradient);
   weight_param.set_value(new_weight);
 }
-
 
 void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const
 {
