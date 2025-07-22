@@ -25,12 +25,15 @@ Layers::Layers(
     const auto& previous_layer = _layers.back();
     const auto residual_layer_number = compute_residual_layer(layer_number, residual_layer_jump);
     layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, logger);
+
+    add_residual_layer(layer, hidden_activation);
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(number_of_layers, residual_layer_jump);
   layer = Layer::create_output_layer(topology.back(), _layers.back(), output_activation, optimiser_type, residual_layer_number, logger);
+  add_residual_layer(layer, output_activation);
   _layers.emplace_back(std::move(layer));
 }
 
@@ -57,7 +60,34 @@ Layers::Layers(Layers&& layers)
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
+Layers& Layers::operator=(const Layers& layers)
+{
+  if(this != &layers)
+  {
+    _layers = layers._layers;
+  }
+  return *this;
+}
+
+Layers& Layers::operator=(Layers&& layers)
+{
+  if(this != &layers)
+  {
+    _layers = std::move(layers._layers);
+  }
+  return *this;
+}
+
 const Layer& Layers::operator[](unsigned index ) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  #ifndef NDEBUG
+  assert(index < _layers.size());
+  #endif
+  return _layers[index];
+}
+
+Layer& Layers::operator[](unsigned index )
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   #ifndef NDEBUG
@@ -88,12 +118,28 @@ std::vector<Layer>& Layers::get_layers()
 
 int Layers::compute_residual_layer(int current_layer_index, int residual_layer_jump) const
 {
-    int residual_layer_index = current_layer_index - residual_layer_jump;
+  int residual_layer_index = current_layer_index - residual_layer_jump;
 
-    // The input layer (index 0) cannot be used as a residual layer
-    if (residual_layer_index <= 0) 
-    {
-        return -1;
-    }
-    return residual_layer_index;
+  // The input layer (index 0) cannot be used as a residual layer
+  if (residual_layer_index <= 0) 
+  {
+      return -1;
+  }
+  return residual_layer_index;
+}
+
+void Layers::add_residual_layer(Layer& layer, const activation::method& activation_method) const
+{
+  auto residual_layer_number = layer.residual_layer_number();
+  if( -1 == residual_layer_number)
+  {
+    return;
+  }
+
+  auto number_of_neuron_in_that_layer = _layers[residual_layer_number].number_neurons();
+  auto num_neurons_current_layer = layer.number_neurons();
+  auto residual_projector = new Layer::ResidualProjector(number_of_neuron_in_that_layer, num_neurons_current_layer, activation_method);
+
+  // pass ownership
+  layer.move_residual_projector(residual_projector);
 }
