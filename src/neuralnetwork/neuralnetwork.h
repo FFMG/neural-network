@@ -410,7 +410,7 @@ private:
   void calculate_back_propagation(
     GradientsAndOutputs& gradients,
     const std::vector<double>& outputs, 
-    const std::vector<Layer>& layers) const;
+    const Layers& layers) const;
   void calculate_forward_feed(
     GradientsAndOutputs& gradients,
     const std::vector<double>& inputs, 
@@ -423,8 +423,8 @@ private:
 
   std::vector<double> calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
 
-  void apply_weight_gradients(std::vector<Layer>& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
-  void apply_weight_gradients(std::vector<Layer>& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
+  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
+  void apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
 
   std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
 

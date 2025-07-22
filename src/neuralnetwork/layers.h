@@ -36,6 +36,18 @@ public:
     return _layers.size();
   }
 
+  inline const Layer& input_layer() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+    return _layers.front();
+  }
+
+  inline const Layer& output_layer() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+    return _layers.back();
+  }
+
 private:
   void add_residual_layer(Layer& layer, const activation::method& activation_method, const Logger& logger) const;
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
