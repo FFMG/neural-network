@@ -30,12 +30,14 @@ public:
 
   int residual_layer_number(unsigned index) const;
 
-  inline size_t size() const {
+  inline size_t size() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
     return _layers.size();
   }
 
 private:
-  void add_residual_layer(Layer& layer, const activation::method& activation_method) const;
+  void add_residual_layer(Layer& layer, const activation::method& activation_method, const Logger& logger) const;
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 
   std::vector<Layer> _layers;

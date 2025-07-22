@@ -308,7 +308,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
   return neurons;
 }
 
-std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logger, const TinyJSON::TJValueObject& neuron)
+std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logger, const TinyJSON::TJValueObject& neuron)
 {
   // the array of weight
   auto weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(neuron.try_get_value("weight-params"));
@@ -318,7 +318,7 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
     return {};
   }
 
-  std::vector<Neuron::WeightParam> weight_params;
+  std::vector<WeightParam> weight_params;
   weight_params.reserve(weights_array->get_number_of_items());
   for(unsigned i = 0; i < weights_array->get_number_of_items(); ++i)
   {
@@ -336,7 +336,7 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
     auto time_step = weight_param_object->get_number("time-step");
     auto weight_decay = weight_param_object->get_float("weight-decay");
 
-    weight_params.emplace_back(Neuron::WeightParam(
+    weight_params.emplace_back(WeightParam(
       static_cast<double>(value),
       static_cast<double>(gradient),
       static_cast<double>(velocity),
@@ -351,7 +351,7 @@ std::vector<Neuron::WeightParam> NeuralNetworkSerializer::get_weight_params(Logg
 }
 
 
-void NeuralNetworkSerializer::add_weight_params(const std::vector<Neuron::WeightParam>& weight_params, TinyJSON::TJValueObject& neuron)
+void NeuralNetworkSerializer::add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& neuron)
 {
   auto weights_array = new TinyJSON::TJValueArray();
   for( auto weight_param : weight_params)
