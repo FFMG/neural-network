@@ -25,14 +25,16 @@ protected:
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       _weight_params.reserve(output_size);
-      for (auto& weights : _weight_params) 
+      for( unsigned out = 0; out < _output_size; ++out)
       {
-        auto values = activation_method.weight_initialization(1, input_size);  // row: 1 x input_size
-        weights.reserve(values.size());
+        std::vector<WeightParam> weights;
+        weights.reserve(_input_size);
+        auto values = activation_method.weight_initialization(input_size, 1);  // row: 1 x input_size
         for( auto& value : values)
         {
           weights.emplace_back(WeightParam(value, 0.0, 0.0, logger));
         }
+        _weight_params.emplace_back(weights);
       }
     }
 
@@ -68,7 +70,13 @@ protected:
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _weight_params; 
     }
-
+    inline WeightParam& get_weights(unsigned residual_source_index, unsigned target_neuron_index)
+    { 
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      assert(residual_source_index < _weight_params.size());
+      assert(target_neuron_index < _weight_params[residual_source_index].size());
+      return _weight_params[residual_source_index][target_neuron_index];
+    }
     void update_weight(size_t out, size_t in, double delta) 
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
@@ -130,6 +138,7 @@ public:
   
   std::vector<double> project_residual_layer_output_values(const std::vector<double>& residual_layer_outputs) const;
 
+  WeightParam& residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index);
 private:
   void clean();
 
