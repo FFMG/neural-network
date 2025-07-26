@@ -150,21 +150,26 @@ void Neuron::apply_residual_projection_gradients(
   const std::vector<double>& gradients,  // same as deltas for this layer
   double learning_rate)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(!is_bias());
-  assert(gradients.size() == residual_outputs.size());  
+
+  const size_t residual_output_count = residual_outputs.size(); // includes bias
+  assert(gradients.size() == residual_output_count);  
 
   size_t target_neuron_index = get_index(); // 'this' neuron index
 
-  for (size_t residual_source_index = 0; residual_source_index < residual_outputs.size(); ++residual_source_index)
+  for (size_t residual_source_index = 0; residual_source_index < residual_output_count; ++residual_source_index)
   {
-    double gradient = gradients[residual_source_index];
+    auto& current_layer_neuron = layer.get_neuron(static_cast<unsigned>(residual_source_index));
+    auto& weight_param = layer.residual_weight_param(target_neuron_index, residual_source_index);
+
+    const auto& gradient = gradients[residual_source_index];
     if (!std::isfinite(gradient))
     {
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    auto& weight_param = layer.residual_weight_param(target_neuron_index, residual_source_index);
-    apply_weight_gradient(gradient, learning_rate, /*is_bias=*/false, weight_param);
+    apply_weight_gradient(gradient, learning_rate, current_layer_neuron.is_bias(), weight_param);
   }
 }
 
