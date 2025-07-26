@@ -18,7 +18,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.hidden_activation_method(), 
     options.output_activation_method(),
     options.optimiser_type(),
-    1, //residual_layer_jump
+    options.residual_layer_jump(),
     options.logger()),
   _options(options),
   _neural_network_helper(nullptr)
@@ -1004,12 +1004,13 @@ void NeuralNetwork::log_training_info(
   _options.logger().log_info(_neural_network_helper->checking_indexes().size(), " in training error check samples.");
   _options.logger().log_info(_neural_network_helper->final_check_indexes().size(), " final error check samples.");
   _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
-  _options.logger().log_info("Learning rate decay rate:", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
-  _options.logger().log_info("Hidden activation method:", activation::method_to_string(get_hidden_activation_method()));
-  _options.logger().log_info("Output activation method:", activation::method_to_string(get_output_activation_method()));
-  _options.logger().log_info("Input size:", training_inputs.front().size());
-  _options.logger().log_info("Output size:", training_outputs.front().size());
-  _options.logger().log_info("Optimiser:", optimiser_type_to_string(_options.optimiser_type()));
+  _options.logger().log_info("Learning rate decay rate: ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  _options.logger().log_info("Hidden activation method: ", activation::method_to_string(get_hidden_activation_method()));
+  _options.logger().log_info("Output activation method: ", activation::method_to_string(get_output_activation_method()));
+  _options.logger().log_info("Residual layerjump: ", _options.residual_layer_jump());
+  _options.logger().log_info("Input size: ", training_inputs.front().size());
+  _options.logger().log_info("Output size: ", training_outputs.front().size());
+  _options.logger().log_info("Optimiser: ", optimiser_type_to_string(_options.optimiser_type()));
   std::string hidden_layer_message = "Hidden layers: {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {

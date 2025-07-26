@@ -317,6 +317,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
 * optimiser_type[=SGD]: The optimiser we will use during training.
 * learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
+* residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
 
 Remember to call `.build()` to create your option as it does error checking.
 

@@ -28,7 +28,8 @@ private:
     _adaptive_learning_rate(false),
     _optimiser_type(OptimiserType::SGD),
     _learning_rate_restart_rate(1),
-    _learning_rate_restart_boost(1)
+    _learning_rate_restart_boost(1),
+    _residual_layer_jump(-1)
   {
   }
 
@@ -73,6 +74,7 @@ public:
       _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
+      _residual_layer_jump = nno._residual_layer_jump;
     }
     return *this;
   }
@@ -96,12 +98,14 @@ public:
       _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
+      _residual_layer_jump = nno._residual_layer_jump;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
       nno._data_is_unique = false;
       nno._optimiser_type = OptimiserType::None;
+      nno._residual_layer_jump = -1;
     }
     return *this;
   }
@@ -175,6 +179,12 @@ public:
     return *this;
   }
 
+  NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
+  {
+    _residual_layer_jump = residual_layer_jump;
+    return *this;
+  }
+
   NeuralNetworkOptions& build()
   {
     if (topology().size() < 2)
@@ -206,6 +216,10 @@ public:
       logger().log_error("The learning rate restart boost cannot be less than 1!");
       throw std::invalid_argument("The learning rate restart boost cannot be less than 1!");
     }
+    if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
+    {
+      logger().log_warning("The residual_layer_jump must be positive or -1");
+    }
     return *this;
   }
 
@@ -234,7 +248,8 @@ public:
       .with_learning_rate_decay_rate(0.0)
       .with_adaptive_learning_rates(false)
       .with_optimiser_type(OptimiserType::SGD)
-      .with_learning_rate_boost_rate(1.0, 1.0);
+      .with_learning_rate_boost_rate(1.0, 1.0)
+      .with_residual_layer_jump(-1);
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology; }
@@ -252,6 +267,7 @@ public:
   inline OptimiserType optimiser_type() const { return _optimiser_type; }
   inline double learning_rate_restart_rate() const { return _learning_rate_restart_rate; }
   inline double learning_rate_restart_boost() const { return _learning_rate_restart_boost; }
+  inline int residual_layer_jump() const { return _residual_layer_jump; }
 
 private:
   std::vector<unsigned> _topology;
@@ -269,4 +285,5 @@ private:
   OptimiserType _optimiser_type;
   double _learning_rate_restart_rate;
   double _learning_rate_restart_boost;
+  int _residual_layer_jump;
 };
