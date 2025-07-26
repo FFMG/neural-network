@@ -179,6 +179,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
 
   auto learning_rate_restart_rate = options_object->get_float("learning-rate-restart-rate");
   auto learning_rate_restart_boost = options_object->get_float("learning-rate-restart-boost");
+  auto residual_layer_jump = options_object->get_number("residual-layer-jump");
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -192,6 +193,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     .with_adaptive_learning_rates(adaptive_learning_rate)
     .with_optimiser_type(optimiser_type)
     .with_learning_rate_boost_rate(learning_rate_restart_rate, learning_rate_restart_boost)
+    .with_residual_layer_jump(residual_layer_jump)
     .with_logger(logger)
     .build();
 }
@@ -394,6 +396,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_string("optimiser-type", optimiser_type_to_string(options.optimiser_type()).c_str());
   options_object->set_float("learning-rate-restart-rate", options.learning_rate_restart_rate());
   options_object->set_float("learning-rate-restart-boost", options.learning_rate_restart_boost());
+  options_object->set_number("residual-layer-jump", options.residual_layer_jump());
 
   json.set("options", options_object);
 
