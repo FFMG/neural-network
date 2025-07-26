@@ -144,13 +144,37 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, const Neuron& previous_layer_neuron, WeightParam& weight_param)
+void Neuron::apply_residual_projection_gradients(
+  Layer& layer,
+  const std::vector<double>& residual_outputs,
+  const std::vector<double>& gradients,  // same as deltas for this layer
+  double learning_rate)
 {
+  assert(!is_bias());
+  assert(gradients.size() == residual_outputs.size());  
+
+  size_t target_neuron_index = get_index(); // 'this' neuron index
+
+  for (size_t residual_source_index = 0; residual_source_index < residual_outputs.size(); ++residual_source_index)
+  {
+    double gradient = gradients[residual_source_index];
     if (!std::isfinite(gradient))
     {
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
+    auto& weight_param = layer.residual_weight_param(target_neuron_index, residual_source_index);
+    apply_weight_gradient(gradient, learning_rate, /*is_bias=*/false, weight_param);
+  }
+}
+
+void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param)
+{
+  if (!std::isfinite(gradient))
+  {
+    _logger.log_error("Error while calculating input weigh gradient it invalid.");
+    throw std::invalid_argument("Error while calculating input weight.");
+  }
   auto old_velocity = weight_param.velocity();
   if (!std::isfinite(old_velocity))
   {
@@ -158,38 +182,36 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
     throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
   }
 
-    const auto& is_bias = previous_layer_neuron.is_bias();
-    auto clipped_gradient = clip_gradient(gradient);
+  auto clipped_gradient = clip_gradient(gradient);
+  switch( _optimiser_type)
+  {
+  case OptimiserType::None:
+    apply_none_update(weight_param, clipped_gradient, learning_rate);
+    break;
 
-    switch( _optimiser_type)
-    {
-    case OptimiserType::None:
-      apply_none_update(weight_param, clipped_gradient, learning_rate);
-      break;
+  case OptimiserType::SGD:
+    apply_sgd_update(weight_param, clipped_gradient, learning_rate, _activation_method.momentum(), is_bias);
+    break;
 
-    case OptimiserType::SGD:
-      apply_sgd_update(weight_param, clipped_gradient, learning_rate, _activation_method.momentum(), is_bias);
-      break;
+  case OptimiserType::Adam:
+    apply_adam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+    break;
 
-    case OptimiserType::Adam:
-      apply_adam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
-      break;
+  case OptimiserType::AdamW:
+    apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
+    break;
 
-    case OptimiserType::AdamW:
-      apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
-      break;
+  case OptimiserType::Nadam:
+    apply_nadam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
+    break;
 
-    case OptimiserType::Nadam:
-      apply_nadam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
-      break;
+  case OptimiserType::NadamW:
+    apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+    break;
 
-    case OptimiserType::NadamW:
-      apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
-      break;
-
-    default:
-      throw std::runtime_error("Unknown optimizer type.");
-    }
+  default:
+    throw std::runtime_error("Unknown optimizer type.");
+  }
 }
 
 void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
@@ -210,7 +232,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    apply_weight_gradient(gradient, learning_rate, previous_layer_neuron, weight_param);
+    apply_weight_gradient(gradient, learning_rate, previous_layer_neuron.is_bias(), weight_param);
   }
 }
 
@@ -422,9 +444,11 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
 
 double Neuron::clip_gradient(double gradient) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   constexpr double gradient_clip_threshold = 1.0;
   if (!std::isfinite(gradient))
   {
+    _logger.log_error("Gradient is not finite.");
     throw std::invalid_argument("Gradient is not finite.");
   }
 
@@ -474,7 +498,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   return gradient;
 }
 
-double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values) const
+double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values, const std::vector<double>& residual_output_values) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   if(is_bias())
@@ -505,6 +529,12 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
       _logger.log_error("Error while calculating forward feed.");
       throw std::invalid_argument("Error while calculating forward feed.");
     }
+  }
+
+  if(residual_output_values.size() > 0 )
+  {
+    assert(get_index() < residual_output_values.size());
+    sum += residual_output_values[get_index()];
   }
   return _activation_method.activate(sum);
 }

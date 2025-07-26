@@ -265,3 +265,14 @@ std::vector<double> Layer::project_residual_layer_output_values(const std::vecto
   }
   return _residual_projector->project(residual_layer_outputs);
 }
+
+WeightParam& Layer::residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  if(nullptr == _residual_projector)
+  {
+    _logger.log_error("Trying to get residual weights for a layer that does not have any!");
+    throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
+  }
+  return _residual_projector->get_weights(residual_source_index, target_neuron_index);
+}
