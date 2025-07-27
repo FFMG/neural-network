@@ -752,18 +752,18 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
     auto& previous_layer = layers[layer_number - 1];
     auto& current_layer = layers[layer_number];
 
-    std::vector<double> residual_layer_output_values = {};
+    std::vector<double> residual_output_values = {};
     const auto residual_layer_mumber = current_layer.residual_layer_number();
     Layer* residual_layer = nullptr;
     if(residual_layer_mumber != -1)
     {
       residual_layer = &(layers[static_cast<unsigned>(residual_layer_mumber)]);
       auto residual_layer_neuron_size = residual_layer->number_neurons();
-      residual_layer_output_values.reserve(residual_layer_neuron_size);
+      residual_output_values.reserve(residual_layer_neuron_size);
       for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
       {
         const auto output = batch_activation_gradient.get_output(residual_layer_mumber, neuron_number);
-        residual_layer_output_values.emplace_back(output);
+        residual_output_values.emplace_back(output);
       }
     }
 
@@ -780,7 +780,7 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
             layer_number, neuron_number, batch_activation_gradient
           );        
         neuron.apply_residual_projection_gradients(current_layer, 
-          residual_layer_output_values, 
+          residual_output_values, 
           residual_gradients, 
           learning_rate);
       }
@@ -846,12 +846,12 @@ void NeuralNetwork::calculate_forward_feed(
     const auto& previous_layer_output_values = layer_output_values[layer_number -1];
 
     // the residual layer output values.
-    std::vector<double> residual_layer_output_values = {};
+    std::vector<double> residual_output_values = {};
     const auto residual_layer_mumber = current_layer.residual_layer_number();
     if(residual_layer_mumber != -1)
     {
       // get that layer output values.
-      residual_layer_output_values = current_layer.project_residual_layer_output_values(layer_output_values[residual_layer_mumber]);
+      residual_output_values = current_layer.residual_output_values(layer_output_values[residual_layer_mumber]);
     }
     
     std::vector<double> this_output_values;
@@ -859,7 +859,7 @@ void NeuralNetwork::calculate_forward_feed(
     for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
     {
       const auto& neuron = current_layer.get_neuron(unsigned(neuron_number));
-      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_layer_output_values));
+      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values));
     }
 
     gradients_outputs.set_outputs(
