@@ -2,6 +2,7 @@
 //
 #include "logger.h"
 
+#include "./examples/residualxor.h"
 #include "./examples/threebitparity.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
@@ -13,7 +14,10 @@ int main()
   auto logger = Logger(Logger::LogLevel::Information);
 
   // XOR
-  ExampleXor::Xor(logger, false);
+  // ExampleXor::Xor(logger, true);
+
+  // Residual XOR
+  ExampleResidualXor::Xor(logger);
 
   // Problem: 3-bit Parity
   ExampleThreebitParity::ThreebitParity(logger);
