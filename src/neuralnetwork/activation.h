@@ -18,7 +18,8 @@ public:
     selu,
     swish,
     mish,
-    gelu
+    gelu,
+    elu
   };
 
   activation(const method method, double alpha = 0.01) noexcept;
@@ -68,6 +69,8 @@ private:
   static double calculate_mish_derivative(double x);
   static double calculate_gelu(double x);
   static double calculate_gelu_derivative(double x);
+  static double calculate_elu(double x, double alpha);
+  static double calculate_elu_derivative(double x, double alpha);
 
   method _method;
   double _alpha;
