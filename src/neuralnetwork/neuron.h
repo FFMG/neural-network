@@ -62,7 +62,6 @@ public:
 
   unsigned get_index() const;
   const std::vector<WeightParam>& get_weight_params() const;
-  const std::vector<WeightParam>& get_residual_input_weights() const;
 
   const OptimiserType& get_optimiser_type() const;
   bool is_bias() const;
