@@ -188,7 +188,7 @@ Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num
   return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, -1, LayerType::Input, activation::method::linear, OptimiserType::None, logger);
 }
 
-Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const Logger& logger)
+Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
@@ -201,6 +201,10 @@ Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned nu
   layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
   layer._neurons = neurons;
   layer._residual_layer_number = residual_layer_number;
+  if(residual_weight_params.size() > 0 )
+  {
+    layer._residual_projector = new Layer::ResidualProjector(residual_weight_params);
+  }
   return layer;
 }
 
@@ -210,7 +214,7 @@ Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned nu
   return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, residual_layer_number, LayerType::Hidden, activation, optimiser_type, logger);
 }
 
-Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const Logger& logger)
+Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
@@ -223,6 +227,10 @@ Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned nu
   layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
   layer._neurons = neurons;
   layer._residual_layer_number = residual_layer_number;
+  if(residual_weight_params.size() > 0 )
+  {
+    layer._residual_projector = new Layer::ResidualProjector(residual_weight_params);
+  }
   return layer;
 }
 

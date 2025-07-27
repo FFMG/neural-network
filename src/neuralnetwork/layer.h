@@ -38,10 +38,28 @@ protected:
       }
     }
 
+    ResidualProjector(const std::vector<std::vector<WeightParam>>& weight_params) :
+       _input_size(0),
+       _output_size(0),
+       _weight_params(weight_params)
+    {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      _output_size = weight_params.size();
+      _input_size = _output_size > 0 ? weight_params.back().size() : 0;
+    }
+
     ResidualProjector(const ResidualProjector& rp ) :
        _input_size(rp._input_size),
        _output_size(rp._output_size),
        _weight_params(rp._weight_params)
+    {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    }
+
+    ResidualProjector(ResidualProjector&& rp ) :
+       _input_size(rp._input_size),
+       _output_size(rp._output_size),
+       _weight_params(std::move(rp._weight_params))
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     }
@@ -138,10 +156,10 @@ public:
   static Layer create_input_layer(const std::vector<Neuron>& neurons, const Logger& logger);
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger);
 
-  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const Logger& logger);
+  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger);
   static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger);
 
-  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const Logger& logger);
+  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger);
   static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger);
 
   inline int residual_layer_number() const
