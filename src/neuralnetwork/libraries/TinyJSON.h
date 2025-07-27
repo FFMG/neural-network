@@ -34,10 +34,11 @@
 //   MINOR version when you add functionality in a backward compatible manner
 //   PATCH version when you make backward compatible bug fixes
 // v0.1.1 - added some add( ... ) and set( ... ) methods
+// v0.1.2 - added a but of get/set( ... ) for values and objects.
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 1;
-static const short TJ_VERSION_PATCH = 1;
-static const char TJ_VERSION_STRING[] = "0.1.1";
+static const short TJ_VERSION_PATCH = 2;
+static const char TJ_VERSION_STRING[] = "0.1.2";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -63,8 +64,8 @@ namespace TinyJSON
 #define TJDICTIONARY std::vector<TJMember*>
 #define TJLIST std::vector<TJValue*>
 #else
-  class TJList;
-  class TJDictionary;
+class TJList;
+class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
@@ -101,7 +102,7 @@ namespace TinyJSON
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;
+    unsigned int max_depth = 64;  
   };
 
   /// <summary>
@@ -193,6 +194,13 @@ namespace TinyJSON
     /// </summary>
     /// <returns></returns>
     TJValue* clone() const;
+
+    bool get_boolean(bool strict = false) const;
+    long double get_float(bool strict = false) const;
+    long long get_number(bool strict = false) const;
+    const TJCHAR* get_string(bool strict = false) const;
+    std::vector<long double> get_floats(bool strict = false) const;
+    std::vector<long long> get_numbers(bool strict = false) const;
 
   protected:
     /// <summary>
@@ -356,10 +364,39 @@ namespace TinyJSON
     bool get_boolean(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
     long double get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
     long long get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
+    const TJCHAR* get_string(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
     std::vector<long double> get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
     std::vector<long long> get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
 
+    void set_floats(const TJCHAR* key, const std::vector<long double>& values);
+    void set_numbers(const TJCHAR* key, const std::vector<long long>& values);
+    
 #if TJ_INCLUDE_STD_STRING == 1
+    inline bool get_boolean(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_boolean(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+    inline long double get_float(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_float(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+    inline long long get_number(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_number(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+    inline const TJCHAR* get_string(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_string(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+    inline std::vector<long double> get_floats(const std::string& key,bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_floats(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+    inline std::vector<long long> get_numbers(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+    {
+      return get_numbers(key.c_str(), case_sensitive, throw_if_not_found);
+    }
+
     /// <summary>
     /// Try and get the value of this member if it exists.
     /// </summary>
@@ -374,7 +411,7 @@ namespace TinyJSON
     TJMember* operator [](int idx) const;
     TJMember* at(int idx) const;
 
-    bool is_object() const;
+    bool is_object() const override;
 
     /// <summary>
     /// Set the value of a ... value
@@ -427,6 +464,13 @@ namespace TinyJSON
     /// <returns></returns>
     void set_string(const TJCHAR* key, const char* value);
 
+    /// <summary>
+    /// Set the value to null.
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    void set_null(const TJCHAR* key);
+
 #if TJ_INCLUDE_STD_STRING == 1
     /// <summary>
     /// Set the value of a string.
@@ -460,7 +504,7 @@ namespace TinyJSON
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
     /// <summary>
     /// Move the value ownership to the members.
@@ -470,7 +514,7 @@ namespace TinyJSON
     /// <returns></returns>
     static TJValueObject* move(TJDICTIONARY*& members);
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
     // All the key value pairs in this object.
@@ -496,7 +540,7 @@ namespace TinyJSON
     TJValue* operator [](int idx) const;
     TJValue* at(int idx) const;
 
-    bool is_array() const;
+    bool is_array() const override;
 
     void add(const TJValue* value);
     void add_numbers(const std::vector<long long>& values);
@@ -524,7 +568,7 @@ namespace TinyJSON
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
     /// <summary>
     /// Move the value ownership to the values.
@@ -534,8 +578,8 @@ namespace TinyJSON
     /// <returns></returns>
     static TJValueArray* move(TJLIST*& values);
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
-
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
+    
   private:
     // All the key value pairs in this object.
     TJLIST* _values;
@@ -551,12 +595,15 @@ namespace TinyJSON
     TJValueString(const TJCHAR* value);
     virtual ~TJValueString();
 
-    bool is_string() const;
+    bool is_string() const override;
+
+    const TJCHAR* raw_value() const;
+
   protected:
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
     /// <summary>
     /// Move the value ownership of the string.
@@ -566,7 +613,7 @@ namespace TinyJSON
     /// <returns></returns>
     static TJValueString* move(TJCHAR*& value);
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
     TJCHAR* _value;
@@ -580,16 +627,16 @@ namespace TinyJSON
     TJValueBoolean(bool is_true);
     virtual ~TJValueBoolean() = default;
 
-    bool is_true() const;
-    bool is_false() const;
+    bool is_true() const override;
+    bool is_false() const override;
 
   protected:
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
     const bool _is_true;
@@ -602,15 +649,15 @@ namespace TinyJSON
     TJValueNull();
     virtual ~TJValueNull() = default;
 
-    bool is_null() const;
+    bool is_null() const override;
 
   protected:
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
   };
 
   // A number JSon, float or int
@@ -621,7 +668,7 @@ namespace TinyJSON
     virtual ~TJValueNumber() = default;
 
   public:
-    bool is_number() const;
+    bool is_number() const override;
 
     long double get_float() const;
     long long get_number() const;
@@ -644,9 +691,9 @@ namespace TinyJSON
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
     const long long _number;
@@ -666,9 +713,9 @@ namespace TinyJSON
     /// <summary>
     /// Clone an array into an identical array
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
   private:
@@ -683,7 +730,7 @@ namespace TinyJSON
   class TJValueNumberExponent : public TJValueNumber
   {
   public:
-    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent, bool is_negative);
+    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int& fraction_exponent, const int& exponent,bool is_negative);
     virtual ~TJValueNumberExponent();
 
     long double get_number() const;
@@ -692,9 +739,9 @@ namespace TinyJSON
     /// <summary>
     /// Clone an array into an identical value object
     /// </summary>
-    TJValue* internal_clone() const;
+    TJValue* internal_clone() const override;
 
-    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const;
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
     void make_string_if_needed() const;
@@ -714,7 +761,7 @@ namespace TinyJSON
     return TJ::parse(source, options);
   }
 
-#if TJ_INCLUDE_STD_STRING == 1
+  #if TJ_INCLUDE_STD_STRING == 1
   inline std::string operator ""_tj_indent(const TJCHAR * source, std::size_t)
   {
     parse_options options = {};
@@ -728,7 +775,7 @@ namespace TinyJSON
     std::string json(tj->dump(formating::indented));
     delete tj;
     return json;
-  }
+  }  
 
   inline std::string operator ""_tj_minify(const TJCHAR * source, std::size_t)
   {
@@ -744,6 +791,6 @@ namespace TinyJSON
     delete tj;
     return json;
   }
-#endif
+  #endif
 } // TinyJSON
 #endif // !TJ_INCLUDED 

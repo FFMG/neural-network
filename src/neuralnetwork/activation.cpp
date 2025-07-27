@@ -103,6 +103,18 @@ double activation::calculate_selu_derivative(double x)
   return SELU_LAMBDA * (x > 0 ? 1.0 : SELU_ALPHA * std::exp(x));
 }
 
+double activation::calculate_elu(double x, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  return x > 0.0 ? x : alpha * (std::exp(x) - 1.0);
+}
+
+double activation::calculate_elu_derivative(double x, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  return x > 0.0 ? 1.0 : alpha * std::exp(x);
+}
+
 double activation::calculate_relu(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -207,6 +219,7 @@ double activation::momentum() const
   case activation::method::tanh:
   case activation::method::PRelu:
   case activation::method::selu:
+  case activation::method::elu:
     return 0.9;
 
   case activation::method::gelu:
@@ -244,6 +257,9 @@ double activation::activate(double x) const
 
   case activation::method::selu:
     return calculate_selu(x);
+
+  case activation::method::elu:
+    return calculate_elu(x, _alpha);
 
   case activation::method::gelu:
     return calculate_gelu(x);
@@ -285,6 +301,9 @@ double activation::activate_derivative(double x) const
   case activation::method::selu:
     return calculate_selu_derivative(x);
 
+  case activation::method::elu:
+    return calculate_elu_derivative(x, _alpha);
+
   case activation::method::gelu:
     return calculate_gelu_derivative(x);
 
@@ -320,6 +339,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   case activation::method::leakyRelu:
   case activation::method::PRelu:
   case activation::method::gelu:
+  case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
     return he_initialization(num_neurons_next_layer);
@@ -447,6 +467,10 @@ activation::method activation::string_to_method(const std::string& str)
   {
     return method::gelu;
   }
+  if (lower_str == "elu")
+  {
+    return method::elu;
+  }
 
   // If no match is found, throw an exception
   throw std::invalid_argument("Unknown method: " + str);
@@ -466,6 +490,7 @@ std::string activation::method_to_string(method m)
   case method::swish:     return "swish";
   case method::mish:      return "mish";
   case method::gelu:      return "gelu";
+  case method::elu:       return "elu";
   default:
     // Handle unknown enum values by throwing an exception
     throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
