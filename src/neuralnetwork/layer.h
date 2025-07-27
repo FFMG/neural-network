@@ -70,7 +70,12 @@ protected:
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _weight_params; 
     }
-    inline WeightParam& get_weights(unsigned residual_source_index, unsigned target_neuron_index)
+    inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
+    {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      return _weight_params;
+    }
+    inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index)
     { 
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(residual_source_index < _weight_params.size());
@@ -84,6 +89,15 @@ protected:
       auto value = _weight_params[out][in].value();
       _weight_params[out][in].set_value(value + delta);
     }
+
+    inline unsigned input_size() const {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      return _input_size;
+    };
+    inline unsigned output_size() const {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      return _output_size;
+    };
 
   private:
     unsigned _input_size;
@@ -130,15 +144,31 @@ public:
   static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const Logger& logger);
   static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger);
 
-  int residual_layer_number() const
+  inline int residual_layer_number() const
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_layer_number;
   };
   
-  std::vector<double> project_residual_layer_output_values(const std::vector<double>& residual_layer_outputs) const;
-
+  inline int residual_input_size() const{
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if(_residual_projector == nullptr)
+    {
+      return -1;
+    }
+    return _residual_projector->input_size();
+  }
+  inline int residual_output_size() const{
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if(_residual_projector == nullptr)
+    {
+      return -1;
+    }
+    return _residual_projector->output_size();
+  }
+  std::vector<double> residual_output_values(const std::vector<double>& residual_layer_outputs) const;
   WeightParam& residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index);
+  const std::vector<std::vector<WeightParam>>& residual_weight_params() const;
 private:
   void clean();
 

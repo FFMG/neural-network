@@ -256,7 +256,7 @@ Neuron& Layer::get_neuron(unsigned index)
   return _neurons[index];
 }
 
-std::vector<double> Layer::project_residual_layer_output_values(const std::vector<double>& residual_layer_outputs) const
+std::vector<double> Layer::residual_output_values(const std::vector<double>& residual_layer_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(nullptr == _residual_projector)
@@ -274,5 +274,16 @@ WeightParam& Layer::residual_weight_param(unsigned residual_source_index, unsign
     _logger.log_error("Trying to get residual weights for a layer that does not have any!");
     throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
   }
-  return _residual_projector->get_weights(residual_source_index, target_neuron_index);
+  return _residual_projector->get_weight_params(residual_source_index, target_neuron_index);
+}
+
+const std::vector<std::vector<WeightParam>>& Layer::residual_weight_params() const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  if(nullptr == _residual_projector)
+  {
+    _logger.log_error("Trying to get residual weights for a layer that does not have any!");
+    throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
+  }
+  return _residual_projector->get_weight_params();
 }

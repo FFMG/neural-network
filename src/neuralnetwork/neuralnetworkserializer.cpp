@@ -353,7 +353,9 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logg
 }
 
 
-void NeuralNetworkSerializer::add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& neuron)
+void NeuralNetworkSerializer::add_weight_params(
+  const std::vector<WeightParam>& weight_params,
+  TinyJSON::TJValueObject& parent)
 {
   auto weights_array = new TinyJSON::TJValueArray();
   for( auto weight_param : weight_params)
@@ -369,7 +371,7 @@ void NeuralNetworkSerializer::add_weight_params(const std::vector<WeightParam>& 
     weights_array->add(weight_param_object);
     delete weight_param_object;
   }
-  neuron.set("weight-params", weights_array);
+  parent.set("weight-params", weights_array);
   delete weights_array;
 }
 
@@ -434,9 +436,37 @@ void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArr
   }
   layer_object->set_number("residual-layer", layer.residual_layer_number());
   layer_object->set("neurons", layer_array);
+  add_residual_projector(layer, *layer_object);
   layers.add(layer_object);
   delete layer_array;
   delete layer_object;
+}
+
+void NeuralNetworkSerializer::add_residual_projector(const Layer& layer, TinyJSON::TJValueObject& layer_object)
+{
+  auto residual_projector_object = new TinyJSON::TJValueObject();
+
+  if(layer.residual_layer_number() != -1)
+  {
+    // input outputs
+    residual_projector_object->set_number("input-size", layer.residual_input_size());
+    residual_projector_object->set_number("output-size", layer.residual_output_size());
+
+    // then all the weights
+    auto* layer_weights_array = new TinyJSON::TJValueArray();
+    const auto& layer_weights = layer.residual_weight_params();
+    for( const auto& weights : layer_weights )
+    {
+      auto* weights_object = new TinyJSON::TJValueObject();
+      add_weight_params(weights, *weights_object);
+      layer_weights_array->add(weights_object);
+      delete weights_object;
+    }
+    residual_projector_object->set("weight-params", layer_weights_array);
+    delete layer_weights_array;
+  }
+  layer_object.set("residual-projector", residual_projector_object);
+  delete residual_projector_object;
 }
 
 void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

@@ -34,8 +34,9 @@ private:
   static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layer(const Layer& layer, TinyJSON::TJValueArray& layers);
+  static void add_residual_projector(const Layer& layer, TinyJSON::TJValueObject& layer_object);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
-  static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& neuron);
+  static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
   static void add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json);
   static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
 };
