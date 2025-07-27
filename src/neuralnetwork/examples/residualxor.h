@@ -8,7 +8,7 @@
 class ExampleResidualXor
 {
 public:
-  static void Xor(Logger& logger)
+  static void Xor(Logger& logger, bool use_file)
   {
     TEST_START("Residual Xor test.")
 
@@ -46,12 +46,29 @@ public:
       .with_residual_layer_jump(3)
       .build();
 
-    auto nn = new NeuralNetwork(options);
+    const char* file_name = "./residualxor.nn";
+    NeuralNetwork* nn = nullptr;
+    if(use_file)
+    {
+      nn = NeuralNetworkSerializer::load(logger, file_name);
+      if( nullptr == nn )
+      {
+        nn = new NeuralNetwork(options);
+        nn->train(training_inputs, training_outputs);
+        std::cout << "Output After Training:" << std::endl;
+        std::cout << std::fixed << std::setprecision(10);
 
-    nn->train(training_inputs, training_outputs);
-
-    std::cout << "Output After Training:" << std::endl;
-    std::cout << std::fixed << std::setprecision(10);
+        // save it
+        NeuralNetworkSerializer::save(*nn, file_name);
+      }
+    }
+    else
+    {
+      nn = new NeuralNetwork(options);
+      nn->train(training_inputs, training_outputs);
+      std::cout << "Output After Training:" << std::endl;
+      std::cout << std::fixed << std::setprecision(10);
+    }
 
     // or we can train with a single inut
     // we know that the output only has one value.
