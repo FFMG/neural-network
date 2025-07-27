@@ -138,10 +138,12 @@
   <ItemGroup>
     <ClCompile Include="activation.cpp" />
     <ClCompile Include="layer.cpp" />
+    <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
     <ClCompile Include="libraries\tracy\TracyClient.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
+    <ClCompile Include="neuralnetworkhelper.cpp" />
     <ClCompile Include="neuralnetworkserializer.cpp" />
     <ClCompile Include="neuron.cpp" />
   </ItemGroup>
@@ -152,15 +154,19 @@
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\xor.h" />
     <ClInclude Include="layer.h" />
+    <ClInclude Include="layers.h" />
     <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
     <ClInclude Include="neuralnetwork.h" />
+    <ClInclude Include="neuralnetworkhelper.h" />
+    <ClInclude Include="neuralnetworkoptions.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
     <ClInclude Include="optimiser.h" />
     <ClInclude Include="taskqueue.h" />
+    <ClInclude Include="weightparam.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
