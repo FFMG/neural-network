@@ -360,6 +360,9 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     auto index = static_cast<unsigned>(index_object->get_number());
     auto optimiser_type = static_cast<OptimiserType>(optimiser_type_object->get_number());
 
+    auto neuron_type = static_cast<Neuron::Type>(neuron_object->get_number("neuron-type", true, true));
+    auto dropout_rate = static_cast<double>(neuron_object->get_float("dropout-rate", true, true));
+
     // then the weights
     // the output layer can have zero weights
     auto weight_params = get_weight_params(logger, *neuron_object);
@@ -369,7 +372,8 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
       activation_method,
       weight_params,
       optimiser_type,
-      i < total_number_of_neurons -1 ? Neuron::Type::Normal : Neuron::Type::Bias,
+      neuron_type,
+      dropout_rate,
       logger
     );
     neurons.push_back(neuron);
@@ -462,7 +466,11 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   {
     topology_list->add_number(topology);
   }
+  auto dropout_list = new TinyJSON::TJValueArray();
+  dropout_list->add_floats(options.dropout());
+
   options_object->set("topology", topology_list);
+  options_object->set("dropout", dropout_list);
   options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
   options_object->set_float("learning-rate", options.learning_rate());
@@ -497,6 +505,8 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
   neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
+  neuron_object->set_number("neuron-type", static_cast<unsigned>(neuron.get_type()));
+  neuron_object->set_float("dropout-rate", neuron.get_dropout_rate());
   add_weight_params(neuron.get_weight_params(), *neuron_object);
   return neuron_object;
 }

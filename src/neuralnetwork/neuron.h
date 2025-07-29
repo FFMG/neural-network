@@ -17,7 +17,8 @@ public:
   enum class Type
   {
     Normal,
-    Bias
+    Bias,
+    Dropout,
   };
 
 public:
@@ -27,6 +28,7 @@ public:
     const std::vector<WeightParam>& weight_params,
     const OptimiserType& optimiser_type,
     const Type& type,
+    const double dropout_rate,
     const Logger& logger
     );
     
@@ -38,6 +40,7 @@ public:
     const activation& activation,
     const OptimiserType& optimiser_type,
     const Type& type,
+    const double dropout_rate,
     const Logger& logger
     );
 
@@ -50,7 +53,8 @@ public:
   
   double calculate_forward_feed(const Layer&, 
     const std::vector<double>& previous_layer_output_values,
-    const std::vector<double>& residual_output_values
+    const std::vector<double>& residual_output_values,
+    bool is_training
   ) const;
   
   double calculate_output_gradients(double target_value, double output_value) const;
@@ -64,9 +68,16 @@ public:
   const std::vector<WeightParam>& get_weight_params() const;
 
   const OptimiserType& get_optimiser_type() const;
-  bool is_bias() const;
+  const Type& get_type() const;
 
+  bool is_bias() const;
+  bool is_dropout() const;
+
+  double get_dropout_rate() const;
 private:
+  
+  bool must_randomly_drop() const;
+
   void Clean();
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
@@ -118,5 +129,6 @@ private:
   
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   Type _type;
+  double _dropout_rate;
   Logger _logger;
 };

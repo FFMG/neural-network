@@ -8,6 +8,7 @@ class Layers
 {
 public:
   Layers(const std::vector<unsigned>& topology, 
+    const std::vector<double>& dropout_layers,
     const activation::method& hidden_activation,
     const activation::method& output_activation,
     const OptimiserType& optimiser_type,

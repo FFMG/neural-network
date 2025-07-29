@@ -17,7 +17,7 @@ Layer::Layer(LayerType layer_type, const Logger& logger) :
   MYODDWEB_PROFILE_FUNCTION("Layer");
 }
 
-Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, const Logger& logger) :
+Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate, const Logger& logger) :
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
   _residual_layer_number(residual_layer_number),
@@ -48,7 +48,8 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
       neuron_number, 
       activation,
       optimiser_type,
-      Neuron::Type::Normal,
+      dropout_rate == 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
+      dropout_rate,
       logger);
     _neurons.emplace_back(neuron);
   }
@@ -64,6 +65,7 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
       activation,
       optimiser_type,
       Neuron::Type::Bias,
+      0.0,  // dropout rate is 0.0 for bias neurons
       logger);
     _neurons.emplace_back(neuron);
   }
@@ -185,7 +187,7 @@ Layer Layer::create_input_layer(const std::vector<Neuron>& neurons, const Logger
 Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, -1, LayerType::Input, activation::method::linear, OptimiserType::None, logger);
+  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0, logger);
 }
 
 Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger)
@@ -208,10 +210,10 @@ Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned nu
   return layer;
 }
 
-Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger)
+Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, residual_layer_number, LayerType::Hidden, activation, optimiser_type, logger);
+  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate, logger);
 }
 
 Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger)
@@ -237,7 +239,7 @@ Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned nu
 Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, residual_layer_number, LayerType::Output, activation, optimiser_type, logger);
+  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0, logger);
 }
 
 const std::vector<Neuron>& Layer::get_neurons() const 

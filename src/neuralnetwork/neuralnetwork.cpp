@@ -15,6 +15,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(
     options.topology(), 
+    options.dropout(),
     options.hidden_activation_method(), 
     options.output_activation_method(),
     options.optimiser_type(),
@@ -189,7 +190,7 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   GradientsAndOutputs gradients(get_topology());
   {
     std::shared_lock lock(_mutex);
-    calculate_forward_feed(gradients, inputs, _layers);
+    calculate_forward_feed(gradients, inputs, _layers, false);
   }
   return gradients.output_back();
 }
@@ -265,7 +266,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     {
       const auto& checks_index = (*checks_indexes)[index];
       const auto& inputs = training_inputs[checks_index];
-      calculate_forward_feed(gradients, inputs, _layers);
+      calculate_forward_feed(gradients, inputs, _layers, false);
       predictions.emplace_back(gradients.output_back());
       gradients.zero();
 
@@ -306,7 +307,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   GradientsAndOutputs gradients(_options.topology(), static_cast<unsigned>(size));
   if(size == 1)
   {
-    calculate_forward_feed(gradients, *inputs_begin, _layers);
+    calculate_forward_feed(gradients, *inputs_begin, _layers, true);
     calculate_back_propagation(gradients, *outputs_begin, _layers);
     return gradients;
   }
@@ -314,7 +315,7 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   for(size_t index = 0; index < size; ++index)
   {
     GradientsAndOutputs this_gradients(_options.topology());
-    calculate_forward_feed(gradients, *inputs_begin, _layers);
+    calculate_forward_feed(gradients, *inputs_begin, _layers, true);
     calculate_back_propagation(gradients, *outputs_begin, _layers);
     gradients.add(this_gradients);
   } 
@@ -827,7 +828,8 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
 void NeuralNetwork::calculate_forward_feed(
   NeuralNetwork::GradientsAndOutputs& gradients_outputs,
   const std::vector<double>& inputs, 
-  const Layers& layers) const
+  const Layers& layers,
+  bool is_tranning) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -861,7 +863,7 @@ void NeuralNetwork::calculate_forward_feed(
     for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
     {
       const auto& neuron = current_layer.get_neuron(unsigned(neuron_number));
-      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values));
+      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values, is_tranning));
     }
 
     gradients_outputs.set_outputs(
@@ -1025,6 +1027,16 @@ void NeuralNetwork::log_training_info(
   hidden_layer_message += "}";
   _options.logger().log_info(hidden_layer_message);
 
+  std::string dropout_layer_message = "Hidden layers dropout rate: {";
+  for( auto& dropout : options().dropout())
+  {
+    dropout_layer_message += std::to_string(dropout);
+    dropout_layer_message += ", ";
+  }
+  dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
+  dropout_layer_message += "}";
+  _options.logger().log_info(dropout_layer_message);
+
   _options.logger().log_info("Batch size: ", _options.batch_size());
   if (_options.batch_size() > 1)
   {
@@ -1050,7 +1062,14 @@ void NeuralNetwork::dump_layer_info() const
     for (unsigned neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
     {
       auto& neuron = layer.get_neuron(neuron_number);
-      _options.logger().log_debug("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
+      if (neuron.is_dropout())
+      {
+        _options.logger().log_debug("  -> Neuron ", neuron_number, " (dropout ", neuron.get_dropout_rate()*100.f, "%)");
+      }
+      else
+      {
+        _options.logger().log_debug("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
+      }
 
       auto& wp = neuron.get_weight_params();
       for (size_t index_number = 0; index_number < wp.size(); ++index_number)
