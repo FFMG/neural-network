@@ -146,6 +146,7 @@ unsigned Neuron::get_index() const
 
 void Neuron::apply_residual_projection_gradients(
   Layer& layer,
+  Layer& residual_layer,
   const std::vector<double>& residual_outputs,
   const std::vector<double>& gradients,  // same as deltas for this layer
   double learning_rate)
@@ -158,7 +159,7 @@ void Neuron::apply_residual_projection_gradients(
 
   for (size_t residual_source_index = 0; residual_source_index < residual_output_count; ++residual_source_index)
   {
-    auto& current_layer_neuron = layer.get_neuron(static_cast<unsigned>(residual_source_index));
+    auto& current_layer_neuron = residual_layer.get_neuron(static_cast<unsigned>(residual_source_index));
     // auto& weight_param = current_layer_neuron._residual_weight_params[get_index()];
     auto& weight_param = layer.residual_weight_param(get_index(), residual_source_index);
 

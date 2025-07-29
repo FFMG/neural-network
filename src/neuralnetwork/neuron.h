@@ -58,7 +58,7 @@ public:
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
 
   void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch);
-  void apply_residual_projection_gradients(Layer& layer, const std::vector<double>& residual_outputs, const std::vector<double>& gradients, double learning_rate);
+  void apply_residual_projection_gradients(Layer& layer, Layer& residual_layer, const std::vector<double>& residual_outputs, const std::vector<double>& gradients, double learning_rate);
 
   unsigned get_index() const;
   const std::vector<WeightParam>& get_weight_params() const;

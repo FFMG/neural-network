@@ -255,12 +255,22 @@ std::vector<Neuron>& Layer::get_neurons()
 const Neuron& Layer::get_neuron(unsigned index) const 
 { 
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  if (index >= _neurons.size()) 
+  {
+    _logger.log_error("Index out of bounds in Layer::get_neuron.");
+    throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
+  }
   return _neurons[index];
 }
 
 Neuron& Layer::get_neuron(unsigned index) 
 { 
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  if (index >= _neurons.size()) 
+  {
+    _logger.log_error("Index out of bounds in Layer::get_neuron.");
+    throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
+  }
   return _neurons[index];
 }
 
