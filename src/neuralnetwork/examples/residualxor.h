@@ -13,7 +13,7 @@ public:
     TEST_START("Residual Xor test.")
 
     auto batch_size = 1;
-    auto epoch = 100000;
+    auto epoch = 1500;
 
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {

@@ -3,7 +3,6 @@
 #include "../logger.h"
 
 #include <iomanip>
-#include <iostream>
 
 class ExampleXor
 {
@@ -43,7 +42,6 @@ private:
 
     // the topology is 3 input, 1 output and one hidden layer with 3 neuron
     nn.train(training_inputs, training_outputs);
-    std::cout << std::endl;
 
     // pass an array of array to think about
     // the result should be close to the training output.
