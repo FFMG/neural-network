@@ -32,8 +32,10 @@ public:
     };
 
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
     // std::vector<unsigned> topology = {2, 3, 1};
     auto options = NeuralNetworkOptions::create(topology)
+      .with_dropout(dropout)
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::relu)
       .with_output_activation_method(activation::method::sigmoid)
