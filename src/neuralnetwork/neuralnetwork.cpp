@@ -778,8 +778,10 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
       {
         const auto residual_gradients = calculate_residual_projection_gradients(
             layer_number, neuron_number, batch_activation_gradient
-          );        
-        neuron.apply_residual_projection_gradients(current_layer, 
+          );
+        neuron.apply_residual_projection_gradients(
+          current_layer, 
+          *residual_layer,
           residual_output_values, 
           residual_gradients, 
           learning_rate);
