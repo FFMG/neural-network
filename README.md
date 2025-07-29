@@ -48,6 +48,41 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * LAMB
 * Lion
 
+### Residual layer
+
+You can use [residual layers](https://en.wikipedia.org/wiki/Residual_neural_network) during training, for that you simply need to define a jump
+
+For example if you want to "jump" ahead by 3 layers then simply define it in your configuration.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_residual_layer_jump(3)
+      ...
+      .build();
+```
+
+Of course, the default is 0, (no jump)
+
+### Dropout (Dilution)
+
+You can define one of more hidden layer to have a [dropout ( or dilution)]https://en.wikipedia.org/wiki/Dilution_(neural_networks) rate.
+
+The rate must be between 0.0 and 1.0 and you must have the exact number of dropout defined for each hidden layer, (or none).
+
+```cpp
+    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_dropout(dropout)
+      ...
+      .build();
+```
+
+The default is to have no dilution, 0.0, for all the hidden layers.
+
 ### Examples
 
 #### XOR example with multiple hidden layers
@@ -319,6 +354,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * optimiser_type[=SGD]: The optimiser we will use during training.
 * learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
+* dropout[={}] you can set a dropout rate for one or more of your hidden layers.
 
 Remember to call `.build()` to create your option as it does error checking.
 
