@@ -414,7 +414,8 @@ private:
   void calculate_forward_feed(
     GradientsAndOutputs& gradients,
     const std::vector<double>& inputs, 
-    const Layers& layers) const;
+    const Layers& layers, 
+    bool is_tranning) const;
   GradientsAndOutputs train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,

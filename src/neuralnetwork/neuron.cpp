@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <random>
 
 Neuron::Neuron(
   unsigned /*num_neurons_prev_layer*/,
@@ -13,6 +14,7 @@ Neuron::Neuron(
   const activation& activation,
   const OptimiserType& optimiser_type,
   const Type& type,
+  const double dropout_rate,
   const Logger& logger
 ) :
   _index(index),
@@ -20,6 +22,7 @@ Neuron::Neuron(
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
+  _dropout_rate(dropout_rate),
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -37,6 +40,7 @@ Neuron::Neuron(
   const std::vector<WeightParam>& weights_params,
   const OptimiserType& optimiser_type,
   const Type& type,
+  const double dropout_rate,
   const Logger& logger
 ) :
   _index(index),
@@ -44,6 +48,7 @@ Neuron::Neuron(
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
+  _dropout_rate(dropout_rate),
   _logger(logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -61,6 +66,7 @@ Neuron::Neuron(const Neuron& src)  noexcept :
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(src._type),
+  _dropout_rate(src._dropout_rate),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -79,6 +85,7 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     _weight_params = src._weight_params;
     _optimiser_type = src._optimiser_type;
     _type = src._type;
+    _dropout_rate = src._dropout_rate;
     _logger = src._logger;
   }
   return *this;
@@ -91,6 +98,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(src._type),
+  _dropout_rate(src._dropout_rate),
   _logger(src._logger)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
@@ -112,10 +120,12 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     _weight_params = std::move(src._weight_params);
     _optimiser_type = src._optimiser_type;
     _logger = src._logger;
+    _dropout_rate = src._dropout_rate;
     _type = src._type;
 
     src._optimiser_type = OptimiserType::None;
     src._index = 0;
+    src._dropout_rate = 0.0;
     src._type = Neuron::Type::Normal;
   }
   return *this;
@@ -503,7 +513,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   return gradient;
 }
 
-double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values, const std::vector<double>& residual_output_values) const
+double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::vector<double>& previous_layer_output_values, const std::vector<double>& residual_output_values, bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   if(is_bias())
@@ -541,7 +551,40 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
     assert(get_index() < residual_output_values.size());
     sum += residual_output_values[get_index()];
   }
-  return _activation_method.activate(sum);
+
+  const auto output = _activation_method.activate(sum);
+  if(is_training)
+  {
+    if (is_dropout() )
+    {
+      if (must_randomly_drop())
+      {
+        return 0.0; // 1. Drop the neuron
+      }
+      else
+      {
+        // 2. Scale up the neurons that were not dropped
+        return output / (1.0 - get_dropout_rate());
+      }
+    }
+  }
+  return output;
+}
+
+double Neuron::get_dropout_rate() const
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  assert(_type == Neuron::Type::Dropout);
+  return _dropout_rate;
+}
+
+bool Neuron::must_randomly_drop() const
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  assert(_type == Neuron::Type::Dropout);
+  static thread_local std::mt19937 rng(std::random_device{}());
+  std::bernoulli_distribution drop(1.0 - get_dropout_rate());
+  return !drop(rng);  // true means keep, false means drop
 }
 
 const OptimiserType& Neuron::get_optimiser_type() const 
@@ -550,8 +593,20 @@ const OptimiserType& Neuron::get_optimiser_type() const
   return _optimiser_type; 
 }
 
+bool Neuron::is_dropout() const 
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  return _type == Neuron::Type::Dropout;
+}
+
 bool Neuron::is_bias() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   return _type == Neuron::Type::Bias;
+}
+
+const Neuron::Type& Neuron::get_type() const
+{
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  return _type;
 }

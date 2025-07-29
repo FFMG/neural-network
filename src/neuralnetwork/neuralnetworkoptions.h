@@ -15,6 +15,7 @@ class NeuralNetworkOptions
 private:
   NeuralNetworkOptions(const std::vector<unsigned>& topology) :
     _topology(topology),
+    _dropout({}),
     _hidden_activation(activation::method::sigmoid),
     _output_activation(activation::method::sigmoid),
     _learning_rate(0.15),
@@ -60,6 +61,7 @@ public:
     if (this != &nno)
     {
       _topology = nno._topology;
+      _dropout = nno._dropout;
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
       _learning_rate = nno._learning_rate;
@@ -84,6 +86,7 @@ public:
     if (this != &nno)
     {
       _topology = std::move(nno._topology);
+      _dropout = std::move(nno._dropout);
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
       _learning_rate = nno._learning_rate;
@@ -152,6 +155,11 @@ public:
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
     return *this;
   }
+  NeuralNetworkOptions& with_dropout(const std::vector<double>& dropout)
+  {
+    _dropout = dropout;
+    return *this;
+  }
   NeuralNetworkOptions& with_learning_rate(double learning_rate)
   {
     _learning_rate = learning_rate;
@@ -191,6 +199,23 @@ public:
     {
       logger().log_error("The topology is not value, you must have at least 2 layers.");
       throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
+    }
+    if (dropout().size() == 0)
+    {
+      _dropout = std::vector<double>(topology().size() - 2, 0.0);
+    }
+    if (dropout().size() != topology().size() -2)
+    {
+      logger().log_error("The dropout size must be exactly the topology size less the input and outpout layers.");
+      throw std::invalid_argument("The dropout size must be exactly the topology size less the input and outpout layers.");
+    }
+    for (auto& dropout : dropout())
+    {
+      if(dropout < 0.0 || dropout > 1.0)
+      {
+        logger().log_error("The dropout rate must be between 0 and 1!");
+        throw std::invalid_argument("The dropout rate must be between 0 and 1!");
+      }
     }
     if (number_of_threads() > 0 && batch_size() <= 1)
     {
@@ -237,7 +262,17 @@ public:
 
   static NeuralNetworkOptions create(const std::vector<unsigned>& topology)
   {
+    std::vector<double> dropout = {};
+    if(topology.size() > 2)
+    {
+      dropout.resize(topology.size() - 2, 0.0);
+    }
+    else
+    {
+      dropout = {};
+    }
     return NeuralNetworkOptions(topology)
+      .with_dropout(dropout)
       .with_learning_rate(0.1)
       .with_hidden_activation_method(activation::method::sigmoid)
       .with_output_activation_method(activation::method::sigmoid)
@@ -253,6 +288,7 @@ public:
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology; }
+  inline const std::vector<double>& dropout() const { return _dropout; }
   inline const activation::method& hidden_activation_method() const { return _hidden_activation; }
   inline const activation::method& output_activation_method() const { return _output_activation; }
   inline double learning_rate() const { return _learning_rate; }
@@ -271,6 +307,7 @@ public:
 
 private:
   std::vector<unsigned> _topology;
+  std::vector<double> _dropout;
   activation::method _hidden_activation;
   activation::method _output_activation;
   double _learning_rate;
