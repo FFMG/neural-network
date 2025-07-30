@@ -66,7 +66,7 @@ Of course, the default is 0, (no jump)
 
 ### Dropout (Dilution)
 
-You can define one of more hidden layer to have a [dropout ( or dilution)]https://en.wikipedia.org/wiki/Dilution_(neural_networks) rate.
+You can define one of more hidden layer to have a [dropout (or dilution)](https://en.wikipedia.org/wiki/Dilution_(neural_networks)) rate.
 
 The rate must be between 0.0 and 1.0 and you must have the exact number of dropout defined for each hidden layer, (or none).
 
@@ -385,7 +385,21 @@ auto options = NeuralNetworkOptions::create({1, 4, 1})
 auto* nn = new NeuralNetwork(options);
 
 ...
-auto error = nn.get_error();
-auto mean = get_mean_absolute_percentage_error();
+auto error_types = {NeuralNetworkOptions::ErrorCalculation::huber_loss, 
+ NeuralNetworkOptions::ErrorCalculation::rmse };
+auto errors = nn->calculate_forecast_metrics( error_types);
+
+// errors[0] = huber_loss
+// errors[1] = rmse
 ...
 ```
+
+### Error Calculations
+
+  * NeuralNetworkOptions::ErrorCalculation::none
+  * NeuralNetworkOptions::ErrorCalculation::huber_loss
+  * NeuralNetworkOptions::ErrorCalculation::mae
+  * NeuralNetworkOptions::ErrorCalculation::mse
+  * NeuralNetworkOptions::ErrorCalculation::rmse
+  * NeuralNetworkOptions::ErrorCalculation::mape
+  * NeuralNetworkOptions::ErrorCalculation::smape
