@@ -344,7 +344,8 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * optimiser_type[=SGD]: The optimiser we will use during training.
 * learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
-* dropout[={}] you can set a dropout rate for one or more of your hidden layers.
+* dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
+* clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
 
 Remember to call `.build()` to create your option as it does error checking.
 
