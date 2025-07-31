@@ -64,6 +64,26 @@ For example if you want to "jump" ahead by 3 layers then simply define it in you
 
 Of course, the default is 0, (no jump)
 
+### norm-based gradient clipping
+
+The Neural Network uses [norm-based gradient clipping](https://en.wikipedia.org/wiki/Vanishing_gradient_problem) with a default value of 1.0
+
+The default value is betweem 0.5 and 2.0 depending on the number of hidden network.
+
+For very deep networks it might be best to set a value of ~5.0
+
+```cpp
+    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_clip_threshold(2.0)
+      ...
+      .build();
+```
+
+Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
+
 ### Dropout (Dilution)
 
 You can define one of more hidden layer to have a [dropout (or dilution)](https://en.wikipedia.org/wiki/Dilution_(neural_networks)) rate.
@@ -344,7 +364,8 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * optimiser_type[=SGD]: The optimiser we will use during training.
 * learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
-* dropout[={}] you can set a dropout rate for one or more of your hidden layers.
+* dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
+* clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
 
 Remember to call `.build()` to create your option as it does error checking.
 
