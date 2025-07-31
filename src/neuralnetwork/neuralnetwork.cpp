@@ -1003,7 +1003,7 @@ void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_outputs) const
 {
   assert(_neural_network_helper != nullptr);
-  _options.logger().log_info("Tainning will use: ");
+  _options.logger().log_info("Training will use: ");
   _options.logger().log_info(_neural_network_helper->training_indexes().size(), " training samples.");
   _options.logger().log_info(_neural_network_helper->checking_indexes().size(), " in training error check samples.");
   _options.logger().log_info(_neural_network_helper->final_check_indexes().size(), " final error check samples.");
