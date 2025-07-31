@@ -30,7 +30,8 @@ private:
     _optimiser_type(OptimiserType::SGD),
     _learning_rate_restart_rate(1),
     _learning_rate_restart_boost(1),
-    _residual_layer_jump(-1)
+    _residual_layer_jump(-1),
+    _clip_threshold(1.0)
   {
   }
 
@@ -77,6 +78,7 @@ public:
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
+      _clip_threshold = nno._clip_threshold;
     }
     return *this;
   }
@@ -102,6 +104,7 @@ public:
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
+      _clip_threshold = nno._clip_threshold;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -109,6 +112,7 @@ public:
       nno._data_is_unique = false;
       nno._optimiser_type = OptimiserType::None;
       nno._residual_layer_jump = -1;
+      nno._clip_threshold = 1.0;
     }
     return *this;
   }
@@ -192,6 +196,11 @@ public:
     _residual_layer_jump = residual_layer_jump;
     return *this;
   }
+  NeuralNetworkOptions& with_clip_threshold(double clip_threshold)
+  {
+    _clip_threshold = clip_threshold;
+    return *this;
+  }
 
   NeuralNetworkOptions& build()
   {
@@ -245,6 +254,11 @@ public:
     {
       logger().log_warning("The residual_layer_jump must be positive or -1");
     }
+    if (clip_threshold() <= 0.0)
+    {
+      logger().log_error("A gradient clip threshold smaller or equal to zero does not make sense!");
+      throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
+    }
     return *this;
   }
 
@@ -262,10 +276,19 @@ public:
 
   static NeuralNetworkOptions create(const std::vector<unsigned>& topology)
   {
+    auto clip_threshold = 1.0;
     std::vector<double> dropout = {};
     if(topology.size() > 2)
     {
       dropout.resize(topology.size() - 2, 0.0);
+      if (topology.size() > 8)  //  6 hidden
+      {
+        clip_threshold = 2.0;
+      }
+      else if (topology.size() > 2) //  2 hidden
+      {
+        clip_threshold = 0.5;
+      }
     }
     else
     {
@@ -284,7 +307,9 @@ public:
       .with_adaptive_learning_rates(false)
       .with_optimiser_type(OptimiserType::SGD)
       .with_learning_rate_boost_rate(1.0, 1.0)
-      .with_residual_layer_jump(-1);
+      .with_residual_layer_jump(-1)
+      .with_clip_threshold(clip_threshold);
+
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology; }
@@ -304,6 +329,7 @@ public:
   inline double learning_rate_restart_rate() const { return _learning_rate_restart_rate; }
   inline double learning_rate_restart_boost() const { return _learning_rate_restart_boost; }
   inline int residual_layer_jump() const { return _residual_layer_jump; }
+  inline double clip_threshold() const { return _clip_threshold; }
 
 private:
   std::vector<unsigned> _topology;
@@ -323,4 +349,5 @@ private:
   double _learning_rate_restart_rate;
   double _learning_rate_restart_boost;
   int _residual_layer_jump;
+  double _clip_threshold;
 };

@@ -44,8 +44,8 @@ protected:
        _weight_params(weight_params)
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-      _output_size = weight_params.size();
-      _input_size = _output_size > 0 ? weight_params.back().size() : 0;
+      _output_size = static_cast<unsigned>(weight_params.size());
+      _input_size = _output_size > 0 ? static_cast<unsigned>(weight_params.back().size()) : 0;
     }
 
     ResidualProjector(const ResidualProjector& rp ) :
@@ -56,7 +56,7 @@ protected:
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     }
 
-    ResidualProjector(ResidualProjector&& rp ) :
+    ResidualProjector(ResidualProjector&& rp ) noexcept :
        _input_size(rp._input_size),
        _output_size(rp._output_size),
        _weight_params(std::move(rp._weight_params))
