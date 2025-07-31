@@ -533,8 +533,8 @@ double NeuralNetwork::calculate_clipping_scale() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  constexpr double gradient_clip_threshold = 1.0;
-  double global_sum_squares = 0.0;
+  auto gradient_clip_threshold = options().clip_threshold();
+  auto global_sum_squares = 0.0;
 
   for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
   {
