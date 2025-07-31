@@ -159,7 +159,8 @@ void Neuron::apply_residual_projection_gradients(
   Layer& residual_layer,
   const std::vector<double>& residual_outputs,
   const std::vector<double>& gradients,  // same as deltas for this layer
-  double learning_rate)
+  double learning_rate,
+  double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   assert(!is_bias());
@@ -179,11 +180,11 @@ void Neuron::apply_residual_projection_gradients(
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    apply_weight_gradient(gradient, learning_rate, current_layer_neuron.is_bias(), weight_param);
+    apply_weight_gradient(gradient, learning_rate, current_layer_neuron.is_bias(), weight_param, clipping_scale);
   }
 }
 
-void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param)
+void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
 {
   if (!std::isfinite(gradient))
   {
@@ -197,7 +198,7 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
     throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
   }
 
-  auto clipped_gradient = clip_gradient(gradient);
+  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient) : gradient * clipping_scale;
   switch( _optimiser_type)
   {
   case OptimiserType::None:
@@ -229,7 +230,7 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
   }
 }
 
-void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/)
+void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned /*epoch*/, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 
@@ -247,7 +248,7 @@ void Neuron::apply_weight_gradients(Layer& previous_layer, const std::vector<dou
       _logger.log_error("Error while calculating input weigh gradient it invalid.");
       throw std::invalid_argument("Error while calculating input weight.");
     }
-    apply_weight_gradient(gradient, learning_rate, previous_layer_neuron.is_bias(), weight_param);
+    apply_weight_gradient(gradient, learning_rate, previous_layer_neuron.is_bias(), weight_param, clipping_scale);
   }
 }
 

@@ -61,8 +61,8 @@ public:
   
   double calculate_hidden_gradients(const Layer& next_layer, const std::vector<double>& activation_gradients, double output_value) const;
 
-  void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch);
-  void apply_residual_projection_gradients(Layer& layer, Layer& residual_layer, const std::vector<double>& residual_outputs, const std::vector<double>& gradients, double learning_rate);
+  void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch, double clipping_scale);
+  void apply_residual_projection_gradients(Layer& layer, Layer& residual_layer, const std::vector<double>& residual_outputs, const std::vector<double>& gradients, double learning_rate, double clipping_scale);
 
   unsigned get_index() const;
   const std::vector<WeightParam>& get_weight_params() const;
@@ -82,7 +82,7 @@ private:
   double sum_of_derivatives_of_weights(const Layer& next_layer, const std::vector<double>& activation_gradients) const;
   double get_output_weight(int index) const;
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param);
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale);
 
   // optimisers
   void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const;
