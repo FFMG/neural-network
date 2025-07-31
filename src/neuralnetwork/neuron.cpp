@@ -172,7 +172,7 @@ void Neuron::apply_residual_projection_gradients(
   {
     auto& current_layer_neuron = residual_layer.get_neuron(static_cast<unsigned>(residual_source_index));
     // auto& weight_param = current_layer_neuron._residual_weight_params[get_index()];
-    auto& weight_param = layer.residual_weight_param(get_index(), residual_source_index);
+    auto& weight_param = layer.residual_weight_param(get_index(), static_cast<unsigned>(residual_source_index));
 
     const auto& gradient = gradients[residual_source_index];
     if (!std::isfinite(gradient))
