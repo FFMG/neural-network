@@ -409,6 +409,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   double learning_rate_base = initial_learning_rate;
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
+
+  auto clipping_scale = -1.0;
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -440,7 +442,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
             batch_training_outputs.begin() + start_index,
             total_size);
 
-        apply_weight_gradients(_layers, single_batch, _neural_network_helper->learning_rate(), epoch);
+        apply_weight_gradients(_layers, single_batch, _neural_network_helper->learning_rate(), epoch, clipping_scale);
       }
     }
     MYODDWEB_PROFILE_MARK();
@@ -449,7 +451,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     if (task_pool != nullptr)
     {
       epoch_gradients = task_pool->get();
-      apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch);
+      apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch, clipping_scale);
 
       // then re-shuffle everything
       recreate_batch_from_indexes(*_neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
@@ -488,6 +490,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
         return;
       }
     }
+
+    // re-calculate the clipping scale
+    clipping_scale = calculate_clipping_scale();
+
     MYODDWEB_PROFILE_MARK();
   }
 
@@ -521,6 +527,45 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   dump_layer_info();
 
   MYODDWEB_PROFILE_MARK();
+}
+
+double NeuralNetwork::calculate_clipping_scale() const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
+  constexpr double gradient_clip_threshold = 1.0;
+  double global_sum_squares = 0.0;
+
+  for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
+  {
+    const auto& layer = _layers[layer_number];
+    for (size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
+    {
+      const auto& neuron = layer.get_neuron(neuron_number);
+      if(neuron.is_bias())
+      {
+        continue;
+      }
+      for (const auto& weight_param : neuron.get_weight_params())
+      {
+        double g = weight_param.gradient();
+        if (std::isfinite(g)) 
+        {
+          global_sum_squares += g * g;
+        }
+      }
+    }
+  }
+
+  double global_norm = std::sqrt(global_sum_squares);
+  if (!std::isfinite(global_norm) || global_norm <= gradient_clip_threshold)
+  {
+    return 1.0; // No clipping needed, use identity scale
+  }
+
+  auto clipping_scale = gradient_clip_threshold / global_norm;
+  options().logger().log_debug("Clipping scale : ", clipping_scale);
+  return clipping_scale;
 }
 
 double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
@@ -731,17 +776,17 @@ std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_num
 }
 
 // multiple batches
-void NeuralNetwork::apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const
+void NeuralNetwork::apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, double clipping_scale) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   for(const auto& batch_activation_gradient : batch_activation_gradients)  
   {
-    apply_weight_gradients(layers, batch_activation_gradient, learning_rate, epoch);
+    apply_weight_gradients(layers, batch_activation_gradient, learning_rate, epoch, clipping_scale);
   }
 }
 
 // single batch
-void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const
+void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch, double clipping_scale) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto& layer_size = batch_activation_gradient.num_gradient_layers();
@@ -773,7 +818,7 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
     {
       auto& neuron = current_layer.get_neuron(neuron_number);
       const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(previous_layer, gradients, learning_rate, epoch);
+      neuron.apply_weight_gradients(previous_layer, gradients, learning_rate, epoch, clipping_scale);
 
       if(residual_layer != nullptr)
       {
@@ -785,7 +830,8 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
           *residual_layer,
           residual_output_values, 
           residual_gradients, 
-          learning_rate);
+          learning_rate, 
+          clipping_scale);
       }
     }
   }
