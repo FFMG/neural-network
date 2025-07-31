@@ -564,7 +564,7 @@ double NeuralNetwork::calculate_clipping_scale() const
   }
 
   auto clipping_scale = gradient_clip_threshold / global_norm;
-  options().logger().log_debug("Clipping scale : ", clipping_scale);
+  options().logger().log_debug(std::setprecision(4), "Clipping gradients: global norm = ", global_norm, " scale = ", clipping_scale);
   return clipping_scale;
 }
 
@@ -1053,15 +1053,17 @@ void NeuralNetwork::log_training_info(
   _options.logger().log_info(_neural_network_helper->training_indexes().size(), " training samples.");
   _options.logger().log_info(_neural_network_helper->checking_indexes().size(), " in training error check samples.");
   _options.logger().log_info(_neural_network_helper->final_check_indexes().size(), " final error check samples.");
-  _options.logger().log_info("Learning rate:", std::fixed, std::setprecision(15), _options.learning_rate());
+  _options.logger().log_info("Learning rate           :", std::fixed, std::setprecision(15), _options.learning_rate());
   _options.logger().log_info("Learning rate decay rate: ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  _options.logger().log_info("Gradient clip threshold : ", std::fixed, std::setprecision(4), _options.clip_threshold());
   _options.logger().log_info("Hidden activation method: ", activation::method_to_string(get_hidden_activation_method()));
   _options.logger().log_info("Output activation method: ", activation::method_to_string(get_output_activation_method()));
-  _options.logger().log_info("Residual layerjump: ", _options.residual_layer_jump());
-  _options.logger().log_info("Input size: ", training_inputs.front().size());
-  _options.logger().log_info("Output size: ", training_outputs.front().size());
-  _options.logger().log_info("Optimiser: ", optimiser_type_to_string(_options.optimiser_type()));
-  std::string hidden_layer_message = "Hidden layers: {";
+  _options.logger().log_info("Residual layerjump      : ", _options.residual_layer_jump());
+  _options.logger().log_info("Input size              : ", training_inputs.front().size());
+  _options.logger().log_info("Output size             : ", training_outputs.front().size());
+  _options.logger().log_info("Optimiser               : ", optimiser_type_to_string(_options.optimiser_type()));
+  std::string hidden_layer_message = 
+                             "Hidden layers            : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
     hidden_layer_message += std::to_string(_layers[layer].number_neurons() - 1); // remove the bias
@@ -1073,7 +1075,8 @@ void NeuralNetwork::log_training_info(
   hidden_layer_message += "}";
   _options.logger().log_info(hidden_layer_message);
 
-  std::string dropout_layer_message = "Hidden layers dropout rate: {";
+  std::string dropout_layer_message = 
+                             "Hidden layers dropout rate: {";
   for( auto& dropout : options().dropout())
   {
     dropout_layer_message += std::to_string(dropout);
