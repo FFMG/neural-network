@@ -158,6 +158,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
   auto output_activation = activation::string_to_method(output_activation_string);
   
   auto learning_rate = options_object->get_float("learning-rate");
+  auto learning_rate_warmup_start = options_object->get_float("learning-rate-warmup-start");
+  auto learning_rate_warmup_target = options_object->get_float("learning-rate-warmup-target");
+
   auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
   auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
   auto data_is_unique = options_object->get_boolean("data-is-unique");
@@ -186,6 +189,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     .with_learning_rate_boost_rate(learning_rate_restart_rate, learning_rate_restart_boost)
     .with_residual_layer_jump(residual_layer_jump)
     .with_clip_threshold(clip_threshold)
+    .with_learning_rate_warmup(learning_rate_warmup_start, learning_rate_warmup_target)
     .with_logger(logger)
     .build();
 }
@@ -476,6 +480,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
   options_object->set_float("learning-rate", options.learning_rate());
+  options_object->set_float("learning-rate-warmup-start", options.learning_rate_warmup_start());
+  options_object->set_float("learning-rate-warmup-target", options.learning_rate_warmup_target());
   options_object->set_number("number-of-epoch", options.number_of_epoch());
   options_object->set_number("batch-size", options.batch_size());
   options_object->set_boolean("data-is-unique", options.data_is_unique());
