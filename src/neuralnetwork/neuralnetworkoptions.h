@@ -31,7 +31,9 @@ private:
     _learning_rate_restart_rate(1),
     _learning_rate_restart_boost(1),
     _residual_layer_jump(-1),
-    _clip_threshold(1.0)
+    _clip_threshold(1.0),
+    _learning_rate_warmup_start(0.0),
+    _learning_rate_warmup_target(0.0)
   {
   }
 
@@ -79,6 +81,8 @@ public:
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
       _clip_threshold = nno._clip_threshold;
+      _learning_rate_warmup_start = nno._learning_rate_warmup_start;
+      _learning_rate_warmup_target = nno._learning_rate_warmup_target;
     }
     return *this;
   }
@@ -105,6 +109,8 @@ public:
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
       _clip_threshold = nno._clip_threshold;
+      _learning_rate_warmup_start = nno._learning_rate_warmup_start;
+      _learning_rate_warmup_target = nno._learning_rate_warmup_target;
 
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -113,6 +119,8 @@ public:
       nno._optimiser_type = OptimiserType::None;
       nno._residual_layer_jump = -1;
       nno._clip_threshold = 1.0;
+      nno._learning_rate_warmup_start = 0.0;
+      nno._learning_rate_warmup_target = 0.0;
     }
     return *this;
   }
@@ -201,6 +209,12 @@ public:
     _clip_threshold = clip_threshold;
     return *this;
   }
+  NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
+  {
+    _learning_rate_warmup_start = learning_rate_warmup_start;
+    _learning_rate_warmup_target = learning_rate_warmup_target;
+    return *this;
+  }
 
   NeuralNetworkOptions& build()
   {
@@ -259,6 +273,21 @@ public:
       logger().log_error("A gradient clip threshold smaller or equal to zero does not make sense!");
       throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
     }
+    if (learning_rate_warmup_start() < 0.0)
+    {
+      logger().log_error("The learning rate warm up start value cannot be less than zero.");
+      throw std::invalid_argument("The learning rate warm up start value cannot be less than zero.");
+    }
+    if (learning_rate_warmup_start() > learning_rate())
+    {
+      logger().log_error("The learning rate warm up start value cannot be greater than the target rate.");
+      throw std::invalid_argument("The learning rate warm up start value cannot be greater than the target rate.");
+    }
+    if (learning_rate_warmup_target() < 0.0 || learning_rate_warmup_target() > 1.0)
+    {
+      logger().log_error("The learning rate warm up target must range between 0.0 and 1.0.");
+      throw std::invalid_argument("The learning rate warm up target must range between 0.0 and 1.0.");
+    }
     return *this;
   }
 
@@ -309,7 +338,6 @@ public:
       .with_learning_rate_boost_rate(1.0, 1.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold);
-
   }
 
   inline const std::vector<unsigned>& topology() const { return _topology; }
@@ -330,6 +358,8 @@ public:
   inline double learning_rate_restart_boost() const { return _learning_rate_restart_boost; }
   inline int residual_layer_jump() const { return _residual_layer_jump; }
   inline double clip_threshold() const { return _clip_threshold; }
+  inline double learning_rate_warmup_start() const { return _learning_rate_warmup_start; };
+  inline double learning_rate_warmup_target() const { return _learning_rate_warmup_target; };
 
 private:
   std::vector<unsigned> _topology;
@@ -350,4 +380,6 @@ private:
   double _learning_rate_restart_boost;
   int _residual_layer_jump;
   double _clip_threshold;
+  double _learning_rate_warmup_start;  //  initial learning rate for warmup
+  double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
 };

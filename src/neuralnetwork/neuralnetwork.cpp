@@ -328,6 +328,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   const auto& number_of_epoch = _options.number_of_epoch();
   _learning_rate = _options.learning_rate();
+  if (_options.learning_rate_warmup_target() > 0.0)
+  {
+    _learning_rate = _options.learning_rate_warmup_start();
+    options().logger().log_info("Using learning rate warmup, starting at ", std::setprecision(15),  _learning_rate, " and ending at ", _options.learning_rate(), " (at ", std::setprecision(4), (_options.learning_rate_warmup_target()*100.0), "%)", ".");
+  }
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
 
@@ -414,6 +419,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
+    // the completed percent
+    auto completed_percent = (static_cast<double>(epoch) / number_of_epoch);
+
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
@@ -460,28 +468,42 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       epoch_gradients.clear();
     }
 
-    // decay the learning rate.
-    if(learning_rate_decay_rate != 0 )
+    // Learning rate
+    //
+    if (completed_percent < _options.learning_rate_warmup_target())
     {
-      _neural_network_helper->set_learning_rate(learning_rate_base * std::exp(-learning_rate_decay_rate * epoch));
+      const auto& target_percent = _options.learning_rate_warmup_target();
+      const auto& start = _options.learning_rate_warmup_start();
+      const auto& target = _options.learning_rate();
+      auto current_learning_rate = start + (target - start) * (completed_percent / target_percent);
+      _neural_network_helper->set_learning_rate(current_learning_rate);
     }
-    
-    // Boost the baseline every N epochs
-    if (epoch != 0 && epoch % learning_rate_restart_rate == 0 && _options.learning_rate_restart_boost() != 1.0)
+    else
     {
-      learning_rate_base *= _options.learning_rate_restart_boost();
-      _options.logger().log_debug("Learning rate boost to ", std::fixed, std::setprecision(15), learning_rate_base);
+      // decay the learning rate.
+      if (learning_rate_decay_rate != 0)
+      {
+        _neural_network_helper->set_learning_rate(learning_rate_base * std::exp(-learning_rate_decay_rate * epoch));
+      }
+      // Boost the baseline every N epochs
+      if (epoch != 0 && epoch % learning_rate_restart_rate == 0 && _options.learning_rate_restart_boost() != 1.0)
+      {
+        learning_rate_base *= _options.learning_rate_restart_boost();
+        _options.logger().log_debug("Learning rate boost to ", std::fixed, std::setprecision(15), learning_rate_base);
+      }
+      // then get the scheduler if we can improve it further.
+      if (_options.adaptive_learning_rate())
+      {
+        auto metric = calculate_forecast_metrics(
+          {
+            NeuralNetworkOptions::ErrorCalculation::rmse,
+          }, false);
+        _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metric[0].error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
+      }
     }
 
-    // then get the scheduler if we can improve it further.
-    if (_options.adaptive_learning_rate())
-    {
-      auto metric = calculate_forecast_metrics(
-        {
-          NeuralNetworkOptions::ErrorCalculation::rmse,
-        }, false);
-      _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metric[0].error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
-    }    
+    // callback
+    // 
     if (progress_callback != nullptr)
     {
       if (!progress_callback(*_neural_network_helper))
@@ -1048,22 +1070,25 @@ void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs) const
 {
+  const char* tab = "  ";
   assert(_neural_network_helper != nullptr);
   _options.logger().log_info("Training will use: ");
-  _options.logger().log_info(_neural_network_helper->training_indexes().size(), " training samples.");
-  _options.logger().log_info(_neural_network_helper->checking_indexes().size(), " in training error check samples.");
-  _options.logger().log_info(_neural_network_helper->final_check_indexes().size(), " final error check samples.");
-  _options.logger().log_info("Learning rate           :", std::fixed, std::setprecision(15), _options.learning_rate());
-  _options.logger().log_info("Learning rate decay rate: ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
-  _options.logger().log_info("Gradient clip threshold : ", std::fixed, std::setprecision(4), _options.clip_threshold());
-  _options.logger().log_info("Hidden activation method: ", activation::method_to_string(get_hidden_activation_method()));
-  _options.logger().log_info("Output activation method: ", activation::method_to_string(get_output_activation_method()));
-  _options.logger().log_info("Residual layerjump      : ", _options.residual_layer_jump());
-  _options.logger().log_info("Input size              : ", training_inputs.front().size());
-  _options.logger().log_info("Output size             : ", training_outputs.front().size());
-  _options.logger().log_info("Optimiser               : ", optimiser_type_to_string(_options.optimiser_type()));
+  _options.logger().log_info(tab, _neural_network_helper->training_indexes().size(), " training samples.");
+  _options.logger().log_info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
+  _options.logger().log_info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
+  _options.logger().log_info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
+  _options.logger().log_info(tab, "Learning rate decay rate   : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  _options.logger().log_info(tab, "Learning rate warmup start : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
+  _options.logger().log_info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_target());
+  _options.logger().log_info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
+  _options.logger().log_info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
+  _options.logger().log_info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
+  _options.logger().log_info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
+  _options.logger().log_info(tab, "Input size                 : ", training_inputs.front().size());
+  _options.logger().log_info(tab, "Output size                : ", training_outputs.front().size());
+  _options.logger().log_info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
   std::string hidden_layer_message = 
-                             "Hidden layers            : {";
+                                "  Hidden layers              : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
     hidden_layer_message += std::to_string(_layers[layer].number_neurons() - 1); // remove the bias
@@ -1076,7 +1101,7 @@ void NeuralNetwork::log_training_info(
   _options.logger().log_info(hidden_layer_message);
 
   std::string dropout_layer_message = 
-                             "Hidden layers dropout rate: {";
+                                "  Hidden layers dropout rate : {";
   for( auto& dropout : options().dropout())
   {
     dropout_layer_message += std::to_string(dropout);
@@ -1086,16 +1111,16 @@ void NeuralNetwork::log_training_info(
   dropout_layer_message += "}";
   _options.logger().log_info(dropout_layer_message);
 
-  _options.logger().log_info("Batch size: ", _options.batch_size());
+  _options.logger().log_info(tab, "Batch size                 : ", _options.batch_size());
   if (_options.batch_size() > 1)
   {
     if (_options.number_of_threads() <= 0)
     {
-      _options.logger().log_info("Number of threads: ", (std::thread::hardware_concurrency() - 1));
+      _options.logger().log_info(tab, "Number of threads          : ", (std::thread::hardware_concurrency() - 1));
     }
     else
     {
-      _options.logger().log_info("Number of threads: ", _options.number_of_threads());
+      _options.logger().log_info(tab, "Number of threads          : ", _options.number_of_threads());
     }
   }
 }
