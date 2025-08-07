@@ -84,6 +84,28 @@ For very deep networks it might be best to set a value of ~5.0
 
 Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
 
+### Learning rate warm-up
+
+In some cases it is better to have a leanring warmup as the various weights balance.
+
+The warmup is usually for the first few percents of training.
+
+```cpp
+    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_learning_rate(0.1)
+      ...
+      .with_learning_rate_warmup(0.01, 0.02)
+      ...
+      .build();
+```
+
+In the example above, the target learning rate is 0.1 but the neural network will slowly ramp up from 0.01 to 0.1 in the first 2%
+
+Of course the warm up must be between 0.0 and the target rate and the target must be between 0.0% an 1.0 (percentages are x/100 or between 0.0 and 1.00).
+
 ### Dropout (Dilution)
 
 You can define one of more hidden layer to have a [dropout (or dilution)](https://en.wikipedia.org/wiki/Dilution_(neural_networks)) rate.
