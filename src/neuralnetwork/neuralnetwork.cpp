@@ -1079,7 +1079,7 @@ void NeuralNetwork::log_training_info(
   _options.logger().log_info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
   _options.logger().log_info(tab, "Learning rate decay rate   : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
   _options.logger().log_info(tab, "Learning rate warmup start : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
-  _options.logger().log_info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_target());
+  _options.logger().log_info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
   _options.logger().log_info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
   _options.logger().log_info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
   _options.logger().log_info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
