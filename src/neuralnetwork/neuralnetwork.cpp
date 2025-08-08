@@ -359,11 +359,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       _options.number_of_threads());
   }
 
+  SingleTaskQueue<bool>* callback_task = nullptr;
+
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
   if (progress_callback != nullptr)
   {
-    if (!progress_callback(*_neural_network_helper))
+    callback_task = new SingleTaskQueue<bool>();
+    callback_task->call(progress_callback , std::ref(*_neural_network_helper));
+    if (!callback_task->get())
      {
       _options.logger().log_warning("Progress callback function returned false before training started, closing now!");
       return;
@@ -417,7 +421,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
 
   auto clipping_scale = -1.0;
-  
+
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // the completed percent
@@ -507,16 +511,28 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
           }, false);
         _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metric[0].error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
       }
+      options().logger().log_debug("Learning rate is ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate(), " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
     }
 
     // callback
     // 
-    if (progress_callback != nullptr)
+    if (progress_callback != nullptr && callback_task != nullptr)
     {
-      if (!progress_callback(*_neural_network_helper))
+      // if it running?
+      if (!callback_task->busy())
       {
-        _options.logger().log_warning("Progress callback function returned false during training, closing now!");
-        return;
+        if (callback_task->has_result() && !callback_task->get())
+        {
+          _options.logger().log_warning("Progress callback function returned false during training, closing now!");
+          break; // stop training if the callback returns false.
+        }
+
+        // it was not running at all, so we start it.
+        callback_task->call(progress_callback, std::ref(*_neural_network_helper));
+      }
+      else
+      {
+        _options.logger().log_debug("Progress callback function is still running, continuing to next epoch.");
       }
     }
 
@@ -547,6 +563,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // final callback to show 100% done.
   if (progress_callback != nullptr)
   {
+    // wait for the future to complete if running
+    // we are out of the loop already, so we no longer care about the result.
+    callback_task->stop();
+    delete callback_task;
+
+    // then do one final call, again, we don't care about the result.
     progress_callback(*_neural_network_helper);
   }
 
