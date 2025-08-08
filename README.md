@@ -375,16 +375,19 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * hidden_activation_method[=sigmoid]
 * output_activation_method[=sigmoid]
 * learning_rate[=0.15]: The starting learning rate.
+* learning_rate_warmup[=0.0, 0.0]: 
+  * The start value, (must be less than the ultimate learning rate)
+  * The target value, (between 0.0 and 1.0) how many percent will we go from start to target.
+* learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training. The number must be between 0.0 and 1.0
+* learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * number_of_epoch[=1000]: The number of epoch we want to train for. This value is really specific to your data.
 * batch_size[=1]: The default number of batches we want to split the epochs in.
 * data_is_unique[=true]: By default we assume that the input data is unique and cannot be split for in-batch validation and final error validation.
 * progress_callback[=null]: The callback.
 * logger[=none]: Your logger.
 * number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
-* learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training. The number must be between 0 and 1
 * adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
 * optimiser_type[=SGD]: The optimiser we will use during training.
-* learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
 * dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
 * clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.

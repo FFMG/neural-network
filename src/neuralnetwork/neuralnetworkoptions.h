@@ -326,6 +326,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_dropout(dropout)
       .with_learning_rate(0.1)
+      .with_learning_rate_warmup(0.0, 0.0)
       .with_hidden_activation_method(activation::method::sigmoid)
       .with_output_activation_method(activation::method::sigmoid)
       .with_number_of_epoch(1000)
