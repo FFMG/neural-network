@@ -515,7 +515,14 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
   neuron_object->set_number("index", neuron.get_index());
   neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
   neuron_object->set_number("neuron-type", static_cast<unsigned>(neuron.get_type()));
-  neuron_object->set_float("dropout-rate", neuron.get_dropout_rate());
+  if(neuron.is_dropout())
+  {
+    neuron_object->set_float("dropout-rate", neuron.get_dropout_rate());
+  }
+  else
+  {
+    neuron_object->set_float("dropout-rate", 0.0);
+  }
   add_weight_params(neuron.get_weight_params(), *neuron_object);
   return neuron_object;
 }
