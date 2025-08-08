@@ -456,6 +456,8 @@ private:
 
   double calculate_clipping_scale() const;
 
+  double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
+
   void log_training_info(
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs) const;
