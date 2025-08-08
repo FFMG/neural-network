@@ -408,7 +408,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   epoch_gradients.reserve(num_batches);
 
   // for the learning rate decay we need to set the target learning rate and the decay rate.
-  const auto learning_rate_decay_initial = _options.learning_rate();
   auto number_of_epoch_after_decay = number_of_epoch - static_cast<int>(std::round(_options.learning_rate_warmup_target() * number_of_epoch));
   const auto learning_rate_decay_rate = number_of_epoch_after_decay == 0 || _options.learning_rate_decay_rate() == 0 ? 0 : std::log(1.0 / _options.learning_rate_decay_rate()) / number_of_epoch_after_decay;
 
