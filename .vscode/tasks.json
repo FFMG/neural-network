@@ -5,7 +5,6 @@
       "label": "C/C++: g++ build perfomance",
       "command": "/usr/bin/g++",
       "args": [
-        "-g",
         "-Wall",
         "-Wextra",
         "-Wpedantic",
