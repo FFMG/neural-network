@@ -197,7 +197,7 @@ private:
       if (layer >= _topology.size() || neuron >= _topology[layer])
       {
         std::cerr << "The layer/neuron is out of bound!" << std::endl;
-        throw new std::invalid_argument("The layer/neuron is out of bound!");
+        throw std::invalid_argument("The layer/neuron is out of bound!");
       }
     }
     #endif
@@ -363,7 +363,7 @@ private:
       if(size == 0)
       {
         std::cerr << "Trying to get the last output but none available!" << std::endl;
-        throw new std::invalid_argument("Trying to get the last output but none available!");
+        throw std::invalid_argument("Trying to get the last output but none available!");
       }
       return _outputs.get_neurons(static_cast<unsigned>(size -1));
     }
