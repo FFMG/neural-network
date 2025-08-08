@@ -25,7 +25,6 @@ private:
 public:
   TaskQueue() :
     _state(State::Stopped),
-    _total_tasks_durations(0),
     _total_num_tasks(0),
     _busy_task(0)
   {
@@ -70,7 +69,7 @@ public:
       std::unique_lock<std::mutex> lock(_mutext);
       if(_state == State::Stopping)
       {
-        throw new std::invalid_argument("The task queue is stopping!");
+        throw std::invalid_argument("The task queue is stopping!");
       }
       if(_state == State::Stopped)
       {
@@ -99,13 +98,6 @@ public:
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutext);
     return _total_num_tasks;
-  }
-
-  inline double average()
-  {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
-    std::unique_lock<std::mutex> lock(_mutext);
-    return _total_num_tasks > 0 ? static_cast<double>(_total_tasks_durations) / _total_num_tasks : 0.0;
   }
 
 private:
@@ -142,12 +134,9 @@ private:
         ++_busy_task; // this task is now busy
         _tasks.pop();
       }
-      auto start = std::chrono::steady_clock::now();
       R result = task();
-      auto end = std::chrono::steady_clock::now();
       {
         std::unique_lock<std::mutex> lock(_mutext);
-        _total_tasks_durations += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         ++_total_num_tasks;
         _results.push_back(std::move(result));
         --_busy_task; //  this task is no longer busy.
@@ -163,12 +152,170 @@ private:
   std::condition_variable _condition_new_task;
 
   std::atomic<State> _state;
-  std::chrono::nanoseconds::rep _total_tasks_durations;
   int _total_num_tasks;
   int _busy_task;
 
   std::queue<std::function<R()>> _tasks;
   std::vector<R> _results;
+};
+
+template <typename R>
+class SingleTaskQueue
+{
+private:
+  enum class State {
+    Started,
+    Stopping,
+    Stopped
+  };
+
+public:
+  SingleTaskQueue() :
+    _state(State::Stopped),
+    _busy_task(false),
+    _has_result(false),
+    _task(nullptr)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+  }
+  ~SingleTaskQueue()
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    stop();
+  }
+
+  SingleTaskQueue(const SingleTaskQueue&) = delete;
+  SingleTaskQueue& operator=(const SingleTaskQueue&) = delete;
+
+  void stop()
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    {
+      std::unique_lock<std::mutex> lock(_mutext);
+      _state = State::Stopping;
+      if (_state != State::Stopped)
+      {
+        wait_for_task(lock);
+      }
+    }
+    // tell everyone about this
+    _condition_new_task.notify_all();
+    if (_worker.joinable())
+    {
+      _worker.join();
+    }
+    _state = State::Stopped;
+  }
+
+  // Accepts any callable + arguments matching the return type R
+  template <class F, class... Args>
+  bool call(F&& f, Args&&... args)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    if (_task)
+    {
+      return false; // we already have a task, so we can't add another one.
+    }
+    auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
+    {
+      std::unique_lock<std::mutex> lock(_mutext);
+      if (_state == State::Stopping)
+      {
+        throw std::invalid_argument("The task queue is stopping!");
+      }
+      if (_state == State::Stopped)
+      {
+        _worker = std::thread([this] { this->run(); });
+        _state = State::Started;
+      }
+      _task = [task]() -> R { return task(); };
+    }
+
+    // tell one thread about this.
+    _condition_new_task.notify_one();
+    return true;
+  }
+
+  R get()
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    std::unique_lock<std::mutex> lock(_mutext);
+    wait_for_task(lock);
+
+    R output;
+    output = _result; // clear and return
+    _has_result = false;
+    return output;
+  }
+
+  inline bool busy() const
+  {
+    return _busy_task || _task;
+  }
+
+  inline bool has_result() const
+  {
+    return _has_result;
+  }
+
+private:
+  void wait_for_task(std::unique_lock<std::mutex>& lock)
+  {
+    if (!busy())
+    {
+      return;
+    }
+    _condition_busy_task_complete.wait(lock, [this]
+      {
+        return !busy();
+      });
+  }
+
+  void run()
+  {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    _state = State::Started;
+    while (true)
+    {
+      std::function<R()> task;
+      {
+        std::unique_lock<std::mutex> lock(_mutext);
+        _condition_new_task.wait(lock, [this]
+          {
+            return _task || (_state == State::Stopped || _state == State::Stopping);
+          });
+        if ((_state == State::Stopped || _state == State::Stopping) && _task == nullptr)
+        {
+          return;
+        }
+        task = std::move(_task);
+        _busy_task = true; // this task is now busy
+        _has_result = false;
+        _task = nullptr;
+      }
+      R result = task();
+      {
+        std::unique_lock<std::mutex> lock(_mutext);
+        _result = std::move(result);
+        _has_result = true;
+        _busy_task = false; //  this task is no longer busy.
+        _condition_busy_task_complete.notify_all();
+      }
+    }
+    _state = State::Stopped;
+  }
+
+  std::thread _worker;
+  std::mutex _mutext;
+  std::condition_variable _condition_busy_task_complete;
+  std::condition_variable _condition_new_task;
+
+  std::atomic<State> _state;
+  bool _busy_task;
+  bool _has_result;
+
+  std::function<R()> _task;
+  R _result;
 };
 
 template <typename R>
@@ -213,23 +360,6 @@ public:
       total_num_tasks += task_queue->total_tasks();
     }
     return total_num_tasks;
-  }
-
-  inline double average()
-  {
-    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    double average = 0.0;
-    int used_averages = 0;
-    for(auto& task_queue : _task_queues)
-    {
-      if (task_queue->total_tasks() == 0)
-      {
-        continue;
-      }
-      ++used_averages;
-      average += task_queue->average();
-    }
-    return used_averages > 0 ? average / used_averages : 0.0;
   }
 
   template <class F, class... Args>
