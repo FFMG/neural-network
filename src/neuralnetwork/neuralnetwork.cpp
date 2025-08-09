@@ -39,6 +39,7 @@ NeuralNetwork::NeuralNetwork(
     .with_logger(logger)
     .build())
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
 
 NeuralNetwork::NeuralNetwork(
@@ -71,6 +72,11 @@ NeuralNetwork::~NeuralNetwork()
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
+}
+
+const Logger& NeuralNetwork::logger() const
+{
+  return _options.logger();
 }
 
 const activation::method& NeuralNetwork::get_output_activation_method() const
@@ -135,7 +141,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   if(training_size+checking_size == total_size || checking_size == 0)
   {
     // in the case of small training models we might not have enough to split anything
-    _options.logger().log_warning("Training batch size does not allow for error checking batch!");
+    logger().log_warning("Training batch size does not allow for error checking batch!");
     training_indexes = shuffled_indexes;
     checking_indexes = {shuffled_indexes.front()};
     final_check_indexes = {shuffled_indexes.back()};
@@ -144,7 +150,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
   assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
-    _options.logger().log_error("Logic error, unable to do a final batch error check.");
+    logger().log_error("Logic error, unable to do a final batch error check.");
     throw std::invalid_argument("Logic error, unable to do a final batch error check.");
   }
 
@@ -232,7 +238,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     {
       errors.emplace_back( NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
     }
-    _options.logger().log_warning("Trying to get training metrics when no training was done!");
+    logger().log_warning("Trying to get training metrics when no training was done!");
     return errors;
   }
 
@@ -337,7 +343,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   if (_options.learning_rate_warmup_target() > 0.0)
   {
     _learning_rate = _options.learning_rate_warmup_start();
-    options().logger().log_info("Using learning rate warmup, starting at ", std::setprecision(15),  _learning_rate, " and ending at ", _options.learning_rate(), " (at ", std::setprecision(4), (_options.learning_rate_warmup_target()*100.0), "%)", ".");
+    logger().log_info("Using learning rate warmup, starting at ", std::setprecision(15),  _learning_rate, " and ending at ", _options.learning_rate(), " (at ", std::setprecision(4), (_options.learning_rate_warmup_target()*100.0), "%)", ".");
   }
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
@@ -346,22 +352,22 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
-    _options.logger().log_error("The batch size if either -ve or too large for the training sample.");
+    logger().log_error("The batch size if either -ve or too large for the training sample.");
     throw std::invalid_argument("The batch size if either -ve or too large for the training sample.");
   }
   if(training_outputs.size() != training_inputs.size())
   {
-    _options.logger().log_error("The number of training samples does not match the number of expected outputs.");
+    logger().log_error("The number of training samples does not match the number of expected outputs.");
     throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
   }
 
-  _options.logger().log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
+  logger().log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
   TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
   if (batch_size > 1)
   {
     task_pool = new TaskQueuePool<GradientsAndOutputs>(
-      _options.logger(),
+      logger(),
       _options.number_of_threads());
   }
 
@@ -375,7 +381,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     callback_task->call(progress_callback , std::ref(*_neural_network_helper));
     if (!callback_task->get())
      {
-      _options.logger().log_warning("Progress callback function returned false before training started, closing now!");
+      logger().log_warning("Progress callback function returned false before training started, closing now!");
       return;
     }
   }
@@ -559,11 +565,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       NeuralNetworkOptions::ErrorCalculation::mape 
     }, true);
 
-  _options.logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
-  _options.logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error());
+  logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
+  logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error());
 
   // finaly learning rate
-  _options.logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
+  logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
   // final callback to show 100% done.
   if (progress_callback != nullptr)
@@ -591,10 +597,10 @@ double NeuralNetwork::calculate_clipping_scale() const
 
   for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
   {
-    const auto& layer = _layers[layer_number];
+    const auto& layer = _layers[static_cast<unsigned>(layer_number)];
     for (size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
     {
-      const auto& neuron = layer.get_neuron(neuron_number);
+      const auto& neuron = layer.get_neuron(static_cast<unsigned>(neuron_number));
       if(neuron.is_bias())
       {
         continue;
@@ -641,7 +647,7 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
     double geom = std::pow(target / start, ratio); // (target/start)^ratio
     warmup_learning_rate = start * geom;
   }
-  options().logger().log_debug("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+  logger().log_trace("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
   return warmup_learning_rate;
 }
 
@@ -672,7 +678,7 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
     return calculate_forecast_accuracy_smape(ground_truth, predictions);
   }
 
-  _options.logger().log_error("Unknown ErrorCalculation type!");
+  logger().log_error("Unknown ErrorCalculation type!");
   throw std::invalid_argument("Unknown ErrorCalculation type!");
 }
 
@@ -681,7 +687,7 @@ double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<d
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
-    _options.logger().log_error("Mismatched number of samples");
+    logger().log_error("Mismatched number of samples");
     throw std::invalid_argument("Mismatched number of samples");
   }
 
@@ -692,7 +698,7 @@ double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<d
   {
     if (ground_truth[i].size() != predictions[i].size())
     {
-      _options.logger().log_error("Mismatched vector sizes at index ", i);
+      logger().log_error("Mismatched vector sizes at index ", i);
       throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
     }
 
@@ -720,7 +726,7 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size())
   {
-    _options.logger().log_error("Mismatched number of samples");
+    logger().log_error("Mismatched number of samples");
     throw std::invalid_argument("Mismatched number of samples");
   }
   
@@ -731,7 +737,7 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   {
     if (ground_truth[i].size() != predictions[i].size())
     {
-      _options.logger().log_error("Mismatched vector sizes at index ", i);
+      logger().log_error("Mismatched vector sizes at index ", i);
       throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
     }
     for (size_t j = 0; j < ground_truth[i].size(); ++j)
@@ -755,7 +761,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (ground_truth.size() != predictions.size()) 
   {
-    _options.logger().log_error("Mismatch in batch sizes.");
+    logger().log_error("Mismatch in batch sizes.");
     return std::numeric_limits<double>::quiet_NaN();
   }
 
@@ -769,7 +775,7 @@ double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>
 
     if (true_output.size() != predicted_output.size()) 
     {
-      _options.logger().log_warning("Mismatch in output vector sizes at index ",i);
+      logger().log_warning("Mismatch in output vector sizes at index ",i);
       continue;
     }
 
@@ -930,8 +936,8 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
   gradients.set_gradients(static_cast<unsigned>(layers.size()-1), next_activation_gradients);
   for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
   {
-    const auto& hidden_layer = layers[layer_number];
-    const auto& next_layer = layers[layer_number + 1];
+    const auto& hidden_layer = layers[static_cast<unsigned>(layer_number)];
+    const auto& next_layer = layers[static_cast<unsigned>(layer_number + 1)];
 
     const auto& hidden_layer_size = hidden_layer.number_neurons();
     std::vector<double> current_activation_gradients;
@@ -967,8 +973,8 @@ void NeuralNetwork::calculate_forward_feed(
   layer_output_values.back().push_back(1.0);
   for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
   {
-    const auto& previous_layer = layers[layer_number - 1];
-    const auto& current_layer = layers[layer_number];
+    const auto& previous_layer = layers[static_cast<unsigned>(layer_number - 1)];
+    const auto& current_layer = layers[static_cast<unsigned>(layer_number)];
 
     // previous output values.
     const auto& previous_layer_output_values = layer_output_values[layer_number -1];
@@ -1027,7 +1033,7 @@ double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truth.size() || predictions.empty())
   {
-    _options.logger().log_error("Input vectors must have the same, non-zero size.");
+    logger().log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -1054,7 +1060,7 @@ double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<std::v
 {
   if (predictions.size() != ground_truths.size() || predictions.empty())
   {
-    _options.logger().log_error("Input vectors must have the same, non-zero size.");
+    logger().log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -1078,7 +1084,7 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::ve
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truths.size() || predictions.empty()) 
   {
-    _options.logger().log_error("Input vectors must have the same, non-zero size.");
+    logger().log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -1102,7 +1108,7 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truth.size() || predictions.empty()) 
   {
-    _options.logger().log_error("Input vectors must have the same, non-zero size.");
+    logger().log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -1132,33 +1138,33 @@ void NeuralNetwork::log_training_info(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const char* tab = "  ";
   assert(_neural_network_helper != nullptr);
-  _options.logger().log_info("Training will use: ");
-  _options.logger().log_info(tab, _neural_network_helper->training_indexes().size(), " training samples.");
-  _options.logger().log_info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
-  _options.logger().log_info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
-  _options.logger().log_info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
-  _options.logger().log_info(tab, "Learning rate decay rate   : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
-  _options.logger().log_info(tab, "Learning rate warmup start : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
-  _options.logger().log_info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
-  _options.logger().log_info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
-  _options.logger().log_info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
-  _options.logger().log_info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
-  _options.logger().log_info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
-  _options.logger().log_info(tab, "Input size                 : ", training_inputs.front().size());
-  _options.logger().log_info(tab, "Output size                : ", training_outputs.front().size());
-  _options.logger().log_info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
+  logger().log_info("Training will use: ");
+  logger().log_info(tab, _neural_network_helper->training_indexes().size(), " training samples.");
+  logger().log_info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
+  logger().log_info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
+  logger().log_info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
+  logger().log_info(tab, "Learning rate decay rate   : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  logger().log_info(tab, "Learning rate warmup start : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
+  logger().log_info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
+  logger().log_info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
+  logger().log_info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
+  logger().log_info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
+  logger().log_info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
+  logger().log_info(tab, "Input size                 : ", training_inputs.front().size());
+  logger().log_info(tab, "Output size                : ", training_outputs.front().size());
+  logger().log_info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
   std::string hidden_layer_message = 
                                 "  Hidden layers              : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
-    hidden_layer_message += std::to_string(_layers[layer].number_neurons() - 1); // remove the bias
+    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].number_neurons() - 1); // remove the bias
     if (layer < _layers.size() - 2)
     {
       hidden_layer_message += ", ";
     }
   }
   hidden_layer_message += "}";
-  _options.logger().log_info(hidden_layer_message);
+  logger().log_info(hidden_layer_message);
 
   std::string dropout_layer_message = 
                                 "  Hidden layers dropout rate : {";
@@ -1169,18 +1175,18 @@ void NeuralNetwork::log_training_info(
   }
   dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
   dropout_layer_message += "}";
-  _options.logger().log_info(dropout_layer_message);
+  logger().log_info(dropout_layer_message);
 
-  _options.logger().log_info(tab, "Batch size                 : ", _options.batch_size());
+  logger().log_info(tab, "Batch size                 : ", _options.batch_size());
   if (_options.batch_size() > 1)
   {
     if (_options.number_of_threads() <= 0)
     {
-      _options.logger().log_info(tab, "Number of threads          : ", (std::thread::hardware_concurrency() - 1));
+      logger().log_info(tab, "Number of threads          : ", (std::thread::hardware_concurrency() - 1));
     }
     else
     {
-      _options.logger().log_info(tab, "Number of threads          : ", _options.number_of_threads());
+      logger().log_info(tab, "Number of threads          : ", _options.number_of_threads());
     }
   }
 }
@@ -1196,25 +1202,25 @@ void NeuralNetwork::dump_layer_info() const
 #ifndef NDEBUG
   for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
   {
-    _options.logger().log_debug("Layer ", layer_number, " (residual layer: ", _layers[layer_number].residual_layer_number(), ").");
+    logger().log_trace("Layer ", layer_number, " (residual layer: ", _layers[static_cast<unsigned>(layer_number)].residual_layer_number(), ").");
 
-    auto& layer = _layers[layer_number];
+    auto& layer = _layers[static_cast<unsigned>(layer_number)];
     for (unsigned neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
     {
       auto& neuron = layer.get_neuron(neuron_number);
       if (neuron.is_dropout())
       {
-        _options.logger().log_debug("  -> Neuron ", neuron_number, " (dropout ", neuron.get_dropout_rate()*100.f, "%)");
+        logger().log_trace("  -> Neuron ", neuron_number, " (dropout ", neuron.get_dropout_rate()*100.f, "%)");
       }
       else
       {
-        _options.logger().log_debug("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
+        logger().log_trace("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
       }
 
       auto& wp = neuron.get_weight_params();
       for (size_t index_number = 0; index_number < wp.size(); ++index_number)
       {
-        _options.logger().log_debug(
+        logger().log_trace(
                      std::fixed, std::setprecision(15),
           "    -> weight[", index_number,
                      "] = ",
