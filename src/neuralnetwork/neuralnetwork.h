@@ -70,6 +70,10 @@ private:
     LayersAndNeuronsContainer(const std::vector<unsigned>& topology, bool shifted_by_one=false, bool add_bias=false) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+      const size_t topology_size = topology.size();
+      _topology.reserve(topology_size);
+      _offsets.reserve(topology_size);
+
       if(shifted_by_one)
       {
         _topology.insert(_topology.begin(), topology.begin()+1, topology.end());
@@ -150,7 +154,7 @@ private:
       }
     }
     
-    inline const double& get(unsigned layer, unsigned neuron) const
+    inline const double& get(unsigned layer, unsigned neuron) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
       ensure_size(layer, neuron);
@@ -170,13 +174,13 @@ private:
       return data;
     }
 
-    size_t number_layers() const
+    size_t number_layers() const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
       return _topology.size();
     }
 
-    size_t number_neurons(size_t layer) const
+    size_t number_neurons(size_t layer) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
       if(layer >= _topology.size())
@@ -204,7 +208,7 @@ private:
 
     std::vector<size_t> _offsets;
     size_t _total_size;
-    std::vector<double> _data;
+    alignas(32) std::vector<double> _data;
     std::vector<unsigned short> _topology;
   };
 
@@ -269,24 +273,25 @@ private:
       _outputs.zero();
       _gradients.zero();
     }
-    void add(const GradientsAndOutputs& src)
+    void add(const GradientsAndOutputs& src) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       _outputs.add(src._outputs);
       _gradients.add(src._gradients);
     }
-    unsigned num_output_layers() const 
+    
+    [[nodiscard]] inline unsigned num_output_layers() const  noexcept
     { 
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       return static_cast<unsigned>(_outputs.number_layers());
     }
 
-    unsigned batch_size() const
+    [[nodiscard]] inline unsigned batch_size() const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       return _batch_size;
     }
-    unsigned num_output_neurons(unsigned layer) const 
+    [[nodiscard]] inline unsigned num_output_neurons(unsigned layer) const noexcept
     { 
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       return static_cast<unsigned>(_outputs.number_neurons(layer));
@@ -334,10 +339,10 @@ private:
       return static_cast<unsigned>(_gradients.number_neurons(layer));
     }
 
-    double get_output(unsigned layer, unsigned neuron) const
+    [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      if(_outputs.number_neurons(layer) == neuron)
+      if(__builtin_expect(_outputs.number_neurons(layer) == neuron, 0))
       {
         return 1.0; //  bias
       }      
@@ -356,7 +361,8 @@ private:
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       _outputs.set(layer, outputs);
     }
-    std::vector<double> output_back() const
+    
+    [[nodiscard]] std::vector<double> output_back() const
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       const size_t size = _outputs.number_layers();
@@ -369,8 +375,8 @@ private:
     }
 
   private:
-    LayersAndNeuronsContainer _outputs;
-    LayersAndNeuronsContainer _gradients;
+    alignas(32) LayersAndNeuronsContainer _outputs;
+    alignas(32) LayersAndNeuronsContainer _gradients;
     unsigned _batch_size;
   };
 
