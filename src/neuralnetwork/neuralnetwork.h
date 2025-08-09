@@ -132,6 +132,7 @@ private:
       ensure_size(layer, neuron);
       _data[_offsets[layer]+neuron] = data;
     }
+    
     void set(unsigned layer, const std::vector<double>& data)
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
@@ -144,6 +145,7 @@ private:
         ++neuron;
       }
     }
+
     inline void add(const LayersAndNeuronsContainer& container)
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
@@ -342,7 +344,11 @@ private:
     [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+#ifdef _MSC_VER      
+      if (_outputs.number_neurons(layer) == neuron)
+#else
       if(__builtin_expect(_outputs.number_neurons(layer) == neuron, 0))
+#endif
       {
         return 1.0; //  bias
       }      
