@@ -68,17 +68,20 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
 
 NeuralNetwork::~NeuralNetwork()
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
 }
 
 const activation::method& NeuralNetwork::get_output_activation_method() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _options.output_activation_method();
 }
 
 const activation::method& NeuralNetwork::get_hidden_activation_method() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _options.hidden_activation_method();
 }
 
@@ -90,6 +93,7 @@ const std::vector<Layer>& NeuralNetwork::get_layers() const
 
 const std::vector<unsigned>& NeuralNetwork::get_topology() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _options.topology();
 }
 
@@ -107,6 +111,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
 
 void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, size_t raw_size, bool data_is_unique) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
   std::vector<size_t> checking_indexes;
   std::vector<size_t> final_check_indexes;
@@ -162,6 +167,7 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
 
 void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto indexes = neural_network_helper.training_indexes();
   static std::random_device rd;
   static std::mt19937 gen(rd());
@@ -799,6 +805,7 @@ std::vector<double> NeuralNetwork::calculate_residual_projection_gradients(
     const GradientsAndOutputs& source
 ) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const int residual_layer_number = _layers[layer_number].residual_layer_number();
   if (residual_layer_number == -1)
   {
@@ -1017,6 +1024,7 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
 
 double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truth.size() || predictions.empty())
   {
     _options.logger().log_error("Input vectors must have the same, non-zero size.");
@@ -1067,6 +1075,7 @@ double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<std::v
 
 double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truths.size() || predictions.empty()) 
   {
     _options.logger().log_error("Input vectors must have the same, non-zero size.");
@@ -1090,6 +1099,7 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::ve
 
 double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truth.size() || predictions.empty()) 
   {
     _options.logger().log_error("Input vectors must have the same, non-zero size.");
@@ -1119,6 +1129,7 @@ void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const char* tab = "  ";
   assert(_neural_network_helper != nullptr);
   _options.logger().log_info("Training will use: ");
@@ -1176,6 +1187,12 @@ void NeuralNetwork::log_training_info(
 
 void NeuralNetwork::dump_layer_info() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (!logger().can_log_trace())
+  {
+    return;
+  }
+
 #ifndef NDEBUG
   for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
   {
