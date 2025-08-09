@@ -186,6 +186,7 @@ void Neuron::apply_residual_projection_gradients(
 
 void Neuron::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (!std::isfinite(gradient))
   {
     _logger.log_error("Error while calculating input weigh gradient it invalid.");
@@ -261,6 +262,7 @@ void Neuron::apply_nadam_update(
     double epsilon
 ) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   // Update timestep
   weight_param.increment_timestep();
   const auto& time_step = weight_param.timestep();
@@ -297,6 +299,7 @@ void Neuron::apply_nadamw_update(
     bool is_bias
 ) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   // 1. Increment timestep
   weight_param.increment_timestep();
   const long long time_step = weight_param.timestep();
@@ -344,6 +347,7 @@ void Neuron::apply_adamw_update(
   double epsilon
 ) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   // Update timestep
   weight_param.increment_timestep();
   const auto& time_step = weight_param.timestep();
@@ -375,6 +379,7 @@ void Neuron::apply_adamw_update(
 
 void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon,  bool is_bias) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   // Update timestep
   weight_param.increment_timestep();
   const auto& time_step = weight_param.timestep();
@@ -403,6 +408,7 @@ void Neuron::apply_adam_update(WeightParam& weight_param, double raw_gradient, d
 
 void Neuron::apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   double new_weight = weight_param.value() - learning_rate * raw_gradient;
   weight_param.set_gradient(raw_gradient);
   weight_param.set_value(new_weight);
@@ -410,6 +416,7 @@ void Neuron::apply_none_update(WeightParam& weight_param, double raw_gradient, d
 
 void Neuron::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Neuron");
   double previous_velocity = weight_param.velocity();
 
   double velocity = momentum * previous_velocity - learning_rate * raw_gradient;
