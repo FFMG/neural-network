@@ -172,7 +172,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
 
   auto learning_rate_restart_rate = options_object->get_float("learning-rate-restart-rate");
   auto learning_rate_restart_boost = options_object->get_float("learning-rate-restart-boost");
-  auto residual_layer_jump = options_object->get_number("residual-layer-jump");
+  auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
   auto clip_threshold = options_object->get_float("clip-threshold");
 
   return NeuralNetworkOptions::create(topology)
