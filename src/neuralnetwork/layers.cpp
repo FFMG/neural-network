@@ -30,17 +30,18 @@ Layers::Layers(
     layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, logger);
 
     add_residual_layer(layer, hidden_activation, logger);
-#ifndef NDEBUG
-  logger.log_debug("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
-  if(residual_layer_number != -1 )
-  {
-    auto number_of_neuron_in_that_layer_x = _layers[residual_layer_number].number_neurons();
-    auto num_neurons_current_layer_x = layer.number_neurons();
+    if (logger.can_log_trace())
+    {
+      logger.log_trace("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
+      if (residual_layer_number != -1)
+      {
+        auto number_of_neuron_in_that_layer_x = _layers[residual_layer_number].number_neurons();
+        auto num_neurons_current_layer_x = layer.number_neurons();
 
-    logger.log_debug("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x);  
-    logger.log_debug("  Number of neurons in layer   : ", num_neurons_current_layer_x);  
-  }
-#endif
+        logger.log_trace("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x);
+        logger.log_trace("  Number of neurons in layer   : ", num_neurons_current_layer_x);
+      }
+    }
     _layers.emplace_back(std::move(layer));
   }
 
@@ -49,16 +50,17 @@ Layers::Layers(
   layer = Layer::create_output_layer(topology.back(), _layers.back(), output_activation, optimiser_type, residual_layer_number, logger);
 
   add_residual_layer(layer, output_activation, logger);
-#ifndef NDEBUG
-  logger.log_debug("Layer: ", number_of_layers-1, ", residual layer number: ", residual_layer_number);
-  if(residual_layer_number != -1 )
+  if (logger.can_log_trace())
   {
-    auto number_of_neuron_in_that_layer = _layers[residual_layer_number].number_neurons();
-    auto num_neurons_current_layer = layer.number_neurons();
-    logger.log_debug("  Number of neurons in residual: ", number_of_neuron_in_that_layer);  
-    logger.log_debug("  Number of neurons in layer   : ", num_neurons_current_layer);  
+    logger.log_trace("Layer: ", number_of_layers - 1, ", residual layer number: ", residual_layer_number);
+    if (residual_layer_number != -1)
+    {
+      auto number_of_neuron_in_that_layer = _layers[residual_layer_number].number_neurons();
+      auto num_neurons_current_layer = layer.number_neurons();
+      logger.log_trace("  Number of neurons in residual: ", number_of_neuron_in_that_layer);
+      logger.log_trace("  Number of neurons in layer   : ", num_neurons_current_layer);
+    }
   }
-#endif
   _layers.emplace_back(std::move(layer));
 }
 
