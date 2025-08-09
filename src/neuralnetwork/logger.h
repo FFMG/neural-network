@@ -11,15 +11,17 @@ private:
     // ANSI escape codes for text colors. These codes work on most modern terminals
     // (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
     // They instruct the terminal to change the color of subsequent text.
-    static constexpr const char* LogColorReset = "\033[0m";   // Resets text color to default
-    static constexpr const char* LogColorRed   = "\033[31m";
-    static constexpr const char* LogColorGreen = "\033[32m";
+    static constexpr const char* LogColorReset  = "\033[0m";   // Resets text color to default
+    static constexpr const char* LogColorRed    = "\033[31m";
+    static constexpr const char* LogColorGreen  = "\033[32m";
     static constexpr const char* LogColorYellow = "\033[33m";
     static constexpr const char* LogColorBlue   = "\033[34m";
+    static constexpr const char* LogColorCyan   = "\033[36m";
 
 public:
   enum class LogLevel 
   {
+    Trace,
     Debug,
     Information,
     Warning,
@@ -50,6 +52,18 @@ public:
   Logger(Logger&&) = delete;
   Logger& operator=(Logger&&) = delete;
 
+  bool log(LogLevel level) const
+  {
+    // Only log if the current message's level is at or above the minimum configured level
+    return level >= _min_log_level;
+  }
+
+  template <typename... Args>
+  void log_trace(Args&&... args) const
+  {
+    log(LogLevel::Trace, std::forward<Args>(args)...);
+  }
+
   template <typename... Args>
   void log_debug(Args&&... args) const
   {
@@ -73,8 +87,35 @@ public:
   {
     log(LogLevel::Error, std::forward<Args>(args)...);
   }
+
+  inline bool can_log_trace() const
+  {
+    return can_log(LogLevel::Debug);
+  }
+  inline bool can_log_debug() const
+  {
+    return can_log(LogLevel::Debug);
+  }
+  inline bool can_log_info() const
+  {
+    return can_log(LogLevel::Information);
+  }
+  inline bool can_log_warning() const
+  {
+    return can_log(LogLevel::Warning);
+  }
+  inline bool can_log_error() const
+  {
+    return can_log(LogLevel::Error);
+  }
 private:
   LogLevel _min_log_level; // Stores the minimum logging level set by the user
+
+  bool can_log(LogLevel level) const
+  {
+    // Only log if the current message's level is at or above the minimum configured level
+    return level >= _min_log_level;
+  }
 
   std::string get_current_time_string() const
   {
@@ -110,7 +151,7 @@ private:
     // Only log if the current message's level is at or above the minimum configured level
     if (level < _min_log_level) 
     {
-        return;
+      return;
     }
 
     // 1. Output the current time
@@ -122,22 +163,31 @@ private:
 
     switch (level) 
     {
+    case LogLevel::Trace:
+      color_code = LogColorCyan;
+      tag = "[TRC]";
+      break;
+
     case LogLevel::Debug:
       color_code = LogColorGreen;
       tag = "[DBG]";
       break;
+
     case LogLevel::Information:
       color_code = LogColorBlue;
       tag = "[INF]";
       break;
+
     case LogLevel::Warning:
         color_code = LogColorYellow;
         tag = "[WRN]";
         break;
+
     case LogLevel::Error:
         color_code = LogColorRed;
         tag = "[ERR]";
         break;
+
     case LogLevel::None: // Should not be reached for logging, but included for completeness
         return; // If somehow called with None, just return
     }
