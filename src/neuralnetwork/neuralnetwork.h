@@ -342,7 +342,7 @@ private:
     [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      if(__builtin_expect(_outputs.number_neurons(layer) == neuron, 0))
+      if(_outputs.number_neurons(layer) == neuron)
       {
         return 1.0; //  bias
       }      
@@ -421,7 +421,7 @@ private:
     GradientsAndOutputs& gradients,
     const std::vector<double>& inputs, 
     const Layers& layers, 
-    bool is_tranning) const;
+    bool is_training) const;
   GradientsAndOutputs train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,
@@ -436,14 +436,13 @@ private:
 
   std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
 
+  std::vector<double> calculate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
+
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const;
 
   // Calculates the Mean Absolute Percentage Error (MAPE)
-  double calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
-  double calculate_forecast_accuracy_mape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-
-  double calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const;
-  double calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
+  double calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8) const;
+  double calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8) const;
 
   // Error calculations
   // Todo this should be moved to a static class a passed as an object.
@@ -458,7 +457,7 @@ private:
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
-  void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, size_t raw_size, bool data_is_unique) const;
+  void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
   double calculate_clipping_scale() const;
 
