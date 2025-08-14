@@ -1,8 +1,9 @@
 #pragma once
+#include <chrono>     // Required for time operations (std::chrono)
+#include <functional>
+#include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
 #include <iostream>   // Required for std::cout and std::endl
 #include <string>     // Required for std::string
-#include <chrono>     // Required for time operations (std::chrono)
-#include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
 #include <sstream>    // Required for std::stringstream to build the time string
 
 class Logger
@@ -58,6 +59,11 @@ public:
     return level >= _min_log_level;
   }
 
+  void log_tracef(std::function<std::string()> message_factory) const
+  {
+    log_with_factory(LogLevel::Trace, message_factory);
+  }
+
   template <typename... Args>
   void log_trace(Args&&... args) const
   {
@@ -80,6 +86,11 @@ public:
   void log_warning(Args&&... args) const
   {
     log(LogLevel::Warning, std::forward<Args>(args)...);
+  }
+
+  void log_warningf(std::function<std::string()> message_factory) const
+  {
+    log_with_factory(LogLevel::Warning, message_factory);
   }
 
   template <typename... Args>
@@ -108,6 +119,14 @@ public:
   {
     return can_log(LogLevel::Error);
   }
+
+  template <typename... Args>
+  static std::string log_factory(Args&&... args)
+  {
+    std::ostringstream oss;
+    oss << print_args(std::forward<Args>(args)...) << std::endl;
+    return  oss.str();
+  }
 private:
   LogLevel _min_log_level; // Stores the minimum logging level set by the user
 
@@ -131,31 +150,59 @@ private:
     return ss.str();
   }
 
-  void print_args() const
+  static std::string print_args()
   {
     // No-op: This function does nothing, serving as the stopping point
     // for the recursion in the print_args variadic template.
+    return "";
   }
 
+  // Recursive case: Appends the first argument to the string and processes the rest
   template <typename T, typename... Args>
-  void print_args(T&& first_arg, Args&&... rest) const
+  static std::string print_args(T&& first_arg, Args&&... rest)
   {
-    std::cout << std::forward<T>(first_arg);
-    // Recursively call print_args with the remaining arguments
-    print_args(std::forward<Args>(rest)...);
+    std::ostringstream oss;
+    oss << std::forward<T>(first_arg); // Convert the first argument to string
+
+    // Recursively call print_args with the remaining arguments and append
+    oss << print_args(std::forward<Args>(rest)...);
+
+    return oss.str();
+  }
+
+  void log_with_factory(LogLevel level, std::function<std::string()> message_factory) const
+  {
+    if (level < _min_log_level)
+    {
+      return;
+    }
+
+    // The function is only called if the log level is sufficient.
+    std::ostringstream oss; 
+    oss << message_factory();
+    log_string(level, oss.str());
   }
 
   template <typename... Args>
   void log(LogLevel level, Args&&... args) const
   {
+    std::ostringstream oss;
+    oss << print_args(std::forward<Args>(args)...) << std::endl;
+    log_string(level, oss.str());
+  }
+
+  void log_string(LogLevel level, std::string message) const
+  {
     // Only log if the current message's level is at or above the minimum configured level
-    if (level < _min_log_level) 
+    if (level < _min_log_level)
     {
       return;
     }
 
+    std::ostringstream oss;
+
     // 1. Output the current time
-    std::cout << get_current_time_string() << " ";
+    oss << get_current_time_string() << " ";
 
     // 2. Determine color and tag based on log level
     const char* color_code = LogColorReset; // Default to no color
@@ -193,12 +240,12 @@ private:
     }
 
     // 3. Output the color-coded tag, then reset color
-    std::cout << color_code << tag << LogColorReset << " ";
+    oss << color_code << tag << LogColorReset << " ";
 
     // 4. Output the user's message arguments
-    print_args(std::forward<Args>(args)...);
+    oss << message;
 
-    // 5. End the line
-    std::cout << std::endl;
+    // 5. Print the final message to the console
+    std::cout << oss.str();
   }
 };
