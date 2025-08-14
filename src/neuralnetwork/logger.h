@@ -76,10 +76,20 @@ public:
     log(LogLevel::Debug, std::forward<Args>(args)...);
   }
 
+  void log_debugf(std::function<std::string()> message_factory) const
+  {
+    log_with_factory(LogLevel::Debug, message_factory);
+  }
+
   template <typename... Args>
   void log_info(Args&&... args) const
   {
     log(LogLevel::Information, std::forward<Args>(args)...);
+  }
+
+  void log_infof(std::function<std::string()> message_factory) const
+  {
+    log_with_factory(LogLevel::Information, message_factory);
   }
 
   template <typename... Args>
@@ -97,6 +107,11 @@ public:
   void log_error(Args&&... args) const
   {
     log(LogLevel::Error, std::forward<Args>(args)...);
+  }
+
+  void log_errorf(std::function<std::string()> message_factory) const
+  {
+    log_with_factory(LogLevel::Error, message_factory);
   }
 
   inline bool can_log_trace() const
