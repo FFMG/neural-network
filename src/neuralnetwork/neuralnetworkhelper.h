@@ -123,22 +123,32 @@ public:
   }
   virtual ~NeuralNetworkHelper() = default;
 
-  double learning_rate() const { 
+  inline double learning_rate() const noexcept
+  { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _learning_rate; 
   }
+  
   void set_learning_rate(double learning_rate) { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _learning_rate = learning_rate; 
   }
 
-  unsigned number_of_epoch() const { 
+  inline unsigned number_of_epoch() const noexcept
+  { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _number_of_epoch; 
   }
-  unsigned epoch() const { 
+  inline unsigned epoch() const noexcept
+  {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _epoch; 
+  }
+
+  inline size_t sample_size() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    return _training_inputs.size();
   }
 
   NeuralNetworkHelperMetrics calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const;
