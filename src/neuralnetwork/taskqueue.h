@@ -174,7 +174,8 @@ public:
     _state(State::Stopped),
     _busy_task(false),
     _has_result(false),
-    _task(nullptr)
+    _task(nullptr),
+    _result(R())
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
   }
