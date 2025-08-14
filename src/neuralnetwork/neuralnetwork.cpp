@@ -115,16 +115,17 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   return shuffled_indexes;
 }
 
-void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, size_t raw_size, bool data_is_unique) const
+void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
   std::vector<size_t> checking_indexes;
   std::vector<size_t> final_check_indexes;
 
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto shuffled_indexes = get_shuffled_indexes(raw_size);
-  assert(raw_size == shuffled_indexes.size());
+  auto sample_size = neural_network_helper.sample_size();
+
+  auto shuffled_indexes = get_shuffled_indexes(sample_size);
+  assert(sample_size == shuffled_indexes.size());
 
   break_shuffled_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
@@ -363,18 +364,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   logger().log_info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
+  // create the thread pool if we need one ...
   TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
   if (batch_size > 1)
   {
-    task_pool = new TaskQueuePool<GradientsAndOutputs>(
-      logger(),
-      _options.number_of_threads());
+    task_pool = new TaskQueuePool<GradientsAndOutputs>(logger(),_options.number_of_threads());
   }
 
-  SingleTaskQueue<bool>* callback_task = nullptr;
-
+  // create the neural network helper.
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+  create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
+
+  // create the callback task if we need one.
+  SingleTaskQueue<bool>* callback_task = nullptr;
   if (progress_callback != nullptr)
   {
     callback_task = new SingleTaskQueue<bool>();
@@ -385,7 +388,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       return;
     }
   }
-  create_shuffled_indexes(*_neural_network_helper, training_inputs.size(), _options.data_is_unique());
 
   // with the indexes, create the check training 
   std::vector<std::vector<double>> checking_training_inputs = {};
@@ -430,8 +432,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   const auto learning_rate_restart_rate = static_cast<int>(_options.learning_rate_restart_rate() / 100.0 * number_of_epoch); // every 10%
 
   AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
-
-  auto clipping_scale = -1.0;
 
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
@@ -639,11 +639,13 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
 
   double ratio = std::min(1.0, completed_percent / target_percent); // both as [0..1]
   double warmup_learning_rate;
-  if (start <= 0.0) {
+  if (start <= 0.0) 
+  {
     // fall back to linear if start is zero (avoid division by zero)
     warmup_learning_rate = start + (target - start) * ratio;
   }
-  else {
+  else 
+  {
     double geom = std::pow(target / start, ratio); // (target/start)^ratio
     warmup_learning_rate = start * geom;
   }
@@ -672,10 +674,10 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
     return calculate_rmse_error(ground_truth, predictions);
 
   case NeuralNetworkOptions::ErrorCalculation::mape:
-    return calculate_forecast_accuracy_mape(ground_truth, predictions);
+    return calculate_forecast_mape(ground_truth, predictions);
 
   case NeuralNetworkOptions::ErrorCalculation::smape:
-    return calculate_forecast_accuracy_smape(ground_truth, predictions);
+    return calculate_forecast_smape(ground_truth, predictions);
   }
 
   logger().log_error("Unknown ErrorCalculation type!");
@@ -902,14 +904,14 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
     {
       auto& neuron = current_layer.get_neuron(neuron_number);
       const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(previous_layer, gradients, learning_rate, epoch, clipping_scale);
+      neuron.apply_weight_gradients(previous_layer, gradients, learning_rate, epoch, clipping_scale2);
 
       if(residual_layer != nullptr)
       {
         const auto residual_gradients = calculate_residual_projection_gradients(
             layer_number, neuron_number, batch_activation_gradient
           );
-        neuron.apply_residual_projection_gradients(
+        neuron.apply_residual_weight_gradients(
           current_layer, 
           *residual_layer,
           residual_output_values, 
@@ -932,7 +934,7 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
   
   // set the output gradient
   const auto& output_layer = layers.output_layer();
-  auto next_activation_gradients = caclulate_output_gradients(outputs, gradients.output_back(), output_layer);
+  auto next_activation_gradients = calculate_output_gradients(outputs, gradients.output_back(), output_layer);
   gradients.set_gradients(static_cast<unsigned>(layers.size()-1), next_activation_gradients);
   for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
   {
@@ -959,7 +961,7 @@ void NeuralNetwork::calculate_forward_feed(
   NeuralNetwork::GradientsAndOutputs& gradients_outputs,
   const std::vector<double>& inputs, 
   const Layers& layers,
-  bool is_tranning) const
+  bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -992,8 +994,8 @@ void NeuralNetwork::calculate_forward_feed(
     this_output_values.reserve(current_layer.number_neurons() - 1);
     for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
     {
-      const auto& neuron = current_layer.get_neuron(unsigned(neuron_number));
-      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values, is_tranning));
+      const auto& neuron = current_layer.get_neuron(static_cast<unsigned>(neuron_number));
+      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values, is_training));
     }
 
     gradients_outputs.set_outputs(
@@ -1007,7 +1009,7 @@ void NeuralNetwork::calculate_forward_feed(
   }
 }
 
-std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const
+std::vector<double> NeuralNetwork::calculate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto output_layer_size = output_layer.number_neurons();
@@ -1028,58 +1030,7 @@ std::vector<double> NeuralNetwork::caclulate_output_gradients(const std::vector<
   return activation_gradients;
 }
 
-double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truth.size() || predictions.empty())
-  {
-    logger().log_error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  size_t non_zero_count = 0;
-  const double epsilon = 1e-8; // To avoid divide-by-zero
-  double sum_of_percentage_errors = 0.0;
-
-  for (size_t i = 0; i < predictions.size(); ++i)
-  {
-    const auto denominator = (std::abs(predictions[i]) + std::abs(ground_truth[i])) / 2.0;
-
-    if (denominator < epsilon) 
-    {
-      continue; // Optionally skip (or count as 0 error)
-    }
-    ++non_zero_count;
-    const auto numerator = std::abs(predictions[i] - ground_truth[i]);
-    sum_of_percentage_errors += numerator / denominator;
-  }
-  return non_zero_count == 0 ? 0.0 : (sum_of_percentage_errors / non_zero_count);
-}
-
-double NeuralNetwork::calculate_forecast_accuracy_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
-{
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    logger().log_error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double average_total = 0;
-  double average_size = 0;
-  for (size_t index = 0; index < ground_truths.size(); ++index)
-  {
-    auto percentage = calculate_forecast_accuracy_smape(ground_truths[index], predictions[index]);
-    if (percentage == 0)
-    {
-      continue;
-    }
-    average_total += percentage;
-    ++average_size;
-  }
-  return average_size > 0 ? average_total / average_size : 0.0;
-}
-
-double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truths.size() || predictions.empty()) 
@@ -1088,47 +1039,78 @@ double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<std::ve
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
-  double average_total = 0;
-  double average_size = 0;
-  for (size_t index = 0; index < ground_truths.size(); ++index)
+  double total_smape = 0.0;
+  size_t sequence_count = 0;
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
   {
-    auto percentage = calculate_forecast_accuracy_mape(ground_truths[index], predictions[index]);
-    if(percentage == 0)
-    {
-      continue;
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.empty()) {
+      continue; // skip empty or mismatched
     }
-    average_total += percentage;
-    ++average_size;
+
+    double seq_error_sum = 0.0;
+    size_t count = 0;
+
+    for (size_t i = 0; i < gt.size(); ++i) 
+{
+      double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
+      if (denom < epsilon) continue; // skip both near-zero
+      seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
+      ++count;
   }
-  return average_size > 0 ? average_total / average_size : 0.0;
+
+    if (count > 0) 
+  {
+      total_smape += seq_error_sum / count;
+      ++sequence_count;
+    }
+  }
+  return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
 }
 
-double NeuralNetwork::calculate_forecast_accuracy_mape(const std::vector<double>& ground_truth, const std::vector<double>& predictions) const
+double NeuralNetwork::calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truth.size() || predictions.empty()) 
+  if (predictions.size() != ground_truths.size() || predictions.empty()) 
   {
     logger().log_error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
-  size_t non_zero_count = 0;
-  double sum_of_percentage_errors = 0.0;
-  const double epsilon = 1e-8; // Small value to avoid division by zero
+  double total_mape = 0.0;
+  size_t sequence_count = 0;
 
-  for (size_t i = 0; i < predictions.size(); ++i) 
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
   {
-    if (std::abs(ground_truth[i]) < epsilon) 
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.empty()) 
     {
-      // If actual value is very close to zero, this pair is often skipped
-      // or handled differently to avoid astronomical percentage errors.
-      // Here, we'll just skip it to not skew the result.
-      continue; 
-    }
-    ++non_zero_count;
-    sum_of_percentage_errors += std::abs((ground_truth[i] - predictions[i]) / ground_truth[i]);
+      continue; // skip empty or mismatched
+}
+
+    double seq_error_sum = 0.0;
+    size_t count = 0;
+
+    for (size_t i = 0; i < gt.size(); ++i) 
+  {
+      double denom = std::abs(gt[i]);
+      if (denom < epsilon) continue; // skip tiny values
+      seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
+      ++count;
   }
-  return non_zero_count == 0 ? 0.0 : sum_of_percentage_errors / non_zero_count;
+
+    if (count > 0) 
+    {
+      total_mape += seq_error_sum / count;
+      ++sequence_count;
+    }
+  }
+  return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
 }
 
 void NeuralNetwork::log_training_info(
