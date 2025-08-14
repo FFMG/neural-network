@@ -13,13 +13,13 @@ public:
     const activation::method& output_activation,
     const OptimiserType& optimiser_type,
     int residual_layer_jump,
-    const Logger& logger);
-  Layers(const std::vector<Layer>& layers);
-  Layers(const Layers& layers);
-  Layers(Layers&& layers);
+    const Logger& logger) noexcept;
+  Layers(const std::vector<Layer>& layers) noexcept;
+  Layers(const Layers& layers) noexcept;
+  Layers(Layers&& layers) noexcept;
 
-  Layers& operator=(const Layers& layers);
-  Layers& operator=(Layers&& layers);
+  Layers& operator=(const Layers& layers) noexcept;
+  Layers& operator=(Layers&& layers) noexcept;
   
   virtual ~Layers() = default;
 
