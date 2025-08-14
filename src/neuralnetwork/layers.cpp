@@ -8,7 +8,7 @@ Layers::Layers(
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump,
-  const Logger& logger)
+  const Logger& logger) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
@@ -30,18 +30,19 @@ Layers::Layers(
     layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, logger);
 
     add_residual_layer(layer, hidden_activation, logger);
-    if (logger.can_log_trace())
-    {
-      logger.log_trace("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
-      if (residual_layer_number != -1)
+    logger.log_tracef([&]
       {
-        auto number_of_neuron_in_that_layer_x = _layers[residual_layer_number].number_neurons();
-        auto num_neurons_current_layer_x = layer.number_neurons();
+        std::string trace = Logger::log_factory("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
+        if (residual_layer_number != -1)
+        {
+          auto number_of_neuron_in_that_layer_x = _layers[residual_layer_number].number_neurons();
+          auto num_neurons_current_layer_x = layer.number_neurons();
 
-        logger.log_trace("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x);
-        logger.log_trace("  Number of neurons in layer   : ", num_neurons_current_layer_x);
-      }
-    }
+          trace += Logger::log_factory("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x);
+          trace += Logger::log_factory("  Number of neurons in layer   : ", num_neurons_current_layer_x);
+        }
+        return trace;
+      });
     _layers.emplace_back(std::move(layer));
   }
 
@@ -64,7 +65,7 @@ Layers::Layers(
   _layers.emplace_back(std::move(layer));
 }
 
-Layers::Layers(const std::vector<Layer>& layers)
+Layers::Layers(const std::vector<Layer>& layers) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _layers.reserve(layers.size());
@@ -75,19 +76,19 @@ Layers::Layers(const std::vector<Layer>& layers)
   }
 }
 
-Layers::Layers(const Layers& layers)
+Layers::Layers(const Layers& layers) noexcept
  : _layers(layers._layers)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
-Layers::Layers(Layers&& layers) 
+Layers::Layers(Layers&& layers) noexcept
   : _layers(std::move(layers._layers))
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
-Layers& Layers::operator=(const Layers& layers)
+Layers& Layers::operator=(const Layers& layers) noexcept
 {
   if(this != &layers)
   {
@@ -96,7 +97,7 @@ Layers& Layers::operator=(const Layers& layers)
   return *this;
 }
 
-Layers& Layers::operator=(Layers&& layers)
+Layers& Layers::operator=(Layers&& layers) noexcept
 {
   if(this != &layers)
   {
