@@ -18,8 +18,8 @@
 #endif
 
 #include <algorithm>
-#include <iterator>
 #include <exception>
+#include <iterator>
 #include <type_traits>
 #include <vector>
 
@@ -92,8 +92,8 @@ namespace TinyJSON
 #define TJDICTIONARY std::vector<TJMember*>
 #define TJLIST std::vector<TJValue*>
 #else
-class TJList;
-class TJDictionary;
+  class TJList;
+  class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
@@ -130,7 +130,7 @@ class TJDictionary;
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;  
+    unsigned int max_depth = 64;
   };
 
   /// <summary>
@@ -225,7 +225,7 @@ class TJDictionary;
 
     bool get_boolean(bool strict = false) const;
     const TJCHAR* get_string(bool strict = false) const;
-    
+
     // Non-template overload for ambiguous case - default to long long
     inline std::vector<long long> get_numbers(bool strict = false) const
     {
@@ -248,7 +248,7 @@ class TJDictionary;
 
     template<typename T>
     std::vector<TJ_TEMPLATE_NUMBER::type>
-    get_numbers(bool strict = false) const
+      get_numbers(bool strict = false) const
     {
       auto llVector = get_raw_numbers(strict);
       std::vector<T> tVector;
@@ -256,7 +256,7 @@ class TJDictionary;
 
       // Transform and move the values
       std::transform(std::make_move_iterator(llVector.begin()),
-                     std::make_move_iterator(llVector.end()),
+        std::make_move_iterator(llVector.end()),
         std::back_inserter(tVector),
         [](long long value) { return static_cast<T>(value); });
       return tVector;
@@ -264,7 +264,7 @@ class TJDictionary;
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-    get_floats(bool strict = false) const
+      get_floats(bool strict = false) const
     {
       auto ldVector = get_raw_floats(strict);
       std::vector<T> tVector;
@@ -280,14 +280,14 @@ class TJDictionary;
 
     template<typename T>
     TJ_TEMPLATE_NUMBER::type
-    get_number(bool strict = false) const
+      get_number(bool strict = false) const
     {
       return static_cast<T>(get_raw_number(strict));
     }
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-    get_float(bool strict = false) const
+      get_float(bool strict = false) const
     {
       return static_cast<T>(get_raw_float(strict));
     }
@@ -480,13 +480,13 @@ class TJDictionary;
 
     template<typename T>
     TJ_TEMPLATE_NUMBER::type
-    get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
+      get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       return static_cast<T>(get_raw_number(key, case_sensitive, throw_if_not_found));
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_NUMBER::type>
-    get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
+      get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       auto llVector = get_raw_numbers(key, case_sensitive, throw_if_not_found);
       std::vector<T> tVector;
@@ -502,13 +502,13 @@ class TJDictionary;
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-    get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
+      get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       return static_cast<T>(get_raw_float(key, case_sensitive, throw_if_not_found));
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_FLOAT::type>
-    get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
+      get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       auto ldVector = get_raw_floats(key, case_sensitive, throw_if_not_found);
       std::vector<T> tVector;
@@ -524,7 +524,7 @@ class TJDictionary;
 
     void set_floats(const TJCHAR* key, const std::vector<long double>& values);
     void set_numbers(const TJCHAR* key, const std::vector<long long>& values);
-    
+
 #if TJ_INCLUDE_STD_STRING == 1
     inline bool get_boolean(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
@@ -542,7 +542,7 @@ class TJDictionary;
     {
       return get_string(key.c_str(), case_sensitive, throw_if_not_found);
     }
-    inline std::vector<long double> get_floats(const std::string& key,bool case_sensitive = true, bool throw_if_not_found = false) const
+    inline std::vector<long double> get_floats(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       return get_raw_floats(key.c_str(), case_sensitive, throw_if_not_found);
     }
@@ -558,7 +558,7 @@ class TJDictionary;
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_FLOAT::type>
-    get_floats(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
+      get_floats(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       return get_floats(key, case_sensitive, throw_if_not_found);
     }
@@ -820,7 +820,7 @@ class TJDictionary;
     static TJValueArray* move(TJLIST*& values);
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
-    
+
   private:
     // All the key value pairs in this object.
     TJLIST* _values;
@@ -971,7 +971,7 @@ class TJDictionary;
   class TJValueNumberExponent : public TJValueNumber
   {
   public:
-    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent,bool is_negative);
+    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent, bool is_negative);
     virtual ~TJValueNumberExponent();
 
     long double get_number() const;
@@ -1002,7 +1002,7 @@ class TJDictionary;
     return TJ::parse(source, options);
   }
 
-  #if TJ_INCLUDE_STD_STRING == 1
+#if TJ_INCLUDE_STD_STRING == 1
   inline std::string operator ""_tj_indent(const TJCHAR * source, std::size_t)
   {
     parse_options options = {};
@@ -1016,7 +1016,7 @@ class TJDictionary;
     std::string json(tj->dump(formating::indented));
     delete tj;
     return json;
-  }  
+  }
 
   inline std::string operator ""_tj_minify(const TJCHAR * source, std::size_t)
   {
@@ -1032,6 +1032,6 @@ class TJDictionary;
     delete tj;
     return json;
   }
-  #endif
+#endif
 } // TinyJSON
 #endif // !TJ_INCLUDED 
