@@ -432,9 +432,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // because we boost the rate from time to time, the base, (or target rate), we will use is different.
   double learning_rate_base = _options.learning_rate();
 
-  // learning rate boost.
-  const auto learning_rate_restart_rate = static_cast<int>(_options.learning_rate_restart_rate() / 100.0 * number_of_epoch); // every 10%
-
   AdaptiveLearningRateScheduler learning_rate_scheduler(logger());
 
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
