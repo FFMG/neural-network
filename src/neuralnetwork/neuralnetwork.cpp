@@ -435,12 +435,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // learning rate boost.
   const auto learning_rate_restart_rate = static_cast<int>(_options.learning_rate_restart_rate() / 100.0 * number_of_epoch); // every 10%
 
-  AdaptiveLearningRateScheduler learning_rate_scheduler(_options.logger());
+  AdaptiveLearningRateScheduler learning_rate_scheduler(logger());
 
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
+
+    // calculate the clipping scale
+    const auto clipping_scale = calculate_clipping_scale();
 
     for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
     {
@@ -494,28 +497,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       
     // callback
     // 
-    if (progress_callback != nullptr && callback_task != nullptr)
+    if (!CallCallback(progress_callback, callback_task))
     {
-      // if it running?
-      if (!callback_task->busy())
-      {
-        if (callback_task->has_result() && !callback_task->get())
-        {
-          _options.logger().log_warning("Progress callback function returned false during training, closing now!");
-          break; // stop training if the callback returns false.
+      logger().log_warning("Progress callback function returned false during training, closing now!");
+      break;
         }
-
-        // it was not running at all, so we start it.
-        callback_task->call(progress_callback, std::ref(*_neural_network_helper));
-      }
-      else
-      {
-        _options.logger().log_debug("Progress callback function is still running, continuing to next epoch.");
-      }
-    }
-
-    // re-calculate the clipping scale
-    clipping_scale = calculate_clipping_scale();
 
     MYODDWEB_PROFILE_MARK();
   }
@@ -555,10 +541,79 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   MYODDWEB_PROFILE_MARK();
 }
 
+bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (callback == nullptr || callback_task == nullptr)
+  {
+    // no callback, nothing to do, continue training.
+    return true;
+  }
+
+  // if it running?
+  if (!callback_task->busy())
+  {
+    if (callback_task->has_result() && !callback_task->get())
+    {
+      return false; // stop training if the callback returns false.
+    }
+
+    // it was not running at all, so we start it.
+    if (!callback_task->call(callback, std::ref(*_neural_network_helper)))
+    {
+      logger().log_error("Trying to call Progress callback function but an error was returned.");
+    }
+  }
+  else
+  {
+    logger().log_debug("Progress callback function is still running, continuing to next epoch.");
+  }
+  return true; // continue training
+}
+
+double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto gradient_clip_threshold = options().clip_threshold();
+
+  double total_sq_sum = 0.0;
+
+  // Accumulate squared gradients for all weights and biases
+  for (size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
+  {
+    const auto& neuron = layer.get_neuron(static_cast<unsigned>(neuron_number));
+    for (const auto& weight_param : neuron.get_weight_params())
+    {
+      auto gradient = weight_param.gradient();
+      total_sq_sum += gradient * gradient;
+    }
+  }
+
+  double norm = std::sqrt(total_sq_sum);
+  if (!std::isfinite(norm))
+  {
+    logger().log_error("Layer Number:", layer_number, ", Gradient norm is NaN / Inf — resetting optimizer buffers and skipping batch.");
+    return 0.0; // Skip updates entirely
+  }
+
+  if (norm <= gradient_clip_threshold || norm <= 0.0)
+  {
+    return 1.0; // No clipping needed, use identity scale
+  }
+
+  auto clipping_scale = gradient_clip_threshold / norm; // scale factor < 1 to reduce gradient norm
+  logger().log_warningf([&]
+    {
+      auto lr = get_learning_rate();
+      std::string warning = Logger::log_factory(std::setprecision(4), "Layer Number:", layer_number, ", Clipping gradients: norm = ", norm, " scale = ", clipping_scale, " (learnign rate: ", lr, ")");
+      return warning;
+    });
+  return clipping_scale;
+}
+
 double NeuralNetwork::calculate_clipping_scale() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-
   auto gradient_clip_threshold = options().clip_threshold();
   auto global_sum_squares = 0.0;
 
@@ -584,13 +639,24 @@ double NeuralNetwork::calculate_clipping_scale() const
   }
 
   double global_norm = std::sqrt(global_sum_squares);
-  if (!std::isfinite(global_norm) || global_norm <= gradient_clip_threshold)
+  if (!std::isfinite(global_norm))
+  {
+    logger().log_error("Gradient global norm is NaN/Inf — resetting optimizer buffers and skipping batch.");
+    return 0.0; // Skip updates entirely
+  }
+
+  if (global_norm <= gradient_clip_threshold)
   {
     return 1.0; // No clipping needed, use identity scale
   }
 
   auto clipping_scale = gradient_clip_threshold / global_norm;
-  options().logger().log_debug(std::setprecision(4), "Clipping gradients: global norm = ", global_norm, " scale = ", clipping_scale);
+  logger().log_warningf([&]
+    {
+      auto lr = get_learning_rate();
+      std::string warning = Logger::log_factory( std::setprecision(4), "Clipping gradients: global norm = ", global_norm, " scale = ", clipping_scale, " (learnign rate: ", lr, ")");
+      return warning;
+    });
   return clipping_scale;
 }
 
@@ -927,20 +993,9 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
     auto& current_layer = layers[layer_number];
 
     std::vector<double> residual_output_values = {};
-    const auto residual_layer_mumber = current_layer.residual_layer_number();
-    Layer* residual_layer = nullptr;
-    if(residual_layer_mumber != -1)
-    {
-      residual_layer = &(layers[static_cast<unsigned>(residual_layer_mumber)]);
-      auto residual_layer_neuron_size = residual_layer->number_neurons();
-      residual_output_values.reserve(residual_layer_neuron_size);
-      for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
-      {
-        const auto output = batch_activation_gradient.get_output(residual_layer_mumber, neuron_number);
-        residual_output_values.emplace_back(output);
-      }
-    }
+    auto* residual_layer = get_residual_layer(layers, batch_activation_gradient, residual_output_values, current_layer);
 
+    auto clipping_scale2 = calculate_clipping_scale(current_layer, layer_number);
     const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
     for (unsigned neuron_number = 0; neuron_number < neuron_size; ++neuron_number)
     {
@@ -963,6 +1018,26 @@ void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOut
       }
     }
   }
+}
+
+Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  const auto residual_layer_number = current_layer.residual_layer_number();
+  if (residual_layer_number == -1)
+  {
+    return nullptr; // no residual layer
+  }
+  assert(residual_output_values.size() == 0);
+  auto* residual_layer = &(layers[static_cast<unsigned>(residual_layer_number)]);
+  auto residual_layer_neuron_size = residual_layer->number_neurons();
+  residual_output_values.reserve(residual_layer_neuron_size);
+  for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
+  {
+    const auto output = batch_activation_gradient.get_output(residual_layer_number, neuron_number);
+    residual_output_values.emplace_back(output);
+  }
+  return residual_layer;
 }
 
 void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, const std::vector<double>& outputs, const Layers& layers) const
