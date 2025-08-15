@@ -1040,10 +1040,24 @@ void NeuralNetwork::calculate_forward_feed(
       this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values, is_training));
     }
 
-    gradients_outputs.set_outputs(
-      static_cast<unsigned>(layer_number),
-      this_output_values
-    );
+    // log explosion
+    if (logger().can_log_trace())
+    {
+      double sum = 0.0;
+      double max_abs = 0.0;
+      for (double val : this_output_values)
+      {
+        sum += val;
+        max_abs = std::max(max_abs, std::fabs(val));
+      }
+      double mean = sum / this_output_values.size();
+      if (std::fabs(mean) < 1e-6 || std::fabs(mean) > 10 || std::fabs(max_abs) > 50)
+      {
+        logger().log_trace("[ACT] Layer ", layer_number, ": mean=", mean, ", max=", max_abs);
+      }
+    }
+
+    gradients_outputs.set_outputs( static_cast<unsigned>(layer_number),this_output_values );
 
     // add output value
     this_output_values.push_back(1.0);
