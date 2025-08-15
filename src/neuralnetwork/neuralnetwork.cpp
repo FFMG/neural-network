@@ -1,4 +1,3 @@
-#include "adaptivelearningratescheduler.h"
 #include "neuralnetwork.h"
 
 #include <cassert>

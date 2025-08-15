@@ -7,6 +7,7 @@
 #include "./libraries/instrumentor.h"
 
 #include "activation.h"
+#include "adaptivelearningratescheduler.h"
 #include "layers.h"
 #include "logger.h"
 #include "neuron.h"
