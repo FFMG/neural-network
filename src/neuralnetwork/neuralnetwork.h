@@ -434,7 +434,7 @@ private:
   void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, double clipping_scale) const;
   void apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch, double clipping_scale) const;
 
-  std::vector<double> caclulate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
+  Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const;
 
   std::vector<double> calculate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
 
@@ -460,11 +460,13 @@ private:
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
   double calculate_clipping_scale() const;
+  double calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
+  bool CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const;
 
   const Logger& logger() const;
 
