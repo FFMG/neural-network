@@ -8,6 +8,10 @@
 #include <random>
 #include <string>
 
+#ifndef M_PI
+# define M_PI   3.141592653589793238462643383279502884
+#endif
+
 static const double RecentAverageSmoothingFactor = 100.0;
 static const long long IntervalErorCheckInSeconds = 15;
 
@@ -435,9 +439,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
-    // the completed percent
-    auto completed_percent = (static_cast<double>(epoch) / number_of_epoch);
-
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
@@ -485,46 +486,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     // Learning rate
     //
-    if (completed_percent < _options.learning_rate_warmup_target())
-    {
-      auto warmup_learning_rate = calculate_learning_rate_warmup(epoch, completed_percent);
-      _neural_network_helper->set_learning_rate(warmup_learning_rate);
-    }
-    else
-    {
-      // decay the learning rate.
-      if (learning_rate_decay_rate != 0)
-      {
-        auto decayed_learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
-        _neural_network_helper->set_learning_rate(decayed_learning_rate);
-      }
-      else
-      {
-        // no decay so the learning rate is the same as the base.
-        _neural_network_helper->set_learning_rate(learning_rate_base);
-      }
+    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
       
-      // Boost the baseline every N epochs
-      if (epoch != 0 && epoch % learning_rate_restart_rate == 0 && _options.learning_rate_restart_boost() != 1.0)
-      {
-        // boost our learning rate a little.
-        // that number will then be used as the base for the next epoch.
-        learning_rate_base *= _options.learning_rate_restart_boost();
-        _options.logger().log_debug("Learning rate boost to ", std::fixed, std::setprecision(15), learning_rate_base);
-      }
+    // boost the learning rate base if we need to.
+    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate_base);
+    _neural_network_helper->set_learning_rate(learning_rate);
       
-      // then get the scheduler if we can improve it further.
-      if (_options.adaptive_learning_rate())
-      {
-        auto metric = calculate_forecast_metrics(
-          {
-            NeuralNetworkOptions::ErrorCalculation::rmse,
-          }, false);
-        _neural_network_helper->set_learning_rate(learning_rate_scheduler.update(metric[0].error(), _neural_network_helper->learning_rate(), epoch, number_of_epoch));
-      }
-      options().logger().log_debug("Learning rate is ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate(), " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
-    }
-
     // callback
     // 
     if (progress_callback != nullptr && callback_task != nullptr)
@@ -625,6 +592,81 @@ double NeuralNetwork::calculate_clipping_scale() const
   auto clipping_scale = gradient_clip_threshold / global_norm;
   options().logger().log_debug(std::setprecision(4), "Clipping gradients: global norm = ", global_norm, " scale = ", clipping_scale);
   return clipping_scale;
+}
+
+double NeuralNetwork::calculate_smooth_learning_rate_boost(
+  int epoch,
+  int total_epochs,
+  double base_learning_rate) const  // base learning rate
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
+  const auto& boost_every_percent = options().learning_rate_restart_rate();  // e.g., 7.5 means every 7.5% progress
+  const auto& boost_ratio = options().learning_rate_restart_boost();         // e.g., 1.10 means +10%
+
+  assert(boost_every_percent >= 0.0 && boost_every_percent <= 1.0);
+  assert(boost_ratio >= 0.0 && boost_ratio <= 1.0);
+  if(boost_ratio == 0 || boost_every_percent == 0)
+  {
+    // no boost, return the base learning rate
+    return base_learning_rate;
+  }
+
+  auto boost_interval = static_cast<int>(std::round(boost_every_percent * total_epochs)); // e.g., 7.5% of 100 epochs is 7.5 epochs
+  if (boost_interval <= 0)
+  {
+    // no boost interval, return the base learning rate
+    return base_learning_rate;
+  }
+  // Calculate the number of boosts that have occurred so far
+  auto total_boosts = total_epochs / boost_interval;
+  auto per_boost_ratio = boost_ratio / total_boosts; // e.g., if 3 boosts, each boost is 1.10^(1/3)
+
+  auto cycle_position = epoch % boost_interval; // e.g., if epoch 8 and interval is 7, position is 1
+  auto progress = static_cast<double>(cycle_position) / boost_interval; // e.g., 1/7 = 0.142857
+
+  // Apply cosine boost: start at 0, peak at 1, then back to 0
+  auto cosine_multiplier = (1.0 - std::cos(progress * M_PI)) / 2.0;
+  auto current_boost = per_boost_ratio * cosine_multiplier;
+
+  auto completed_cycles = epoch / boost_interval; // e.g., 8/7 = 1 full cycle
+  auto cumulative_boost = completed_cycles * per_boost_ratio;
+
+  return base_learning_rate * (1.0 + cumulative_boost + current_boost);
+}
+
+double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto learning_rate = learning_rate_base;
+
+  // the completed percent
+  auto completed_percent = (static_cast<double>(epoch) / number_of_epoch);
+
+  // do warmup first.
+  if (completed_percent < _options.learning_rate_warmup_target())
+  {
+    learning_rate = calculate_learning_rate_warmup(epoch, completed_percent);
+  }
+  // are we decaying the learning rate?
+  // this is done after warmup
+  else if (learning_rate_decay_rate != 0)
+  {
+    learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
+    logger().log_trace("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+  }
+
+  // then get the scheduler if we can improve it further.
+  if (_options.adaptive_learning_rate())
+  {
+    auto metric = calculate_forecast_metrics(
+      {
+        NeuralNetworkOptions::ErrorCalculation::rmse,
+      }, false);
+    learning_rate = learning_rate_scheduler.update(metric[0].error(), learning_rate, epoch, number_of_epoch);
+    logger().log_trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+  }
+  return learning_rate;
 }
 
 double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed_percent) const
