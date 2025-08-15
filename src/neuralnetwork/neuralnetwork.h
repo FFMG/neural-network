@@ -431,8 +431,8 @@ private:
   std::vector<double> calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
   std::vector<double> calculate_residual_projection_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
 
-  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, double clipping_scale) const;
-  void apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch, double clipping_scale) const;
+  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
+  void apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
 
   Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const;
 
@@ -459,7 +459,6 @@ private:
   void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
-  double calculate_clipping_scale() const;
   double calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
