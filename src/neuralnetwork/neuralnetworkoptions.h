@@ -28,8 +28,8 @@ private:
     _learning_rate_decay_rate(0.0),
     _adaptive_learning_rate(false),
     _optimiser_type(OptimiserType::SGD),
-    _learning_rate_restart_rate(1),
-    _learning_rate_restart_boost(1),
+    _learning_rate_restart_rate(0),
+    _learning_rate_restart_boost(0),
     _residual_layer_jump(-1),
     _clip_threshold(1.0),
     _learning_rate_warmup_start(0.0),
@@ -254,15 +254,15 @@ public:
       logger().log_error("The learning rate decay rate cannot be more than 1!");
       throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
     }
-    if (learning_rate_restart_rate() <= 0.0 || learning_rate_restart_rate() > 100)
+    if (learning_rate_restart_rate() < 0.0 || learning_rate_restart_rate() > 1.0)
     {
-      logger().log_error("The learning rate has to be between 0% and 100%!");
-      throw std::invalid_argument("The learning rate has to be between 0% and 100%!");
+      logger().log_error("The learning rate restart rate has to be between 0.0 and 1.0!");
+      throw std::invalid_argument("The learning rate restart rate has to be between 0.0 and 1.0!");
     }
-    if (learning_rate_restart_boost() < 1.0)
+    if (learning_rate_restart_boost() < 0.0|| learning_rate_restart_boost() > 1.0)
     {
-      logger().log_error("The learning rate restart boost cannot be less than 1!");
-      throw std::invalid_argument("The learning rate restart boost cannot be less than 1!");
+      logger().log_error("The learning rate restart boost has to be between 0.0 and 1.0!");
+      throw std::invalid_argument("The learning rate restart boost has to be between 0.0 and 1.0!");
     }
     if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
     {
@@ -336,7 +336,7 @@ public:
       .with_learning_rate_decay_rate(0.0)
       .with_adaptive_learning_rates(false)
       .with_optimiser_type(OptimiserType::SGD)
-      .with_learning_rate_boost_rate(1.0, 1.0)
+      .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold);
   }

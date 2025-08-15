@@ -461,6 +461,8 @@ private:
 
   double calculate_clipping_scale() const;
 
+  double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
+  double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
 

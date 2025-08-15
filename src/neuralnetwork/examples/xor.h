@@ -16,8 +16,8 @@ private:
       .with_output_activation_method(activation::method::sigmoid)
       .with_logger(logger)
       .with_learning_rate(0.1)
-      .with_learning_rate_decay_rate(0.4)
-      .with_learning_rate_boost_rate(5, 1.05)
+      .with_learning_rate_decay_rate(0.0)
+      .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::None)
       .build();
