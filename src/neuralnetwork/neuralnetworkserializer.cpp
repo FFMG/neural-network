@@ -174,6 +174,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
   auto learning_rate_restart_boost = options_object->get_float("learning-rate-restart-boost");
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
   auto clip_threshold = options_object->get_float("clip-threshold");
+  auto dropouts = options_object->get_floats<double>("dropout", false, false);
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -190,6 +191,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     .with_residual_layer_jump(residual_layer_jump)
     .with_clip_threshold(clip_threshold)
     .with_learning_rate_warmup(learning_rate_warmup_start, learning_rate_warmup_target)
+    .with_dropout(dropouts)
     .with_logger(logger)
     .build();
 }
@@ -468,10 +470,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   json.set("options", options_object);
 
   auto topology_list = new TinyJSON::TJValueArray();
-  for (auto topology : options.topology())
-  {
-    topology_list->add_number(topology);
-  }
+  topology_list->add_numbers(options.topology());
+
   auto dropout_list = new TinyJSON::TJValueArray();
   dropout_list->add_floats(options.dropout());
 
@@ -496,6 +496,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
   json.set("options", options_object);
 
+  delete dropout_list;
   delete topology_list;
   delete options_object;
 }
