@@ -483,18 +483,18 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // Learning rate
     //
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
-      
+
     // boost the learning rate base if we need to.
     learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate_base);
     _neural_network_helper->set_learning_rate(learning_rate);
-      
+
     // callback
     // 
     if (!CallCallback(progress_callback, callback_task))
     {
       logger().log_warning("Progress callback function returned false during training, closing now!");
       break;
-        }
+    }
 
     MYODDWEB_PROFILE_MARK();
   }
@@ -512,7 +512,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }, true);
 
   logger().log_info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
-  logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error());
+  logger().log_info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error()*100.0);
 
   // finaly learning rate
   logger().log_info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
@@ -585,7 +585,7 @@ double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int 
   double norm = std::sqrt(total_sq_sum);
   if (!std::isfinite(norm))
   {
-    logger().log_error("Layer Number:", layer_number, ", Gradient norm is NaN / Inf â€” resetting optimizer buffers and skipping batch.");
+    logger().log_error("Layer Number:", layer_number, ", Gradient norm is NaN / Inf — resetting optimizer buffers and skipping batch.");
     return 0.0; // Skip updates entirely
   }
 
@@ -1130,15 +1130,15 @@ double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<dou
     size_t count = 0;
 
     for (size_t i = 0; i < gt.size(); ++i) 
-{
+    {
       double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
       if (denom < epsilon) continue; // skip both near-zero
       seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
       ++count;
-  }
+    }
 
     if (count > 0) 
-  {
+    {
       total_smape += seq_error_sum / count;
       ++sequence_count;
     }
@@ -1166,18 +1166,18 @@ double NeuralNetwork::calculate_forecast_mape(const std::vector<std::vector<doub
     if (gt.size() != pred.size() || gt.empty()) 
     {
       continue; // skip empty or mismatched
-}
+    }
 
     double seq_error_sum = 0.0;
     size_t count = 0;
 
     for (size_t i = 0; i < gt.size(); ++i) 
-  {
+    {
       double denom = std::abs(gt[i]);
       if (denom < epsilon) continue; // skip tiny values
       seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
       ++count;
-  }
+    }
 
     if (count > 0) 
     {
