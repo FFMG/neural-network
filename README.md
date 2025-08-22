@@ -2,11 +2,9 @@
 
 ## What is it?
 
-This project aims to create a very simple neural network in c++ without any external libraries.
+This is a lightweight Feedforward Neural Network (FNN) written in modern C++ with a primary goal: to be an educational tool. It is built entirely from scratch with zero external dependencies, making it easy to compile, run, and understand.
 
-It is not fast, it is not very good ... but it does the work and it shows you how it works.
-
-Look at the code ...
+While not focused on high performance, it provides a clean implementation of the core mechanics of training and inference. It's an ideal project for students, developers, or anyone curious about what's inside the "black box" of a neural network.
 
 ## How to contribute
 
