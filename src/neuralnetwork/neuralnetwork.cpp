@@ -663,7 +663,10 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   else if (learning_rate_decay_rate != 0)
   {
     learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
-    logger().log_trace("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+    logger().log_tracef([=] 
+      {
+        return Logger::log_factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+      });
   }
 
   // then get the scheduler if we can improve it further.
@@ -701,7 +704,9 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
     double geom = std::pow(target / start, ratio); // (target/start)^ratio
     warmup_learning_rate = start * geom;
   }
-  logger().log_trace("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+  logger().log_tracef([=] {
+      return Logger::log_factory("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+    });
   return warmup_learning_rate;
 }
 
@@ -1072,7 +1077,10 @@ void NeuralNetwork::calculate_forward_feed(
       double mean = sum / this_output_values.size();
       if (std::fabs(mean) < 1e-6 || std::fabs(mean) > 10 || std::fabs(max_abs) > 50)
       {
-        logger().log_trace("[ACT] Layer ", layer_number, ": mean=", mean, ", max=", max_abs);
+        logger().log_tracef([=]
+          {
+            return Logger::log_factory("[ACT] Layer ", layer_number, ": mean=", mean, ", max=", max_abs);
+          });
       }
     }
 
