@@ -23,7 +23,7 @@ private:
     _batch_size(1),
     _data_is_unique(true),
     _progress_callback(nullptr),
-    _logger(Logger::LogLevel::None),
+    _log_level(Logger::LogLevel::None),
     _number_of_threads(0),
     _learning_rate_decay_rate(0.0),
     _adaptive_learning_rate(false),
@@ -72,7 +72,7 @@ public:
       _batch_size = nno._batch_size;
       _data_is_unique = nno._data_is_unique;
       _progress_callback = nno._progress_callback;
-      _logger = nno._logger;
+      _log_level = nno._log_level;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
@@ -100,7 +100,7 @@ public:
       _batch_size = nno._batch_size;
       _data_is_unique = nno._data_is_unique;
       _progress_callback = nno._progress_callback;
-      _logger = nno._logger;
+      _log_level = nno._log_level;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
@@ -157,9 +157,9 @@ public:
     _progress_callback = progress_callback;
     return *this;
   }
-  NeuralNetworkOptions& with_logger(const Logger& logger)
+  NeuralNetworkOptions& with_log_level(const Logger::LogLevel& log_level)
   {
-    _logger = logger;
+    _log_level = log_level;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_threads(int number_of_threads)
@@ -218,9 +218,12 @@ public:
 
   NeuralNetworkOptions& build()
   {
+    // set the log level first
+    Logger::set_log_level(log_level());
+
     if (topology().size() < 2)
     {
-      logger().log_error("The topology is not value, you must have at least 2 layers.");
+      Logger::log_error("The topology is not value, you must have at least 2 layers.");
       throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
     }
     if (dropout().size() == 0)
@@ -229,63 +232,63 @@ public:
     }
     if (dropout().size() != topology().size() -2)
     {
-      logger().log_error("The dropout size must be exactly the topology size less the input and outpout layers.");
+      Logger::log_error("The dropout size must be exactly the topology size less the input and outpout layers.");
       throw std::invalid_argument("The dropout size must be exactly the topology size less the input and outpout layers.");
     }
     for (auto& dropout : dropout())
     {
       if(dropout < 0.0 || dropout > 1.0)
       {
-        logger().log_error("The dropout rate must be between 0 and 1!");
+        Logger::log_error("The dropout rate must be between 0 and 1!");
         throw std::invalid_argument("The dropout rate must be between 0 and 1!");
       }
     }
     if (number_of_threads() > 0 && batch_size() <= 1)
     {
-      logger().log_warning("Because the batch size is 1, the number of threads is ignored.");
+      Logger::log_warning("Because the batch size is 1, the number of threads is ignored.");
     }
     if (learning_rate_decay_rate() < 0)
     {
-      logger().log_error("The learning rate decay rate cannot be negative!");
+      Logger::log_error("The learning rate decay rate cannot be negative!");
       throw std::invalid_argument("The learning rate decay rate cannot be negative!");
     }
     if (learning_rate_decay_rate() >= 1.0)
     {
-      logger().log_error("The learning rate decay rate cannot be more than 1!");
+      Logger::log_error("The learning rate decay rate cannot be more than 1!");
       throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
     }
     if (learning_rate_restart_rate() < 0.0 || learning_rate_restart_rate() > 1.0)
     {
-      logger().log_error("The learning rate restart rate has to be between 0.0 and 1.0!");
+      Logger::log_error("The learning rate restart rate has to be between 0.0 and 1.0!");
       throw std::invalid_argument("The learning rate restart rate has to be between 0.0 and 1.0!");
     }
     if (learning_rate_restart_boost() < 0.0|| learning_rate_restart_boost() > 1.0)
     {
-      logger().log_error("The learning rate restart boost has to be between 0.0 and 1.0!");
+      Logger::log_error("The learning rate restart boost has to be between 0.0 and 1.0!");
       throw std::invalid_argument("The learning rate restart boost has to be between 0.0 and 1.0!");
     }
     if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
     {
-      logger().log_warning("The residual_layer_jump must be positive or -1");
+      Logger::log_warning("The residual_layer_jump must be positive or -1");
     }
     if (clip_threshold() <= 0.0)
     {
-      logger().log_error("A gradient clip threshold smaller or equal to zero does not make sense!");
+      Logger::log_error("A gradient clip threshold smaller or equal to zero does not make sense!");
       throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
     }
     if (learning_rate_warmup_start() < 0.0)
     {
-      logger().log_error("The learning rate warm up start value cannot be less than zero.");
+      Logger::log_error("The learning rate warm up start value cannot be less than zero.");
       throw std::invalid_argument("The learning rate warm up start value cannot be less than zero.");
     }
     if (learning_rate_warmup_start() > learning_rate())
     {
-      logger().log_error("The learning rate warm up start value cannot be greater than the target rate.");
+      Logger::log_error("The learning rate warm up start value cannot be greater than the target rate.");
       throw std::invalid_argument("The learning rate warm up start value cannot be greater than the target rate.");
     }
     if (learning_rate_warmup_target() < 0.0 || learning_rate_warmup_target() > 1.0)
     {
-      logger().log_error("The learning rate warm up target must range between 0.0 and 1.0.");
+      Logger::log_error("The learning rate warm up target must range between 0.0 and 1.0.");
       throw std::invalid_argument("The learning rate warm up target must range between 0.0 and 1.0.");
     }
     return *this;
@@ -350,7 +353,7 @@ public:
   inline int batch_size() const { return _batch_size; }
   inline bool data_is_unique() const { return _data_is_unique; }
   inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
-  inline const Logger& logger() const { return _logger; }
+  inline Logger::LogLevel log_level() const { return _log_level; }
   inline int number_of_threads() const { return _number_of_threads; }
   inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
   inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
@@ -372,7 +375,7 @@ private:
   int _batch_size;
   bool _data_is_unique;
   std::function<bool(NeuralNetworkHelper&)> _progress_callback;
-  Logger _logger;
+  Logger::LogLevel _log_level;
   int _number_of_threads;
   double _learning_rate_decay_rate;
   bool _adaptive_learning_rate;

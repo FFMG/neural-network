@@ -7,14 +7,14 @@
 class ExampleXor
 {
 private:
-  static NeuralNetwork* create_neural_network(Logger& logger, unsigned epoch, unsigned batch_size)
+  static NeuralNetwork* create_neural_network(Logger::LogLevel log_level, unsigned epoch, unsigned batch_size)
   {
     std::vector<unsigned> topology = {3,2,1};
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::sigmoid)
       .with_output_activation_method(activation::method::sigmoid)
-      .with_logger(logger)
+      .with_log_level(log_level)
       .with_learning_rate(0.1)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
@@ -25,7 +25,7 @@ private:
     return new NeuralNetwork(options);
   }
 
-  static void train_neural_network( NeuralNetwork& nn)
+  static void train_neural_network(NeuralNetwork& nn)
   {
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {
@@ -59,7 +59,7 @@ private:
   }
 
 public:
-  static void Xor(Logger& logger, bool use_file)
+  static void Xor(Logger::LogLevel log_level, bool use_file)
   {
     TEST_START("Xor test.")
 
@@ -72,11 +72,11 @@ public:
     NeuralNetwork* nn = nullptr;
     if(use_file)
     {
-      nn = NeuralNetworkSerializer::load(logger, file_name);
+      nn = NeuralNetworkSerializer::load(file_name);
       if( nullptr == nn )
       {
         // we need to create it
-        nn = create_neural_network(logger, epoch, batch_size);
+        nn = create_neural_network(log_level, epoch, batch_size);
 
         // train it
         train_neural_network(*nn);
@@ -84,7 +84,7 @@ public:
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
 
-        auto nn_saved = NeuralNetworkSerializer::load(logger, file_name);
+        auto nn_saved = NeuralNetworkSerializer::load(file_name);
         std::cout << "Output from saved file:" << std::endl;
         std::cout << std::fixed << std::setprecision(10);
         auto t1 = nn_saved->think({ 0, 0, 1 });
@@ -98,7 +98,7 @@ public:
     else
     {
       // we need to create it
-      nn = create_neural_network(logger, epoch, batch_size);
+      nn = create_neural_network(log_level, epoch, batch_size);
 
       // train it
       train_neural_network(*nn);

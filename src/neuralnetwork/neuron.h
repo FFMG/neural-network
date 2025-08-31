@@ -1,7 +1,6 @@
 #pragma once
 #include "activation.h"
 #include "layer.h"
-#include "logger.h"
 #include "optimiser.h"
 #include "weightparam.h"
 #include "./libraries/instrumentor.h"
@@ -28,8 +27,7 @@ public:
     const std::vector<WeightParam>& weight_params,
     const OptimiserType& optimiser_type,
     const Type& type,
-    const double dropout_rate,
-    const Logger& logger
+    const double dropout_rate
     );
     
   Neuron(
@@ -40,8 +38,7 @@ public:
     const activation& activation,
     const OptimiserType& optimiser_type,
     const Type& type,
-    const double dropout_rate,
-    const Logger& logger
+    const double dropout_rate
     );
 
   Neuron(const Neuron& src) noexcept;
@@ -130,5 +127,4 @@ private:
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   Type _type;
   double _dropout_rate;
-  Logger _logger;
 };

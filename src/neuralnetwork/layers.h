@@ -1,7 +1,6 @@
 #pragma once
 #include "activation.h"
 #include "layer.h"
-#include "logger.h"
 #include "optimiser.h"
 
 class Layers
@@ -12,8 +11,7 @@ public:
     const activation::method& hidden_activation,
     const activation::method& output_activation,
     const OptimiserType& optimiser_type,
-    int residual_layer_jump,
-    const Logger& logger) noexcept;
+    int residual_layer_jump) noexcept;
   Layers(const std::vector<Layer>& layers) noexcept;
   Layers(const Layers& layers) noexcept;
   Layers(Layers&& layers) noexcept;
@@ -50,7 +48,7 @@ public:
   }
 
 private:
-  void add_residual_layer(Layer& layer, const activation::method& activation_method, const Logger& logger) const;
+  void add_residual_layer(Layer& layer, const activation::method& activation_method) const;
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 
   std::vector<Layer> _layers;

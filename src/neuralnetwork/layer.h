@@ -1,5 +1,4 @@
 #pragma once
-#include "logger.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
@@ -17,8 +16,7 @@ protected:
     ResidualProjector(
       unsigned input_size,       // size of residual_layer_outputs (e.g., 160)
       unsigned output_size,      // size of the target layer (e.g., 128)
-      const activation& activation_method,
-      const Logger& logger
+      const activation& activation_method
     )
       : _input_size(input_size),
         _output_size(output_size)
@@ -32,7 +30,7 @@ protected:
         auto values = activation_method.weight_initialization(input_size, 1);  // row: 1 x input_size
         for( auto& value : values)
         {
-          weights.emplace_back(WeightParam(value, 0.0, 0.0, logger));
+          weights.emplace_back(WeightParam(value, 0.0, 0.0));
         }
         _weight_params.emplace_back(weights);
       }
@@ -134,8 +132,8 @@ public:
     Output
   };
 private:  
-  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate, const Logger& logger);
-  Layer(LayerType layer_type, const Logger& logger);
+  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate);
+  Layer(LayerType layer_type);
 
 public:  
   Layer(const Layer& src) noexcept;
@@ -153,14 +151,14 @@ public:
 
   LayerType layer_type() const { return _layer_type;}
 
-  static Layer create_input_layer(const std::vector<Neuron>& neurons, const Logger& logger);
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Logger& logger);
+  static Layer create_input_layer(const std::vector<Neuron>& neurons);
+  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer);
 
-  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const Logger& logger);
+  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
+  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
 
-  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params, const Logger& logger);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, const Logger& logger);
+  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
   inline int residual_layer_number() const
   { 
@@ -196,5 +194,4 @@ private:
   int _residual_layer_number;
   ResidualProjector* _residual_projector;
   LayerType _layer_type;
-  Logger _logger;
 };
