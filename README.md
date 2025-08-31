@@ -149,7 +149,7 @@ int main()
   };
 
   // just log information
-  auto logger = Logger(Logger::LogLevel::Information);
+  Logger::set_log_level(Logger::LogLevel::Information);
 
   // the topology we create this NN with is
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
@@ -157,9 +157,10 @@ int main()
     .with_batch_size(batch_size)
     .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
-    .with_logger(logger)
+    .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
-    .with_number_of_epoch(10000).build();
+    .with_number_of_epoch(10000)
+    .build();
 
   auto* nnl = new NeuralNetwork(options);
   nnl->train(training_inputs, training_outputs);
@@ -218,17 +219,16 @@ You can use `NeuralNetworkSerializer::save( ... )` to save a trained network and
 
 int main()
 {
-  // just log information
-  auto logger = Logger(Logger::LogLevel::Information);
-
   // create the NN
   auto options = NeuralNetworkOptions::create({ 3,2,1 })
   .with_batch_size(batch_size)
   .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
-  .with_logger(logger)
+  .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
-  .with_number_of_epoch(10000).build();
+  .with_number_of_epoch(10000)
+  .build();
+
   auto nn = new NeuralNetwork(options);
 
   // train it 
@@ -313,15 +313,15 @@ int main()
       {0}, {1}, {1}, {0}
   };
 
-  auto logger = Logger(Logger::LogLevel::Information);
   auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
     .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
-    .with_logger(logger)
+    .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
-    .with_progress_callback(show_progress_bar).build();
+    .with_progress_callback(show_progress_bar)
+    .build();
 
   auto* nn = new NeuralNetwork(options);
   nn->train(training_inputs, training_outputs);
@@ -382,7 +382,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * batch_size[=1]: The default number of batches we want to split the epochs in.
 * data_is_unique[=true]: By default we assume that the input data is unique and cannot be split for in-batch validation and final error validation.
 * progress_callback[=null]: The callback.
-* logger[=none]: Your logger.
+* logger[=none]: Your log levele.
 * number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
 * adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
 * optimiser_type[=SGD]: The optimiser we will use during training.
@@ -407,14 +407,14 @@ After training you can get the calculated error as well as the mean absolute per
 
 ```c++
 ...
-auto logger = Logger(Logger::LogLevel::Information);
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
   .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
-  .with_logger(logger)
+  .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
-  .with_number_of_epoch(10000).build();
+  .with_number_of_epoch(10000)
+  .build();
 
 auto* nn = new NeuralNetwork(options);
 
