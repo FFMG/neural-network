@@ -15,6 +15,7 @@ private:
       .with_hidden_activation_method(activation::method::sigmoid)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
+      .with_dropout({0.2})
       .with_learning_rate(0.1)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
