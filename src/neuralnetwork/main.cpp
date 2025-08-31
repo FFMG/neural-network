@@ -11,16 +11,17 @@ int main()
 {
   MYODDWEB_PROFILE_BEGIN_SESSION( "Monitor Global", "Profile-Global.json" );
 
-  auto logger = Logger(Logger::LogLevel::Debug);
+  auto log_level = Logger::LogLevel::Debug;
+  Logger::set_log_level(log_level);
 
   // XOR
-  ExampleXor::Xor(logger, true);
+  ExampleXor::Xor(log_level, true);
 
   // Residual XOR
-  ExampleResidualXor::Xor(logger, false);
+  ExampleResidualXor::Xor(log_level, true);
 
   // 3-bit Parity
-  ExampleThreebitParity::ThreebitParity(logger);
+  ExampleThreebitParity::ThreebitParity(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 

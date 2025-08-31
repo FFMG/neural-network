@@ -1,5 +1,6 @@
 #include <chrono>
 
+#include "logger.h"
 #include "neuralnetworkserializer.h"
 #include "optimiser.h"
 
@@ -7,7 +8,7 @@ NeuralNetworkSerializer::NeuralNetworkSerializer()
 {
 }
 
-NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& path)
+NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
 {
   //  any errors will not throw, just return null
   TinyJSON::parse_options options_parse = {};
@@ -15,39 +16,39 @@ NeuralNetwork* NeuralNetworkSerializer::load(Logger& logger, const std::string& 
   auto* tj = TinyJSON::TJ::parse_file(path.c_str(), options_parse);
   if(nullptr == tj)
   {
-    logger.log_warning("Could not load Neural Network from file (", path, ").");
+    Logger::log_warning("Could not load Neural Network from file (", path, ").");
     return nullptr;
   }
 
   // get the options
-  auto options = get_options(logger, *tj);
+  auto options = get_options(*tj);
 
-  auto residual_layers = get_residual_layers(logger, *tj);
+  auto residual_layers = get_residual_layers(*tj);
 
   auto error = get_error(*tj);
   auto mean_absolute_percentage_error = get_mean_absolute_percentage_error(*tj);
 
   // create the layer and validate that the topology matches.
-  auto layers = create_layers(logger, options, *tj, residual_layers);
+  auto layers = create_layers(options, *tj, residual_layers);
   if(layers.size() == 0 )
   {
-    logger.log_error("Found no valid layers to load!");
+    Logger::log_error("Found no valid layers to load!");
     delete tj;
     return nullptr;
   }
 
   // create the NN
   auto nn = new NeuralNetwork(layers, options);
-  logger.log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));
+  Logger::log_info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));
 
   // cleanup
   delete tj;
   return nn;
 }
 
-std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, const NeuralNetworkOptions& options, const TinyJSON::TJValue& json, const std::vector<int>& residual_layers)
+std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json, const std::vector<int>& residual_layers)
 {
-  auto number_of_layers = get_number_of_layers(logger, json);
+  auto number_of_layers = get_number_of_layers(json);
   if(number_of_layers <= 2)
   {
     std::cerr << "The number of layers must be at least 2, (input+output)";
@@ -58,8 +59,8 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, const 
   layers.reserve(number_of_layers);
 
   // add the input layer
-  auto input_neurons = get_neurons(logger, json, 0, activation::method::linear);
-  layers.emplace_back(Layer::create_input_layer(input_neurons, logger));
+  auto input_neurons = get_neurons(json, 0, activation::method::linear);
+  layers.emplace_back(Layer::create_input_layer(input_neurons));
 
   auto previous_neurons = std::move(input_neurons);
   
@@ -67,26 +68,26 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(Logger& logger, const 
   for(auto i = 1; i < number_of_layers -1; ++i)
   {
     auto activation_method = options.hidden_activation_method();
-    auto hidden_neurons = get_neurons(logger, json, i, activation_method);  
+    auto hidden_neurons = get_neurons(json, i, activation_method);  
 
     const auto& residual_layer = residual_layers[i];
     const auto num_neurons_in_previous_layer = static_cast<unsigned>(previous_neurons.size());
 
     // get the residual layers for that hidden layer
-    auto residual_weight_params = get_residual_weight_params(logger, json, i);
+    auto residual_weight_params = get_residual_weight_params(json, i);
 
-    layers.emplace_back(Layer::create_hidden_layer(hidden_neurons, num_neurons_in_previous_layer, residual_layer, residual_weight_params, logger));
+    layers.emplace_back(Layer::create_hidden_layer(hidden_neurons, num_neurons_in_previous_layer, residual_layer, residual_weight_params));
 
     previous_neurons = std::move(hidden_neurons);
   }
 
   // finally, the output layer.
   const auto& residual_layer = residual_layers.back();
-  auto residual_weight_params = get_residual_weight_params(logger, json, number_of_layers -1);
+  auto residual_weight_params = get_residual_weight_params(json, number_of_layers -1);
   auto activation_method = options.output_activation_method();
-  auto output_neurons = get_neurons(logger, json, number_of_layers -1, activation_method);  
+  auto output_neurons = get_neurons(json, number_of_layers -1, activation_method);  
   const auto num_neurons_in_previous_layer = static_cast<unsigned>(previous_neurons.size());
-  layers.emplace_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, residual_layer, residual_weight_params, logger));
+  layers.emplace_back(Layer::create_output_layer(output_neurons, num_neurons_in_previous_layer, residual_layer, residual_weight_params));
   return layers;
 }
 
@@ -117,26 +118,26 @@ double NeuralNetworkSerializer::get_mean_absolute_percentage_error(const TinyJSO
   return object->get_float("mean-absolute-percentage-error", true, false);
 }
 
-NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const TinyJSON::TJValue& json)
+NeuralNetworkOptions NeuralNetworkSerializer::get_options(const TinyJSON::TJValue& json)
 {
   auto default_option = NeuralNetworkOptions::create({ 1,1 }).build();
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if (nullptr == object)
   {
-    logger.log_error("The given json root is not an object!");
+    Logger::log_error("The given json root is not an object!");
     return default_option;
   }
   auto options_object = dynamic_cast<const TinyJSON::TJValueObject*>(object->try_get_value("options"));
   if (nullptr == options_object)
   {
-    logger.log_error("The given json does not contain a valid option section!");
+    Logger::log_error("The given json does not contain a valid option section!");
     return default_option;
   }
 
   auto array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("topology"));
   if (nullptr == array)
   {
-    logger.log_error("Could not find a 'topology' node!");
+    Logger::log_error("Could not find a 'topology' node!");
     return default_option;
   }
 
@@ -146,12 +147,14 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     auto number = dynamic_cast<const TinyJSON::TJValueNumberInt*>(array->at(i));
     if (nullptr == number)
     {
-      logger.log_error("The 'topology' node does not have a valid number at position ", i, "!");
+      Logger::log_error("The 'topology' node does not have a valid number at position ", i, "!");
       return default_option;
     }
     topology.push_back(static_cast<unsigned>(number->get_number()));
   }
   
+  auto log_level_string = options_object->try_get_string("log-level", false);
+  auto log_level = Logger::string_to_log_level(log_level_string);
   auto hidden_activation_string = options_object->try_get_string("hidden-activation", false);
   auto output_activation_string = options_object->try_get_string("output-activation", false);
   auto hidden_activation = activation::string_to_method(hidden_activation_string);
@@ -192,7 +195,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_options(Logger& logger, const 
     .with_clip_threshold(clip_threshold)
     .with_learning_rate_warmup(learning_rate_warmup_start, learning_rate_warmup_target)
     .with_dropout(dropouts)
-    .with_logger(logger)
+    .with_log_level(log_level)
     .build();
 }
 
@@ -206,7 +209,7 @@ double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
   return object->get_float("error", true, false);
 }
 
-std::vector<int> NeuralNetworkSerializer::get_residual_layers(Logger& logger, const TinyJSON::TJValue& json)
+std::vector<int> NeuralNetworkSerializer::get_residual_layers(const TinyJSON::TJValue& json)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if(nullptr == object)
@@ -226,7 +229,7 @@ std::vector<int> NeuralNetworkSerializer::get_residual_layers(Logger& logger, co
     auto layer_object = dynamic_cast<const TinyJSON::TJValueObject*>(array->at(i));
     if(nullptr == layer_object)
     {
-      logger.log_warning("The 'layers' array did not contain valid layer objects!");
+      Logger::log_warning("The 'layers' array did not contain valid layer objects!");
       return {};
     }
     auto residual_layer = static_cast<int>(layer_object->get_number("residual-layer", true, true));
@@ -235,26 +238,26 @@ std::vector<int> NeuralNetworkSerializer::get_residual_layers(Logger& logger, co
   return residual_layers;
 }
 
-const TinyJSON::TJValueArray* NeuralNetworkSerializer::get_layers_array(Logger& logger, const TinyJSON::TJValue& json)
+const TinyJSON::TJValueArray* NeuralNetworkSerializer::get_layers_array(const TinyJSON::TJValue& json)
 {
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if(nullptr == object)
   {
-    logger.log_error("Could not get layers array, the root is not an object!");
+    Logger::log_error("Could not get layers array, the root is not an object!");
     return nullptr;
   }
   auto* array = dynamic_cast<const TinyJSON::TJValueArray*>(object->try_get_value("layers"));
   if(nullptr == array)
   {
-    logger.log_error("Could not get layers array!");
+    Logger::log_error("Could not get layers array!");
     return nullptr;
   }
   return array;
 }
 
-const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number )
+const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number )
 {
-  auto* array = get_layers_array(logger, json);
+  auto* array = get_layers_array(json);
   if(nullptr == array)
   {
     return nullptr;
@@ -267,15 +270,15 @@ const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(Logger&
   auto layer_object = dynamic_cast<const TinyJSON::TJValueObject*>(array->at(layer_number));
   if(nullptr == layer_object)
   {
-    logger.log_error("Could not get layer object at position: ", layer_number);
+    Logger::log_error("Could not get layer object at position: ", layer_number);
     return nullptr;
   }
   return layer_object;
 }
 
-std::vector<std::vector<WeightParam>> NeuralNetworkSerializer::get_residual_weight_params(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number )
+std::vector<std::vector<WeightParam>> NeuralNetworkSerializer::get_residual_weight_params(const TinyJSON::TJValue& json, unsigned layer_number )
 {
-  const auto* layer_object = get_layer_object(logger, json, layer_number);
+  const auto* layer_object = get_layer_object(json, layer_number);
   if(nullptr == layer_object)
   {
     return {};
@@ -299,12 +302,12 @@ std::vector<std::vector<WeightParam>> NeuralNetworkSerializer::get_residual_weig
   auto residual_projector_array = dynamic_cast<const TinyJSON::TJValueArray*>(residual_projector_object->try_get_value("weight-params"));
   if(nullptr == residual_projector_array)
   {
-    logger.log_error("Layer object at position: ", layer_number, " does not contain a valid residual weight param node!");
+    Logger::log_error("Layer object at position: ", layer_number, " does not contain a valid residual weight param node!");
     return {};
   }
   if(residual_projector_array->get_number_of_items() != output_size)
   {
-    logger.log_error("Layer object at position: ", layer_number, " residual weight param size does not match output count!");
+    Logger::log_error("Layer object at position: ", layer_number, " residual weight param size does not match output count!");
     return {};
   }
 
@@ -315,22 +318,22 @@ std::vector<std::vector<WeightParam>> NeuralNetworkSerializer::get_residual_weig
     auto all_weightparam_object = dynamic_cast<const TinyJSON::TJValueObject*>(residual_projector_array->at(i));
     if(nullptr == all_weightparam_object)
     {
-      logger.log_error("Layer object at position: ", layer_number, " unable to locate weight param at position ", i, "!");
+      Logger::log_error("Layer object at position: ", layer_number, " unable to locate weight param at position ", i, "!");
       return {};
     }
-    auto weight_params = get_weight_params(logger, *all_weightparam_object);
+    auto weight_params = get_weight_params(*all_weightparam_object);
     if(weight_params.size() != static_cast<size_t>(input_size))
     {
-      logger.log_error("Layer object at position: ", layer_number, " weight param at position ", i, " does not match the input size!");      
+      Logger::log_error("Layer object at position: ", layer_number, " weight param at position ", i, " does not match the input size!");      
     }
     all_weight_params.emplace_back(std::move(weight_params));
   }
   return all_weight_params;
 }
 
-std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
+std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method)
 {
-  const auto* layer_object = get_layer_object(logger, json, layer_number);
+  const auto* layer_object = get_layer_object(json, layer_number);
   if(nullptr == layer_object)
   {
     return {};
@@ -339,7 +342,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
   auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object->try_get_value("neurons"));
   if(nullptr == layer_array)
   {
-    logger.log_error("Layer object at position: ", layer_number, " does not contain a valid neuron node!");
+    Logger::log_error("Layer object at position: ", layer_number, " does not contain a valid neuron node!");
     return {};
   }
 
@@ -355,13 +358,13 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
     auto index_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("index"));
     if(nullptr == index_object)
     {
-      logger.log_error("Could not find neuron index!");
+      Logger::log_error("Could not find neuron index!");
       return {};
     }
     auto optimiser_type_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("optimiser-type"));
     if (nullptr == optimiser_type_object)
     {
-      logger.log_error("Could not find neuron optimiser type!");
+      Logger::log_error("Could not find neuron optimiser type!");
       return {};
     }
 
@@ -373,7 +376,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
 
     // then the weights
     // the output layer can have zero weights
-    auto weight_params = get_weight_params(logger, *neuron_object);
+    auto weight_params = get_weight_params(*neuron_object);
     
     auto neuron = Neuron(
       index,
@@ -381,17 +384,16 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(Logger& logger, const T
       weight_params,
       optimiser_type,
       neuron_type,
-      dropout_rate,
-      logger
+      dropout_rate
     );
     neurons.push_back(neuron);
   }
   return neurons;
 }
 
-int NeuralNetworkSerializer::get_number_of_layers(Logger& logger, const TinyJSON::TJValue& json)
+int NeuralNetworkSerializer::get_number_of_layers(const TinyJSON::TJValue& json)
 {
-  auto* array = get_layers_array(logger, json);
+  auto* array = get_layers_array(json);
   if(nullptr == array)
   {
     return 0;
@@ -399,13 +401,13 @@ int NeuralNetworkSerializer::get_number_of_layers(Logger& logger, const TinyJSON
   return array->get_number_of_items();
 }
 
-std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logger, const TinyJSON::TJValueObject& parent)
+std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJSON::TJValueObject& parent)
 {
   // the array of weight
   auto weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(parent.try_get_value("weight-params"));
   if(nullptr == weights_array)
   {
-    logger.log_error("Could not find a valid 'weights' node!");
+    Logger::log_error("Could not find a valid 'weights' node!");
     return {};
   }
 
@@ -416,7 +418,7 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logg
     auto weight_param_object = dynamic_cast<const TinyJSON::TJValueObject*>(weights_array->at(i));
     if( nullptr == weight_param_object)
     {
-      logger.log_error("The 'weight-params' object was either empty or not a valid object!");
+      Logger::log_error("The 'weight-params' object was either empty or not a valid object!");
       return {};
     }
     auto value = weight_param_object->get_float("value");
@@ -434,8 +436,7 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(Logger& logg
       static_cast<double>(first_moment_estimate),
       static_cast<double>(second_moment_estimate),
       time_step,
-      static_cast<double>(weight_decay),
-      logger
+      static_cast<double>(weight_decay)
     ));
   }
   return weight_params;
@@ -477,6 +478,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
   options_object->set("topology", topology_list);
   options_object->set("dropout", dropout_list);
+  options_object->set_string("log-level", Logger::log_level_to_string(options.log_level()).c_str());
   options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
   options_object->set_float("learning-rate", options.learning_rate());

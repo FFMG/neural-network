@@ -8,17 +8,6 @@
 
 class Logger
 {
-private:
-    // ANSI escape codes for text colors. These codes work on most modern terminals
-    // (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
-    // They instruct the terminal to change the color of subsequent text.
-    static constexpr const char* LogColorReset  = "\033[0m";   // Resets text color to default
-    static constexpr const char* LogColorRed    = "\033[31m";
-    static constexpr const char* LogColorGreen  = "\033[32m";
-    static constexpr const char* LogColorYellow = "\033[33m";
-    static constexpr const char* LogColorBlue   = "\033[34m";
-    static constexpr const char* LogColorCyan   = "\033[36m";
-
 public:
   enum class LogLevel 
   {
@@ -30,107 +19,163 @@ public:
     None
   };
 
+  static std::string log_level_to_string(LogLevel level) 
+  {
+    switch (level) 
+    {
+      case LogLevel::Trace:        return "Trace";
+      case LogLevel::Information:  return "Info";
+      case LogLevel::Warning:      return "Warning";
+      case LogLevel::Error:        return "Error";
+      case LogLevel::None:         return "None";
+
+      case LogLevel::Debug:
+      default:                     return "Debug";
+    }
+  }
+
+  static LogLevel string_to_log_level(const std::string& str) 
+  {
+    std::string lower_str = str;
+    // Convert the string to lowercase for case-insensitive comparison
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+      [](unsigned char c) { return std::tolower(c); });
+
+    if(lower_str == "trace")
+    {
+      return LogLevel::Trace;
+    }
+    if(lower_str == "debug")
+    {
+      return LogLevel::Debug;
+    }      
+    if(lower_str == "info" || lower_str == "information")
+    {
+      return LogLevel::Information;
+    }
+    if(lower_str == "warn" || lower_str == "warning") 
+    {
+      return LogLevel::Warning;
+    }
+    if(lower_str == "error")  
+    {
+      return LogLevel::Error;
+    }
+    if(lower_str == "none")  
+    {
+      return LogLevel::None;
+    }
+
+    // If no match is found, throw an exception
+    throw std::invalid_argument("Unknown log level: " + str);
+  }
+
+private:
+  // ANSI escape codes for text colors. These codes work on most modern terminals
+  // (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
+  // They instruct the terminal to change the color of subsequent text.
+  static constexpr const char* LogColorReset  = "\033[0m";   // Resets text color to default
+  static constexpr const char* LogColorRed    = "\033[31m";
+  static constexpr const char* LogColorGreen  = "\033[32m";
+  static constexpr const char* LogColorYellow = "\033[33m";
+  static constexpr const char* LogColorBlue   = "\033[34m";
+  static constexpr const char* LogColorCyan   = "\033[36m";
+
   Logger(LogLevel minLevel = LogLevel::Information) : _min_log_level(minLevel) 
   {
-
   }
+
+  // Static method to get the singleton instance
+  static Logger& instance() 
+  {
+    static Logger instance;
+    return instance;
+  }
+
+public:
   ~Logger() = default;
-
-  Logger(const Logger& src) : 
-    _min_log_level(src._min_log_level)
-  {
-    
-  }
-  Logger& operator=(const Logger& src)
-  {
-    if(this != &src)
-    {
-      _min_log_level = src._min_log_level;
-    }
-    return *this;
-  }
-
+  Logger(const Logger& src) = delete;
+  Logger& operator=(const Logger& src) = delete;
   Logger(Logger&&) = delete;
   Logger& operator=(Logger&&) = delete;
 
-  bool log(LogLevel level) const
+  static void set_log_level(LogLevel level) 
   {
-    // Only log if the current message's level is at or above the minimum configured level
-    return level >= _min_log_level;
+    instance()._min_log_level = level;
   }
 
-  void log_tracef(std::function<std::string()> message_factory) const
+  static void log_tracef(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Trace, message_factory);
   }
 
   template <typename... Args>
-  void log_trace(Args&&... args) const
+  static void log_trace(Args&&... args)
   {
     log(LogLevel::Trace, std::forward<Args>(args)...);
   }
 
   template <typename... Args>
-  void log_debug(Args&&... args) const
+  static void log_debug(Args&&... args)
   {
     log(LogLevel::Debug, std::forward<Args>(args)...);
   }
 
-  void log_debugf(std::function<std::string()> message_factory) const
+  static void log_debugf(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Debug, message_factory);
   }
 
   template <typename... Args>
-  void log_info(Args&&... args) const
+  static void log_info(Args&&... args)
   {
     log(LogLevel::Information, std::forward<Args>(args)...);
   }
 
-  void log_infof(std::function<std::string()> message_factory) const
+  static void log_infof(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Information, message_factory);
   }
 
   template <typename... Args>
-  void log_warning(Args&&... args) const
+  static void log_warning(Args&&... args)
   {
     log(LogLevel::Warning, std::forward<Args>(args)...);
   }
 
-  void log_warningf(std::function<std::string()> message_factory) const
+  static void log_warningf(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Warning, message_factory);
   }
 
   template <typename... Args>
-  void log_error(Args&&... args) const
+  static void log_error(Args&&... args)
   {
     log(LogLevel::Error, std::forward<Args>(args)...);
   }
 
-  void log_errorf(std::function<std::string()> message_factory) const
+  static void log_errorf(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Error, message_factory);
   }
 
-  inline bool can_log_trace() const
+  static inline bool can_log_trace()
   {
     return can_log(LogLevel::Debug);
   }
-  inline bool can_log_debug() const
+  static inline bool can_log_debug()
   {
     return can_log(LogLevel::Debug);
   }
-  inline bool can_log_info() const
+  static inline bool can_log_info()
   {
     return can_log(LogLevel::Information);
   }
-  inline bool can_log_warning() const
+  static inline bool can_log_warning()
   {
     return can_log(LogLevel::Warning);
   }
-  inline bool can_log_error() const
+  static inline bool can_log_error()
   {
     return can_log(LogLevel::Error);
   }
@@ -145,13 +190,13 @@ public:
 private:
   LogLevel _min_log_level; // Stores the minimum logging level set by the user
 
-  bool can_log(LogLevel level) const
+  static bool can_log(LogLevel level)
   {
     // Only log if the current message's level is at or above the minimum configured level
-    return level >= _min_log_level;
+    return level >= instance()._min_log_level;
   }
 
-  std::string get_current_time_string() const
+  static std::string get_current_time_string()
   {
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
@@ -185,9 +230,9 @@ private:
     return oss.str();
   }
 
-  void log_with_factory(LogLevel level, std::function<std::string()> message_factory) const
+  static void log_with_factory(LogLevel level, std::function<std::string()> message_factory)
   {
-    if (level < _min_log_level)
+    if (level < instance()._min_log_level)
     {
       return;
     }
@@ -195,15 +240,15 @@ private:
     // The function is only called if the log level is sufficient.
     std::ostringstream oss; 
     oss << message_factory();
-    log_string(level, oss.str());
+    instance().log_string(level, oss.str());
   }
 
   template <typename... Args>
-  void log(LogLevel level, Args&&... args) const
+  static void log(LogLevel level, Args&&... args)
   {
     std::ostringstream oss;
     oss << print_args(std::forward<Args>(args)...) << std::endl;
-    log_string(level, oss.str());
+    instance().log_string(level, oss.str());
   }
 
   void log_string(LogLevel level, std::string message) const

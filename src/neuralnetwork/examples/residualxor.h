@@ -8,7 +8,7 @@
 class ExampleResidualXor
 {
 public:
-  static void Xor(Logger& logger, bool use_file)
+  static void Xor(Logger::LogLevel log_level,  bool use_file)
   {
     TEST_START("Residual Xor test.")
 
@@ -39,7 +39,7 @@ public:
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::relu)
       .with_output_activation_method(activation::method::sigmoid)
-      .with_logger(logger)
+      .with_log_level(log_level)
       .with_learning_rate(0.05)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(5, 1.0)
@@ -52,7 +52,7 @@ public:
     NeuralNetwork* nn = nullptr;
     if(use_file)
     {
-      nn = NeuralNetworkSerializer::load(logger, file_name);
+      nn = NeuralNetworkSerializer::load(file_name);
       if( nullptr == nn )
       {
         nn = new NeuralNetwork(options);

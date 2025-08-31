@@ -14,12 +14,10 @@ public:
     double first_moment_estimate,
     double second_moment_estimate,
     long long time_step,
-    double weight_decay,
-    const Logger& logger) noexcept :
+    double weight_decay) noexcept :
     _value(value),
     _gradient(gradient),
     _velocity(velocity),
-    _logger(logger),
     _first_moment_estimate(first_moment_estimate),
     _second_moment_estimate(second_moment_estimate),
     _time_step(time_step),
@@ -28,8 +26,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
   }
 
-  WeightParam(double value, double gradient, double velocity, const Logger& logger) noexcept :
-    WeightParam(value, gradient, velocity, 0.0, 0.0, 0, 0.01, logger)
+  WeightParam(double value, double gradient, double velocity) noexcept :
+    WeightParam(value, gradient, velocity, 0.0, 0.0, 0, 0.01)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
   }
@@ -38,7 +36,6 @@ public:
     _value(src._value),
     _gradient(src._gradient),
     _velocity(src._velocity),
-    _logger(src._logger),
     _first_moment_estimate(src._first_moment_estimate),
     _second_moment_estimate(src._second_moment_estimate),
     _time_step(src._time_step),
@@ -51,7 +48,6 @@ public:
     _value(src._value),
     _gradient(src._gradient),
     _velocity(src._velocity),
-    _logger(src._logger),
     _first_moment_estimate(src._first_moment_estimate),
     _second_moment_estimate(src._second_moment_estimate),
     _time_step(src._time_step)
@@ -73,7 +69,6 @@ public:
       _value = src._value;
       _gradient = src._gradient;
       _velocity = src._velocity;
-      _logger = src._logger;
       _first_moment_estimate = src._first_moment_estimate;
       _second_moment_estimate = src._second_moment_estimate;
       _time_step = src._time_step;
@@ -88,7 +83,6 @@ public:
       _value = src._value;
       _gradient = src._gradient;
       _velocity = src._velocity;
-      _logger = src._logger;
       _first_moment_estimate = src._first_moment_estimate;
       _second_moment_estimate = src._second_moment_estimate;
       _time_step = src._time_step;
@@ -144,7 +138,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(value))
     {
-      _logger.log_error("Error while setting value.");
+      Logger::log_error("Error while setting value.");
       throw std::invalid_argument("Error while setting value.");
       return;
     }
@@ -155,7 +149,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(gradient))
     {
-      _logger.log_error("Error while setting gradient.");
+      Logger::log_error("Error while setting gradient.");
       throw std::invalid_argument("Error while setting gradient.");
       return;
     }
@@ -166,7 +160,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(velocity))
     {
-      _logger.log_error("Error while setting velocity.");
+      Logger::log_error("Error while setting velocity.");
       throw std::invalid_argument("Error while setting velocity.");
       return;
     }
@@ -177,7 +171,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(first_moment_estimate))
     {
-      _logger.log_error("Error while setting first_moment_estimate.");
+      Logger::log_error("Error while setting first_moment_estimate.");
       throw std::invalid_argument("Error while setting first_moment_estimate.");
       return;
     }
@@ -188,7 +182,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(second_moment_estimate))
     {
-      _logger.log_error("Error while setting second_moment_estimate.");
+      Logger::log_error("Error while setting second_moment_estimate.");
       throw std::invalid_argument("Error while setting second_moment_estimate.");
       return;
     }
@@ -205,7 +199,6 @@ private:
   double _value;
   double _gradient;
   double _velocity;
-  Logger _logger;
 
   // For Adam:
   double _first_moment_estimate = 0.0;

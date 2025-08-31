@@ -323,10 +323,9 @@ template <typename R>
 class TaskQueuePool
 {
 public:
-  TaskQueuePool(const Logger& logger, int number_of_thread = 0) :
+  TaskQueuePool(int number_of_thread = 0) :
     _number_of_threads(number_of_thread),
-    _threads_index(0),
-    _logger(logger)
+    _threads_index(0)
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     if(number_of_thread == 0)
@@ -349,7 +348,7 @@ public:
     {
       task_queue->stop();
     }
-    _logger.log_debug("ThreadPool stop.");
+    Logger::log_debug("ThreadPool stop.");
   }
 
   inline int total_tasks()
@@ -398,7 +397,6 @@ private:
   int _number_of_threads;
   std::vector<TaskQueue<R>*> _task_queues;
   int _threads_index;
-  const Logger& _logger;
 
   void clean()
   {
@@ -408,7 +406,7 @@ private:
       delete task_queue;
     }
     _task_queues.clear();
-    _logger.log_debug("Thread pool clean!");
+    Logger::log_debug("Thread pool clean!");
   }
 
   void start() 
@@ -421,6 +419,6 @@ private:
       auto task_queue = new TaskQueue<R>();
       _task_queues.emplace_back(task_queue);
     }
-    _logger.log_info("ThreadPool initialized with ", _number_of_threads, " worker threads."); 
+    Logger::log_info("ThreadPool initialized with ", _number_of_threads, " worker threads."); 
   }  
 };

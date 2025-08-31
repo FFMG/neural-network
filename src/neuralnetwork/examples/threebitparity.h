@@ -8,7 +8,7 @@
 class ExampleThreebitParity
 {
 public:
-  static void ThreebitParity(Logger& logger)
+  static void ThreebitParity(Logger::LogLevel log_level)
   {
     std::vector<unsigned> topology = {3, 4, 1};
     const int number_of_epoch = 100000;
@@ -42,7 +42,7 @@ public:
         .with_batch_size(1)
         .with_hidden_activation_method(activation::method::relu)
         .with_output_activation_method(activation::method::sigmoid)
-        .with_logger(logger)
+        .with_log_level(log_level)
         .with_learning_rate(learning_rate)
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
@@ -77,7 +77,7 @@ public:
           .with_batch_size(batch_size)
           .with_hidden_activation_method(activation::method::relu)
           .with_output_activation_method(activation::method::sigmoid)
-          .with_logger(logger)
+          .with_log_level(log_level)
           .with_learning_rate(learning_rate)
           .with_number_of_epoch(number_of_epoch)
           .with_adaptive_learning_rates(false)

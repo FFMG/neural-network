@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include "logger.h"
 #include <random>
 
 Neuron::Neuron(
@@ -14,23 +15,21 @@ Neuron::Neuron(
   const activation& activation,
   const OptimiserType& optimiser_type,
   const Type& type,
-  const double dropout_rate,
-  const Logger& logger
+  const double dropout_rate
 ) :
   _index(index),
   _activation_method(activation),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
-  _dropout_rate(dropout_rate),
-  _logger(logger)
+  _dropout_rate(dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   _weight_params.reserve(num_neurons_next_layer);
   auto weights = _activation_method.weight_initialization(num_neurons_next_layer, num_neurons_current_layer);
   for (const auto& weight : weights)
   {
-    _weight_params.emplace_back(WeightParam(weight, 0.0, 0.0, logger));
+    _weight_params.emplace_back(WeightParam(weight, 0.0, 0.0));
   }
 }
 
@@ -40,16 +39,14 @@ Neuron::Neuron(
   const std::vector<WeightParam>& weights_params,
   const OptimiserType& optimiser_type,
   const Type& type,
-  const double dropout_rate,
-  const Logger& logger
+  const double dropout_rate
 ) :
   _index(index),
   _activation_method(activation),
   _optimiser_type(optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(type),
-  _dropout_rate(dropout_rate),
-  _logger(logger)
+  _dropout_rate(dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   _weight_params.reserve(weights_params.size());
@@ -66,8 +63,7 @@ Neuron::Neuron(const Neuron& src)  noexcept :
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(src._type),
-  _dropout_rate(src._dropout_rate),
-  _logger(src._logger)
+  _dropout_rate(src._dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   _weight_params = src._weight_params;
@@ -86,7 +82,6 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     _optimiser_type = src._optimiser_type;
     _type = src._type;
     _dropout_rate = src._dropout_rate;
-    _logger = src._logger;
   }
   return *this;
 }
@@ -98,8 +93,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
   _optimiser_type(src._optimiser_type),
   _alpha(LEARNING_ALPHA),
   _type(src._type),
-  _dropout_rate(src._dropout_rate),
-  _logger(src._logger)
+  _dropout_rate(src._dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 
@@ -119,7 +113,6 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     _activation_method = src._activation_method;
     _weight_params = std::move(src._weight_params);
     _optimiser_type = src._optimiser_type;
-    _logger = src._logger;
     _dropout_rate = src._dropout_rate;
     _type = src._type;
 
@@ -184,13 +177,13 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (!std::isfinite(gradient))
   {
-    _logger.log_error("Error while calculating input weigh gradient it invalid.");
+    Logger::log_error("Error while calculating input weigh gradient it invalid.");
     throw std::invalid_argument("Error while calculating input weight.");
   }
   auto old_velocity = weight_param.velocity();
   if (!std::isfinite(old_velocity))
   {
-    _logger.log_error("Error while calculating input weigh old velocity is invalid.");
+    Logger::log_error("Error while calculating input weigh old velocity is invalid.");
     throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
   }
 
@@ -198,7 +191,7 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
   {
     // If clipping scale is negative, we clip the gradient to a fixed range
     // This is useful for debugging or when we want to ensure gradients are not too large.
-    _logger.log_warning("Clipping gradient to a fixed range.");
+    Logger::log_warning("Clipping gradient to a fixed range.");
   }
 
   auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient) : gradient * clipping_scale;
@@ -454,7 +447,7 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
   }
   if (!std::isfinite(sum))
   {
-    _logger.log_error("Error while calculating sum of the derivatives of the weights.");
+    Logger::log_error("Error while calculating sum of the derivatives of the weights.");
     throw std::invalid_argument("Error while calculating sum of the derivatives of the weights.");
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -467,7 +460,7 @@ double Neuron::clip_gradient(double gradient) const
   constexpr double gradient_clip_threshold = 1.0;
   if (!std::isfinite(gradient))
   {
-    _logger.log_error("Gradient is not finite.");
+    Logger::log_error("Gradient is not finite.");
     throw std::invalid_argument("Gradient is not finite.");
   }
 
@@ -495,7 +488,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
-    _logger.log_error("Error while calculating output gradients.");
+    Logger::log_error("Error while calculating output gradients.");
     throw std::invalid_argument("Error while calculating output gradients.");
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -510,7 +503,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
-    _logger.log_error("Error while calculating hidden gradients.");
+    Logger::log_error("Error while calculating hidden gradients.");
     throw std::invalid_argument("Error while calculating hidden gradients.");
     return std::numeric_limits<double>::quiet_NaN();
   }  
@@ -536,7 +529,7 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
     const auto output_weight = previous_layer_neuron.get_output_weight(get_index());
     if (std::abs(output_weight) > 1e5)
     {
-      _logger.log_error("Exploding weight detected");
+      Logger::log_error("Exploding weight detected");
       throw std::runtime_error("Exploding weight detected");
     }
 
@@ -545,7 +538,7 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
     sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
     {
-      _logger.log_error("Error while calculating forward feed.");
+      Logger::log_error("Error while calculating forward feed.");
       throw std::invalid_argument("Error while calculating forward feed.");
     }
   }

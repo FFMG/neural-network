@@ -9,7 +9,6 @@
 #include "activation.h"
 #include "adaptivelearningratescheduler.h"
 #include "layers.h"
-#include "logger.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "taskqueue.h"
@@ -389,7 +388,7 @@ private:
 
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
-  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation, const Logger& logger);
+  NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
   NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
@@ -473,8 +472,6 @@ private:
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
   bool CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const;
-
-  const Logger& logger() const;
 
   void log_training_info(
     const std::vector<std::vector<double>>& training_inputs,

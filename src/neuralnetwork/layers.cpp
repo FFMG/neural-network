@@ -1,4 +1,5 @@
 #include "layers.h"
+#include "logger.h"
 #include <cassert>
 
 Layers::Layers(
@@ -7,8 +8,7 @@ Layers::Layers(
   const activation::method& hidden_activation,
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
-  int residual_layer_jump,
-  const Logger& logger) noexcept
+  int residual_layer_jump) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
@@ -16,7 +16,7 @@ Layers::Layers(
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], logger);
+  auto layer = Layer::create_input_layer(topology[0], topology[1]);
   _layers.emplace_back(std::move(layer));
 
   // then the hidden layers
@@ -27,10 +27,10 @@ Layers::Layers(
     auto dropout_rate = dropout_layers[layer_number-1]; // remove input
     const auto& previous_layer = _layers.back();
     const auto residual_layer_number = compute_residual_layer(layer_number, residual_layer_jump);
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, logger);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
 
-    add_residual_layer(layer, hidden_activation, logger);
-    logger.log_tracef([&]
+    add_residual_layer(layer, hidden_activation);
+    Logger::log_tracef([&]
       {
         std::string trace = Logger::log_factory("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
         if (residual_layer_number != -1)
@@ -48,18 +48,18 @@ Layers::Layers(
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(number_of_layers-1, residual_layer_jump);
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), output_activation, optimiser_type, residual_layer_number, logger);
+  layer = Layer::create_output_layer(topology.back(), _layers.back(), output_activation, optimiser_type, residual_layer_number);
 
-  add_residual_layer(layer, output_activation, logger);
-  if (logger.can_log_trace())
+  add_residual_layer(layer, output_activation);
+  if (Logger::can_log_trace())
   {
-    logger.log_trace("Layer: ", number_of_layers - 1, ", residual layer number: ", residual_layer_number);
+    Logger::log_trace("Layer: ", number_of_layers - 1, ", residual layer number: ", residual_layer_number);
     if (residual_layer_number != -1)
     {
       auto number_of_neuron_in_that_layer = _layers[residual_layer_number].number_neurons();
       auto num_neurons_current_layer = layer.number_neurons();
-      logger.log_trace("  Number of neurons in residual: ", number_of_neuron_in_that_layer);
-      logger.log_trace("  Number of neurons in layer   : ", num_neurons_current_layer);
+      Logger::log_trace("  Number of neurons in residual: ", number_of_neuron_in_that_layer);
+      Logger::log_trace("  Number of neurons in layer   : ", num_neurons_current_layer);
     }
   }
   _layers.emplace_back(std::move(layer));
@@ -160,7 +160,7 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
   return residual_layer_index;
 }
 
-void Layers::add_residual_layer(Layer& layer, const activation::method& activation_method, const Logger& logger) const
+void Layers::add_residual_layer(Layer& layer, const activation::method& activation_method) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   auto residual_layer_number = layer.residual_layer_number();
@@ -171,7 +171,7 @@ void Layers::add_residual_layer(Layer& layer, const activation::method& activati
   
   auto number_of_neuron_in_that_layer = _layers[residual_layer_number].number_neurons();
   auto num_neurons_current_layer = layer.number_neurons();
-  auto residual_projector = new Layer::ResidualProjector(number_of_neuron_in_that_layer, num_neurons_current_layer, activation_method, logger);
+  auto residual_projector = new Layer::ResidualProjector(number_of_neuron_in_that_layer, num_neurons_current_layer, activation_method);
 
   // pass ownership
   layer.move_residual_projector(residual_projector);
