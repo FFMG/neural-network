@@ -21,7 +21,7 @@ private:
   NeuralNetworkSerializer& operator=(const NeuralNetworkSerializer& src) = delete;
   virtual ~NeuralNetworkSerializer() = default;
 
-  static NeuralNetworkOptions get_options(const TinyJSON::TJValue& json);
+  static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
   static double get_error(const TinyJSON::TJValue& json);
   static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
   static std::vector<WeightParam> get_weight_params(const TinyJSON::TJValueObject& parent);
