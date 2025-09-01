@@ -20,8 +20,8 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
     return nullptr;
   }
 
-  // get the options
-  auto options = get_options(*tj);
+  // get the options first so the logger is set
+  auto options = get_and_build_options(*tj);
 
   auto residual_layers = get_residual_layers(*tj);
 
@@ -118,7 +118,7 @@ double NeuralNetworkSerializer::get_mean_absolute_percentage_error(const TinyJSO
   return object->get_float("mean-absolute-percentage-error", true, false);
 }
 
-NeuralNetworkOptions NeuralNetworkSerializer::get_options(const TinyJSON::TJValue& json)
+NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJSON::TJValue& json)
 {
   auto default_option = NeuralNetworkOptions::create({ 1,1 }).build();
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
