@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <chrono>     // Required for time operations (std::chrono)
 #include <functional>
 #include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
