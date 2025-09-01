@@ -105,6 +105,11 @@ public:
     instance()._min_log_level = level;
   }
 
+  static LogLevel get_log_level()
+  {
+    return instance()._min_log_level;
+  }
+
   static void log_tracef(std::function<std::string()> message_factory)
   {
     log_with_factory(LogLevel::Trace, message_factory);
