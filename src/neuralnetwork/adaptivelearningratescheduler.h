@@ -54,7 +54,7 @@ public:
     {
       //  set the max learning rate.
       _max_learning_rate = std::clamp(2* current_learning_rate, current_learning_rate, 0.99);
-      Logger::log_debug("Adaptive Learning Rate max value set to: ", std::fixed, std::setprecision(15), _max_learning_rate);
+      Logger::debug("Adaptive Learning Rate max value set to: ", std::fixed, std::setprecision(15), _max_learning_rate);
     }
 
     // Store error history
@@ -88,11 +88,11 @@ public:
         return current_learning_rate;
       }
       _cool_down = static_cast<int>( CoolDownDecreasing * _history_size);
-      Logger::log_info("Learning is improving. Changing learning rate from "
+      Logger::info("Learning is improving. Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::log_debug("Cooldown set to ", _cool_down);
+      Logger::debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -104,11 +104,11 @@ public:
         return current_learning_rate;
       }
       _cool_down = static_cast<int>(CoolDownPlateau * _history_size);
-      Logger::log_info("Learning is plateauing. Changing learning down rate from "
+      Logger::info("Learning is plateauing. Changing learning down rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::log_debug("Cooldown set to ", _cool_down);
+      Logger::debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -120,11 +120,11 @@ public:
         return current_learning_rate;
       }
       _cool_down = static_cast<int>(CoolDownIncrease * _history_size);
-      Logger::log_warning("Learning is increasing! Changing learning rate from "
+      Logger::warning("Learning is increasing! Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::log_debug("Cooldown set to ", _cool_down);
+      Logger::debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -136,16 +136,16 @@ public:
         return current_learning_rate;
       }
       _cool_down = static_cast<int>(CoolDownExploding * _history_size);
-      Logger::log_error("Exploding pattern detected! Changing learning rate from "
+      Logger::error("Exploding pattern detected! Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::log_debug("Cooldown set to ", _cool_down);
+      Logger::debug("Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
     default:
-      Logger::log_error("Learning Rate Scheduler: unknown state!");
+      Logger::error("Learning Rate Scheduler: unknown state!");
     }
     return current_learning_rate;
   }

@@ -112,6 +112,7 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
 
+      nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
@@ -219,11 +220,11 @@ public:
   NeuralNetworkOptions& build()
   {
     // set the log level first
-    Logger::set_log_level(log_level());
+    Logger::set_level(log_level());
 
     if (topology().size() < 2)
     {
-      Logger::log_error("The topology is not value, you must have at least 2 layers.");
+      Logger::error("The topology is not value, you must have at least 2 layers.");
       throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
     }
     if (dropout().size() == 0)
@@ -232,63 +233,63 @@ public:
     }
     if (dropout().size() != topology().size() -2)
     {
-      Logger::log_error("The dropout size must be exactly the topology size less the input and outpout layers.");
+      Logger::error("The dropout size must be exactly the topology size less the input and outpout layers.");
       throw std::invalid_argument("The dropout size must be exactly the topology size less the input and outpout layers.");
     }
     for (auto& dropout : dropout())
     {
       if(dropout < 0.0 || dropout > 1.0)
       {
-        Logger::log_error("The dropout rate must be between 0 and 1!");
+        Logger::error("The dropout rate must be between 0 and 1!");
         throw std::invalid_argument("The dropout rate must be between 0 and 1!");
       }
     }
     if (number_of_threads() > 0 && batch_size() <= 1)
     {
-      Logger::log_warning("Because the batch size is 1, the number of threads is ignored.");
+      Logger::warning("Because the batch size is 1, the number of threads is ignored.");
     }
     if (learning_rate_decay_rate() < 0)
     {
-      Logger::log_error("The learning rate decay rate cannot be negative!");
+      Logger::error("The learning rate decay rate cannot be negative!");
       throw std::invalid_argument("The learning rate decay rate cannot be negative!");
     }
     if (learning_rate_decay_rate() >= 1.0)
     {
-      Logger::log_error("The learning rate decay rate cannot be more than 1!");
+      Logger::error("The learning rate decay rate cannot be more than 1!");
       throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
     }
     if (learning_rate_restart_rate() < 0.0 || learning_rate_restart_rate() > 1.0)
     {
-      Logger::log_error("The learning rate restart rate has to be between 0.0 and 1.0!");
+      Logger::error("The learning rate restart rate has to be between 0.0 and 1.0!");
       throw std::invalid_argument("The learning rate restart rate has to be between 0.0 and 1.0!");
     }
     if (learning_rate_restart_boost() < 0.0|| learning_rate_restart_boost() > 1.0)
     {
-      Logger::log_error("The learning rate restart boost has to be between 0.0 and 1.0!");
+      Logger::error("The learning rate restart boost has to be between 0.0 and 1.0!");
       throw std::invalid_argument("The learning rate restart boost has to be between 0.0 and 1.0!");
     }
     if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
     {
-      Logger::log_warning("The residual_layer_jump must be positive or -1");
+      Logger::warning("The residual_layer_jump must be positive or -1");
     }
     if (clip_threshold() <= 0.0)
     {
-      Logger::log_error("A gradient clip threshold smaller or equal to zero does not make sense!");
+      Logger::error("A gradient clip threshold smaller or equal to zero does not make sense!");
       throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
     }
     if (learning_rate_warmup_start() < 0.0)
     {
-      Logger::log_error("The learning rate warm up start value cannot be less than zero.");
+      Logger::error("The learning rate warm up start value cannot be less than zero.");
       throw std::invalid_argument("The learning rate warm up start value cannot be less than zero.");
     }
     if (learning_rate_warmup_start() > learning_rate())
     {
-      Logger::log_error("The learning rate warm up start value cannot be greater than the target rate.");
+      Logger::error("The learning rate warm up start value cannot be greater than the target rate.");
       throw std::invalid_argument("The learning rate warm up start value cannot be greater than the target rate.");
     }
     if (learning_rate_warmup_target() < 0.0 || learning_rate_warmup_target() > 1.0)
     {
-      Logger::log_error("The learning rate warm up target must range between 0.0 and 1.0.");
+      Logger::error("The learning rate warm up target must range between 0.0 and 1.0.");
       throw std::invalid_argument("The learning rate warm up target must range between 0.0 and 1.0.");
     }
     return *this;

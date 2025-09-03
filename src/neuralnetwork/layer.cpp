@@ -27,12 +27,12 @@ Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_thi
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (num_neurons_in_this_layer == 0) 
   {
-    Logger::log_warning("Warning: Creating a layer with 0 neurons.");
+    Logger::warning("Warning: Creating a layer with 0 neurons.");
     throw std::invalid_argument("Warning: Creating a layer with 0 neurons.");
   }
   if (layer_type != LayerType::Input && num_neurons_in_previous_layer == 0) 
   {
-    Logger::log_warning("Warning: Non-input layer created with 0 inputs.");
+    Logger::warning("Warning: Non-input layer created with 0 inputs.");
   }
 
   // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
@@ -167,7 +167,7 @@ Layer Layer::create_input_layer(const std::vector<Neuron>& neurons)
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
-    Logger::log_error("Creating a layer with 1 neurons, (bias is needed).");
+    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
     throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
   }
   auto layer = Layer(LayerType::Input);
@@ -189,7 +189,7 @@ Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned nu
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
-    Logger::log_error("Creating a layer with 1 neurons, (bias is needed).");
+    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
     throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
   }
   auto layer = Layer(LayerType::Hidden);
@@ -215,7 +215,7 @@ Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned nu
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (neurons.size() <= 1) 
   {
-    Logger::log_error("Creating a layer with 1 neurons, (bias is needed).");
+    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
     throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
   }
   auto layer = Layer(LayerType::Output);
@@ -253,7 +253,7 @@ const Neuron& Layer::get_neuron(unsigned index) const
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (index >= _neurons.size()) 
   {
-    Logger::log_error("Index out of bounds in Layer::get_neuron.");
+    Logger::error("Index out of bounds in Layer::get_neuron.");
     throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
   }
   return _neurons[index];
@@ -264,7 +264,7 @@ Neuron& Layer::get_neuron(unsigned index)
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (index >= _neurons.size()) 
   {
-    Logger::log_error("Index out of bounds in Layer::get_neuron.");
+    Logger::error("Index out of bounds in Layer::get_neuron.");
     throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
   }
   return _neurons[index];
@@ -285,7 +285,7 @@ WeightParam& Layer::residual_weight_param(unsigned residual_source_index, unsign
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(nullptr == _residual_projector)
   {
-    Logger::log_error("Trying to get residual weights for a layer that does not have any!");
+    Logger::error("Trying to get residual weights for a layer that does not have any!");
     throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
   }
   return _residual_projector->get_weight_params(residual_source_index, target_neuron_index);
@@ -296,7 +296,7 @@ const std::vector<std::vector<WeightParam>>& Layer::residual_weight_params() con
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(nullptr == _residual_projector)
   {
-    Logger::log_error("Trying to get residual weights for a layer that does not have any!");
+    Logger::error("Trying to get residual weights for a layer that does not have any!");
     throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
   }
   return _residual_projector->get_weight_params();

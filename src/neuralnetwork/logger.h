@@ -6,6 +6,7 @@
 #include <iostream>   // Required for std::cout and std::endl
 #include <string>     // Required for std::string
 #include <sstream>    // Required for std::stringstream to build the time string
+#include <type_traits>
 
 class Logger
 {
@@ -20,7 +21,7 @@ public:
     None
   };
 
-  static std::string log_level_to_string(LogLevel level) 
+  static std::string level_to_string(LogLevel level) 
   {
     switch (level) 
     {
@@ -35,7 +36,7 @@ public:
     }
   }
 
-  static LogLevel string_to_log_level(const std::string& str) 
+  static LogLevel string_to_level(const std::string& str) 
   {
     std::string lower_str = str;
     // Convert the string to lowercase for case-insensitive comparison
@@ -82,7 +83,7 @@ private:
   static constexpr const char* LogColorBlue   = "\033[34m";
   static constexpr const char* LogColorCyan   = "\033[36m";
 
-  Logger(LogLevel minLevel = LogLevel::Information) : _min_log_level(minLevel) 
+  Logger(LogLevel minLevel = LogLevel::Information) : _min_level(minLevel) 
   {
   }
 
@@ -100,106 +101,81 @@ public:
   Logger(Logger&&) = delete;
   Logger& operator=(Logger&&) = delete;
 
-  static void set_log_level(LogLevel level) 
+  static void set_level(LogLevel level) 
   {
-    instance()._min_log_level = level;
+    instance()._min_level = level;
   }
 
-  static LogLevel get_log_level()
+  static LogLevel get_level()
   {
-    return instance()._min_log_level;
-  }
-
-  static void log_tracef(std::function<std::string()> message_factory)
-  {
-    log_with_factory(LogLevel::Trace, message_factory);
+    return instance()._min_level;
   }
 
   template <typename... Args>
-  static void log_trace(Args&&... args)
+  static void trace(Args&&... args)
   {
     log(LogLevel::Trace, std::forward<Args>(args)...);
   }
 
   template <typename... Args>
-  static void log_debug(Args&&... args)
+  static void debug(Args&&... args)
   {
     log(LogLevel::Debug, std::forward<Args>(args)...);
   }
 
-  static void log_debugf(std::function<std::string()> message_factory)
-  {
-    log_with_factory(LogLevel::Debug, message_factory);
-  }
-
   template <typename... Args>
-  static void log_info(Args&&... args)
+  static void info(Args&&... args)
   {
     log(LogLevel::Information, std::forward<Args>(args)...);
   }
 
-  static void log_infof(std::function<std::string()> message_factory)
-  {
-    log_with_factory(LogLevel::Information, message_factory);
-  }
-
   template <typename... Args>
-  static void log_warning(Args&&... args)
+  static void warning(Args&&... args)
   {
     log(LogLevel::Warning, std::forward<Args>(args)...);
   }
 
-  static void log_warningf(std::function<std::string()> message_factory)
-  {
-    log_with_factory(LogLevel::Warning, message_factory);
-  }
-
   template <typename... Args>
-  static void log_error(Args&&... args)
+  static void error(Args&&... args)
   {
     log(LogLevel::Error, std::forward<Args>(args)...);
   }
 
-  static void log_errorf(std::function<std::string()> message_factory)
-  {
-    log_with_factory(LogLevel::Error, message_factory);
-  }
-
-  static inline bool can_log_trace()
+  static inline bool can_trace()
   {
     return can_log(LogLevel::Debug);
   }
-  static inline bool can_log_debug()
+  static inline bool can_debug()
   {
     return can_log(LogLevel::Debug);
   }
-  static inline bool can_log_info()
+  static inline bool can_info()
   {
     return can_log(LogLevel::Information);
   }
-  static inline bool can_log_warning()
+  static inline bool can_warning()
   {
     return can_log(LogLevel::Warning);
   }
-  static inline bool can_log_error()
+  static inline bool can_error()
   {
     return can_log(LogLevel::Error);
   }
 
   template <typename... Args>
-  static std::string log_factory(Args&&... args)
+  static std::string factory(Args&&... args)
   {
     std::ostringstream oss;
     oss << print_args(std::forward<Args>(args)...) << std::endl;
     return  oss.str();
   }
 private:
-  LogLevel _min_log_level; // Stores the minimum logging level set by the user
+  LogLevel _min_level; // Stores the minimum logging level set by the user
 
   static bool can_log(LogLevel level)
   {
     // Only log if the current message's level is at or above the minimum configured level
-    return level >= instance()._min_log_level;
+    return level >= instance()._min_level;
   }
 
   static std::string get_current_time_string()
@@ -228,7 +204,21 @@ private:
   static std::string print_args(T&& first_arg, Args&&... rest)
   {
     std::ostringstream oss;
-    oss << std::forward<T>(first_arg); // Convert the first argument to string
+
+    if constexpr (std::is_same_v<std::decay_t<T>, std::function<std::string()>> )
+    {
+      //  exact function
+      oss << first_arg();
+    }
+    else if constexpr (std::is_invocable_r_v<std::string, std::decay_t<T>>)
+    {
+      //  lambda function
+      oss << first_arg();
+    }
+    else
+    {
+      oss << std::forward<T>(first_arg); // Convert the first argument to string
+    }
 
     // Recursively call print_args with the remaining arguments and append
     oss << print_args(std::forward<Args>(rest)...);
@@ -236,9 +226,9 @@ private:
     return oss.str();
   }
 
-  static void log_with_factory(LogLevel level, std::function<std::string()> message_factory)
+  static void with_factory(LogLevel level, std::function<std::string()> message_factory)
   {
-    if (level < instance()._min_log_level)
+    if (level < instance()._min_level)
     {
       return;
     }
@@ -246,7 +236,7 @@ private:
     // The function is only called if the log level is sufficient.
     std::ostringstream oss; 
     oss << message_factory();
-    instance().log_string(level, oss.str());
+    instance().string(level, oss.str());
   }
 
   template <typename... Args>
@@ -254,13 +244,13 @@ private:
   {
     std::ostringstream oss;
     oss << print_args(std::forward<Args>(args)...) << std::endl;
-    instance().log_string(level, oss.str());
+    instance().string(level, oss.str());
   }
 
-  void log_string(LogLevel level, std::string message) const
+  void string(LogLevel level, std::string message) const
   {
     // Only log if the current message's level is at or above the minimum configured level
-    if (level < _min_log_level)
+    if (level < _min_level)
     {
       return;
     }
