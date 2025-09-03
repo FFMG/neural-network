@@ -177,13 +177,13 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   if (!std::isfinite(gradient))
   {
-    Logger::log_error("Error while calculating input weigh gradient it invalid.");
+    Logger::error("Error while calculating input weigh gradient it invalid.");
     throw std::invalid_argument("Error while calculating input weight.");
   }
   auto old_velocity = weight_param.velocity();
   if (!std::isfinite(old_velocity))
   {
-    Logger::log_error("Error while calculating input weigh old velocity is invalid.");
+    Logger::error("Error while calculating input weigh old velocity is invalid.");
     throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
   }
 
@@ -191,7 +191,7 @@ void Neuron::apply_weight_gradient(const double gradient, const double learning_
   {
     // If clipping scale is negative, we clip the gradient to a fixed range
     // This is useful for debugging or when we want to ensure gradients are not too large.
-    Logger::log_warning("Clipping gradient to a fixed range.");
+    Logger::warning("Clipping gradient to a fixed range.");
   }
 
   auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient) : gradient * clipping_scale;
@@ -447,7 +447,7 @@ double Neuron::sum_of_derivatives_of_weights(const Layer& next_layer, const std:
   }
   if (!std::isfinite(sum))
   {
-    Logger::log_error("Error while calculating sum of the derivatives of the weights.");
+    Logger::error("Error while calculating sum of the derivatives of the weights.");
     throw std::invalid_argument("Error while calculating sum of the derivatives of the weights.");
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -460,7 +460,7 @@ double Neuron::clip_gradient(double gradient) const
   constexpr double gradient_clip_threshold = 1.0;
   if (!std::isfinite(gradient))
   {
-    Logger::log_error("Gradient is not finite.");
+    Logger::error("Gradient is not finite.");
     throw std::invalid_argument("Gradient is not finite.");
   }
 
@@ -488,7 +488,7 @@ double Neuron::calculate_output_gradients(double target_value, double output_val
   gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
-    Logger::log_error("Error while calculating output gradients.");
+    Logger::error("Error while calculating output gradients.");
     throw std::invalid_argument("Error while calculating output gradients.");
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -503,7 +503,7 @@ double Neuron::calculate_hidden_gradients(const Layer& next_layer, const std::ve
   gradient = clip_gradient(gradient);
   if (!std::isfinite(gradient))
   {
-    Logger::log_error("Error while calculating hidden gradients.");
+    Logger::error("Error while calculating hidden gradients.");
     throw std::invalid_argument("Error while calculating hidden gradients.");
     return std::numeric_limits<double>::quiet_NaN();
   }  
@@ -529,7 +529,7 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
     const auto output_weight = previous_layer_neuron.get_output_weight(get_index());
     if (std::abs(output_weight) > 1e5)
     {
-      Logger::log_error("Exploding weight detected");
+      Logger::error("Exploding weight detected");
       throw std::runtime_error("Exploding weight detected");
     }
 
@@ -538,7 +538,7 @@ double Neuron::calculate_forward_feed(const Layer& previous_layer, const std::ve
     sum +=  output_value * output_weight;
     if (!std::isfinite(sum))
     {
-      Logger::log_error("Error while calculating forward feed.");
+      Logger::error("Error while calculating forward feed.");
       throw std::invalid_argument("Error while calculating forward feed.");
     }
   }

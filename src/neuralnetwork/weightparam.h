@@ -138,7 +138,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(value))
     {
-      Logger::log_error("Error while setting value.");
+      Logger::error("Error while setting value.");
       throw std::invalid_argument("Error while setting value.");
       return;
     }
@@ -149,7 +149,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(gradient))
     {
-      Logger::log_error("Error while setting gradient.");
+      Logger::error("Error while setting gradient.");
       throw std::invalid_argument("Error while setting gradient.");
       return;
     }
@@ -160,7 +160,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(velocity))
     {
-      Logger::log_error("Error while setting velocity.");
+      Logger::error("Error while setting velocity.");
       throw std::invalid_argument("Error while setting velocity.");
       return;
     }
@@ -171,7 +171,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(first_moment_estimate))
     {
-      Logger::log_error("Error while setting first_moment_estimate.");
+      Logger::error("Error while setting first_moment_estimate.");
       throw std::invalid_argument("Error while setting first_moment_estimate.");
       return;
     }
@@ -182,7 +182,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(second_moment_estimate))
     {
-      Logger::log_error("Error while setting second_moment_estimate.");
+      Logger::error("Error while setting second_moment_estimate.");
       throw std::invalid_argument("Error while setting second_moment_estimate.");
       return;
     }

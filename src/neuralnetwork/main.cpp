@@ -12,7 +12,7 @@ int main()
   MYODDWEB_PROFILE_BEGIN_SESSION( "Monitor Global", "Profile-Global.json" );
 
   auto log_level = Logger::LogLevel::Debug;
-  Logger::set_log_level(log_level);
+  Logger::set_level(log_level);
 
   // XOR
   ExampleXor::Xor(log_level, true);

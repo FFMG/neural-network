@@ -348,7 +348,7 @@ public:
     {
       task_queue->stop();
     }
-    Logger::log_debug("ThreadPool stop.");
+    Logger::debug("ThreadPool stop.");
   }
 
   inline int total_tasks()
@@ -406,7 +406,7 @@ private:
       delete task_queue;
     }
     _task_queues.clear();
-    Logger::log_debug("Thread pool clean!");
+    Logger::debug("Thread pool clean!");
   }
 
   void start() 
@@ -419,6 +419,6 @@ private:
       auto task_queue = new TaskQueue<R>();
       _task_queues.emplace_back(task_queue);
     }
-    Logger::log_info("ThreadPool initialized with ", _number_of_threads, " worker threads."); 
+    Logger::info("ThreadPool initialized with ", _number_of_threads, " worker threads."); 
   }  
 };
