@@ -143,7 +143,7 @@ public:
 
   static inline bool can_trace()
   {
-    return can_log(LogLevel::Debug);
+    return can_log(LogLevel::Trace);
   }
   static inline bool can_debug()
   {
