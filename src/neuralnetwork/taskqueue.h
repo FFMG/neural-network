@@ -460,7 +460,7 @@ public:
   }
 
 private:
-  int _number_of_threads;
+  unsigned int _number_of_threads;
   std::vector<std::unique_ptr<TaskQueue<R>>> _task_queues;
   std::atomic<unsigned int> _threads_index;
 
