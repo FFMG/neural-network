@@ -2,7 +2,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
-#include <future>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -25,8 +24,8 @@ private:
 public:
   TaskQueue() :
     _state(State::Stopped),
-    _total_num_tasks(0),
-    _pending_tasks(0)
+    _total_completed_tasks(0),
+    _total_pending_tasks(0)
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
   }
@@ -85,7 +84,7 @@ public:
     }
 
     // Increment pending tasks atomically and notify worker.
-    _pending_tasks.fetch_add(1, std::memory_order_relaxed);
+    _total_pending_tasks.fetch_add(1, std::memory_order_relaxed);
     _condition_new_task.notify_one();
   }
 
@@ -94,19 +93,32 @@ public:
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::vector<R> output;
     std::unique_lock<std::mutex> lock(_mutext);
-    _condition_busy_task_complete.wait(lock, [this] {
-      return _pending_tasks.load() == 0;
+    _condition_busy_task_complete.wait(lock, [this] 
+      {
+        return _total_pending_tasks.load() == 0;
       });
 
     output.swap(_results);
-    _total_num_tasks.store(0);
+    _total_completed_tasks.store(0);
     return output;
   }
 
-  inline int total_tasks()
+  inline int total_tasks() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
-    return _total_num_tasks.load();
+    return total_completed_tasks() + total_pending_tasks(); // there is a small risk of a race condition
+  }
+
+  inline int total_completed_tasks() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    return _total_completed_tasks.load();
+  }
+
+  inline int total_pending_tasks() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    return _total_pending_tasks.load();
   }
 
 private:
@@ -114,7 +126,7 @@ private:
   {
     _condition_busy_task_complete.wait(lock, [this] 
     {
-      return _pending_tasks.load() == 0;
+      return _total_pending_tasks.load() == 0;
     });
   }
 
@@ -144,10 +156,10 @@ private:
       {
         std::unique_lock<std::mutex> lock(_mutext);
         _results.push_back(std::move(result));
-        _total_num_tasks.fetch_add(1, std::memory_order_relaxed);
+        _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
 
         // If this was the last pending task, notify waiters.
-        if (_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
           _condition_busy_task_complete.notify_all();
         }
@@ -162,8 +174,8 @@ private:
   std::condition_variable _condition_new_task;
 
   std::atomic<State> _state;
-  std::atomic<int> _total_num_tasks;
-  std::atomic<int> _pending_tasks;
+  std::atomic<int> _total_completed_tasks;
+  std::atomic<int> _total_pending_tasks;
 
   std::queue<std::function<R()>> _tasks;
   std::vector<R> _results;
@@ -378,13 +390,36 @@ public:
     Logger::debug("ThreadPool stop.");
   }
 
-  inline int total_tasks()
+  inline int total_tasks() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    int total_num_tasks = 0;
+    for (auto& task_queue : _task_queues)
+    {
+      total_num_tasks += task_queue->total_completed_tasks();
+      total_num_tasks += task_queue->total_pending_tasks();
+    }
+    return total_num_tasks;
+  }
+
+  inline int total_completed_tasks() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     int total_num_tasks = 0;
     for(auto& task_queue : _task_queues)
     {
-      total_num_tasks += task_queue->total_tasks();
+      total_num_tasks += task_queue->total_completed_tasks();
+    }
+    return total_num_tasks;
+  }
+
+  inline int total_pending_tasks() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    int total_num_tasks = 0;
+    for (auto& task_queue : _task_queues)
+    {
+      total_num_tasks += task_queue->total_pending_tasks();
     }
     return total_num_tasks;
   }
@@ -400,29 +435,27 @@ public:
   std::vector<R> get()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    std::vector<R> output;
-    std::vector<std::future<std::vector<R>>> futures;
-    futures.reserve(_number_of_threads);
+    size_t expcted = 0;
     for (auto& task_queue : _task_queues)
     {
-      futures.emplace_back(std::async(std::launch::async, [&task_queue]() {
-        return task_queue->get();
-        }));
+      expcted += task_queue->total_tasks();
     }
 
-    for (auto& future : futures)
+    std::vector<R> output;
+    output.reserve(expcted);
+    for (auto& task_queue : _task_queues)
     {
-      auto this_output = future.get();
-      if (!this_output.empty())
+      auto part = task_queue->get();
+      if (!part.empty())
       {
         output.insert(output.end(),
-          std::make_move_iterator(this_output.begin()),
-          std::make_move_iterator(this_output.end()));
+          std::make_move_iterator(part.begin()),
+          std::make_move_iterator(part.end()));
       }
     }
 
     // reset the thread index so we don't start new threads for no reason.
-    _threads_index.store(0);
+    _threads_index.store(0, std::memory_order_relaxed);
     return output;
   }
 
