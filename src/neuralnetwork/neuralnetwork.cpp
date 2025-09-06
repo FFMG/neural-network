@@ -591,8 +591,7 @@ double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int 
   Logger::warning([&]
     {
       auto lr = get_learning_rate();
-      std::string warning = Logger::factory(std::setprecision(4), "Layer Number:", layer_number, ", Clipping gradients: norm = ", norm, " scale = ", clipping_scale, " (learnign rate: ", lr, ")");
-      return warning;
+      return Logger::factory(std::setprecision(4), "Layer Number:", layer_number, ", Clipping gradients: norm = ", norm, " scale = ", clipping_scale, " (learnign rate: ", lr, ")");
     });
   return clipping_scale;
 }
