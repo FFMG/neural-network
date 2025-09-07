@@ -378,16 +378,24 @@ public:
   ~TaskQueuePool()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    stop();
   }
 
   void stop() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    auto estimated = total_tasks();
     for(auto& task_queue : _task_queues)
     {
       task_queue->stop();
     }
-    Logger::debug("ThreadPool stop.");
+    Logger::debug([=] 
+      {
+        if (estimated > 0)
+        {
+          return "ThreadPool stop.";
+        }
+      });
   }
 
   inline int total_tasks() const noexcept
@@ -473,6 +481,8 @@ private:
     {
       _task_queues.emplace_back(std::make_unique<TaskQueue<R>>());
     }
-    Logger::info("ThreadPool initialized with ", _number_of_threads, " worker threads."); 
+    Logger::info([&] {
+      return "ThreadPool initialized with ", _number_of_threads, " worker threads.";
+      });
   }
 };
