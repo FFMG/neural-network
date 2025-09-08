@@ -389,12 +389,9 @@ public:
     {
       task_queue->stop();
     }
-    Logger::debug([=] 
+    Logger::debug([=]
       {
-        if (estimated > 0)
-        {
-          return "ThreadPool stop.";
-        }
+        return "ThreadPool stop.";
       });
   }
 
