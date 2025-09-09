@@ -1,4 +1,5 @@
 #pragma once
+
 #include <algorithm>
 #include <chrono>     // Required for time operations (std::chrono)
 #include <functional>
@@ -166,7 +167,8 @@ public:
   static std::string factory(Args&&... args)
   {
     std::ostringstream oss;
-    oss << print_args(std::forward<Args>(args)...) << std::endl;
+    print_args(oss, std::forward<Args>(args)...);
+    oss << std::endl;
     return  oss.str();
   }
 private:
@@ -192,19 +194,16 @@ private:
     return ss.str();
   }
 
-  static std::string print_args()
+  static void print_args(std::ostringstream& )
   {
     // No-op: This function does nothing, serving as the stopping point
     // for the recursion in the print_args variadic template.
-    return "";
   }
 
   // Recursive case: Appends the first argument to the string and processes the rest
   template <typename T, typename... Args>
-  static std::string print_args(T&& first_arg, Args&&... rest)
+  static void print_args(std::ostringstream& oss, T&& first_arg, Args&&... rest)
   {
-    std::ostringstream oss;
-
     if constexpr (std::is_same_v<std::decay_t<T>, std::function<std::string()>> )
     {
       //  exact function
@@ -221,9 +220,7 @@ private:
     }
 
     // Recursively call print_args with the remaining arguments and append
-    oss << print_args(std::forward<Args>(rest)...);
-
-    return oss.str();
+    print_args(oss, std::forward<Args>(rest)...);
   }
 
   static void with_factory(LogLevel level, std::function<std::string()> message_factory)
@@ -243,7 +240,8 @@ private:
   static void log(LogLevel level, Args&&... args)
   {
     std::ostringstream oss;
-    oss << print_args(std::forward<Args>(args)...) << std::endl;
+    print_args(oss, std::forward<Args>(args)...);
+    oss << std::endl;
     instance().string(level, oss.str());
   }
 
