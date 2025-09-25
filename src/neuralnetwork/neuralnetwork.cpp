@@ -1200,9 +1200,11 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
   Logger::info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
   Logger::info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
-  Logger::info(tab, "Learning rate decay rate   : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
-  Logger::info(tab, "Learning rate warmup start : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
-  Logger::info(tab, "Learning rate warmup target: ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
+  Logger::info(tab, "  Decay rate               : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
+  Logger::info(tab, "  Warmup start             : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
+  Logger::info(tab, "  Warmup target            : ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
+  Logger::info(tab, "  Restart rate             : ", _options.learning_rate_restart_rate());
+  Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
   Logger::info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
   Logger::info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
@@ -1210,6 +1212,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
+
   std::string hidden_layer_message = 
                                 "  Hidden layers              : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
