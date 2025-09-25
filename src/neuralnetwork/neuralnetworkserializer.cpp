@@ -160,23 +160,23 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto hidden_activation = activation::string_to_method(hidden_activation_string);
   auto output_activation = activation::string_to_method(output_activation_string);
   
-  auto learning_rate = options_object->get_float("learning-rate");
-  auto learning_rate_warmup_start = options_object->get_float("learning-rate-warmup-start");
-  auto learning_rate_warmup_target = options_object->get_float("learning-rate-warmup-target");
+  auto learning_rate = options_object->get_float<double>("learning-rate");
+  auto learning_rate_warmup_start = options_object->get_float<double>("learning-rate-warmup-start");
+  auto learning_rate_warmup_target = options_object->get_float<double>("learning-rate-warmup-target");
 
   auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
   auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
   auto data_is_unique = options_object->get_boolean("data-is-unique");
   auto number_of_threads = static_cast<int>(options_object->get_number("number-of-threads"));
-  auto learning_rate_decay_rate = options_object->get_float("learning-rate-decay-rate");
+  auto learning_rate_decay_rate = options_object->get_float<double>("learning-rate-decay-rate");
   auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
   auto optimiser_type_string = options_object->try_get_string("optimiser-type");
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto learning_rate_restart_rate = options_object->get_float("learning-rate-restart-rate");
-  auto learning_rate_restart_boost = options_object->get_float("learning-rate-restart-boost");
+  auto learning_rate_restart_rate = options_object->get_float<double>("learning-rate-restart-rate");
+  auto learning_rate_restart_boost = options_object->get_float<double>("learning-rate-restart-boost");
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
-  auto clip_threshold = options_object->get_float("clip-threshold");
+  auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto dropouts = options_object->get_floats<double>("dropout", false, false);
 
   return NeuralNetworkOptions::create(topology)
