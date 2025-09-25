@@ -168,7 +168,6 @@ public:
   {
     std::ostringstream oss;
     print_args(oss, std::forward<Args>(args)...);
-    oss << std::endl;
     return  oss.str();
   }
 private:
