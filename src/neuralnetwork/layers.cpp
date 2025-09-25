@@ -32,13 +32,13 @@ Layers::Layers(
     add_residual_layer(layer, hidden_activation);
     Logger::trace([&]
       {
-        std::string trace = Logger::factory("Layer: ", layer_number, ", residual layer number: ", residual_layer_number);
+        std::string trace = Logger::factory("Layer: ", layer_number, ", residual layer number: ", residual_layer_number, "\n");
         if (residual_layer_number != -1)
         {
           auto number_of_neuron_in_that_layer_x = _layers[residual_layer_number].number_neurons();
           auto num_neurons_current_layer_x = layer.number_neurons();
 
-          trace += Logger::factory("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x);
+          trace += Logger::factory("  Number of neurons in residual: ", number_of_neuron_in_that_layer_x, "\n");
           trace += Logger::factory("  Number of neurons in layer   : ", num_neurons_current_layer_x);
         }
         return trace;
