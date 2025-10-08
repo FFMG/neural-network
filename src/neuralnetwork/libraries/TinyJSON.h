@@ -38,10 +38,11 @@
 //   PATCH version when you make backward compatible bug fixes
 // v0.1.1 - added some add( ... ) and set( ... ) methods
 // v0.1.2 - added a but of get/set( ... ) for values and objects.
+// v0.1.3 - added iterator.
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 1;
-static const short TJ_VERSION_PATCH = 2;
-static const char TJ_VERSION_STRING[] = "0.1.2";
+static const short TJ_VERSION_PATCH = 3;
+static const char TJ_VERSION_STRING[] = "0.1.3";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -202,6 +203,77 @@ class TJDictionary;
   {
     friend TJValueArray;
     friend TJValueObject;
+  private:
+    template<bool IsConst>
+    class base_iterator
+    {
+      friend TJValue;
+      int _current;
+      const int _size;
+#if __cplusplus >= 201402L  // C++14 or later
+      using TJValueType = std::conditional_t<IsConst, const TJValue, TJValue>;
+#else
+      using TJValueType = typename std::conditional<IsConst, const TJValue, TJValue>::type;
+#endif            
+      TJValueType& _type;
+
+      static base_iterator make_begin(TJValueType& value)
+      {
+        base_iterator it(value);
+        it._current = 0;
+        return it;
+      }
+      static base_iterator make_end(TJValueType& value)
+      {
+        base_iterator it(value);
+        it._current = it._size;
+        return it;
+      }
+    public:
+      base_iterator(TJValueType& type) :
+        _current(0),
+        _size(type.internal_size()),
+        _type(type)
+      {
+      }
+
+      const TJValueType& operator*() const noexcept
+      {
+        return _type.internal_at(_current);
+      }
+      TJValueType& operator*() noexcept
+      {
+        return _type.internal_at(_current);
+      }
+      base_iterator& operator++() noexcept
+      {
+        ++_current;
+        if (_current >= _size)
+        {
+          _current = _size;
+        }
+        return *this;
+      }
+      base_iterator& operator--() noexcept
+      {
+        --_current;
+        if (_current < 0)
+        {
+          _current = 0;
+        }
+        return *this;
+      }
+
+      bool operator!=(const base_iterator& other) const noexcept
+      {
+        return _current != other._current;
+      }
+      bool operator==(const base_iterator& other) const noexcept
+      {
+        return _current == other._current;
+      }
+    };
+
   public:
     TJValue();
     virtual ~TJValue();
@@ -291,6 +363,28 @@ class TJDictionary;
     {
       return static_cast<T>(get_raw_float(strict));
     }
+
+
+    using iterator = base_iterator<false>;
+    using const_iterator = base_iterator<true>;
+
+    inline iterator begin()
+    {
+      return iterator::make_begin(*this);
+    }
+    inline iterator end()
+    {
+      return iterator::make_end(*this);
+    }
+    inline const_iterator begin() const
+    {
+      return const_iterator::make_begin(*this);
+    }
+    inline const_iterator end() const
+    {
+      return const_iterator::make_end(*this);
+    }
+
   protected:
     long long get_raw_number(bool strict) const;
     long double get_raw_float(bool strict) const;
@@ -304,6 +398,10 @@ class TJDictionary;
     virtual TJValue* internal_clone() const = 0;
 
     virtual void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const = 0;
+
+    virtual int internal_size() const;
+    virtual const TJValue& internal_at(int index) const;
+    virtual TJValue& internal_at(int index);
 
   private:
     TJValue(const TJValue&) = delete;
@@ -393,6 +491,7 @@ class TJDictionary;
 
     const TJCHAR* name() const;
     const TJValue* value() const;
+    TJValue* value();
 
   protected:
     /// <summary>
@@ -692,6 +791,10 @@ class TJDictionary;
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
+    virtual int internal_size() const override;
+    virtual const TJValue& internal_at(int index) const override;
+    virtual TJValue& internal_at(int index) override;
+
   private:
     // All the key value pairs in this object.
     TJDICTIONARY* _members;
@@ -826,6 +929,10 @@ class TJDictionary;
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
     
+    virtual int internal_size() const override;
+    virtual const TJValue& internal_at(int index) const override;
+    virtual TJValue& internal_at(int index) override;
+
   private:
     // All the key value pairs in this object.
     TJLIST* _values;

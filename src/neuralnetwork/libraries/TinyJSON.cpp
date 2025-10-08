@@ -3554,6 +3554,11 @@ namespace TinyJSON
     return _value;
   }
 
+  TJValue* TJMember::value()
+  {
+    return _value;
+  }
+
   void TJMember::free_string()
   {
     if (nullptr != _string)
@@ -3673,6 +3678,25 @@ namespace TinyJSON
     internal_dump(configuration, nullptr);
     _last_dump = configuration._buffer;
     return _last_dump;
+  }
+
+  int TJValue::internal_size() const 
+  { 
+    // default just one value
+    return 1; 
+  } 
+  const TJValue& TJValue::internal_at(int index) const 
+  { 
+    (void)index;
+    // default just one value
+    return *this; 
+  }
+
+  TJValue& TJValue::internal_at(int index) 
+  { 
+    (void)index;
+    // default just one value
+    return *this; 
   }
 
   bool TJValue::get_boolean(bool strict) const
@@ -4308,6 +4332,21 @@ namespace TinyJSON
     return object;
   }
 
+  int TJValueObject::internal_size() const
+  {
+    return get_number_of_items();
+  }
+
+  const TJValue& TJValueObject::internal_at(int index) const
+  {
+    return *(at(index))->value();
+  }
+
+  TJValue& TJValueObject::internal_at(int index)
+  {
+    return *(at(index))->value();
+  }
+
   void TJValueObject::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
   {
     // open it
@@ -4481,6 +4520,21 @@ namespace TinyJSON
     value->_values = values;
     values = nullptr;
     return value;
+  }
+
+  int TJValueArray::internal_size() const 
+  { 
+    return get_number_of_items(); 
+  }
+
+  const TJValue& TJValueArray::internal_at(int index) const
+  { 
+    return *(at(index));
+  }
+
+  TJValue& TJValueArray::internal_at(int index)
+  { 
+    return *(at(index));
   }
 
   void TJValueArray::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
