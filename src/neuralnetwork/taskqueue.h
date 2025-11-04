@@ -384,7 +384,6 @@ public:
   void stop() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    auto estimated = total_tasks();
     for(auto& task_queue : _task_queues)
     {
       task_queue->stop();
@@ -479,7 +478,7 @@ private:
       _task_queues.emplace_back(std::make_unique<TaskQueue<R>>());
     }
     Logger::info([&] {
-      return "ThreadPool initialized with ", _number_of_threads, " worker threads.";
+      return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
 };
