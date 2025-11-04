@@ -588,10 +588,18 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
 
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
-  auto metrics = nn.calculate_forecast_metrics({ NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ErrorCalculation::mape, NeuralNetworkOptions::ErrorCalculation::smape });
+  auto metrics = nn.calculate_forecast_metrics({ 
+    NeuralNetworkOptions::ErrorCalculation::rmse, 
+    NeuralNetworkOptions::ErrorCalculation::mape, 
+    NeuralNetworkOptions::ErrorCalculation::smape,
+    NeuralNetworkOptions::ErrorCalculation::wape,
+    NeuralNetworkOptions::ErrorCalculation::nrmse
+    });
   json.set_float("error", metrics[0].error());
   json.set_float("mean-absolute-percentage-error", metrics[1].error());
   json.set_float("symmetric-mean-absolute-percentage-error", metrics[2].error());
+  json.set_float("weighted-absolute-percentage-error", metrics[3].error());
+  json.set_float("weighted-absolute-percentage-error", metrics[4].error());
 }
 
 void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
