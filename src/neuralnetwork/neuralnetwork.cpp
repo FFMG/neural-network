@@ -45,12 +45,14 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
-  const NeuralNetworkOptions& options
+  const NeuralNetworkOptions& options,
+  const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors
   ) :
   _learning_rate(options.learning_rate()),
   _layers(layers),
   _options(options),
-  _neural_network_helper(nullptr)
+  _neural_network_helper(nullptr),
+  _saved_errors(errors)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
@@ -59,7 +61,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _learning_rate(src._learning_rate),
   _layers(src._layers),
   _options(src._options),
-  _neural_network_helper(nullptr)
+  _neural_network_helper(nullptr),
+  _saved_errors(src._saved_errors)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (src._neural_network_helper != nullptr)
@@ -233,9 +236,15 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   {
     for (size_t index = 0; index < error_types.size(); ++index)
     {
-      errors.emplace_back( NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
+      const auto& saved_error = _saved_errors.find(error_types[index]);
+      if(saved_error == _saved_errors.end())
+      {
+        errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(saved_error->second, error_types[index]));
+        Logger::warning("Trying to get training metrics:", (int)error_types[index], " when no training was done!");
+        continue;
+      }
+      errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(saved_error->second, error_types[index]));
     }
-    Logger::warning("Trying to get training metrics when no training was done!");
     return errors;
   }
 
