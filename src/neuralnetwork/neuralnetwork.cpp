@@ -345,8 +345,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
 
-  dump_layer_info();
-
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
     Logger::error("The batch size if either -ve or too large for the training sample.");
@@ -501,11 +499,13 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   auto metrics = calculate_forecast_metrics(
     {
       NeuralNetworkOptions::ErrorCalculation::rmse,
-      NeuralNetworkOptions::ErrorCalculation::mape 
+      NeuralNetworkOptions::ErrorCalculation::mape,
+      NeuralNetworkOptions::ErrorCalculation::wape
     }, true);
 
   Logger::info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
-  Logger::info("Final Forecast accuracy (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error()*100.0);
+  Logger::info("Final mean absolute error (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error()*100.0);
+  Logger::info("Final weighted absolute error (WAPE): ", std::fixed, std::setprecision(15), metrics[2].error() * 100.0);
 
   // finaly learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
@@ -521,8 +521,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // then do one final call, again, we don't care about the result.
     progress_callback(*_neural_network_helper);
   }
-
-  dump_layer_info();
 
   MYODDWEB_PROFILE_MARK();
 }
@@ -722,8 +720,14 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
   case NeuralNetworkOptions::ErrorCalculation::rmse:
     return calculate_rmse_error(ground_truth, predictions);
 
+  case NeuralNetworkOptions::ErrorCalculation::nrmse:
+    return calculate_nrmse_error(ground_truth, predictions);
+
   case NeuralNetworkOptions::ErrorCalculation::mape:
     return calculate_forecast_mape(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::wape:
+    return calculate_forecast_wape(ground_truth, predictions);
 
   case NeuralNetworkOptions::ErrorCalculation::smape:
     return calculate_forecast_smape(ground_truth, predictions);
@@ -778,7 +782,7 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   if (ground_truth.size() != predictions.size())
   {
     Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Mismatched number of samples");
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
   
 
@@ -800,11 +804,41 @@ double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>
   return (count > 0) ? (total_abs_error / count) : 0.0;
 }
 
-double NeuralNetwork::calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
+double NeuralNetwork::calculate_rmse_error(
+  const std::vector<std::vector<double>>& ground_truths,
+  const std::vector<std::vector<double>>& predictions) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto mean_squared_error = calculate_mse_error(ground_truth, predictions);
-  return std::sqrt(mean_squared_error); // RMSE
+  if (predictions.size() != ground_truths.size() || predictions.empty())
+  {
+    Logger::error("Mismatched number of samples");
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double total_rmse = 0.0;
+  size_t sequence_count = 0;
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+  {
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.empty())
+      continue;
+
+    double mse = 0.0;
+    for (size_t i = 0; i < gt.size(); ++i)
+    {
+      double diff = gt[i] - pred[i];
+      mse += diff * diff;
+    }
+
+    mse /= gt.size();
+    total_rmse += std::sqrt(mse);
+    ++sequence_count;
+  }
+
+  return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
 }
 
 double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
@@ -1146,6 +1180,101 @@ double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<dou
   return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
 }
 
+double NeuralNetwork::calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (predictions.size() != ground_truths.size() || predictions.empty())
+  {
+    Logger::error("Input vectors must have the same, non-zero size.");
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double total_nrmse = 0.0;
+  size_t sequence_count = 0;
+  const double eps = 1e-12; // small value to avoid division by zero
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+  {
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.empty())
+      continue;
+
+    double mse = 0.0;
+    double min_val = gt[0], max_val = gt[0], mean_abs = 0.0;
+
+    for (size_t i = 0; i < gt.size(); ++i)
+    {
+      double diff = gt[i] - pred[i];
+      mse += diff * diff;
+
+      min_val = std::min(min_val, gt[i]);
+      max_val = std::max(max_val, gt[i]);
+      mean_abs += std::abs(gt[i]);
+    }
+
+    mse /= gt.size();
+    double rmse = std::sqrt(mse);
+    mean_abs /= gt.size();
+
+    // Auto-select normalization
+    double denom = max_val - min_val;         // primary: range
+    if (denom < eps) denom = mean_abs;        // fallback: mean magnitude
+    if (denom < eps) continue;                // skip if both tiny
+
+    total_nrmse += rmse / denom;
+    ++sequence_count;
+  }
+
+  return (sequence_count == 0) ? 0.0 : (total_nrmse / sequence_count);
+}
+
+double NeuralNetwork::calculate_forecast_wape(const std::vector<std::vector<double>>&ground_truths, const std::vector<std::vector<double>>&predictions) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (predictions.size() != ground_truths.size() || predictions.empty())
+  {
+    Logger::error("Input vectors must have the same, non-zero size.");
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double total_absolute_error = 0.0;
+  double total_absolute_actuals = 0.0;
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+  {
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    // Skip mismatched or empty sequences
+    if (gt.size() != pred.size() || gt.empty())
+    {
+      continue;
+    }
+
+    // Sum the errors and actuals for this sequence
+    for (size_t i = 0; i < gt.size(); ++i)
+    {
+      total_absolute_error += std::abs(gt[i] - pred[i]);
+      total_absolute_actuals += std::abs(gt[i]);
+    }
+  }
+
+  // Perform a single division at the end
+  // Check if the total sum of actuals is zero
+  if (total_absolute_actuals == 0.0)
+  {
+    // If total actuals are 0, error is 0 only if total error is also 0.
+    // Otherwise, it's undefined. We can return 0 if both are 0, 
+    // or 1.0 (100% error) if we predicted non-zero values for all-zero actuals.
+    return (total_absolute_error == 0.0) ? 0.0 : 1.0;
+  }
+
+  // WAPE formula
+  return total_absolute_error / total_absolute_actuals;
+}
+
 double NeuralNetwork::calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -1249,44 +1378,4 @@ void NeuralNetwork::log_training_info(
       Logger::info(tab, "Number of threads          : ", _options.number_of_threads());
     }
   }
-}
-
-void NeuralNetwork::dump_layer_info() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (!Logger::can_trace())
-  {
-    return;
-  }
-
-#ifndef NDEBUG
-  for (size_t layer_number = 0; layer_number < _layers.size(); ++layer_number)
-  {
-    Logger::trace("Layer ", layer_number, " (residual layer: ", _layers[static_cast<unsigned>(layer_number)].residual_layer_number(), ").");
-
-    auto& layer = _layers[static_cast<unsigned>(layer_number)];
-    for (unsigned neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
-    {
-      auto& neuron = layer.get_neuron(neuron_number);
-      if (neuron.is_dropout())
-      {
-        Logger::trace("  -> Neuron ", neuron_number, " (dropout ", neuron.get_dropout_rate()*100.f, "%)");
-      }
-      else
-      {
-        Logger::trace("  -> Neuron ", neuron_number, neuron.is_bias() ? " (bias)" : "");
-      }
-
-      auto& wp = neuron.get_weight_params();
-      for (size_t index_number = 0; index_number < wp.size(); ++index_number)
-      {
-        Logger::trace(
-                     std::fixed, std::setprecision(15),
-          "    -> weight[", index_number,
-                     "] = ",
-                     wp[index_number].value());
-      }
-    } 
-  }
-#endif
 }

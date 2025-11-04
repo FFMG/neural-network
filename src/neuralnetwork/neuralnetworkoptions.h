@@ -45,8 +45,10 @@ public:
     mae,
     mse,
     rmse,
+    nrmse,
     mape,
     smape,
+    wape
   };
 
   NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
