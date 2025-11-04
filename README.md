@@ -434,6 +434,8 @@ auto errors = nn->calculate_forecast_metrics( error_types);
   * NeuralNetworkOptions::ErrorCalculation::huber_loss
   * NeuralNetworkOptions::ErrorCalculation::mae
   * NeuralNetworkOptions::ErrorCalculation::mse
+  * NeuralNetworkOptions::ErrorCalculation::nrmse
   * NeuralNetworkOptions::ErrorCalculation::rmse
   * NeuralNetworkOptions::ErrorCalculation::mape
   * NeuralNetworkOptions::ErrorCalculation::smape
+  * NeuralNetworkOptions::ErrorCalculation::wape
