@@ -25,8 +25,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
 
   auto residual_layers = get_residual_layers(*tj);
 
-  auto error = get_error(*tj);
-  auto mean_absolute_percentage_error = get_mean_absolute_percentage_error(*tj);
+  auto errors = get_errors(*tj);
 
   // create the layer and validate that the topology matches.
   auto layers = create_layers(options, *tj, residual_layers);
@@ -38,8 +37,8 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, options);
-  Logger::info("Created Neural Network with Error: ", error, " and MAPE: ", (mean_absolute_percentage_error*100));
+  auto nn = new NeuralNetwork(layers, options, errors);
+  Logger::info("Created Neural Network.");
 
   // cleanup
   delete tj;
@@ -199,14 +198,32 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .build();
 }
 
-double NeuralNetworkSerializer::get_error(const TinyJSON::TJValue& json)
+std::map<NeuralNetworkOptions::ErrorCalculation, double> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
 {
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
+  std::map<NeuralNetworkOptions::ErrorCalculation, double> errors;
+  auto tj_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  if (nullptr == tj_object)
   {
-    return 0.0;
+    Logger::info("Could not load any errors.");
+    return errors;
   }
-  return object->get_float("error", true, false);
+  auto tj_errors = dynamic_cast<const TinyJSON::TJValueObject*>(tj_object->try_get_value("errors"));
+  if (nullptr == tj_errors)
+  {
+    Logger::info("Could not load any errors.");
+    return errors;
+  }
+
+  errors[NeuralNetworkOptions::ErrorCalculation::huber_loss ] = tj_errors->get_float<double>("huber-loss", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::mae ] = tj_errors->get_float<double>("mae", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::mse ] = tj_errors->get_float<double>("mse", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::rmse ] = tj_errors->get_float<double>("rmse", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::nrmse ] = tj_errors->get_float<double>("nrmse", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::mape] = tj_errors->get_float<double>("mape", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::smape ] = tj_errors->get_float<double>("smape", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::wape ] = tj_errors->get_float<double>("wape", true, false);
+
+  return errors;
 }
 
 std::vector<int> NeuralNetworkSerializer::get_residual_layers(const TinyJSON::TJValue& json)
@@ -589,17 +606,28 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
   auto metrics = nn.calculate_forecast_metrics({ 
-    NeuralNetworkOptions::ErrorCalculation::rmse, 
-    NeuralNetworkOptions::ErrorCalculation::mape, 
+    NeuralNetworkOptions::ErrorCalculation::huber_loss,
+    NeuralNetworkOptions::ErrorCalculation::mae,
+    NeuralNetworkOptions::ErrorCalculation::mse,
+    NeuralNetworkOptions::ErrorCalculation::rmse,
+    NeuralNetworkOptions::ErrorCalculation::nrmse,
+    NeuralNetworkOptions::ErrorCalculation::mape,
     NeuralNetworkOptions::ErrorCalculation::smape,
     NeuralNetworkOptions::ErrorCalculation::wape,
-    NeuralNetworkOptions::ErrorCalculation::nrmse
-    });
-  json.set_float("error", metrics[0].error());
-  json.set_float("mean-absolute-percentage-error", metrics[1].error());
-  json.set_float("symmetric-mean-absolute-percentage-error", metrics[2].error());
-  json.set_float("weighted-absolute-percentage-error", metrics[3].error());
-  json.set_float("weighted-absolute-percentage-error", metrics[4].error());
+  });
+
+  auto tj_errors = new TinyJSON::TJValueObject();
+  tj_errors->set_float("huber-loss" , metrics[0].error());
+  tj_errors->set_float("mae"        , metrics[1].error());
+  tj_errors->set_float("mse"        , metrics[2].error());
+  tj_errors->set_float("rmse"       , metrics[3].error());
+  tj_errors->set_float("nrmse"      , metrics[4].error());
+  tj_errors->set_float("mape"       , metrics[5].error());
+  tj_errors->set_float("smape"      , metrics[6].error());
+  tj_errors->set_float("wape"       , metrics[7].error());
+
+  json.set("errors", tj_errors);
+  delete tj_errors;
 }
 
 void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

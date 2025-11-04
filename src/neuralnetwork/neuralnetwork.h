@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <functional>
+#include <map>
 #include <shared_mutex>
 #include <vector>
 
@@ -389,7 +390,7 @@ private:
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
-  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options);
+  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options, const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&) = delete;
 
@@ -486,10 +487,11 @@ private:
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
-  double _learning_rate;
-  Layers _layers;
   mutable std::shared_mutex _mutex;
 
+  double _learning_rate;
+  Layers _layers;
   NeuralNetworkOptions _options;
   NeuralNetworkHelper* _neural_network_helper;
+  std::map<NeuralNetworkOptions::ErrorCalculation, double> _saved_errors;
 };
