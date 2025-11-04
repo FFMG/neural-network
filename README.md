@@ -439,3 +439,4 @@ auto errors = nn->calculate_forecast_metrics( error_types);
   * NeuralNetworkOptions::ErrorCalculation::mape
   * NeuralNetworkOptions::ErrorCalculation::smape
   * NeuralNetworkOptions::ErrorCalculation::wape
+  * NeuralNetworkOptions::ErrorCalculation::directional_accuracy

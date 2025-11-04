@@ -48,7 +48,8 @@ public:
     nrmse,
     mape,
     smape,
-    wape
+    wape,
+    directional_accuracy
   };
 
   NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
