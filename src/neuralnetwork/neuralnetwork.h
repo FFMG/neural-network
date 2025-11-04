@@ -464,7 +464,6 @@ private:
   double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
   double calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const;
   double calculate_directional_accuracy(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, 
-    double epsilon = 1e-12,         // small number for numeric safety
     double neutral_tolerance = 0.001 // threshold below which movement is ignored
   ) const;
 
