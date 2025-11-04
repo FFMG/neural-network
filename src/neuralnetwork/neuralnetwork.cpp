@@ -1183,16 +1183,12 @@ double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<dou
   return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
 }
 
-double NeuralNetwork::calculate_directional_accuracy(
-    const std::vector<std::vector<double>>& ground_truths,
-    const std::vector<std::vector<double>>& predictions,
-    double epsilon,
-    double neutral_tolerance
-) const
+double NeuralNetwork::calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (predictions.size() != ground_truths.size() || predictions.empty())
   {
+    Logger::error("Input vectors must have the same, non-zero size.");
     throw std::invalid_argument("Input vectors must have the same, non-zero size.");
   }
 
@@ -1206,7 +1202,7 @@ double NeuralNetwork::calculate_directional_accuracy(
 
     if (gt.size() != pred.size() || gt.size() < 2)
     {
-      continue;
+      continue; // Skip sequences that are too short
     }
 
     for (size_t i = 1; i < gt.size(); ++i)
@@ -1214,29 +1210,19 @@ double NeuralNetwork::calculate_directional_accuracy(
       double gt_diff = gt[i] - gt[i - 1];
       double pred_diff = pred[i] - pred[i - 1];
 
-      // Ignore negligible ground truth movements
+      // Ignore negligible ground truth movements (noise)
       if (std::abs(gt_diff) < neutral_tolerance)
       {
         continue;
       }
 
-      // Ignore tiny predicted moves (neutral)
-      if (std::abs(pred_diff) < neutral_tolerance)
-      {
-        continue;
-      }
-
-      bool gt_up = gt_diff > 0.0;
-      bool pred_up = pred_diff > 0.0;
-
-      if (gt_up == pred_up)
+      if ((gt_diff * pred_diff) > 0.0)
       {
         ++correct;
       }
       ++total;
     }
   }
-
   return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
 }
 
