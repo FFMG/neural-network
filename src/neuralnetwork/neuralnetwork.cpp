@@ -731,6 +731,9 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
 
   case NeuralNetworkOptions::ErrorCalculation::smape:
     return calculate_forecast_smape(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::directional_accuracy:
+    return calculate_directional_accuracy(ground_truth, predictions);
   }
 
   Logger::error("Unknown ErrorCalculation type!");
@@ -1178,6 +1181,63 @@ double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<dou
     }
   }
   return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
+}
+
+double NeuralNetwork::calculate_directional_accuracy(
+    const std::vector<std::vector<double>>& ground_truths,
+    const std::vector<std::vector<double>>& predictions,
+    double epsilon,
+    double neutral_tolerance
+) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (predictions.size() != ground_truths.size() || predictions.empty())
+  {
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  size_t correct = 0;
+  size_t total = 0;
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+  {
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.size() < 2)
+    {
+      continue;
+    }
+
+    for (size_t i = 1; i < gt.size(); ++i)
+    {
+      double gt_diff = gt[i] - gt[i - 1];
+      double pred_diff = pred[i] - pred[i - 1];
+
+      // Ignore negligible ground truth movements
+      if (std::abs(gt_diff) < neutral_tolerance)
+      {
+        continue;
+      }
+
+      // Ignore tiny predicted moves (neutral)
+      if (std::abs(pred_diff) < neutral_tolerance)
+      {
+        continue;
+      }
+
+      bool gt_up = gt_diff > 0.0;
+      bool pred_up = pred_diff > 0.0;
+
+      if (gt_up == pred_up)
+      {
+        ++correct;
+      }
+      ++total;
+    }
+  }
+
+  return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
 }
 
 double NeuralNetwork::calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
