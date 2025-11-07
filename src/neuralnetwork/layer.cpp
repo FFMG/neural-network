@@ -109,7 +109,10 @@ Layer& Layer::operator=(const Layer& src) noexcept
     _number_input_neurons = src._number_input_neurons;
     _number_output_neurons = src._number_output_neurons;
     _residual_layer_number = src._residual_layer_number;
-    _residual_projector = new ResidualProjector(*_residual_projector);
+    if (src._residual_projector != nullptr)
+    {
+      _residual_projector = new ResidualProjector(*src._residual_projector);
+    }
     _layer_type = src._layer_type;
   }
   return *this;
