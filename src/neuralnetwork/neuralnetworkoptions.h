@@ -352,7 +352,7 @@ public:
       .with_optimiser_type(OptimiserType::SGD)
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
-      .with_clip_threshold(clip_threshold);
+      .with_clip_threshold(clip_threshold)
       .with_shuffle_training_data(true);
   }
 
