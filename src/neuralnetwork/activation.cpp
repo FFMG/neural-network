@@ -321,6 +321,12 @@ double activation::activate_derivative(double x) const
   }
 }
 
+double activation::weight_initialization() const
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  return weight_initialization(1, 1).front();
+}
+
 std::vector<double> activation::weight_initialization(int num_neurons_next_layer, int num_neurons_current_layer) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
