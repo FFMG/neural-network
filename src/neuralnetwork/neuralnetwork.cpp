@@ -221,7 +221,7 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   GradientsAndOutputs gradients(get_topology());
   {
     std::shared_lock<std::shared_mutex> read(_mutex);
-    calculate_forward_feed(gradients, inputs, _layers, hidden_states, false);
+    calculate_forward_feed(gradients, inputs, _layers, false);
   }
   return gradients.output_back();
 }
@@ -319,7 +319,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     {
       const auto& checks_index = (*checks_indexes)[index];
       const auto& inputs = training_inputs[checks_index];
-      calculate_forward_feed(gradients, inputs, _layers, hidden_states, false);
+      calculate_forward_feed(gradients, inputs, _layers, false);
       predictions.emplace_back(gradients.output_back());
       gradients.zero();
 
