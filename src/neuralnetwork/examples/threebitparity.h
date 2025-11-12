@@ -11,8 +11,8 @@ public:
   static void ThreebitParity(Logger::LogLevel log_level)
   {
     std::vector<unsigned> topology = {3, 4, 1};
-    const int number_of_epoch = 100000;
-    const double learning_rate = 0.001;
+    const int number_of_epoch = 10000;
+    const double learning_rate = 0.5;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -37,7 +37,7 @@ public:
 
     {
       TEST_START("ThreebitParity test - No Batch.")
-      std::cout << "No Batch:" << std::endl;
+      Logger::info("No Batch:");
       auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(1)
         .with_hidden_activation_method(activation::method::relu)
@@ -47,6 +47,7 @@ public:
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
         .with_optimiser_type(OptimiserType::SGD)
+        .with_clip_threshold(1.0)
         .build();
 
       auto* nn = new NeuralNetwork(options);
@@ -55,23 +56,22 @@ public:
       std::vector<double> test_input1 = {1, 1, 1};
       //std::vector<double> expected_output1 = {1};
       auto output1 = nn->think(test_input1);
-      std::cout << output1.front() << " (should be close to 1)" << std::endl; //  should be close to 1
+      Logger::info(output1.front(), " (should be close to 1)"); //  should be close to 1
 
       std::vector<double> test_input2 = {1, 0, 1};       // 2 ones → even
       //std::vector<double> expected_output2 = {0};
       auto output2 = nn->think(test_input2);
-      std::cout << output2.front() << " (should be close to 0)" << std::endl; //  should be close to 0
+      Logger::info(output2.front(), " (should be close to 0)"); //  should be close to 0
 
       delete nn;
       TEST_END
-      std::cout << std::endl;
     }
 
     {
       for( int batch_size = 1; batch_size <= 4; ++batch_size)
       {
         TEST_START("ThreebitParity test - Batch.")
-        std::cout << "Batch size=" << batch_size <<":" << std::endl;
+        Logger::info("Batch size=", batch_size, ":");
 
         auto options = NeuralNetworkOptions::create(topology)
           .with_batch_size(batch_size)
@@ -82,6 +82,7 @@ public:
           .with_number_of_epoch(number_of_epoch)
           .with_adaptive_learning_rates(false)
           .with_optimiser_type(OptimiserType::SGD)
+          .with_clip_threshold(1.0)
           .build();
 
         auto* nn = new NeuralNetwork(options);
@@ -90,16 +91,15 @@ public:
         std::vector<double> test_input1 = {1, 1, 1};
         //std::vector<double> expected_output1 = {1};
         auto output1 = nn->think(test_input1);
-        std::cout << output1.front() << " (should be close to 1)" << std::endl; //  should be close to 1
+        Logger::info(output1.front(), " (should be close to 1)"); //  should be close to 1
 
         std::vector<double> test_input2 = {1, 0, 1};       // 2 ones → even
         //std::vector<double> expected_output2 = {0};
         auto output2 = nn->think(test_input2);
-        std::cout << output2.front() << " (should be close to 0)" << std::endl; //  should be close to 0
+        Logger::info(output2.front(), " (should be close to 0)"); //  should be close to 0
 
         delete nn;
         TEST_END
-        std::cout << std::endl;
       }
     }  
   }
