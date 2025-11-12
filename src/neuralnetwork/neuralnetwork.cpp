@@ -114,6 +114,25 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   return shuffled_indexes;
 }
 
+void NeuralNetwork::create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::vector<size_t> training_indexes;
+  std::vector<size_t> checking_indexes;
+  std::vector<size_t> final_check_indexes;
+
+  auto sample_size = neural_network_helper.sample_size();
+
+  std::vector<size_t> indexes(sample_size);
+  std::iota(indexes.begin(), indexes.end(), 0);
+
+  assert(sample_size == indexes.size());
+
+  break_indexes(indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
+
+  neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
+}
+
 void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -126,25 +145,25 @@ void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_
   auto shuffled_indexes = get_shuffled_indexes(sample_size);
   assert(sample_size == shuffled_indexes.size());
 
-  break_shuffled_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
+  break_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
   neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
 }
 
-void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const
+void NeuralNetwork::break_indexes(const std::vector<size_t>& indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // break the indexes into parts
-  size_t total_size = shuffled_indexes.size();
+  size_t total_size = indexes.size();
   size_t training_size = static_cast<size_t>(std::round(total_size * 0.80));
   size_t checking_size = static_cast<size_t>(std::round(total_size * 0.15));
   if(training_size+checking_size == total_size || checking_size == 0)
   {
     // in the case of small training models we might not have enough to split anything
     Logger::warning("Training batch size does not allow for error checking batch!");
-    training_indexes = shuffled_indexes;
-    checking_indexes = {shuffled_indexes.front()};
-    final_check_indexes = {shuffled_indexes.back()};
+    training_indexes = indexes;
+    checking_indexes = {indexes.front()};
+    final_check_indexes = {indexes.back()};
     return;
   }
   assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
@@ -161,14 +180,14 @@ void NeuralNetwork::break_shuffled_indexes(const std::vector<size_t>& shuffled_i
     // this is important in some cases where the NN needs all the data to train
     // otherwise we will ony train on some of the data.
     // the classic XOR example is a good use case ... 
-    training_indexes = shuffled_indexes;
+    training_indexes = indexes;
   }
   else
   {
-    training_indexes.assign(shuffled_indexes.begin(), shuffled_indexes.begin() + training_size);
+    training_indexes.assign(indexes.begin(), indexes.begin() + training_size);
   }
-  checking_indexes.assign(shuffled_indexes.begin() + training_size, shuffled_indexes.begin() + training_size + checking_size);
-  final_check_indexes.assign(shuffled_indexes.begin() + training_size + checking_size, shuffled_indexes.end());
+  checking_indexes.assign(indexes.begin() + training_size, indexes.begin() + training_size + checking_size);
+  final_check_indexes.assign(indexes.begin() + training_size + checking_size, indexes.end());
 }
 
 void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const
@@ -201,13 +220,13 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   GradientsAndOutputs gradients(get_topology());
   {
-    std::shared_lock lock(_mutex);
-    calculate_forward_feed(gradients, inputs, _layers, false);
+    std::shared_lock<std::shared_mutex> read(_mutex);
+    calculate_forward_feed(gradients, inputs, _layers, hidden_states, false);
   }
   return gradients.output_back();
 }
 
-double NeuralNetwork::get_learning_rate() const
+double NeuralNetwork::get_learning_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _learning_rate;
@@ -226,26 +245,41 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   return calculate_forecast_metrics(error_types, false);
 }
 
+bool NeuralNetwork::has_training_data() const
+{
+  std::shared_lock read(_mutex);
+  if (nullptr != _neural_network_helper)
+  {
+    return true; // we are currently training.
+  }
+
+  // do we have saved error, (from file).
+  return !_saved_errors.empty();
+}
+
 std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors = {};
   errors.reserve(errors.size());
 
+  {
+    std::shared_lock read(_mutex);
   if (nullptr == _neural_network_helper)
   {
     for (size_t index = 0; index < error_types.size(); ++index)
     {
       const auto& saved_error = _saved_errors.find(error_types[index]);
-      if(saved_error == _saved_errors.end())
+        if (saved_error == _saved_errors.end())
       {
-        errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(saved_error->second, error_types[index]));
+          errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
         Logger::warning("Trying to get training metrics:", (int)error_types[index], " when no training was done!");
         continue;
       }
       errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(saved_error->second, error_types[index]));
     }
     return errors;
+  }
   }
 
   const NeuralNetworkHelper& helper = *_neural_network_helper;
@@ -280,11 +314,12 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   GradientsAndOutputs gradients(get_topology());
   std::shared_lock lock(_mutex);
   {
+    std::shared_lock read(_mutex);
     for (size_t index = 0; index < prediction_size; ++index)
     {
       const auto& checks_index = (*checks_indexes)[index];
       const auto& inputs = training_inputs[checks_index];
-      calculate_forward_feed(gradients, inputs, _layers, false);
+      calculate_forward_feed(gradients, inputs, _layers, hidden_states, false);
       predictions.emplace_back(gradients.output_back());
       gradients.zero();
 
@@ -322,7 +357,8 @@ NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
   ) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  GradientsAndOutputs gradients(_options.topology(), static_cast<unsigned>(size));
+
+  GradientsAndOutputs gradients(get_topology(), static_cast<unsigned>(size));
   if(size == 1)
   {
     calculate_forward_feed(gradients, *inputs_begin, _layers, true);
@@ -377,7 +413,16 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // create the neural network helper.
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+
+  // set all the indexes in the helper, either shiffled or not.
+  if (options().shuffle_training_data())
+  {
   create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
+  }
+  else
+  {
+    create_indexes(*_neural_network_helper, _options.data_is_unique());
+  }
 
   // create the callback task if we need one.
   SingleTaskQueue<bool>* callback_task = nullptr;
@@ -473,8 +518,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       epoch_gradients = task_pool->get();
       apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch);
 
-      // then re-shuffle everything
+      if (options().shuffle_training_data())
+      {
       recreate_batch_from_indexes(*_neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
+      }
 
       // clear it for next time
       epoch_gradients.clear();
@@ -1045,15 +1092,15 @@ void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, c
     const auto& hidden_layer = layers[static_cast<unsigned>(layer_number)];
     const auto& next_layer = layers[static_cast<unsigned>(layer_number + 1)];
 
-    const auto& hidden_layer_size = hidden_layer.number_neurons();
+    const auto& hidden_layer_neuron_size = hidden_layer.number_neurons();
     std::vector<double> current_activation_gradients;
-    current_activation_gradients.resize(hidden_layer_size, 0.0);
-    for (size_t hidden_layer_number = 0; hidden_layer_number < hidden_layer_size; ++hidden_layer_number)
+    current_activation_gradients.resize(hidden_layer_neuron_size, 0.0);
+    for (size_t hidden_layer_neuron_number = 0; hidden_layer_neuron_number < hidden_layer_neuron_size; ++hidden_layer_neuron_number)
     {
-      const auto& neuron = hidden_layer.get_neuron(static_cast<unsigned>(hidden_layer_number));
-      const auto output_value = gradients.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(hidden_layer_number));
+      const auto& neuron = hidden_layer.get_neuron(static_cast<unsigned>(hidden_layer_neuron_number));
+      const auto output_value = gradients.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(hidden_layer_neuron_number));
       const auto& gradient = neuron.calculate_hidden_gradients(next_layer, next_activation_gradients, output_value);
-      current_activation_gradients[hidden_layer_number] = gradient;
+      current_activation_gradients[hidden_layer_neuron_number] = gradient;
     }
     gradients.set_gradients(static_cast<unsigned>(layer_number), current_activation_gradients);
     next_activation_gradients = std::move(current_activation_gradients);
@@ -1383,6 +1430,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, _neural_network_helper->training_indexes().size(), " training samples.");
   Logger::info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
   Logger::info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
+  Logger::info(tab, "Data is shuffled           : ", options().shuffle_training_data() ? "true" : "false");
   Logger::info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
   Logger::info(tab, "  Decay rate               : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
   Logger::info(tab, "  Warmup start             : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());

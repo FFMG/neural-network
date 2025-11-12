@@ -408,13 +408,15 @@ public:
 
   NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const;
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const;
-  double get_learning_rate() const;
+  double get_learning_rate() const noexcept;
 
-  NeuralNetworkOptions& options() { 
+  bool has_training_data() const;
+
+  inline NeuralNetworkOptions& options() noexcept { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
     return _options;
   }
-  const NeuralNetworkOptions& options() const { 
+  inline const NeuralNetworkOptions& options() const noexcept { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
     return _options;
   }
@@ -470,8 +472,9 @@ private:
 
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
-  void break_shuffled_indexes(const std::vector<size_t>& shuffled_indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
+  void break_indexes(const std::vector<size_t>& indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
+  void create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
   double calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const;
 
