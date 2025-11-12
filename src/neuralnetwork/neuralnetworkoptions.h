@@ -33,7 +33,8 @@ private:
     _residual_layer_jump(-1),
     _clip_threshold(1.0),
     _learning_rate_warmup_start(0.0),
-    _learning_rate_warmup_target(0.0)
+    _learning_rate_warmup_target(0.0),
+    _shuffle_training_data(true)
   {
   }
 
@@ -86,6 +87,7 @@ public:
       _clip_threshold = nno._clip_threshold;
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
+      _shuffle_training_data = nno._shuffle_training_data;
     }
     return *this;
   }
@@ -125,6 +127,7 @@ public:
       nno._clip_threshold = 1.0;
       nno._learning_rate_warmup_start = 0.0;
       nno._learning_rate_warmup_target = 0.0;
+      nno._shuffle_training_data = true;
     }
     return *this;
   }
@@ -202,7 +205,6 @@ public:
     _optimiser_type = optimiser_type;
     return *this;
   }
-
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
   {
     _residual_layer_jump = residual_layer_jump;
@@ -211,6 +213,11 @@ public:
   NeuralNetworkOptions& with_clip_threshold(double clip_threshold)
   {
     _clip_threshold = clip_threshold;
+    return *this;
+  }
+  NeuralNetworkOptions& with_shuffle_training_data(bool shuffle_training_data)
+  {
+    _shuffle_training_data = shuffle_training_data;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
@@ -346,28 +353,30 @@ public:
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold);
+      .with_shuffle_training_data(true);
   }
 
-  inline const std::vector<unsigned>& topology() const { return _topology; }
-  inline const std::vector<double>& dropout() const { return _dropout; }
-  inline const activation::method& hidden_activation_method() const { return _hidden_activation; }
-  inline const activation::method& output_activation_method() const { return _output_activation; }
-  inline double learning_rate() const { return _learning_rate; }
-  inline int number_of_epoch() const { return _number_of_epoch; }
-  inline int batch_size() const { return _batch_size; }
-  inline bool data_is_unique() const { return _data_is_unique; }
+  inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
+  inline const std::vector<double>& dropout() const noexcept { return _dropout; }
+  inline const activation::method& hidden_activation_method() const noexcept { return _hidden_activation; }
+  inline const activation::method& output_activation_method() const noexcept { return _output_activation; }
+  inline double learning_rate() const noexcept { return _learning_rate; }
+  inline int number_of_epoch() const noexcept { return _number_of_epoch; }
+  inline int batch_size() const noexcept { return _batch_size; }
+  inline bool data_is_unique() const noexcept { return _data_is_unique; }
   inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
-  inline Logger::LogLevel log_level() const { return _log_level; }
-  inline int number_of_threads() const { return _number_of_threads; }
-  inline double learning_rate_decay_rate() const { return _learning_rate_decay_rate; }
-  inline bool adaptive_learning_rate() const { return _adaptive_learning_rate; }
-  inline OptimiserType optimiser_type() const { return _optimiser_type; }
-  inline double learning_rate_restart_rate() const { return _learning_rate_restart_rate; }
-  inline double learning_rate_restart_boost() const { return _learning_rate_restart_boost; }
-  inline int residual_layer_jump() const { return _residual_layer_jump; }
-  inline double clip_threshold() const { return _clip_threshold; }
-  inline double learning_rate_warmup_start() const { return _learning_rate_warmup_start; };
-  inline double learning_rate_warmup_target() const { return _learning_rate_warmup_target; };
+  inline Logger::LogLevel log_level() const noexcept { return _log_level; }
+  inline int number_of_threads() const noexcept { return _number_of_threads; }
+  inline double learning_rate_decay_rate() const noexcept { return _learning_rate_decay_rate; }
+  inline bool adaptive_learning_rate() const noexcept { return _adaptive_learning_rate; }
+  inline OptimiserType optimiser_type() const noexcept { return _optimiser_type; }
+  inline double learning_rate_restart_rate() const noexcept { return _learning_rate_restart_rate; }
+  inline double learning_rate_restart_boost() const noexcept { return _learning_rate_restart_boost; }
+  inline int residual_layer_jump() const noexcept { return _residual_layer_jump; }
+  inline double clip_threshold() const noexcept { return _clip_threshold; }
+  inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
+  inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
+  inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
 
 private:
   std::vector<unsigned> _topology;
@@ -390,4 +399,5 @@ private:
   double _clip_threshold;
   double _learning_rate_warmup_start;  //  initial learning rate for warmup
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
+  bool _shuffle_training_data;
 };
