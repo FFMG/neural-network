@@ -70,7 +70,7 @@ public:
 
     auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
-      std::unique_lock<std::mutex> lock(_mutext);
+      std::unique_lock<std::mutex> lock(_mutex);
       if(_state.load() == State::Stopping)
       {
         throw std::invalid_argument("The task queue is stopping!");
@@ -92,7 +92,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::vector<R> output;
-    std::unique_lock<std::mutex> lock(_mutext);
+    std::unique_lock<std::mutex> lock(_mutex);
     _condition_busy_task_complete.wait(lock, [this] 
       {
         return _total_pending_tasks.load() == 0;
@@ -133,11 +133,13 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    std::vector<R> local_results;
+    local_results.reserve(100); // pre-allocate some space.
     while (_state.load(std::memory_order_relaxed) == State::Started)
     {
       std::function<R()> task;
       {
-        std::unique_lock<std::mutex> lock(_mutext);
+        std::unique_lock<std::mutex> lock(_mutex);
         _condition_new_task.wait(lock, [this]
           {
             return !_tasks.empty() || _state.load() != State::Started;
@@ -151,11 +153,25 @@ private:
         _tasks.pop();
       }
 
-      R result = task();
-
+      try
       {
-        std::unique_lock<std::mutex> lock(_mutext);
-        _results.push_back(std::move(result));
+        R result = task();
+        {
+          local_results.push_back(std::move(result));
+          _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
+
+          // If this was the last pending task, notify waiters.
+          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+          {
+            _condition_busy_task_complete.notify_all();
+          }
+        }
+      }
+      catch(const std::exception& e)
+      {
+        Logger::error("TaskQueue caught exception in task:", e.what());
+
+        // even after an error, it is complete.
         _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
 
         // If this was the last pending task, notify waiters.
@@ -163,13 +179,24 @@ private:
         {
           _condition_busy_task_complete.notify_all();
         }
+        throw; // re-throw after logging and notifying
       }
     }
+
+    // we are done, do we have anything to move.
+    if(!local_results.empty())
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      _results.insert(_results.end(),
+        std::make_move_iterator(local_results.begin()),
+        std::make_move_iterator(local_results.end()));
+    }
+
     _state.store(State::Stopped);
   }
 
   std::thread _worker;
-  std::mutex _mutext;
+  std::mutex _mutex;
   std::condition_variable _condition_busy_task_complete;
   std::condition_variable _condition_new_task;
 
@@ -249,7 +276,7 @@ public:
     }
     auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
-      std::unique_lock<std::mutex> lock(_mutext);
+      std::unique_lock<std::mutex> lock(_mutex);
       if (_state.load() == State::Stopping)
       {
         throw std::invalid_argument("The task queue is stopping!");
@@ -270,7 +297,7 @@ public:
   R get()
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
-    std::unique_lock<std::mutex> lock(_mutext);
+    std::unique_lock<std::mutex> lock(_mutex);
     wait_for_task(lock);
 
     R output;
@@ -310,7 +337,7 @@ private:
     {
       std::function<R()> task;
       {
-        std::unique_lock<std::mutex> lock(_mutext);
+        std::unique_lock<std::mutex> lock(_mutex);
         _condition_new_task.wait(lock, [this]
           {
             return _task_is_present.load() || _state.load() != State::Started;
@@ -324,20 +351,32 @@ private:
         _has_result.store(false);
         _task_is_present.store(false);
       }
-      R result = task();
+
+      try
       {
-        std::unique_lock<std::mutex> lock(_mutext);
-        _result = std::move(result);
-        _has_result.store(true);
+        R result = task();
+        {
+          std::unique_lock<std::mutex> lock(_mutex);
+          _result = std::move(result);
+          _has_result.store(true);
+          _busy_task.store(false);
+          _condition_busy_task_complete.notify_all();
+        }
+      }
+      catch(const std::exception& e)
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
         _busy_task.store(false);
         _condition_busy_task_complete.notify_all();
+        Logger::error("SingleTaskQueue caught exception in task:", e.what());
+        throw; // re-throw after logging and notifying
       }
     }
     _state.store(State::Stopped);
   }
 
   std::thread _worker;
-  std::mutex _mutext;
+  std::mutex _mutex;
   std::condition_variable _condition_busy_task_complete;
   std::condition_variable _condition_new_task;
 
