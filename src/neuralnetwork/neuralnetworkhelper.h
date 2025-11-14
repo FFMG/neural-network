@@ -11,11 +11,11 @@ public:
   class NeuralNetworkHelperMetrics
   {
   public:
-    long double error() const { 
+    inline long double error() const noexcept { 
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error; 
     }
-    NeuralNetworkOptions::ErrorCalculation error_type() const { 
+    inline NeuralNetworkOptions::ErrorCalculation error_type() const noexcept { 
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error_type; 
     }
@@ -129,7 +129,7 @@ public:
     return _learning_rate; 
   }
   
-  void set_learning_rate(double learning_rate) { 
+  void set_learning_rate(double learning_rate) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _learning_rate = learning_rate; 
   }
@@ -154,14 +154,13 @@ public:
   NeuralNetworkHelperMetrics calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const;
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const;
 
-protected:
   NeuralNetworkHelper(
     NeuralNetwork& neural_network,
     double learning_rate,
     unsigned number_of_epoch,
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs
-  ) :
+  ) noexcept :
     _neural_network(&neural_network),
     _learning_rate(learning_rate),
     _number_of_epoch(number_of_epoch),
@@ -172,46 +171,46 @@ protected:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
   }
 
-  void set_epoch(unsigned epoch) { 
+  void set_epoch(unsigned epoch) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _epoch = epoch; 
   }
 
-  void move_indexes(
+  void move_indexes (
     std::vector<size_t>&& training_indexes,
     std::vector<size_t>&& checking_indexes,
     std::vector<size_t>&& final_check_indexes
   )
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    _training_indexes = training_indexes;
-    _checking_indexes = checking_indexes;
-    _final_check_indexes = final_check_indexes;
+    _training_indexes = std::move(training_indexes);
+    _checking_indexes = std::move(checking_indexes);
+    _final_check_indexes = std::move(final_check_indexes);
   }
 
   void move_training_indexes(std::vector<size_t>&& training_indexes)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    _training_indexes = training_indexes;
+    _training_indexes = std::move(training_indexes);
   }
 
-  const std::vector<size_t>& training_indexes() const { 
+  const std::vector<size_t>& training_indexes() const noexcept { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_indexes; 
   }
-  const std::vector<size_t>& checking_indexes() const { 
+  const std::vector<size_t>& checking_indexes() const noexcept { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _checking_indexes; 
   }
-  const std::vector<size_t>& final_check_indexes() const { 
+  const std::vector<size_t>& final_check_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _final_check_indexes; 
   }
-  const std::vector<std::vector<double>>& training_inputs() const { 
+  const std::vector<std::vector<double>>& training_inputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_inputs; 
   }
-  const std::vector<std::vector<double>>& training_outputs() const { 
+  const std::vector<std::vector<double>>& training_outputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_outputs; 
   }
