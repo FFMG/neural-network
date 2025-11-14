@@ -10,9 +10,9 @@ class ExampleThreebitParity
 public:
   static void ThreebitParity(Logger::LogLevel log_level)
   {
-    std::vector<unsigned> topology = {3, 4, 1};
-    const int number_of_epoch = 10000;
-    const double learning_rate = 0.5;
+    std::vector<unsigned> topology = {3, 3, 1};
+    const int number_of_epoch = 1000;
+    const double learning_rate = 0.1;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -40,7 +40,7 @@ public:
       Logger::info("No Batch:");
       auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(1)
-        .with_hidden_activation_method(activation::method::relu)
+        .with_hidden_activation_method(activation::method::tanh)
         .with_output_activation_method(activation::method::sigmoid)
         .with_log_level(log_level)
         .with_learning_rate(learning_rate)
@@ -48,6 +48,7 @@ public:
         .with_adaptive_learning_rates(false)
         .with_optimiser_type(OptimiserType::SGD)
         .with_clip_threshold(1.0)
+        .with_data_is_unique(true)
         .build();
 
       auto* nn = new NeuralNetwork(options);
@@ -75,7 +76,7 @@ public:
 
         auto options = NeuralNetworkOptions::create(topology)
           .with_batch_size(batch_size)
-          .with_hidden_activation_method(activation::method::relu)
+          .with_hidden_activation_method(activation::method::tanh)
           .with_output_activation_method(activation::method::sigmoid)
           .with_log_level(log_level)
           .with_learning_rate(learning_rate)
