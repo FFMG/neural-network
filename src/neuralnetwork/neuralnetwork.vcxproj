@@ -152,6 +152,7 @@
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\threebitparity.h" />
+    <ClInclude Include="examples\twomoon.h" />
     <ClInclude Include="examples\xor.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="layers.h" />
