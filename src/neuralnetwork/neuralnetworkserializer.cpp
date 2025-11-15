@@ -614,6 +614,8 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
     NeuralNetworkOptions::ErrorCalculation::mape,
     NeuralNetworkOptions::ErrorCalculation::smape,
     NeuralNetworkOptions::ErrorCalculation::wape,
+    NeuralNetworkOptions::ErrorCalculation::directional_accuracy,
+    NeuralNetworkOptions::ErrorCalculation::bce_loss
   });
 
   auto tj_errors = new TinyJSON::TJValueObject();
@@ -625,6 +627,8 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   tj_errors->set_float("mape"       , metrics[5].error());
   tj_errors->set_float("smape"      , metrics[6].error());
   tj_errors->set_float("wape"       , metrics[7].error());
+  tj_errors->set_float("directional-accuracy", metrics[8].error());
+  tj_errors->set_float("bce_loss"   , metrics[9].error());
 
   json.set("errors", tj_errors);
   delete tj_errors;
