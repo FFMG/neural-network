@@ -130,6 +130,20 @@ private:
     });
   }
 
+  void move_local_results_to_results(std::vector<R>& local_results)
+  {
+    // we are done, do we have anything to move.
+    if (local_results.empty())
+    {
+      return;
+    }
+    std::unique_lock<std::mutex> lock(_mutex);
+    _results.insert(_results.end(),
+      std::make_move_iterator(local_results.begin()),
+      std::make_move_iterator(local_results.end()));
+    local_results.clear();
+  }
+
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
@@ -163,6 +177,7 @@ private:
           // If this was the last pending task, notify waiters.
           if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
           {
+            move_local_results_to_results(local_results);
             _condition_busy_task_complete.notify_all();
           }
         }
@@ -177,21 +192,15 @@ private:
         // If this was the last pending task, notify waiters.
         if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
+          move_local_results_to_results(local_results);
           _condition_busy_task_complete.notify_all();
         }
         throw; // re-throw after logging and notifying
       }
     }
-
-    // we are done, do we have anything to move.
-    if(!local_results.empty())
-    {
-      std::unique_lock<std::mutex> lock(_mutex);
-      _results.insert(_results.end(),
-        std::make_move_iterator(local_results.begin()),
-        std::make_move_iterator(local_results.end()));
-    }
-
+    
+    // final move of whatever might remain.
+    move_local_results_to_results(local_results);
     _state.store(State::Stopped);
   }
 

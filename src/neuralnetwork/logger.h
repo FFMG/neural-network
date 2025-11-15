@@ -168,7 +168,7 @@ public:
   {
     std::ostringstream oss;
     print_args(oss, std::forward<Args>(args)...);
-    return  oss.str();
+    return oss.str();
   }
 private:
   LogLevel _min_level; // Stores the minimum logging level set by the user
