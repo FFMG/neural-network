@@ -790,6 +790,9 @@ double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation err
 
   case NeuralNetworkOptions::ErrorCalculation::directional_accuracy:
     return calculate_directional_accuracy(ground_truth, predictions);
+
+  case NeuralNetworkOptions::ErrorCalculation::bce_loss:
+      return calculate_bce_loss(ground_truth, predictions);
   }
 
   Logger::error("Unknown ErrorCalculation type!");
@@ -898,6 +901,51 @@ double NeuralNetwork::calculate_rmse_error(
   }
 
   return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
+}
+
+double NeuralNetwork::calculate_bce_loss(
+  const std::vector<std::vector<double>>& ground_truths,
+  const std::vector<std::vector<double>>& predictions) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (predictions.size() != ground_truths.size() || predictions.empty()) 
+  {
+    Logger::error("Mismatched number of samples");
+    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
+  }
+
+  double total_bce = 0.0;
+  size_t sequence_count = 0;
+
+  // small epsilon to avoid log(0)
+  const double eps = 1e-12;
+
+  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
+  {
+    const auto& gt = ground_truths[seq_idx];
+    const auto& pred = predictions[seq_idx];
+
+    if (gt.size() != pred.size() || gt.empty())
+    {
+      continue;
+    }
+
+    double bce = 0.0;
+    for (size_t i = 0; i < gt.size(); ++i) 
+    {
+      // clip predictions to [eps, 1 - eps]
+      double p = std::max(eps, std::min(1.0 - eps, pred[i]));
+      double y = gt[i];
+
+      bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
+    }
+
+    bce /= gt.size();    // average over outputs in sequence
+    total_bce += bce;
+    ++sequence_count;
+  }
+
+  return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
 }
 
 double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
