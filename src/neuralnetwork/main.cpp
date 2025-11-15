@@ -4,6 +4,7 @@
 
 #include "./examples/residualxor.h"
 #include "./examples/threebitparity.h"
+#include "./examples/twomoon.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
 
@@ -13,6 +14,9 @@ int main()
 
   auto log_level = Logger::LogLevel::Debug;
   Logger::set_level(log_level);
+
+  // Two Moon
+  ExampleTwoMoon::TwoMoon(log_level, true);
 
   // XOR
   ExampleXor::Xor(log_level, true);
