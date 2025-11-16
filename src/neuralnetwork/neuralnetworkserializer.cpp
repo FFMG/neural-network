@@ -177,6 +177,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto dropouts = options_object->get_floats<double>("dropout", false, false);
+  auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false); 
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -195,6 +196,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_learning_rate_warmup(learning_rate_warmup_start, learning_rate_warmup_target)
     .with_dropout(dropouts)
     .with_log_level(log_level)
+    .with_shuffle_training_data(shuffle_training_data)
     .build();
 }
 
@@ -222,6 +224,8 @@ std::map<NeuralNetworkOptions::ErrorCalculation, double> NeuralNetworkSerializer
   errors[NeuralNetworkOptions::ErrorCalculation::mape] = tj_errors->get_float<double>("mape", true, false);
   errors[NeuralNetworkOptions::ErrorCalculation::smape ] = tj_errors->get_float<double>("smape", true, false);
   errors[NeuralNetworkOptions::ErrorCalculation::wape ] = tj_errors->get_float<double>("wape", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::bce_loss ] = tj_errors->get_float<double>("bce-loss", true, false);
+  errors[NeuralNetworkOptions::ErrorCalculation::directional_accuracy ] = tj_errors->get_float<double>("directional-accuracy", true, false);
 
   return errors;
 }
@@ -389,7 +393,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
     auto optimiser_type = static_cast<OptimiserType>(optimiser_type_object->get_number());
 
     auto neuron_type = static_cast<Neuron::Type>(neuron_object->get_number("neuron-type", true, true));
-    auto dropout_rate = static_cast<double>(neuron_object->get_float("dropout-rate", true, true));
+    auto dropout_rate = neuron_object->get_float<double>("dropout-rate", true, true);
 
     // then the weights
     // the output layer can have zero weights
@@ -459,7 +463,6 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJS
   return weight_params;
 }
 
-
 void NeuralNetworkSerializer::add_weight_params(
   const std::vector<WeightParam>& weight_params,
   TinyJSON::TJValueObject& parent)
@@ -512,6 +515,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("learning-rate-restart-boost", options.learning_rate_restart_boost());
   options_object->set_number("residual-layer-jump", options.residual_layer_jump());
   options_object->set_float("clip-threshold", options.clip_threshold());
+  options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
 
   json.set("options", options_object);
 
@@ -628,7 +632,7 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   tj_errors->set_float("smape"      , metrics[6].error());
   tj_errors->set_float("wape"       , metrics[7].error());
   tj_errors->set_float("directional-accuracy", metrics[8].error());
-  tj_errors->set_float("bce_loss"   , metrics[9].error());
+  tj_errors->set_float("bce-loss"   , metrics[9].error());
 
   json.set("errors", tj_errors);
   delete tj_errors;
