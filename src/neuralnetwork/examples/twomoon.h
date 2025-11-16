@@ -143,11 +143,6 @@ public:
         auto nn_saved = NeuralNetworkSerializer::load(file_name);
         std::cout << "Output from saved file:" << std::endl;
         std::cout << std::fixed << std::setprecision(10);
-        auto t1 = nn_saved->think({ 0, 0, 1 });
-        std::cout << t1.front() << std::endl;//  should be close to 0
-        auto t2 = nn_saved->think({ 1, 1, 1 });
-        std::cout << t2.front() << std::endl; //  should be close to 1
-
         delete nn_saved;
       }
     }
@@ -160,22 +155,12 @@ public:
       train_neural_network(*nn);
     }
 
-    auto metrics = nn->calculate_forecast_metric( NeuralNetworkOptions::ErrorCalculation::rmse);
-
-    std::cout << "Error: " << metrics.error() << std::endl;
-
-    std::cout << "Output After Training:" << std::endl;
-    std::cout << std::fixed << std::setprecision(10);
-
-    // or we can train with a single inut
-    // we know that the output only has one value.
-    auto t1 = nn->think({ 0, 0, 1 });
-    std::cout << t1.front() << " (should be close to 0)" << std::endl;//  should be close to 0
-
-    // or we can train with a single inut
-    // we know that the output only has one value.
-    auto t2 = nn->think({ 1, 1, 1 });
-    std::cout << t2.front() << " (should be close to 1)" << std::endl; //  should be close to 1
+    auto metrics = nn->calculate_forecast_metrics( 
+      {
+        NeuralNetworkOptions::ErrorCalculation::rmse,
+        NeuralNetworkOptions::ErrorCalculation::bce_loss });
+    Logger::debug("Error rmse: ", metrics[0].error());
+    Logger::debug("Error bce:  ", metrics[1].error());
 
     delete nn;
     TEST_END
