@@ -1,4 +1,12 @@
 #pragma once
+#ifndef VALIDATE_DATA
+  #if !defined(NDEBUG)
+    #define VALIDATE_DATA 1
+  #else
+    #define VALIDATE_DATA 0
+  #endif
+#endif
+
 #include <cassert>
 #include <functional>
 #include <map>
@@ -12,6 +20,7 @@
 #include "layers.h"
 #include "neuron.h"
 #include "optimiser.h"
+#include "rng.h"
 #include "taskqueue.h"
 #include "neuralnetworkhelper.h"
 #include "neuralnetworkoptions.h"
@@ -40,6 +49,7 @@ private:
       _topology(std::move(src._topology))
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+      src._total_size = 0;
     }
 
     LayersAndNeuronsContainer& operator=(const LayersAndNeuronsContainer& src) noexcept
@@ -64,32 +74,23 @@ private:
         _total_size = src._total_size;
         _data = std::move(src._data);
         _topology = std::move(src._topology);
+        src._total_size = 0;
       }
       return *this;
     }
 
-    LayersAndNeuronsContainer(const std::vector<unsigned>& topology, bool shifted_by_one=false, bool add_bias=false) noexcept
+    LayersAndNeuronsContainer(const std::vector<unsigned>& topology) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
       const size_t topology_size = topology.size();
       _topology.reserve(topology_size);
       _offsets.reserve(topology_size);
 
-      if(shifted_by_one)
-      {
-        _topology.insert(_topology.begin(), topology.begin()+1, topology.end());
-      }
-      else
-      {
-        _topology.insert(_topology.begin(), topology.begin(), topology.end());
-      }
-      if(add_bias)
-      {
-        for (auto& t : _topology)
-        {
-          ++t;  //  bias
-        }
-      }
+      _topology.insert(_topology.begin(), topology.begin(), topology.end());
+//      for (auto& topology : _topology)
+//      {
+//        ++topology;  //  bias
+//      }
 
       // finaly populate the data
       const auto& size = _topology.size();
@@ -144,16 +145,6 @@ private:
       {
         _data[layer_offset+neuron] = d;
         ++neuron;
-      }
-    }
-
-    inline void add(const LayersAndNeuronsContainer& container)
-    {
-      MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
-      assert(_data.size() == container._data.size());
-      for( size_t index = 0; index < _data.size(); ++index)
-      {
-        _data[index] += container._data[index];
       }
     }
     
@@ -220,29 +211,25 @@ private:
   public:
     GradientsAndOutputs() = delete;
 
-    GradientsAndOutputs(const std::vector<unsigned>& topology, unsigned batch_size = 0) noexcept: 
-      _outputs(topology, false, false),
-      _gradients(topology, false, true),
-      _batch_size(batch_size)
+    GradientsAndOutputs(const std::vector<unsigned>& topology) noexcept: 
+      _outputs(topology),
+      _gradients(topology)
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     }
 
     GradientsAndOutputs(const GradientsAndOutputs& src) noexcept:
       _outputs(src._outputs),
-      _gradients(src._gradients),
-      _batch_size(src._batch_size)
+      _gradients(src._gradients)
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     }
 
     GradientsAndOutputs(GradientsAndOutputs&& src) noexcept: 
       _outputs(std::move(src._outputs)),
-      _gradients(std::move(src._gradients)),
-      _batch_size(src._batch_size)
+      _gradients(std::move(src._gradients))
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      src._batch_size = 0;
     }
 
     GradientsAndOutputs& operator=(const GradientsAndOutputs& src) noexcept
@@ -252,7 +239,6 @@ private:
       {
         _outputs = src._outputs;
         _gradients = src._gradients;
-        _batch_size = src._batch_size;
       }
       return *this;
     }
@@ -263,37 +249,24 @@ private:
       {
         _outputs = std::move(src._outputs);
         _gradients = std::move(src._gradients);
-        _batch_size = src._batch_size;
-        src._batch_size = 0;
       }
       return *this;
     }
     virtual ~GradientsAndOutputs() = default;
+
     void zero()
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      _batch_size = 0;
       _outputs.zero();
       _gradients.zero();
     }
-    void add(const GradientsAndOutputs& src) noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      _outputs.add(src._outputs);
-      _gradients.add(src._gradients);
-    }
-    
+
     [[nodiscard]] inline unsigned num_output_layers() const  noexcept
     { 
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       return static_cast<unsigned>(_outputs.number_layers());
     }
 
-    [[nodiscard]] inline unsigned batch_size() const noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      return _batch_size;
-    }
     [[nodiscard]] inline unsigned num_output_neurons(unsigned layer) const noexcept
     { 
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
@@ -310,6 +283,12 @@ private:
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
       _gradients.set(layer, neuron, gradient);
+    }
+
+    std::vector<double> get_gradients(unsigned layer) const
+    {
+      MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+      return _gradients.get_neurons(layer);
     }
 
     void set_gradients(unsigned layer, const std::vector<double>& gradients)
@@ -342,6 +321,12 @@ private:
       return static_cast<unsigned>(_gradients.number_neurons(layer));
     }
 
+    [[nodiscard]] inline std::vector<double> get_outputs(unsigned layer) const noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+      return _outputs.get_neurons(layer);
+    }
+
     [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
@@ -359,8 +344,7 @@ private:
     unsigned num_outputs(unsigned layer) const
     {
       MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-      //  add the bias
-      return static_cast<unsigned>(_outputs.number_neurons(layer) + 1);
+      return static_cast<unsigned>(_outputs.number_neurons(layer));
     }
     
     void set_outputs(unsigned layer, const std::vector<double>& outputs)
@@ -384,7 +368,6 @@ private:
   private:
     alignas(32) LayersAndNeuronsContainer _outputs;
     alignas(32) LayersAndNeuronsContainer _gradients;
-    unsigned _batch_size;
   };
 
 public:
@@ -392,7 +375,7 @@ public:
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
   NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options, const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors);
   NeuralNetwork(const NeuralNetwork& src);
-  NeuralNetwork& operator=(const NeuralNetwork&) = delete;
+  NeuralNetwork& operator=(const NeuralNetwork&);
 
   virtual ~NeuralNetwork();
 
@@ -423,29 +406,45 @@ public:
 
 private:
   void calculate_back_propagation(
-    GradientsAndOutputs& gradients,
-    const std::vector<double>& outputs, 
+    std::vector<GradientsAndOutputs>& gradients,
+    const std::vector<std::vector<double>>& outputs, 
+    const Layers& layers) const;
+
+  void calculate_back_propagation_input_layer(
+    std::vector<GradientsAndOutputs>& gradients,
+    const Layers& layers) const;
+
+  void calculate_back_propagation_output_layer(
+    std::vector<GradientsAndOutputs>& gradients,
+    const std::vector<std::vector<double>>& outputs,
+    const Layers& layers) const;
+
+  void calculate_back_propagation_hidden_layers(
+    std::vector<GradientsAndOutputs>& gradients,
     const Layers& layers) const;
   void calculate_forward_feed(
-    GradientsAndOutputs& gradients,
-    const std::vector<double>& inputs, 
+    std::vector<GradientsAndOutputs>& gradients_and_output,
+    std::vector<HiddenStates>& hidden_states,
+    const std::vector<std::vector<double>>& inputs, 
     const Layers& layers, 
     bool is_training) const;
-  GradientsAndOutputs train_single_batch(
+  std::vector<GradientsAndOutputs> train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,
     const size_t size
   ) const;
 
-  std::vector<double> calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
-  std::vector<double> calculate_residual_projection_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
+  void set_gradients_for_layer(std::vector<GradientsAndOutputs>& source, unsigned layer_number, const std::vector<std::vector<double>>& gradients) const;
+  std::vector<std::vector<double>> get_outputs_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const;
+  std::vector<std::vector<double>> get_gradients_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const;
 
+  std::vector<double> calculate_weight_gradients(const unsigned batch_size, unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
+  std::vector<double> calculate_residual_projection_gradients(const unsigned batch_size, unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const;
+
+  void apply_weight_gradients(Layers& layers, const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
   void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
-  void apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const;
 
   Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const;
-
-  std::vector<double> calculate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const;
 
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const;
 
@@ -498,4 +497,6 @@ private:
   NeuralNetworkOptions _options;
   NeuralNetworkHelper* _neural_network_helper;
   std::map<NeuralNetworkOptions::ErrorCalculation, double> _saved_errors;
+
+  Rng _rng;
 };
