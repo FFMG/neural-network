@@ -1,4 +1,13 @@
 #pragma once
+#ifndef VALIDATE_DATA
+  #if !defined(NDEBUG)
+    #define VALIDATE_DATA 1
+  #else
+    #define VALIDATE_DATA 0
+  #endif
+#endif
+
+#include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
@@ -10,7 +19,7 @@ class Neuron;
 class Layer
 {
 protected:
-  class ResidualProjector 
+  class ResidualProjector
   {
   public:
     ResidualProjector(
@@ -19,45 +28,46 @@ protected:
       const activation& activation_method
     )
       : _input_size(input_size),
-        _output_size(output_size)
+      _output_size(output_size)
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       _weight_params.reserve(output_size);
-      for( unsigned out = 0; out < _output_size; ++out)
+      for (unsigned out = 0; out < _output_size; ++out)
       {
         std::vector<WeightParam> weights;
         weights.reserve(_input_size);
         auto values = activation_method.weight_initialization(input_size, 1);  // row: 1 x input_size
-        for( auto& value : values)
+        for (auto& value : values)
         {
-          weights.emplace_back(WeightParam(value, 0.0, 0.0));
+          // TODO set weigh_decay in the options and add it to the info output on start of training.
+          weights.emplace_back(WeightParam(value, 0.0, 0.0, 0.0, 0.0));
         }
         _weight_params.emplace_back(weights);
       }
     }
 
     ResidualProjector(const std::vector<std::vector<WeightParam>>& weight_params) :
-       _input_size(0),
-       _output_size(0),
-       _weight_params(weight_params)
+      _input_size(0),
+      _output_size(0),
+      _weight_params(weight_params)
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       _output_size = static_cast<unsigned>(weight_params.size());
       _input_size = _output_size > 0 ? static_cast<unsigned>(weight_params.back().size()) : 0;
     }
 
-    ResidualProjector(const ResidualProjector& rp ) :
-       _input_size(rp._input_size),
-       _output_size(rp._output_size),
-       _weight_params(rp._weight_params)
+    ResidualProjector(const ResidualProjector& rp) :
+      _input_size(rp._input_size),
+      _output_size(rp._output_size),
+      _weight_params(rp._weight_params)
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     }
 
-    ResidualProjector(ResidualProjector&& rp ) noexcept :
-       _input_size(rp._input_size),
-       _output_size(rp._output_size),
-       _weight_params(std::move(rp._weight_params))
+    ResidualProjector(ResidualProjector&& rp) noexcept :
+      _input_size(rp._input_size),
+      _output_size(rp._output_size),
+      _weight_params(std::move(rp._weight_params))
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     }
@@ -65,26 +75,26 @@ protected:
     virtual ~ResidualProjector() = default;
 
     // Projects residual_layer_outputs (size = input_size) to a vector of size = output_size
-    std::vector<double> project(const std::vector<double>& residual_layer_outputs) const 
+    std::vector<double> project(const std::vector<double>& residual_layer_outputs) const
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(residual_layer_outputs.size() == _input_size);
       std::vector<double> projected(_output_size, 0.0);
-      for (size_t out = 0; out < _output_size; ++out) 
+      for (size_t out = 0; out < _output_size; ++out)
       {
-        for (size_t in = 0; in < _input_size; ++in) 
+        for (size_t in = 0; in < _input_size; ++in)
         {
-          auto value = _weight_params[out][in].value();
+          auto value = _weight_params[out][in].get_value();
           projected[out] += value * residual_layer_outputs[in];
         }
       }
       return projected;
     }
 
-    const std::vector<std::vector<WeightParam>>& get_weights() const 
-    { 
+    const std::vector<std::vector<WeightParam>>& get_weights() const
+    {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-      return _weight_params; 
+      return _weight_params;
     }
     inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
     {
@@ -92,17 +102,17 @@ protected:
       return _weight_params;
     }
     inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index)
-    { 
+    {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(residual_source_index < _weight_params.size());
       assert(target_neuron_index < _weight_params[residual_source_index].size());
       return _weight_params[residual_source_index][target_neuron_index];
     }
-    void update_weight(size_t out, size_t in, double delta) 
+    void update_weight(size_t out, size_t in, double delta)
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(out < _output_size && in < _input_size);
-      auto value = _weight_params[out][in].value();
+      auto value = _weight_params[out][in].get_value();
       _weight_params[out][in].set_value(value + delta);
     }
 
@@ -119,64 +129,68 @@ protected:
     unsigned _input_size;
     unsigned _output_size;
     std::vector<std::vector<WeightParam>> _weight_params;  // shape: [output][input]
-  };  
+  };
 
   void move_residual_projector(ResidualProjector* residual_projector);
 
   friend class Layers;
 public:
-  enum class LayerType 
+  enum class LayerType
   {
     Input,
     Hidden,
     Output
   };
-private:  
-  Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate);
+private:
+  Layer(unsigned layer_index, unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate);
   Layer(LayerType layer_type);
 
-public:  
+public:
   Layer(const Layer& src) noexcept;
   Layer(Layer&& src) noexcept;
   Layer& operator=(const Layer& src) noexcept;
   Layer& operator=(Layer&& src) noexcept;
   virtual ~Layer();
 
-  unsigned number_neurons() const;
+  unsigned number_neurons() const noexcept;
+  unsigned number_neurons_with_bias() const noexcept;
   const std::vector<Neuron>& get_neurons() const;
   std::vector<Neuron>& get_neurons();
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
 
-  LayerType layer_type() const { return _layer_type;}
+  LayerType layer_type() const { return _layer_type; }
 
   static Layer create_input_layer(const std::vector<Neuron>& neurons);
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer);
 
-  static Layer create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
+  static Layer create_hidden_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
   static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
 
-  static Layer create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
+  static Layer create_output_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
   static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
-  inline int residual_layer_number() const
-  { 
+  inline int residual_layer_number() const noexcept
+  {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_layer_number;
   };
-  
-  inline int residual_input_size() const{
+
+  inline int residual_input_size() const
+  {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if(_residual_projector == nullptr)
+    if (_residual_projector == nullptr)
     {
       return -1;
     }
     return _residual_projector->input_size();
   }
-  inline int residual_output_size() const{
+
+  inline int residual_output_size() const 
+  {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if(_residual_projector == nullptr)
+    if (_residual_projector == nullptr)
     {
       return -1;
     }
@@ -185,13 +199,124 @@ public:
   std::vector<double> residual_output_values(const std::vector<double>& residual_layer_outputs) const;
   WeightParam& residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index);
   const std::vector<std::vector<WeightParam>>& residual_weight_params() const;
+
+  std::vector<std::vector<double>> calculate_forward_feed(
+    const Layer& previous_layer,
+    const std::vector<std::vector<double>>& previous_layer_inputs,
+    const std::vector<std::vector<double>>& residual_output_values,
+    std::vector<std::vector<HiddenState>>& hidden_states,
+    bool is_training) const;
+
+  std::vector<std::vector<double>> calculate_output_gradients(
+    const std::vector<std::vector<double>>& target_outputs,
+    const std::vector<std::vector<double>>& given_outputs) const;
+
+  std::vector<std::vector<double>> calculate_hidden_gradients(
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& next_grad_matrix,
+    const std::vector<std::vector<double>>& output_matrix) const;
+
+  inline unsigned number_input_neurons(bool add_bias) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _number_input_neurons + (add_bias ? 1 : 0);
+  }
+
+  inline unsigned get_layer_index() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_index;
+  }
+
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale);
+
+  // optimisers
+  // TODO THOSE SHOULD ALL BE PRIVATE
+  static double clip_gradient(double gradient);
+  static void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate);
+  static void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias);
+  static void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias);
+  static void apply_adamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon
+  );
+  static void apply_nadam_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon
+  );
+  static void apply_nadamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon,
+    bool is_bias
+  );
+
+  const std::vector<std::vector<WeightParam>>& get_weight_params() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _weights;
+  }
+
+  const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // TODO Valiate
+    return _weights[input_neuron_number][neuron_index];
+  }
+  WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // TODO Valiate
+    return _weights[input_neuron_number][neuron_index];
+  }
+  WeightParam& get_bias_weight_param(unsigned neuron_index)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // TODO Valiate
+    return _bias_weights[neuron_index];
+  }
+
+  bool has_bias() const noexcept;
+
+  inline const std::vector<WeightParam>& get_bias_weight_params() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // TODO Valiate and profile.
+    return _bias_weights;
+  }
+
 private:
   void clean();
+  void resize_weights(
+    const activation& activation_method,
+    unsigned number_input_neurons, 
+    unsigned number_output_neurons, 
+    double weight_decay);
 
+  unsigned _layer_index;
   std::vector<Neuron> _neurons;
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer
   int _residual_layer_number;
   ResidualProjector* _residual_projector;
   LayerType _layer_type;
+  OptimiserType _optimiser_type;
+  activation _activation_method;
+
+  // N_prev = number of neurons in previous layer
+  // N_this = number of neurons in this layer
+  // Size: [N_prev][N_this]
+  std::vector<std::vector<WeightParam>> _weights;
+  std::vector<WeightParam> _bias_weights;
 };
