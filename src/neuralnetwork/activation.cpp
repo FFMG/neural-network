@@ -88,7 +88,8 @@ double activation::calculate_sigmoid(double x)
 double activation::calculate_sigmoid_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return x * (1 - x);
+  const auto sigmoid_output = calculate_sigmoid(x);
+  return sigmoid_output * (1.0 - sigmoid_output);
 }
 
 double activation::calculate_selu(double x) 
