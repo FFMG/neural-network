@@ -84,6 +84,7 @@ public:
           .with_adaptive_learning_rates(false)
           .with_optimiser_type(OptimiserType::SGD)
           .with_clip_threshold(1.0)
+          .with_data_is_unique(true)
           .build();
 
         auto* nn = new NeuralNetwork(options);
