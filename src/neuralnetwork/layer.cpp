@@ -188,7 +188,7 @@ void Layer::resize_weights(
   {
     _bias_weights.reserve(number_output_neurons);
     auto weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
-    for (auto o = 0; o < number_output_neurons; ++o)
+    for (unsigned o = 0; o < number_output_neurons; ++o)
     {
       // bias has no weight decay.
       const auto& weight = weights[o];
@@ -203,7 +203,7 @@ void Layer::resize_weights(
   }
 
   _weights.resize(number_input_neurons);
-  for (auto i = 0; i < number_input_neurons; ++i)
+  for (unsigned i = 0; i < number_input_neurons; ++i)
   {
     // TODO the activation function is using the wrong variable names here.
     //      we should use input and output in that function and return exctly number_outputs_neurons weights.
@@ -211,7 +211,7 @@ void Layer::resize_weights(
     auto weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
     assert(weights.size() == number_output_neurons);
     _weights[i].reserve(number_output_neurons);
-    for (auto o = 0; o < number_output_neurons; ++o)
+    for (unsigned o = 0; o < number_output_neurons; ++o)
     {
       const auto& weight = weights[o];
       _weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, 0.0, weight_decay));
@@ -415,6 +415,7 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   std::vector<std::vector<HiddenState>>& hidden_states,
   bool is_training) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t batch_size = previous_layer_inputs.size();
   const size_t N_prev = previous_layer.number_neurons();  // INPUT SIZE
   const size_t N_this = number_neurons();                 // OUTPUT SIZE
@@ -565,6 +566,7 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t B = target_outputs.size();   // batch size
   const size_t N_total = number_neurons();  // includes bias if present
 
@@ -582,7 +584,7 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
   // Map output index (no bias) to neuron index (with bias)
   size_t out_col = 0;  // index in target/given arrays
 
-  for (size_t neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
   {
     const auto& neuron = get_neuron(neuron_index);
     for (size_t b = 0; b < B; ++b)
@@ -617,6 +619,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   const std::vector<std::vector<double>>& next_grad_matrix,
   const std::vector<std::vector<double>>& output_matrix) const
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t B = next_grad_matrix.size();   // batch size
   const size_t N_this = number_neurons();
   const size_t N_next_total = next_layer.number_neurons();
@@ -636,15 +639,18 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   for (size_t b = 0; b < B; b++)
   {
     if (next_grad_matrix[b].size() != N_next_no_bias)
-      throw std::runtime_error("next_grad_matrix wrong shape");
+    {
+      Logger::panic("next_grad_matrix wrong shape");
+    }
 
     if (output_matrix[b].size() != N_this)
-      throw std::runtime_error("output_matrix wrong shape");
+    {
+      Logger::panic("output_matrix wrong shape");
+    }
   }
 
   // ---- Allocate gradient output (same size as this layer neurons) ----
-  std::vector<std::vector<double>> grad_matrix(
-    B, std::vector<double>(N_this, 0.0));
+  std::vector<std::vector<double>> grad_matrix(B, std::vector<double>(N_this, 0.0));
 
   // ---- Compute hidden layer gradients ----
   //
@@ -653,7 +659,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   //
   for (size_t b = 0; b < B; b++)
   {
-    for (size_t i = 0; i < N_this; i++)
+    for (unsigned i = 0; i < static_cast<unsigned>(N_this); i++)
     {
       const auto& neuron = get_neuron(i);
 
@@ -731,7 +737,7 @@ void Layer::apply_nadamw_update(
   bool is_bias
 )
 {
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   // 1. Increment timestep
   weight_param.increment_timestep();
   const long long time_step = weight_param.get_timestep();
@@ -839,7 +845,7 @@ void Layer::apply_adam_update(WeightParam& weight_param, double raw_gradient, do
 
 void Layer::apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate)
 {
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
   weight_param.set_raw_gradient(raw_gradient);
   weight_param.set_value(new_weight);
@@ -876,17 +882,15 @@ void Layer::apply_sgd_update(WeightParam& weight_param, double raw_gradient, dou
 
 void Layer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
 {
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (!std::isfinite(gradient))
   {
-    Logger::error("Error while calculating input weigh gradient it invalid.");
-    throw std::invalid_argument("Error while calculating input weight.");
+    Logger::panic("Error while calculating input weigh gradient it invalid.");
   }
   auto old_velocity = weight_param.get_velocity();
   if (!std::isfinite(old_velocity))
   {
-    Logger::error("Error while calculating input weigh old velocity is invalid.");
-    throw std::invalid_argument("Error while calculating input weigh old velocity is invalid.");
+    Logger::panic("Error while calculating input weigh old velocity is invalid.");
   }
 
   if (clipping_scale < 0.0)
