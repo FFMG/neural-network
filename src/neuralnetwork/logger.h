@@ -1,7 +1,7 @@
 #pragma once
-
 #include <algorithm>
 #include <chrono>     // Required for time operations (std::chrono)
+#include <exception>
 #include <functional>
 #include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
 #include <iostream>   // Required for std::cout and std::endl
@@ -19,6 +19,7 @@ public:
     Information,
     Warning,
     Error,
+    Panic,
     None
   };
 
@@ -30,6 +31,7 @@ public:
       case LogLevel::Information:  return "Info";
       case LogLevel::Warning:      return "Warning";
       case LogLevel::Error:        return "Error";
+      case LogLevel::Panic:        return "Panic";
       case LogLevel::None:         return "None";
 
       case LogLevel::Debug:
@@ -63,6 +65,10 @@ public:
     if(lower_str == "error")  
     {
       return LogLevel::Error;
+    }
+    if (lower_str == "panic")
+    {
+      return LogLevel::Panic;
     }
     if(lower_str == "none")  
     {
@@ -140,6 +146,12 @@ public:
   static void error(Args&&... args)
   {
     log(LogLevel::Error, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  static void panic(Args&&... args)
+  {
+    log(LogLevel::Panic, std::forward<Args>(args)...);
   }
 
   static inline bool can_trace()
@@ -247,7 +259,7 @@ private:
   void string(LogLevel level, std::string message) const
   {
     // Only log if the current message's level is at or above the minimum configured level
-    if (level < _min_level)
+    if (level != LogLevel::Panic && level < _min_level)
     {
       return;
     }
@@ -288,6 +300,11 @@ private:
         tag = "[ERR]";
         break;
 
+    case LogLevel::Panic:
+      color_code = LogColorRed;
+      tag = "[PAN]";
+      break;
+
     case LogLevel::None: // Should not be reached for logging, but included for completeness
         return; // If somehow called with None, just return
     }
@@ -300,5 +317,10 @@ private:
 
     // 5. Print the final message to the console
     std::cout << oss.str();
+
+    if (level == LogLevel::Panic)
+    {
+      throw std::runtime_error(oss.str());
+    }
   }
 };
