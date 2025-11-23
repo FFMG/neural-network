@@ -359,7 +359,24 @@ Neuron& Layer::get_neuron(unsigned index)
   return _neurons[index];
 }
 
-std::vector<double> Layer::residual_output_values(const std::vector<double>& residual_layer_outputs) const
+std::vector<std::vector<double>> Layer::project_residual_output_values(const std::vector<std::vector<double>>& residual_layer_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  if (residual_layer_outputs.empty())
+  {
+    return {};
+  }
+
+  std::vector<std::vector<double>> projected;
+  projected.reserve(residual_layer_outputs.size());
+  for (const auto& batch : residual_layer_outputs)
+  {
+    projected.emplace_back(project_residual_output_values(batch));
+  }
+  return projected;
+}
+
+std::vector<double> Layer::project_residual_output_values(const std::vector<double>& residual_layer_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(nullptr == _residual_projector)
@@ -402,13 +419,15 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   const size_t N_prev = previous_layer.number_neurons();  // INPUT SIZE
   const size_t N_this = number_neurons();                 // OUTPUT SIZE
 
+  const auto projected_residual_output_values = project_residual_output_values(residual_output_values);
+
 #if VALIDATE_DATA == 1
   // 1. Validate previous layer input shape
   for (size_t batch_index = 0; batch_index < batch_size; batch_index++)
   {
     if (previous_layer_inputs[batch_index].size() != N_prev)
     {
-      // TODO ADD LOG MESSAGE BEFORE THROWS
+      Logger::error("previous_layer_inputs wrong shape");
       throw std::runtime_error("previous_layer_inputs wrong shape");
     }
   }
@@ -418,16 +437,19 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   {
     if (residual_output_values.size() != batch_size)
     {
-      // TODO ADD LOG MESSAGE BEFORE THROWS
+      Logger::error("residual_output_values wrong batch size");
       throw std::runtime_error("residual_output_values wrong batch size");
     }
 
     for (size_t b = 0; b < batch_size; b++)
     {
-      if (!residual_output_values[b].empty() && residual_output_values[b].size() != N_this)
+      if (!projected_residual_output_values[b].empty())
       {
-        // TODO ADD LOG MESSAGE BEFORE THROWS
-        throw std::runtime_error("residual_output_values row wrong size");
+        if (projected_residual_output_values[b].size() != N_this)
+        {
+          Logger::error("residual_output_values row wrong size");
+          throw std::runtime_error("residual_output_values row wrong size");
+        }
       }
     }
   }
@@ -435,7 +457,7 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   // 3. Validate THIS layer's weights
   if (_weights.size() != N_prev)
   {
-    // TODO ADD LOG MESSAGE BEFORE THROWS
+    Logger::error("Layer::_weights row count != N_prev");
     throw std::runtime_error("Layer::_weights row count != N_prev");
   }
 
@@ -443,21 +465,20 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   {
     if (_weights[i].size() != N_this)
     {
-      // TODO ADD LOG MESSAGE BEFORE THROWS
+      Logger::error("Layer::_weights column count != N_this");
       throw std::runtime_error("Layer::_weights column count != N_this");
     }
   }
 
   if (!_bias_weights.empty() && _bias_weights.size() != N_this)
   {
-    // TODO ADD LOG MESSAGE BEFORE THROWS
+    Logger::error("Layer::_bias_weights size != N_this");
     throw std::runtime_error("Layer::_bias_weights size != N_this");
   }
 #endif
 
   // Initialize with 0.0
   std::vector<std::vector<double>> output_matrix(batch_size, std::vector<double>(N_this, 0.0));
-
   for (size_t b = 0; b < batch_size; b++)
   {
     const auto& prev_row = previous_layer_inputs[b];
@@ -505,16 +526,11 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
       double sum = output_row[j];
 
       // Residual
-      if (!residual_output_values.empty() && !residual_output_values[b].empty()) 
+      if (!projected_residual_output_values.empty() && !projected_residual_output_values[b].empty())
       {
-        sum += residual_output_values[b][j];
+        sum += projected_residual_output_values[b][j];
       }
 
-      // Recurrent
-      if (hidden_states[b][j].is_recurrent_neural_network()) 
-      {
-        sum = hidden_states[b][j].update_sum(sum, neuron.get_recurrent_weight().get_value());
-      }
 
       // Activation
       double output = neuron.get_activation_method().activate(sum);
