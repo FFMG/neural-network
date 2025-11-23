@@ -5,6 +5,7 @@
 #include "./examples/residualxor.h"
 #include "./examples/threebitparity.h"
 #include "./examples/twomoon.h"
+#include "./examples/spiral.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
 
@@ -14,6 +15,9 @@ int main()
 
   auto log_level = Logger::LogLevel::Debug;
   Logger::set_level(log_level);
+
+  // Spiral
+  ExampleSpiral::Spiral(log_level, true);
 
   // Two Moon
   ExampleTwoMoon::TwoMoon(log_level, true);
