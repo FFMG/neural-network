@@ -63,7 +63,7 @@ public:
 class ExampleTwoMoon
 {
 private:
-  static NeuralNetwork* create_neural_network(Logger::LogLevel log_level, unsigned epoch, unsigned batch_size)
+  static NeuralNetwork* create_neural_network(Logger::LogLevel log_level, unsigned epoch, unsigned batch_size, double learning_rate)
   {
     std::vector<unsigned> topology = {2, 8, 8, 1};
     auto options = NeuralNetworkOptions::create(topology)
@@ -72,14 +72,13 @@ private:
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
       .with_dropout({0.0, 0.0})
-      .with_learning_rate(0.80)
+      .with_learning_rate(learning_rate)
       .with_clip_threshold(2)
-      .with_learning_rate_warmup(0.50, 0.80) // from 0.01 to 0.05
+      .with_learning_rate_warmup(learning_rate * 0.5, 0.075) // from 1/2 LR to LR
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
-      .with_batch_size(16)
       .build();
 
     return new NeuralNetwork(options);
@@ -89,8 +88,7 @@ private:
   {
     std::vector<std::vector<double>> training_inputs;
     std::vector<std::vector<double>> training_outputs;
-
-    TwoMoonLoader::load_csv("./src/neuralnetwork/examples/two_moons.csv", training_inputs, training_outputs);
+    TwoMoonLoader::load_csv("./examples/two_moons.csv", training_inputs, training_outputs);
 
     Logger::debug("Loaded ", training_inputs.size(), " samples.");
     Logger::debug("First sample: x1=" ,training_inputs[0][0] 
@@ -102,16 +100,27 @@ private:
     // pass an array of array to think about
     // the result should be close to the training output.
     auto outputs = nn.think(training_inputs);
-    std::cout << "Output After Training:" << std::endl;
-    std::cout << std::fixed << std::setprecision(10);
-    for (const auto& row : outputs) 
+    Logger::info("Output After Training:");
+    for (size_t i = 0; i < outputs.size(); ++i) 
     {
-      for (double val : row) 
+      for (size_t j = 0; j < outputs[i].size(); ++j)
       {
-        std::cout << val << std::endl;
+        Logger::info(" ", std::fixed, std::setprecision(10), outputs[i][j], " exp: ", training_outputs[i][j]);
       }
     }
-    std::cout << std::endl;  
+
+    std::vector<std::vector<double>> training_test_inputs;
+    std::vector<std::vector<double>> training_test_outputs;
+    TwoMoonLoader::load_csv("./examples/two_moons_test.csv", training_test_inputs, training_test_outputs);
+    auto test_outputs = nn.think(training_inputs);
+    Logger::info("Test Output After Training:");
+    for (size_t i = 0; i < test_outputs.size(); ++i)
+    {
+      for (size_t j = 0; j < test_outputs[i].size(); ++j)
+      {
+        Logger::info(" ", std::fixed, std::setprecision(10), test_outputs[i][j], " exp: ", training_test_outputs[i][j]);
+      }
+    }
   }
 
 public:
@@ -121,35 +130,43 @@ public:
 
     // the file we will be loading from
     const char* file_name = "./twomoon.nn";
-    const unsigned epoch = 300;
-    const unsigned batch_size = 1;
+
+    /*
+      Learning rate = 1x learning rate x batch size
+
+        2,    0.05×(2/1),     0.10
+        8,    0.05×(8/1),     0.40
+        16,   0.05×(16/1),    0.80
+        32,   0.05×(32/1),    1.60
+        64,   0.05×(64/1),    3.20
+        128,  0.05×(128/1),   6.40
+    */
+    const unsigned epoch = 200;
+    const unsigned batch_size = 200;
+    const double one_batch_learning_rate = 0.01;
+    const double learning_rate = (batch_size * one_batch_learning_rate);
 
     // assume that it does not exist
     NeuralNetwork* nn = nullptr;
     if(use_file)
     {
-      nn = NeuralNetworkSerializer::load(file_name);
+      // nn = NeuralNetworkSerializer::load(file_name);
       if( nullptr == nn )
       {
         // we need to create it
-        nn = create_neural_network(log_level, epoch, batch_size);
+        nn = create_neural_network(log_level, epoch, batch_size, learning_rate);
 
         // train it
         train_neural_network(*nn);
 
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
-
-        auto nn_saved = NeuralNetworkSerializer::load(file_name);
-        std::cout << "Output from saved file:" << std::endl;
-        std::cout << std::fixed << std::setprecision(10);
-        delete nn_saved;
       }
     }
     else
     {
       // we need to create it
-      nn = create_neural_network(log_level, epoch, batch_size);
+      nn = create_neural_network(log_level, epoch, batch_size, learning_rate);
 
       // train it
       train_neural_network(*nn);
