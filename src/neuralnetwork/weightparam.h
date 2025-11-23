@@ -132,7 +132,6 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _unclipped_gradient;
   }
-
   inline double get_velocity() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -153,19 +152,17 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _second_moment_estimate;
   }
-
   inline double get_weight_decay() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _weight_decay;
   }
-  void set_value( double value) 
+  inline void set_value( double value) 
   { 
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(value))
     {
-      Logger::error("Error while setting value.");
-      throw std::invalid_argument("Error while setting value.");
+      Logger::panic("Error while setting value.");
       return;
     }
     _value = value; 
@@ -175,8 +172,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(raw_gradient))
     {
-      Logger::error("Error while setting gradient.");
-      throw std::invalid_argument("Error while setting gradient.");
+      Logger::panic("Error while setting gradient.");
       return;
     }
     _raw_gradient = raw_gradient;
@@ -186,20 +182,17 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(unclipped_gradient))
     {
-      Logger::error("Error while setting unclipped gradient.");
-      throw std::invalid_argument("Error while setting unclipped gradient.");
+      Logger::panic("Error while setting unclipped gradient.");
       return;
     }
     _unclipped_gradient = unclipped_gradient;
   };
-
   inline void set_velocity(double velocity)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(velocity))
     {
-      Logger::error("Error while setting velocity.");
-      throw std::invalid_argument("Error while setting velocity.");
+      Logger::panic("Error while setting velocity.");
       return;
     }
     _velocity = velocity;
@@ -209,8 +202,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(first_moment_estimate))
     {
-      Logger::error("Error while setting first_moment_estimate.");
-      throw std::invalid_argument("Error while setting first_moment_estimate.");
+      Logger::panic("Error while setting first_moment_estimate.");
       return;
     }
     _first_moment_estimate = first_moment_estimate;
@@ -220,8 +212,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(second_moment_estimate))
     {
-      Logger::error("Error while setting second_moment_estimate.");
-      throw std::invalid_argument("Error while setting second_moment_estimate.");
+      Logger::panic("Error while setting second_moment_estimate.");
       return;
     }
     _second_moment_estimate = second_moment_estimate;
@@ -238,21 +229,23 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _has_unclipped; 
   }
-  void clear_unclipped_gradient() noexcept
+  inline void clear_unclipped_gradient() noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     _unclipped_gradient = 0.0; 
     _has_unclipped = false; 
   }
-
-  double clip_gradient(double g) const
+  inline double clip_gradient(double g) const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("WeightParam");
     constexpr double gradient_clip_threshold = 1.0;
     // Maximum absolute gradient allowed (before scaling)
     const double max_clip = gradient_clip_threshold;  // e.g. set in constructor or defaults to large value
 
     if (max_clip <= 0.0)
+    {
       return g; // clipping disabled
+    }
 
     if (g > max_clip) 
       return  max_clip;
