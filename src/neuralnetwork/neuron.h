@@ -54,9 +54,6 @@ public:
   Neuron& operator=(Neuron&& src) noexcept;
 
   virtual ~Neuron();
-  
-  void apply_weight_gradients(Layer& previous_layer, const std::vector<double>& gradients, const double learning_rate, unsigned epoch, double clipping_scale);
-  void apply_residual_weight_gradients(Layer& layer, Layer& residual_layer, const std::vector<double>& residual_outputs, const std::vector<double>& gradients, double learning_rate, double clipping_scale);
 
   unsigned get_index() const;
 
@@ -68,14 +65,9 @@ public:
   inline const activation& get_activation_method() const noexcept { return _activation_method; }
   bool must_randomly_drop() const;
 
-  const WeightParam& get_recurrent_weight() const noexcept;
-
 private:
 
   void Clean();
-
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale);
-  
   unsigned _index;
   activation _activation_method;
   OptimiserType _optimiser_type;
@@ -83,5 +75,4 @@ private:
   const double _alpha; // [0.0..n] multiplier of last weight change (momentum)
   Type _type;
   double _dropout_rate;
-  WeightParam _recurrent_weight;
 };
