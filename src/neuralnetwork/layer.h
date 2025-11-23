@@ -90,25 +90,29 @@ protected:
       }
       return projected;
     }
-
-    const std::vector<std::vector<WeightParam>>& get_weights() const
+    inline const std::vector<std::vector<WeightParam>>& get_weight_params() const noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _weight_params;
     }
-    inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
+    inline std::vector<std::vector<WeightParam>>& get_weight_params() noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _weight_params;
     }
-    inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index)
+    inline std::vector<WeightParam>& get_weight_params(unsigned neuron_index) noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+      return _weight_params[neuron_index];
+    }
+    inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(residual_source_index < _weight_params.size());
       assert(target_neuron_index < _weight_params[residual_source_index].size());
       return _weight_params[residual_source_index][target_neuron_index];
     }
-    void update_weight(size_t out, size_t in, double delta)
+    inline void update_weight(size_t out, size_t in, double delta) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       assert(out < _output_size && in < _input_size);
@@ -116,11 +120,13 @@ protected:
       _weight_params[out][in].set_value(value + delta);
     }
 
-    inline unsigned input_size() const {
+    inline unsigned input_size() const noexcept
+    {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _input_size;
     };
-    inline unsigned output_size() const {
+    inline unsigned output_size() const noexcept
+    {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
       return _output_size;
     };
@@ -196,7 +202,9 @@ public:
     }
     return _residual_projector->output_size();
   }
-  std::vector<double> residual_output_values(const std::vector<double>& residual_layer_outputs) const;
+
+  std::vector<std::vector<double>> project_residual_output_values(const std::vector<std::vector<double>>& residual_layer_outputs) const;
+  std::vector<double> project_residual_output_values(const std::vector<double>& residual_layer_outputs) const;
   WeightParam& residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index);
   const std::vector<std::vector<WeightParam>>& residual_weight_params() const;
 
@@ -280,7 +288,7 @@ public:
     // TODO Valiate
     return _weights[input_neuron_number][neuron_index];
   }
-  WeightParam& get_bias_weight_param(unsigned neuron_index)
+  inline WeightParam& get_bias_weight_param(unsigned neuron_index) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     // TODO Valiate
@@ -295,7 +303,37 @@ public:
     // TODO Valiate and profile.
     return _bias_weights;
   }
-
+  inline const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_residual_projector == nullptr)
+    {
+      static const std::vector<std::vector<WeightParam>> empty;
+      return empty;
+    }
+    return _residual_projector->get_weight_params();
+  }
+  inline std::vector<std::vector<WeightParam>>& get_residual_weight_params() noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_residual_projector == nullptr)
+    {
+      static std::vector<std::vector<WeightParam>> empty;
+      return empty;
+    }
+    return _residual_projector->get_weight_params();
+  }
+  inline std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_residual_projector == nullptr)
+    {
+      static std::vector<WeightParam> empty;
+      return empty;
+    }
+    // TODO VALIDATE
+    return _residual_projector->get_weight_params()[neuron_index];
+  }
 private:
   void clean();
   void resize_weights(
