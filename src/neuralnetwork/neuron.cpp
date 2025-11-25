@@ -33,8 +33,7 @@ Neuron::Neuron(
   const activation& activation,
   const OptimiserType& optimiser_type,
   const Type& type,
-  const double dropout_rate,
-  const double recurrent_weight
+  const double dropout_rate
 ) :
   _index(index),
   _activation_method(activation),
