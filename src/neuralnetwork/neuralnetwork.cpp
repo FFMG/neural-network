@@ -1856,7 +1856,7 @@ void NeuralNetwork::log_training_info(
                                 "  Hidden layers              : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
-    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].number_neurons() - 1); // remove the bias
+    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].number_neurons());
     if (layer < _layers.size() - 2)
     {
       hidden_layer_message += ", ";
