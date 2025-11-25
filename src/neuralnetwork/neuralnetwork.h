@@ -476,7 +476,7 @@ private:
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
   void create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
-  double calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const;
+  double calculate_global_clipping_scale() const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;

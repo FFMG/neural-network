@@ -646,42 +646,34 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
   return true; // continue training
 }
 
-double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const
+double NeuralNetwork::calculate_global_clipping_scale() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   const double gradient_clip_threshold = options().clip_threshold();
   double total_sq_sum = 0.0;
 
-  // --------------------------------------------
-  // 1. Accumulate squared unclipped gradients for weights
-  // --------------------------------------------
-  // Assumes layer.get_weight_params() returns vector<vector<WeightParam>> sized [N_prev][N_this]
+  for (auto layer_number =0; layer_number < _layers.size(); ++layer_number)
+  {
+    const auto& layer = _layers[layer_number];
+
+    // 1. Accumulate weights (W_ih for RNN, W for FNN)
   for (const auto& input_row : layer.get_weight_params())
   {
-    for (const auto& weight_param : input_row)
+      for (const auto& wparam : input_row)
     {
-      double g = weight_param.get_unclipped_gradient(); // new API (falls back to get_gradient())
-      total_sq_sum += g * g;
+        total_sq_sum += wparam.get_unclipped_gradient() * wparam.get_unclipped_gradient();
     }
   }
 
-  // --------------------------------------------
-  // 2. Accumulate squared gradients for biases
-  // --------------------------------------------
-  for (const auto& bias_weight : layer.get_bias_weight_params())
+    // 2. Accumulate biases (B)
+    for (const auto& bparam : layer.get_bias_weight_params()) 
   {
-    double g = bias_weight.get_unclipped_gradient();
-    total_sq_sum += g * g;
+      total_sq_sum += bparam.get_unclipped_gradient() * bparam.get_unclipped_gradient();
   }
 
-  // --------------------------------------------
-  // 3. Residual projection weights (if applicable)
-  //    Two cases: residual stored as WeightParam (preferred) OR as double
-  // --------------------------------------------
-  /*
-  * TODO implement this
-  if (!layer.get_residual_weight_params().empty()) // prefer an accessor that returns vector<vector<WeightParam>>
+    // 3. Accumulate Residual/Recurrent weights (W_s, W_hh, etc.)
+    if (!layer.get_residual_weight_params().empty())
   {
     for (const auto& row : layer.get_residual_weight_params())
     {
@@ -692,39 +684,37 @@ double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int 
       }
     }
   }
-  else if (!layer.residual_weights.empty()) // fallback: raw doubles (no gradient stored) - skip them
-  {
-    // If residuals are doubles and you compute residual gradients separately, you need to set them into WeightParam
-    // or compute their contribution here. If you cannot access residual unclipped gradients, skip them.
-  }
-  */
 
-  // --------------------------------------------
+    // --- IMPORTANT: ADD RECURRENT WEIGHTS HERE ---
+    // if (RecurrentLayer* rnn_layer = dynamic_cast<RecurrentLayer*>(&layer)) {
+    //   for (const auto& row : rnn_layer->get_recurrent_weights()) {
+    //     // ... accumulate squared gradients for W_hh
+    //   }
+    // }
+  }
+
   // 4. Compute global gradient norm
-  // --------------------------------------------
   double norm = std::sqrt(total_sq_sum);
 
   if (!std::isfinite(norm))
   {
-    Logger::error("Layer ", layer_number,
-      " gradient norm is NaN/Inf. Resetting optimizer buffers and skipping batch.");
+    Logger::error("Layers gradient norm is NaN/Inf. Resetting optimizer buffers and skipping batch.");
     return 0.0;
   }
 
-  // No clipping needed
   if (norm <= gradient_clip_threshold || norm <= 0.0)
+  {
     return 1.0;
+  }
 
   // Scale factor < 1
   double clipping_scale = gradient_clip_threshold / norm;
-
   Logger::warning([&]
     {
       auto lr = get_learning_rate();
       std::ostringstream ss;
       ss << std::setprecision(4)
-        << "Layer " << layer_number
-        << ": Gradient clipping: norm=" << norm
+        << "Layers gradient clipping: norm=" << norm
         << " scale=" << clipping_scale
         << " (learning rate: " << lr << ")";
       return ss.str();
@@ -1190,6 +1180,11 @@ void NeuralNetwork::apply_weight_gradients(
   // Lock network for writing
   std::unique_lock<std::shared_mutex> write(_mutex);
 
+  // ----------------------------------------------------------------
+  // Compute clipping scale using current (unclipped) gradients
+  // ----------------------------------------------------------------
+  double global_clipping_scale = calculate_global_clipping_scale();
+
   // Walk backwards: output -> first hidden, skip input layer (0)
   for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
   {
@@ -1201,12 +1196,13 @@ void NeuralNetwork::apply_weight_gradients(
     const bool has_bias = current_layer.has_bias();
     const unsigned num_inputs_with_bias = static_cast<unsigned>(num_inputs + (has_bias ? 1 : 0));
 
-    // For every neuron index in THIS layer
-    for (unsigned neuron_index = 0; neuron_index < num_outputs; ++neuron_index)
-    {
       // --- accumulate gradients across batch (weights only, no bias)
       std::vector<double> accumulated_weight_gradients(num_inputs, 0.0);
       std::vector<double> accumulated_residual_gradients;
+
+    // For every neuron index in THIS layer
+    for (unsigned neuron_index = 0; neuron_index < num_outputs; ++neuron_index)
+    {
       bool residual_initialized = false;
 
       for (unsigned b = 0; b < batch_size; ++b)
@@ -1243,21 +1239,29 @@ void NeuralNetwork::apply_weight_gradients(
           }
 
           if (residual_grads.size() != accumulated_residual_gradients.size())
-            throw std::runtime_error("Mismatched residual_grad sizes");
+          {
+            Logger::panic("Mismatched residual_grad sizes");
+          }
 
           for (size_t r = 0; r < residual_grads.size(); ++r)
+          {
             accumulated_residual_gradients[r] += residual_grads[r];
+        }
         }
       } // end batch
 
       // Average gradients across batch
       for (double& v : accumulated_weight_gradients)
+      {
         v /= static_cast<double>(batch_size);
+      }
 
       if (!accumulated_residual_gradients.empty())
       {
         for (double& v : accumulated_residual_gradients)
+        {
           v /= static_cast<double>(batch_size);
+      }
       }
 
       // ----------------------------------------------------------------
@@ -1279,48 +1283,37 @@ void NeuralNetwork::apply_weight_gradients(
         {
           double delta_sum = 0.0;
           for (unsigned b = 0; b < batch_size; ++b)
+          {
             delta_sum += batch_activation_gradients[b].get_gradient(layer_number, neuron_index);
+          }
           bias_grad = delta_sum / static_cast<double>(batch_size);
         }
         bp.set_unclipped_gradient(bias_grad);
       }
 
       // If residual grads exist and residual weights are WeightParam, store them too
-      if (!accumulated_residual_gradients.empty())
+      if (!accumulated_residual_gradients.empty() && !current_layer.get_residual_weight_params().empty())
       {
-        // TODO Implement this
-        /*
-        if (!current_layer.get_residual_weight_params().empty())
-        {
-          const auto& residual_params = current_layer.get_residual_weight_params();
+        auto& residual_params = current_layer.get_residual_weight_params(neuron_index);
+#if VALIDATE_DATA == 1
           if (residual_params.size() != accumulated_residual_gradients.size())
-            throw std::runtime_error("residual param size mismatch");
-
+        {
+          Logger::panic("residual param size mismatch");
+        }
+#endif
           for (size_t r = 0; r < accumulated_residual_gradients.size(); ++r)
           {
             // assume residual_params[r] is vector<WeightParam> sized N_this
-            auto& rwp = residual_params[r][neuron_index];
+          auto& rwp = residual_params[r];
             rwp.set_unclipped_gradient(accumulated_residual_gradients[r]);
           }
         }
-        else
-        {
-          // If residual_weights are raw doubles, we cannot set unclipped gradients there.
-          // Consider changing residual storage to WeightParam or storing unclipped residual grads elsewhere.
         }
-        */
-      }
-    }
-
-    // ----------------------------------------------------------------
-    // 2) Compute clipping scale using current (unclipped) gradients
-    // ----------------------------------------------------------------
-    double clipping_scale = calculate_clipping_scale(current_layer, static_cast<unsigned>(layer_number));
 
     for (unsigned neuron_index = 0; neuron_index < num_outputs; ++neuron_index)
     {
       // ----------------------------------------------------------------
-      // 3) Apply clipped gradients through layer's optimizer helper
+      // Apply clipped gradients through layer's optimizer helper
       // ----------------------------------------------------------------
       // For each input weight:
       for (unsigned w = 0; w < num_inputs; ++w)
@@ -1328,23 +1321,13 @@ void NeuralNetwork::apply_weight_gradients(
         auto& wp = current_layer.get_weight_param(w, neuron_index);
         auto unclipped_gradient = wp.get_unclipped_gradient();
 
-        // Apply gradient clipping if needed
-        double clipped_gradient = (clipping_scale <= 0.0) ? wp.clip_gradient(unclipped_gradient) : unclipped_gradient * clipping_scale;
+        // Apply the GLOBAL clipping scale
+        double clipped_gradient = (global_clipping_scale <= 0.0) ? 
+          wp.clip_gradient(unclipped_gradient) : 
+          unclipped_gradient * global_clipping_scale;
 
         // apply via layer helper (this will set the gradient used by optimizer inside WeightParam)
-// BROKEN
-#if 1
-        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, false, wp, clipping_scale);
-#else
-// BROKEN
-// 
-// WORK
-        // Classic SGD update: w = w - lr * grad
-        double new_value = wp.get_value() - learning_rate * clipped_gradient;
-        wp.set_value(new_value);
-        wp.set_raw_gradient(clipped_gradient);  // optional, for later diagnostics
-#endif
-// WORK
+        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, false, wp, global_clipping_scale);
         wp.clear_unclipped_gradient();
       }
 
@@ -1353,39 +1336,29 @@ void NeuralNetwork::apply_weight_gradients(
       {
         auto& bp = current_layer.get_bias_weight_param(neuron_index);
         auto unclipped_gradient = bp.get_unclipped_gradient();
-        double clipped_gradient = (clipping_scale <= 0.0) ? bp.clip_gradient(unclipped_gradient) : unclipped_gradient * clipping_scale;
+        double clipped_gradient = (global_clipping_scale <= 0.0) ? 
+          bp.clip_gradient(unclipped_gradient) : 
+          unclipped_gradient * global_clipping_scale;
 
-// BROKEN
-#if 1
-      current_layer.apply_weight_gradient(clipped_gradient, learning_rate, true, bp, clipping_scale);
-// BROKEN
-#else
-// WORK
-        double new_value = bp.get_value() - learning_rate * clipped_gradient;
-        bp.set_value(new_value);
-        bp.set_raw_gradient(clipped_gradient);
-#endif
-// WORK
+        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, true, bp, global_clipping_scale);
         bp.clear_unclipped_gradient();
       }
 
-      /*
-      * TODO IMPLEMENT PROPERLY
       // Residuals: apply if stored as WeightParam
       if (!accumulated_residual_gradients.empty() && !current_layer.get_residual_weight_params().empty())
       {
-        auto& residual_params = current_layer.get_residual_weight_params();
+        auto& residual_params = current_layer.get_residual_weight_params(neuron_index);
         for (size_t r = 0; r < accumulated_residual_gradients.size(); ++r)
         {
-          auto& rwp = residual_params[r][neuron_index];
+          auto& rwp = residual_params[r];
           double unclipped = rwp.get_unclipped_gradient();
-          double clipped = (clipping_scale <= 0.0) ? rwp.clip_gradient(unclipped) : unclipped * clipping_scale;
-          current_layer.apply_weight_gradient(clipped, learning_rate, false, rwp, clipping_scale);
+          double clipped = (global_clipping_scale <= 0.0) ? 
+            rwp.clip_gradient(unclipped) : 
+            unclipped * global_clipping_scale;
+          current_layer.apply_weight_gradient(clipped, learning_rate, false, rwp, global_clipping_scale);
           rwp.clear_unclipped_gradient();
         }
       }
-      */
-
     } // end neuron loop
   } // end layer loop
 }
@@ -1562,17 +1535,23 @@ void NeuralNetwork::calculate_forward_feed(
     const int residual_layer_number = current_layer.residual_layer_number();
     if (residual_layer_number != -1)
     {
+#if VALIDATE_DATA == 1
       if (static_cast<size_t>(residual_layer_number) >= layer_outputs.size())
       {
+        Logger::error("Residual layer number out of range");
         throw std::runtime_error("Residual layer number out of range");
       }
+#endif
 
       residual_outputs = layer_outputs[static_cast<size_t>(residual_layer_number)];
 
+#if VALIDATE_DATA == 1
       if (residual_outputs.size() != batch_size)
       {
+        Logger::error("Residual outputs batch size mismatch");
         throw std::runtime_error("Residual outputs batch size mismatch");
       }
+#endif
     }
 
     // --- 3b. Build hidden-state slices for this layer ---
