@@ -658,32 +658,32 @@ double NeuralNetwork::calculate_global_clipping_scale() const
     const auto& layer = _layers[layer_number];
 
     // 1. Accumulate weights (W_ih for RNN, W for FNN)
-  for (const auto& input_row : layer.get_weight_params())
-  {
-      for (const auto& wparam : input_row)
+    for (const auto& input_row : layer.get_weight_params()) 
     {
+      for (const auto& wparam : input_row)
+      {
         total_sq_sum += wparam.get_unclipped_gradient() * wparam.get_unclipped_gradient();
+      }
     }
-  }
 
     // 2. Accumulate biases (B)
     for (const auto& bparam : layer.get_bias_weight_params()) 
-  {
+    {
       total_sq_sum += bparam.get_unclipped_gradient() * bparam.get_unclipped_gradient();
-  }
+    }
 
     // 3. Accumulate Residual/Recurrent weights (W_s, W_hh, etc.)
     if (!layer.get_residual_weight_params().empty())
-  {
-    for (const auto& row : layer.get_residual_weight_params())
     {
-      for (const auto& wparam : row)
+      for (const auto& row : layer.get_residual_weight_params())
       {
-        double g = wparam.get_unclipped_gradient();
-        total_sq_sum += g * g;
+        for (const auto& wparam : row)
+        {
+          double g = wparam.get_unclipped_gradient();
+          total_sq_sum += g * g;
+        }
       }
     }
-  }
 
     // --- IMPORTANT: ADD RECURRENT WEIGHTS HERE ---
     // if (RecurrentLayer* rnn_layer = dynamic_cast<RecurrentLayer*>(&layer)) {
@@ -1196,9 +1196,9 @@ void NeuralNetwork::apply_weight_gradients(
     const bool has_bias = current_layer.has_bias();
     const unsigned num_inputs_with_bias = static_cast<unsigned>(num_inputs + (has_bias ? 1 : 0));
 
-      // --- accumulate gradients across batch (weights only, no bias)
-      std::vector<double> accumulated_weight_gradients(num_inputs, 0.0);
-      std::vector<double> accumulated_residual_gradients;
+    // --- accumulate gradients across batch (weights only, no bias)
+    std::vector<double> accumulated_weight_gradients(num_inputs, 0.0);
+    std::vector<double> accumulated_residual_gradients;
 
     // For every neuron index in THIS layer
     for (unsigned neuron_index = 0; neuron_index < num_outputs; ++neuron_index)
@@ -1246,7 +1246,7 @@ void NeuralNetwork::apply_weight_gradients(
           for (size_t r = 0; r < residual_grads.size(); ++r)
           {
             accumulated_residual_gradients[r] += residual_grads[r];
-        }
+          }
         }
       } // end batch
 
@@ -1261,7 +1261,7 @@ void NeuralNetwork::apply_weight_gradients(
         for (double& v : accumulated_residual_gradients)
         {
           v /= static_cast<double>(batch_size);
-      }
+        }
       }
 
       // ----------------------------------------------------------------
@@ -1296,19 +1296,19 @@ void NeuralNetwork::apply_weight_gradients(
       {
         auto& residual_params = current_layer.get_residual_weight_params(neuron_index);
 #if VALIDATE_DATA == 1
-          if (residual_params.size() != accumulated_residual_gradients.size())
+        if (residual_params.size() != accumulated_residual_gradients.size())
         {
           Logger::panic("residual param size mismatch");
         }
 #endif
-          for (size_t r = 0; r < accumulated_residual_gradients.size(); ++r)
-          {
-            // assume residual_params[r] is vector<WeightParam> sized N_this
+        for (size_t r = 0; r < accumulated_residual_gradients.size(); ++r)
+        {
+          // assume residual_params[r] is vector<WeightParam> sized N_this
           auto& rwp = residual_params[r];
-            rwp.set_unclipped_gradient(accumulated_residual_gradients[r]);
-          }
+          rwp.set_unclipped_gradient(accumulated_residual_gradients[r]);
         }
-        }
+      }
+    }
 
     for (unsigned neuron_index = 0; neuron_index < num_outputs; ++neuron_index)
     {

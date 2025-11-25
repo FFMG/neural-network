@@ -33,8 +33,7 @@ public:
     const activation& activation,
     const OptimiserType& optimiser_type,
     const Type& type,
-    const double dropout_rate,
-    const double recurrent_weight
+    const double dropout_rate
     );
     
   Neuron(
