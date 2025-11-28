@@ -4,6 +4,8 @@
 
 Layers::Layers(
   const std::vector<unsigned>& topology,
+  double weight_decay,
+  const std::vector<unsigned>& recurrent_layers,
   const std::vector<double>& dropout_layers,
   const activation::method& hidden_activation,
   const activation::method& output_activation,
@@ -12,11 +14,12 @@ Layers::Layers(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
+  assert(recurrent_layers.size() == topology.size() && "The recurrence layer size must match the topology");
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1]);
+  auto layer = Layer::create_input_layer(topology[0], topology[1], weight_decay);
   _layers.emplace_back(std::move(layer));
 
   // then the hidden layers
@@ -26,8 +29,8 @@ Layers::Layers(
     auto num_neurons_next_layer = topology[layer_number + 1];
     auto dropout_rate = dropout_layers[layer_number-1]; // remove input
     const auto& previous_layer = _layers.back();
-    const auto residual_layer_number = compute_residual_layer(layer_number, residual_layer_jump);
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
+    const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
 
     add_residual_layer(layer, hidden_activation);
     Logger::trace([&]
@@ -47,8 +50,8 @@ Layers::Layers(
   }
 
   // finally, the output layer
-  const auto residual_layer_number = compute_residual_layer(number_of_layers-1, residual_layer_jump);
-  layer = Layer::create_output_layer(topology.back(), _layers.back(), output_activation, optimiser_type, residual_layer_number);
+  const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
+  layer = Layer::create_output_layer(topology.back(), weight_decay, _layers.back(), output_activation, optimiser_type, residual_layer_number);
 
   add_residual_layer(layer, output_activation);
   if (Logger::can_trace())
