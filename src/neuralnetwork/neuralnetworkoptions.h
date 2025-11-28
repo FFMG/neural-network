@@ -34,7 +34,9 @@ private:
     _clip_threshold(1.0),
     _learning_rate_warmup_start(0.0),
     _learning_rate_warmup_target(0.0),
-    _shuffle_training_data(true)
+    _shuffle_training_data(true),
+    _recurrent_layers({}),
+    _weight_decay(0.0)
   {
   }
 
@@ -89,6 +91,8 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
+      _recurrent_layers = nno._recurrent_layers;
+      _weight_decay = nno._weight_decay;
     }
     return *this;
   }
@@ -117,6 +121,9 @@ public:
       _clip_threshold = nno._clip_threshold;
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
+      _shuffle_training_data = nno._shuffle_training_data;
+      _recurrent_layers = std::move(nno._recurrent_layers);
+      _weight_decay = nno._weight_decay;
 
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -129,6 +136,7 @@ public:
       nno._learning_rate_warmup_start = 0.0;
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
+      nno._weight_decay = 0.0;
     }
     return *this;
   }
@@ -221,13 +229,24 @@ public:
     _shuffle_training_data = shuffle_training_data;
     return *this;
   }
+  NeuralNetworkOptions& with_recurrent_layers(std::vector<unsigned> recurrent_layers)
+  {
+    _recurrent_layers = recurrent_layers;
+    return *this;
+  }
+
   NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
   {
     _learning_rate_warmup_start = learning_rate_warmup_start;
     _learning_rate_warmup_target = learning_rate_warmup_target;
     return *this;
   }
-
+  NeuralNetworkOptions& with_weight_decay(double weight_decay)
+  {
+    _weight_decay = weight_decay;
+    return *this;
+  }
+  
   NeuralNetworkOptions& build()
   {
     // set the log level first
@@ -235,8 +254,7 @@ public:
 
     if (topology().size() < 2)
     {
-      Logger::error("The topology is not value, you must have at least 2 layers.");
-      throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
+      Logger::panic("The topology is not value, you must have at least 2 layers.");
     }
     if (dropout().size() == 0)
     {
@@ -244,15 +262,13 @@ public:
     }
     if (dropout().size() != topology().size() -2)
     {
-      Logger::error("The dropout size must be exactly the topology size less the input and outpout layers.");
-      throw std::invalid_argument("The dropout size must be exactly the topology size less the input and outpout layers.");
+      Logger::panic("The dropout size must be exactly the topology size less the input and outpout layers.");
     }
     for (auto& dropout : dropout())
     {
       if(dropout < 0.0 || dropout > 1.0)
       {
-        Logger::error("The dropout rate must be between 0 and 1!");
-        throw std::invalid_argument("The dropout rate must be between 0 and 1!");
+        Logger::panic("The dropout rate must be between 0 and 1!");
       }
     }
     if (number_of_threads() > 0 && batch_size() <= 1)
@@ -261,47 +277,65 @@ public:
     }
     if (learning_rate_decay_rate() < 0)
     {
-      Logger::error("The learning rate decay rate cannot be negative!");
-      throw std::invalid_argument("The learning rate decay rate cannot be negative!");
+      Logger::panic("The learning rate decay rate cannot be negative!");
     }
-    if (learning_rate_decay_rate() >= 1.0)
+    if (learning_rate_decay_rate() > 1.0)
     {
-      Logger::error("The learning rate decay rate cannot be more than 1!");
-      throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
+      Logger::panic("The learning rate decay rate cannot be more than 1!");
     }
     if (learning_rate_restart_rate() < 0.0 || learning_rate_restart_rate() > 1.0)
     {
-      Logger::error("The learning rate restart rate has to be between 0.0 and 1.0!");
-      throw std::invalid_argument("The learning rate restart rate has to be between 0.0 and 1.0!");
+      Logger::panic("The learning rate restart rate has to be between 0.0 and 1.0!");
     }
     if (learning_rate_restart_boost() < 0.0|| learning_rate_restart_boost() > 1.0)
     {
-      Logger::error("The learning rate restart boost has to be between 0.0 and 1.0!");
-      throw std::invalid_argument("The learning rate restart boost has to be between 0.0 and 1.0!");
+      Logger::panic("The learning rate restart boost has to be between 0.0 and 1.0!");
     }
     if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
     {
-      Logger::warning("The residual_layer_jump must be positive or -1");
+      _residual_layer_jump = -1;
+      Logger::warning("The residual layer jump must be positive or -1, setting it to -1.");
     }
     if (clip_threshold() <= 0.0)
     {
-      Logger::error("A gradient clip threshold smaller or equal to zero does not make sense!");
-      throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
+      Logger::panic("A gradient clip threshold smaller or equal to zero does not make sense!");
     }
     if (learning_rate_warmup_start() < 0.0)
     {
-      Logger::error("The learning rate warm up start value cannot be less than zero.");
-      throw std::invalid_argument("The learning rate warm up start value cannot be less than zero.");
+      Logger::panic("The learning rate warm up start value cannot be less than zero.");
     }
     if (learning_rate_warmup_start() > learning_rate())
     {
-      Logger::error("The learning rate warm up start value cannot be greater than the target rate.");
-      throw std::invalid_argument("The learning rate warm up start value cannot be greater than the target rate.");
+      Logger::panic("The learning rate warm up start value cannot be greater than the target rate.");
     }
     if (learning_rate_warmup_target() < 0.0 || learning_rate_warmup_target() > 1.0)
     {
-      Logger::error("The learning rate warm up target must range between 0.0 and 1.0.");
-      throw std::invalid_argument("The learning rate warm up target must range between 0.0 and 1.0.");
+      Logger::panic("The learning rate warm up target must range between 0.0 and 1.0.");
+    }
+    if (_recurrent_layers.size() == 0)
+    {
+      _recurrent_layers.resize(_topology.size(), 0);
+    }
+    else if (_recurrent_layers.size() == (_topology.size() - 2))
+    {
+      // add 0 in front and back for input/output
+      _recurrent_layers.insert(_recurrent_layers.begin(), 0);
+      _recurrent_layers.push_back(0);
+    }
+    else if (_recurrent_layers.size() == _topology.size())
+    {
+      if (_recurrent_layers.front() != 0 || _recurrent_layers.back() != 0)
+      {
+        Logger::panic("The input/output recurrent layer must be zero!");
+      }
+    }
+    else if (_recurrent_layers.size() != _topology.size())
+    {
+      Logger::panic("The recurrent layer must be the same size as the topology, (or size -2).");
+    }
+    if (_weight_decay < 0)
+    {
+      Logger::panic("The weight decay cannot be -ve!");
     }
     return *this;
   }
@@ -354,7 +388,8 @@ public:
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold)
-      .with_shuffle_training_data(true);
+      .with_shuffle_training_data(true)
+      .with_weight_decay(0.0);
   }
 
   inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
@@ -378,6 +413,8 @@ public:
   inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
   inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
   inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
+  inline const std::vector<unsigned>& recurrent_layers() const noexcept { return _recurrent_layers; }
+  inline double weight_decay() const noexcept{ return _weight_decay; }
 
 private:
   std::vector<unsigned> _topology;
@@ -401,4 +438,6 @@ private:
   double _learning_rate_warmup_start;  //  initial learning rate for warmup
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
+  std::vector<unsigned> _recurrent_layers;
+  double _weight_decay;
 };

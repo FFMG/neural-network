@@ -188,6 +188,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto dropouts = options_object->get_floats<double>("dropout", false, false);
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false); 
   auto recurrent_layers = options_object->get_numbers<unsigned>("recurrent-layers", false, false);
+  auto weight_decay = options_object->get_float<double>("weight-decay");
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -208,6 +209,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_log_level(log_level)
     .with_shuffle_training_data(shuffle_training_data)
     .with_recurrent_layers(recurrent_layers)
+    .with_weight_decay(weight_decay)
     .build();
 }
 
@@ -538,6 +540,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_number("residual-layer-jump", options.residual_layer_jump());
   options_object->set_float("clip-threshold", options.clip_threshold());
   options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
+  options_object->set_float("weight-decay", options.weight_decay());
 
   json.set("options", options_object);
 

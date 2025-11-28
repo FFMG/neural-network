@@ -148,10 +148,32 @@ public:
     Output
   };
 private:
-  Layer(unsigned layer_index, unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate);
+  Layer(unsigned layer_index, 
+    unsigned num_neurons_in_previous_layer, 
+    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_next_layer, 
+    double weight_decay,
+    int residual_layer_number, 
+    LayerType layer_type, 
+    const activation::method& activation, 
+    const OptimiserType& optimiser_type, 
+    double dropout_rate);
   Layer(LayerType layer_type);
 
 public:
+  Layer(
+    unsigned layer_index,
+    const std::vector<Neuron>& neurons,
+    unsigned number_input_neurons,
+    int residual_layer_number,
+    LayerType layer_type,
+    OptimiserType optimiser_type,
+    activation::method activation_method,
+    const std::vector<std::vector<WeightParam>>& weights,
+    const std::vector<WeightParam>& bias_weights,
+    const std::vector<std::vector<WeightParam>>& residual_weights
+    );
+
   Layer(const Layer& src) noexcept;
   Layer(Layer&& src) noexcept;
   Layer& operator=(const Layer& src) noexcept;
@@ -160,22 +182,23 @@ public:
 
   unsigned number_neurons() const noexcept;
   unsigned number_neurons_with_bias() const noexcept;
-  const std::vector<Neuron>& get_neurons() const;
-  std::vector<Neuron>& get_neurons();
+  const std::vector<Neuron>& get_neurons() const noexcept;
+  std::vector<Neuron>& get_neurons() noexcept;
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
 
   LayerType layer_type() const { return _layer_type; }
 
-  static Layer create_input_layer(const std::vector<Neuron>& neurons);
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer);
+private:
+  static Layer create_input_layer(const std::vector<Neuron>& neurons, double weight_decay);
+  static Layer create_hidden_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, double weight_decay, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
+  static Layer create_output_layer(unsigned layer_index, const std::vector<Neuron>& neurons, double weight_decay, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
 
-  static Layer create_hidden_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
-
-  static Layer create_output_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
+public:
+  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay);
+  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
   inline int residual_layer_number() const noexcept
   {
@@ -334,6 +357,27 @@ public:
     // TODO VALIDATE
     return _residual_projector->get_weight_params()[neuron_index];
   }
+  inline const OptimiserType get_optimiser_type() const noexcept {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _optimiser_type;
+  }
+  inline const activation& get_activation() const noexcept {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _activation_method;
+  }
+  inline const LayerType& get_layer_type() const noexcept {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_type;
+  }
+  inline unsigned get_number_input_neurons() const {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _number_input_neurons;
+  }
+  inline unsigned get_number_output_neurons() const {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _number_output_neurons;
+  }
+
 private:
   void clean();
   void resize_weights(

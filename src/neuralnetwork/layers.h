@@ -6,7 +6,10 @@
 class Layers
 {
 public:
-  Layers(const std::vector<unsigned>& topology, 
+  Layers(
+    const std::vector<unsigned>& topology, 
+    double weight_decay,
+    const std::vector<unsigned>& recurrent_layers,
     const std::vector<double>& dropout_layers,
     const activation::method& hidden_activation,
     const activation::method& output_activation,
