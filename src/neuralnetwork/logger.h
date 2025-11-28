@@ -1,12 +1,12 @@
 #pragma once
 #include <algorithm>
 #include <chrono>     // Required for time operations (std::chrono)
-#include <exception>
 #include <functional>
 #include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
 #include <iostream>   // Required for std::cout and std::endl
 #include <string>     // Required for std::string
 #include <sstream>    // Required for std::stringstream to build the time string
+#include <stdexcept>
 #include <type_traits>
 
 class Logger
@@ -156,23 +156,23 @@ public:
 
   static inline bool can_trace()
   {
-    return can_log(LogLevel::Trace);
+    return instance().can_log(LogLevel::Trace);
   }
   static inline bool can_debug()
   {
-    return can_log(LogLevel::Debug);
+    return instance().can_log(LogLevel::Debug);
   }
   static inline bool can_info()
   {
-    return can_log(LogLevel::Information);
+    return instance().can_log(LogLevel::Information);
   }
   static inline bool can_warning()
   {
-    return can_log(LogLevel::Warning);
+    return instance().can_log(LogLevel::Warning);
   }
   static inline bool can_error()
   {
-    return can_log(LogLevel::Error);
+    return instance().can_log(LogLevel::Error);
   }
 
   template <typename... Args>
@@ -185,10 +185,9 @@ public:
 private:
   LogLevel _min_level; // Stores the minimum logging level set by the user
 
-  static bool can_log(LogLevel level)
+  bool can_log(LogLevel level) const
   {
-    // Only log if the current message's level is at or above the minimum configured level
-    return level >= instance()._min_level;
+    return (level == LogLevel::Panic || level >= _min_level);
   }
 
   static std::string get_current_time_string()
@@ -250,6 +249,10 @@ private:
   template <typename... Args>
   static void log(LogLevel level, Args&&... args)
   {
+    if (!instance().can_log(level))
+    {
+      return;
+    }
     std::ostringstream oss;
     print_args(oss, std::forward<Args>(args)...);
     oss << std::endl;
@@ -259,7 +262,7 @@ private:
   void string(LogLevel level, std::string message) const
   {
     // Only log if the current message's level is at or above the minimum configured level
-    if (level != LogLevel::Panic && level < _min_level)
+    if (!can_log(level))
     {
       return;
     }
