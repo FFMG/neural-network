@@ -19,6 +19,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(
     options.topology(), 
+    options.weight_decay(),
     options.recurrent_layers(),
     options.dropout(),
     options.hidden_activation_method(), 
@@ -1848,6 +1849,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
   Logger::info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
+  Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
