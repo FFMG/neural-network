@@ -57,11 +57,13 @@ activation& activation::operator=(activation&& src) noexcept
 
 void activation::set_alpha(double alpha)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   _alpha = alpha;
 }
 
 double activation::get_alpha() const
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return _alpha;
 }
 
@@ -169,11 +171,13 @@ double activation::calculate_PReLU_derivative(double x, double alpha)
 
 double activation::calculate_mish(double x)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return x * std::tanh(std::log1p(std::exp(x)));
 }
 
 double activation::calculate_mish_derivative(double x)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   double sp = std::log1p(std::exp(x)); // softplus
   double tanh_sp = std::tanh(sp);
   double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
@@ -182,6 +186,7 @@ double activation::calculate_mish_derivative(double x)
 
 double activation::calculate_swish(double x) 
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
   const double exp_term = std::exp(std::clamp(-x, -MAX_EXP_INPUT, MAX_EXP_INPUT));
   return x / (1.0 + exp_term);
@@ -189,6 +194,7 @@ double activation::calculate_swish(double x)
 
 double activation::calculate_swish_derivative(double x) 
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
   double clamped_x = std::clamp(x, -MAX_EXP_INPUT, MAX_EXP_INPUT);
   double sigmoid = 1.0 / (1.0 + std::exp(-clamped_x));
@@ -198,11 +204,13 @@ double activation::calculate_swish_derivative(double x)
 // Approximate GELU (fast, used in transformers)
 double activation::calculate_gelu(double x) 
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
 }
 
 double activation::calculate_gelu_derivative(double x)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   // Optional: derivative is complex; can use numerical approximation or skip exact
   const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
   return 0.5 * tanh_term +
@@ -212,6 +220,7 @@ double activation::calculate_gelu_derivative(double x)
 
 double activation::momentum() const
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
   case activation::method::linear:
@@ -339,7 +348,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
     return xavier_initialization(num_neurons_next_layer, num_neurons_current_layer);
 
   case activation::method::selu:
-    return selu_initialization(num_neurons_next_layer);
+    return selu_initialization(num_neurons_current_layer);
 
   case activation::method::linear:
   case activation::method::relu:
@@ -349,7 +358,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization(num_neurons_next_layer);
+    return he_initialization(num_neurons_current_layer);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
@@ -366,7 +375,7 @@ std::vector<double> activation::xavier_initialization(int num_neurons_next_layer
   double limit = std::sqrt(6.0 / (num_neurons_next_layer + num_neurons_current_layer));
   std::uniform_real_distribution<double> dist(-limit, limit);
 
-  std::vector<double> weights(num_neurons_next_layer);
+  std::vector<double> weights(num_neurons_current_layer);
   for (double& w : weights) 
   {
     w = dist(gen);
@@ -375,31 +384,31 @@ std::vector<double> activation::xavier_initialization(int num_neurons_next_layer
   return weights;
 }
 
-std::vector<double> activation::he_initialization(int num_neurons_next_layer)
+std::vector<double> activation::he_initialization(int fan_in)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
 
-  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / num_neurons_next_layer));
+  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / fan_in));
 
-  std::vector<double> weights(num_neurons_next_layer);
+  std::vector<double> weights(fan_in);
   for (double& w : weights) {
     w = dist(gen);  // Initialize weights
   }
   return weights;
 }
 
-std::vector<double> activation::selu_initialization(int num_neurons_next_layer)
+std::vector<double> activation::selu_initialization(int fan_in)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
 
   // Same as LeCun normal
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_next_layer));
+  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
-  std::vector<double> weights(num_neurons_next_layer);
+  std::vector<double> weights(fan_in);
   for (double& w : weights) {
     w = dist(gen);
   }
@@ -407,15 +416,15 @@ std::vector<double> activation::selu_initialization(int num_neurons_next_layer)
   return weights;
 }
 
-std::vector<double> activation::lecun_initialization(int num_neurons_next_layer)
+std::vector<double> activation::lecun_initialization(int fan_in)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
 
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_next_layer));
+  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
-  std::vector<double> weights(num_neurons_next_layer);
+  std::vector<double> weights(fan_in);
   for (double& w : weights) {
     w = dist(gen);
   }
@@ -424,11 +433,13 @@ std::vector<double> activation::lecun_initialization(int num_neurons_next_layer)
 
 std::string activation::method_to_string() const
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return method_to_string(_method);
 }
 
 activation::method activation::string_to_method(const std::string& str)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   std::string lower_str = str;
   // Convert the string to lowercase for case-insensitive comparison
   std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
@@ -485,6 +496,7 @@ activation::method activation::string_to_method(const std::string& str)
 
 std::string activation::method_to_string(method m)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (m)
   {
   case method::linear:    return "linear";

@@ -45,10 +45,10 @@ public:
   static method string_to_method(const std::string& str);
   
 private:
-  static std::vector<double> he_initialization(int num_neurons_prev_layer);
-  static std::vector<double> xavier_initialization(int num_neurons_prev_layer, int num_neurons_current_layer);
-  static std::vector<double> lecun_initialization(int num_neurons_prev_layer);
-  static std::vector<double> selu_initialization(int num_neurons_prev_layer);
+  static std::vector<double> he_initialization(int fan_in);
+  static std::vector<double> xavier_initialization(int fan_out, int fan_in);
+  static std::vector<double> lecun_initialization(int fan_in);
+  static std::vector<double> selu_initialization(int fan_in);
 
   static double calculate_selu(double x);
   static double calculate_selu_derivative(double x);
