@@ -240,12 +240,14 @@ public:
 
   std::vector<std::vector<double>> calculate_output_gradients(
     const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs) const;
+    const std::vector<std::vector<double>>& given_outputs,
+    double gradient_clip_threshold) const;
 
   std::vector<std::vector<double>> calculate_hidden_gradients(
     const Layer& next_layer,
     const std::vector<std::vector<double>>& next_grad_matrix,
-    const std::vector<std::vector<double>>& output_matrix) const;
+    const std::vector<std::vector<double>>& output_matrix,
+    double gradient_clip_threshold) const;
 
   inline unsigned number_input_neurons(bool add_bias) const noexcept
   {
@@ -259,11 +261,11 @@ public:
     return _layer_index;
   }
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale);
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold);
 
   // optimisers
   // TODO THOSE SHOULD ALL BE PRIVATE
-  static double clip_gradient(double gradient);
+  static double clip_gradient(double gradient, double gradient_clip_threshold);
   static void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate);
   static void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias);
   static void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias);
