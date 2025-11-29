@@ -592,7 +592,8 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
 // forward for entire layer, batch-aware, matrix-based
 std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs) const
+  const std::vector<std::vector<double>>& given_outputs,
+  double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t B = target_outputs.size();   // batch size
@@ -625,7 +626,7 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
       // derivative is applied to the *post-activation output*
       double grad = delta * neuron.get_activation_method().activate_derivative(output);
 
-      grad = clip_gradient(grad);
+      grad = clip_gradient(grad, gradient_clip_threshold);
 
       if (!std::isfinite(grad))
       {
@@ -645,7 +646,8 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
 std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& next_grad_matrix,
-  const std::vector<std::vector<double>>& output_matrix) const
+  const std::vector<std::vector<double>>& output_matrix,
+  double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t B = next_grad_matrix.size();   // batch size
@@ -707,7 +709,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
 
       double g = weighted_sum * deriv;
 
-      g = clip_gradient(g);
+      g = clip_gradient(g, gradient_clip_threshold);
 
       if (!std::isfinite(g))
         throw std::runtime_error("Hidden gradient is not finite.");
@@ -914,7 +916,7 @@ void Layer::apply_sgd_update(WeightParam& weight_param, double raw_gradient, dou
   weight_param.set_value(new_weight);
 }
 
-void Layer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
+void Layer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (!std::isfinite(gradient))
@@ -934,7 +936,7 @@ void Layer::apply_weight_gradient(const double gradient, const double learning_r
     Logger::warning("Clipping gradient to a fixed range.");
   }
 
-  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient) : gradient * clipping_scale;
+  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
   switch (_optimiser_type)
   {
   case OptimiserType::None:
@@ -967,10 +969,11 @@ void Layer::apply_weight_gradient(const double gradient, const double learning_r
 }
 
 // TODO the clip threshold used is not the one we have in the config/options!
-double Layer::clip_gradient(double gradient)
+double Layer::clip_gradient(double gradient, double gradient_clip_threshold)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  constexpr double gradient_clip_threshold = 1.0;
+  // TODO remove this hardcoded value.
+  // constexpr double gradient_clip_threshold = 1.0;
   if (!std::isfinite(gradient))
   {
     Logger::error("Gradient is not finite.");

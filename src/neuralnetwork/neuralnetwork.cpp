@@ -1328,7 +1328,7 @@ void NeuralNetwork::apply_weight_gradients(
           unclipped_gradient * global_clipping_scale;
 
         // apply via layer helper (this will set the gradient used by optimizer inside WeightParam)
-        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, false, wp, global_clipping_scale);
+        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, false, wp, global_clipping_scale, _options.clip_threshold());
         wp.clear_unclipped_gradient();
       }
 
@@ -1341,7 +1341,7 @@ void NeuralNetwork::apply_weight_gradients(
           bp.clip_gradient(unclipped_gradient) : 
           unclipped_gradient * global_clipping_scale;
 
-        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, true, bp, global_clipping_scale);
+        current_layer.apply_weight_gradient(clipped_gradient, learning_rate, true, bp, global_clipping_scale, _options.clip_threshold());
         bp.clear_unclipped_gradient();
       }
 
@@ -1356,7 +1356,7 @@ void NeuralNetwork::apply_weight_gradients(
           double clipped = (global_clipping_scale <= 0.0) ? 
             rwp.clip_gradient(unclipped) : 
             unclipped * global_clipping_scale;
-          current_layer.apply_weight_gradient(clipped, learning_rate, false, rwp, global_clipping_scale);
+          current_layer.apply_weight_gradient(clipped, learning_rate, false, rwp, global_clipping_scale, _options.clip_threshold());
           rwp.clear_unclipped_gradient();
         }
       }
@@ -1434,7 +1434,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
   {
     given_outputs.emplace_back(gradients[gradients_index].output_back());
   }
-  auto next_activation_gradients = output_layer.calculate_output_gradients(outputs, given_outputs);
+  auto next_activation_gradients = output_layer.calculate_output_gradients(outputs, given_outputs, _options.clip_threshold());
 
   set_gradients_for_layer(gradients, output_layer_number, next_activation_gradients);
 }
@@ -1462,7 +1462,7 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     const auto output_values = get_outputs_for_layer(gradients, layer_number);
     const auto& next_gradients = get_gradients_for_layer(gradients, layer_number+1);
 
-    auto current_activation_gradients = hidden_0.calculate_hidden_gradients(hidden_1, next_gradients, output_values);
+    auto current_activation_gradients = hidden_0.calculate_hidden_gradients(hidden_1, next_gradients, output_values, _options.clip_threshold());
 
     set_gradients_for_layer(gradients, static_cast<unsigned>(layer_number), current_activation_gradients);
     next_activation_gradients = std::move(current_activation_gradients);
