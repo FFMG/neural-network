@@ -211,9 +211,8 @@ double activation::calculate_gelu(double x)
 double activation::calculate_gelu_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  // Optional: derivative is complex; can use numerical approximation or skip exact
-  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
-  return 0.5 * tanh_term +
+  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
+  return 0.5 + 0.5 * tanh_term +
     (0.5 * x * (1 - tanh_term * tanh_term) *
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
