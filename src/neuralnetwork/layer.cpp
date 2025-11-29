@@ -865,11 +865,13 @@ void Layer::apply_adam_update(WeightParam& weight_param, double raw_gradient, do
 
   double adam_update = learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
 
-  // Apply decoupled weight decay (skip if bias)
-  double decayed_weight = is_bias ? weight_param.get_value()
-    : weight_param.get_value() * (1.0 - learning_rate * weight_param.get_weight_decay());
-
-  double new_weight = decayed_weight - adam_update;
+  // Apply L2 regularization by adding it to the gradient
+  if (!is_bias && weight_param.get_weight_decay() > 0.0)
+  {
+    raw_gradient += weight_param.get_weight_decay() * weight_param.get_value();
+  }
+  
+  double new_weight = weight_param.get_value() - adam_update;
 
   weight_param.set_value(new_weight);
   weight_param.set_raw_gradient(raw_gradient);
