@@ -149,7 +149,7 @@ public:
   }
 
   template <typename... Args>
-  static void panic(Args&&... args)
+  [[noreturn]] static void panic(Args&&... args)
   {
     log(LogLevel::Panic, std::forward<Args>(args)...);
   }
