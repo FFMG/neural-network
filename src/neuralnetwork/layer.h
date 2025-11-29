@@ -273,7 +273,8 @@ public:
     double learning_rate,
     double beta1,
     double beta2,
-    double epsilon
+    double epsilon,
+    bool is_bias
   );
   static void apply_nadam_update(
     WeightParam& weight_param,

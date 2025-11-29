@@ -809,7 +809,8 @@ void Layer::apply_adamw_update(
   double learning_rate,
   double beta1,
   double beta2,
-  double epsilon
+  double epsilon,
+  bool is_bias
 )
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -833,7 +834,10 @@ void Layer::apply_adamw_update(
 
   // Decoupled weight decay
   auto new_weight = weight_param.get_value();
-  new_weight *= (1.0 - learning_rate * weight_param.get_weight_decay());
+  if (!is_bias)
+  {
+    new_weight *= (1.0 - learning_rate * weight_param.get_weight_decay());
+  }
 
   // Apply update
   new_weight -= weight_update;
@@ -944,7 +948,7 @@ void Layer::apply_weight_gradient(const double gradient, const double learning_r
     break;
 
   case OptimiserType::AdamW:
-    Layer::apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
+    Layer::apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
     break;
 
   case OptimiserType::Nadam:
