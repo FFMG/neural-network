@@ -155,6 +155,7 @@
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\twomoon.h" />
     <ClInclude Include="examples\xor.h" />
+    <ClInclude Include="hiddenstate.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="layers.h" />
     <ClInclude Include="libraries\instrumentor.h" />
