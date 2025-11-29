@@ -215,7 +215,7 @@ void Layer::resize_weights(
   if (has_bias())
   {
     _bias_weights.reserve(number_output_neurons);
-    auto weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
+    auto weights = activation_method.weight_initialization(number_output_neurons, 1);
     for (unsigned o = 0; o < number_output_neurons; ++o)
     {
       // bias has no weight decay.
@@ -233,9 +233,6 @@ void Layer::resize_weights(
   _weights.resize(number_input_neurons);
   for (unsigned i = 0; i < number_input_neurons; ++i)
   {
-    // TODO the activation function is using the wrong variable names here.
-    //      we should use input and output in that function and return exctly number_outputs_neurons weights.
-    //      weight_initialization( ... ) parm names are just confusing
     auto weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
     assert(weights.size() == number_output_neurons);
     _weights[i].reserve(number_output_neurons);
@@ -699,7 +696,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
       // ---- Sum over NON-BIAS next-layer neurons ----
       for (size_t k = 0; k < N_next_no_bias; k++)
       {
-        size_t j = next_nonbias_index[k];  // actual next neuron index
+        unsigned j = static_cast<unsigned>(next_nonbias_index[k]);  // actual next neuron index
 
         double w = next_layer.get_weight_param(i, j).get_value();
         weighted_sum += next_grad_matrix[b][k] * w;

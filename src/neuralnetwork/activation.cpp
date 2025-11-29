@@ -212,7 +212,7 @@ double activation::calculate_gelu_derivative(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   // Optional: derivative is complex; can use numerical approximation or skip exact
-  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
+  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
   return 0.5 * tanh_term +
     (0.5 * x * (1 - tanh_term * tanh_term) *
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
@@ -344,11 +344,11 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   {
   case activation::method::sigmoid:
   case activation::method::tanh:
-    // return lecun_initialization(num_neurons_current_layer);
-    return xavier_initialization(num_neurons_next_layer, num_neurons_current_layer);
+    // return lecun_initialization(num_neurons_current_layer, num_neurons_next_layer);
+    return xavier_initialization(num_neurons_current_layer, num_neurons_next_layer);
 
   case activation::method::selu:
-    return selu_initialization(num_neurons_current_layer);
+    return selu_initialization(num_neurons_current_layer, num_neurons_next_layer);
 
   case activation::method::linear:
   case activation::method::relu:
@@ -358,24 +358,24 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization(num_neurons_current_layer);
+    return he_initialization(num_neurons_current_layer, num_neurons_next_layer);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
   }
 }
 
-std::vector<double> activation::xavier_initialization(int num_neurons_next_layer, int num_neurons_current_layer)
+std::vector<double> activation::xavier_initialization(int fan_in, int fan_out)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
 
   // Glorot/Xavier initialization uses a uniform distribution:
-  double limit = std::sqrt(6.0 / (num_neurons_next_layer + num_neurons_current_layer));
+  double limit = std::sqrt(6.0 / (fan_in + fan_out));
   std::uniform_real_distribution<double> dist(-limit, limit);
 
-  std::vector<double> weights(num_neurons_current_layer);
+  std::vector<double> weights(fan_out);
   for (double& w : weights) 
   {
     w = dist(gen);
@@ -384,7 +384,7 @@ std::vector<double> activation::xavier_initialization(int num_neurons_next_layer
   return weights;
 }
 
-std::vector<double> activation::he_initialization(int fan_in)
+std::vector<double> activation::he_initialization(int fan_in, int fan_out)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -392,14 +392,14 @@ std::vector<double> activation::he_initialization(int fan_in)
 
   std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / fan_in));
 
-  std::vector<double> weights(fan_in);
+  std::vector<double> weights(fan_out);
   for (double& w : weights) {
     w = dist(gen);  // Initialize weights
   }
   return weights;
 }
 
-std::vector<double> activation::selu_initialization(int fan_in)
+std::vector<double> activation::selu_initialization(int fan_in, int fan_out)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -408,7 +408,7 @@ std::vector<double> activation::selu_initialization(int fan_in)
   // Same as LeCun normal
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
-  std::vector<double> weights(fan_in);
+  std::vector<double> weights(fan_out);
   for (double& w : weights) {
     w = dist(gen);
   }
@@ -416,7 +416,7 @@ std::vector<double> activation::selu_initialization(int fan_in)
   return weights;
 }
 
-std::vector<double> activation::lecun_initialization(int fan_in)
+std::vector<double> activation::lecun_initialization(int fan_in, int fan_out)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -424,7 +424,7 @@ std::vector<double> activation::lecun_initialization(int fan_in)
 
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
-  std::vector<double> weights(fan_in);
+  std::vector<double> weights(fan_out);
   for (double& w : weights) {
     w = dist(gen);
   }
@@ -515,4 +515,3 @@ std::string activation::method_to_string(method m)
     throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
   }
 }
-

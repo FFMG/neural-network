@@ -108,9 +108,9 @@ protected:
     inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index) noexcept
     {
       MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-      assert(residual_source_index < _weight_params.size());
-      assert(target_neuron_index < _weight_params[residual_source_index].size());
-      return _weight_params[residual_source_index][target_neuron_index];
+      assert(target_neuron_index < _weight_params.size());
+      assert(residual_source_index < _weight_params[target_neuron_index].size());
+      return _weight_params[target_neuron_index][residual_source_index];
     }
     inline void update_weight(size_t out, size_t in, double delta) noexcept
     {
