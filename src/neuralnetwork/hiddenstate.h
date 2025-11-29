@@ -10,23 +10,27 @@ class HiddenState
 public:
   HiddenState(unsigned sequence_length) noexcept
     : 
-    _sequence_length(sequence_length)
+    _sequence_length(sequence_length),
+    _sum(0.0)
   {
   }
 
   HiddenState(const HiddenState& hs) noexcept
     :
-    _sequence_length(hs._sequence_length)
+    _sequence_length(hs._sequence_length),
+    _sum(hs._sum)
   {
     _hidden_state_history = hs._hidden_state_history;
   }
 
   HiddenState(HiddenState&& hs) noexcept
     :
-    _sequence_length(hs._sequence_length)
+    _sequence_length(hs._sequence_length),
+    _sum(hs._sum)
   {
     _hidden_state_history = std::move(hs._hidden_state_history);
     hs._sequence_length = 0;
+    hs._sum = 0.0;
   }
 
   HiddenState& operator=(const HiddenState& hs) noexcept
@@ -35,6 +39,7 @@ public:
     {
       _sequence_length = hs._sequence_length;
       _hidden_state_history = hs._hidden_state_history;
+      _sum = hs._sum;
     }
     return *this;
   }
@@ -45,7 +50,9 @@ public:
     {
       _sequence_length = hs._sequence_length;
       _hidden_state_history = std::move(hs._hidden_state_history);
+      _sum = hs._sum;
       hs._sequence_length = 0;
+      hs._sum = 0.0;
     }
     return *this;
   }
@@ -65,6 +72,16 @@ public:
 
     sum += _hidden_state_history.back() * weight;
     return sum;
+  }
+
+  void set_sum(double sum)
+  {
+    _sum = sum;
+  }
+
+  double get_sum() const
+  {
+    return _sum;
   }
 
   void queue_output(double output)
@@ -95,6 +112,7 @@ public:
 private:
   unsigned _sequence_length;
   std::deque<double> _hidden_state_history;
+  double _sum;
 };
 
 class HiddenStates
@@ -164,6 +182,11 @@ public:
   }
 
   std::vector<HiddenState>& at(size_t layer_number)
+  {
+    return _states[layer_number];
+  }
+  
+  const std::vector<HiddenState>& at(size_t layer_number) const
   {
     return _states[layer_number];
   }
