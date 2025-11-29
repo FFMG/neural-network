@@ -1100,11 +1100,11 @@ std::vector<double> NeuralNetwork::calculate_residual_projection_gradients(
   for (unsigned i = 0; i < residual_output_count -1; ++i) // exclude bias
   {
     const double residual_output = source.get_output(static_cast<unsigned>(residual_layer_number), i);
-    gradients.push_back((residual_output * delta) / batch_size);
+    gradients.push_back(residual_output * delta);
   }
 
   // residual bias contribution
-  gradients.push_back((1.0 * delta) / batch_size);
+  gradients.push_back(1.0 * delta);
 
   return gradients;
 }
