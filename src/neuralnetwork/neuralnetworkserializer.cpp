@@ -394,27 +394,14 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
       Logger::error("Could not find neuron index!");
       return {};
     }
-    auto optimiser_type_object = dynamic_cast<const TinyJSON::TJValueNumber*>(neuron_object->try_get_value("optimiser-type"));
-    if (nullptr == optimiser_type_object)
-    {
-      Logger::error("Could not find neuron optimiser type!");
-      return {};
-    }
-
-    auto optimiser_type = static_cast<OptimiserType>(optimiser_type_object->get_number());
 
     auto index = static_cast<unsigned>(index_object->get_number());
-
-    auto activation_method_string = layer_object->try_get_string("activation-method");
-    auto activation_method = activation::string_to_method(activation_method_string);
 
     auto neuron_type = static_cast<Neuron::Type>(neuron_object->get_number("neuron-type", true, true));
     auto dropout_rate = neuron_object->get_float<double>("dropout-rate", true, true);
     
     auto neuron = Neuron(
       index,
-      activation_method,
-      optimiser_type,
       neuron_type,
       dropout_rate
     );
@@ -562,8 +549,6 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
 {
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
-  neuron_object->set_number("optimiser-type", static_cast<unsigned>(neuron.get_optimiser_type()));
-  neuron_object->set_string("activation-method", neuron.get_activation_method().method_to_string().c_str());
 
   neuron_object->set_number("neuron-type", static_cast<unsigned>(neuron.get_type()));
   if(neuron.is_dropout())
@@ -589,7 +574,6 @@ void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArr
   }
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.residual_layer_number());
-  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
