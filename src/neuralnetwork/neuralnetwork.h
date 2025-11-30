@@ -408,7 +408,8 @@ private:
   void calculate_back_propagation(
     std::vector<GradientsAndOutputs>& gradients,
     const std::vector<std::vector<double>>& outputs, 
-    const Layers& layers) const;
+    const Layers& layers,
+    const std::vector<HiddenStates>& hidden_states) const;
 
   void calculate_back_propagation_input_layer(
     std::vector<GradientsAndOutputs>& gradients,
@@ -417,16 +418,18 @@ private:
   void calculate_back_propagation_output_layer(
     std::vector<GradientsAndOutputs>& gradients,
     const std::vector<std::vector<double>>& outputs,
-    const Layers& layers) const;
+    const Layers& layers,
+    const std::vector<HiddenStates>& hidden_states) const;
 
   void calculate_back_propagation_hidden_layers(
     std::vector<GradientsAndOutputs>& gradients,
-    const Layers& layers) const;
+    const Layers& layers,
+    const std::vector<HiddenStates>& hidden_states) const;
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& gradients_and_output,
-    std::vector<HiddenStates>& hidden_states,
     const std::vector<std::vector<double>>& inputs, 
     const Layers& layers, 
+    std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
   std::vector<GradientsAndOutputs> train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 

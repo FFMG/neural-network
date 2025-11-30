@@ -581,7 +581,7 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
 
       // Save Hidden State
       if (!hidden_states[b].empty()) {
-        hidden_states[b][j].queue_output(output);
+        hidden_states[b][j].set_pre_activation_sum(sum);
       }
     }
   }
@@ -593,6 +593,7 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
 std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs,
+  const std::vector<std::vector<HiddenState>>& hidden_states,
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -623,8 +624,8 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
 
       double delta = output - target;
 
-      // derivative is applied to the *post-activation output*
-      double grad = delta * neuron.get_activation_method().activate_derivative(output);
+      // derivative is applied to the *pre-activation sum*
+      double grad = delta * neuron.get_activation_method().activate_derivative(hidden_states[b][neuron_index].get_pre_activation_sum());
 
       grad = clip_gradient(grad, gradient_clip_threshold);
 
@@ -647,6 +648,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& next_grad_matrix,
   const std::vector<std::vector<double>>& output_matrix,
+  const std::vector<std::vector<HiddenState>>& hidden_states,
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -705,7 +707,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
       }
 
       // ---- Multiply by activation derivative ----
-      double deriv = neuron.get_activation_method().activate_derivative(output_matrix[b][i]);
+      double deriv = neuron.get_activation_method().activate_derivative(hidden_states[b][i].get_pre_activation_sum());
 
       double g = weighted_sum * deriv;
 

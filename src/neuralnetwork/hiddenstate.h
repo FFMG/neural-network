@@ -11,14 +11,16 @@ public:
   HiddenState(unsigned sequence_length) noexcept
     : 
     _sequence_length(sequence_length),
-    _sum(0.0)
+    _sum(0.0),
+    _pre_activation_sum(0.0)
   {
   }
 
   HiddenState(const HiddenState& hs) noexcept
     :
     _sequence_length(hs._sequence_length),
-    _sum(hs._sum)
+    _sum(hs._sum),
+    _pre_activation_sum(hs._pre_activation_sum)
   {
     _hidden_state_history = hs._hidden_state_history;
   }
@@ -26,11 +28,13 @@ public:
   HiddenState(HiddenState&& hs) noexcept
     :
     _sequence_length(hs._sequence_length),
-    _sum(hs._sum)
+    _sum(hs._sum),
+    _pre_activation_sum(hs._pre_activation_sum)
   {
     _hidden_state_history = std::move(hs._hidden_state_history);
     hs._sequence_length = 0;
     hs._sum = 0.0;
+    hs._pre_activation_sum = 0.0;
   }
 
   HiddenState& operator=(const HiddenState& hs) noexcept
@@ -40,6 +44,7 @@ public:
       _sequence_length = hs._sequence_length;
       _hidden_state_history = hs._hidden_state_history;
       _sum = hs._sum;
+      _pre_activation_sum = hs._pre_activation_sum;
     }
     return *this;
   }
@@ -51,8 +56,10 @@ public:
       _sequence_length = hs._sequence_length;
       _hidden_state_history = std::move(hs._hidden_state_history);
       _sum = hs._sum;
+      _pre_activation_sum = hs._pre_activation_sum; // Move new member
       hs._sequence_length = 0;
       hs._sum = 0.0;
+      hs._pre_activation_sum = 0.0;
     }
     return *this;
   }
@@ -84,6 +91,16 @@ public:
     return _sum;
   }
 
+  void set_pre_activation_sum(double sum)
+  {
+    _pre_activation_sum = sum;
+  }
+
+  double get_pre_activation_sum() const
+  {
+    return _pre_activation_sum;
+  }
+
   void queue_output(double output)
   {
     if (!is_recurrent_neural_network())
@@ -102,6 +119,7 @@ public:
   void clear()
   {
     _hidden_state_history.clear();
+    _pre_activation_sum = 0.0;
   }
 
   unsigned get_sequence_length() const noexcept
@@ -113,6 +131,7 @@ private:
   unsigned _sequence_length;
   std::deque<double> _hidden_state_history;
   double _sum;
+  double _pre_activation_sum;
 };
 
 class HiddenStates
