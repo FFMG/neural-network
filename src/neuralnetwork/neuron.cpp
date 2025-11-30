@@ -13,15 +13,10 @@ Neuron::Neuron(
   unsigned num_neurons_current_layer,
   unsigned num_neurons_next_layer,
   unsigned index,
-  const activation& activation,
-  const OptimiserType& optimiser_type,
   const Type& type,
   const double dropout_rate
 ) :
   _index(index),
-  _activation_method(activation),
-  _optimiser_type(optimiser_type),
-  _alpha(LEARNING_ALPHA),
   _type(type),
   _dropout_rate(dropout_rate)
 {
@@ -30,15 +25,10 @@ Neuron::Neuron(
 
 Neuron::Neuron(
   unsigned index,
-  const activation& activation,
-  const OptimiserType& optimiser_type,
   const Type& type,
   const double dropout_rate
 ) :
   _index(index),
-  _activation_method(activation),
-  _optimiser_type(optimiser_type),
-  _alpha(LEARNING_ALPHA),
   _type(type),
   _dropout_rate(dropout_rate)
 {
@@ -47,9 +37,6 @@ Neuron::Neuron(
 
 Neuron::Neuron(const Neuron& src)  noexcept : 
   _index(src._index),
-  _activation_method(src._activation_method),
-  _optimiser_type(src._optimiser_type),
-  _alpha(LEARNING_ALPHA),
   _type(src._type),
   _dropout_rate(src._dropout_rate)
 {
@@ -64,8 +51,6 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
     Clean();
 
     _index = src._index;
-    _activation_method = src._activation_method;
-    _optimiser_type = src._optimiser_type;
     _type = src._type;
     _dropout_rate = src._dropout_rate;
   }
@@ -74,15 +59,11 @@ Neuron& Neuron::operator=(const Neuron& src) noexcept
 
 Neuron::Neuron(Neuron&& src) noexcept :
   _index(src._index),
-  _activation_method(src._activation_method),
-  _optimiser_type(src._optimiser_type),
-  _alpha(LEARNING_ALPHA),
   _type(src._type),
   _dropout_rate(src._dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 
-  src._optimiser_type = OptimiserType::None;
   src._index = 0;
   src._type = Neuron::Type::Normal;
 }
@@ -95,12 +76,9 @@ Neuron& Neuron::operator=(Neuron&& src) noexcept
     Clean();
 
     _index = src._index;
-    _activation_method = src._activation_method;
-    _optimiser_type = src._optimiser_type;
     _dropout_rate = src._dropout_rate;
     _type = src._type;
 
-    src._optimiser_type = OptimiserType::None;
     src._index = 0;
     src._dropout_rate = 0.0;
     src._type = Neuron::Type::Normal;
@@ -139,12 +117,6 @@ bool Neuron::must_randomly_drop() const
   static thread_local std::mt19937 rng(std::random_device{}());
   std::bernoulli_distribution drop(1.0 - get_dropout_rate());
   return !drop(rng);  // true means keep, false means drop
-}
-
-const OptimiserType& Neuron::get_optimiser_type() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _optimiser_type; 
 }
 
 bool Neuron::is_dropout() const noexcept
