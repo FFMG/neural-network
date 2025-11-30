@@ -589,6 +589,76 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   return output_matrix;
 }
 
+std::vector<std::vector<double>> Layer::calculate_error(
+  const std::vector<std::vector<double>>& target_outputs,
+  const std::vector<std::vector<double>>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  // For now, always use BCE for error calculation
+  return calculate_bce_error(target_outputs, given_outputs);
+  // return calculate_mse_error(target_outputs, given_outputs);
+}
+
+std::vector<std::vector<double>> Layer::calculate_bce_error(
+  const std::vector<std::vector<double>>& target_outputs,
+  const std::vector<std::vector<double>>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  const size_t B = target_outputs.size();
+  const size_t N_total = number_neurons();
+
+  std::vector<std::vector<double>> deltas(B, std::vector<double>(N_total, 0.0));
+
+  // Small epsilon to prevent log(0) and division by zero
+  const double epsilon = 1e-8; 
+
+  size_t out_col = 0;
+  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
+  {
+    for (size_t b = 0; b < B; ++b)
+    {
+      const double target = target_outputs[b][out_col];
+      const double output = given_outputs[b][out_col];
+
+      // Derivative of Binary Cross-Entropy Loss w.r.t. output
+      // For sigmoid activation, dL/d_output = (output - target)
+      // This formula is often simplified because d_output/d_sum for sigmoid is output * (1 - output)
+      // and dL/d_sum = (output - target) when combined with sigmoid's derivative.
+      // So, the delta here is actually dL/d_output, not dL/d_sum directly.
+      // But since we're chaining it with activate_derivative(pre_activation_sum) later,
+      // and for sigmoid activate_derivative(sum) is output * (1-output)
+      // we need the term (output - target)
+      deltas[b][out_col] = (output - target);
+    }
+    out_col++;
+  }
+  return deltas;
+}
+
+std::vector<std::vector<double>> Layer::calculate_mse_error(
+  const std::vector<std::vector<double>>& target_outputs,
+  const std::vector<std::vector<double>>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  const size_t B = target_outputs.size();   // batch size
+  const size_t N_total = number_neurons();  // includes bias if present
+
+  std::vector<std::vector<double>> deltas(B, std::vector<double>(N_total, 0.0));
+
+  size_t out_col = 0;
+  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
+  {
+    for (size_t b = 0; b < B; ++b)
+    {
+      const double target = target_outputs[b][out_col];
+      const double output = given_outputs[b][out_col];
+      deltas[b][out_col] = output - target;
+    }
+    out_col++;
+  }
+  return deltas;
+}
+
 // forward for entire layer, batch-aware, matrix-based
 std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
@@ -611,6 +681,9 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
   // Allocate gradient matrix: only for NON-BIAS neurons
   std::vector<std::vector<double>> gradients(B, std::vector<double>(N_total, 0.0));
 
+  // Get deltas from the calculate_error function
+  std::vector<std::vector<double>> deltas = calculate_error(target_outputs, given_outputs);
+
   // Map output index (no bias) to neuron index (with bias)
   size_t out_col = 0;  // index in target/given arrays
 
@@ -619,13 +692,10 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
     const auto& neuron = get_neuron(neuron_index);
     for (size_t b = 0; b < B; ++b)
     {
-      const double target = target_outputs[b][out_col];
-      const double output = given_outputs[b][out_col];
-
-      double delta = output - target;
+      double delta = deltas[b][out_col]; // Use delta from calculate_error
 
       // derivative is applied to the *pre-activation sum*
-      double grad = delta * neuron.get_activation_method().activate_derivative(hidden_states[b][neuron_index].get_pre_activation_sum());
+      double grad = delta;
 
       grad = clip_gradient(grad, gradient_clip_threshold);
 
