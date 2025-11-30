@@ -37,9 +37,6 @@ public:
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
   double weight_initialization() const;
 
-  void set_alpha(double alpha);
-  double get_alpha() const;
-
   std::string method_to_string() const;
   static std::string method_to_string(method m);
   static method string_to_method(const std::string& str);

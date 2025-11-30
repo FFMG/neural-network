@@ -55,18 +55,6 @@ activation& activation::operator=(activation&& src) noexcept
   return *this;
 }
 
-void activation::set_alpha(double alpha)
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  _alpha = alpha;
-}
-
-double activation::get_alpha() const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  return _alpha;
-}
-
 double activation::calculate_linear(double x)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
