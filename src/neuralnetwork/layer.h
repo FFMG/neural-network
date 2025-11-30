@@ -7,6 +7,7 @@
   #endif
 #endif
 
+#include "activation.h"
 #include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
@@ -155,10 +156,9 @@ private:
     double weight_decay,
     int residual_layer_number, 
     LayerType layer_type, 
-    const activation::method& activation, 
+    const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
     double dropout_rate);
-  Layer(LayerType layer_type);
 
 public:
   Layer(
@@ -168,7 +168,7 @@ public:
     int residual_layer_number,
     LayerType layer_type,
     OptimiserType optimiser_type,
-    activation::method activation_method,
+    const activation::method& activation_method,
     const std::vector<std::vector<WeightParam>>& weights,
     const std::vector<WeightParam>& bias_weights,
     const std::vector<std::vector<WeightParam>>& residual_weights
@@ -189,11 +189,6 @@ public:
   Neuron& get_neuron(unsigned index);
 
   LayerType layer_type() const { return _layer_type; }
-
-private:
-  static Layer create_input_layer(const std::vector<Neuron>& neurons, double weight_decay);
-  static Layer create_hidden_layer(unsigned layer_index, const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, double weight_decay, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
-  static Layer create_output_layer(unsigned layer_index, const std::vector<Neuron>& neurons, double weight_decay, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params);
 
 public:
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay);
@@ -380,7 +375,7 @@ public:
   }
   inline const activation& get_activation() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _activation_method;
+    return _activation;
   }
   inline const LayerType& get_layer_type() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -411,7 +406,7 @@ private:
   ResidualProjector* _residual_projector;
   LayerType _layer_type;
   OptimiserType _optimiser_type;
-  activation _activation_method;
+  activation _activation;
 
   // N_prev = number of neurons in previous layer
   // N_this = number of neurons in this layer
