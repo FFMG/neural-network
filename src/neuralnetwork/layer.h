@@ -244,6 +244,18 @@ public:
     const std::vector<std::vector<HiddenState>>& hidden_states,
     double gradient_clip_threshold) const;
 
+  std::vector<std::vector<double>> calculate_error(
+    const std::vector<std::vector<double>>& target_outputs,
+    const std::vector<std::vector<double>>& given_outputs) const;
+
+  std::vector<std::vector<double>> calculate_mse_error(
+    const std::vector<std::vector<double>>& target_outputs,
+    const std::vector<std::vector<double>>& given_outputs) const;
+
+  std::vector<std::vector<double>> calculate_bce_error(
+    const std::vector<std::vector<double>>& target_outputs,
+    const std::vector<std::vector<double>>& given_outputs) const;
+
   std::vector<std::vector<double>> calculate_hidden_gradients(
     const Layer& next_layer,
     const std::vector<std::vector<double>>& next_grad_matrix,
