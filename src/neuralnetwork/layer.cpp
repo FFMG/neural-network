@@ -192,11 +192,13 @@ Layer& Layer::operator=(Layer&& src) noexcept
 
 Layer::~Layer()
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   clean();
 }
 
 void Layer::clean()
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   delete _residual_projector;
   _residual_projector = nullptr;
 }
@@ -207,6 +209,7 @@ void Layer::resize_weights(
   unsigned number_output_neurons, 
   double weight_decay)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if (has_bias())
   {
     _bias_weights.reserve(number_output_neurons);
@@ -241,6 +244,7 @@ void Layer::resize_weights(
 
 void Layer::move_residual_projector(ResidualProjector* residual_projector)
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   if(residual_projector != _residual_projector)
   {
     delete _residual_projector;
@@ -262,6 +266,7 @@ unsigned Layer::number_neurons() const noexcept
 
 unsigned Layer::number_neurons_with_bias() const noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("Layer");
   // use this function in case we do not want to have bias.
   // so we do not adjust number_neurons()
   return number_neurons() + (has_bias() ? 1 : 0);

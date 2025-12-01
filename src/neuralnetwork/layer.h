@@ -191,7 +191,10 @@ public:
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
 
-  LayerType layer_type() const { return _layer_type; }
+  LayerType layer_type() const { 
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_type; 
+  }
 
 public:
   static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, ErrorCalculation::type error_calculation_type);
