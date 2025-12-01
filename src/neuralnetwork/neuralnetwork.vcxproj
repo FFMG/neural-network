@@ -150,6 +150,7 @@
   <ItemGroup>
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
+    <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\spiral.h" />
     <ClInclude Include="examples\threebitparity.h" />

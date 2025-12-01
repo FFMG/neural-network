@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "./libraries/instrumentor.h"
+#include "errorcalculation.h"
 #include "neuralnetworkoptions.h"
 
 class NeuralNetwork;
@@ -15,7 +16,7 @@ public:
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error; 
     }
-    inline NeuralNetworkOptions::ErrorCalculation error_type() const noexcept { 
+    inline ErrorCalculation::type error_type() const noexcept { 
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error_type; 
     }
@@ -51,7 +52,7 @@ public:
         _error = src._error;
         _error_type = src._error_type;
         src._error = 0.0;
-        src._error_type = NeuralNetworkOptions::ErrorCalculation::none;
+        src._error_type = ErrorCalculation::type::none;
       }
       return *this;
     }
@@ -60,7 +61,7 @@ public:
     friend class NeuralNetworkHelper;
     friend class NeuralNetwork;
 
-    NeuralNetworkHelperMetrics(long double error, NeuralNetworkOptions::ErrorCalculation error_type) noexcept :
+    NeuralNetworkHelperMetrics(long double error, ErrorCalculation::type error_type) noexcept :
       _error(error),
       _error_type(error_type)
     {
@@ -68,7 +69,7 @@ public:
     }
 
     long double _error;
-    NeuralNetworkOptions::ErrorCalculation _error_type;
+    ErrorCalculation::type _error_type;
   };
 
   NeuralNetworkHelper() = delete;
@@ -151,8 +152,8 @@ public:
     return _training_inputs.size();
   }
 
-  NeuralNetworkHelperMetrics calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const;
-  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const;
+  NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const;
 
   NeuralNetworkHelper(
     NeuralNetwork& neural_network,

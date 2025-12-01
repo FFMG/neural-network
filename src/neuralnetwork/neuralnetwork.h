@@ -17,6 +17,7 @@
 
 #include "activation.h"
 #include "adaptivelearningratescheduler.h"
+#include "errorcalculation.h"
 #include "layers.h"
 #include "neuron.h"
 #include "optimiser.h"
@@ -373,7 +374,7 @@ private:
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
-  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options, const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors);
+  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options, const std::map<ErrorCalculation::type, double>& errors);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&);
 
@@ -389,8 +390,8 @@ public:
   const activation::method& get_output_activation_method() const;
   const activation::method& get_hidden_activation_method() const;
 
-  NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const;
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const;
+  NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
+  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const;
   double get_learning_rate() const noexcept;
 
   bool has_training_data() const;
@@ -449,29 +450,7 @@ private:
 
   Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const;
 
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const;
-
-  // Calculates the Mean Absolute Percentage Error (MAPE)
-  double calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8) const;
-  double calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8) const;
-
-  // Calculates the Weighted Absolute Percentage Error(WAPE) for a batch of sequences.
-  double calculate_forecast_wape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const;
-
-  // Error calculations
-  // Todo this should be moved to a static class a passed as an object.
-  // Todo: The user should be able to choose what error they want to use.
-  // Todo: Should those be public so the called _could_ use them to compare a prediction?
-  double calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0) const;
-  double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const;
-  double calculate_directional_accuracy(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, 
-    double neutral_tolerance = 0.001 // threshold below which movement is ignored
-  ) const;
-  double calculate_bce_loss(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const;
+  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const;
 
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
@@ -499,7 +478,7 @@ private:
   Layers _layers;
   NeuralNetworkOptions _options;
   NeuralNetworkHelper* _neural_network_helper;
-  std::map<NeuralNetworkOptions::ErrorCalculation, double> _saved_errors;
+  std::map<ErrorCalculation::type, double> _saved_errors;
 
   Rng _rng;
 };

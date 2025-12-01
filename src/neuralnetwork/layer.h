@@ -8,6 +8,7 @@
 #endif
 
 #include "activation.h"
+#include "errorcalculation.h"
 #include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
@@ -158,7 +159,8 @@ private:
     LayerType layer_type, 
     const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
-    double dropout_rate);
+    double dropout_rate,
+    ErrorCalculation::type error_calculation_type);
 
 public:
   Layer(
@@ -169,6 +171,7 @@ public:
     LayerType layer_type,
     OptimiserType optimiser_type,
     const activation::method& activation_method,
+    ErrorCalculation::type error_calculation_type,
     const std::vector<std::vector<WeightParam>>& weights,
     const std::vector<WeightParam>& bias_weights,
     const std::vector<std::vector<WeightParam>>& residual_weights
@@ -191,9 +194,9 @@ public:
   LayerType layer_type() const { return _layer_type; }
 
 public:
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
+  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, ErrorCalculation::type error_calculation_type);
+  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, ErrorCalculation::type error_calculation_type);
+  static Layer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, ErrorCalculation::type error_calculation_type);
 
   inline int residual_layer_number() const noexcept
   {
@@ -237,11 +240,13 @@ public:
     const std::vector<std::vector<double>>& target_outputs,
     const std::vector<std::vector<double>>& given_outputs,
     const std::vector<std::vector<HiddenState>>& hidden_states,
-    double gradient_clip_threshold) const;
+    double gradient_clip_threshold,
+    ErrorCalculation::type error_calculation_type) const;
 
   std::vector<std::vector<double>> calculate_error(
     const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs) const;
+    const std::vector<std::vector<double>>& given_outputs,
+    ErrorCalculation::type error_calculation_type) const;
 
   std::vector<std::vector<double>> calculate_mse_error(
     const std::vector<std::vector<double>>& target_outputs,
@@ -407,6 +412,7 @@ private:
   LayerType _layer_type;
   OptimiserType _optimiser_type;
   activation _activation;
+  ErrorCalculation::type _error_calculation_type;
 
   // N_prev = number of neurons in previous layer
   // N_this = number of neurons in this layer

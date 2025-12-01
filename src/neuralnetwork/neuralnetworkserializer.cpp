@@ -88,6 +88,7 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOpt
       layer_type,
       optimiser_type,
       activation_method,
+      ErrorCalculation::type::bce_loss, // TODO: Set the proper error from file.
       get_weights(*layer_object, layer_index),
       get_bias_weights(*layer_object, layer_index),
       get_residual_weights(*layer_object, layer_index)
@@ -213,9 +214,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .build();
 }
 
-std::map<NeuralNetworkOptions::ErrorCalculation, double> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
+std::map<ErrorCalculation::type, double> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
 {
-  std::map<NeuralNetworkOptions::ErrorCalculation, double> errors;
+  std::map<ErrorCalculation::type, double> errors;
   auto tj_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if (nullptr == tj_object)
   {
@@ -229,16 +230,16 @@ std::map<NeuralNetworkOptions::ErrorCalculation, double> NeuralNetworkSerializer
     return errors;
   }
 
-  errors[NeuralNetworkOptions::ErrorCalculation::huber_loss ] = tj_errors->get_float<double>("huber-loss", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::mae ] = tj_errors->get_float<double>("mae", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::mse ] = tj_errors->get_float<double>("mse", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::rmse ] = tj_errors->get_float<double>("rmse", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::nrmse ] = tj_errors->get_float<double>("nrmse", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::mape] = tj_errors->get_float<double>("mape", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::smape ] = tj_errors->get_float<double>("smape", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::wape ] = tj_errors->get_float<double>("wape", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::bce_loss ] = tj_errors->get_float<double>("bce-loss", true, false);
-  errors[NeuralNetworkOptions::ErrorCalculation::directional_accuracy ] = tj_errors->get_float<double>("directional-accuracy", true, false);
+  errors[ErrorCalculation::type::huber_loss ] = tj_errors->get_float<double>("huber-loss", true, false);
+  errors[ErrorCalculation::type::mae ] = tj_errors->get_float<double>("mae", true, false);
+  errors[ErrorCalculation::type::mse ] = tj_errors->get_float<double>("mse", true, false);
+  errors[ErrorCalculation::type::rmse ] = tj_errors->get_float<double>("rmse", true, false);
+  errors[ErrorCalculation::type::nrmse ] = tj_errors->get_float<double>("nrmse", true, false);
+  errors[ErrorCalculation::type::mape] = tj_errors->get_float<double>("mape", true, false);
+  errors[ErrorCalculation::type::smape ] = tj_errors->get_float<double>("smape", true, false);
+  errors[ErrorCalculation::type::wape ] = tj_errors->get_float<double>("wape", true, false);
+  errors[ErrorCalculation::type::bce_loss ] = tj_errors->get_float<double>("bce-loss", true, false);
+  errors[ErrorCalculation::type::directional_accuracy ] = tj_errors->get_float<double>("directional-accuracy", true, false);
 
   return errors;
 }
@@ -662,16 +663,16 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
   auto metrics = nn.calculate_forecast_metrics({ 
-    NeuralNetworkOptions::ErrorCalculation::huber_loss,
-    NeuralNetworkOptions::ErrorCalculation::mae,
-    NeuralNetworkOptions::ErrorCalculation::mse,
-    NeuralNetworkOptions::ErrorCalculation::rmse,
-    NeuralNetworkOptions::ErrorCalculation::nrmse,
-    NeuralNetworkOptions::ErrorCalculation::mape,
-    NeuralNetworkOptions::ErrorCalculation::smape,
-    NeuralNetworkOptions::ErrorCalculation::wape,
-    NeuralNetworkOptions::ErrorCalculation::directional_accuracy,
-    NeuralNetworkOptions::ErrorCalculation::bce_loss
+    ErrorCalculation::type::huber_loss,
+    ErrorCalculation::type::mae,
+    ErrorCalculation::type::mse,
+    ErrorCalculation::type::rmse,
+    ErrorCalculation::type::nrmse,
+    ErrorCalculation::type::mape,
+    ErrorCalculation::type::smape,
+    ErrorCalculation::type::wape,
+    ErrorCalculation::type::directional_accuracy,
+    ErrorCalculation::type::bce_loss
   });
 
   auto tj_errors = new TinyJSON::TJValueObject();

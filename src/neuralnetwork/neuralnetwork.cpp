@@ -25,7 +25,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.hidden_activation_method(), 
     options.output_activation_method(),
     options.optimiser_type(),
-    options.residual_layer_jump()),
+    options.residual_layer_jump(),
+    options.error_calculation_type()),
   _options(options),
   _neural_network_helper(nullptr)
 {
@@ -48,7 +49,7 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const std::vector<Layer>& layers, 
   const NeuralNetworkOptions& options,
-  const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors
+  const std::map<ErrorCalculation::type, double>& errors
   ) :
   _learning_rate(options.learning_rate()),
   _layers(layers),
@@ -259,14 +260,14 @@ double NeuralNetwork::get_learning_rate() const noexcept
   return _learning_rate;
 }
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const
+NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto results = calculate_forecast_metrics({ error_type }, false);
   return results.front();
 }
 
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const
+std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return calculate_forecast_metrics(error_types, false);
@@ -284,7 +285,7 @@ bool NeuralNetwork::has_training_data() const
   return !_saved_errors.empty();
 }
 
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const
+std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors = {};
@@ -323,6 +324,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   {
     checks_indexes = &helper.checking_indexes();
   }
+
   prediction_size = checks_indexes->size();
   if (prediction_size == 0)
   {
@@ -337,7 +339,6 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   std::vector<std::vector<double>> checking_outputs;
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
-
   {
     std::shared_lock read(_mutex);
     for (size_t index = 0; index < prediction_size; ++index)
@@ -361,7 +362,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   {
     errors.emplace_back(
       NeuralNetworkHelper::NeuralNetworkHelperMetrics(
-      calculate_error(error_types[index], checking_outputs, predictions),
+        ErrorCalculation::calculate_error(error_types[index], checking_outputs, predictions),
         error_types[index]));
   }
   return errors;
@@ -590,9 +591,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   auto metrics = calculate_forecast_metrics(
     {
-      NeuralNetworkOptions::ErrorCalculation::rmse,
-      NeuralNetworkOptions::ErrorCalculation::mape,
-      NeuralNetworkOptions::ErrorCalculation::wape
+      ErrorCalculation::type::rmse,
+      ErrorCalculation::type::mape,
+      ErrorCalculation::type::wape
     }, true);
 
   Logger::info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
@@ -794,7 +795,7 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   {
     auto metric = calculate_forecast_metrics(
       {
-        NeuralNetworkOptions::ErrorCalculation::rmse,
+        ErrorCalculation::type::rmse,
       }, false);
     learning_rate = learning_rate_scheduler.update(metric[0].error(), learning_rate, epoch, number_of_epoch);
     Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
@@ -828,249 +829,6 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
       return Logger::factory("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
     });
   return warmup_learning_rate;
-}
-
-double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  switch (error_type)
-  {
-  case NeuralNetworkOptions::ErrorCalculation::none:
-    return 0.0;
-
-  case NeuralNetworkOptions::ErrorCalculation::huber_loss:
-    return calculate_huber_loss_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mae:
-    return calculate_mae_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mse:
-    return calculate_mse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::rmse:
-    return calculate_rmse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::nrmse:
-    return calculate_nrmse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mape:
-    return calculate_forecast_mape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::wape:
-    return calculate_forecast_wape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::smape:
-    return calculate_forecast_smape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::directional_accuracy:
-    return calculate_directional_accuracy(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::bce_loss:
-      return calculate_bce_loss(ground_truth, predictions);
-  }
-
-  Logger::error("Unknown ErrorCalculation type!");
-  throw std::invalid_argument("Unknown ErrorCalculation type!");
-}
-
-double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-#if VALIDATE_DATA == 1
-  if (ground_truth.size() != predictions.size())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Mismatched number of samples");
-  }
-#endif
-
-  double total_loss = 0.0;
-  size_t count = 0;
-
-  for (size_t i = 0; i < ground_truth.size(); ++i)
-  {
-    if (ground_truth[i].size() != predictions[i].size())
-    {
-      Logger::error("Mismatched vector sizes at index ", i);
-      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
-    }
-
-    for (size_t j = 0; j < ground_truth[i].size(); ++j)
-    {
-      double error = ground_truth[i][j] - predictions[i][j];
-      double abs_error = std::abs(error);
-
-      if (abs_error <= delta)
-      {
-        total_loss += 0.5 * error * error;
-      }
-      else
-      {
-        total_loss += delta * (abs_error - 0.5 * delta);
-      }
-      ++count;
-    }
-  }
-  return (count > 0) ? (total_loss / count) : 0.0;
-}
-
-double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (ground_truth.size() != predictions.size())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-  
-
-  double total_abs_error = 0.0;
-  size_t count = 0;
-  for (size_t i = 0; i < ground_truth.size(); ++i)
-  {
-    if (ground_truth[i].size() != predictions[i].size())
-    {
-      Logger::error("Mismatched vector sizes at index ", i);
-      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
-    }
-    for (size_t j = 0; j < ground_truth[i].size(); ++j)
-    {
-      total_abs_error += std::abs(ground_truth[i][j] - predictions[i][j]);
-      ++count;
-    }
-  }
-  return (count > 0) ? (total_abs_error / count) : 0.0;
-}
-
-double NeuralNetwork::calculate_rmse_error(
-  const std::vector<std::vector<double>>& ground_truths,
-  const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_rmse = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-      continue;
-
-    double mse = 0.0;
-    for (size_t i = 0; i < gt.size(); ++i)
-    {
-      double diff = gt[i] - pred[i];
-      mse += diff * diff;
-    }
-
-    mse /= gt.size();
-    total_rmse += std::sqrt(mse);
-    ++sequence_count;
-  }
-
-  return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
-}
-
-double NeuralNetwork::calculate_bce_loss(
-  const std::vector<std::vector<double>>& ground_truths,
-  const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_bce = 0.0;
-  size_t sequence_count = 0;
-
-  // small epsilon to avoid log(0)
-  const double eps = 1e-12;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-    {
-      continue;
-    }
-
-    double bce = 0.0;
-    for (size_t i = 0; i < gt.size(); ++i) 
-    {
-      // clip predictions to [eps, 1 - eps]
-      double p = std::max(eps, std::min(1.0 - eps, pred[i]));
-      double y = gt[i];
-
-      bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
-    }
-
-    bce /= gt.size();    // average over outputs in sequence
-    total_bce += bce;
-    ++sequence_count;
-  }
-
-  return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
-}
-
-double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (ground_truth.size() != predictions.size()) 
-  {
-    Logger::error("Mismatch in batch sizes.");
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-
-  double mean_squared_error = 0.0;
-  size_t valid_count = 0;
-
-  for (size_t i = 0; i < ground_truth.size(); ++i) 
-  {
-    const auto& true_output = ground_truth[i];
-    const auto& predicted_output = predictions[i];
-
-    if (true_output.size() != predicted_output.size()) 
-    {
-      Logger::warning("Mismatch in output vector sizes at index ",i);
-      continue;
-    }
-
-    for (size_t j = 0; j < true_output.size(); ++j) 
-    {
-      double error = predicted_output[j] - true_output[j];
-
-      if (!std::isfinite(error))
-      {
-        continue;
-      }
-
-      double squared_error = error * error;
-      if (!std::isfinite(squared_error))
-      {
-        continue;
-      }
-      ++valid_count;
-      mean_squared_error += (squared_error - mean_squared_error) / valid_count;
-    }
-  }
-
-  if (valid_count == 0)
-  {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  return mean_squared_error;
 }
 
 std::vector<double> NeuralNetwork::calculate_residual_projection_gradients(
@@ -1327,8 +1085,14 @@ void NeuralNetwork::apply_weight_gradients(
           wp.clip_gradient(unclipped_gradient) : 
           unclipped_gradient * global_clipping_scale;
 
+        Logger::trace([&] {
+          return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Weight ", w, ": Initial value=", wp.get_value(), " Unclipped Grad=", unclipped_gradient, " Clipped Grad=", clipped_gradient, " Learning Rate=", learning_rate);
+        });
         // apply via layer helper (this will set the gradient used by optimizer inside WeightParam)
         current_layer.apply_weight_gradient(clipped_gradient, learning_rate, false, wp, global_clipping_scale, _options.clip_threshold());
+        Logger::trace([&] {
+          return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Weight ", w, ": Final value=", wp.get_value());
+        });
         wp.clear_unclipped_gradient();
       }
 
@@ -1341,7 +1105,13 @@ void NeuralNetwork::apply_weight_gradients(
           bp.clip_gradient(unclipped_gradient) : 
           unclipped_gradient * global_clipping_scale;
 
+        Logger::trace([&] {
+          return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Bias: Initial value=", bp.get_value(), " Unclipped Grad=", unclipped_gradient, " Clipped Grad=", clipped_gradient, " Learning Rate=", learning_rate);
+        });
         current_layer.apply_weight_gradient(clipped_gradient, learning_rate, true, bp, global_clipping_scale, _options.clip_threshold());
+        Logger::trace([&] {
+          return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Bias: Final value=", bp.get_value());
+        });
         bp.clear_unclipped_gradient();
       }
 
@@ -1356,7 +1126,13 @@ void NeuralNetwork::apply_weight_gradients(
           double clipped = (global_clipping_scale <= 0.0) ? 
             rwp.clip_gradient(unclipped) : 
             unclipped * global_clipping_scale;
+          Logger::trace([&] {
+            return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Residual Weight ", r, ": Initial value=", rwp.get_value(), " Unclipped Grad=", unclipped, " Clipped Grad=", clipped, " Learning Rate=", learning_rate);
+          });
           current_layer.apply_weight_gradient(clipped, learning_rate, false, rwp, global_clipping_scale, _options.clip_threshold());
+          Logger::trace([&] {
+            return Logger::factory("Layer ", layer_number, " Neuron ", neuron_index, " Residual Weight ", r, ": Final value=", rwp.get_value());
+          });
           rwp.clear_unclipped_gradient();
         }
       }
@@ -1445,7 +1221,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
       hs.push_back(state.at(output_layer_number));
   }
 
-  auto next_activation_gradients = output_layer.calculate_output_gradients(outputs, given_outputs, hs, _options.clip_threshold());
+  auto next_activation_gradients = output_layer.calculate_output_gradients(outputs, given_outputs, hs, _options.clip_threshold(), _options.error_calculation_type());
 
   set_gradients_for_layer(gradients, output_layer_number, next_activation_gradients);
 }
@@ -1624,227 +1400,6 @@ void NeuralNetwork::calculate_forward_feed(
     // --- 3f. Save forward outputs for next layer / residuals ---
     layer_outputs.emplace_back(std::move(forward_feed));
   }
-}
-
-double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_smape = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty()) {
-      continue; // skip empty or mismatched
-    }
-
-    double seq_error_sum = 0.0;
-    size_t count = 0;
-
-    for (size_t i = 0; i < gt.size(); ++i) 
-    {
-      double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
-      if (denom < epsilon) continue; // skip both near-zero
-      seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
-      ++count;
-    }
-
-    if (count > 0) 
-    {
-      total_smape += seq_error_sum / count;
-      ++sequence_count;
-    }
-  }
-  return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
-}
-
-double NeuralNetwork::calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  size_t correct = 0;
-  size_t total = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.size() < 2)
-    {
-      continue; // Skip sequences that are too short
-    }
-
-    for (size_t i = 1; i < gt.size(); ++i)
-    {
-      double gt_diff = gt[i] - gt[i - 1];
-      double pred_diff = pred[i] - pred[i - 1];
-
-      // Ignore negligible ground truth movements (noise)
-      if (std::abs(gt_diff) < neutral_tolerance)
-      {
-        continue;
-      }
-
-      if ((gt_diff * pred_diff) > 0.0)
-      {
-        ++correct;
-      }
-      ++total;
-    }
-  }
-  return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
-}
-
-double NeuralNetwork::calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_nrmse = 0.0;
-  size_t sequence_count = 0;
-  const double eps = 1e-12; // small value to avoid division by zero
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-      continue;
-
-    double mse = 0.0;
-    double min_val = gt[0], max_val = gt[0], mean_abs = 0.0;
-
-    for (size_t i = 0; i < gt.size(); ++i)
-    {
-      double diff = gt[i] - pred[i];
-      mse += diff * diff;
-
-      min_val = std::min(min_val, gt[i]);
-      max_val = std::max(max_val, gt[i]);
-      mean_abs += std::abs(gt[i]);
-    }
-
-    mse /= gt.size();
-    double rmse = std::sqrt(mse);
-    mean_abs /= gt.size();
-
-    // Auto-select normalization
-    double denom = max_val - min_val;         // primary: range
-    if (denom < eps) denom = mean_abs;        // fallback: mean magnitude
-    if (denom < eps) continue;                // skip if both tiny
-
-    total_nrmse += rmse / denom;
-    ++sequence_count;
-  }
-
-  return (sequence_count == 0) ? 0.0 : (total_nrmse / sequence_count);
-}
-
-double NeuralNetwork::calculate_forecast_wape(const std::vector<std::vector<double>>&ground_truths, const std::vector<std::vector<double>>&predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_absolute_error = 0.0;
-  double total_absolute_actuals = 0.0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    // Skip mismatched or empty sequences
-    if (gt.size() != pred.size() || gt.empty())
-    {
-      continue;
-    }
-
-    // Sum the errors and actuals for this sequence
-    for (size_t i = 0; i < gt.size(); ++i)
-    {
-      total_absolute_error += std::abs(gt[i] - pred[i]);
-      total_absolute_actuals += std::abs(gt[i]);
-    }
-  }
-
-  // Perform a single division at the end
-  // Check if the total sum of actuals is zero
-  if (total_absolute_actuals == 0.0)
-  {
-    // If total actuals are 0, error is 0 only if total error is also 0.
-    // Otherwise, it's undefined. We can return 0 if both are 0, 
-    // or 1.0 (100% error) if we predicted non-zero values for all-zero actuals.
-    return (total_absolute_error == 0.0) ? 0.0 : 1.0;
-  }
-
-  // WAPE formula
-  return total_absolute_error / total_absolute_actuals;
-}
-
-double NeuralNetwork::calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_mape = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty()) 
-    {
-      continue; // skip empty or mismatched
-    }
-
-    double seq_error_sum = 0.0;
-    size_t count = 0;
-
-    for (size_t i = 0; i < gt.size(); ++i) 
-    {
-      double denom = std::abs(gt[i]);
-      if (denom < epsilon) continue; // skip tiny values
-      seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
-      ++count;
-    }
-
-    if (count > 0) 
-    {
-      total_mape += seq_error_sum / count;
-      ++sequence_count;
-    }
-  }
-  return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
 }
 
 void NeuralNetwork::log_training_info(
