@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "activation.h"
+#include "errorcalculation.h"
 #include "layer.h"
 #include "logger.h"
 #include "optimiser.h"
@@ -36,26 +37,12 @@ private:
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
     _recurrent_layers({}),
-    _weight_decay(0.0)
+    _weight_decay(0.0),
+    _error_calculation_type(ErrorCalculation::type::mse)
   {
   }
 
 public:
-  enum class ErrorCalculation
-  {
-    none,
-    huber_loss,
-    mae,
-    mse,
-    rmse,
-    nrmse,
-    mape,
-    smape,
-    wape,
-    directional_accuracy,
-    bce_loss
-  };
-
   NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
   {
     *this = nno;
@@ -93,6 +80,7 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _recurrent_layers = nno._recurrent_layers;
       _weight_decay = nno._weight_decay;
+      _error_calculation_type = nno._error_calculation_type;
     }
     return *this;
   }
@@ -124,6 +112,7 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _recurrent_layers = std::move(nno._recurrent_layers);
       _weight_decay = nno._weight_decay;
+      _error_calculation_type = nno._error_calculation_type;
 
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -137,6 +126,7 @@ public:
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
       nno._weight_decay = 0.0;
+      nno._error_calculation_type = ErrorCalculation::type::mse; // Reset moved-from value
     }
     return *this;
   }
@@ -244,6 +234,11 @@ public:
   NeuralNetworkOptions& with_weight_decay(double weight_decay)
   {
     _weight_decay = weight_decay;
+    return *this;
+  }
+  NeuralNetworkOptions& with_error_calculation_type(ErrorCalculation::type error_calculation_type)
+  {
+    _error_calculation_type = error_calculation_type;
     return *this;
   }
   
@@ -415,6 +410,7 @@ public:
   inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
   inline const std::vector<unsigned>& recurrent_layers() const noexcept { return _recurrent_layers; }
   inline double weight_decay() const noexcept{ return _weight_decay; }
+  inline ErrorCalculation::type error_calculation_type() const noexcept { return _error_calculation_type; }
 
 private:
   std::vector<unsigned> _topology;
@@ -440,4 +436,5 @@ private:
   bool _shuffle_training_data;
   std::vector<unsigned> _recurrent_layers;
   double _weight_decay;
+  ErrorCalculation::type _error_calculation_type;
 };

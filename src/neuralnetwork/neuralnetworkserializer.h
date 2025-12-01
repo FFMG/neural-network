@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "errorcalculation.h"
 #include "layer.h"
 #include "neuralnetwork.h"
 #include "neuron.h"
@@ -23,7 +24,7 @@ private:
   virtual ~NeuralNetworkSerializer() = default;
 
   static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
-  static std::map<NeuralNetworkOptions::ErrorCalculation, double> get_errors(const TinyJSON::TJValue& json);
+  static std::map<ErrorCalculation::type, double> get_errors(const TinyJSON::TJValue& json);
   static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
   static std::vector<WeightParam> get_weight_params(const TinyJSON::TJValueObject& parent);
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number);

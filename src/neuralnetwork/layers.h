@@ -1,5 +1,6 @@
 #pragma once
 #include "activation.h"
+#include "errorcalculation.h"
 #include "layer.h"
 #include "optimiser.h"
 
@@ -14,7 +15,8 @@ public:
     const activation::method& hidden_activation,
     const activation::method& output_activation,
     const OptimiserType& optimiser_type,
-    int residual_layer_jump) noexcept;
+    int residual_layer_jump,
+    ErrorCalculation::type error_calculation_type) noexcept;
   Layers(const std::vector<Layer>& layers) noexcept;
   Layers(const Layers& layers) noexcept;
   Layers(Layers&& layers) noexcept;

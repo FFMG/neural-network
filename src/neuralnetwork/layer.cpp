@@ -17,7 +17,8 @@ Layer::Layer(
   LayerType layer_type, 
   const activation::method& activation_method,
   const OptimiserType& optimiser_type, 
-  double dropout_rate) :
+  double dropout_rate,
+  ErrorCalculation::type error_calculation_type) : // Add new parameter
   _layer_index(layer_index),
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
@@ -25,7 +26,8 @@ Layer::Layer(
   _residual_projector(nullptr),
   _layer_type(layer_type),
   _optimiser_type(optimiser_type),
-  _activation(activation_method)
+  _activation(activation_method),
+  _error_calculation_type(error_calculation_type) // Initialize new member
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if (num_neurons_in_this_layer == 0) 
@@ -68,7 +70,8 @@ Layer::Layer(const Layer& src) noexcept :
   _weights(src._weights),
   _bias_weights(src._bias_weights),
   _optimiser_type(src._optimiser_type),
-  _activation(src._activation)
+  _activation(src._activation),
+  _error_calculation_type(src._error_calculation_type)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   if(src._residual_projector != nullptr)
@@ -85,6 +88,7 @@ Layer::Layer(
   LayerType layer_type,
   OptimiserType optimiser_type,
   const activation::method& activation_method,
+  ErrorCalculation::type error_calculation_type,
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<WeightParam>& bias_weights,
   const std::vector<std::vector<WeightParam>>& residual_weights
@@ -97,6 +101,7 @@ Layer::Layer(
   _layer_type(layer_type),
   _optimiser_type(optimiser_type),
   _activation(activation_method),
+  _error_calculation_type(error_calculation_type),
   _weights(weights),
   _bias_weights(bias_weights)
 {
@@ -118,7 +123,8 @@ Layer::Layer(Layer&& src) noexcept :
   _weights(std::move(src._weights)),
   _bias_weights(std::move(src._bias_weights)),
   _optimiser_type(std::move(src._optimiser_type)),
-  _activation(std::move(src._activation))
+  _activation(std::move(src._activation)),
+  _error_calculation_type(src._error_calculation_type)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   src._layer_index = 0;
@@ -127,6 +133,7 @@ Layer::Layer(Layer&& src) noexcept :
   src._residual_layer_number = -1;
   src._residual_projector = nullptr;
   src._optimiser_type = OptimiserType::None;
+  src._error_calculation_type = ErrorCalculation::type::none;
 }
 
 Layer& Layer::operator=(const Layer& src) noexcept
@@ -149,6 +156,7 @@ Layer& Layer::operator=(const Layer& src) noexcept
     _bias_weights = src._bias_weights;
     _optimiser_type = src._optimiser_type;
     _activation = src._activation;
+    _error_calculation_type = src._error_calculation_type;
   }
   return *this;
 }
@@ -170,11 +178,14 @@ Layer& Layer::operator=(Layer&& src) noexcept
     _bias_weights = std::move(src._bias_weights);
     _optimiser_type = std::move(src._optimiser_type);
     _activation = std::move(src._activation);
+    _error_calculation_type = src._error_calculation_type;
    
     src._number_output_neurons = 0;
     src._number_input_neurons = 0;
     src._residual_layer_number = -1;
     src._residual_projector = nullptr;
+    src._optimiser_type = OptimiserType::None;
+    src._error_calculation_type = ErrorCalculation::type::none; // Reset moved-from value
   }
   return *this;
 }
@@ -256,22 +267,22 @@ unsigned Layer::number_neurons_with_bias() const noexcept
   return number_neurons() + (has_bias() ? 1 : 0);
 }
 
-Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
+Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, ErrorCalculation::type error_calculation_type)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
+  return Layer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0, error_calculation_type);
 }
 
-Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, ErrorCalculation::type error_calculation_type)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate);
+  return Layer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate, error_calculation_type);
 }
 
-Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
+Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, ErrorCalculation::type error_calculation_type)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0);
+  return Layer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0, error_calculation_type);
 }
 
 const std::vector<Neuron>& Layer::get_neurons() const noexcept
@@ -509,7 +520,8 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
 
 std::vector<std::vector<double>> Layer::calculate_error(
   const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs) const
+  const std::vector<std::vector<double>>& given_outputs,
+  ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   // return calculate_mse_error(target_outputs, given_outputs);
@@ -586,7 +598,8 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs,
   const std::vector<std::vector<HiddenState>>& hidden_states,
-  double gradient_clip_threshold) const
+  double gradient_clip_threshold,
+  ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t B = target_outputs.size();   // batch size
@@ -604,7 +617,7 @@ std::vector<std::vector<double>> Layer::calculate_output_gradients(
   std::vector<std::vector<double>> gradients(B, std::vector<double>(N_total, 0.0));
 
   // Get deltas from the calculate_error function
-  std::vector<std::vector<double>> deltas = calculate_error(target_outputs, given_outputs);
+  std::vector<std::vector<double>> deltas = calculate_error(target_outputs, given_outputs, error_calculation_type);
 
   // Map output index (no bias) to neuron index (with bias)
   size_t out_col = 0;  // index in target/given arrays
