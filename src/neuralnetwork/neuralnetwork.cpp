@@ -25,8 +25,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.hidden_activation_method(), 
     options.output_activation_method(),
     options.optimiser_type(),
-    options.residual_layer_jump(),
-    options.error_calculation_type()),
+    options.residual_layer_jump()),
   _options(options),
   _neural_network_helper(nullptr)
 {
