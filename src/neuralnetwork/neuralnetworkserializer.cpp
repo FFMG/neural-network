@@ -72,6 +72,10 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOpt
 
     auto residual_layer_number = layer_object->get_number<int>("residual-layer-number");
     auto optimiser_type_string = layer_object->try_get_string("optimiser-type");
+    if (optimiser_type_string == nullptr)
+    {
+      Logger::panic("Missing layer 'optimiser-type'.");
+    }
     auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
     auto activation_method_string = layer_object->try_get_string("activation-method");
@@ -88,7 +92,6 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOpt
       layer_type,
       optimiser_type,
       activation_method,
-      ErrorCalculation::type::bce_loss, // TODO: Set the proper error from file.
       get_weights(*layer_object, layer_index),
       get_bias_weights(*layer_object, layer_index),
       get_residual_weights(*layer_object, layer_index)
@@ -575,6 +578,7 @@ void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArr
   }
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.residual_layer_number());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 

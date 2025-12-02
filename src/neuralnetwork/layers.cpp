@@ -10,8 +10,7 @@ Layers::Layers(
   const activation::method& hidden_activation,
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
-  int residual_layer_jump,
-  ErrorCalculation::type error_calculation_type) noexcept
+  int residual_layer_jump) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
@@ -20,7 +19,7 @@ Layers::Layers(
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], weight_decay, error_calculation_type);
+  auto layer = Layer::create_input_layer(topology[0], topology[1], weight_decay);
   _layers.emplace_back(std::move(layer));
 
   // then the hidden layers
@@ -31,7 +30,7 @@ Layers::Layers(
     auto dropout_rate = dropout_layers[layer_number-1]; // remove input
     const auto& previous_layer = _layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, error_calculation_type);
+    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
 
     add_residual_layer(layer, hidden_activation);
     Logger::trace([&]
@@ -52,7 +51,7 @@ Layers::Layers(
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = Layer::create_output_layer(topology.back(), weight_decay, _layers.back(), output_activation, optimiser_type, residual_layer_number, error_calculation_type);
+  layer = Layer::create_output_layer(topology.back(), weight_decay, _layers.back(), output_activation, optimiser_type, residual_layer_number);
 
   add_residual_layer(layer, output_activation);
   if (Logger::can_trace())
