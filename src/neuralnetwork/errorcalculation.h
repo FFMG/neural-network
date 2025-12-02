@@ -31,43 +31,43 @@ public:
   };
 public:
 
-  static double calculate_error(ErrorCalculation::type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+  static double calculate_error(type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     switch (error_type)
     {
-    case ErrorCalculation::type::none:
+    case type::none:
       return 0.0;
 
-    case ErrorCalculation::type::huber_loss:
-      return ErrorCalculation::calculate_huber_loss_error(ground_truth, predictions);
+    case type::huber_loss:
+      return calculate_huber_loss_error(ground_truth, predictions);
 
-    case ErrorCalculation::type::mae:
-      return ErrorCalculation::calculate_mae_error(ground_truth, predictions);
+    case type::mae:
+      return calculate_mae_error(ground_truth, predictions);
 
-    case ErrorCalculation::type::mse:
-      return ErrorCalculation::calculate_mse_error(ground_truth, predictions);
+    case type::mse:
+      return calculate_mse_error(ground_truth, predictions);
 
-    case ErrorCalculation::type::rmse:
-      return ErrorCalculation::calculate_rmse_error(ground_truth, predictions);
+    case type::rmse:
+      return calculate_rmse_error(ground_truth, predictions);
 
-    case ErrorCalculation::type::nrmse:
-      return ErrorCalculation::calculate_nrmse_error(ground_truth, predictions);
+    case type::nrmse:
+      return calculate_nrmse_error(ground_truth, predictions);
 
-    case ErrorCalculation::type::mape:
-      return ErrorCalculation::calculate_forecast_mape(ground_truth, predictions);
+    case type::mape:
+      return calculate_forecast_mape(ground_truth, predictions);
 
-    case ErrorCalculation::type::wape:
-      return ErrorCalculation::calculate_forecast_wape(ground_truth, predictions);
+    case type::wape:
+      return calculate_forecast_wape(ground_truth, predictions);
 
-    case ErrorCalculation::type::smape:
-      return ErrorCalculation::calculate_forecast_smape(ground_truth, predictions);
+    case type::smape:
+      return calculate_forecast_smape(ground_truth, predictions);
 
-    case ErrorCalculation::type::directional_accuracy:
-      return ErrorCalculation::calculate_directional_accuracy(ground_truth, predictions);
+    case type::directional_accuracy:
+      return calculate_directional_accuracy(ground_truth, predictions);
 
-    case ErrorCalculation::type::bce_loss:
-      return ErrorCalculation::calculate_bce_loss(ground_truth, predictions);
+    case type::bce_loss:
+      return calculate_bce_loss(ground_truth, predictions);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -90,8 +90,7 @@ public:
     {
       if (ground_truth[i].size() != predictions[i].size())
       {
-        Logger::error("Mismatched vector sizes at index ", i);
-        throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
+        Logger::panic("Mismatched vector sizes at index ", i);
       }
 
       for (size_t j = 0; j < ground_truth[i].size(); ++j)
@@ -128,8 +127,7 @@ public:
     {
       if (ground_truth[i].size() != predictions[i].size())
       {
-        Logger::error("Mismatched vector sizes at index ", i);
-        throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
+        Logger::panic("Mismatched vector sizes at index ", i);
       }
       for (size_t j = 0; j < ground_truth[i].size(); ++j)
       {
