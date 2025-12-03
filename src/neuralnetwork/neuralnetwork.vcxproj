@@ -137,6 +137,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="activation.cpp" />
+    <ClCompile Include="fflayer.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
@@ -150,12 +151,14 @@
   <ItemGroup>
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
+    <ClInclude Include="baselayer.h" />
     <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\spiral.h" />
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\twomoon.h" />
     <ClInclude Include="examples\xor.h" />
+    <ClInclude Include="fflayer.h" />
     <ClInclude Include="hiddenstate.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="layers.h" />
