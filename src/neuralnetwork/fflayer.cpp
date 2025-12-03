@@ -13,7 +13,6 @@ FFLayer::FFLayer(
   unsigned num_neurons_in_this_layer, 
   unsigned num_neurons_in_next_layer, 
   double weight_decay,
-  int residual_layer_number, 
   LayerType layer_type, 
   const activation::method& activation_method,
   const OptimiserType& optimiser_type, 
@@ -22,8 +21,6 @@ FFLayer::FFLayer(
   _layer_index(layer_index),
   _number_input_neurons(num_neurons_in_previous_layer),
   _number_output_neurons(num_neurons_in_this_layer),
-  _residual_layer_number(residual_layer_number),
-  _residual_projector(nullptr),
   _layer_type(layer_type),
   _optimiser_type(optimiser_type),
   _activation(activation_method)
@@ -63,8 +60,6 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
   _neurons(src._neurons),
   _number_input_neurons(src._number_input_neurons),
   _number_output_neurons(src._number_output_neurons),
-  _residual_layer_number(src._residual_layer_number),
-  _residual_projector(nullptr),
   _layer_type(src._layer_type),
   _weights(src._weights),
   _bias_weights(src._bias_weights),
@@ -72,29 +67,22 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
   _activation(src._activation)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(src._residual_projector != nullptr)
-  {
-    _residual_projector = new ResidualProjector(*src._residual_projector);
-  }
 }
 
 FFLayer::FFLayer(
   unsigned layer_index,
   const std::vector<Neuron>& neurons,
   unsigned number_input_neurons,
-  int residual_layer_number,
   LayerType layer_type,
   OptimiserType optimiser_type,
   const activation::method& activation_method,
   const std::vector<std::vector<WeightParam>>& weights,
-  const std::vector<WeightParam>& bias_weights,
-  const std::vector<std::vector<WeightParam>>& residual_weights
+  const std::vector<WeightParam>& bias_weights
 ) : 
   _layer_index(layer_index),
   _neurons(neurons),
   _number_input_neurons(number_input_neurons),
   _number_output_neurons( static_cast<unsigned>(neurons.size())),
-  _residual_layer_number(residual_layer_number),
   _layer_type(layer_type),
   _optimiser_type(optimiser_type),
   _activation(activation_method),
@@ -102,10 +90,6 @@ FFLayer::FFLayer(
   _bias_weights(bias_weights)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (!residual_weights.empty())
-  {
-    _residual_projector = new ResidualProjector(residual_weights);
-  }
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
@@ -113,8 +97,6 @@ FFLayer::FFLayer(FFLayer&& src) noexcept :
   _neurons(std::move(src._neurons)),
   _number_input_neurons(src._number_input_neurons),
   _number_output_neurons(src._number_output_neurons),
-  _residual_layer_number(src._residual_layer_number),
-  _residual_projector(src._residual_projector),
   _layer_type(src._layer_type),
   _weights(std::move(src._weights)),
   _bias_weights(std::move(src._bias_weights)),
@@ -125,8 +107,6 @@ FFLayer::FFLayer(FFLayer&& src) noexcept :
   src._layer_index = 0;
   src._number_output_neurons = 0;
   src._number_input_neurons = 0;
-  src._residual_layer_number = -1;
-  src._residual_projector = nullptr;
   src._optimiser_type = OptimiserType::None;
 }
 
@@ -140,11 +120,6 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
     _neurons = src._neurons;
     _number_input_neurons = src._number_input_neurons;
     _number_output_neurons = src._number_output_neurons;
-    _residual_layer_number = src._residual_layer_number;
-    if (src._residual_projector != nullptr)
-    {
-      _residual_projector = new ResidualProjector(*src._residual_projector);
-    }
     _layer_type = src._layer_type;
     _weights = src._weights;
     _bias_weights = src._bias_weights;
@@ -165,8 +140,6 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
     _number_input_neurons = src._number_input_neurons;
     _number_output_neurons = src._number_output_neurons;
     _layer_type = src._layer_type;
-    _residual_layer_number = src._residual_layer_number;
-    _residual_projector = src._residual_projector;
     _weights = std::move(src._weights);
     _bias_weights = std::move(src._bias_weights);
     _optimiser_type = std::move(src._optimiser_type);
@@ -174,8 +147,6 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
    
     src._number_output_neurons = 0;
     src._number_input_neurons = 0;
-    src._residual_layer_number = -1;
-    src._residual_projector = nullptr;
     src._optimiser_type = OptimiserType::None;
   }
   return *this;
@@ -190,8 +161,6 @@ FFLayer::~FFLayer()
 void FFLayer::clean()
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  delete _residual_projector;
-  _residual_projector = nullptr;
 }
 
 void FFLayer::resize_weights(
@@ -233,16 +202,6 @@ void FFLayer::resize_weights(
   }
 }
 
-void FFLayer::move_residual_projector(ResidualProjector* residual_projector)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(residual_projector != _residual_projector)
-  {
-    delete _residual_projector;
-    _residual_projector = residual_projector;
-  }
-}
-
 bool FFLayer::has_bias() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -266,19 +225,19 @@ unsigned FFLayer::number_neurons_with_bias() const noexcept
 FFLayer FFLayer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
+  return FFLayer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
 }
 
-FFLayer FFLayer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+FFLayer FFLayer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate);
+  return FFLayer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Hidden, activation, optimiser_type, dropout_rate);
 }
 
-FFLayer FFLayer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
+FFLayer FFLayer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0);
+  return FFLayer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, LayerType::Output, activation, optimiser_type, 0.0);
 }
 
 const std::vector<Neuron>& FFLayer::get_neurons() const noexcept
@@ -314,67 +273,16 @@ Neuron& FFLayer::get_neuron(unsigned index)
   return _neurons[index];
 }
 
-std::vector<std::vector<double>> FFLayer::project_residual_output_values(const std::vector<std::vector<double>>& residual_layer_outputs) const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (residual_layer_outputs.empty())
-  {
-    return {};
-  }
-
-  std::vector<std::vector<double>> projected;
-  projected.reserve(residual_layer_outputs.size());
-  for (const auto& batch : residual_layer_outputs)
-  {
-    projected.emplace_back(project_residual_output_values(batch));
-  }
-  return projected;
-}
-
-std::vector<double> FFLayer::project_residual_output_values(const std::vector<double>& residual_layer_outputs) const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(nullptr == _residual_projector)
-  {
-    return {};
-  }
-  return _residual_projector->project(residual_layer_outputs);
-}
-
-WeightParam& FFLayer::residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(nullptr == _residual_projector)
-  {
-    Logger::panic("Trying to get residual weights for a layer that does not have any!");
-  }
-  return _residual_projector->get_weight_params(residual_source_index, target_neuron_index);
-}
-
-const std::vector<std::vector<WeightParam>>& FFLayer::residual_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(nullptr == _residual_projector)
-  {
-    Logger::error("Trying to get residual weights for a layer that does not have any!");
-    throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
-  }
-  return _residual_projector->get_weight_params();
-}
-
 std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
   const FFLayer& previous_layer,
   const std::vector<std::vector<double>>& previous_layer_inputs,
-  const std::vector<std::vector<double>>& residual_output_values,
-  std::vector<std::vector<HiddenState>>& hidden_states,
+  std::vector<std::vector<double>>& pre_activation_sums,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t batch_size = previous_layer_inputs.size();
   const size_t N_prev = previous_layer.number_neurons();  // INPUT SIZE
   const size_t N_this = number_neurons();                 // OUTPUT SIZE
-
-  const auto projected_residual_output_values = project_residual_output_values(residual_output_values);
 
 #if VALIDATE_DATA == 1
   // 1. Validate previous layer input shape
@@ -384,28 +292,6 @@ std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
     {
       Logger::error("previous_layer_inputs wrong shape");
       throw std::runtime_error("previous_layer_inputs wrong shape");
-    }
-  }
-
-  // 2. Validate residuals
-  if (!residual_output_values.empty())
-  {
-    if (residual_output_values.size() != batch_size)
-    {
-      Logger::error("residual_output_values wrong batch size");
-      throw std::runtime_error("residual_output_values wrong batch size");
-    }
-
-    for (size_t b = 0; b < batch_size; b++)
-    {
-      if (!projected_residual_output_values[b].empty())
-      {
-        if (projected_residual_output_values[b].size() != N_this)
-        {
-          Logger::error("residual_output_values row wrong size");
-          throw std::runtime_error("residual_output_values row wrong size");
-        }
-      }
     }
   }
 
@@ -476,12 +362,6 @@ std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
       const auto& neuron = get_neuron((unsigned)j);
       double sum = output_row[j];
 
-      // Residual
-      if (!projected_residual_output_values.empty() && !projected_residual_output_values[b].empty())
-      {
-        sum += projected_residual_output_values[b][j];
-      }
-
       // Activation
       double output = get_activation().activate(sum);
 
@@ -505,8 +385,8 @@ std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
         });
 
       // Save Hidden State
-      if (!hidden_states[b].empty()) {
-        hidden_states[b][j].set_pre_activation_sum(sum);
+      if (!pre_activation_sums.empty()) {
+        pre_activation_sums[b][j] = sum;
       }
     }
   }
@@ -625,7 +505,7 @@ void FFLayer::calculate_mse_error_deltas(
 std::vector<std::vector<double>> FFLayer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs,
-  const std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<std::vector<double>>& pre_activation_sums,
   double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
@@ -689,7 +569,7 @@ std::vector<std::vector<double>> FFLayer::calculate_hidden_gradients(
   const FFLayer& next_layer,
   const std::vector<std::vector<double>>& next_grad_matrix,
   const std::vector<std::vector<double>>& output_matrix,
-  const std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<std::vector<double>>& pre_activation_sums,
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -751,8 +631,7 @@ std::vector<std::vector<double>> FFLayer::calculate_hidden_gradients(
         return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", after_sum_weighted_sum=", weighted_sum);
       });
 
-      // ---- Multiply by activation derivative ----
-      double deriv = get_activation().activate_derivative(hidden_states[b][i].get_pre_activation_sum());
+      double deriv = get_activation().activate_derivative(pre_activation_sums[b][i]);
       Logger::trace([&] {
         return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", deriv=", deriv);
       });
@@ -777,201 +656,6 @@ std::vector<std::vector<double>> FFLayer::calculate_hidden_gradients(
   return grad_matrix;
 }
 
-void FFLayer::apply_nadam_update(
-  WeightParam& weight_param,
-  double raw_gradient,
-  double learning_rate,
-  double beta1,
-  double beta2,
-  double epsilon
-)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // Update timestep
-  weight_param.increment_timestep();
-  const auto& time_step = weight_param.get_timestep();
-
-  // These moment estimate updates are identical to Adam
-  weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
-  weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
-
-  double m_hat = weight_param.get_first_moment_estimate() / (1.0 - std::pow(beta1, time_step));
-  double v_hat = weight_param.get_second_moment_estimate() / (1.0 - std::pow(beta2, time_step));
-
-  // Nadam's key difference:
-  // It combines the momentum from the historical gradient (m_hat) with the
-  // momentum from the current gradient.
-  double corrected_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
-
-  // The denominator is the same as Adam's
-  double weight_update = learning_rate * (corrected_gradient / (std::sqrt(v_hat) + epsilon));
-
-  // Apply the final update (No decoupled weight decay)
-  double new_weight = weight_param.get_value() - weight_update;
-
-  weight_param.set_value(new_weight);
-  weight_param.set_raw_gradient(raw_gradient);
-}
-
-void FFLayer::apply_nadamw_update(
-  WeightParam& weight_param,
-  double raw_gradient,
-  double learning_rate,
-  double beta1,
-  double beta2,
-  double epsilon,
-  bool is_bias
-)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // 1. Increment timestep
-  weight_param.increment_timestep();
-  const long long time_step = weight_param.get_timestep();
-
-  // 2. Update biased moment estimates
-  double first_moment = beta1 * weight_param.get_first_moment_estimate()
-    + (1.0 - beta1) * raw_gradient;
-  double second_moment = beta2 * weight_param.get_second_moment_estimate()
-    + (1.0 - beta2) * (raw_gradient * raw_gradient);
-
-  weight_param.set_first_moment_estimate(first_moment);
-  weight_param.set_second_moment_estimate(second_moment);
-
-  // 3. Bias corrections
-  double m_hat = first_moment / (1.0 - std::pow(beta1, time_step));
-  double v_hat = second_moment / (1.0 - std::pow(beta2, time_step));
-
-  // 4. NAdam momentum blend (with bias correction for gradient term)
-  double m_nadam = beta1 * m_hat
-    + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
-
-  // 5. Adaptive step
-  double step = m_nadam / (std::sqrt(v_hat) + epsilon);
-
-  // 6. Decoupled weight decay
-  double w = weight_param.get_value();
-  if (!is_bias)
-  {
-    w *= (1.0 - learning_rate * weight_param.get_weight_decay());
-  }
-
-  // 7. Apply update
-  w -= learning_rate * step;
-  weight_param.set_value(w);
-  weight_param.set_raw_gradient(raw_gradient);
-}
-
-void FFLayer::apply_adamw_update(
-  WeightParam& weight_param,
-  double raw_gradient,           // unclipped, averaged over batch
-  double learning_rate,
-  double beta1,
-  double beta2,
-  double epsilon,
-  bool is_bias
-)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // Update timestep
-  weight_param.increment_timestep();
-  const auto& time_step = weight_param.get_timestep();
-
-  // Update biased first and second moment estimates
-  weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
-  weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
-
-  // Compute bias-corrected moments
-  double first_moment_estimate = weight_param.get_first_moment_estimate();
-  double m_hat = first_moment_estimate / (1.0 - std::pow(beta1, time_step));
-
-  auto second_moment_estimate = weight_param.get_second_moment_estimate();
-  double v_hat = second_moment_estimate / (1.0 - std::pow(beta2, time_step));
-
-  // AdamW update rule
-  double weight_update = learning_rate * (m_hat / (std::sqrt(v_hat) + epsilon));
-
-  // Decoupled weight decay
-  auto new_weight = weight_param.get_value();
-  if (!is_bias)
-  {
-    new_weight *= (1.0 - learning_rate * weight_param.get_weight_decay());
-  }
-
-  // Apply update
-  new_weight -= weight_update;
-
-  weight_param.set_value(new_weight);
-  weight_param.set_raw_gradient(raw_gradient);
-}
-
-void FFLayer::apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // Update timestep
-  weight_param.increment_timestep();
-  const auto& time_step = weight_param.get_timestep();
-
-  // Update moments
-  double m = beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient;
-  double v = beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * raw_gradient * raw_gradient;
-
-  weight_param.set_first_moment_estimate(m);
-  weight_param.set_second_moment_estimate(v);
-
-  double m_hat = m / (1.0 - std::pow(beta1, time_step));
-  double v_hat = v / (1.0 - std::pow(beta2, time_step));
-
-  double adam_update = learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
-
-  // Apply L2 regularization by adding it to the gradient
-  if (!is_bias && weight_param.get_weight_decay() > 0.0)
-  {
-    raw_gradient += weight_param.get_weight_decay() * weight_param.get_value();
-  }
-  
-  double new_weight = weight_param.get_value() - adam_update;
-
-  weight_param.set_value(new_weight);
-  weight_param.set_raw_gradient(raw_gradient);
-}
-
-void FFLayer::apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
-  weight_param.set_raw_gradient(raw_gradient);
-  weight_param.set_value(new_weight);
-}
-
-void FFLayer::apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  double g = raw_gradient;
-
-  // --------------------------
-  // 1. Apply weight decay (L2)
-  // --------------------------
-  if (!is_bias) 
-  {
-    g += weight_param.get_weight_decay() * weight_param.get_value();
-  }
-
-  // --------------------------
-  // 2. Momentum update
-  // --------------------------
-  double prev_v = weight_param.get_velocity();
-  double v = momentum * prev_v - learning_rate * g;
-
-  // --------------------------
-  // 3. Weight update
-  // --------------------------
-  double new_weight = weight_param.get_value() + v;
-
-  weight_param.set_velocity(v);
-  weight_param.set_raw_gradient(raw_gradient); // store only raw
-  weight_param.set_value(new_weight);
-}
-
 void FFLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -979,12 +663,7 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   {
     Logger::panic("Error while calculating input weigh gradient it invalid.");
   }
-  auto old_velocity = weight_param.get_velocity();
-  if (!std::isfinite(old_velocity))
-  {
-    Logger::panic("Error while calculating input weigh old velocity is invalid.");
-  }
-
+  
   if (clipping_scale < 0.0)
   {
     // If clipping scale is negative, we clip the gradient to a fixed range
@@ -993,35 +672,18 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   }
 
   auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
-  switch (_optimiser_type)
+  
+  // Apply L2 regularization (weight decay) if not bias and weight_decay is set
+  double final_gradient = clipped_gradient;
+  if (!is_bias && weight_param.get_weight_decay() > 0.0)
   {
-  case OptimiserType::None:
-    FFLayer::apply_none_update(weight_param, clipped_gradient, learning_rate);
-    break;
-
-  case OptimiserType::SGD:
-    FFLayer::apply_sgd_update(weight_param, clipped_gradient, learning_rate, _activation.momentum(), is_bias);
-    break;
-
-  case OptimiserType::Adam:
-    FFLayer::apply_adam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
-    break;
-
-  case OptimiserType::AdamW:
-    FFLayer::apply_adamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
-    break;
-
-  case OptimiserType::Nadam:
-    FFLayer::apply_nadam_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8);
-    break;
-
-  case OptimiserType::NadamW:
-    FFLayer::apply_nadamw_update(weight_param, clipped_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
-    break;
-
-  default:
-    throw std::runtime_error("Unknown optimizer type.");
+    final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
   }
+
+  // Basic update (equivalent to SGD without momentum/adaptive rates)
+  double new_weight = weight_param.get_value() - learning_rate * final_gradient;
+  weight_param.set_raw_gradient(clipped_gradient); // Store the raw (clipped) gradient
+  weight_param.set_value(new_weight);
 }
 
 // TODO the clip threshold used is not the one we have in the config/options!
