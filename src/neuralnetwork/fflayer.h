@@ -12,22 +12,18 @@
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
+#include "baselayer.h"
+#include "hiddenstate.h"
 
 #include <cassert>
 #include <vector>
 
 class Neuron;
-class FFLayer
+class FFLayer final : public BaseLayer
 {
 protected:
   friend class Layers;
-public:
-  enum class LayerType
-  {
-    Input,
-    Hidden,
-    Output
-  };
+
 private:
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
@@ -57,18 +53,14 @@ public:
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
 
-  unsigned number_neurons() const noexcept;
-  unsigned number_neurons_with_bias() const noexcept;
+  unsigned number_neurons() const noexcept override;
   const std::vector<Neuron>& get_neurons() const noexcept;
   std::vector<Neuron>& get_neurons() noexcept;
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
 
-  LayerType layer_type() const { 
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _layer_type; 
-  }
+  LayerType layer_type() const override;
 
 public:
   static FFLayer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay );
@@ -76,17 +68,18 @@ public:
   static FFLayer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type);
 
   std::vector<std::vector<double>> calculate_forward_feed(
-    const FFLayer& previous_layer,
-    const std::vector<std::vector<double>>& previous_layer_inputs,
-    std::vector<std::vector<double>>& pre_activation_sums,
-    bool is_training) const;
+      const BaseLayer &previous_layer,
+      const std::vector<std::vector<double>> &previous_layer_inputs,
+      const std::vector<std::vector<double>> &residual_output_values,
+      std::vector<std::vector<HiddenState>> &hidden_states,
+      bool is_training) const override;
 
   std::vector<std::vector<double>> calculate_output_gradients(
-    const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs,
-    const std::vector<std::vector<double>>& pre_activation_sums,
-    double gradient_clip_threshold,
-    ErrorCalculation::type error_calculation_type) const;
+      const std::vector<std::vector<double>> &target_outputs,
+      const std::vector<std::vector<double>> &given_outputs,
+      const std::vector<std::vector<HiddenState>> &hidden_states,
+      double gradient_clip_threshold,
+      ErrorCalculation::type error_calculation_type) const override;
 
   void calculate_error_deltas(
     std::vector<std::vector<double>>& deltas,
@@ -105,84 +98,36 @@ public:
     const std::vector<std::vector<double>>& given_outputs) const;
 
   std::vector<std::vector<double>> calculate_hidden_gradients(
-    const FFLayer& next_layer,
-    const std::vector<std::vector<double>>& next_grad_matrix,
-    const std::vector<std::vector<double>>& output_matrix,
-    const std::vector<std::vector<double>>& pre_activation_sums,
-    double gradient_clip_threshold) const;
+      const BaseLayer &next_layer,
+      const std::vector<std::vector<double>> &next_grad_matrix,
+      const std::vector<std::vector<double>> &output_matrix,
+      const std::vector<std::vector<HiddenState>> &hidden_states,
+      double gradient_clip_threshold) const override;
 
-  inline unsigned number_input_neurons(bool add_bias) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _number_input_neurons + (add_bias ? 1 : 0);
-  }
+  unsigned number_input_neurons(bool add_bias) const noexcept override;
 
-  inline unsigned get_layer_index() const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _layer_index;
-  }
+  unsigned get_layer_index() const noexcept override;
 
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold);
 
-  // optimisers
-  // TODO THOSE SHOULD ALL BE PRIVATE
   static double clip_gradient(double gradient, double gradient_clip_threshold);
-  // Removed static apply_*_update methods
 
-  const std::vector<std::vector<WeightParam>>& get_weight_params() const
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _weights;
-  }
+  const std::vector<std::vector<WeightParam>>& get_weight_params() const override;
 
-  const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    // TODO Valiate
-    return _weights[input_neuron_number][neuron_index];
-  }
-  WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index)
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    // TODO Valiate
-    return _weights[input_neuron_number][neuron_index];
-  }
-  inline WeightParam& get_bias_weight_param(unsigned neuron_index) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    // TODO Valiate
-    return _bias_weights[neuron_index];
-  }
+  const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const override;
+  WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) override;
+  
+  WeightParam& get_bias_weight_param(unsigned neuron_index);
 
-  bool has_bias() const noexcept;
+  bool has_bias() const noexcept override;
 
-  inline const std::vector<WeightParam>& get_bias_weight_params() const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    // TODO Valiate and profile.
-    return _bias_weights;
-  }
-  inline const OptimiserType get_optimiser_type() const noexcept {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _optimiser_type;
-  }
-  inline const activation& get_activation() const noexcept {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _activation;
-  }
-  inline const LayerType& get_layer_type() const noexcept {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _layer_type;
-  }
-  inline unsigned get_number_input_neurons() const {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _number_input_neurons;
-  }
-  inline unsigned get_number_output_neurons() const {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _number_output_neurons;
-  }
+  const std::vector<WeightParam>& get_bias_weight_params() const override;
+
+  const OptimiserType get_optimiser_type() const noexcept;
+  
+  const activation& get_activation() const noexcept override;
+  
+  unsigned get_number_output_neurons() const;
 
 private:
   void clean();
