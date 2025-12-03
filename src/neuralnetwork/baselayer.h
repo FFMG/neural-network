@@ -3,7 +3,6 @@
 #include "activation.h"
 #include "errorcalculation.h"
 #include "hiddenstate.h"
-#include "layer.h" // For LayerType enum
 #include "weightparam.h"
 
 #include <vector>
@@ -21,6 +20,13 @@ class BaseLayer;
  */
 class BaseLayer {
 public:
+  enum class LayerType
+  {
+    Input,
+    Hidden,
+    Output
+  };
+
   /**
    * @brief Virtual destructor to ensure proper cleanup of derived classes.
    */
@@ -38,7 +44,7 @@ public:
    * @brief Gets the type of the layer (Input, Hidden, or Output).
    * @return The LayerType enum value.
    */
-  virtual Layer::LayerType layer_type() const = 0;
+  virtual LayerType layer_type() const = 0;
 
   /**
    * @brief Gets the number of neurons in this layer.
@@ -118,8 +124,10 @@ public:
    * @brief Gets a constant reference to the layer's weight parameters.
    * @return A 2D vector of WeightParam objects.
    */
-  virtual const std::vector<std::vector<WeightParam>> &
-  get_weight_params() const = 0;
+  virtual const std::vector<std::vector<WeightParam>> &get_weight_params() const = 0;
+
+  virtual const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const = 0;
+  virtual WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) = 0;
 
   /**
    * @brief Gets a constant reference to the layer's bias weight parameters.
