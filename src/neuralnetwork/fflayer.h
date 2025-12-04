@@ -63,10 +63,6 @@ public:
   LayerType layer_type() const override;
 
 public:
-  static FFLayer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay );
-  static FFLayer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate);
-  static FFLayer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type);
-
   std::vector<std::vector<double>> calculate_forward_feed(
       const BaseLayer &previous_layer,
       const std::vector<std::vector<double>> &previous_layer_inputs,
