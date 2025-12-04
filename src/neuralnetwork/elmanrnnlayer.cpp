@@ -39,15 +39,13 @@ ElmanRNNLayer::ElmanRNNLayer(
   // create the weights
   resize_weights(_activation, _number_input_neurons, _number_output_neurons, weight_decay);
 
-  // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
-  _neurons.reserve(_number_output_neurons+1); // for bias
+  _neurons.reserve(_number_output_neurons);
   for (unsigned neuron_number = 0; neuron_number < _number_output_neurons; ++neuron_number)
   {
-    // force the bias node's output to 1.0
     auto neuron = Neuron(
-      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,  //  previous
-      _number_output_neurons,         //  current 
-      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer+1,      //  next
+      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,
+      _number_output_neurons,
+      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer,
       neuron_number, 
       dropout_rate == 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
       dropout_rate);
@@ -192,7 +190,6 @@ void ElmanRNNLayer::resize_weights(
 	  }
   }
 
-  // Recurrent weights
   _recurrent_weights.resize(number_output_neurons);
   for (unsigned i = 0; i < number_output_neurons; ++i)
   {
@@ -219,24 +216,6 @@ unsigned ElmanRNNLayer::number_neurons() const noexcept
   return _number_output_neurons;
 }
 
-ElmanRNNLayer ElmanRNNLayer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return ElmanRNNLayer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
-}
-
-ElmanRNNLayer ElmanRNNLayer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const ElmanRNNLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return ElmanRNNLayer(previous_layer.get_layer_index() + 1, previous_layer.number_neurons(), num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Hidden, activation, optimiser_type, dropout_rate);
-}
-
-ElmanRNNLayer ElmanRNNLayer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const ElmanRNNLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return ElmanRNNLayer(previous_layer.get_layer_index()+1, previous_layer.number_neurons(), num_neurons_in_this_layer, 0, weight_decay, LayerType::Output, activation, optimiser_type, 0.0);
-}
-
 const std::vector<Neuron>& ElmanRNNLayer::get_neurons() const noexcept
 { 
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -254,7 +233,6 @@ const Neuron& ElmanRNNLayer::get_neuron(unsigned index) const
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (index >= _neurons.size()) 
   {
-    Logger::error("Index out of bounds in ElmanRNNLayer::get_neuron.");
     throw std::out_of_range("Index out of bounds in ElmanRNNLayer::get_neuron.");
   }
   return _neurons[index];
@@ -265,7 +243,7 @@ Neuron& ElmanRNNLayer::get_neuron(unsigned index)
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (index >= _neurons.size()) 
   {
-    Logger::panic("Index out of bounds in ElmanRNNLayer::get_neuron.");
+    throw std::out_of_range("Index out of bounds in ElmanRNNLayer::get_neuron.");
   }
   return _neurons[index];
 }
@@ -273,15 +251,14 @@ Neuron& ElmanRNNLayer::get_neuron(unsigned index)
 std::vector<std::vector<double>> ElmanRNNLayer::calculate_forward_feed(
   const BaseLayer& previous_layer,
   const std::vector<std::vector<double>>& previous_layer_inputs,
-  const std::vector<std::vector<double>>&, // residual_output_values is not used
+  const std::vector<std::vector<double>>&,
   std::vector<std::vector<HiddenState>>& hidden_states,
   bool is_training) const
 {
-    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer - Forward Feed");
     const size_t batch_size = previous_layer_inputs.size();
     const size_t N_prev = previous_layer.number_neurons();
     const size_t N_this = number_neurons();
-    const size_t num_time_steps = previous_layer_inputs[0].size() / N_prev;
+    const size_t num_time_steps = N_prev > 0 ? previous_layer_inputs[0].size() / N_prev : 0;
 
     std::vector<std::vector<double>> output_sequence(batch_size, std::vector<double>(num_time_steps * N_this, 0.0));
     
@@ -353,7 +330,6 @@ void ElmanRNNLayer::calculate_error_deltas(
   const std::vector<std::vector<double>>& given_outputs,
   ErrorCalculation::type error_calculation_type) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   switch (error_calculation_type)
   {
   case ErrorCalculation::type::mse:
@@ -361,7 +337,7 @@ void ElmanRNNLayer::calculate_error_deltas(
   case ErrorCalculation::type::bce_loss:
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
   default:
-    Logger::panic("ErrorCalculation type is not supported for ElmanRNNLayer!");
+    throw std::invalid_argument("ErrorCalculation type is not supported for ElmanRNNLayer!");
   }
 }
 
@@ -370,7 +346,6 @@ void ElmanRNNLayer::calculate_bce_error_deltas(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
@@ -388,7 +363,6 @@ void ElmanRNNLayer::calculate_mse_error_deltas(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
@@ -408,7 +382,6 @@ std::vector<std::vector<double>> ElmanRNNLayer::calculate_output_gradients(
   double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
@@ -434,7 +407,6 @@ std::vector<std::vector<double>> ElmanRNNLayer::calculate_hidden_gradients(
     const std::vector<std::vector<HiddenState>>& hidden_states,
     double gradient_clip_threshold) const 
 {
-    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer - Hidden Gradients");
     const size_t batch_size = next_grad_matrix.size();
     const size_t num_time_steps = hidden_states[0].size();
     const size_t N_this = number_neurons();
@@ -473,10 +445,9 @@ std::vector<std::vector<double>> ElmanRNNLayer::calculate_hidden_gradients(
 }
 
 
-void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
+void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double, double gradient_clip_threshold)
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
+  auto clipped_gradient = clip_gradient(gradient, gradient_clip_threshold);
   
   double final_gradient = clipped_gradient;
   if (!is_bias && weight_param.get_weight_decay() > 0.0)
@@ -491,11 +462,9 @@ void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double le
 
 double ElmanRNNLayer::clip_gradient(double gradient, double gradient_clip_threshold)
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (!std::isfinite(gradient))
   {
-    Logger::error("Gradient is not finite.");
-    throw std::invalid_argument("Gradient is not finite.");
+    return 0.0;
   }
 
   if (gradient > gradient_clip_threshold)

@@ -203,24 +203,6 @@ unsigned FFLayer::number_neurons() const noexcept
   return _number_output_neurons;
 }
 
-FFLayer FFLayer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
-}
-
-FFLayer FFLayer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, LayerType::Hidden, activation, optimiser_type, dropout_rate);
-}
-
-FFLayer FFLayer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const FFLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return FFLayer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, LayerType::Output, activation, optimiser_type, 0.0);
-}
-
 const std::vector<Neuron>& FFLayer::get_neurons() const noexcept
 { 
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -257,97 +239,47 @@ Neuron& FFLayer::get_neuron(unsigned index)
 std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
   const BaseLayer& previous_layer,
   const std::vector<std::vector<double>>& previous_layer_inputs,
-  const std::vector<std::vector<double>>& residual_output_values, // This parameter is no longer used
+  const std::vector<std::vector<double>>&, // residual_output_values is not used
   std::vector<std::vector<HiddenState>>& hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t batch_size = previous_layer_inputs.size();
-  const size_t N_prev = previous_layer.number_neurons();  // INPUT SIZE
-  const size_t N_this = number_neurons();                 // OUTPUT SIZE
+  const size_t N_prev = previous_layer.number_neurons();
+  const size_t N_this = number_neurons();
 
-#if VALIDATE_DATA == 1
-  // 1. Validate previous layer input shape
-  for (size_t batch_index = 0; batch_index < batch_size; batch_index++)
-  {
-    if (previous_layer_inputs[batch_index].size() != N_prev)
-    {
-      Logger::error("previous_layer_inputs wrong shape");
-      throw std::runtime_error("previous_layer_inputs wrong shape");
-    }
-  }
-
-  // 3. Validate THIS layer's weights
-  if (_weights.size() != N_prev)
-  {
-    Logger::panic("FFLayer::_weights row count != N_prev");
-  }
-
-  for (size_t i = 0; i < N_prev; i++)
-  {
-    if (_weights[i].size() != N_this)
-    {
-      Logger::panic("FFLayer::_weights column count != N_this");
-    }
-  }
-
-  if (!_bias_weights.empty() && _bias_weights.size() != N_this)
-  {
-    Logger::panic("FFLayer::_bias_weights size != N_this");
-  }
-#endif
-
-  // Initialize with 0.0
   std::vector<std::vector<double>> output_matrix(batch_size, std::vector<double>(N_this, 0.0));
+
   for (size_t b = 0; b < batch_size; b++)
   {
     const auto& prev_row = previous_layer_inputs[b];
     auto& output_row = output_matrix[b];
+    std::vector<double> pre_activation_sums(N_this, 0.0);
 
-    // -------------------------------------------------------
-    // PHASE 1: Initialize Sums (Bias & Constants)
-    // -------------------------------------------------------
     for (size_t j = 0; j < N_this; j++)
     {
       if (!_bias_weights.empty()) 
       {
-        output_row[j] = _bias_weights[j].get_value(); // Additive Bias
+        pre_activation_sums[j] = _bias_weights[j].get_value();
       }
     }
 
-    // -------------------------------------------------------
-    // PHASE 2: Matrix Multiplication (The Fast Way)
-    // Iterate Inputs (i) -> Outputs (j) to hit memory linearly
-    // -------------------------------------------------------
     for (size_t i = 0; i < N_prev; i++)
     {
       double input_val = prev_row[i];
-      if (input_val == 0.0)
-      {
-        continue; // Optimization for sparse inputs/ReLU
-      }
-
-      const auto& weight_row = _weights[i]; // Vector of size N_this
-
-      // Compiler can vectorise this inner loop easily (SIMD)
+      if (input_val == 0.0) continue;
+      const auto& weight_row = _weights[i];
       for (size_t j = 0; j < N_this; j++)
       {
-        output_row[j] += input_val * weight_row[j].get_value();
+        pre_activation_sums[j] += input_val * weight_row[j].get_value();
       }
     }
 
-    // -------------------------------------------------------
-    // PHASE 3: Activation & Post-Processing
-    // -------------------------------------------------------
     for (size_t j = 0; j < N_this; j++)
     {
       const auto& neuron = get_neuron((unsigned)j);
-      double sum = output_row[j];
+      double output = get_activation().activate(pre_activation_sums[j]);
 
-      // Activation
-      double output = get_activation().activate(sum);
-
-      // Dropout
       if (is_training && neuron.is_dropout()) 
       {
         if (neuron.must_randomly_drop())
@@ -359,20 +291,15 @@ std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
           output /= (1.0 - neuron.get_dropout_rate());
         }
       }
-
       output_row[j] = output;
-
-      Logger::trace([&] {
-          return Logger::factory("Layer ", _layer_index, " Neuron ", j, ": sum=", sum, ", output=", output, ", saved_pre_activation_sum=", sum);
-        });
-
-      // Save Hidden State
-      if (!hidden_states.empty()) {
-        hidden_states[b][j].set_pre_activation_sum(sum);
-      }
+    }
+    
+    if(!hidden_states.empty())
+    {
+      hidden_states[b][get_layer_index()].set_pre_activation_sums(pre_activation_sums);
+      hidden_states[b][get_layer_index()].set_hidden_state_values(output_row);
     }
   }
-
   return output_matrix;
 }
 
@@ -383,44 +310,15 @@ void FFLayer::calculate_error_deltas(
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
   switch (error_calculation_type)
   {
-  case ErrorCalculation::type::none:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::huber_loss:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::mae:
-    Logger::panic("ErrorCalculation type is not supported!");
-
   case ErrorCalculation::type::mse:
     return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
-
-  case ErrorCalculation::type::rmse:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::nrmse:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::mape:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::wape:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::smape:
-    Logger::panic("ErrorCalculation type is not supported!");
-
-  case ErrorCalculation::type::directional_accuracy:
-    Logger::panic("ErrorCalculation type is not supported!");
-
   case ErrorCalculation::type::bce_loss:
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
+  default:
+    Logger::panic("ErrorCalculation type is not supported for FFLayer!");
   }
-
-  Logger::panic("Unknown ErrorCalculation type!");
 }
 
 void FFLayer::calculate_bce_error_deltas(
@@ -432,32 +330,12 @@ void FFLayer::calculate_bce_error_deltas(
   const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
-  // Small epsilon to prevent log(0) and division by zero
-  const double epsilon = 1e-8; 
-
-  size_t out_col = 0;
-  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     for (size_t b = 0; b < B; ++b)
     {
-      const double target = target_outputs[b][out_col];
-      const double output = given_outputs[b][out_col];
-
-      // Derivative of Binary Cross-Entropy Loss w.r.t. output
-      // For sigmoid activation, dL/d_output = (output - target)
-      // This formula is often simplified because d_output/d_sum for sigmoid is output * (1 - output)
-      // and dL/d_sum = (output - target) when combined with sigmoid's derivative.
-      // So, the delta here is actually dL/d_output, not dL/d_sum directly.
-      // But since we're chaining it with activate_derivative(pre_activation_sum) later,
-      // and for sigmoid activate_derivative(sum) is output * (1-output)
-      // we need the term (output - target)
-      deltas[b][out_col] = (output - target);
-
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " BCE Delta: b=", b, ", neuron=", neuron_index, ", target=", target, ", output=", output, ", delta=", deltas[b][out_col]);
-      });
+      deltas[b][neuron_index] = given_outputs[b][neuron_index] - target_outputs[b][neuron_index];
     }
-    out_col++;
   }
 }
 
@@ -467,212 +345,96 @@ void FFLayer::calculate_mse_error_deltas(
   const std::vector<std::vector<double>>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t B = target_outputs.size();   // batch size
-  const size_t N_total = number_neurons();  // includes bias if present
+  const size_t B = target_outputs.size();
+  const size_t N_total = number_neurons();
 
-  size_t out_col = 0;
-  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     for (size_t b = 0; b < B; ++b)
     {
-      const double target = target_outputs[b][out_col];
-      const double output = given_outputs[b][out_col];
-      deltas[b][out_col] = output - target;
+      deltas[b][neuron_index] = given_outputs[b][neuron_index] - target_outputs[b][neuron_index];
     }
-    out_col++;
   }
 }
 
 std::vector<std::vector<double>> FFLayer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs,
-  const std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<std::vector<HiddenState>>&,
   double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t B = target_outputs.size();   // batch size
-  const size_t N_total = number_neurons();  // includes bias if present
+  const size_t B = target_outputs.size();
+  const size_t N_total = number_neurons();
 
-  // Validate given and target shapes
-  assert(B == given_outputs.size());
-  for (size_t b = 0; b < B; ++b)
-  {
-    assert(target_outputs[b].size() == N_total);
-    assert(given_outputs[b].size() == N_total);
-  }
-
-  // Allocate gradient matrix: only for NON-BIAS neurons
   std::vector<std::vector<double>> gradients(B, std::vector<double>(N_total, 0.0));
-
-  // Get deltas from the calculate_error function
   std::vector<std::vector<double>> deltas(B, std::vector<double>(N_total, 0.0));
   calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
 
-  // Map output index (no bias) to neuron index (with bias)
-  size_t out_col = 0;  // index in target/given arrays
-
-  for (unsigned neuron_index = 0; neuron_index < static_cast<unsigned>(N_total); ++neuron_index)
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     for (size_t b = 0; b < B; ++b)
     {
-      double delta = deltas[b][out_col]; // Use delta from calculate_error
-
-      // derivative is applied to the *pre-activation sum*
-      double grad = delta;
-
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Output Grad: b=", b, ", neuron=", neuron_index, ", pre_clip_grad=", grad);
-      });
-
-      grad = clip_gradient(grad, gradient_clip_threshold);
-
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Output Grad: b=", b, ", neuron=", neuron_index, ", post_clip_grad=", grad);
-      });
-
-      if (!std::isfinite(grad))
-      {
-        Logger::error("Error while calculating output gradients.");
-        throw std::invalid_argument("Error while calculating output gradients.");
-      }
-
-      gradients[b][out_col] = grad;
+      double grad = deltas[b][neuron_index];
+      gradients[b][neuron_index] = clip_gradient(grad, gradient_clip_threshold);
     }
-
-    out_col++;  // move to next non-bias neuron output column
   }
-
   return gradients;
 }
 
 std::vector<std::vector<double>> FFLayer::calculate_hidden_gradients(
   const BaseLayer& next_layer,
   const std::vector<std::vector<double>>& next_grad_matrix,
-  const std::vector<std::vector<double>>& output_matrix,
+  const std::vector<std::vector<double>>&,
   const std::vector<std::vector<HiddenState>>& hidden_states,
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t B = next_grad_matrix.size();   // batch size
+  const size_t B = next_grad_matrix.size();
   const size_t N_this = number_neurons();
-  const size_t N_next_total = next_layer.number_neurons();
+  const size_t N_next = next_layer.number_neurons();
 
-  // ---- Count NON-BIAS neurons in next layer ----
-  size_t N_next_no_bias = 0;
-  std::vector<size_t> next_nonbias_index;
-  next_nonbias_index.reserve(N_next_total);
-
-  for (size_t j = 0; j < N_next_total; ++j)
-  {
-    next_nonbias_index.push_back(j);
-    ++N_next_no_bias;
-  }
-
-  // ---- Validate shapes ----
-  for (size_t b = 0; b < B; b++)
-  {
-    if (next_grad_matrix[b].size() != N_next_no_bias)
-    {
-      Logger::panic("next_grad_matrix wrong shape");
-    }
-
-    if (output_matrix[b].size() != N_this)
-    {
-      Logger::panic("output_matrix wrong shape");
-    }
-  }
-
-  // ---- Allocate gradient output (same size as this layer neurons) ----
   std::vector<std::vector<double>> grad_matrix(B, std::vector<double>(N_this, 0.0));
 
-  // ---- Compute hidden layer gradients ----
-  //
-  // grad[b][i] = E_j ( next_grad[b][j] * W(i->j) )
-  // grad[b][i] *= activation_derivative(output[b][i])
-  //
   for (size_t b = 0; b < B; b++)
   {
-    for (unsigned i = 0; i < static_cast<unsigned>(N_this); i++)
+    const auto& current_hidden_state = hidden_states[b][get_layer_index()];
+
+    for (unsigned i = 0; i < N_this; i++)
     {
       double weighted_sum = 0.0;
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", initial_weighted_sum=", weighted_sum);
-      });
-
-      // ---- Sum over NON-BIAS next-layer neurons ----
-      for (size_t k = 0; k < N_next_no_bias; k++)
+      for (size_t j = 0; j < N_next; j++)
       {
-        unsigned j = static_cast<unsigned>(next_nonbias_index[k]);  // actual next neuron index
-
-        double w = next_layer.get_weight_param(i, j).get_value();
-        weighted_sum += next_grad_matrix[b][k] * w;
+        weighted_sum += next_grad_matrix[b][j] * next_layer.get_weight_param(i, j).get_value();
       }
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", after_sum_weighted_sum=", weighted_sum);
-      });
-
-      double deriv = get_activation().activate_derivative(hidden_states[b][i].get_pre_activation_sum());
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", deriv=", deriv);
-      });
-
+      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
       double g = weighted_sum * deriv;
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", pre_clip_grad=", g);
-      });
-
-      g = clip_gradient(g, gradient_clip_threshold);
-      Logger::trace([&] {
-        return Logger::factory("Layer ", _layer_index, " Hidden Grad: b=", b, ", neuron=", i, ", post_clip_grad=", g);
-      });
-
-      if (!std::isfinite(g))
-        throw std::runtime_error("Hidden gradient is not finite.");
-
-      grad_matrix[b][i] = g;
+      grad_matrix[b][i] = clip_gradient(g, gradient_clip_threshold);
     }
   }
-
   return grad_matrix;
 }
 
 void FFLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (!std::isfinite(gradient))
-  {
-    Logger::panic("Error while calculating input weigh gradient it invalid.");
-  }
-  
-  if (clipping_scale < 0.0)
-  {
-    // If clipping scale is negative, we clip the gradient to a fixed range
-    // This is useful for debugging or when we want to ensure gradients are not too large.
-    Logger::warning("Clipping gradient to a fixed range.");
-  }
-
   auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
   
-  // Apply L2 regularization (weight decay) if not bias and weight_decay is set
   double final_gradient = clipped_gradient;
   if (!is_bias && weight_param.get_weight_decay() > 0.0)
   {
     final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
   }
 
-  // Basic update (equivalent to SGD without momentum/adaptive rates)
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-  weight_param.set_raw_gradient(clipped_gradient); // Store the raw (clipped) gradient
+  weight_param.set_raw_gradient(clipped_gradient);
   weight_param.set_value(new_weight);
 }
 
-// TODO the clip threshold used is not the one we have in the config/options!
 double FFLayer::clip_gradient(double gradient, double gradient_clip_threshold)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // TODO remove this hardcoded value.
-  // constexpr double gradient_clip_threshold = 1.0;
   if (!std::isfinite(gradient))
   {
     Logger::error("Gradient is not finite.");
@@ -681,73 +443,66 @@ double FFLayer::clip_gradient(double gradient, double gradient_clip_threshold)
 
   if (gradient > gradient_clip_threshold)
   {
-    gradient = gradient_clip_threshold;
+    return gradient_clip_threshold;
   }
-  else if (gradient < -gradient_clip_threshold)
+  if (gradient < -gradient_clip_threshold)
   {
-    gradient = -gradient_clip_threshold;
+    return -gradient_clip_threshold;
   }
   return gradient;
 }
 
-unsigned FFLayer::get_layer_index() const noexcept
+unsigned int FFLayer::get_layer_index() const noexcept
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _layer_index;
+    return _layer_index;
 }
 
-BaseLayer::LayerType FFLayer::layer_type() const {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _layer_type;
+BaseLayer::LayerType FFLayer::layer_type() const
+{
+    return _layer_type;
 }
 
-unsigned FFLayer::number_input_neurons(bool add_bias) const noexcept
+unsigned int FFLayer::number_input_neurons(bool add_bias) const noexcept
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _number_input_neurons + (add_bias ? 1 : 0);
+    return _number_input_neurons + (add_bias ? 1 : 0);
 }
 
 const std::vector<std::vector<WeightParam>>& FFLayer::get_weight_params() const
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _weights;
+    return _weights;
+}
+
+const WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index) const
+{
+    return _weights[input_neuron_number][neuron_index];
+}
+
+WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index)
+{
+    return _weights[input_neuron_number][neuron_index];
 }
 
 const std::vector<WeightParam>& FFLayer::get_bias_weight_params() const
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _bias_weights;
+    return _bias_weights;
 }
 
 const activation& FFLayer::get_activation() const noexcept
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _activation;
+    return _activation;
 }
 
-const WeightParam& FFLayer::get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const
+WeightParam& FFLayer::get_bias_weight_param(unsigned int neuron_index)
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // TODO Valiate
-  return _weights[input_neuron_number][neuron_index];
+    return _bias_weights[neuron_index];
 }
 
-WeightParam& FFLayer::get_weight_param(unsigned input_neuron_number, unsigned neuron_index)
+unsigned int FFLayer::get_number_output_neurons() const
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // TODO Valiate
-  return _weights[input_neuron_number][neuron_index];
+    return _number_output_neurons;
 }
 
-WeightParam& FFLayer::get_bias_weight_param(unsigned neuron_index)
+const OptimiserType FFLayer::get_optimiser_type() const noexcept
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // TODO Valiate
-  return _bias_weights[neuron_index];
-}
-
-unsigned FFLayer::get_number_output_neurons() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _number_output_neurons;
+    return _optimiser_type;
 }
