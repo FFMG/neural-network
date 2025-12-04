@@ -19,7 +19,7 @@ Layers::Layers(
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = Layer::create_input_layer(topology[0], topology[1], weight_decay);
+  auto layer = create_input_layer(topology[0], topology[1], weight_decay);
   _layers.emplace_back(std::move(layer));
 
   // then the hidden layers
@@ -30,7 +30,7 @@ Layers::Layers(
     auto dropout_rate = dropout_layers[layer_number-1]; // remove input
     const auto& previous_layer = _layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    layer = Layer::create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
+    layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
 
     add_residual_layer(layer, hidden_activation);
     Logger::trace([&]
@@ -51,7 +51,7 @@ Layers::Layers(
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = Layer::create_output_layer(topology.back(), weight_decay, _layers.back(), output_activation, optimiser_type, residual_layer_number);
+  layer = create_output_layer(topology.back(), weight_decay, _layers.back(), output_activation, optimiser_type, residual_layer_number);
 
   add_residual_layer(layer, output_activation);
   if (Logger::can_trace())
@@ -178,4 +178,22 @@ void Layers::add_residual_layer(Layer& layer, const activation::method& activati
 
   // pass ownership
   layer.move_residual_projector(residual_projector);
+}
+
+Layer Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return Layer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, -1, Layer::LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
+}
+
+Layer Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return Layer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, residual_layer_number, Layer::LayerType::Hidden, activation, optimiser_type, dropout_rate);
+}
+
+Layer Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return Layer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, residual_layer_number, Layer::LayerType::Output, activation, optimiser_type, 0.0);
 }
