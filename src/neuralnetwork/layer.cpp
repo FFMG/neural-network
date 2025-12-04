@@ -366,7 +366,7 @@ std::vector<std::vector<double>> Layer::calculate_forward_feed(
   const Layer& previous_layer,
   const std::vector<std::vector<double>>& previous_layer_inputs,
   const std::vector<std::vector<double>>& residual_output_values,
-  std::vector<std::vector<HiddenState>>& hidden_states,
+  std::vector<std::vector<OldHiddenState>>& hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -625,7 +625,7 @@ void Layer::calculate_mse_error_deltas(
 std::vector<std::vector<double>> Layer::calculate_output_gradients(
   const std::vector<std::vector<double>>& target_outputs,
   const std::vector<std::vector<double>>& given_outputs,
-  const std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<std::vector<OldHiddenState>>& hidden_states,
   double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
@@ -689,7 +689,7 @@ std::vector<std::vector<double>> Layer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& next_grad_matrix,
   const std::vector<std::vector<double>>& output_matrix,
-  const std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<std::vector<OldHiddenState>>& hidden_states,
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");

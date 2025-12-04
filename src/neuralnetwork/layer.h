@@ -9,7 +9,7 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
-#include "hiddenstate.h"
+#include "hiddenstates.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
@@ -234,13 +234,13 @@ public:
     const Layer& previous_layer,
     const std::vector<std::vector<double>>& previous_layer_inputs,
     const std::vector<std::vector<double>>& residual_output_values,
-    std::vector<std::vector<HiddenState>>& hidden_states,
+    std::vector<std::vector<OldHiddenState>>& hidden_states,
     bool is_training) const;
 
   std::vector<std::vector<double>> calculate_output_gradients(
     const std::vector<std::vector<double>>& target_outputs,
     const std::vector<std::vector<double>>& given_outputs,
-    const std::vector<std::vector<HiddenState>>& hidden_states,
+    const std::vector<std::vector<OldHiddenState>>& hidden_states,
     double gradient_clip_threshold,
     ErrorCalculation::type error_calculation_type) const;
 
@@ -264,7 +264,7 @@ public:
     const Layer& next_layer,
     const std::vector<std::vector<double>>& next_grad_matrix,
     const std::vector<std::vector<double>>& output_matrix,
-    const std::vector<std::vector<HiddenState>>& hidden_states,
+    const std::vector<std::vector<OldHiddenState>>& hidden_states,
     double gradient_clip_threshold) const;
 
   inline unsigned number_input_neurons(bool add_bias) const noexcept
