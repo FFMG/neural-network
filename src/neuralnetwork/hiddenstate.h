@@ -1,224 +1,93 @@
 #pragma once
 
-#include "logger.h"
-#include <exception>
 #include <vector>
-#include <deque>
+#include <cassert>
 
+/**
+ * @class HiddenState
+ * @brief A simple container for the state of an entire layer at a single point in time.
+ *
+ * This class stores the pre-activation sums (z-values) and the final
+ * activated output values (hidden state) for all neurons in a layer. It is
+ * used to pass information between the forward and backward passes.
+ */
 class HiddenState
 {
 public:
-  HiddenState(unsigned sequence_length) noexcept
-    : 
-    _sequence_length(sequence_length),
-    _sum(0.0),
-    _pre_activation_sum(0.0)
-  {
-  }
+    /**
+     * @brief Default constructor.
+     */
+    HiddenState() = default;
 
-  HiddenState(const HiddenState& hs) noexcept
-    :
-    _sequence_length(hs._sequence_length),
-    _sum(hs._sum),
-    _pre_activation_sum(hs._pre_activation_sum)
-  {
-    _hidden_state_history = hs._hidden_state_history;
-  }
-
-  HiddenState(HiddenState&& hs) noexcept
-    :
-    _sequence_length(hs._sequence_length),
-    _sum(hs._sum),
-    _pre_activation_sum(hs._pre_activation_sum)
-  {
-    _hidden_state_history = std::move(hs._hidden_state_history);
-    hs._sequence_length = 0;
-    hs._sum = 0.0;
-    hs._pre_activation_sum = 0.0;
-  }
-
-  HiddenState& operator=(const HiddenState& hs) noexcept
-  {
-    if (this != &hs)
+    /**
+     * @brief Constructor to initialize with a specific size.
+     * @param num_neurons The number of neurons in the layer.
+     */
+    HiddenState(unsigned num_neurons)
+        : _pre_activation_sums(num_neurons, 0.0),
+          _hidden_state_values(num_neurons, 0.0)
     {
-      _sequence_length = hs._sequence_length;
-      _hidden_state_history = hs._hidden_state_history;
-      _sum = hs._sum;
-      _pre_activation_sum = hs._pre_activation_sum;
-    }
-    return *this;
-  }
-
-  HiddenState& operator=(HiddenState&& hs) noexcept
-  {
-    if (this != &hs)
-    {
-      _sequence_length = hs._sequence_length;
-      _hidden_state_history = std::move(hs._hidden_state_history);
-      _sum = hs._sum;
-      _pre_activation_sum = hs._pre_activation_sum; // Move new member
-      hs._sequence_length = 0;
-      hs._sum = 0.0;
-      hs._pre_activation_sum = 0.0;
-    }
-    return *this;
-  }
-
-  inline bool is_recurrent_neural_network() const noexcept
-  {
-    return _sequence_length > 0;
-  }
-
-  double update_sum(double sum, double weight) const
-  {
-    const auto& hidden_state_history = _hidden_state_history;
-    if (hidden_state_history.empty())
-    {
-      return sum;
     }
 
-    sum += _hidden_state_history.back() * weight;
-    return sum;
-  }
-
-  void set_sum(double sum)
-  {
-    _sum = sum;
-  }
-
-  double get_sum() const
-  {
-    return _sum;
-  }
-
-  void set_pre_activation_sum(double sum)
-  {
-    _pre_activation_sum = sum;
-  }
-
-  double get_pre_activation_sum() const
-  {
-    return _pre_activation_sum;
-  }
-
-  void queue_output(double output)
-  {
-    if (!is_recurrent_neural_network())
+    /**
+     * @brief Sets the pre-activation sums for the entire layer.
+     * @param sums A vector containing the pre-activation sum for each neuron.
+     */
+    void set_pre_activation_sums(const std::vector<double>& sums)
     {
-      return;
+        _pre_activation_sums = sums;
     }
-    _hidden_state_history.push_back(output);
-
-    // Trim buffer to segment size
-    if (_hidden_state_history.size() > static_cast<size_t>(_sequence_length))
+    
+    /**
+     * @brief Sets the activated output values (hidden state) for the entire layer.
+     * @param values A vector containing the activated output for each neuron.
+     */
+    void set_hidden_state_values(const std::vector<double>& values)
     {
-      _hidden_state_history.pop_front();
+        _hidden_state_values = values;
     }
-  }
 
-  void clear()
-  {
-    _hidden_state_history.clear();
-    _pre_activation_sum = 0.0;
-  }
+    /**
+     * @brief Gets the pre-activation sum for a specific neuron.
+     * @param neuron_index The index of the neuron.
+     * @return The pre-activation sum (z-value).
+     */
+    double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
+    {
+        assert(neuron_index < _pre_activation_sums.size());
+        return _pre_activation_sums[neuron_index];
+    }
+    
+    /**
+     * @brief Gets the entire vector of pre-activation sums.
+     * @return A const reference to the vector of sums.
+     */
+    const std::vector<double>& get_pre_activation_sums() const
+    {
+        return _pre_activation_sums;
+    }
 
-  unsigned get_sequence_length() const noexcept
-  {
-    return _sequence_length;
-  }
+    /**
+     * @brief Gets the activated output value (hidden state) for a specific neuron.
+     * @param neuron_index The index of the neuron.
+     * @return The activated output value.
+     */
+    double get_hidden_state_value_at_neuron(unsigned neuron_index) const
+    {
+        assert(neuron_index < _hidden_state_values.size());
+        return _hidden_state_values[neuron_index];
+    }
+
+    /**
+     * @brief Gets the entire vector of hidden state values.
+     * @return A const reference to the vector of activated outputs.
+     */
+    const std::vector<double>& get_hidden_state_values() const 
+    {
+        return _hidden_state_values;
+    }
 
 private:
-  unsigned _sequence_length;
-  std::deque<double> _hidden_state_history;
-  double _sum;
-  double _pre_activation_sum;
-};
-
-class HiddenStates
-{
-public:
-  HiddenStates(
-    const std::vector<unsigned>& topology,
-    const std::vector<unsigned>& sequences
-  )
-  {
-    if (topology.size() != sequences.size())
-    {
-      Logger::error("The topology size does not match the sequence size!");
-      throw std::invalid_argument("The topology size does not match the sequence size!");
-    }
-
-    auto layer_index = 0;
-    for (const unsigned& layer : topology)
-    {
-      std::vector<HiddenState> states;
-      for (unsigned neuron = 0; neuron < layer; ++neuron)
-      {
-        states.push_back(HiddenState(sequences[layer_index]));
-      }
-      _states.push_back(std::move(states));
-      ++layer_index;
-    }
-  }
-
-  HiddenStates(const HiddenStates& src) noexcept :
-    _states(src._states)
-  {
-  }
-
-  HiddenStates(HiddenStates&& src) noexcept :
-    _states(std::move(src._states))
-  {
-  }
-
-  HiddenStates& operator=(HiddenStates&& src) noexcept
-  {
-    if (this != &src)
-    {
-      _states = std::move(src._states);
-    }
-    return *this;
-  }
-
-  HiddenStates& operator=(const HiddenStates& src) noexcept
-  {
-    if (this != &src)
-    {
-      _states = src._states;
-    }
-    return *this;
-  }
-
-  void clear()
-  {
-    for (auto& layer : _states)
-    {
-      for (auto& neuron : layer)
-      {
-        neuron.clear();
-      }
-    }
-  }
-
-  std::vector<HiddenState>& at(size_t layer_number)
-  {
-    return _states[layer_number];
-  }
-  
-  const std::vector<HiddenState>& at(size_t layer_number) const
-  {
-    return _states[layer_number];
-  }
-
-  HiddenState& at(size_t layer_number, size_t neuron_number)
-  {
-    return _states[layer_number][neuron_number];
-  }
-  const HiddenState& at(size_t layer_number, size_t neuron_number) const
-  {
-    return _states[layer_number][neuron_number];
-  }
-
-private:
-  std::vector<std::vector<HiddenState>> _states;
+    std::vector<double> _pre_activation_sums;
+    std::vector<double> _hidden_state_values;
 };
