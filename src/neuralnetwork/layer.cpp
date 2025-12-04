@@ -263,24 +263,6 @@ unsigned Layer::number_neurons_with_bias() const noexcept
   return number_neurons() + (has_bias() ? 1 : 0);
 }
 
-Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
-}
-
-Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer.get_layer_index() + 1, previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate);
-}
-
-Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer.get_layer_index()+1, previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, weight_decay, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0);
-}
-
 const std::vector<Neuron>& Layer::get_neurons() const noexcept
 { 
   MYODDWEB_PROFILE_FUNCTION("Layer");
