@@ -126,7 +126,20 @@ public:
    */
   virtual const std::vector<std::vector<WeightParam>> &get_weight_params() const = 0;
 
+  /**
+   * @brief Gets a specific weight parameter from the layer.
+   * @param input_neuron_number The index of the input neuron.
+   * @param neuron_index The index of the current neuron.
+   * @return A constant reference to the WeightParam.
+   */
   virtual const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const = 0;
+
+  /**
+   * @brief Gets a specific weight parameter from the layer (mutable).
+   * @param input_neuron_number The index of the input neuron.
+   * @param neuron_index The index of the current neuron.
+   * @return A mutable reference to the WeightParam.
+   */
   virtual WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) = 0;
 
   /**

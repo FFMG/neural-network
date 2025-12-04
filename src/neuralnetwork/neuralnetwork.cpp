@@ -242,8 +242,8 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   // TODO validate the input size matches out topology
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(1, HiddenStates(get_topology(), options().recurrent_layers()));
+  std::vector<OldHiddenStates> hidden_states;
+  hidden_states.resize(1, OldHiddenStates(get_topology(), options().recurrent_layers()));
   std::vector<GradientsAndOutputs> gradients;
   gradients.push_back(GradientsAndOutputs(get_topology()));
   {
@@ -344,8 +344,8 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     {
       std::vector<GradientsAndOutputs> gradients;
       gradients.push_back(GradientsAndOutputs(get_topology()));
-      std::vector<HiddenStates> hidden_states;
-      hidden_states.resize(1, HiddenStates(get_topology(), options().recurrent_layers()));
+      std::vector<OldHiddenStates> hidden_states;
+      hidden_states.resize(1, OldHiddenStates(get_topology(), options().recurrent_layers()));
 
       const auto& checks_index = (*checks_indexes)[index];
       const auto& inputs = training_inputs[checks_index];
@@ -386,8 +386,8 @@ std::vector<NeuralNetwork::GradientsAndOutputs> NeuralNetwork::train_single_batc
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(size, HiddenStates(get_topology(), options().recurrent_layers()));
+  std::vector<OldHiddenStates> hidden_states;
+  hidden_states.resize(size, OldHiddenStates(get_topology(), options().recurrent_layers()));
 
   std::vector<GradientsAndOutputs> gradients;
   gradients.resize(size, GradientsAndOutputs(get_topology()));
@@ -1163,7 +1163,7 @@ void NeuralNetwork::calculate_back_propagation(
   std::vector<GradientsAndOutputs>& gradients, 
   const std::vector<std::vector<double>>& outputs, 
   const Layers& layers,
-  const std::vector<HiddenStates>& hidden_states) const
+  const std::vector<OldHiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   
@@ -1189,7 +1189,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
   std::vector<GradientsAndOutputs>& gradients,
   const std::vector<std::vector<double>>& outputs,
   const Layers& layers,
-  const std::vector<HiddenStates>& hidden_states) const
+  const std::vector<OldHiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 #if VALIDATE_DATA == 1
@@ -1213,7 +1213,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
   }
 
   // build hs for output layer
-  std::vector<std::vector<HiddenState>> hs;
+  std::vector<std::vector<OldHiddenState>> hs;
   hs.reserve(hidden_states.size());
   for (const auto& state : hidden_states)
   {
@@ -1228,7 +1228,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
 void NeuralNetwork::calculate_back_propagation_hidden_layers(
     std::vector<GradientsAndOutputs>& gradients,
     const Layers& layers,
-    const std::vector<HiddenStates>& hidden_states) const
+    const std::vector<OldHiddenStates>& hidden_states) const
 {
   // get the last calculated gradients, (in this case from the output layer).
   const unsigned output_layer_number = static_cast<unsigned>(layers.size() - 1);
@@ -1250,7 +1250,7 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     const auto& next_gradients = get_gradients_for_layer(gradients, layer_number+1);
 
     // build hs for this layer
-    std::vector<std::vector<HiddenState>> hs;
+    std::vector<std::vector<OldHiddenState>> hs;
     hs.reserve(hidden_states.size());
     for(const auto& state : hidden_states)
     {
@@ -1300,7 +1300,7 @@ void NeuralNetwork::calculate_forward_feed(
   std::vector<NeuralNetwork::GradientsAndOutputs>& gradients_and_output,
   const std::vector<std::vector<double>>& inputs,
   const Layers& layers,
-  std::vector<HiddenStates>& hidden_states,
+  std::vector<OldHiddenStates>& hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -1351,7 +1351,7 @@ void NeuralNetwork::calculate_forward_feed(
     }
 
     // --- 3b. Build hidden-state slices for this layer ---
-    std::vector<std::vector<HiddenState>> hs;
+    std::vector<std::vector<OldHiddenState>> hs;
     hs.reserve(hidden_states.size());
     for (auto& state : hidden_states)
     {
