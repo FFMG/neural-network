@@ -1,6 +1,7 @@
+#include "../errorcalculation.h"
+#include "../logger.h"
 #include "../neuralnetworkserializer.h"
 #include "helper.h"
-#include "../logger.h"
 
 #include <iomanip>
 
@@ -105,7 +106,7 @@ public:
       train_neural_network(*nn);
     }
 
-    auto metrics = nn->calculate_forecast_metric( NeuralNetworkOptions::ErrorCalculation::rmse);
+    auto metrics = nn->calculate_forecast_metric( ErrorCalculation::type::rmse);
 
     std::cout << "Error: " << metrics.error() << std::endl;
 
