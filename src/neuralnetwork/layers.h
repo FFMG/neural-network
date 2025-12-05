@@ -1,6 +1,13 @@
 #pragma once
-#include "activation.h"
-#include "layer.h"
+#ifndef VALIDATE_DATA
+  #if !defined(NDEBUG)
+    #define VALIDATE_DATA 1
+  #else
+    #define VALIDATE_DATA 0
+  #endif
+#endif
+#include "baselayer.h"
+#include <memory>
 #include "optimiser.h"
 
 class Layers
@@ -15,20 +22,19 @@ public:
     const activation::method& output_activation,
     const OptimiserType& optimiser_type,
     int residual_layer_jump) noexcept;
-  Layers(const std::vector<Layer>& layers) noexcept;
   Layers(const Layers& layers) noexcept;
   Layers(Layers&& layers) noexcept;
 
   Layers& operator=(const Layers& layers) noexcept;
   Layers& operator=(Layers&& layers) noexcept;
   
-  virtual ~Layers() = default;
+  virtual ~Layers();
 
-  const std::vector<Layer>& get_layers() const;
-  std::vector<Layer>& get_layers();
+  const std::vector<std::unique_ptr<BaseLayer>>& get_layers() const;
+  std::vector<std::unique_ptr<BaseLayer>>& get_layers();
 
-  const Layer& operator[](unsigned index) const;
-  Layer& operator[](unsigned index);
+  const BaseLayer& operator[](unsigned index) const;
+  BaseLayer& operator[](unsigned index);
 
   int residual_layer_number(unsigned index) const;
 
@@ -38,25 +44,26 @@ public:
     return _layers.size();
   }
 
-  inline const Layer& input_layer() const
+  inline const BaseLayer& input_layer() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
-    return _layers.front();
+    return *_layers.front();
   }
 
-  inline const Layer& output_layer() const
+  inline const BaseLayer& output_layer() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
-    return _layers.back();
+    return *_layers.back();
   }
 
 private:
-  static Layer create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay);
-  static Layer create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
-  static Layer create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
+  static std::unique_ptr<BaseLayer> create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay);
+  static std::unique_ptr<BaseLayer> create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
+  static std::unique_ptr<BaseLayer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
-  void add_residual_layer(Layer& layer, const activation::method& activation_method) const;
+  void add_residual_layer(BaseLayer& layer, const activation::method& activation_method) const;
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 
-  std::vector<Layer> _layers;
+  std::vector<std::unique_ptr<BaseLayer>> _layers;
+  std::vector<int> _residual_layer_numbers;
 };

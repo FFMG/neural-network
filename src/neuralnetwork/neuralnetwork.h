@@ -26,6 +26,7 @@
 #include "taskqueue.h"
 #include "neuralnetworkhelper.h"
 #include "neuralnetworkoptions.h"
+#include "baselayer.h"
 
 class NeuralNetwork;
 
@@ -375,7 +376,7 @@ private:
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
-  NeuralNetwork(const std::vector<Layer>& layers, const NeuralNetworkOptions& options, const std::map<ErrorCalculation::type, double>& errors);
+  NeuralNetwork(const std::vector<BaseLayer>& layers, const NeuralNetworkOptions& options, const std::map<ErrorCalculation::type, double>& errors);
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&);
 
@@ -387,7 +388,7 @@ public:
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
-  const std::vector<Layer>& get_layers() const;
+  const std::vector<std::unique_ptr<BaseLayer>>& get_layers() const;
   const activation::method& get_output_activation_method() const;
   const activation::method& get_hidden_activation_method() const;
 
@@ -411,7 +412,7 @@ private:
     std::vector<GradientsAndOutputs>& gradients,
     const std::vector<std::vector<double>>& outputs, 
     const Layers& layers,
-    const std::vector<OldHiddenStates>& hidden_states) const;
+    const std::vector<HiddenStates>& hidden_states) const;
 
   void calculate_back_propagation_input_layer(
     std::vector<GradientsAndOutputs>& gradients,
@@ -421,17 +422,17 @@ private:
     std::vector<GradientsAndOutputs>& gradients,
     const std::vector<std::vector<double>>& outputs,
     const Layers& layers,
-    const std::vector<OldHiddenStates>& hidden_states) const;
+    const std::vector<HiddenStates>& hidden_states) const;
 
   void calculate_back_propagation_hidden_layers(
     std::vector<GradientsAndOutputs>& gradients,
     const Layers& layers,
-    const std::vector<OldHiddenStates>& hidden_states) const;
+    const std::vector<HiddenStates>& hidden_states) const;
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& gradients_and_output,
     const std::vector<std::vector<double>>& inputs, 
     const Layers& layers, 
-    std::vector<OldHiddenStates>& hidden_states,
+    std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
   std::vector<GradientsAndOutputs> train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
@@ -449,7 +450,7 @@ private:
   void apply_weight_gradients(Layers& layers, const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
   void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const;
 
-  Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const;
+  BaseLayer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const;
 
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const;
 
@@ -472,6 +473,8 @@ private:
     const std::vector<std::vector<double>>& training_outputs) const;
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
+
+  mutable std::vector<std::vector<double>> _layer_inputs;
 
   mutable std::shared_mutex _mutex;
 

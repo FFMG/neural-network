@@ -46,6 +46,8 @@ public:
    */
   virtual LayerType layer_type() const = 0;
 
+  virtual int residual_layer_number() const = 0;
+
   /**
    * @brief Gets the number of neurons in this layer.
    * @return The total number of neurons.
@@ -100,6 +102,8 @@ public:
       double gradient_clip_threshold,
       ErrorCalculation::type error_calculation_type) const = 0;
 
+  virtual const activation& get_activation() const noexcept = 0;
+
   /**
    * @brief Calculates the gradients for a hidden layer.
    * @param next_layer A constant reference to the subsequent layer in the
@@ -117,6 +121,8 @@ public:
       const std::vector<std::vector<double>> &output_matrix,
       const std::vector<std::vector<HiddenState>> &hidden_states,
       double gradient_clip_threshold) const = 0;
+
+  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) = 0;
 
   // --- Weights and Biases ---
 
@@ -147,6 +153,12 @@ public:
    * @return A vector of WeightParam objects for the bias weights.
    */
   virtual const std::vector<WeightParam> &get_bias_weight_params() const = 0;
+  virtual WeightParam& get_bias_weight_param(unsigned neuron_index) = 0;
+
+  virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
+  virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
+  virtual std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) = 0;
+
 
   /**
    * @brief Checks if the layer has a bias neuron.
@@ -160,5 +172,10 @@ public:
    * @brief Gets a constant reference to the layer's activation function logic.
    * @return The activation object.
    */
-  virtual const activation &get_activation() const noexcept = 0;
+
+  /**
+   * @brief Clones the layer, creating a deep copy.
+   * @return A pointer to the newly created BaseLayer.
+   */
+  virtual BaseLayer* clone() const = 0;
 };

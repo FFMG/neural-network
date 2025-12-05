@@ -506,3 +506,32 @@ const OptimiserType FFLayer::get_optimiser_type() const noexcept
 {
     return _optimiser_type;
 }
+
+int FFLayer::residual_layer_number() const
+{
+    return -1;
+}
+
+BaseLayer* FFLayer::clone() const
+{
+    return new FFLayer(*this);
+}
+
+// Implementations for get_residual_weight_params()
+const std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params() const
+{
+    static const std::vector<std::vector<WeightParam>> empty_vec_2d;
+    return empty_vec_2d;
+}
+
+std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params()
+{
+    static std::vector<std::vector<WeightParam>> empty_vec_2d; // Non-const version
+    return empty_vec_2d;
+}
+
+std::vector<WeightParam>& FFLayer::get_residual_weight_params(unsigned neuron_index)
+{
+    static std::vector<WeightParam> empty_vec_1d; // Non-const version
+    return empty_vec_1d;
+}

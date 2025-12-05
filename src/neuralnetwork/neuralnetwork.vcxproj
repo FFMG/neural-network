@@ -139,7 +139,6 @@
     <ClCompile Include="activation.cpp" />
     <ClCompile Include="elmanrnnlayer.cpp" />
     <ClCompile Include="fflayer.cpp" />
-    <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
     <ClCompile Include="libraries\tracy\TracyClient.cpp" />
@@ -162,7 +161,7 @@
     <ClInclude Include="examples\xor.h" />
     <ClInclude Include="fflayer.h" />
     <ClInclude Include="hiddenstate.h" />
-    <ClInclude Include="layer.h" />
+    <ClInclude Include="hiddenstates.h" />
     <ClInclude Include="layers.h" />
     <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />

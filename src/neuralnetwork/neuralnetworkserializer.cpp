@@ -1,5 +1,6 @@
 #include <chrono>
 
+#include "fflayer.h"
 #include "logger.h"
 #include "neuralnetworkserializer.h"
 #include "optimiser.h"
@@ -35,7 +36,10 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   }
 
   // create the NN
-  auto nn = new NeuralNetwork(layers, options, errors);
+
+  // TODO
+  NeuralNetwork* nn = nullptr;
+  // auto nn = new NeuralNetwork(layers, options, errors);
   Logger::info("Created Neural Network.");
 
   // cleanup
@@ -43,8 +47,11 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   return nn;
 }
 
-std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json)
+std::vector<BaseLayer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json)
 {
+  // TODO
+  return {};
+  /*
   auto number_of_layers = get_number_of_layers(json);
   if(number_of_layers <= 2)
   {
@@ -82,9 +89,9 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOpt
     auto activation_method = activation::string_to_method(activation_method_string);
 
     auto layer_type_number = layer_object->get_number<int>("layer-type");
-    auto layer_type = (Layer::LayerType)layer_type_number;
+    auto layer_type = (BaseLayer::LayerType)layer_type_number;
 
-    auto layer = Layer(
+    auto layer = FFLayer(
       layer_index,
       neurons,
       number_input_neurons,
@@ -101,6 +108,7 @@ std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOpt
     number_input_neurons = static_cast<unsigned>(neurons.size());
   }
   return layers;
+  */
 }
 
 void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& path)
@@ -566,8 +574,10 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
   return neuron_object;
 }
 
-void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArray& layers)
+void NeuralNetworkSerializer::add_layer(const BaseLayer& layer, TinyJSON::TJValueArray& layers)
 {
+  // TODO
+  /*
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for(auto neuron : layer.get_neurons())
@@ -589,10 +599,13 @@ void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArr
   layers.add(layer_object);
   delete layer_array;
   delete layer_object;
+  */
 }
 
-void NeuralNetworkSerializer::add_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
 {
+  // TODO
+  /*
   auto weights_object = new TinyJSON::TJValueObject();
   // input outputs
   weights_object->set_number("input-size", layer.get_number_input_neurons());
@@ -610,10 +623,13 @@ void NeuralNetworkSerializer::add_weights(const Layer& layer, TinyJSON::TJValueO
   layer_object.set("weights", input_weights_array);
   delete input_weights_array;
   delete weights_object;
+  */
 }
 
-void NeuralNetworkSerializer::add_bias_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_bias_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
 {
+  // TODO
+  /*
   auto weights_object = new TinyJSON::TJValueObject();
 
   auto bias_weight_params = layer.get_bias_weight_params();
@@ -624,10 +640,13 @@ void NeuralNetworkSerializer::add_bias_weights(const Layer& layer, TinyJSON::TJV
   add_weight_params(bias_weight_params, *weights_object);
   layer_object.set("bias-weights", weights_object);
   delete weights_object;
+  */
 }
 
-void NeuralNetworkSerializer::add_residual_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_residual_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
 {
+  // TODO
+  /*
   auto residual_projector_object = new TinyJSON::TJValueObject();
 
   if(layer.residual_layer_number() != -1)
@@ -651,10 +670,13 @@ void NeuralNetworkSerializer::add_residual_weights(const Layer& layer, TinyJSON:
   }
   layer_object.set("residual-projector", residual_projector_object);
   delete residual_projector_object;
+  */
 }
 
 void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
+  // TODO
+  /*
   auto layers_array = new TinyJSON::TJValueArray();
   for(const auto& layer : nn.get_layers())
   {
@@ -662,6 +684,7 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   }
   json.set("layers", layers_array);
   delete layers_array;
+  */
 }
 
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
