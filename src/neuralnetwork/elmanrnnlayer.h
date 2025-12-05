@@ -63,6 +63,8 @@ public:
 
   LayerType layer_type() const override;
 
+  int residual_layer_number() const override;
+
 public:
   std::vector<std::vector<double>> calculate_forward_feed(
       const BaseLayer &previous_layer,
@@ -105,7 +107,7 @@ public:
 
   unsigned get_layer_index() const noexcept override;
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold);
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
   static double clip_gradient(double gradient, double gradient_clip_threshold);
 
@@ -115,17 +117,23 @@ public:
   const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const override;
   WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) override;
   
-  WeightParam& get_bias_weight_param(unsigned neuron_index);
+  WeightParam& get_bias_weight_param(unsigned neuron_index) override;
 
   bool has_bias() const noexcept override;
 
   const std::vector<WeightParam>& get_bias_weight_params() const override;
+
+  const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
+  std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
+  std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) override;
 
   const OptimiserType get_optimiser_type() const noexcept;
   
   const activation& get_activation() const noexcept override;
   
   unsigned get_number_output_neurons() const;
+
+  BaseLayer* clone() const override;
 
 private:
   void resize_weights(

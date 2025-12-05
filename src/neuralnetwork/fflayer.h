@@ -24,7 +24,7 @@ class FFLayer final : public BaseLayer
 protected:
   friend class Layers;
 
-private:
+public:
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
@@ -61,6 +61,8 @@ public:
   Neuron& get_neuron(unsigned index);
 
   LayerType layer_type() const override;
+
+  int residual_layer_number() const override;
 
 public:
   std::vector<std::vector<double>> calculate_forward_feed(
@@ -104,7 +106,7 @@ public:
 
   unsigned get_layer_index() const noexcept override;
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold);
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
   static double clip_gradient(double gradient, double gradient_clip_threshold);
 
@@ -119,11 +121,17 @@ public:
 
   const std::vector<WeightParam>& get_bias_weight_params() const override;
 
+  const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
+  std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
+  std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) override;
+
   const OptimiserType get_optimiser_type() const noexcept;
   
   const activation& get_activation() const noexcept override;
   
   unsigned get_number_output_neurons() const;
+
+  BaseLayer* clone() const override;
 
 private:
   void clean();
