@@ -1,6 +1,9 @@
-#include "../neuralnetworkserializer.h"
-#include "helper.h"
+#include "../errorcalculation.h"
 #include "../logger.h"
+#include "../neuralnetworkserializer.h"
+
+#include "helper.h"
+
 
 #include <cerrno>  // For errno
 #include <cstring> // For strerror
@@ -153,8 +156,8 @@ public:
 
     auto metrics = nn->calculate_forecast_metrics( 
       {
-        NeuralNetworkOptions::ErrorCalculation::rmse,
-        NeuralNetworkOptions::ErrorCalculation::bce_loss });
+        ErrorCalculation::type::rmse,
+        ErrorCalculation::type::bce_loss });
     Logger::debug("Error rmse: ", metrics[0].error());
     Logger::debug("Error bce:  ", metrics[1].error());
 
