@@ -16,6 +16,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   LayerType layer_type, 
   const activation::method& activation_method,
   const OptimiserType& optimiser_type, 
+  int residual_layer_number,
   double dropout_rate
   ) :
   _layer_index(layer_index),
@@ -23,7 +24,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   _number_output_neurons(num_neurons_in_this_layer),
   _layer_type(layer_type),
   _optimiser_type(optimiser_type),
-  _activation(activation_method)
+  _activation(activation_method),
+  _residual_layer_number(residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (num_neurons_in_this_layer == 0) 
@@ -63,7 +65,8 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _recurrent_weights(src._recurrent_weights),
   _bias_weights(src._bias_weights),
   _optimiser_type(src._optimiser_type),
-  _activation(src._activation)
+  _activation(src._activation),
+  _residual_layer_number(src._residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -74,6 +77,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   unsigned number_input_neurons,
   LayerType layer_type,
   OptimiserType optimiser_type,
+  int residual_layer_number,
   const activation::method& activation_method,
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<std::vector<WeightParam>>& recurrent_weights,
@@ -88,7 +92,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   _activation(activation_method),
   _weights(weights),
   _recurrent_weights(recurrent_weights),
-  _bias_weights(bias_weights)
+  _bias_weights(bias_weights),
+  _residual_layer_number(residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -103,7 +108,8 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _recurrent_weights(std::move(src._recurrent_weights)),
   _bias_weights(std::move(src._bias_weights)),
   _optimiser_type(std::move(src._optimiser_type)),
-  _activation(std::move(src._activation))
+  _activation(std::move(src._activation)),
+  _residual_layer_number(src._residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   src._layer_index = 0;
@@ -536,4 +542,29 @@ const OptimiserType ElmanRNNLayer::get_optimiser_type() const noexcept
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_recurrent_weight_params() const
 {
     return _recurrent_weights;
+}
+
+BaseLayer* ElmanRNNLayer::clone() const
+{
+    return new ElmanRNNLayer(*this);
+}
+
+int ElmanRNNLayer::residual_layer_number() const
+{
+    return _residual_layer_number;
+}
+
+const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params() const
+{
+    return _residual_weights;
+}
+
+std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params()
+{
+    return _residual_weights;
+}
+
+std::vector<WeightParam>& ElmanRNNLayer::get_residual_weight_params(unsigned int neuron_index)
+{
+    return _residual_weights[neuron_index];
 }

@@ -24,8 +24,8 @@ public:
      * @param num_neurons The number of neurons in the layer.
      */
     HiddenState(unsigned num_neurons)
-        : _pre_activation_sums(num_neurons, 0.0),
-          _hidden_state_values(num_neurons, 0.0)
+      : _pre_activation_sums(num_neurons, 0.0),
+        _hidden_state_values(num_neurons, 0.0)
     {
     }
 

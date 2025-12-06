@@ -22,7 +22,7 @@ Layers::Layers(
   _residual_layer_numbers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = create_input_layer(topology[0], topology[1], weight_decay);
+  auto layer = create_input_layer(topology[0], topology[1], weight_decay, -1); // Input layer has no residual
   _layers.emplace_back(std::move(layer));
   _residual_layer_numbers.push_back(-1); // No residual for input layer
 
@@ -36,8 +36,7 @@ Layers::Layers(
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     _residual_layer_numbers.push_back(residual_layer_number);
 
-    // TODO: Use recurrent_layers to decide between FFLayer and ElmanRNNLayer
-    layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
+    layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers, residual_layer_number, dropout_rate);
 
     // add_residual_layer(*layer, hidden_activation); // TODO: Re-implement for BaseLayer
     _layers.emplace_back(std::move(layer));
@@ -46,7 +45,7 @@ Layers::Layers(
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
   _residual_layer_numbers.push_back(residual_layer_number);
-  layer = create_output_layer(topology.back(), weight_decay, *_layers.back(), output_activation, optimiser_type, residual_layer_number);
+  layer = create_output_layer(topology.back(), weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers, residual_layer_number);
 
   // add_residual_layer(*layer, output_activation); // TODO: Re-implement for BaseLayer
   _layers.emplace_back(std::move(layer));
@@ -65,7 +64,7 @@ Layers::Layers(const Layers& src) noexcept
   _residual_layer_numbers = src._residual_layer_numbers;
 }
 
-Layers::Layers(Layers&& layers) noexcept = default;
+Layers::Layers(Layers&& src) noexcept = default;
 
 Layers& Layers::operator=(const Layers& src) noexcept
 {
@@ -83,7 +82,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
   return *this;
 }
 
-Layers& Layers::operator=(Layers&& layers) noexcept = default;
+Layers& Layers::operator=(Layers&& src) noexcept = default;
 
 const BaseLayer& Layers::operator[](unsigned index ) const
 {
@@ -146,22 +145,64 @@ void Layers::add_residual_layer(BaseLayer& layer, const activation::method& acti
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
-std::unique_ptr<BaseLayer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay)
+std::unique_ptr<BaseLayer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  // The private constructor for FFLayer is being used here.
-  // This is allowed because 'Layers' is a friend class of 'FFLayer'.
-  return std::make_unique<FFLayer>(0, 0, num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, BaseLayer::LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
+  return std::make_unique<FFLayer>(
+    0, 
+    0, 
+    num_neurons_in_this_layer, 
+    num_neurons_in_next_layer, 
+    weight_decay, 
+    BaseLayer::LayerType::Input, 
+    activation::method::linear, 
+    OptimiserType::None, 
+    residual_layer_number);
 }
 
-std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  return std::make_unique<FFLayer>(previous_layer.get_layer_index() + 1, previous_layer.number_neurons(), num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, BaseLayer::LayerType::Hidden, activation, optimiser_type, dropout_rate);
+  unsigned layer_index = previous_layer.get_layer_index() + 1;
+  if (recurrent_layers[layer_index] > 0) 
+  {
+    return std::make_unique<ElmanRNNLayer>(layer_index, previous_layer.number_neurons(), num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, BaseLayer::LayerType::Hidden, activation, optimiser_type, residual_layer_number, dropout_rate);
+  } 
+  else 
+  {
+    return std::make_unique<FFLayer>(
+      layer_index, 
+      previous_layer.number_neurons(), 
+      num_neurons_in_this_layer, 
+      num_neurons_in_next_layer, 
+      weight_decay, 
+      BaseLayer::LayerType::Hidden, 
+      activation, 
+      optimiser_type, 
+      dropout_rate);
+  }
 }
 
-std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
+std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  return std::make_unique<FFLayer>(previous_layer.get_layer_index() + 1, previous_layer.number_neurons(), num_neurons_in_this_layer, 0, weight_decay, BaseLayer::LayerType::Output, activation, optimiser_type, 0.0);
+  unsigned layer_index = previous_layer.get_layer_index() + 1;
+  if (recurrent_layers[layer_index] > 0) 
+  { 
+    // Check if this layer should be recurrent
+    return std::make_unique<ElmanRNNLayer>(layer_index, previous_layer.number_neurons(), num_neurons_in_this_layer, 0, weight_decay, BaseLayer::LayerType::Output, activation, optimiser_type, residual_layer_number, 0.0);
+  } 
+  else 
+  {
+    return std::make_unique<FFLayer>(
+      layer_index, 
+      previous_layer.number_neurons(), 
+      num_neurons_in_this_layer, 
+      0, 
+      weight_decay, 
+      BaseLayer::LayerType::Output, 
+      activation, 
+      optimiser_type, 
+      residual_layer_number);
+  }
 }
