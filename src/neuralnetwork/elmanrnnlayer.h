@@ -8,12 +8,12 @@
 #endif
 
 #include "activation.h"
+#include "baselayer.h"
 #include "errorcalculation.h"
+#include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
-#include "baselayer.h"
-#include "hiddenstate.h"
 
 #include <cassert>
 #include <vector>
@@ -24,7 +24,7 @@ class ElmanRNNLayer final : public BaseLayer
 protected:
   friend class Layers;
 
-private:
+public:
   ElmanRNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
@@ -33,6 +33,7 @@ private:
     LayerType layer_type, 
     const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
+    int residual_layer_number,
     double dropout_rate);
 
 public:
@@ -42,6 +43,7 @@ public:
     unsigned number_input_neurons,
     LayerType layer_type,
     OptimiserType optimiser_type,
+    int residual_layer_number,
     const activation::method& activation_method,
     const std::vector<std::vector<WeightParam>>& weights,
     const std::vector<std::vector<WeightParam>>& recurrent_weights,
@@ -157,4 +159,6 @@ private:
   // Size: [N_this][N_this]
   std::vector<std::vector<WeightParam>> _recurrent_weights;
   std::vector<WeightParam> _bias_weights;
+  std::vector<std::vector<WeightParam>> _residual_weights;
+  int _residual_layer_number;
 };
