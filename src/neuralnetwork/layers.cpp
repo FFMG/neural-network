@@ -31,7 +31,7 @@ Layers::Layers(
   {
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
-    auto dropout_rate = dropout_layers[layer_number-1]; // remove input
+    auto dropout_rate = dropout_layers[layer_number-1];
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     _residual_layer_numbers.push_back(residual_layer_number);
@@ -166,7 +166,17 @@ std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_t
   unsigned layer_index = previous_layer.get_layer_index() + 1;
   if (recurrent_layers[layer_index] > 0) 
   {
-    return std::make_unique<ElmanRNNLayer>(layer_index, previous_layer.number_neurons(), num_neurons_in_this_layer, num_neurons_in_next_layer, weight_decay, BaseLayer::LayerType::Hidden, activation, optimiser_type, residual_layer_number, dropout_rate);
+    return std::make_unique<ElmanRNNLayer>(
+      layer_index, 
+      previous_layer.number_neurons(), 
+      num_neurons_in_this_layer, 
+      num_neurons_in_next_layer, 
+      weight_decay, 
+      BaseLayer::LayerType::Hidden, 
+      activation, 
+      optimiser_type, 
+      residual_layer_number, 
+      dropout_rate);
   } 
   else 
   {
@@ -190,7 +200,17 @@ std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_t
   if (recurrent_layers[layer_index] > 0) 
   { 
     // Check if this layer should be recurrent
-    return std::make_unique<ElmanRNNLayer>(layer_index, previous_layer.number_neurons(), num_neurons_in_this_layer, 0, weight_decay, BaseLayer::LayerType::Output, activation, optimiser_type, residual_layer_number, 0.0);
+    return std::make_unique<ElmanRNNLayer>(
+      layer_index, 
+      previous_layer.number_neurons(), 
+      num_neurons_in_this_layer, 
+      0, 
+      weight_decay, 
+      BaseLayer::LayerType::Output, 
+      activation, 
+      optimiser_type, 
+      residual_layer_number, 
+      0.0);
   } 
   else 
   {
