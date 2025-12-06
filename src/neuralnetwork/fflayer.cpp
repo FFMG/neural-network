@@ -49,7 +49,7 @@ FFLayer::FFLayer(
       _number_output_neurons,         //  current 
       layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer+1,      //  next
       neuron_number, 
-      dropout_rate == 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
+      dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
       dropout_rate);
     _neurons.emplace_back(neuron);
   }
@@ -296,8 +296,8 @@ std::vector<std::vector<double>> FFLayer::calculate_forward_feed(
     
     if(!hidden_states.empty())
     {
-      hidden_states[b][get_layer_index()].set_pre_activation_sums(pre_activation_sums);
-      hidden_states[b][get_layer_index()].set_hidden_state_values(output_row);
+      hidden_states[b][0].set_pre_activation_sums(pre_activation_sums);
+      hidden_states[b][0].set_hidden_state_values(output_row);
     }
   }
   return output_matrix;
@@ -399,7 +399,7 @@ std::vector<std::vector<double>> FFLayer::calculate_hidden_gradients(
 
   for (size_t b = 0; b < B; b++)
   {
-    const auto& current_hidden_state = hidden_states[b][get_layer_index()];
+    const auto& current_hidden_state = hidden_states[b][0];
 
     for (unsigned i = 0; i < N_this; i++)
     {

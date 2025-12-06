@@ -75,9 +75,9 @@ private:
       .with_dropout({0.0, 0.0})
       .with_learning_rate(learning_rate)
       .with_clip_threshold(2)
-      .with_learning_rate_warmup(learning_rate * 0.5, 0.075) // from 1/2 LR to LR
+      .with_learning_rate_warmup(0, 0) // from 1/2 LR to LR
       .with_learning_rate_decay_rate(0.0)
-      .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
+      .with_learning_rate_boost_rate(0.0, 0.0) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
       .build();
@@ -135,15 +135,15 @@ public:
     /*
       Learning rate = 1x learning rate x batch size
 
-        2,    0.05×(2/1),     0.10
-        8,    0.05×(8/1),     0.40
-        16,   0.05×(16/1),    0.80
-        32,   0.05×(32/1),    1.60
-        64,   0.05×(64/1),    3.20
-        128,  0.05×(128/1),   6.40
+        2,    0.05ï¿½(2/1),     0.10
+        8,    0.05ï¿½(8/1),     0.40
+        16,   0.05ï¿½(16/1),    0.80
+        32,   0.05ï¿½(32/1),    1.60
+        64,   0.05ï¿½(64/1),    3.20
+        128,  0.05ï¿½(128/1),   6.40
     */
     const unsigned epoch = 200;
-    const unsigned batch_size = 200;
+    const unsigned batch_size = 16;
     const double one_batch_learning_rate = 0.01;
     const double learning_rate = (batch_size * one_batch_learning_rate);
 

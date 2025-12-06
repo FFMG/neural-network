@@ -54,8 +54,8 @@ public:
      */
     double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
     {
-        assert(neuron_index < _pre_activation_sums.size());
-        return _pre_activation_sums[neuron_index];
+      assert(neuron_index < _pre_activation_sums.size());
+      return _pre_activation_sums[neuron_index];
     }
     
     /**
@@ -64,7 +64,7 @@ public:
      */
     const std::vector<double>& get_pre_activation_sums() const
     {
-        return _pre_activation_sums;
+      return _pre_activation_sums;
     }
 
     /**
@@ -74,8 +74,8 @@ public:
      */
     double get_hidden_state_value_at_neuron(unsigned neuron_index) const
     {
-        assert(neuron_index < _hidden_state_values.size());
-        return _hidden_state_values[neuron_index];
+      assert(neuron_index < _hidden_state_values.size());
+      return _hidden_state_values[neuron_index];
     }
 
     /**
@@ -84,7 +84,7 @@ public:
      */
     const std::vector<double>& get_hidden_state_values() const 
     {
-        return _hidden_state_values;
+      return _hidden_state_values;
     }
 
 private:
