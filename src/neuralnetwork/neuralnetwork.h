@@ -474,8 +474,6 @@ private:
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
-  mutable std::vector<std::vector<double>> _layer_inputs;
-
   mutable std::shared_mutex _mutex;
 
   double _learning_rate;
