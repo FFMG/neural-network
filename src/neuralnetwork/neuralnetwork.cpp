@@ -858,6 +858,15 @@ void NeuralNetwork::apply_weight_gradients(
             }
           }
           rnn_layer->get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          if (Logger::can_trace())
+          {
+            Logger::trace([&]
+            {
+              std::ostringstream ss;
+              ss << "[GRAD] RNN Layer " << layer_number << " W_ih[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
+              return ss.str();
+            });
+          }
         }
       }
 
@@ -877,6 +886,15 @@ void NeuralNetwork::apply_weight_gradients(
             }
           }
           rnn_layer->get_recurrent_weight_params()[i][j].set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          if (Logger::can_trace())
+          {
+            Logger::trace([&]
+            {
+              std::ostringstream ss;
+              ss << "[GRAD] RNN Layer " << layer_number << " W_hh[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
+              return ss.str();
+            });
+          }
         }
       }
 
@@ -894,6 +912,15 @@ void NeuralNetwork::apply_weight_gradients(
           }
         }
         rnn_layer->get_bias_weight_param(j).set_unclipped_gradient(bias_grad / static_cast<double>(batch_size));
+        if (Logger::can_trace())
+        {
+          Logger::trace([&]
+          {
+            std::ostringstream ss;
+            ss << "[GRAD] RNN Layer " << layer_number << " Bias[" << j << "]: " << bias_grad / static_cast<double>(batch_size);
+            return ss.str();
+          });
+        }
       }
     }
     else // FeedForward Layer (FFLayer)
@@ -910,6 +937,15 @@ void NeuralNetwork::apply_weight_gradients(
             grad += batch_activation_gradients[b][0].get_gradient(layer_number, j) * batch_activation_gradients[b][0].get_outputs(layer_number-1)[i];
           }
           current_layer.get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          if (Logger::can_trace())
+          {
+            Logger::trace([&]
+            {
+              std::ostringstream ss;
+              ss << "[GRAD] FF Layer " << layer_number << " W[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
+              return ss.str();
+            });
+          }
         }
       }
 
@@ -923,6 +959,15 @@ void NeuralNetwork::apply_weight_gradients(
             bias_grad += batch_activation_gradients[b][0].get_gradient(layer_number, j);
         }
         current_layer.get_bias_weight_param(j).set_unclipped_gradient(bias_grad / static_cast<double>(batch_size));
+        if (Logger::can_trace())
+        {
+          Logger::trace([&]
+          {
+            std::ostringstream ss;
+            ss << "[GRAD] FF Layer " << layer_number << " Bias[" << j << "]: " << bias_grad / static_cast<double>(batch_size);
+            return ss.str();
+          });
+        }
       }
     }
     // Residual gradients (if any)
