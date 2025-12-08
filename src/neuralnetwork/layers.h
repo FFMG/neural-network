@@ -66,4 +66,9 @@ private:
 
   std::vector<std::unique_ptr<BaseLayer>> _layers;
   std::vector<int> _residual_layer_numbers;
+  double _weight_decay;
+  std::vector<unsigned> _recurrent_layers; // New member variable
+
+public:
+  const std::vector<unsigned>& recurrent_layers() const noexcept;
 };

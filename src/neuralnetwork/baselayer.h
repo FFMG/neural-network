@@ -2,6 +2,8 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
+#include "gradientsandoutputs.h"
+
 #include "hiddenstate.h"
 #include "weightparam.h"
 
@@ -24,7 +26,8 @@ public:
   {
     Input,
     Hidden,
-    Output
+    Output,
+    Recurrent
   };
 
   /**
@@ -76,50 +79,31 @@ public:
    * mode.
    * @return A matrix of output values for the current layer.
    */
-  virtual std::vector<std::vector<double>> calculate_forward_feed(
+  virtual std::vector<double> calculate_forward_feed(
+      GradientsAndOutputs& gradients_and_outputs,
       const BaseLayer &previous_layer,
-      const std::vector<std::vector<double>> &previous_layer_inputs,
-      const std::vector<std::vector<double>> &residual_output_values,
-      std::vector<std::vector<HiddenState>> &hidden_states,
+      const std::vector<double> &previous_layer_inputs,
+      const std::vector<double> &residual_output_values,
+      std::vector<HiddenState> &hidden_states,
       bool is_training) const = 0;
 
   // --- Backward Pass (Gradient Calculation) ---
 
-  /**
-   * @brief Calculates the gradients for the output layer.
-   * @param target_outputs The expected or target values.
-   * @param given_outputs The actual computed output values from the forward
-   * pass.
-   * @param hidden_states The hidden states recorded during the forward pass.
-   * @param gradient_clip_threshold The threshold value for clipping gradients.
-   * @param error_calculation_type The type of error calculation method to use.
-   * @return A matrix of gradients for the output layer.
-   */
-  virtual std::vector<std::vector<double>> calculate_output_gradients(
-      const std::vector<std::vector<double>> &target_outputs,
-      const std::vector<std::vector<double>> &given_outputs,
-      const std::vector<std::vector<HiddenState>> &hidden_states,
+  virtual void calculate_output_gradients(
+      GradientsAndOutputs& gradients_and_outputs,
+      const std::vector<double> &target_outputs,
+      const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold,
       ErrorCalculation::type error_calculation_type) const = 0;
 
   virtual const activation& get_activation() const noexcept = 0;
 
-  /**
-   * @brief Calculates the gradients for a hidden layer.
-   * @param next_layer A constant reference to the subsequent layer in the
-   * network.
-   * @param next_grad_matrix The gradient matrix from the next layer.
-   * @param output_matrix The output matrix of the current layer from the
-   * forward pass.
-   * @param hidden_states The hidden states recorded during the forward pass.
-   * @param gradient_clip_threshold The threshold value for clipping gradients.
-   * @return A matrix of gradients for the hidden layer.
-   */
-  virtual std::vector<std::vector<double>> calculate_hidden_gradients(
+  virtual void calculate_hidden_gradients(
+      GradientsAndOutputs& gradients_and_outputs,
       const BaseLayer &next_layer,
-      const std::vector<std::vector<double>> &next_grad_matrix,
-      const std::vector<std::vector<double>> &output_matrix,
-      const std::vector<std::vector<HiddenState>> &hidden_states,
+      const std::vector<double> &next_grad_matrix,
+      const std::vector<double> &output_matrix,
+      const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold) const = 0;
 
   virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) = 0;

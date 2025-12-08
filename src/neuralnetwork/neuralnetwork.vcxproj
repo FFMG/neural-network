@@ -160,6 +160,7 @@
     <ClInclude Include="examples\twomoon.h" />
     <ClInclude Include="examples\xor.h" />
     <ClInclude Include="fflayer.h" />
+    <ClInclude Include="gradientsandoutputs.h" />
     <ClInclude Include="hiddenstate.h" />
     <ClInclude Include="hiddenstates.h" />
     <ClInclude Include="layers.h" />

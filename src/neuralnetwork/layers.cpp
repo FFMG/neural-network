@@ -6,23 +6,25 @@
 
 Layers::Layers(
   const std::vector<unsigned>& topology,
-  double weight_decay,
-  const std::vector<unsigned>& recurrent_layers,
+  double weight_decay_param, // Renamed for clarity in initializer list
+  const std::vector<unsigned>& recurrent_layers_param, // Renamed for clarity in initializer list
   const std::vector<double>& dropout_layers,
   const activation::method& hidden_activation,
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
-  int residual_layer_jump) noexcept
+  int residual_layer_jump) noexcept :
+  _weight_decay(weight_decay_param), // Initialize _weight_decay here
+  _recurrent_layers(recurrent_layers_param) // Initialize _recurrent_layers here
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
-  assert(recurrent_layers.size() == topology.size() && "The recurrence layer size must match the topology");
+  assert(recurrent_layers_param.size() == topology.size() && "The recurrence layer size must match the topology");
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
   _residual_layer_numbers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = create_input_layer(topology[0], topology[1], weight_decay, -1); // Input layer has no residual
+  auto layer = create_input_layer(topology[0], topology[1], _weight_decay, -1); // Input layer has no residual
   _layers.emplace_back(std::move(layer));
   _residual_layer_numbers.push_back(-1); // No residual for input layer
 
@@ -36,7 +38,7 @@ Layers::Layers(
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     _residual_layer_numbers.push_back(residual_layer_number);
 
-    layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers, residual_layer_number, dropout_rate);
+    layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers_param, residual_layer_number, dropout_rate);
 
     // add_residual_layer(*layer, hidden_activation); // TODO: Re-implement for BaseLayer
     _layers.emplace_back(std::move(layer));
@@ -45,7 +47,7 @@ Layers::Layers(
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
   _residual_layer_numbers.push_back(residual_layer_number);
-  layer = create_output_layer(topology.back(), weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers, residual_layer_number);
+  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers_param, residual_layer_number);
 
   // add_residual_layer(*layer, output_activation); // TODO: Re-implement for BaseLayer
   _layers.emplace_back(std::move(layer));
@@ -53,7 +55,8 @@ Layers::Layers(
 
 Layers::~Layers() = default;
 
-Layers::Layers(const Layers& src) noexcept
+Layers::Layers(const Layers& src) noexcept :
+  _recurrent_layers(src._recurrent_layers) // Copy _recurrent_layers
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _layers.reserve(src._layers.size());
@@ -78,6 +81,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
       _layers.emplace_back(std::unique_ptr<BaseLayer>(layer->clone()));
     }
     _residual_layer_numbers = src._residual_layer_numbers;
+    _recurrent_layers = src._recurrent_layers; // Copy _recurrent_layers
   }
   return *this;
 }
@@ -225,4 +229,10 @@ std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_t
       optimiser_type, 
       residual_layer_number);
   }
+}
+
+const std::vector<unsigned>& Layers::recurrent_layers() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return _recurrent_layers;
 }
