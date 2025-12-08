@@ -10,6 +10,7 @@
 #include "activation.h"
 #include "baselayer.h"
 #include "errorcalculation.h"
+#include "gradientsandoutputs.h"
 #include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
@@ -68,41 +69,43 @@ public:
   int residual_layer_number() const override;
 
 public:
-  std::vector<std::vector<double>> calculate_forward_feed(
+  std::vector<double> calculate_forward_feed(
+      GradientsAndOutputs& gradients_and_outputs,
       const BaseLayer &previous_layer,
-      const std::vector<std::vector<double>> &previous_layer_inputs,
-      const std::vector<std::vector<double>> &residual_output_values,
-      std::vector<std::vector<HiddenState>> &hidden_states,
+      const std::vector<double> &previous_layer_inputs,
+      const std::vector<double> &residual_output_values,
+      std::vector<HiddenState> &hidden_states,
       bool is_training) const override;
 
-  std::vector<std::vector<double>> calculate_output_gradients(
-      const std::vector<std::vector<double>> &target_outputs,
-      const std::vector<std::vector<double>> &given_outputs,
-      const std::vector<std::vector<HiddenState>> &hidden_states,
+  void calculate_output_gradients(
+      GradientsAndOutputs& gradients_and_outputs,
+      const std::vector<double> &target_outputs,
+      const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold,
-      ErrorCalculation::type error_calculation_type) const override;
+      ErrorCalculation::type error_calculation_type) const  override;
 
   void calculate_error_deltas(
-    std::vector<std::vector<double>>& deltas,
-    const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs,
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type) const;
 
   void calculate_mse_error_deltas(
-    std::vector<std::vector<double>>& deltas,
-    const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs) const;
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
 
   void calculate_bce_error_deltas(
-    std::vector<std::vector<double>>& deltas,
-    const std::vector<std::vector<double>>& target_outputs,
-    const std::vector<std::vector<double>>& given_outputs) const;
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
 
-  std::vector<std::vector<double>> calculate_hidden_gradients(
+  void calculate_hidden_gradients(
+      GradientsAndOutputs& gradients_and_outputs,
       const BaseLayer &next_layer,
-      const std::vector<std::vector<double>> &next_grad_matrix,
-      const std::vector<std::vector<double>> &output_matrix,
-      const std::vector<std::vector<HiddenState>> &hidden_states,
+      const std::vector<double> &next_grad_matrix,
+      const std::vector<double> &output_matrix,
+      const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold) const override;
 
   unsigned number_input_neurons(bool add_bias) const noexcept override;
@@ -115,6 +118,7 @@ public:
 
   const std::vector<std::vector<WeightParam>>& get_weight_params() const override;
   const std::vector<std::vector<WeightParam>>& get_recurrent_weight_params() const;
+  std::vector<std::vector<WeightParam>>& get_recurrent_weight_params();
 
   const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const override;
   WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) override;

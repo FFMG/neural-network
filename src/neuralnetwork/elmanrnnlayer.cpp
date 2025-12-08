@@ -254,86 +254,90 @@ Neuron& ElmanRNNLayer::get_neuron(unsigned index)
   return _neurons[index];
 }
 
-std::vector<std::vector<double>> ElmanRNNLayer::calculate_forward_feed(
+std::vector<double> ElmanRNNLayer::calculate_forward_feed(
+  GradientsAndOutputs& gradients_and_outputs,
   const BaseLayer& previous_layer,
-  const std::vector<std::vector<double>>& previous_layer_inputs,
-  const std::vector<std::vector<double>>&,
-  std::vector<std::vector<HiddenState>>& hidden_states,
+  const std::vector<double>& previous_layer_inputs,
+  const std::vector<double>&, // residual_output_values is not used
+  std::vector<HiddenState>& hidden_states,
   bool is_training) const
 {
-    const size_t batch_size = previous_layer_inputs.size();
     const size_t N_prev = previous_layer.number_neurons();
     const size_t N_this = number_neurons();
-    const size_t num_time_steps = N_prev > 0 ? previous_layer_inputs[0].size() / N_prev : 0;
+    const size_t num_time_steps = N_prev > 0 ? previous_layer_inputs.size() / N_prev : 0;
 
-    std::vector<std::vector<double>> output_sequence(batch_size, std::vector<double>(num_time_steps * N_this, 0.0));
+    std::vector<double> output_sequence(num_time_steps * N_this, 0.0);
+    std::vector<double> last_output_sequence(N_this, 0.0);
     
-    if (hidden_states.empty()) {
-        hidden_states.assign(batch_size, std::vector<HiddenState>(num_time_steps, HiddenState(N_this)));
-    }
+    // hidden_states is already sized for a single batch item, so no need to check empty()
+    // and hidden_states.assign (it's passed by reference and managed by NeuralNetwork)
+    assert(hidden_states.size() == num_time_steps);
 
-    for (size_t b = 0; b < batch_size; ++b) {
-        std::vector<double> prev_hidden_state_values(N_this, 0.0);
+    std::vector<double> prev_hidden_state_values(N_this, 0.0);
 
-        for (size_t t = 0; t < num_time_steps; ++t) {
-            std::vector<double> current_input_t(N_prev);
-            for(size_t i = 0; i < N_prev; ++i) {
-                current_input_t[i] = previous_layer_inputs[b][t * N_prev + i];
-            }
-
-            std::vector<double> pre_activation_sums(N_this, 0.0);
-
-            for (size_t j = 0; j < N_this; ++j) {
-                if (!_bias_weights.empty()) {
-                    pre_activation_sums[j] = _bias_weights[j].get_value();
-                }
-            }
-
-            if (_layer_type != LayerType::Input) {
-                for (size_t i = 0; i < N_prev; ++i) {
-                    for (size_t j = 0; j < N_this; ++j) {
-                        pre_activation_sums[j] += current_input_t[i] * _weights[i][j].get_value();
-                    }
-                }
-            }
-            
-            if (_layer_type == LayerType::Hidden || _layer_type == LayerType::Output) {
-                for (size_t i = 0; i < N_this; ++i) {
-                    for (size_t j = 0; j < N_this; ++j) {
-                        pre_activation_sums[j] += prev_hidden_state_values[i] * _recurrent_weights[i][j].get_value();
-                    }
-                }
-            }
-            
-            std::vector<double> current_hidden_state_values(N_this);
-            for (size_t j = 0; j < N_this; ++j) {
-                const auto& neuron = get_neuron((unsigned)j);
-                double output = get_activation().activate(pre_activation_sums[j]);
-
-                if (is_training && neuron.is_dropout()) {
-                    if (neuron.must_randomly_drop()) {
-                        output = 0.0;
-                    } else {
-                        output /= (1.0 - neuron.get_dropout_rate());
-                    }
-                }
-                current_hidden_state_values[j] = output;
-                output_sequence[b][t * N_this + j] = output;
-            }
-            
-            hidden_states[b][t].set_pre_activation_sums(pre_activation_sums);
-            hidden_states[b][t].set_hidden_state_values(current_hidden_state_values);
-            prev_hidden_state_values = current_hidden_state_values;
+    for (size_t t = 0; t < num_time_steps; ++t) {
+        std::vector<double> current_input_t(N_prev);
+        for(size_t i = 0; i < N_prev; ++i) {
+            current_input_t[i] = previous_layer_inputs[t * N_prev + i];
         }
+
+        std::vector<double> pre_activation_sums(N_this, 0.0);
+
+        for (size_t j = 0; j < N_this; ++j) {
+            if (!_bias_weights.empty()) {
+                pre_activation_sums[j] = _bias_weights[j].get_value();
+            }
+        }
+
+        if (_layer_type != LayerType::Input) {
+            for (size_t i = 0; i < N_prev; ++i) {
+                for (size_t j = 0; j < N_this; ++j) {
+                    pre_activation_sums[j] += current_input_t[i] * _weights[i][j].get_value();
+                }
+            }
+        }
+        
+        if (_layer_type == LayerType::Hidden || _layer_type == LayerType::Output) {
+            for (size_t i = 0; i < N_this; ++i) {
+                for (size_t j = 0; j < N_this; ++j) {
+                    pre_activation_sums[j] += prev_hidden_state_values[i] * _recurrent_weights[i][j].get_value();
+                }
+            }
+        }
+        
+        std::vector<double> current_hidden_state_values(N_this);
+        for (size_t j = 0; j < N_this; ++j) {
+            const auto& neuron = get_neuron((unsigned)j);
+            double output = get_activation().activate(pre_activation_sums[j]);
+
+            if (is_training && neuron.is_dropout()) {
+                if (neuron.must_randomly_drop()) {
+                    output = 0.0;
+                } else {
+                    output /= (1.0 - neuron.get_dropout_rate());
+                }
+            }
+            current_hidden_state_values[j] = output;
+            output_sequence[t * N_this + j] = output;
+            if(t == num_time_steps - 1)
+            {
+                last_output_sequence[j] = output;
+            }
+        }
+        
+        hidden_states[t].set_pre_activation_sums(pre_activation_sums);
+        hidden_states[t].set_hidden_state_values(current_hidden_state_values);
+        prev_hidden_state_values = current_hidden_state_values;
     }
-    return output_sequence;
+    gradients_and_outputs.set_rnn_outputs(get_layer_index(), output_sequence);
+    return last_output_sequence;
 }
 
 
 void ElmanRNNLayer::calculate_error_deltas(
-  std::vector<std::vector<double>>& deltas,
-  const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs,
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
   ErrorCalculation::type error_calculation_type) const
 {
   switch (error_calculation_type)
@@ -348,106 +352,95 @@ void ElmanRNNLayer::calculate_error_deltas(
 }
 
 void ElmanRNNLayer::calculate_bce_error_deltas(
-  std::vector<std::vector<double>>& deltas,
-  const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs) const
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
 {
-  const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    for (size_t b = 0; b < B; ++b)
-    {
-      deltas[b][neuron_index] = given_outputs[b][neuron_index] - target_outputs[b][neuron_index];
-    }
+    deltas[neuron_index] = given_outputs[neuron_index] - target_outputs[neuron_index];
   }
 }
 
 void ElmanRNNLayer::calculate_mse_error_deltas(
-  std::vector<std::vector<double>>& deltas,
-  const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs) const
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
 {
-  const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    for (size_t b = 0; b < B; ++b)
-    {
-      deltas[b][neuron_index] = given_outputs[b][neuron_index] - target_outputs[b][neuron_index];
-    }
+    deltas[neuron_index] = given_outputs[neuron_index] - target_outputs[neuron_index];
   }
 }
-
-std::vector<std::vector<double>> ElmanRNNLayer::calculate_output_gradients(
-  const std::vector<std::vector<double>>& target_outputs,
-  const std::vector<std::vector<double>>& given_outputs,
-  const std::vector<std::vector<HiddenState>>&,
+void ElmanRNNLayer::calculate_output_gradients(
+  GradientsAndOutputs& gradients_and_outputs,
+  const std::vector<double>& target_outputs,
+  const std::vector<HiddenState>&,
   double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
-  const size_t B = target_outputs.size();
   const size_t N_total = number_neurons();
 
-  std::vector<std::vector<double>> gradients(B, std::vector<double>(N_total, 0.0));
-  std::vector<std::vector<double>> deltas(B, std::vector<double>(N_total, 0.0));
-  calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
+  std::vector<double> gradients(N_total, 0.0);
+  std::vector<double> deltas(N_total, 0.0);
+  calculate_error_deltas(deltas, target_outputs, gradients_and_outputs.get_outputs(get_layer_index()), error_calculation_type);
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    for (size_t b = 0; b < B; ++b)
-    {
-      double grad = deltas[b][neuron_index];
-      gradients[b][neuron_index] = clip_gradient(grad, gradient_clip_threshold);
-    }
+    double grad = deltas[neuron_index];
+    gradients[neuron_index] = clip_gradient(grad, gradient_clip_threshold);
   }
-  return gradients;
+  gradients_and_outputs.set_gradients(get_layer_index(), gradients);
 }
 
-std::vector<std::vector<double>> ElmanRNNLayer::calculate_hidden_gradients(
+void ElmanRNNLayer::calculate_hidden_gradients(
+    GradientsAndOutputs& gradients_and_outputs,
     const BaseLayer& next_layer,
-    const std::vector<std::vector<double>>& next_grad_matrix,
-    const std::vector<std::vector<double>>&,
-    const std::vector<std::vector<HiddenState>>& hidden_states,
-    double gradient_clip_threshold) const 
+    const std::vector<double>& next_grad_matrix,
+    const std::vector<double>&,
+    const std::vector<HiddenState>& hidden_states,
+    double gradient_clip_threshold) const
 {
-    const size_t batch_size = next_grad_matrix.size();
-    const size_t num_time_steps = hidden_states[0].size();
+    const size_t num_time_steps = hidden_states.size();
     const size_t N_this = number_neurons();
     const size_t N_next = next_layer.number_neurons();
 
-    std::vector<std::vector<double>> grad_matrix(batch_size, std::vector<double>(num_time_steps * N_this, 0.0));
+    std::vector<double> grad_matrix(N_this, 0.0);
+    std::vector<double> rnn_grad_matrix(num_time_steps * N_this, 0.0);
     std::vector<double> d_next_h(N_this, 0.0);
 
     for (int t = num_time_steps - 1; t >= 0; --t) {
-        for (size_t b = 0; b < batch_size; ++b) {
-            std::vector<double> grad_from_next_layer(N_this, 0.0);
-            for (size_t k = 0; k < N_next; ++k) {
-                for (size_t i = 0; i < N_this; ++i) {
-                     grad_from_next_layer[i] += next_grad_matrix[b][k] * next_layer.get_weight_param(i, k).get_value();
-                }
-            }
-
+        std::vector<double> grad_from_next_layer(N_this, 0.0);
+        for (size_t k = 0; k < N_next; ++k) {
             for (size_t i = 0; i < N_this; ++i) {
-                double grad_from_layer_and_time = grad_from_next_layer[i] + d_next_h[i];
-                
-                double deriv = get_activation().activate_derivative(hidden_states[b][t].get_pre_activation_sum_at_neuron(i));
-                double g = grad_from_layer_and_time * deriv;
-                grad_matrix[b][t * N_this + i] = clip_gradient(g, gradient_clip_threshold);
+                 grad_from_next_layer[i] += next_grad_matrix[k] * next_layer.get_weight_param(i, k).get_value();
             }
+        }
 
-            d_next_h.assign(N_this, 0.0);
-            for (size_t i = 0; i < N_this; ++i) {
-                for(size_t j=0; j<N_this; ++j) {
-                    d_next_h[i] += grad_matrix[b][t * N_this + j] * _recurrent_weights[i][j].get_value();
-                }
+        std::vector<double> grad_matrix_t(N_this, 0.0);
+        for (size_t i = 0; i < N_this; ++i) {
+            double grad_from_layer_and_time = grad_from_next_layer[i] + d_next_h[i];
+            
+            double deriv = get_activation().activate_derivative(hidden_states[t].get_pre_activation_sum_at_neuron(i));
+            double g = grad_from_layer_and_time * deriv;
+            grad_matrix_t[i] = clip_gradient(g, gradient_clip_threshold);
+            grad_matrix[i] += grad_matrix_t[i];
+            rnn_grad_matrix[t * N_this + i] = grad_matrix_t[i];
+        }
+
+        d_next_h.assign(N_this, 0.0);
+        for (size_t i = 0; i < N_this; ++i) {
+            for(size_t j=0; j<N_this; ++j) {
+                d_next_h[i] += grad_matrix_t[j] * _recurrent_weights[i][j].get_value();
             }
         }
     }
-
-    return grad_matrix;
+    gradients_and_outputs.set_gradients(get_layer_index(), grad_matrix);
+    gradients_and_outputs.set_rnn_gradients(get_layer_index(), rnn_grad_matrix);
 }
 
 
@@ -540,6 +533,11 @@ const OptimiserType ElmanRNNLayer::get_optimiser_type() const noexcept
 }
 
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_recurrent_weight_params() const
+{
+    return _recurrent_weights;
+}
+
+std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_recurrent_weight_params()
 {
     return _recurrent_weights;
 }
