@@ -293,7 +293,7 @@ public:
 
       double seq_error_sum = 0.0;
       size_t count = 0;
-
+              
       for (size_t i = 0; i < gt.size(); ++i)
       {
         double denom = std::abs(gt[i]);
@@ -301,12 +301,20 @@ public:
         seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
         ++count;
       }
-
+              
       if (count > 0)
       {
         total_mape += seq_error_sum / count;
         ++sequence_count;
       }
+
+      Logger::trace([&]
+      {
+        std::ostringstream ss;
+        ss << "[MAPE_DEBUG] After sequence " << seq_idx << ": total_mape=" << total_mape
+            << ", sequence_count=" << sequence_count;
+        return ss.str();
+      });
     }
     return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
   }
