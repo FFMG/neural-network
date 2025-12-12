@@ -105,7 +105,7 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void apply_weight_gradients(Layers& layers, const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param);
+  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param);
 
   BaseLayer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const;
 

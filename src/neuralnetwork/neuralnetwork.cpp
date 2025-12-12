@@ -384,7 +384,7 @@ void NeuralNetwork::train_single_batch(
   {
     calculate_forward_feed(gradients, { *inputs_begin }, _layers, hidden_states, true);
     calculate_back_propagation(gradients, { *outputs_begin }, _layers, hidden_states);
-    apply_weight_gradients(_layers, {gradients}, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size());
+    apply_weight_gradients(_layers, gradients, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size());
     return;
   }
 
@@ -399,7 +399,7 @@ void NeuralNetwork::train_single_batch(
 
   calculate_forward_feed(gradients, inputs_slice, _layers, hidden_states, true);
   calculate_back_propagation(gradients, outputs_slice, _layers, hidden_states);
-      apply_weight_gradients(_layers, {gradients}, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size());  return;
+      apply_weight_gradients(_layers, gradients, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size());  return;
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -808,7 +808,7 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
 
 void NeuralNetwork::apply_weight_gradients(
   Layers& layers, 
-  const std::vector<std::vector<GradientsAndOutputs>>& batch_activation_gradients, 
+  const std::vector<GradientsAndOutputs>& batch_activation_gradients, 
   double learning_rate, 
   unsigned epoch,
   const std::vector<HiddenStates>& hidden_states,
@@ -848,13 +848,12 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
-            const auto& rnn_grads = batch_activation_gradients[b][0].get_rnn_gradients(layer_number);
-            const auto& prev_rnn_outputs = batch_activation_gradients[b][0].get_rnn_outputs(layer_number - 1);
-            
+            const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+            const auto& prev_outputs = batch_activation_gradients[b].get_outputs(layer_number - 1);
             for(unsigned t = 0; t < num_time_steps; ++t)
             {
               // dE/dz_j(t) * x_i(t)
-              grad += rnn_grads[t * num_outputs + j] * prev_rnn_outputs[t * num_prev_inputs + i];
+              grad += rnn_grads[t * num_outputs + j] * prev_outputs[t * num_prev_inputs + i];
             }
           }
           rnn_layer->get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
@@ -878,7 +877,7 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
-            const auto& rnn_grads = batch_activation_gradients[b][0].get_rnn_gradients(layer_number);
+            const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
             for(unsigned t = 1; t < num_time_steps; ++t) // Start from t=1 as h(t-1) is used
             {
               // dE/dz_j(t) * h_i(t-1)
@@ -904,7 +903,7 @@ void NeuralNetwork::apply_weight_gradients(
         double bias_grad = 0.0;
         for(unsigned b=0; b < batch_size; ++b)
         {
-          const auto& rnn_grads = batch_activation_gradients[b][0].get_rnn_gradients(layer_number);
+          const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
           for(unsigned t = 0; t < num_time_steps; ++t)
           {
             // dE/dz_j(t)
@@ -933,8 +932,28 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
+            if (Logger::can_trace())
+            {
+              Logger::trace([&]
+              {
+                std::ostringstream ss;
+                ss << "[GRAD_DEBUG] b=" << b << ", layer=" << layer_number << ", i=" << i << ", j=" << j
+                   << ", get_gradient=" << batch_activation_gradients[b].get_gradient(layer_number, j)
+                   << ", get_outputs=" << batch_activation_gradients[b].get_outputs(layer_number-1)[i];
+                return ss.str();
+              });
+            }
             // dE/dz_j * x_i
-            grad += batch_activation_gradients[b][0].get_gradient(layer_number, j) * batch_activation_gradients[b][0].get_outputs(layer_number-1)[i];
+            grad += batch_activation_gradients[b].get_gradient(layer_number, j) * batch_activation_gradients[b].get_outputs(layer_number-1)[i];
+          }
+          if (Logger::can_trace())
+          {
+            Logger::trace([&]
+            {
+              std::ostringstream ss;
+              ss << "[GRAD_DEBUG] Calculated grad=" << grad << " for W[" << i << "][" << j << "]";
+              return ss.str();
+            });
           }
           current_layer.get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
           if (Logger::can_trace())
@@ -956,7 +975,7 @@ void NeuralNetwork::apply_weight_gradients(
         for(unsigned b = 0; b < batch_size; ++b)
         {
             // dE/dz_j
-            bias_grad += batch_activation_gradients[b][0].get_gradient(layer_number, j);
+            bias_grad += batch_activation_gradients[b].get_gradient(layer_number, j);
         }
         current_layer.get_bias_weight_param(j).set_unclipped_gradient(bias_grad / static_cast<double>(batch_size));
         if (Logger::can_trace())
@@ -1205,12 +1224,18 @@ void NeuralNetwork::calculate_forward_feed(
       hs_batch.push_back(hidden_states[b].at(layer_number));
 
       // --- 2c. Call layer forward
+      std::vector<HiddenState>& layer_hidden_states = hidden_states[b].at(layer_number);
+      // Calculate num_time_steps for the current layer's inputs
+      const size_t N_prev = previous_layer.number_neurons();
+      const size_t current_num_time_steps = N_prev > 0 ? previous_layer_input_for_batch_item.size() / N_prev : 0;
+      layer_hidden_states.resize(current_num_time_steps); // Resize to num_time_steps
+      
       std::vector<double> forward_feed_result = current_layer.calculate_forward_feed(
         gradients_and_output[b], // Pass gradients_and_output for this batch item
         previous_layer,
         previous_layer_input_for_batch_item,
         residual_output_values,
-        hidden_states[b].at(layer_number),
+        layer_hidden_states, // Pass the resized vector
         is_training);
 
       // --- 2d. Log activations (diagnostic) ---

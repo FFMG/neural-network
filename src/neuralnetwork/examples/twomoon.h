@@ -80,6 +80,7 @@ private:
       .with_learning_rate_boost_rate(0.0, 0.0) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
+      .with_recurrent_layers({0, 0, 0, 0})
       .build();
 
     return new NeuralNetwork(options);
