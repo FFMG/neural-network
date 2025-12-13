@@ -70,7 +70,8 @@ public:
 private:
   void calculate_back_propagation(
     std::vector<GradientsAndOutputs>& gradients,
-    const std::vector<std::vector<double>>& outputs, 
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    size_t batch_size,
     const Layers& layers,
     const std::vector<HiddenStates>& hidden_states);
 
@@ -80,7 +81,8 @@ private:
 
   void calculate_back_propagation_output_layer(
     std::vector<GradientsAndOutputs>& gradients,
-    const std::vector<std::vector<double>>& outputs,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    size_t batch_size,
     const Layers& layers,
     const std::vector<HiddenStates>& hidden_states);
 
@@ -100,7 +102,8 @@ private:
 
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& gradients_and_output,
-    const std::vector<std::vector<double>>& inputs, 
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
+    size_t batch_size,
     const Layers& layers, 
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
