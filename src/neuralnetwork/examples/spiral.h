@@ -4,9 +4,9 @@
 
 #include "helper.h"
 
-
 #include <cerrno>  // For errno
 #include <cstring> // For strerror
+#include <fstream>
 #include <iomanip>
 
 class SpiralLoader 
