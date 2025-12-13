@@ -2,6 +2,7 @@
 //
 #include "logger.h"
 
+#include "./examples/copymemory.h"
 #include "./examples/residualxor.h"
 #include "./examples/threebitparity.h"
 #include "./examples/twomoon.h"
@@ -15,6 +16,9 @@ int main()
 
   auto log_level = Logger::LogLevel::Debug;
   Logger::set_level(log_level);
+
+  // Copy Memory
+  ExampleCopyMemory::MemoryCopy(log_level);
 
   // Spiral
   ExampleSpiral::Spiral(log_level, true);

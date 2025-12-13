@@ -539,8 +539,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
     MYODDWEB_PROFILE_MARK();
 
-
-
     // Learning rate
     //
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
