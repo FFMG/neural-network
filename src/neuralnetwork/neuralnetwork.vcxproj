@@ -155,6 +155,7 @@
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\helper.h" />
+    <ClInclude Include="examples\residualxor.h" />
     <ClInclude Include="examples\spiral.h" />
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\twomoon.h" />
