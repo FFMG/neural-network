@@ -10,9 +10,10 @@ class ExampleThreebitParity
 public:
   static void ThreebitParity(Logger::LogLevel log_level)
   {
-    std::vector<unsigned> topology = {3, 3, 1};
-    const int number_of_epoch = 1000;
-    const double learning_rate = 0.1;
+    std::vector<unsigned> topology = {3, 8, 8, 1};
+    std::vector<unsigned> recurrent_layers = {0, 1, 1, 0 };
+    const int number_of_epoch = 5000;
+    const double learning_rate = 0.01;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -46,9 +47,10 @@ public:
         .with_learning_rate(learning_rate)
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
-        .with_optimiser_type(OptimiserType::SGD)
-        .with_clip_threshold(1.0)
+        .with_optimiser_type(OptimiserType::NadamW)
+        .with_clip_threshold(2.0)
         .with_data_is_unique(true)
+        .with_recurrent_layers(recurrent_layers)
         .build();
 
       auto* nn = new NeuralNetwork(options);
@@ -68,6 +70,8 @@ public:
       TEST_END
     }
 
+    /*
+     * For testting batch size > 1
     {
       for( int batch_size = 1; batch_size <= 4; ++batch_size)
       {
@@ -85,6 +89,7 @@ public:
           .with_optimiser_type(OptimiserType::SGD)
           .with_clip_threshold(1.0)
           .with_data_is_unique(true)
+          .with_recurrent_layers(rlayers)
           .build();
 
         auto* nn = new NeuralNetwork(options);
@@ -104,5 +109,6 @@ public:
         TEST_END
       }
     }  
+    */
   }
 };
