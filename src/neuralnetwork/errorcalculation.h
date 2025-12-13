@@ -9,6 +9,7 @@
 
 #include "./libraries/instrumentor.h"
 
+#include <cmath>
 #include <vector>
 #include "logger.h"
 
