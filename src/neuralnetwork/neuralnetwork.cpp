@@ -816,7 +816,7 @@ void NeuralNetwork::apply_weight_gradients(
     const auto& previous_layer = layers[layer_number - 1];
 
     const unsigned num_outputs = current_layer.number_neurons();
-    const unsigned num_inputs = current_layer.number_input_neurons(false);
+    const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
     {
@@ -985,7 +985,7 @@ void NeuralNetwork::apply_weight_gradients(
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
 
     const unsigned num_outputs = current_layer.number_neurons();
-    const unsigned num_inputs = current_layer.number_input_neurons(false);
+    const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     for(unsigned j=0; j<num_outputs; ++j)
     {

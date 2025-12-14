@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./libraries/instrumentor.h"
+
 #include "activation.h"
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
@@ -30,39 +32,113 @@ public:
     Recurrent
   };
 
-  /**
-   * @brief Virtual destructor to ensure proper cleanup of derived classes.
-   */
+  Layer(
+    unsigned layer_index,
+    LayerType layer_type,
+    const activation::method& activation_method,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons
+    ) noexcept :
+    _layer_index(layer_index),
+    _layer_type(layer_type),
+    _activation(activation_method),
+    _number_input_neurons(number_input_neurons),
+    _number_output_neurons(number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+  }
+
+  Layer(const Layer& src) noexcept :
+    _layer_index(src._layer_index),
+    _layer_type(src._layer_type),
+    _activation(src._activation),
+    _number_input_neurons(src._number_input_neurons),
+    _number_output_neurons(src._number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+  }
+
+  Layer(Layer&& src) noexcept :
+    _layer_index(src._layer_index),
+    _layer_type(src._layer_type),
+    _activation(std::move(src._activation)),
+    _number_input_neurons(src._number_input_neurons),
+    _number_output_neurons(src._number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    src._layer_type = LayerType::Input;
+    src._layer_index = 0;
+    src._number_input_neurons = 0;
+    src._number_output_neurons = 0;
+  }
+
+  Layer& operator=(const Layer& src) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (this != &src)
+    {
+      _layer_index = src._layer_index;
+      _layer_type = src._layer_type;
+      _activation = src._activation;
+      _number_input_neurons = src._number_input_neurons;
+      _number_output_neurons = src._number_output_neurons;
+    }
+    return *this;
+  }
+
+  Layer& operator=(Layer&& src) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (this != &src)
+    {
+      _layer_index = src._layer_index;
+      _layer_type = src._layer_type;
+      _activation = std::move(src._activation);
+      _number_input_neurons = src._number_input_neurons;
+      _number_output_neurons = src._number_output_neurons;
+      
+      src._layer_index = 0;
+      src._number_input_neurons = 0;
+      src._number_output_neurons = 0;
+    }
+    return *this;
+  }
+
   virtual ~Layer() = default;
 
   // --- Core Layer Properties ---
 
-  /**
-   * @brief Gets the index of this layer within the network.
-   * @return The zero-based index of the layer.
-   */
-  virtual unsigned get_layer_index() const noexcept = 0;
+  inline unsigned get_layer_index() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_index;
+  }
 
-  /**
-   * @brief Gets the type of the layer (Input, Hidden, or Output).
-   * @return The LayerType enum value.
-   */
-  virtual LayerType layer_type() const = 0;
+  inline LayerType get_layer_type() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_type;
+  }
 
   virtual int residual_layer_number() const = 0;
 
-  /**
-   * @brief Gets the number of neurons in this layer.
-   * @return The total number of neurons.
-   */
-  virtual unsigned number_neurons() const noexcept = 0;
+  inline unsigned number_neurons() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return get_number_output_neurons();
+  }
 
-  /**
-   * @brief Gets the number of input connections to this layer.
-   * @param add_bias Whether to include the bias neuron in the count.
-   * @return The number of input neurons from the previous layer.
-   */
-  virtual unsigned number_input_neurons(bool add_bias) const noexcept = 0;
+  inline unsigned get_number_input_neurons() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _number_input_neurons;
+  }
+
+  inline unsigned get_number_output_neurons() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _number_output_neurons;
+  }
 
   // --- Forward Pass ---
 
@@ -96,7 +172,10 @@ public:
       double gradient_clip_threshold,
       ErrorCalculation::type error_calculation_type) const = 0;
 
-  virtual const activation& get_activation() const noexcept = 0;
+  const activation& get_activation() const noexcept
+  {
+    return _activation;
+  }
 
   virtual void calculate_hidden_gradients(
       GradientsAndOutputs& gradients_and_outputs,
@@ -162,4 +241,12 @@ public:
    * @return A pointer to the newly created Layer.
    */
   virtual Layer* clone() const = 0;
+
+private:
+  unsigned _layer_index;
+  LayerType _layer_type;
+  activation _activation;
+
+  unsigned _number_input_neurons;  //  number of neurons in previous layer
+  unsigned _number_output_neurons; //  number of neurons in this layer
 };
