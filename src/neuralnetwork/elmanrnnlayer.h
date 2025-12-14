@@ -7,7 +7,6 @@
   #endif
 #endif
 
-#include "activation.h"
 #include "layer.h"
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
@@ -57,14 +56,11 @@ public:
   ElmanRNNLayer& operator=(ElmanRNNLayer&& src) noexcept;
   virtual ~ElmanRNNLayer();
 
-  unsigned number_neurons() const noexcept override;
   const std::vector<Neuron>& get_neurons() const noexcept;
   std::vector<Neuron>& get_neurons() noexcept;
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
-
-  LayerType layer_type() const override;
 
   int residual_layer_number() const override;
 
@@ -108,10 +104,6 @@ public:
       const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold) const override;
 
-  unsigned number_input_neurons(bool add_bias) const noexcept override;
-
-  unsigned get_layer_index() const noexcept override;
-
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
   static double clip_gradient(double gradient, double gradient_clip_threshold);
@@ -134,27 +126,17 @@ public:
   std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) override;
 
   const OptimiserType get_optimiser_type() const noexcept;
-  
-  const activation& get_activation() const noexcept override;
-  
-  unsigned get_number_output_neurons() const;
 
   Layer* clone() const override;
 
 private:
   void resize_weights(
-    const activation& activation_method,
     unsigned number_input_neurons, 
     unsigned number_output_neurons, 
     double weight_decay);
 
-  unsigned _layer_index;
   std::vector<Neuron> _neurons;
-  unsigned _number_input_neurons;  //  number of neurons in previous layer
-  unsigned _number_output_neurons; //  number of neurons in this layer
-  LayerType _layer_type;
   OptimiserType _optimiser_type;
-  activation _activation;
 
   // N_prev = number of neurons in previous layer
   // N_this = number of neurons in this layer
