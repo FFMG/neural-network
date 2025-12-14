@@ -9,18 +9,18 @@
 
 #include <vector>
 
-// Forward declaration to allow BaseLayer to be used in function signatures.
-class BaseLayer;
+// Forward declaration to allow Layer to be used in function signatures.
+class Layer;
 
 /**
- * @class BaseLayer
+ * @class Layer
  * @brief An abstract interface for a layer in a neural network.
  *
  * This class defines the common interface for all layer types, whether they are
  * part of a Feedforward (FNN) or Recurrent (RNN) Neural Network. It is designed
  * to be inherited by concrete layer implementations.
  */
-class BaseLayer {
+class Layer {
 public:
   enum class LayerType
   {
@@ -33,7 +33,7 @@ public:
   /**
    * @brief Virtual destructor to ensure proper cleanup of derived classes.
    */
-  virtual ~BaseLayer() = default;
+  virtual ~Layer() = default;
 
   // --- Core Layer Properties ---
 
@@ -81,7 +81,7 @@ public:
    */
   virtual std::vector<double> calculate_forward_feed(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &previous_layer,
+      const Layer &previous_layer,
       const std::vector<double> &previous_layer_inputs,
       const std::vector<double> &residual_output_values,
       std::vector<HiddenState> &hidden_states,
@@ -100,7 +100,7 @@ public:
 
   virtual void calculate_hidden_gradients(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &next_layer,
+      const Layer &next_layer,
       const std::vector<double> &next_grad_matrix,
       const std::vector<double> &output_matrix,
       const std::vector<HiddenState> &hidden_states,
@@ -159,7 +159,7 @@ public:
 
   /**
    * @brief Clones the layer, creating a deep copy.
-   * @return A pointer to the newly created BaseLayer.
+   * @return A pointer to the newly created Layer.
    */
-  virtual BaseLayer* clone() const = 0;
+  virtual Layer* clone() const = 0;
 };

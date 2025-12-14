@@ -99,7 +99,7 @@ const activation::method& NeuralNetwork::get_hidden_activation_method() const
   return _options.hidden_activation_method();
 }
 
-const std::vector<std::unique_ptr<BaseLayer>>& NeuralNetwork::get_layers() const
+const std::vector<std::unique_ptr<Layer>>& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _layers.get_layers();
@@ -1019,7 +1019,7 @@ void NeuralNetwork::apply_weight_gradients(
 }
 
 
-BaseLayer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
+Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto residual_layer_number = layers.residual_layer_number(current_layer_index);

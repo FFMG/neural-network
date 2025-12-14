@@ -47,7 +47,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   return nn;
 }
 
-std::vector<BaseLayer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json)
+std::vector<Layer> NeuralNetworkSerializer::create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json)
 {
   // TODO
   return {};
@@ -89,7 +89,7 @@ std::vector<BaseLayer> NeuralNetworkSerializer::create_layers(const NeuralNetwor
     auto activation_method = activation::string_to_method(activation_method_string);
 
     auto layer_type_number = layer_object->get_number<int>("layer-type");
-    auto layer_type = (BaseLayer::LayerType)layer_type_number;
+    auto layer_type = (Layer::LayerType)layer_type_number;
 
     auto layer = FFLayer(
       layer_index,
@@ -574,7 +574,7 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
   return neuron_object;
 }
 
-void NeuralNetworkSerializer::add_layer(const BaseLayer& layer, TinyJSON::TJValueArray& layers)
+void NeuralNetworkSerializer::add_layer(const Layer& layer, TinyJSON::TJValueArray& layers)
 {
   // TODO
   /*
@@ -602,7 +602,7 @@ void NeuralNetworkSerializer::add_layer(const BaseLayer& layer, TinyJSON::TJValu
   */
 }
 
-void NeuralNetworkSerializer::add_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
 {
   // TODO
   /*
@@ -626,7 +626,7 @@ void NeuralNetworkSerializer::add_weights(const BaseLayer& layer, TinyJSON::TJVa
   */
 }
 
-void NeuralNetworkSerializer::add_bias_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_bias_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
 {
   // TODO
   /*
@@ -643,7 +643,7 @@ void NeuralNetworkSerializer::add_bias_weights(const BaseLayer& layer, TinyJSON:
   */
 }
 
-void NeuralNetworkSerializer::add_residual_weights(const BaseLayer& layer, TinyJSON::TJValueObject& layer_object)
+void NeuralNetworkSerializer::add_residual_weights(const Layer& layer, TinyJSON::TJValueObject& layer_object)
 {
   // TODO
   /*

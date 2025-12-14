@@ -8,7 +8,7 @@
 #endif
 
 #include "activation.h"
-#include "baselayer.h"
+#include "layer.h"
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstate.h"
@@ -20,7 +20,7 @@
 #include <vector>
 
 class Neuron;
-class ElmanRNNLayer final : public BaseLayer
+class ElmanRNNLayer final : public Layer
 {
 protected:
   friend class Layers;
@@ -71,7 +71,7 @@ public:
 public:
   std::vector<double> calculate_forward_feed(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &previous_layer,
+      const Layer&previous_layer,
       const std::vector<double> &previous_layer_inputs,
       const std::vector<double> &residual_output_values,
       std::vector<HiddenState> &hidden_states,
@@ -102,7 +102,7 @@ public:
 
   void calculate_hidden_gradients(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &next_layer,
+      const Layer&next_layer,
       const std::vector<double> &next_grad_matrix,
       const std::vector<double> &output_matrix,
       const std::vector<HiddenState> &hidden_states,
@@ -139,7 +139,7 @@ public:
   
   unsigned get_number_output_neurons() const;
 
-  BaseLayer* clone() const override;
+  Layer* clone() const override;
 
 private:
   void resize_weights(

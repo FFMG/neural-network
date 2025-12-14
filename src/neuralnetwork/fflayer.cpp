@@ -238,7 +238,7 @@ Neuron& FFLayer::get_neuron(unsigned index)
 
 std::vector<double> FFLayer::calculate_forward_feed(
   GradientsAndOutputs& gradients_and_outputs,
-  const BaseLayer& previous_layer,
+  const Layer& previous_layer,
   const std::vector<double>& previous_layer_inputs,
   const std::vector<double>&, // residual_output_values is not used
   std::vector<HiddenState>& hidden_states,
@@ -368,7 +368,7 @@ void FFLayer::calculate_output_gradients(
 
 void FFLayer::calculate_hidden_gradients(
   GradientsAndOutputs& gradients_and_outputs,
-  const BaseLayer& next_layer,
+  const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
   const std::vector<double>&,
   const std::vector<HiddenState>& hidden_states,
@@ -437,7 +437,7 @@ unsigned int FFLayer::get_layer_index() const noexcept
     return _layer_index;
 }
 
-BaseLayer::LayerType FFLayer::layer_type() const
+Layer::LayerType FFLayer::layer_type() const
 {
     return _layer_type;
 }
@@ -492,9 +492,9 @@ int FFLayer::residual_layer_number() const
     return -1;
 }
 
-BaseLayer* FFLayer::clone() const
+Layer* FFLayer::clone() const
 {
-    return new FFLayer(*this);
+  return new FFLayer(*this);
 }
 
 
