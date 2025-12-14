@@ -27,7 +27,7 @@
 #include "taskqueue.h"
 #include "neuralnetworkhelper.h"
 #include "neuralnetworkoptions.h"
-#include "baselayer.h"
+#include "layer.h"
 
 class NeuralNetwork;
 
@@ -48,7 +48,7 @@ public:
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
-  const std::vector<std::unique_ptr<BaseLayer>>& get_layers() const;
+  const std::vector<std::unique_ptr<Layer>>& get_layers() const;
   const activation::method& get_output_activation_method() const;
   const activation::method& get_hidden_activation_method() const;
 
@@ -110,7 +110,7 @@ private:
 
   void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param);
 
-  BaseLayer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const;
+  Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const;
 
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const;
 

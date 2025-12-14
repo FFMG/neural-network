@@ -6,7 +6,6 @@
     #define VALIDATE_DATA 0
   #endif
 #endif
-#include "baselayer.h"
 #include "hiddenstate.h"
 #include "weightparam.h"
 #include "./libraries/instrumentor.h"

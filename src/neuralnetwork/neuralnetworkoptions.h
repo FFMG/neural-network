@@ -5,7 +5,7 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
-#include "baselayer.h"
+#include "layer.h"
 #include "logger.h"
 #include "optimiser.h"
 #include "neuralnetworkhelper.h"
@@ -335,7 +335,7 @@ public:
     return *this;
   }
 
-  static NeuralNetworkOptions create(const std::vector<BaseLayer>& layers)
+  static NeuralNetworkOptions create(const std::vector<Layer>& layers)
   {
     auto topology = std::vector<unsigned>();
     topology.reserve(layers.size());

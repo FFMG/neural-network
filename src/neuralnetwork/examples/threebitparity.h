@@ -10,10 +10,10 @@ class ExampleThreebitParity
 public:
   static void ThreebitParity(Logger::LogLevel log_level)
   {
-    std::vector<unsigned> topology = {3, 8, 8, 1};
-    std::vector<unsigned> recurrent_layers = {0, 1, 1, 0 };
+    std::vector<unsigned> topology = {3, 8, 1};
+    std::vector<unsigned> recurrent_layers = {0, 1, 0 };
     const int number_of_epoch = 5000;
-    const double learning_rate = 0.01;
+    const double learning_rate = 0.0002;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -48,7 +48,7 @@ public:
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
         .with_optimiser_type(OptimiserType::NadamW)
-        .with_clip_threshold(2.0)
+        .with_clip_threshold(1.0)
         .with_data_is_unique(true)
         .with_recurrent_layers(recurrent_layers)
         .build();
