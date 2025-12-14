@@ -152,6 +152,13 @@ public:
   [[noreturn]] static void panic(Args&&... args)
   {
     log(LogLevel::Panic, std::forward<Args>(args)...);
+#if defined(_MSC_VER)
+    __assume(0);
+#elif defined(__clang__) || defined(__GNUC__)
+    __builtin_unreachable();
+#else
+    ((void)0);
+#endif
   }
 
   static inline bool can_trace()
