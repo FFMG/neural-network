@@ -133,7 +133,7 @@ void ElmanRNNLayer::resize_weights(double weight_decay)
     for (unsigned o = 0; o < get_number_output_neurons(); ++o)
     {
       const auto& weight = weights[o];
-      _bias_weights.emplace_back(WeightParam(weight, 0.0, 0.0, 0.0, 0.0));
+      _bias_weights.emplace_back(WeightParam(weight, 0.0, 0.0, 0.0));
     }
   }
 
@@ -148,7 +148,7 @@ void ElmanRNNLayer::resize_weights(double weight_decay)
 		for (unsigned o = 0; o < get_number_output_neurons(); ++o)
 		{
 		  const auto& weight = weights[o];
-		  _weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, 0.0, weight_decay));
+		  _weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, weight_decay));
 		}
 	  }
   }
@@ -162,7 +162,7 @@ void ElmanRNNLayer::resize_weights(double weight_decay)
     for (unsigned o = 0; o < get_number_output_neurons(); ++o)
     {
       const auto& weight = weights[o];
-      _recurrent_weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, 0.0, weight_decay));
+      _recurrent_weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, weight_decay));
     }
   }
 }

@@ -61,7 +61,6 @@ private:
   static std::unique_ptr<Layer> create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate);
   static std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number);
 
-  void add_residual_layer(Layer& layer, const activation::method& activation_method) const;
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 
   std::vector<std::unique_ptr<Layer>> _layers;

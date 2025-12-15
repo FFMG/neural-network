@@ -10,7 +10,6 @@ public:
   WeightParam(
     double value,
     double raw_gradient,
-    double unclipped_gradient,
     double velocity,
     double first_moment_estimate,
     double second_moment_estimate,
@@ -18,19 +17,17 @@ public:
     double weight_decay) noexcept :
     _value(value),
     _raw_gradient(raw_gradient),
-    _unclipped_gradient(unclipped_gradient),
     _velocity(velocity),
     _first_moment_estimate(first_moment_estimate),
     _second_moment_estimate(second_moment_estimate),
     _time_step(time_step),
-    _weight_decay(weight_decay),
-    _has_unclipped(false)
+    _weight_decay(weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
   }
 
-  WeightParam(double value, double raw_gradient, double unclipped_gradient, double velocity, double weight_decay) noexcept :
-    WeightParam(value, raw_gradient, unclipped_gradient, velocity, 0.0, 0.0, 0, weight_decay)
+  WeightParam(double value, double raw_gradient, double velocity, double weight_decay) noexcept :
+    WeightParam(value, raw_gradient, velocity, 0.0, 0.0, 0, weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
   }
@@ -38,13 +35,11 @@ public:
   WeightParam(const WeightParam& src) noexcept :
     _value(src._value),
     _raw_gradient(src._raw_gradient),
-    _unclipped_gradient(src._unclipped_gradient),
     _velocity(src._velocity),
     _first_moment_estimate(src._first_moment_estimate),
     _second_moment_estimate(src._second_moment_estimate),
     _time_step(src._time_step),
-    _weight_decay(src._weight_decay),
-    _has_unclipped(src._has_unclipped)
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
   }
@@ -52,24 +47,20 @@ public:
   WeightParam(WeightParam&& src) noexcept: 
     _value(src._value),
     _raw_gradient(src._raw_gradient),
-    _unclipped_gradient(src._unclipped_gradient),
     _velocity(src._velocity),
     _first_moment_estimate(src._first_moment_estimate),
     _second_moment_estimate(src._second_moment_estimate),
     _time_step(src._time_step),
-    _weight_decay(src._weight_decay),
-    _has_unclipped(src._has_unclipped)
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     src._value = 0.0;
     src._raw_gradient = 0.0;
-    src._unclipped_gradient = 0.0;
     src._velocity = 0.0;
     src._first_moment_estimate = 0.0;
     src._second_moment_estimate = 0.0;
     src._time_step = 0;
     src._weight_decay = 0.0;
-    src._has_unclipped = false;
   }
 
   WeightParam& operator=(const WeightParam& src) noexcept
@@ -79,13 +70,11 @@ public:
     {
       _value = src._value;
       _raw_gradient = src._raw_gradient;
-      _unclipped_gradient = src._unclipped_gradient;
       _velocity = src._velocity;
       _first_moment_estimate = src._first_moment_estimate;
       _second_moment_estimate = src._second_moment_estimate;
       _time_step = src._time_step;
       _weight_decay = src._weight_decay;
-      _has_unclipped = src._has_unclipped;
     }
     return *this;
   }
@@ -96,22 +85,18 @@ public:
     {
       _value = src._value;
       _raw_gradient = src._raw_gradient;
-      _unclipped_gradient = src._unclipped_gradient;
       _velocity = src._velocity;
       _first_moment_estimate = src._first_moment_estimate;
       _second_moment_estimate = src._second_moment_estimate;
       _time_step = src._time_step;
       _weight_decay = src._weight_decay;
-      _has_unclipped = src._has_unclipped;
       src._value = 0.0;
       src._raw_gradient = 0.0;
-      src._unclipped_gradient = 0.0;
       src._velocity = 0.0;
       src._first_moment_estimate = 0.0;
       src._second_moment_estimate = 0.0;
       src._time_step = 0;
       src._weight_decay = 0.0;
-      src._has_unclipped = false;
     }
     return *this;
   }
@@ -127,11 +112,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _raw_gradient;
   }
-  inline double get_unclipped_gradient() const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("WeightParam");
-    return _unclipped_gradient;
-  }
+
   inline double get_velocity() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -177,16 +158,7 @@ public:
     }
     _raw_gradient = raw_gradient;
   };
-  inline void set_unclipped_gradient(double unclipped_gradient)
-  {
-    MYODDWEB_PROFILE_FUNCTION("WeightParam");
-    if (!std::isfinite(unclipped_gradient))
-    {
-      Logger::panic("Error while setting unclipped gradient.");
-      return;
-    }
-    _unclipped_gradient = unclipped_gradient;
-  };
+
   inline void set_velocity(double velocity)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -224,17 +196,7 @@ public:
     ++_time_step;
   }
 
-  inline bool has_unclipped_gradient() const noexcept
-  { 
-    MYODDWEB_PROFILE_FUNCTION("WeightParam");
-    return _has_unclipped; 
-  }
-  inline void clear_unclipped_gradient() noexcept
-  { 
-    MYODDWEB_PROFILE_FUNCTION("WeightParam");
-    _unclipped_gradient = 0.0; 
-    _has_unclipped = false; 
-  }
+
   inline double clip_gradient(double g) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -257,9 +219,7 @@ public:
 private:
   double _value;
   double _raw_gradient;
-  double _unclipped_gradient;
   double _velocity;
-  bool _has_unclipped;
 
   // For Adam:
   double _first_moment_estimate = 0.0;
