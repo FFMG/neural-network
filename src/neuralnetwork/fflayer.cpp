@@ -18,8 +18,7 @@ FFLayer::FFLayer(
   const OptimiserType& optimiser_type, 
   double dropout_rate
   ) :
-  Layer(layer_index, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
-  _optimiser_type(optimiser_type)
+  Layer(layer_index, layer_type, activation_method, optimiser_type, num_neurons_in_previous_layer, num_neurons_in_this_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   if (num_neurons_in_this_layer == 0) 
@@ -55,8 +54,7 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
   Layer(src),
   _neurons(src._neurons),
   _weights(src._weights),
-  _bias_weights(src._bias_weights),
-  _optimiser_type(src._optimiser_type)
+  _bias_weights(src._bias_weights)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -71,9 +69,8 @@ FFLayer::FFLayer(
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<WeightParam>& bias_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, number_input_neurons, static_cast<unsigned>(neurons.size())),
+  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size())),
   _neurons(neurons),
-  _optimiser_type(optimiser_type),
   _weights(weights),
   _bias_weights(bias_weights)
 {
@@ -84,11 +81,9 @@ FFLayer::FFLayer(FFLayer&& src) noexcept :
   Layer(std::move(src)),
   _neurons(std::move(src._neurons)),
   _weights(std::move(src._weights)),
-  _bias_weights(std::move(src._bias_weights)),
-  _optimiser_type(std::move(src._optimiser_type))
+  _bias_weights(std::move(src._bias_weights))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  src._optimiser_type = OptimiserType::None;
 }
 
 FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
@@ -100,7 +95,6 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
     _neurons = src._neurons;
     _weights = src._weights;
     _bias_weights = src._bias_weights;
-    _optimiser_type = src._optimiser_type;
   }
   return *this;
 }
@@ -114,9 +108,6 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
     _neurons = std::move(src._neurons);
     _weights = std::move(src._weights);
     _bias_weights = std::move(src._bias_weights);
-    _optimiser_type = std::move(src._optimiser_type);
-   
-    src._optimiser_type = OptimiserType::None;
   }
   return *this;
 }
@@ -208,8 +199,8 @@ std::vector<double> FFLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_prev = previous_layer.number_neurons();
-  const size_t N_this = number_neurons();
+  const size_t N_prev = previous_layer.get_number_neurons();
+  const size_t N_this = get_number_neurons();
 
   std::vector<double> output_row(N_this, 0.0);
   std::vector<double> pre_activation_sums(N_this, 0.0);
@@ -285,7 +276,7 @@ void FFLayer::calculate_bce_error_deltas(
   const std::vector<double>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
@@ -299,7 +290,7 @@ void FFLayer::calculate_mse_error_deltas(
   const std::vector<double>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
@@ -315,7 +306,7 @@ void FFLayer::calculate_output_gradients(
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
 
   std::vector<double> gradients(N_total, 0.0);
   std::vector<double> deltas(N_total, 0.0);
@@ -338,8 +329,8 @@ void FFLayer::calculate_hidden_gradients(
   double gradient_clip_threshold) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_this = number_neurons();
-  const size_t N_next = next_layer.number_neurons();
+  const size_t N_this = get_number_neurons();
+  const size_t N_next = next_layer.get_number_neurons();
 
   std::vector<double> grad_matrix(N_this, 0.0);
 
@@ -418,11 +409,6 @@ const std::vector<WeightParam>& FFLayer::get_bias_weight_params() const
 WeightParam& FFLayer::get_bias_weight_param(unsigned int neuron_index)
 {
     return _bias_weights[neuron_index];
-}
-
-const OptimiserType FFLayer::get_optimiser_type() const noexcept
-{
-    return _optimiser_type;
 }
 
 int FFLayer::residual_layer_number() const

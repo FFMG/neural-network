@@ -7,10 +7,8 @@
   #endif
 #endif
 
-#include "activation.h"
 #include "errorcalculation.h"
 #include "neuron.h"
-#include "optimiser.h"
 #include "weightparam.h"
 #include "layer.h"
 #include "hiddenstate.h"
@@ -119,8 +117,6 @@ public:
   const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
   std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
   std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) override;
-
-  const OptimiserType get_optimiser_type() const noexcept;
   
   Layer* clone() const override;
 
@@ -129,7 +125,6 @@ private:
   void resize_weights(double weight_decay);
 
   std::vector<Neuron> _neurons;
-  OptimiserType _optimiser_type;
 
   // N_prev = number of neurons in previous layer
   // N_this = number of neurons in this layer

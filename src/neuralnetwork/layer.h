@@ -5,8 +5,8 @@
 #include "activation.h"
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
-
 #include "hiddenstate.h"
+#include "optimiser.h"
 #include "weightparam.h"
 
 #include <vector>
@@ -32,26 +32,31 @@ public:
     Recurrent
   };
 
+protected:
   Layer(
     unsigned layer_index,
     LayerType layer_type,
     const activation::method& activation_method,
+    OptimiserType optimiser_type,
     unsigned number_input_neurons,
     unsigned number_output_neurons
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
     _activation(activation_method),
+    _optimiser_type(optimiser_type),
     _number_input_neurons(number_input_neurons),
     _number_output_neurons(number_output_neurons)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
   }
 
+public:
   Layer(const Layer& src) noexcept :
     _layer_index(src._layer_index),
     _layer_type(src._layer_type),
     _activation(src._activation),
+    _optimiser_type(src._optimiser_type),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons)
   {
@@ -62,12 +67,14 @@ public:
     _layer_index(src._layer_index),
     _layer_type(src._layer_type),
     _activation(std::move(src._activation)),
+    _optimiser_type(std::move(src._optimiser_type)),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
     src._layer_index = 0;
+    src._optimiser_type = OptimiserType::None;
     src._number_input_neurons = 0;
     src._number_output_neurons = 0;
   }
@@ -94,10 +101,12 @@ public:
       _layer_index = src._layer_index;
       _layer_type = src._layer_type;
       _activation = std::move(src._activation);
+      _optimiser_type = std::move(src._optimiser_type);
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
 
       src._layer_index = 0;
+      src._optimiser_type = OptimiserType::None;
       src._number_input_neurons = 0;
       src._number_output_neurons = 0;
     }
@@ -107,6 +116,12 @@ public:
   virtual ~Layer() = default;
 
   // --- Core Layer Properties ---
+
+  inline OptimiserType get_optimiser_type() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _optimiser_type;
+  }
 
   inline unsigned get_layer_index() const noexcept
   {
@@ -122,7 +137,7 @@ public:
 
   virtual int residual_layer_number() const = 0;
 
-  inline unsigned number_neurons() const noexcept
+  inline unsigned get_number_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return get_number_output_neurons();
@@ -246,6 +261,7 @@ private:
   unsigned _layer_index;
   LayerType _layer_type;
   activation _activation;
+  OptimiserType _optimiser_type;
 
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer
