@@ -10,10 +10,10 @@ class ExampleThreebitParity
 public:
   static void ThreebitParity(Logger::LogLevel log_level)
   {
-    std::vector<unsigned> topology = {3, 8, 1};
-    std::vector<unsigned> recurrent_layers = {0, 1, 0 };
+    std::vector<unsigned> topology = { 3, 8, 1 };
+    std::vector<unsigned> recurrent_layers = { 0, 1, 0 };
     const int number_of_epoch = 5000;
-    const double learning_rate = 0.0002;
+    const double learning_rate = 0.01;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -38,7 +38,7 @@ public:
 
     {
       TEST_START("ThreebitParity test - No Batch.")
-      Logger::info("No Batch:");
+        Logger::info("No Batch:");
       auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(1)
         .with_hidden_activation_method(activation::method::tanh)
@@ -56,12 +56,12 @@ public:
       auto* nn = new NeuralNetwork(options);
       nn->train(training_inputs, training_outputs);
 
-      std::vector<double> test_input1 = {1, 1, 1};
+      std::vector<double> test_input1 = { 1, 1, 1 };
       //std::vector<double> expected_output1 = {1};
       auto output1 = nn->think(test_input1);
       Logger::info(output1.front(), " (should be close to 1)"); //  should be close to 1
 
-      std::vector<double> test_input2 = {1, 0, 1};       // 2 ones → even
+      std::vector<double> test_input2 = { 1, 0, 1 };       // 2 ones → even
       //std::vector<double> expected_output2 = {0};
       auto output2 = nn->think(test_input2);
       Logger::info(output2.front(), " (should be close to 0)"); //  should be close to 0
@@ -108,7 +108,7 @@ public:
         delete nn;
         TEST_END
       }
-    }  
+    }
     */
   }
 };
