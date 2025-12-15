@@ -233,7 +233,12 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   std::vector<HiddenStates> hidden_states;
   hidden_states.resize(1, HiddenStates(get_topology()));
   std::vector<GradientsAndOutputs> gradients;
-  gradients.push_back(GradientsAndOutputs(get_topology()));
+  std::vector<unsigned> rnn_topology_vec;
+  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) 
+  {
+    rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
+  }
+  gradients.push_back(GradientsAndOutputs(get_topology(), rnn_topology_vec));
   {
     std::shared_lock<std::shared_mutex> read(_mutex);
     const std::vector<std::vector<double>> all_inputs = { inputs };
@@ -327,12 +332,16 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   std::vector<std::vector<double>> checking_outputs;
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
+  std::vector<unsigned> rnn_topology_vec;
+  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) {
+      rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
+  }
   {
     std::shared_lock read(_mutex);
     for (size_t index = 0; index < prediction_size; ++index)
     {
       std::vector<GradientsAndOutputs> gradients;
-      gradients.push_back(GradientsAndOutputs(get_topology()));
+      gradients.push_back(GradientsAndOutputs(get_topology(), rnn_topology_vec));
       std::vector<HiddenStates> hidden_states;
       hidden_states.resize(1, HiddenStates(get_topology()));
 
@@ -380,8 +389,13 @@ void NeuralNetwork::train_single_batch(
   std::vector<HiddenStates> hidden_states;
   hidden_states.resize(size, HiddenStates(get_topology()));
 
+  std::vector<unsigned> rnn_topology_vec;
+  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) {
+      rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
+  }
+
   std::vector<GradientsAndOutputs> gradients;
-  gradients.resize(size, GradientsAndOutputs(get_topology()));
+  gradients.resize(size, GradientsAndOutputs(get_topology(), rnn_topology_vec));
 
   calculate_forward_feed(gradients, inputs_begin, size, _layers, hidden_states, true);
   calculate_back_propagation(gradients, outputs_begin, size, _layers, hidden_states);
@@ -831,7 +845,7 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
-            const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+            const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
             const auto& prev_outputs = batch_activation_gradients[b].get_outputs(layer_number - 1);
             for(unsigned t = 0; t < num_time_steps; ++t)
             {
@@ -860,7 +874,7 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
-            const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+            const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
             for(unsigned t = 1; t < num_time_steps; ++t) // Start from t=1 as h(t-1) is used
             {
               // dE/dz_j(t) * h_i(t-1)
@@ -886,8 +900,7 @@ void NeuralNetwork::apply_weight_gradients(
         double bias_grad = 0.0;
         for(unsigned b=0; b < batch_size; ++b)
         {
-          const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-          for(unsigned t = 0; t < num_time_steps; ++t)
+                      const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);          for(unsigned t = 0; t < num_time_steps; ++t)
           {
             // dE/dz_j(t)
             bias_grad += rnn_grads[t * num_outputs + j];

@@ -13,7 +13,18 @@ public:
 
   GradientsAndOutputs(const std::vector<unsigned>& topology) noexcept: 
     _outputs(topology),
-    _gradients(topology)
+    _gradients(topology),
+    _rnn_outputs({}),
+    _rnn_gradients({})
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+  }
+
+  GradientsAndOutputs(const std::vector<unsigned>& topology, const std::vector<unsigned>& rnn_topology) noexcept: 
+    _outputs(topology),
+    _gradients(topology),
+    _rnn_outputs(rnn_topology),
+    _rnn_gradients(rnn_topology)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
   }
@@ -67,6 +78,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _outputs.zero();
     _gradients.zero();
+    _rnn_outputs.zero();
+    _rnn_gradients.zero();
   }
 
   [[nodiscard]] inline unsigned num_output_layers() const  noexcept
@@ -174,29 +187,29 @@ public:
   }
 
 private:
-  alignas(32) LayersAndNeuronsContainer _outputs;
-  alignas(32) LayersAndNeuronsContainer _gradients;
-  std::map<unsigned, std::vector<double>> _rnn_outputs;
-  std::map<unsigned, std::vector<double>> _rnn_gradients;
+  LayersAndNeuronsContainer _outputs;
+  LayersAndNeuronsContainer _gradients;
+  LayersAndNeuronsContainer _rnn_outputs;
+  LayersAndNeuronsContainer _rnn_gradients;
 
 public:
   void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
   {
-    _rnn_outputs[layer] = outputs;
+    _rnn_outputs.set(layer, outputs);
   }
 
-  const std::vector<double>& get_rnn_outputs(unsigned layer) const
+  std::vector<double> get_rnn_outputs(unsigned layer) const
   {
-    return _rnn_outputs.at(layer);
+    return _rnn_outputs.get_neurons(layer);
   }
 
   void set_rnn_gradients(unsigned layer, const std::vector<double>& gradients)
   {
-    _rnn_gradients[layer] = gradients;
+    _rnn_gradients.set(layer, gradients);
   }
 
-  const std::vector<double>& get_rnn_gradients(unsigned layer) const
+  std::vector<double> get_rnn_gradients(unsigned layer) const
   {
-    return _rnn_gradients.at(layer);
+    return _rnn_gradients.get_neurons(layer);
   }
 };
