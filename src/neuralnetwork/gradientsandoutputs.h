@@ -6,11 +6,6 @@
 #include "./libraries/instrumentor.h"
 #include "layersandneuronscontainer.h"
 
-// Forward declare NeuralNetwork if GradientsAndOutputs needs it,
-// but for now, assuming minimal dependency for this header.
-// If NeuralNetwork::GradientsAndOutputs is defined inside NeuralNetwork,
-// then this forward declaration will likely be inside NeuralNetwork's header.
-
 class GradientsAndOutputs
 {
 public:

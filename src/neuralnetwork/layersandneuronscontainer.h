@@ -1,15 +1,8 @@
-#pragma once
-
-#include <cassert>
-#include <iostream>
-#include <numeric>
-#include <vector>
-
 #include "./libraries/instrumentor.h"
 
-// Forward declaration of NeuralNetwork to avoid circular dependencies if needed
-// However, LayersAndNeuronsContainer should ideally be self-contained
-// If GradientsAndOutputs needs NeuralNetwork, then GradientsAndOutputs will forward declare it.
+#include "aligned_allocator.h"
+
+#include <cassert>
 
 class LayersAndNeuronsContainer
 {
@@ -68,10 +61,6 @@ public:
     _offsets.reserve(topology_size);
 
     _topology.insert(_topology.begin(), topology.begin(), topology.end());
-//      for (auto& topology : _topology)
-//      {
-//        ++topology;  //  bias
-//      }
 
     // finaly populate the data
     const auto& size = _topology.size();
@@ -120,13 +109,8 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
     assert(number_neurons(layer) == data.size());
-    unsigned neuron = 0;
     const auto& layer_offset = _offsets[layer];
-    for( const auto& d : data )
-    {
-      _data[layer_offset+neuron] = d;
-      ++neuron;
-    }
+    std::copy(data.begin(), data.end(), _data.begin() + layer_offset);
   }
   
   inline const double& get(unsigned layer, unsigned neuron) const noexcept
@@ -183,6 +167,6 @@ private:
 
   std::vector<size_t> _offsets;
   size_t _total_size;
-  alignas(32) std::vector<double> _data;
+  std::vector<double, AlignedAllocator<double, 32>> _data;
   std::vector<unsigned short> _topology;
 };
