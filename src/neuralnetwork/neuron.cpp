@@ -19,18 +19,6 @@ Neuron::Neuron(
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 }
 
-Neuron::Neuron(
-  unsigned index,
-  const Type& type,
-  const double dropout_rate
-) :
-  _index(index),
-  _type(type),
-  _dropout_rate(dropout_rate)
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-}
-
 Neuron::Neuron(const Neuron& src)  noexcept : 
   _index(src._index),
   _type(src._type),

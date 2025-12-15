@@ -28,12 +28,6 @@ public:
     const Type& type,
     const double dropout_rate
     );
-    
-  Neuron(
-    unsigned index, 
-    const Type& type,
-    const double dropout_rate
-    );
 
   Neuron(const Neuron& src) noexcept;
   Neuron& operator=(const Neuron& src) noexcept;
