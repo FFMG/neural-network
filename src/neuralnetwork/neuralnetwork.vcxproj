@@ -151,7 +151,7 @@
   <ItemGroup>
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
-    <ClInclude Include="baselayer.h" />
+    <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\copymemory.h" />
