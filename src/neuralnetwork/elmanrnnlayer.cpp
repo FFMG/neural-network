@@ -39,9 +39,6 @@ ElmanRNNLayer::ElmanRNNLayer(
   for (unsigned neuron_number = 0; neuron_number < get_number_output_neurons(); ++neuron_number)
   {
     auto neuron = Neuron(
-      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,
-      get_number_output_neurons(),
-      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer,
       neuron_number, 
       dropout_rate == 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
       dropout_rate);

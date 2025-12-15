@@ -40,9 +40,6 @@ FFLayer::FFLayer(
   {
     // force the bias node's output to 1.0
     auto neuron = Neuron(
-      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,  //  previous
-      get_number_output_neurons(),         //  current 
-      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer+1,      //  next
       neuron_number, 
       dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
       dropout_rate);
