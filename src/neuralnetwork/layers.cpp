@@ -40,7 +40,6 @@ Layers::Layers(
 
     layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers_param, residual_layer_number, dropout_rate);
 
-    // add_residual_layer(*layer, hidden_activation); // TODO: Re-implement for Layer
     _layers.emplace_back(std::move(layer));
   }
 
@@ -49,7 +48,6 @@ Layers::Layers(
   _residual_layer_numbers.push_back(residual_layer_number);
   layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers_param, residual_layer_number);
 
-  // add_residual_layer(*layer, output_activation); // TODO: Re-implement for Layer
   _layers.emplace_back(std::move(layer));
 }
 
@@ -140,13 +138,6 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
       return -1;
   }
   return residual_layer_index;
-}
-
-void Layers::add_residual_layer(Layer& layer, const activation::method& activation_method) const
-{
-  // TODO: Re-implement this for the new Layer architecture.
-  // The old implementation used Layer::ResidualProjector which is not part of Layer.
-  MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
 std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, int residual_layer_number)
