@@ -99,7 +99,7 @@ const activation::method& NeuralNetwork::get_hidden_activation_method() const
   return _options.hidden_activation_method();
 }
 
-const std::vector<std::unique_ptr<BaseLayer>>& NeuralNetwork::get_layers() const
+const std::vector<std::unique_ptr<Layer>>& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _layers.get_layers();
@@ -816,7 +816,7 @@ void NeuralNetwork::apply_weight_gradients(
     const auto& previous_layer = layers[layer_number - 1];
 
     const unsigned num_outputs = current_layer.number_neurons();
-    const unsigned num_inputs = current_layer.number_input_neurons(false);
+    const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
     {
@@ -985,7 +985,7 @@ void NeuralNetwork::apply_weight_gradients(
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
 
     const unsigned num_outputs = current_layer.number_neurons();
-    const unsigned num_inputs = current_layer.number_input_neurons(false);
+    const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     for(unsigned j=0; j<num_outputs; ++j)
     {
@@ -1019,7 +1019,7 @@ void NeuralNetwork::apply_weight_gradients(
 }
 
 
-BaseLayer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
+Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const auto residual_layer_number = layers.residual_layer_number(current_layer_index);

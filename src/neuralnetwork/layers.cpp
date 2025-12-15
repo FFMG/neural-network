@@ -40,7 +40,7 @@ Layers::Layers(
 
     layer = create_hidden_layer(num_neurons_current_layer, num_neurons_next_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers_param, residual_layer_number, dropout_rate);
 
-    // add_residual_layer(*layer, hidden_activation); // TODO: Re-implement for BaseLayer
+    // add_residual_layer(*layer, hidden_activation); // TODO: Re-implement for Layer
     _layers.emplace_back(std::move(layer));
   }
 
@@ -49,7 +49,7 @@ Layers::Layers(
   _residual_layer_numbers.push_back(residual_layer_number);
   layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers_param, residual_layer_number);
 
-  // add_residual_layer(*layer, output_activation); // TODO: Re-implement for BaseLayer
+  // add_residual_layer(*layer, output_activation); // TODO: Re-implement for Layer
   _layers.emplace_back(std::move(layer));
 }
 
@@ -62,7 +62,7 @@ Layers::Layers(const Layers& src) noexcept :
   _layers.reserve(src._layers.size());
   for(const auto& layer : src._layers)
   {
-    _layers.emplace_back(std::unique_ptr<BaseLayer>(layer->clone()));
+    _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
   }
   _residual_layer_numbers = src._residual_layer_numbers;
 }
@@ -78,7 +78,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
     _layers.reserve(src._layers.size());
     for(const auto& layer : src._layers)
     {
-      _layers.emplace_back(std::unique_ptr<BaseLayer>(layer->clone()));
+      _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
     _residual_layer_numbers = src._residual_layer_numbers;
     _recurrent_layers = src._recurrent_layers; // Copy _recurrent_layers
@@ -88,7 +88,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
 
 Layers& Layers::operator=(Layers&& src) noexcept = default;
 
-const BaseLayer& Layers::operator[](unsigned index ) const
+const Layer& Layers::operator[](unsigned index ) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   #ifndef NDEBUG
@@ -97,7 +97,7 @@ const BaseLayer& Layers::operator[](unsigned index ) const
   return *_layers[index];
 }
 
-BaseLayer& Layers::operator[](unsigned index )
+Layer& Layers::operator[](unsigned index )
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   #ifndef NDEBUG
@@ -114,13 +114,13 @@ int Layers::residual_layer_number(unsigned index) const
   return _residual_layer_numbers[index];
 }
 
-const std::vector<std::unique_ptr<BaseLayer>>& Layers::get_layers() const
+const std::vector<std::unique_ptr<Layer>>& Layers::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return _layers;
 }
 
-std::vector<std::unique_ptr<BaseLayer>>& Layers::get_layers()
+std::vector<std::unique_ptr<Layer>>& Layers::get_layers()
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return _layers;
@@ -142,14 +142,14 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
   return residual_layer_index;
 }
 
-void Layers::add_residual_layer(BaseLayer& layer, const activation::method& activation_method) const
+void Layers::add_residual_layer(Layer& layer, const activation::method& activation_method) const
 {
-  // TODO: Re-implement this for the new BaseLayer architecture.
-  // The old implementation used Layer::ResidualProjector which is not part of BaseLayer.
+  // TODO: Re-implement this for the new Layer architecture.
+  // The old implementation used Layer::ResidualProjector which is not part of Layer.
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
-std::unique_ptr<BaseLayer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, int residual_layer_number)
+std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return std::make_unique<FFLayer>(
@@ -158,13 +158,13 @@ std::unique_ptr<BaseLayer> Layers::create_input_layer(unsigned num_neurons_in_th
     num_neurons_in_this_layer, 
     num_neurons_in_next_layer, 
     weight_decay, 
-    BaseLayer::LayerType::Input, 
+    Layer::LayerType::Input, 
     activation::method::linear, 
     OptimiserType::None, 
     residual_layer_number);
 }
 
-std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
+std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -176,7 +176,7 @@ std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_t
       num_neurons_in_this_layer, 
       num_neurons_in_next_layer, 
       weight_decay, 
-      BaseLayer::LayerType::Hidden, 
+      Layer::LayerType::Hidden, 
       activation, 
       optimiser_type, 
       residual_layer_number, 
@@ -190,14 +190,14 @@ std::unique_ptr<BaseLayer> Layers::create_hidden_layer(unsigned num_neurons_in_t
       num_neurons_in_this_layer, 
       num_neurons_in_next_layer, 
       weight_decay, 
-      BaseLayer::LayerType::Hidden, 
+      Layer::LayerType::Hidden, 
       activation, 
       optimiser_type, 
       dropout_rate);
   }
 }
 
-std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const BaseLayer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -210,7 +210,7 @@ std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_t
       num_neurons_in_this_layer, 
       0, 
       weight_decay, 
-      BaseLayer::LayerType::Output, 
+      Layer::LayerType::Output, 
       activation, 
       optimiser_type, 
       residual_layer_number, 
@@ -224,7 +224,7 @@ std::unique_ptr<BaseLayer> Layers::create_output_layer(unsigned num_neurons_in_t
       num_neurons_in_this_layer, 
       0, 
       weight_decay, 
-      BaseLayer::LayerType::Output, 
+      Layer::LayerType::Output, 
       activation, 
       optimiser_type, 
       residual_layer_number);

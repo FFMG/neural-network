@@ -12,14 +12,14 @@
 #include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
-#include "baselayer.h"
+#include "layer.h"
 #include "hiddenstate.h"
 
 #include <cassert>
 #include <vector>
 
 class Neuron;
-class FFLayer final : public BaseLayer
+class FFLayer final : public Layer
 {
 protected:
   friend class Layers;
@@ -53,21 +53,18 @@ public:
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
 
-  unsigned number_neurons() const noexcept override;
   const std::vector<Neuron>& get_neurons() const noexcept;
   std::vector<Neuron>& get_neurons() noexcept;
 
   const Neuron& get_neuron(unsigned index) const;
   Neuron& get_neuron(unsigned index);
 
-  LayerType layer_type() const override;
-
   int residual_layer_number() const override;
 
 public:
   std::vector<double> calculate_forward_feed(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &previous_layer,
+      const Layer &previous_layer,
       const std::vector<double> &previous_layer_inputs,
       const std::vector<double> &residual_output_values,
       std::vector<HiddenState> &hidden_states,
@@ -98,15 +95,11 @@ public:
 
   void calculate_hidden_gradients(
       GradientsAndOutputs& gradients_and_outputs,
-      const BaseLayer &next_layer,
+      const Layer &next_layer,
       const std::vector<double> &next_grad_matrix,
       const std::vector<double> &output_matrix,
       const std::vector<HiddenState> &hidden_states,
       double gradient_clip_threshold) const override;
-
-  unsigned number_input_neurons(bool add_bias) const noexcept override;
-
-  unsigned get_layer_index() const noexcept override;
 
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
@@ -129,27 +122,14 @@ public:
 
   const OptimiserType get_optimiser_type() const noexcept;
   
-  const activation& get_activation() const noexcept override;
-  
-  unsigned get_number_output_neurons() const;
-
-  BaseLayer* clone() const override;
+  Layer* clone() const override;
 
 private:
   void clean();
-  void resize_weights(
-    const activation& activation_method,
-    unsigned number_input_neurons, 
-    unsigned number_output_neurons, 
-    double weight_decay);
+  void resize_weights(double weight_decay);
 
-  unsigned _layer_index;
   std::vector<Neuron> _neurons;
-  unsigned _number_input_neurons;  //  number of neurons in previous layer
-  unsigned _number_output_neurons; //  number of neurons in this layer
-  LayerType _layer_type;
   OptimiserType _optimiser_type;
-  activation _activation;
 
   // N_prev = number of neurons in previous layer
   // N_this = number of neurons in this layer
