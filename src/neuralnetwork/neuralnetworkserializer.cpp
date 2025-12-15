@@ -454,7 +454,6 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJS
     }
     auto value = weight_param_object->get_float("value");
     auto raw_gradient = weight_param_object->get_float("raw-gradient");
-    auto unclipped_gradient = weight_param_object->get_float("unclipped-gradient");
     auto velocity = weight_param_object->get_float("velocity");
     auto first_moment_estimate = weight_param_object->get_float("first-moment-estimate");
     auto second_moment_estimate = weight_param_object->get_float("second-moment-estimate");
@@ -464,7 +463,6 @@ std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJS
     weight_params.emplace_back(WeightParam(
       static_cast<double>(value),
       static_cast<double>(raw_gradient),
-      static_cast<double>(unclipped_gradient),
       static_cast<double>(velocity),
       static_cast<double>(first_moment_estimate),
       static_cast<double>(second_moment_estimate),
@@ -495,7 +493,6 @@ TinyJSON::TJValue* NeuralNetworkSerializer::add_weight_param(const WeightParam& 
   auto weight_param_object = new TinyJSON::TJValueObject();
   weight_param_object->set_float("value", weight_param.get_value());
   weight_param_object->set_float("raw-gradient", weight_param.get_raw_gradient());
-  weight_param_object->set_float("unclipped-gradient", weight_param.get_unclipped_gradient());
   weight_param_object->set_float("velocity", weight_param.get_velocity());
   weight_param_object->set_float("first-moment-estimate", weight_param.get_first_moment_estimate());
   weight_param_object->set_float("second-moment-estimate", weight_param.get_second_moment_estimate());
