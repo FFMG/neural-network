@@ -1,6 +1,7 @@
 #include "elmanrnnlayer.h"
 #include "logger.h"
 #include "neuralnetwork.h"
+#include "layergradients.h"
 
 #include <cassert>
 #include <cmath>
@@ -384,7 +385,8 @@ void NeuralNetwork::train_single_batch(
 
   calculate_forward_feed(gradients, inputs_begin, size, _layers, hidden_states, true);
   calculate_back_propagation(gradients, outputs_begin, size, _layers, hidden_states);
-  apply_weight_gradients(_layers, gradients, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size());
+  std::vector<LayerGradients> layer_gradients;
+  apply_weight_gradients(_layers, gradients, _learning_rate, _neural_network_helper->epoch(), hidden_states, get_topology().size(), layer_gradients);
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -611,46 +613,35 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
   return true; // continue training
 }
 
-double NeuralNetwork::calculate_global_clipping_scale() const
+double NeuralNetwork::calculate_global_clipping_scale(const std::vector<LayerGradients>& layer_gradients) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   const double gradient_clip_threshold = options().clip_threshold();
   double total_sq_sum = 0.0;
 
-  for (auto layer_number =0; layer_number < _layers.size(); ++layer_number)
+  for (const auto& layer_grad : layer_gradients)
   {
-    const auto& layer = _layers[layer_number];
-
-    // 1. Accumulate weights (W_ih for RNN, W for FNN)
-    for (const auto& input_row : layer.get_weight_params()) 
+    for (const auto& input_row : layer_grad.weights)
     {
-      for (const auto& wparam : input_row)
+      for (const auto& grad : input_row)
       {
-        total_sq_sum += wparam.get_unclipped_gradient() * wparam.get_unclipped_gradient();
+        total_sq_sum += grad * grad;
       }
     }
 
-    // 2. Accumulate biases (B)
-    for (const auto& bparam : layer.get_bias_weight_params()) 
+    for (const auto& grad : layer_grad.biases)
     {
-      total_sq_sum += bparam.get_unclipped_gradient() * bparam.get_unclipped_gradient();
+      total_sq_sum += grad * grad;
     }
 
-    // 3. Accumulate Residual/Recurrent weights (W_s, W_hh, etc.)
-    if (!layer.get_residual_weight_params().empty())
+    for (const auto& row : layer_grad.recurrent_weights)
     {
-      for (const auto& row : layer.get_residual_weight_params())
-      {
-        for (const auto& wparam : row)
+        for (const auto& grad : row)
         {
-          double g = wparam.get_unclipped_gradient();
-          total_sq_sum += g * g;
+            total_sq_sum += grad * grad;
         }
-      }
     }
-
-
   }
 
   // 4. Compute global gradient norm
@@ -795,7 +786,8 @@ void NeuralNetwork::apply_weight_gradients(
   double learning_rate, 
   unsigned epoch,
   const std::vector<HiddenStates>& hidden_states,
-  unsigned num_layers_param) // Add num_layers_param
+  unsigned num_layers_param,
+  std::vector<LayerGradients>& layer_gradients)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -807,19 +799,27 @@ void NeuralNetwork::apply_weight_gradients(
 
   // Lock network for writing
   std::unique_lock<std::shared_mutex> write(_mutex);
+  layer_gradients.resize(num_layers);
 
   // --- Store unclipped gradients ---
   for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
   {
-    auto& current_layer = layers[layer_number];
+    auto& current_layer = layers[static_cast<unsigned>(layer_number)];
+    
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
-    const auto& previous_layer = layers[layer_number - 1];
-
     const unsigned num_outputs = current_layer.get_number_neurons();
     const unsigned num_inputs = current_layer.get_number_input_neurons();
+    
+    layer_gradients[layer_number].weights.resize(num_inputs, std::vector<double>(num_outputs, 0.0));
+    layer_gradients[layer_number].biases.resize(num_outputs, 0.0);
+    if (rnn_layer != nullptr)
+    {
+        layer_gradients[layer_number].recurrent_weights.resize(num_outputs, std::vector<double>(num_outputs, 0.0));
+    }
 
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
     {
+      const auto& previous_layer = layers[static_cast<unsigned>(layer_number - 1)];
       const unsigned num_time_steps = hidden_states[0].at(layer_number).size();
       const unsigned num_prev_inputs = previous_layer.get_number_neurons();
 
@@ -839,7 +839,7 @@ void NeuralNetwork::apply_weight_gradients(
               grad += rnn_grads[t * num_outputs + j] * prev_outputs[t * num_prev_inputs + i];
             }
           }
-          rnn_layer->get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          layer_gradients[layer_number].weights[i][j] = grad / static_cast<double>(batch_size);
           if (Logger::can_trace())
           {
             Logger::trace([&]
@@ -867,7 +867,7 @@ void NeuralNetwork::apply_weight_gradients(
               grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(layer_number)[t-1].get_hidden_state_value_at_neuron(i);
             }
           }
-          rnn_layer->get_recurrent_weight_params()[i][j].set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          layer_gradients[layer_number].recurrent_weights[i][j] = grad / static_cast<double>(batch_size);
           if (Logger::can_trace())
           {
             Logger::trace([&]
@@ -893,7 +893,7 @@ void NeuralNetwork::apply_weight_gradients(
             bias_grad += rnn_grads[t * num_outputs + j];
           }
         }
-        rnn_layer->get_bias_weight_param(j).set_unclipped_gradient(bias_grad / static_cast<double>(batch_size));
+        layer_gradients[layer_number].biases[j] = bias_grad / static_cast<double>(batch_size);
         if (Logger::can_trace())
         {
           Logger::trace([&]
@@ -938,7 +938,7 @@ void NeuralNetwork::apply_weight_gradients(
               return ss.str();
             });
           }
-          current_layer.get_weight_param(i,j).set_unclipped_gradient(grad / static_cast<double>(batch_size));
+          layer_gradients[layer_number].weights[i][j] = grad / static_cast<double>(batch_size);
           if (Logger::can_trace())
           {
             Logger::trace([&]
@@ -960,7 +960,7 @@ void NeuralNetwork::apply_weight_gradients(
             // dE/dz_j
             bias_grad += batch_activation_gradients[b].get_gradient(layer_number, j);
         }
-        current_layer.get_bias_weight_param(j).set_unclipped_gradient(bias_grad / static_cast<double>(batch_size));
+        layer_gradients[layer_number].biases[j] = bias_grad / static_cast<double>(batch_size);
         if (Logger::can_trace())
         {
           Logger::trace([&]
@@ -978,7 +978,7 @@ void NeuralNetwork::apply_weight_gradients(
   }
 
   // --- Apply gradients ---
-  double global_clipping_scale = calculate_global_clipping_scale();
+  double global_clipping_scale = calculate_global_clipping_scale(layer_gradients);
   for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
   {
     auto& current_layer = layers[layer_number];
@@ -993,14 +993,12 @@ void NeuralNetwork::apply_weight_gradients(
       for(unsigned i=0; i<num_inputs; ++i)
       {
         auto& wp = current_layer.get_weight_param(i,j);
-        current_layer.apply_weight_gradient(wp.get_unclipped_gradient(), learning_rate, false, wp, global_clipping_scale, _options.clip_threshold());
-        wp.clear_unclipped_gradient();
+        current_layer.apply_weight_gradient(layer_gradients[layer_number].weights[i][j], learning_rate, false, wp, global_clipping_scale, _options.clip_threshold());
       }
 
       // Apply bias weights
       auto& bp = current_layer.get_bias_weight_param(j);
-      current_layer.apply_weight_gradient(bp.get_unclipped_gradient(), learning_rate, true, bp, global_clipping_scale, _options.clip_threshold());
-      bp.clear_unclipped_gradient();
+      current_layer.apply_weight_gradient(layer_gradients[layer_number].biases[j], learning_rate, true, bp, global_clipping_scale, _options.clip_threshold());
       
       // Apply recurrent weights (if applicable)
       if (rnn_layer != nullptr)
@@ -1009,8 +1007,7 @@ void NeuralNetwork::apply_weight_gradients(
         for (unsigned k = 0; k < num_outputs; ++k) 
         {
             auto& rwp = rnn_layer->get_recurrent_weight_params()[k][j]; // W_rec from k to j
-            current_layer.apply_weight_gradient(rwp.get_unclipped_gradient(), learning_rate, false, rwp, global_clipping_scale, _options.clip_threshold());
-            rwp.clear_unclipped_gradient();
+            current_layer.apply_weight_gradient(layer_gradients[layer_number].recurrent_weights[k][j], learning_rate, false, rwp, global_clipping_scale, _options.clip_threshold());
         }
       }
     }
