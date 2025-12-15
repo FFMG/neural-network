@@ -7,11 +7,7 @@
 #include "logger.h"
 #include <random>
 
-// TODO remove all the no longer used values moved to layer.
 Neuron::Neuron(
-  unsigned /*num_neurons_prev_layer*/,
-  unsigned num_neurons_current_layer,
-  unsigned num_neurons_next_layer,
   unsigned index,
   const Type& type,
   const double dropout_rate
