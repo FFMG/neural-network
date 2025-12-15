@@ -48,7 +48,7 @@ public:
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
         .with_optimiser_type(OptimiserType::NadamW)
-        .with_clip_threshold(1.0)
+        .with_clip_threshold(2.0)
         .with_data_is_unique(true)
         .with_recurrent_layers(recurrent_layers)
         .build();
