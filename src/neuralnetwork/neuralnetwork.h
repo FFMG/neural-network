@@ -27,6 +27,7 @@
 #include "taskqueue.h"
 #include "neuralnetworkhelper.h"
 #include "neuralnetworkoptions.h"
+#include "layergradients.h"
 #include "layer.h"
 
 class NeuralNetwork;
@@ -108,7 +109,7 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param);
+  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param, std::vector<LayerGradients>& layer_gradients);
 
   Layer* get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const;
 
@@ -120,7 +121,7 @@ private:
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
   void create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
-  double calculate_global_clipping_scale() const;
+  double calculate_global_clipping_scale(const std::vector<LayerGradients>& layer_gradients) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;
