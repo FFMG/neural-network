@@ -26,7 +26,6 @@ public:
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
-    unsigned num_neurons_in_next_layer, 
     double weight_decay,
     LayerType layer_type, 
     const activation::method& activation_method, 
