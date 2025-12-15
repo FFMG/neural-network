@@ -19,8 +19,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   int residual_layer_number,
   double dropout_rate
   ) :
-  Layer(layer_index, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
-  _optimiser_type(optimiser_type),
+  Layer(layer_index, layer_type, activation_method, optimiser_type, num_neurons_in_previous_layer, num_neurons_in_this_layer),
   _residual_layer_number(residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -56,7 +55,6 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _weights(src._weights),
   _recurrent_weights(src._recurrent_weights),
   _bias_weights(src._bias_weights),
-  _optimiser_type(src._optimiser_type),
   _residual_layer_number(src._residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -74,9 +72,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   const std::vector<std::vector<WeightParam>>& recurrent_weights,
   const std::vector<WeightParam>& bias_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, number_input_neurons, static_cast<unsigned>(neurons.size())),
+  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size())),
   _neurons(neurons),
-  _optimiser_type(optimiser_type),
   _weights(weights),
   _recurrent_weights(recurrent_weights),
   _bias_weights(bias_weights),
@@ -91,11 +88,9 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _weights(std::move(src._weights)),
   _recurrent_weights(std::move(src._recurrent_weights)),
   _bias_weights(std::move(src._bias_weights)),
-  _optimiser_type(std::move(src._optimiser_type)),
   _residual_layer_number(src._residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  src._optimiser_type = OptimiserType::None;
 }
 
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
@@ -108,7 +103,6 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _weights = src._weights;
     _recurrent_weights = src._recurrent_weights;
     _bias_weights = src._bias_weights;
-    _optimiser_type = src._optimiser_type;
   }
   return *this;
 }
@@ -123,9 +117,6 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _weights = std::move(src._weights);
     _recurrent_weights = std::move(src._recurrent_weights);
     _bias_weights = std::move(src._bias_weights);
-    _optimiser_type = std::move(src._optimiser_type);
-   
-    src._optimiser_type = OptimiserType::None;
   }
   return *this;
 }
@@ -223,8 +214,8 @@ std::vector<double> ElmanRNNLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t N_prev = previous_layer.number_neurons();
-  const size_t N_this = number_neurons();
+  const size_t N_prev = previous_layer.get_number_neurons();
+  const size_t N_this = get_number_neurons();
   const size_t num_time_steps = N_prev > 0 ? previous_layer_inputs.size() / N_prev : 0;
 
   std::vector<double> output_sequence(num_time_steps * N_this, 0.0);
@@ -375,7 +366,7 @@ void ElmanRNNLayer::calculate_bce_error_deltas(
   const std::vector<double>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
@@ -389,7 +380,7 @@ void ElmanRNNLayer::calculate_mse_error_deltas(
   const std::vector<double>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     deltas[neuron_index] = given_outputs[neuron_index] - target_outputs[neuron_index];
@@ -404,7 +395,7 @@ void ElmanRNNLayer::calculate_output_gradients(
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t N_total = number_neurons();
+  const size_t N_total = get_number_neurons();
 
   // Get the outputs stored for this layer. For RNNs this is a sequence:
   // given_outputs.size() == num_time_steps * N_total
@@ -496,8 +487,8 @@ void ElmanRNNLayer::calculate_hidden_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t num_time_steps = hidden_states.size();
-  const size_t N_this = number_neurons();
-  const size_t N_next = next_layer.number_neurons();
+  const size_t N_this = get_number_neurons();
+  const size_t N_next = next_layer.get_number_neurons();
 
   // Defensive: no time steps => nothing to do
   if (num_time_steps == 0 || N_this == 0)
@@ -704,12 +695,6 @@ WeightParam& ElmanRNNLayer::get_bias_weight_param(unsigned int neuron_index)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   return _bias_weights[neuron_index];
-}
-
-const OptimiserType ElmanRNNLayer::get_optimiser_type() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _optimiser_type;
 }
 
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_recurrent_weight_params() const

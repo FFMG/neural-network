@@ -815,13 +815,13 @@ void NeuralNetwork::apply_weight_gradients(
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
     const auto& previous_layer = layers[layer_number - 1];
 
-    const unsigned num_outputs = current_layer.number_neurons();
+    const unsigned num_outputs = current_layer.get_number_neurons();
     const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
     {
       const unsigned num_time_steps = hidden_states[0].at(layer_number).size();
-      const unsigned num_prev_inputs = previous_layer.number_neurons();
+      const unsigned num_prev_inputs = previous_layer.get_number_neurons();
 
       // 1. Gradients for Input-to-Hidden Weights (_weights)
       for (unsigned i = 0; i < num_inputs; ++i) 
@@ -984,7 +984,7 @@ void NeuralNetwork::apply_weight_gradients(
     auto& current_layer = layers[layer_number];
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
 
-    const unsigned num_outputs = current_layer.number_neurons();
+    const unsigned num_outputs = current_layer.get_number_neurons();
     const unsigned num_inputs = current_layer.get_number_input_neurons();
 
     for(unsigned j=0; j<num_outputs; ++j)
@@ -1029,7 +1029,7 @@ Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutpu
   }
   assert(residual_output_values.size() == 0);
   auto* residual_layer = &(layers[static_cast<unsigned>(residual_layer_number)]);
-  auto residual_layer_neuron_size = residual_layer->number_neurons();
+  auto residual_layer_neuron_size = residual_layer->get_number_neurons();
   residual_output_values.reserve(residual_layer_neuron_size);
   for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
   {
@@ -1060,7 +1060,7 @@ void NeuralNetwork::calculate_back_propagation_input_layer(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   
   // input layer is all 0, (bias is included)
-  const auto& input_gradients = std::vector<double>(layers.input_layer().number_neurons(), 0.0);
+  const auto& input_gradients = std::vector<double>(layers.input_layer().get_number_neurons(), 0.0);
   std::vector<std::vector<double>> full_input_gradients;
   full_input_gradients.resize(gradients.size(), input_gradients);
   set_gradients_for_layer(gradients, 0, full_input_gradients);
@@ -1212,7 +1212,7 @@ void NeuralNetwork::calculate_forward_feed(
       // --- 2c. Call layer forward
       std::vector<HiddenState>& layer_hidden_states = hidden_states[b].at(layer_number);
       // Calculate num_time_steps for the current layer's inputs
-      const size_t N_prev = previous_layer.number_neurons();
+      const size_t N_prev = previous_layer.get_number_neurons();
       const size_t current_num_time_steps = N_prev > 0 ? previous_layer_input_for_batch_item.size() / N_prev : 0;
       layer_hidden_states.resize(current_num_time_steps); // Resize to num_time_steps
       
@@ -1289,7 +1289,7 @@ void NeuralNetwork::log_training_info(
                                 "  Hidden layers              : {";
   for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
   {
-    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].number_neurons());
+    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].get_number_neurons());
     if (layer < _layers.size() - 2)
     {
       hidden_layer_message += ", ";

@@ -342,7 +342,7 @@ public:
     for (const auto& layer : layers)
     {
       // remove the bias Neuron.
-      topology.emplace_back(layer.number_neurons() - 1);
+      topology.emplace_back(layer.get_number_neurons() - 1);
     }
     return create(topology);
   }

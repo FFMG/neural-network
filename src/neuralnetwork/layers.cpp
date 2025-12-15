@@ -172,7 +172,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
   {
     return std::make_unique<ElmanRNNLayer>(
       layer_index, 
-      previous_layer.number_neurons(), 
+      previous_layer.get_number_neurons(), 
       num_neurons_in_this_layer, 
       num_neurons_in_next_layer, 
       weight_decay, 
@@ -186,7 +186,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
   {
     return std::make_unique<FFLayer>(
       layer_index, 
-      previous_layer.number_neurons(), 
+      previous_layer.get_number_neurons(),
       num_neurons_in_this_layer, 
       num_neurons_in_next_layer, 
       weight_decay, 
@@ -206,7 +206,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     // Check if this layer should be recurrent
     return std::make_unique<ElmanRNNLayer>(
       layer_index, 
-      previous_layer.number_neurons(), 
+      previous_layer.get_number_neurons(),
       num_neurons_in_this_layer, 
       0, 
       weight_decay, 
@@ -220,7 +220,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
   {
     return std::make_unique<FFLayer>(
       layer_index, 
-      previous_layer.number_neurons(), 
+      previous_layer.get_number_neurons(),
       num_neurons_in_this_layer, 
       0, 
       weight_decay, 
