@@ -409,15 +409,13 @@ WeightParam& FFLayer::get_bias_weight_param(unsigned int neuron_index)
 
 int FFLayer::residual_layer_number() const
 {
-    return -1;
+  return -1;
 }
 
 Layer* FFLayer::clone() const
 {
-    return new FFLayer(*this);
+  return new FFLayer(*this);
 }
-
-
 
 // Implementations for get_residual_weight_params()
 const std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params() const
@@ -428,12 +426,6 @@ const std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params
 
 std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params()
 {
-    static std::vector<std::vector<WeightParam>> empty_vec_2d; // Non-const version
-    return empty_vec_2d;
-}
-
-std::vector<WeightParam>& FFLayer::get_residual_weight_params(unsigned neuron_index)
-{
-    static std::vector<WeightParam> empty_vec_1d; // Non-const version
-    return empty_vec_1d;
+  static std::vector<std::vector<WeightParam>> empty_vec_2d; // Non-const version
+  return empty_vec_2d;
 }

@@ -235,8 +235,6 @@ public:
 
   virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
   virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
-  virtual std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) = 0;
-
 
   /**
    * @brief Checks if the layer has a bias neuron.

@@ -120,7 +120,6 @@ public:
 
   const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
   std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
-  std::vector<WeightParam>& get_residual_weight_params(unsigned neuron_index) override;
 
   Layer* clone() const override;
 
