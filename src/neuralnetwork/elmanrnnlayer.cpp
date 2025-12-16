@@ -728,9 +728,3 @@ std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   return _residual_weights;
 }
-
-std::vector<WeightParam>& ElmanRNNLayer::get_residual_weight_params(unsigned int neuron_index)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _residual_weights[neuron_index];
-}
