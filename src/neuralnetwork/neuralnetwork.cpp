@@ -843,7 +843,9 @@ void NeuralNetwork::apply_weight_gradients(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   if (batch_activation_gradients.empty())
+  {
     return;
+  }
 
   const unsigned batch_size = static_cast<unsigned>(batch_activation_gradients.size()); // This is now correct: outer vector size
   const unsigned num_layers = num_layers_param;
@@ -874,32 +876,27 @@ void NeuralNetwork::apply_weight_gradients(
       const unsigned num_time_steps = hidden_states[0].at(layer_number).size();
       const unsigned num_prev_inputs = previous_layer.get_number_neurons();
 
+      const double time_scale = (num_time_steps > 0) ? static_cast<double>(num_time_steps) : 1.0;
+      const double denom = static_cast<double>(batch_size) * time_scale;
+
       // 1. Gradients for Input-to-Hidden Weights (_weights)
-      for (unsigned i = 0; i < num_inputs; ++i) 
+      for (unsigned i = 0; i < num_inputs; ++i)
       {
-        for (unsigned j = 0; j < num_outputs; ++j) 
+        for (unsigned j = 0; j < num_outputs; ++j)
         {
           double grad = 0.0;
-          for(unsigned b = 0; b < batch_size; ++b)
+          for (unsigned b = 0; b < batch_size; ++b)
           {
             const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
             const auto& prev_outputs = batch_activation_gradients[b].get_outputs(layer_number - 1);
-            for(unsigned t = 0; t < num_time_steps; ++t)
+            for (unsigned t = 0; t < num_time_steps; ++t)
             {
               // dE/dz_j(t) * x_i(t)
               grad += rnn_grads[t * num_outputs + j] * prev_outputs[t * num_prev_inputs + i];
             }
           }
-          layer_gradients[layer_number].weights[i][j] = grad / static_cast<double>(batch_size);
-          if (Logger::can_trace())
-          {
-            Logger::trace([&]
-            {
-              std::ostringstream ss;
-              ss << "[GRAD] RNN Layer " << layer_number << " W_ih[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
-              return ss.str();
-            });
-          }
+          // average over batch AND time
+          layer_gradients[layer_number].weights[i][j] = grad / denom;
         }
       }
 
@@ -909,50 +906,35 @@ void NeuralNetwork::apply_weight_gradients(
         for (unsigned j = 0; j < num_outputs; ++j) // current neuron
         {
           double grad = 0.0;
-          for(unsigned b = 0; b < batch_size; ++b)
+          for (unsigned b = 0; b < batch_size; ++b)
           {
             const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-            for(unsigned t = 1; t < num_time_steps; ++t) // Start from t=1 as h(t-1) is used
+            for (unsigned t = 1; t < num_time_steps; ++t) // Start from t=1 as h(t-1) is used
             {
               // dE/dz_j(t) * h_i(t-1)
-              grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(layer_number)[t-1].get_hidden_state_value_at_neuron(i);
+              grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(layer_number)[t - 1].get_hidden_state_value_at_neuron(i);
             }
           }
-          layer_gradients[layer_number].recurrent_weights[i][j] = grad / static_cast<double>(batch_size);
-          if (Logger::can_trace())
-          {
-            Logger::trace([&]
-            {
-              std::ostringstream ss;
-              ss << "[GRAD] RNN Layer " << layer_number << " W_hh[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
-              return ss.str();
-            });
-          }
+          // average over batch AND time (note: t loop starts at 1, so denom_t = num_time_steps > 1 ? num_time_steps - 1 : 1)
+          const double time_denom_rec = (num_time_steps > 1) ? static_cast<double>(num_time_steps - 1) : 1.0;
+          layer_gradients[layer_number].recurrent_weights[i][j] = grad / (static_cast<double>(batch_size) * time_denom_rec);
         }
       }
 
       // 3. Gradients for Bias Weights (_bias_weights)
-      for(unsigned j=0; j<num_outputs; ++j)
+      for (unsigned j = 0; j < num_outputs; ++j)
       {
         double bias_grad = 0.0;
-        for(unsigned b=0; b < batch_size; ++b)
+        for (unsigned b = 0; b < batch_size; ++b)
         {
-                      const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);          for(unsigned t = 0; t < num_time_steps; ++t)
+          const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+          for (unsigned t = 0; t < num_time_steps; ++t)
           {
             // dE/dz_j(t)
             bias_grad += rnn_grads[t * num_outputs + j];
           }
         }
-        layer_gradients[layer_number].biases[j] = bias_grad / static_cast<double>(batch_size);
-        if (Logger::can_trace())
-        {
-          Logger::trace([&]
-          {
-            std::ostringstream ss;
-            ss << "[GRAD] RNN Layer " << layer_number << " Bias[" << j << "]: " << bias_grad / static_cast<double>(batch_size);
-            return ss.str();
-          });
-        }
+        layer_gradients[layer_number].biases[j] = bias_grad / denom;
       }
     }
     else // FeedForward Layer (FFLayer)
