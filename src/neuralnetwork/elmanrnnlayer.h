@@ -103,18 +103,10 @@ public:
 
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
-  const std::vector<std::vector<WeightParam>>& get_weight_params() const override;
   const std::vector<std::vector<WeightParam>>& get_recurrent_weight_params() const;
   std::vector<std::vector<WeightParam>>& get_recurrent_weight_params();
 
-  const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const override;
-  WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) override;
-  
-  WeightParam& get_bias_weight_param(unsigned neuron_index) override;
-
   bool has_bias() const noexcept override;
-
-  const std::vector<WeightParam>& get_bias_weight_params() const override;
 
   const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
   std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
@@ -122,17 +114,12 @@ public:
   Layer* clone() const override;
 
 private:
-  void resize_weights(double weight_decay);
+  void resize_residual_weights(double weight_decay);
 
   std::vector<Neuron> _neurons;
 
-  // N_prev = number of neurons in previous layer
-  // N_this = number of neurons in this layer
-  // Size: [N_prev][N_this]
-  std::vector<std::vector<WeightParam>> _weights;
   // Size: [N_this][N_this]
   std::vector<std::vector<WeightParam>> _recurrent_weights;
-  std::vector<WeightParam> _bias_weights;
   std::vector<std::vector<WeightParam>> _residual_weights;
   int _residual_layer_number;
 };
