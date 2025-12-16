@@ -196,7 +196,6 @@ public:
     ++_time_step;
   }
 
-
   inline double clip_gradient(double g) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");

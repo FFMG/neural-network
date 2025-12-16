@@ -103,8 +103,6 @@ public:
 
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
 
-  static double clip_gradient(double gradient, double gradient_clip_threshold);
-
   const std::vector<std::vector<WeightParam>>& get_weight_params() const override;
   const std::vector<std::vector<WeightParam>>& get_recurrent_weight_params() const;
   std::vector<std::vector<WeightParam>>& get_recurrent_weight_params();

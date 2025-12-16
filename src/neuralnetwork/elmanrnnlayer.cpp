@@ -352,7 +352,7 @@ void ElmanRNNLayer::calculate_error_deltas(
   case ErrorCalculation::type::bce_loss:
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
   default:
-    throw std::invalid_argument("ErrorCalculation type is not supported for ElmanRNNLayer!");
+    Logger::panic("ErrorCalculation type is not supported for ElmanRNNLayer!");
   }
 }
 
@@ -580,12 +580,12 @@ void ElmanRNNLayer::calculate_hidden_gradients(
     std::fill(d_next_h.begin(), d_next_h.end(), 0.0);
     for (size_t j = 0; j < N_this; ++j)
     {
-        const double g_j = grad_matrix_t[j];
-        if (g_j == 0.0) continue;
-        for (size_t i = 0; i < N_this; ++i)
-        {
-            d_next_h[i] += g_j * _recurrent_weights[i][j].get_value();
-        }
+      const double g_j = grad_matrix_t[j];
+      if (g_j == 0.0) continue;
+      for (size_t i = 0; i < N_this; ++i)
+      {
+        d_next_h[i] += g_j * _recurrent_weights[i][j].get_value();
+      }
     }    
     
     Logger::trace([=] 
@@ -642,25 +642,6 @@ void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double le
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
   weight_param.set_raw_gradient(clipped_gradient);
   weight_param.set_value(new_weight);
-}
-
-double ElmanRNNLayer::clip_gradient(double gradient, double gradient_clip_threshold)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if (!std::isfinite(gradient))
-  {
-    return 0.0;
-  }
-
-  if (gradient > gradient_clip_threshold)
-  {
-    return gradient_clip_threshold;
-  }
-  if (gradient < -gradient_clip_threshold)
-  {
-    return -gradient_clip_threshold;
-  }
-  return gradient;
 }
 
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_weight_params() const

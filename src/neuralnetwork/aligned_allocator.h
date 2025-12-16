@@ -1,6 +1,4 @@
 #pragma once
-
-
 #include "libraries/instrumentor.h"
 
 #include <cstddef>
@@ -10,6 +8,11 @@
 #include <malloc.h>
 #else
 #include <stdlib.h>
+#endif
+
+#if defined(_MSC_VER)
+  #pragma push_macro("new")
+  #undef new
 #endif
 
 template <typename T, size_t Alignment>
@@ -95,3 +98,7 @@ bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&
   MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   return A1 != A2;
 }
+
+#if defined(_MSC_VER)
+#pragma pop_macro("new")
+#endif
