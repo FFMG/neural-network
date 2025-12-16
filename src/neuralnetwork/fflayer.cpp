@@ -17,20 +17,18 @@ FFLayer::FFLayer(
   const OptimiserType& optimiser_type, 
   double dropout_rate
   ) :
-  Layer(layer_index, layer_type, activation_method, optimiser_type, num_neurons_in_previous_layer, num_neurons_in_this_layer)
+  Layer(
+    layer_index, 
+    layer_type, 
+    activation_method, 
+    optimiser_type, 
+    num_neurons_in_previous_layer, 
+    num_neurons_in_this_layer,
+    create_weights(weight_decay, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
+    create_bias_weights(true, activation_method, num_neurons_in_this_layer)
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (num_neurons_in_this_layer == 0) 
-  {
-    Logger::panic("Warning: Creating a layer with 0 neurons.");
-  }
-  if (layer_type != LayerType::Input && num_neurons_in_previous_layer == 0) 
-  {
-    Logger::warning("Warning: Non-input layer created with 0 inputs.");
-  }
-
-  // create the weights
-  resize_weights(weight_decay);
 
   // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
   _neurons.reserve(get_number_output_neurons() + 1); // for bias
@@ -47,9 +45,7 @@ FFLayer::FFLayer(
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
   Layer(src),
-  _neurons(src._neurons),
-  _weights(src._weights),
-  _bias_weights(src._bias_weights)
+  _neurons(src._neurons)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -64,19 +60,15 @@ FFLayer::FFLayer(
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<WeightParam>& bias_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size())),
-  _neurons(neurons),
-  _weights(weights),
-  _bias_weights(bias_weights)
+  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size()), weights, bias_weights),
+  _neurons(neurons)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
   Layer(std::move(src)),
-  _neurons(std::move(src._neurons)),
-  _weights(std::move(src._weights)),
-  _bias_weights(std::move(src._bias_weights))
+  _neurons(std::move(src._neurons))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -88,8 +80,6 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   {
     Layer::operator=(src);
     _neurons = src._neurons;
-    _weights = src._weights;
-    _bias_weights = src._bias_weights;
   }
   return *this;
 }
@@ -101,50 +91,11 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   {
     Layer::operator=(std::move(src));
     _neurons = std::move(src._neurons);
-    _weights = std::move(src._weights);
-    _bias_weights = std::move(src._bias_weights);
   }
   return *this;
 }
 
 FFLayer::~FFLayer() = default;
-
-void FFLayer::resize_weights(double weight_decay)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (has_bias())
-  {
-    _bias_weights.reserve(get_number_output_neurons());
-    auto weights = get_activation().weight_initialization(get_number_output_neurons(), 1);
-    for (unsigned o = 0; o < get_number_output_neurons(); ++o)
-    {
-      // bias has no weight decay.
-      const auto& weight = weights[o];
-      _bias_weights.emplace_back(WeightParam(weight, 0.0, 0.0, 0.0));
-    }
-  }
-
-#if VALIDATE_DATA == 1
-  if (get_number_input_neurons() == 0)
-  {
-    assert(get_layer_type() == LayerType::Input);
-    return;
-  }
-#endif
-
-  _weights.resize(get_number_input_neurons());
-  for (unsigned i = 0; i < get_number_input_neurons(); ++i)
-  {
-    auto weights = get_activation().weight_initialization(get_number_output_neurons(), get_number_input_neurons());
-    assert(weights.size() == get_number_output_neurons());
-    _weights[i].reserve(get_number_output_neurons());
-    for (unsigned o = 0; o < get_number_output_neurons(); ++o)
-    {
-      const auto& weight = weights[o];
-      _weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, weight_decay));
-    }
-  }
-}
 
 bool FFLayer::has_bias() const noexcept
 {
@@ -201,9 +152,9 @@ std::vector<double> FFLayer::calculate_forward_feed(
 
   for (size_t j = 0; j < N_this; j++)
   {
-    if (!_bias_weights.empty()) 
+    if (!get_bias_weight_params().empty())
     {
-      pre_activation_sums[j] = _bias_weights[j].get_value();
+      pre_activation_sums[j] = get_bias_weight_param(j).get_value();
     }
   }
 
@@ -211,7 +162,7 @@ std::vector<double> FFLayer::calculate_forward_feed(
   {
     double input_val = previous_layer_inputs[i];
     if (input_val == 0.0) continue;
-    const auto& weight_row = _weights[i];
+    const auto& weight_row = get_weight_param(i);
     for (size_t j = 0; j < N_this; j++)
     {
       pre_activation_sums[j] += input_val * weight_row[j].get_value();
@@ -358,36 +309,6 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
   weight_param.set_raw_gradient(clipped_gradient);
   weight_param.set_value(new_weight);
-}
-
-const std::vector<std::vector<WeightParam>>& FFLayer::get_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _weights;
-}
-
-const WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index) const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _weights[input_neuron_number][neuron_index];
-}
-
-WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _weights[input_neuron_number][neuron_index];
-}
-
-const std::vector<WeightParam>& FFLayer::get_bias_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _bias_weights;
-}
-
-WeightParam& FFLayer::get_bias_weight_param(unsigned int neuron_index)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _bias_weights[neuron_index];
 }
 
 int FFLayer::residual_layer_number() const

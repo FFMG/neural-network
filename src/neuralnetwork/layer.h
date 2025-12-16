@@ -39,16 +39,28 @@ protected:
     const activation::method& activation_method,
     OptimiserType optimiser_type,
     unsigned number_input_neurons,
-    unsigned number_output_neurons
+    unsigned number_output_neurons,
+    const std::vector<std::vector<WeightParam>>& weights,
+    const std::vector<WeightParam>& bias_weights
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
     _activation(activation_method),
     _optimiser_type(optimiser_type),
     _number_input_neurons(number_input_neurons),
-    _number_output_neurons(number_output_neurons)
+    _number_output_neurons(number_output_neurons),
+    _weights(weights),
+    _bias_weights(bias_weights)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (number_output_neurons == 0)
+    {
+      Logger::panic("Error: Creating a layer with 0 neurons.");
+    }
+    if (layer_type != LayerType::Input && number_input_neurons == 0)
+    {
+      Logger::warning("Warning: Non-input layer created with 0 inputs.");
+    }
   }
 
 public:
@@ -58,7 +70,9 @@ public:
     _activation(src._activation),
     _optimiser_type(src._optimiser_type),
     _number_input_neurons(src._number_input_neurons),
-    _number_output_neurons(src._number_output_neurons)
+    _number_output_neurons(src._number_output_neurons),
+    _weights(src._weights),
+    _bias_weights(src._bias_weights)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
   }
@@ -69,7 +83,9 @@ public:
     _activation(std::move(src._activation)),
     _optimiser_type(std::move(src._optimiser_type)),
     _number_input_neurons(src._number_input_neurons),
-    _number_output_neurons(src._number_output_neurons)
+    _number_output_neurons(src._number_output_neurons),
+    _weights(std::move(src._weights)),
+    _bias_weights(std::move(src._bias_weights))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
@@ -89,6 +105,8 @@ public:
       _activation = src._activation;
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
+      _weights = src._weights;
+      _bias_weights = src._bias_weights;
     }
     return *this;
   }
@@ -104,6 +122,8 @@ public:
       _optimiser_type = std::move(src._optimiser_type);
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
+      _weights = std::move(src._weights);
+      _bias_weights = std::move(src._bias_weights);
 
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
@@ -188,34 +208,48 @@ public:
 
   // --- Weights and Biases ---
 
-  /**
-   * @brief Gets a constant reference to the layer's weight parameters.
-   * @return A 2D vector of WeightParam objects.
-   */
-  virtual const std::vector<std::vector<WeightParam>>& get_weight_params() const = 0;
+  const std::vector<std::vector<WeightParam>>& get_weight_params() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _weights;
+  }
 
-  /**
-   * @brief Gets a specific weight parameter from the layer.
-   * @param input_neuron_number The index of the input neuron.
-   * @param neuron_index The index of the current neuron.
-   * @return A constant reference to the WeightParam.
-   */
-  virtual const WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) const = 0;
+  const std::vector<WeightParam>& get_weight_param(unsigned int input_neuron_number) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _weights[input_neuron_number];
+  }
 
-  /**
-   * @brief Gets a specific weight parameter from the layer (mutable).
-   * @param input_neuron_number The index of the input neuron.
-   * @param neuron_index The index of the current neuron.
-   * @return A mutable reference to the WeightParam.
-   */
-  virtual WeightParam& get_weight_param(unsigned input_neuron_number, unsigned neuron_index) = 0;
+  const WeightParam& get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _weights[input_neuron_number][neuron_index];
+  }
 
-  /**
-   * @brief Gets a constant reference to the layer's bias weight parameters.
-   * @return A vector of WeightParam objects for the bias weights.
-   */
-  virtual const std::vector<WeightParam>& get_bias_weight_params() const = 0;
-  virtual WeightParam& get_bias_weight_param(unsigned neuron_index) = 0;
+  inline WeightParam& get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _weights[input_neuron_number][neuron_index];
+  }
+
+  inline const std::vector<WeightParam>& get_bias_weight_params() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _bias_weights;
+  }
+
+  inline const WeightParam& get_bias_weight_param(unsigned int neuron_index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _bias_weights[neuron_index];
+  }
+
+  inline WeightParam& get_bias_weight_param(unsigned int neuron_index)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _bias_weights[neuron_index];
+  }
+
 
   virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
   virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
@@ -247,6 +281,64 @@ public:
     return gradient;
   }
 
+protected:
+
+  static std::vector<std::vector<WeightParam>> create_weights(
+    double weight_decay,
+    LayerType layer_type,
+    const activation& activation_method,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons
+  )
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+#if VALIDATE_DATA == 1
+    if (number_input_neurons == 0)
+    {
+      assert(layer_type == LayerType::Input);
+      return {};
+    }
+#endif
+
+    std::vector<std::vector<WeightParam>> weights;
+    weights.resize(number_input_neurons);
+    for (unsigned i = 0; i < number_input_neurons; ++i)
+    {
+      auto inner_weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
+      assert(inner_weights.size() == number_output_neurons);
+      weights[i].reserve(number_output_neurons);
+      for (unsigned o = 0; o < number_output_neurons; ++o)
+      {
+        const auto& weight = inner_weights[o];
+        weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, weight_decay));
+      }
+    }
+    return weights;
+  }
+
+  static std::vector<WeightParam> create_bias_weights(
+    bool has_bias,
+    const activation& activation_method,
+    unsigned number_output_neurons
+  )
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (!has_bias)
+    {
+      return {};
+    }
+
+    std::vector<WeightParam> bias_weights;
+    bias_weights.reserve(number_output_neurons);
+    auto weights = activation_method.weight_initialization(number_output_neurons, 1);
+    for (unsigned o = 0; o < number_output_neurons; ++o)
+    {
+      const auto& weight = weights[o];
+      bias_weights.emplace_back(WeightParam(weight, 0.0, 0.0, 0.0));
+    }
+    return bias_weights;
+  }
+
 private:
   unsigned _layer_index;
   LayerType _layer_type;
@@ -255,4 +347,10 @@ private:
 
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer
+
+  // N_prev = number of neurons in previous layer
+  // N_this = number of neurons in this layer
+  // Size: [N_prev][N_this]
+  std::vector<std::vector<WeightParam>> _weights;
+  std::vector<WeightParam> _bias_weights;
 };
