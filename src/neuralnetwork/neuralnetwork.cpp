@@ -632,48 +632,85 @@ double NeuralNetwork::calculate_global_clipping_scale(const std::vector<LayerGra
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   const double gradient_clip_threshold = options().clip_threshold();
+  if (gradient_clip_threshold <= 0.0) // treat <=0 as "no clipping"
+  {
+    return 1.0;
+  }
+
+  if (layer_gradients.empty())
+  {
+    return 1.0;
+  }
+
+  // Accumulate squared sum in a local accumulator to help the compiler optimize.
   double total_sq_sum = 0.0;
 
-  for (const auto& layer_grad : layer_gradients)
+  for (size_t li = 0, ln = layer_gradients.size(); li < ln; ++li)
   {
-    for (const auto& input_row : layer_grad.weights)
+    const auto& layer_grad = layer_gradients[li];
+
+    // weights: vector<vector<double>>
+    for (size_t i = 0, in = layer_grad.weights.size(); i < in; ++i)
     {
-      for (const auto& grad : input_row)
+      const auto& row = layer_grad.weights[i];
+      const double* p = row.empty() ? nullptr : row.data();
+      for (size_t j = 0, jn = row.size(); j < jn; ++j)
       {
-        total_sq_sum += grad * grad;
+        const double g = p[j];
+        total_sq_sum += g * g;
       }
     }
 
-    for (const auto& grad : layer_grad.biases)
+    // biases: vector<double>
     {
-      total_sq_sum += grad * grad;
+      const auto& b = layer_grad.biases;
+      const double* p = b.empty() ? nullptr : b.data();
+      for (size_t j = 0, jn = b.size(); j < jn; ++j)
+      {
+        const double g = p[j];
+        total_sq_sum += g * g;
+      }
     }
 
-    for (const auto& row : layer_grad.recurrent_weights)
+    // recurrent_weights: vector<vector<double>>
+    for (size_t r = 0, rn = layer_grad.recurrent_weights.size(); r < rn; ++r)
     {
-        for (const auto& grad : row)
-        {
-            total_sq_sum += grad * grad;
-        }
+      const auto& row = layer_grad.recurrent_weights[r];
+      const double* p = row.empty() ? nullptr : row.data();
+      for (size_t j = 0, jn = row.size(); j < jn; ++j)
+      {
+        const double g = p[j];
+        total_sq_sum += g * g;
+      }
     }
   }
 
-  // 4. Compute global gradient norm
-  double norm = std::sqrt(total_sq_sum);
+  // Validate accumulation
+  if (!std::isfinite(total_sq_sum))
+  {
+    Logger::error("Layers gradient accumulation produced NaN/Inf. Resetting optimizer buffers and skipping batch.");
+    return 0.0;
+  }
 
+  if (total_sq_sum == 0.0)
+  {
+    return 1.0;
+  }
+
+  const double norm = std::sqrt(total_sq_sum);
   if (!std::isfinite(norm))
   {
     Logger::error("Layers gradient norm is NaN/Inf. Resetting optimizer buffers and skipping batch.");
     return 0.0;
   }
 
-  if (norm <= gradient_clip_threshold || norm <= 0.0)
+  if (norm <= gradient_clip_threshold)
   {
     return 1.0;
   }
 
-  // Scale factor < 1
-  double clipping_scale = gradient_clip_threshold / norm;
+  const double clipping_scale = gradient_clip_threshold / norm;
+
   Logger::warning([&]
     {
       auto lr = get_learning_rate();

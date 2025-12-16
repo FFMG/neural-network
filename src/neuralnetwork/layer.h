@@ -155,21 +155,6 @@ public:
     return _number_output_neurons;
   }
 
-  // --- Forward Pass ---
-
-  /**
-   * @brief Performs the forward pass calculation for a batch of inputs.
-   * @param previous_layer A constant reference to the preceding layer in the
-   * network.
-   * @param previous_layer_inputs The output values from the previous layer.
-   * @param residual_output_values The output values from a residual connection,
-   * if any.
-   * @param hidden_states A reference to the hidden states for storing
-   * intermediate values (e.g., pre-activation sums) needed for backpropagation.
-   * @param is_training A flag indicating whether the network is in training
-   * mode.
-   * @return A matrix of output values for the current layer.
-   */
   virtual std::vector<double> calculate_forward_feed(
     GradientsAndOutputs& gradients_and_outputs,
     const Layer& previous_layer,
@@ -178,8 +163,6 @@ public:
     std::vector<HiddenState>& hidden_states,
     bool is_training) const = 0;
 
-  // --- Backward Pass (Gradient Calculation) ---
-
   virtual void calculate_output_gradients(
     GradientsAndOutputs& gradients_and_outputs,
     const std::vector<double>& target_outputs,
@@ -187,8 +170,9 @@ public:
     double gradient_clip_threshold,
     ErrorCalculation::type error_calculation_type) const = 0;
 
-  const activation& get_activation() const noexcept
+  inline const activation& get_activation() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
 
@@ -242,18 +226,26 @@ public:
    */
   virtual bool has_bias() const noexcept = 0;
 
-  // --- Activation Function ---
-
-  /**
-   * @brief Gets a constant reference to the layer's activation function logic.
-   * @return The activation object.
-   */
-
-   /**
-    * @brief Clones the layer, creating a deep copy.
-    * @return A pointer to the newly created Layer.
-    */
   virtual Layer* clone() const = 0;
+
+  static double clip_gradient(double gradient, double gradient_clip_threshold)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (!std::isfinite(gradient))
+    {
+      Logger::panic("Gradient is not finite.");
+    }
+
+    if (gradient > gradient_clip_threshold)
+    {
+      return gradient_clip_threshold;
+    }
+    if (gradient < -gradient_clip_threshold)
+    {
+      return -gradient_clip_threshold;
+    }
+    return gradient;
+  }
 
 private:
   unsigned _layer_index;

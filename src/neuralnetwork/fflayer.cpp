@@ -22,8 +22,7 @@ FFLayer::FFLayer(
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   if (num_neurons_in_this_layer == 0) 
   {
-    Logger::warning("Warning: Creating a layer with 0 neurons.");
-    throw std::invalid_argument("Warning: Creating a layer with 0 neurons.");
+    Logger::panic("Warning: Creating a layer with 0 neurons.");
   }
   if (layer_type != LayerType::Input && num_neurons_in_previous_layer == 0) 
   {
@@ -170,8 +169,7 @@ const Neuron& FFLayer::get_neuron(unsigned index) const
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   if (index >= _neurons.size()) 
   {
-    Logger::error("Index out of bounds in FFLayer::get_neuron.");
-    throw std::out_of_range("Index out of bounds in FFLayer::get_neuron.");
+    Logger::panic("Index out of bounds in FFLayer::get_neuron.");
   }
   return _neurons[index];
 }
@@ -362,70 +360,59 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   weight_param.set_value(new_weight);
 }
 
-double FFLayer::clip_gradient(double gradient, double gradient_clip_threshold)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (!std::isfinite(gradient))
-  {
-    Logger::error("Gradient is not finite.");
-    throw std::invalid_argument("Gradient is not finite.");
-  }
-
-  if (gradient > gradient_clip_threshold)
-  {
-    return gradient_clip_threshold;
-  }
-  if (gradient < -gradient_clip_threshold)
-  {
-    return -gradient_clip_threshold;
-  }
-  return gradient;
-}
-
 const std::vector<std::vector<WeightParam>>& FFLayer::get_weight_params() const
 {
-    return _weights;
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  return _weights;
 }
 
 const WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index) const
 {
-    return _weights[input_neuron_number][neuron_index];
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  return _weights[input_neuron_number][neuron_index];
 }
 
 WeightParam& FFLayer::get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index)
 {
-    return _weights[input_neuron_number][neuron_index];
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  return _weights[input_neuron_number][neuron_index];
 }
 
 const std::vector<WeightParam>& FFLayer::get_bias_weight_params() const
 {
-    return _bias_weights;
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  return _bias_weights;
 }
 
 WeightParam& FFLayer::get_bias_weight_param(unsigned int neuron_index)
 {
-    return _bias_weights[neuron_index];
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  return _bias_weights[neuron_index];
 }
 
 int FFLayer::residual_layer_number() const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return -1;
 }
 
 Layer* FFLayer::clone() const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return new FFLayer(*this);
 }
 
 // Implementations for get_residual_weight_params()
 const std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params() const
 {
-    static const std::vector<std::vector<WeightParam>> empty_vec_2d;
-    return empty_vec_2d;
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  static const std::vector<std::vector<WeightParam>> empty_vec_2d;
+  return empty_vec_2d;
 }
 
 std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params()
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
   static std::vector<std::vector<WeightParam>> empty_vec_2d; // Non-const version
   return empty_vec_2d;
 }

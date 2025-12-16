@@ -13,8 +13,8 @@
         long long __test_minutes = __test_duration / 60000; \
         long long __test_seconds = (__test_duration % 60000) / 1000; \
         long long __test_millis  = __test_duration % 1000; \
-        std::cout << "[" << __test_label << "] took " \
-                  << __test_minutes << " min " \
-                  << __test_seconds << " sec " \
-                  << __test_millis << " ms\n"; \
+        Logger::info( __test_label, " took " \
+                  , __test_minutes ," min " \
+                  , __test_seconds ," sec " \
+                  , __test_millis  ," ms\n"); \
     } while(0);
