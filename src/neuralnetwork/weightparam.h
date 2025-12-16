@@ -199,21 +199,26 @@ public:
   inline double clip_gradient(double g) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
-    constexpr double gradient_clip_threshold = 1.0;
-    // Maximum absolute gradient allowed (before scaling)
-    const double max_clip = gradient_clip_threshold;  // e.g. set in constructor or defaults to large value
 
-    if (max_clip <= 0.0)
+    // Per-parameter clip-by-value threshold (current behavior).
+    constexpr double gradient_clip_threshold = 1.0;
+    const double max_clip = gradient_clip_threshold;
+
+    // Guard against non-finite gradients explicitly.
+    if (!std::isfinite(g))
     {
-      return g; // clipping disabled
+      Logger::panic("Non-finite gradient in clip_gradient.");
+      return 0.0;
     }
 
-    if (g > max_clip) 
-      return  max_clip;
-    if (g < -max_clip) 
-      return -max_clip;
+    // Disable clipping when threshold <= 0.0 (preserves current behavior).
+    if (max_clip <= 0.0)
+      return g;
 
-    return g;
+    // Fast, clear clipping: keep sign, limit magnitude.
+    if (std::fabs(g) <= max_clip)
+      return g;
+    return std::copysign(max_clip, g);
   }
 private:
   double _value;
