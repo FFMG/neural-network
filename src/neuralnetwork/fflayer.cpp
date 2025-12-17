@@ -15,6 +15,7 @@ FFLayer::FFLayer(
   LayerType layer_type,
   const activation::method& activation_method,
   const OptimiserType& optimiser_type,
+  int residual_layer_number,
   double dropout_rate
 ) :
   Layer(
@@ -91,7 +92,7 @@ std::vector<double> FFLayer::calculate_forward_feed(
   GradientsAndOutputs& gradients_and_outputs,
   const Layer& previous_layer,
   const std::vector<double>& previous_layer_inputs,
-  const std::vector<double>&, // residual_output_values is not used
+  const std::vector<double>& residual_output_values,
   std::vector<HiddenState>& hidden_states,
   bool is_training) const
 {
@@ -119,6 +120,21 @@ std::vector<double> FFLayer::calculate_forward_feed(
     {
       pre_activation_sums[j] += input_val * weight_row[j].get_value();
     }
+  }
+
+  if (!residual_output_values.empty())
+  {
+    if (residual_output_values.size() != N_this)
+    {
+		  Logger::warning("Residual output values size mismatch. Expected ", N_this, " but got ", residual_output_values.size());
+	  }
+    else
+    {
+		  for (size_t j = 0; j < N_this; j++)
+		  {
+			  pre_activation_sums[j] += residual_output_values[j];
+		  }
+	  }
   }
 
   for (size_t j = 0; j < N_this; j++)
@@ -263,7 +279,7 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   weight_param.set_value(new_weight);
 }
 
-int FFLayer::residual_layer_number() const
+int FFLayer::get_residual_layer_number() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return -1;

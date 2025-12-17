@@ -31,7 +31,6 @@ public:
     int residual_layer_number,
     double dropout_rate);
 
-public:
   ElmanRNNLayer(
     unsigned layer_index,
     const std::vector<Neuron>& neurons,
@@ -51,7 +50,7 @@ public:
   ElmanRNNLayer& operator=(ElmanRNNLayer&& src) noexcept;
   virtual ~ElmanRNNLayer();
 
-  int residual_layer_number() const override;
+  int get_residual_layer_number() const override;
 
 public:
   std::vector<double> calculate_forward_feed(

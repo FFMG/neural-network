@@ -28,9 +28,9 @@ public:
     LayerType layer_type, 
     const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
+    int residual_layer_number,
     double dropout_rate);
 
-public:
   FFLayer(
     unsigned layer_index,
     const std::vector<Neuron>& neurons,
@@ -48,7 +48,7 @@ public:
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
 
-  int residual_layer_number() const override;
+  int get_residual_layer_number() const override;
 
 public:
   std::vector<double> calculate_forward_feed(
