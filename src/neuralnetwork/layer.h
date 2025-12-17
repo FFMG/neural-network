@@ -162,7 +162,7 @@ public:
     return _layer_type;
   }
 
-  virtual int residual_layer_number() const = 0;
+  virtual int get_residual_layer_number() const = 0;
 
   inline unsigned get_number_neurons() const noexcept
   {

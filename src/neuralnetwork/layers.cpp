@@ -151,7 +151,8 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     Layer::LayerType::Input, 
     activation::method::linear, 
     OptimiserType::None, 
-    residual_layer_number);
+    residual_layer_number, 
+    0.0);
 }
 
 std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
@@ -181,6 +182,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       Layer::LayerType::Hidden, 
       activation, 
       optimiser_type, 
+      residual_layer_number,
       dropout_rate);
   }
 }
@@ -213,7 +215,8 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       Layer::LayerType::Output, 
       activation, 
       optimiser_type, 
-      residual_layer_number);
+      residual_layer_number,
+      0.0);
   }
 }
 

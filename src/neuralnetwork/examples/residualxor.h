@@ -3,7 +3,6 @@
 #include "../logger.h"
 
 #include <iomanip>
-#include <iostream>
 
 class ExampleResidualXor
 {
@@ -58,8 +57,7 @@ public:
       {
         nn = new NeuralNetwork(options);
         nn->train(training_inputs, training_outputs);
-        std::cout << "Output After Training:" << std::endl;
-        std::cout << std::fixed << std::setprecision(10);
+        Logger::debug("Output After Training: ", std::fixed, std::setprecision(10));
 
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
@@ -69,24 +67,23 @@ public:
     {
       nn = new NeuralNetwork(options);
       nn->train(training_inputs, training_outputs);
-      std::cout << "Output After Training:" << std::endl;
-      std::cout << std::fixed << std::setprecision(10);
+      Logger::debug("Output After Training: ", std::fixed, std::setprecision(10));
     }
 
     // or we can train with a single inut
     // we know that the output only has one value.
     auto t1 = nn->think({ 0, 0 });
-    std::cout << t1.front() << " (should be close to 0)" << std::endl;//  should be close to 0
+    Logger::debug(t1.front(), " (should be close to 0)");//  should be close to 0
 
     // or we can train with a single inut
     // we know that the output only has one value.
     auto t2 = nn->think({ 1, 1 });
-    std::cout << t2.front() << " (should be close to 0)" << std::endl; //  should be close to 1
+    Logger::debug(t2.front(), " (should be close to 0)"); //  should be close to 1
 
     // or we can train with a single inut
     // we know that the output only has one value.
     auto t3 = nn->think({ 1, 0 });
-    std::cout << t3.front() << " (should be close to 1)" << std::endl; //  should be close to 1
+    Logger::debug(t3.front(), " (should be close to 1)"); //  should be close to 1
 
     delete nn;
 
