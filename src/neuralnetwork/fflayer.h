@@ -8,7 +8,6 @@
 #endif
 
 #include "errorcalculation.h"
-#include "neuron.h"
 #include "weightparam.h"
 #include "layer.h"
 #include "hiddenstate.h"
@@ -16,7 +15,6 @@
 #include <cassert>
 #include <vector>
 
-class Neuron;
 class FFLayer final : public Layer
 {
 protected:
@@ -49,12 +47,6 @@ public:
   FFLayer& operator=(const FFLayer& src) noexcept;
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
-
-  const std::vector<Neuron>& get_neurons() const noexcept;
-  std::vector<Neuron>& get_neurons() noexcept;
-
-  const Neuron& get_neuron(unsigned index) const;
-  Neuron& get_neuron(unsigned index);
 
   int residual_layer_number() const override;
 
@@ -109,6 +101,4 @@ public:
 
 private:
   void clean();
-
-  std::vector<Neuron> _neurons;
 };
