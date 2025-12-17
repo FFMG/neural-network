@@ -6,6 +6,7 @@
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstate.h"
+#include "neuron.h"
 #include "optimiser.h"
 #include "weightparam.h"
 
@@ -40,6 +41,7 @@ protected:
     OptimiserType optimiser_type,
     unsigned number_input_neurons,
     unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
     const std::vector<std::vector<WeightParam>>& weights,
     const std::vector<WeightParam>& bias_weights
   ) noexcept :
@@ -49,6 +51,7 @@ protected:
     _optimiser_type(optimiser_type),
     _number_input_neurons(number_input_neurons),
     _number_output_neurons(number_output_neurons),
+    _neurons(neurons),
     _weights(weights),
     _bias_weights(bias_weights)
   {
@@ -71,6 +74,7 @@ public:
     _optimiser_type(src._optimiser_type),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons),
+    _neurons(src._neurons),
     _weights(src._weights),
     _bias_weights(src._bias_weights)
   {
@@ -84,6 +88,7 @@ public:
     _optimiser_type(std::move(src._optimiser_type)),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons),
+    _neurons(std::move(src._neurons)),
     _weights(std::move(src._weights)),
     _bias_weights(std::move(src._bias_weights))
   {
@@ -105,6 +110,7 @@ public:
       _activation = src._activation;
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
+      _neurons = src._neurons;
       _weights = src._weights;
       _bias_weights = src._bias_weights;
     }
@@ -122,6 +128,7 @@ public:
       _optimiser_type = std::move(src._optimiser_type);
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
+      _neurons = std::move(src._neurons);
       _weights = std::move(src._weights);
       _bias_weights = std::move(src._bias_weights);
 
@@ -205,6 +212,24 @@ public:
     double gradient_clip_threshold) const = 0;
 
   virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) = 0;
+
+  const std::vector<Neuron>& get_neurons() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _neurons;
+  }
+
+  const Neuron& get_neuron(unsigned int neuron_index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+#if VALIDATE_DATA == 1
+    if (neuron_index >= _neurons.size())
+    {
+      Logger::panic("Index out of bounds in Layer::get_neuron.");
+    }
+#endif
+    return _neurons[neuron_index];
+  }
 
   // --- Weights and Biases ---
 
@@ -339,6 +364,24 @@ protected:
     return bias_weights;
   }
 
+  static std::vector<Neuron> create_neurons(
+    double dropout_rate,
+    unsigned number_output_neurons
+  )
+  {
+    std::vector<Neuron> neurons;
+    neurons.reserve(number_output_neurons);
+    for (unsigned neuron_number = 0; neuron_number < number_output_neurons; ++neuron_number)
+    {
+      auto neuron = Neuron(
+        neuron_number,
+        dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
+        dropout_rate);
+      neurons.emplace_back(neuron);
+    }
+    return neurons;
+  }
+
 private:
   unsigned _layer_index;
   LayerType _layer_type;
@@ -353,4 +396,6 @@ private:
   // Size: [N_prev][N_this]
   std::vector<std::vector<WeightParam>> _weights;
   std::vector<WeightParam> _bias_weights;
+
+  std::vector<Neuron> _neurons;
 };

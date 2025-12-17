@@ -11,12 +11,10 @@
 #include "gradientsandoutputs.h"
 #include "hiddenstate.h"
 #include "layer.h"
-#include "neuron.h"
 
 #include <cassert>
 #include <vector>
 
-class Neuron;
 class ElmanRNNLayer final : public Layer
 {
 protected:
@@ -52,12 +50,6 @@ public:
   ElmanRNNLayer& operator=(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer& operator=(ElmanRNNLayer&& src) noexcept;
   virtual ~ElmanRNNLayer();
-
-  const std::vector<Neuron>& get_neurons() const noexcept;
-  std::vector<Neuron>& get_neurons() noexcept;
-
-  const Neuron& get_neuron(unsigned index) const;
-  Neuron& get_neuron(unsigned index);
 
   int residual_layer_number() const override;
 
@@ -115,8 +107,6 @@ public:
 
 private:
   void resize_residual_weights(double weight_decay);
-
-  std::vector<Neuron> _neurons;
 
   // Size: [N_this][N_this]
   std::vector<std::vector<WeightParam>> _recurrent_weights;

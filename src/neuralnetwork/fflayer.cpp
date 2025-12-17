@@ -9,43 +9,31 @@ constexpr bool _has_bias_neuron = true;
 
 FFLayer::FFLayer(
   unsigned layer_index,
-  unsigned num_neurons_in_previous_layer, 
-  unsigned num_neurons_in_this_layer, 
+  unsigned num_neurons_in_previous_layer,
+  unsigned num_neurons_in_this_layer,
   double weight_decay,
-  LayerType layer_type, 
+  LayerType layer_type,
   const activation::method& activation_method,
-  const OptimiserType& optimiser_type, 
+  const OptimiserType& optimiser_type,
   double dropout_rate
-  ) :
+) :
   Layer(
-    layer_index, 
-    layer_type, 
-    activation_method, 
-    optimiser_type, 
-    num_neurons_in_previous_layer, 
+    layer_index,
+    layer_type,
+    activation_method,
+    optimiser_type,
+    num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
+    create_neurons(dropout_rate, num_neurons_in_this_layer),
     create_weights(weight_decay, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
     create_bias_weights(true, activation_method, num_neurons_in_this_layer)
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-
-  // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
-  _neurons.reserve(get_number_output_neurons() + 1); // for bias
-  for (unsigned neuron_number = 0; neuron_number < get_number_output_neurons(); ++neuron_number)
-  {
-    // force the bias node's output to 1.0
-    auto neuron = Neuron(
-      neuron_number, 
-      dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
-      dropout_rate);
-    _neurons.emplace_back(neuron);
-  }
 }
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
-  Layer(src),
-  _neurons(src._neurons)
+  Layer(src)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -60,15 +48,13 @@ FFLayer::FFLayer(
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<WeightParam>& bias_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size()), weights, bias_weights),
-  _neurons(neurons)
+  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size()), neurons, weights, bias_weights)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
-  Layer(std::move(src)),
-  _neurons(std::move(src._neurons))
+  Layer(std::move(src))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -79,7 +65,6 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   if(this != &src)
   {
     Layer::operator=(src);
-    _neurons = src._neurons;
   }
   return *this;
 }
@@ -90,7 +75,6 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   if(this != &src)
   {
     Layer::operator=(std::move(src));
-    _neurons = std::move(src._neurons);
   }
   return *this;
 }
@@ -101,38 +85,6 @@ bool FFLayer::has_bias() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return _has_bias_neuron;
-}
-
-const std::vector<Neuron>& FFLayer::get_neurons() const noexcept
-{ 
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _neurons;
-}
-
-std::vector<Neuron>& FFLayer::get_neurons() noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _neurons;
-}
-
-const Neuron& FFLayer::get_neuron(unsigned index) const 
-{ 
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (index >= _neurons.size()) 
-  {
-    Logger::panic("Index out of bounds in FFLayer::get_neuron.");
-  }
-  return _neurons[index];
-}
-
-Neuron& FFLayer::get_neuron(unsigned index) 
-{ 
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (index >= _neurons.size()) 
-  {
-    Logger::panic("Index out of bounds in FFLayer::get_neuron.");
-  }
-  return _neurons[index];
 }
 
 std::vector<double> FFLayer::calculate_forward_feed(
