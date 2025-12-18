@@ -177,6 +177,7 @@
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
     <ClInclude Include="optimiser.h" />
+    <ClInclude Include="residualprojector.h" />
     <ClInclude Include="rng.h" />
     <ClInclude Include="taskqueue.h" />
     <ClInclude Include="weightparam.h" />

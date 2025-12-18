@@ -1051,7 +1051,7 @@ void NeuralNetwork::apply_weight_gradients(
 Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto residual_layer_number = layers.residual_layer_number(current_layer_index);
+  const auto residual_layer_number = layers.get_residual_layer_number(current_layer_index);
   if (residual_layer_number == -1)
   {
     return nullptr; // no residual layer
@@ -1228,10 +1228,13 @@ void NeuralNetwork::calculate_forward_feed(
 
       // --- 2a. Prepare residual outputs if current layer uses residuals ---
       std::vector<double> residual_output_values;
-      const int residual_layer_number = layers_container.residual_layer_number(static_cast<unsigned>(layer_number));
-      if (residual_layer_number != -1)
+      const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
+      if (residual_projector != nullptr)
       {
-        residual_output_values = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+        auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
+        std::vector<double> residual_layer_outputs = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+
+        residual_output_values = residual_projector->project(residual_layer_outputs);
       }
 
       // --- 2b. Build hidden-state slices for this layer ---

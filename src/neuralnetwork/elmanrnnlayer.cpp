@@ -16,20 +16,22 @@ ElmanRNNLayer::ElmanRNNLayer(
   const activation::method& activation_method,
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
-  double dropout_rate
+  double dropout_rate,
+  ResidualProjector* residual_projector
   ) :
   Layer(
     layer_index, 
     layer_type, 
     activation_method, 
     optimiser_type, 
+    residual_layer_number,
     num_neurons_in_previous_layer, 
     num_neurons_in_this_layer,
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     create_weights(weight_decay, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
-    create_bias_weights(true, activation_method, num_neurons_in_this_layer)
-  ),
-  _residual_layer_number(residual_layer_number)
+    create_bias_weights(true, activation_method, num_neurons_in_this_layer),
+    residual_projector
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 
@@ -39,8 +41,7 @@ ElmanRNNLayer::ElmanRNNLayer(
 
 ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   Layer(src),
-  _recurrent_weights(src._recurrent_weights),
-  _residual_layer_number(src._residual_layer_number)
+  _recurrent_weights(src._recurrent_weights)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -55,19 +56,29 @@ ElmanRNNLayer::ElmanRNNLayer(
   const activation::method& activation_method,
   const std::vector<std::vector<WeightParam>>& weights,
   const std::vector<std::vector<WeightParam>>& recurrent_weights,
-  const std::vector<WeightParam>& bias_weights
+  const std::vector<WeightParam>& bias_weights,
+  const std::vector<std::vector<WeightParam>>& residual_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size()), neurons, weights, bias_weights ),
-  _recurrent_weights(recurrent_weights),
-  _residual_layer_number(residual_layer_number)
+  Layer(
+    layer_index, 
+    layer_type, 
+    activation_method, 
+    optimiser_type, 
+    residual_layer_number, 
+    number_input_neurons, 
+    static_cast<unsigned>(neurons.size()), 
+    neurons, 
+    weights, 
+    bias_weights,
+    ResidualProjector::create(residual_weights)),
+  _recurrent_weights(recurrent_weights)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   Layer(std::move(src)),
-  _recurrent_weights(std::move(src._recurrent_weights)),
-  _residual_layer_number(src._residual_layer_number)
+  _recurrent_weights(std::move(src._recurrent_weights))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -594,12 +605,6 @@ Layer* ElmanRNNLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   return new ElmanRNNLayer(*this);
-}
-
-int ElmanRNNLayer::get_residual_layer_number() const
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _residual_layer_number;
 }
 
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params() const

@@ -16,19 +16,21 @@ FFLayer::FFLayer(
   const activation::method& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
-  double dropout_rate
+  double dropout_rate,
+  ResidualProjector* residual_projector
 ) :
   Layer(
     layer_index,
     layer_type,
     activation_method,
     optimiser_type,
+    residual_layer_number,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     create_weights(weight_decay, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
-    create_bias_weights(true, activation_method, num_neurons_in_this_layer)
-  )
+    create_bias_weights(true, activation_method, num_neurons_in_this_layer),
+    residual_projector)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -45,11 +47,24 @@ FFLayer::FFLayer(
   unsigned number_input_neurons,
   LayerType layer_type,
   OptimiserType optimiser_type,
+  int residual_layer_number,
   const activation::method& activation_method,
   const std::vector<std::vector<WeightParam>>& weights,
-  const std::vector<WeightParam>& bias_weights
+  const std::vector<WeightParam>& bias_weights,
+  const std::vector<std::vector<WeightParam>>& residual_weights
 ) : 
-  Layer(layer_index, layer_type, activation_method, optimiser_type, number_input_neurons, static_cast<unsigned>(neurons.size()), neurons, weights, bias_weights)
+  Layer(
+    layer_index,
+    layer_type,
+    activation_method,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    static_cast<unsigned>(neurons.size()),
+    neurons,
+    weights,
+    bias_weights,
+    ResidualProjector::create(residual_weights))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -277,12 +292,6 @@ void FFLayer::apply_weight_gradient(const double gradient, const double learning
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
   weight_param.set_raw_gradient(clipped_gradient);
   weight_param.set_value(new_weight);
-}
-
-int FFLayer::get_residual_layer_number() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return -1;
 }
 
 Layer* FFLayer::clone() const
