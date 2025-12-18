@@ -29,7 +29,8 @@ public:
     const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
-    double dropout_rate);
+    double dropout_rate,
+    ResidualProjector* residual_projector);
 
   FFLayer(
     unsigned layer_index,
@@ -37,18 +38,17 @@ public:
     unsigned number_input_neurons,
     LayerType layer_type,
     OptimiserType optimiser_type,
+    int residual_layer_number,
     const activation::method& activation_method,
     const std::vector<std::vector<WeightParam>>& weights,
-    const std::vector<WeightParam>& bias_weights
-    );
+    const std::vector<WeightParam>& bias_weights,
+    const std::vector<std::vector<WeightParam>>& residual_weights);
 
   FFLayer(const FFLayer& src) noexcept;
   FFLayer(FFLayer&& src) noexcept;
   FFLayer& operator=(const FFLayer& src) noexcept;
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
-
-  int get_residual_layer_number() const override;
 
 public:
   std::vector<double> calculate_forward_feed(

@@ -4,6 +4,7 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
+#include "residualprojector.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstate.h"
 #include "neuron.h"
@@ -23,7 +24,8 @@ class Layer;
  * part of a Feedforward (FNN) or Recurrent (RNN) Neural Network. It is designed
  * to be inherited by concrete layer implementations.
  */
-class Layer {
+class Layer
+{
 public:
   enum class LayerType
   {
@@ -39,21 +41,25 @@ protected:
     LayerType layer_type,
     const activation::method& activation_method,
     OptimiserType optimiser_type,
+    int residual_layer_number,
     unsigned number_input_neurons,
     unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
     const std::vector<std::vector<WeightParam>>& weights,
-    const std::vector<WeightParam>& bias_weights
+    const std::vector<WeightParam>& bias_weights,
+    ResidualProjector* residual_projector
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
     _activation(activation_method),
     _optimiser_type(optimiser_type),
+    _residual_layer_number(residual_layer_number),
     _number_input_neurons(number_input_neurons),
     _number_output_neurons(number_output_neurons),
     _neurons(neurons),
     _weights(weights),
-    _bias_weights(bias_weights)
+    _bias_weights(bias_weights),
+    _residual_projector(residual_projector)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -72,13 +78,19 @@ public:
     _layer_type(src._layer_type),
     _activation(src._activation),
     _optimiser_type(src._optimiser_type),
+    _residual_layer_number(src._residual_layer_number),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons),
     _neurons(src._neurons),
     _weights(src._weights),
-    _bias_weights(src._bias_weights)
+    _bias_weights(src._bias_weights),
+    _residual_projector(src._residual_projector)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (src._residual_projector != nullptr)
+    {
+      _residual_projector = new ResidualProjector(*src._residual_projector);
+    }
   }
 
   Layer(Layer&& src) noexcept :
@@ -90,7 +102,9 @@ public:
     _number_output_neurons(src._number_output_neurons),
     _neurons(std::move(src._neurons)),
     _weights(std::move(src._weights)),
-    _bias_weights(std::move(src._bias_weights))
+    _bias_weights(std::move(src._bias_weights)),
+    _residual_layer_number(src._residual_layer_number),
+    _residual_projector(src._residual_projector)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
@@ -98,6 +112,8 @@ public:
     src._optimiser_type = OptimiserType::None;
     src._number_input_neurons = 0;
     src._number_output_neurons = 0;
+    src._residual_layer_number = 0;
+    src._residual_projector = nullptr;
   }
 
   Layer& operator=(const Layer& src) noexcept
@@ -113,6 +129,13 @@ public:
       _neurons = src._neurons;
       _weights = src._weights;
       _bias_weights = src._bias_weights;
+      _residual_layer_number = src._residual_layer_number;
+      delete _residual_projector;
+      _residual_projector = nullptr;
+      if (src._residual_projector != nullptr)
+      {
+        _residual_projector = new ResidualProjector(*src._residual_projector);
+      }
     }
     return *this;
   }
@@ -131,16 +154,24 @@ public:
       _neurons = std::move(src._neurons);
       _weights = std::move(src._weights);
       _bias_weights = std::move(src._bias_weights);
+      delete _residual_projector;
+      _residual_projector = src._residual_projector;
 
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
       src._number_input_neurons = 0;
       src._number_output_neurons = 0;
+      src._residual_projector = nullptr;
     }
     return *this;
   }
 
-  virtual ~Layer() = default;
+  virtual ~Layer()
+  {
+    delete _residual_projector;
+    _residual_projector = nullptr;
+  }
+
 
   // --- Core Layer Properties ---
 
@@ -162,7 +193,17 @@ public:
     return _layer_type;
   }
 
-  virtual int get_residual_layer_number() const = 0;
+  inline int get_residual_layer_number() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _residual_layer_number;
+  }
+
+  const ResidualProjector* get_residual_projector() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _residual_projector;
+  }
 
   inline unsigned get_number_neurons() const noexcept
   {
@@ -275,7 +316,6 @@ public:
     return _bias_weights[neuron_index];
   }
 
-
   virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
   virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
 
@@ -387,6 +427,7 @@ private:
   LayerType _layer_type;
   activation _activation;
   OptimiserType _optimiser_type;
+  int _residual_layer_number;
 
   unsigned _number_input_neurons;  //  number of neurons in previous layer
   unsigned _number_output_neurons; //  number of neurons in this layer
@@ -398,4 +439,6 @@ private:
   std::vector<WeightParam> _bias_weights;
 
   std::vector<Neuron> _neurons;
+  
+  ResidualProjector* _residual_projector;
 };

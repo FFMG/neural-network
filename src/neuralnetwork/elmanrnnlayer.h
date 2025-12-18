@@ -29,7 +29,8 @@ public:
     const activation::method& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
-    double dropout_rate);
+    double dropout_rate,
+    ResidualProjector* residual_projector);
 
   ElmanRNNLayer(
     unsigned layer_index,
@@ -41,16 +42,14 @@ public:
     const activation::method& activation_method,
     const std::vector<std::vector<WeightParam>>& weights,
     const std::vector<std::vector<WeightParam>>& recurrent_weights,
-    const std::vector<WeightParam>& bias_weights
-    );
+    const std::vector<WeightParam>& bias_weights,
+    const std::vector<std::vector<WeightParam>>& residual_weights);
 
   ElmanRNNLayer(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer(ElmanRNNLayer&& src) noexcept;
   ElmanRNNLayer& operator=(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer& operator=(ElmanRNNLayer&& src) noexcept;
   virtual ~ElmanRNNLayer();
-
-  int get_residual_layer_number() const override;
 
 public:
   std::vector<double> calculate_forward_feed(
@@ -110,5 +109,4 @@ private:
   // Size: [N_this][N_this]
   std::vector<std::vector<WeightParam>> _recurrent_weights;
   std::vector<std::vector<WeightParam>> _residual_weights;
-  int _residual_layer_number;
 };

@@ -21,12 +21,10 @@ Layers::Layers(
   assert(recurrent_layers_param.size() == topology.size() && "The recurrence layer size must match the topology");
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
-  _residual_layer_numbers.reserve(number_of_layers);
 
   // add the input layer
   auto layer = create_input_layer(topology[0], _weight_decay, -1);
   _layers.emplace_back(std::move(layer));
-  _residual_layer_numbers.push_back(-1); // No residual for input layer
 
   // then the hidden layers
   for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
@@ -36,8 +34,6 @@ Layers::Layers(
     auto dropout_rate = dropout_layers[layer_number-1];
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    _residual_layer_numbers.push_back(residual_layer_number);
-
     layer = create_hidden_layer(num_neurons_current_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers_param, residual_layer_number, dropout_rate);
 
     _layers.emplace_back(std::move(layer));
@@ -45,7 +41,6 @@ Layers::Layers(
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  _residual_layer_numbers.push_back(residual_layer_number);
   layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers_param, residual_layer_number);
 
   _layers.emplace_back(std::move(layer));
@@ -62,7 +57,6 @@ Layers::Layers(const Layers& src) noexcept :
   {
     _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
   }
-  _residual_layer_numbers = src._residual_layer_numbers;
 }
 
 Layers::Layers(Layers&& src) noexcept = default;
@@ -78,8 +72,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
     {
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
-    _residual_layer_numbers = src._residual_layer_numbers;
-    _recurrent_layers = src._recurrent_layers; // Copy _recurrent_layers
+    _recurrent_layers = src._recurrent_layers;
   }
   return *this;
 }
@@ -98,18 +91,28 @@ const Layer& Layers::operator[](unsigned index ) const
 Layer& Layers::operator[](unsigned index )
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  #ifndef NDEBUG
+#if VALIDATE_DATA ==1
   assert(index < _layers.size());
-  #endif
+#endif
   return *_layers[index];
 }
 
-int Layers::residual_layer_number(unsigned index) const
+const ResidualProjector* Layers::get_residual_layer_projector(unsigned index) const noexcept
 {
-  #ifndef NDEBUG
-  assert(index < _residual_layer_numbers.size());
-  #endif
-  return _residual_layer_numbers[index];
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+#if VALIDATE_DATA ==1
+  assert(index < _layers.size());
+#endif
+  return _layers[index]->get_residual_projector();
+}
+
+int Layers::get_residual_layer_number(unsigned index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+#if VALIDATE_DATA ==1
+  assert(index < _layers.size());
+#endif
+  return _layers[index]->get_residual_layer_number();
 }
 
 const std::vector<std::unique_ptr<Layer>>& Layers::get_layers() const
@@ -152,7 +155,9 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     activation::method::linear, 
     OptimiserType::None, 
     residual_layer_number, 
-    0.0);
+    0.0,    // no dropout for input layer
+    nullptr // no residual projector for input
+  );
 }
 
 std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
@@ -170,7 +175,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       activation, 
       optimiser_type, 
       residual_layer_number, 
-      dropout_rate);
+      dropout_rate,
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
   } 
   else 
   {
@@ -183,7 +189,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       activation, 
       optimiser_type, 
       residual_layer_number,
-      dropout_rate);
+      dropout_rate,
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
   }
 }
 
@@ -203,7 +210,8 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       activation, 
       optimiser_type, 
       residual_layer_number, 
-      0.0);
+      0.0, // no dropout for output layer
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
   } 
   else 
   {
@@ -216,7 +224,8 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       activation, 
       optimiser_type, 
       residual_layer_number,
-      0.0);
+      0.0, // no dropout for output layer
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
   }
 }
 
@@ -224,4 +233,20 @@ const std::vector<unsigned>& Layers::recurrent_layers() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return _recurrent_layers;
+}
+
+ResidualProjector* Layers::create_residual_projector(
+  const activation& activation_method,
+  int residual_layer_number,
+  int number_of_neurons_in_current_layer)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  if (residual_layer_number <= 0)
+  {
+    return nullptr;
+  }
+
+  auto number_of_neurons_in_that_layer = _layers[residual_layer_number]->get_number_neurons();
+
+  return new ResidualProjector(number_of_neurons_in_that_layer, number_of_neurons_in_current_layer, activation_method);
 }
