@@ -642,50 +642,55 @@ double NeuralNetwork::calculate_global_clipping_scale(const std::vector<LayerGra
     return 1.0;
   }
 
-  // Accumulate squared sum in a local accumulator to help the compiler optimize.
   double total_sq_sum = 0.0;
+
+  // Detailed per-layer breakdown for diagnostics
+  Logger::trace([&] 
+  { 
+    return Logger::factory("Calculating global clipping scale for ", layer_gradients.size(), " layers."); 
+  });
 
   for (size_t li = 0, ln = layer_gradients.size(); li < ln; ++li)
   {
     const auto& layer_grad = layer_gradients[li];
 
-    // weights: vector<vector<double>>
-    for (size_t i = 0, in = layer_grad.weights.size(); i < in; ++i)
+    double layer_sq_sum = 0.0;
+    double part = 0.0;
+
+    // weights
+    for (const auto& row : layer_grad.weights)
     {
-      const auto& row = layer_grad.weights[i];
-      const double* p = row.empty() ? nullptr : row.data();
-      for (size_t j = 0, jn = row.size(); j < jn; ++j)
-      {
-        const double g = p[j];
-        total_sq_sum += g * g;
-      }
+      for (double g : row) { layer_sq_sum += g * g; }
+    }
+    // biases
+    for (double g : layer_grad.biases) { layer_sq_sum += g * g; }
+    // recurrent
+    for (const auto& row : layer_grad.recurrent_weights)
+    {
+      for (double g : row) { layer_sq_sum += g * g; }
+    }
+    // residual
+    for (const auto& row : layer_grad.residual_weights)
+    {
+      for (double g : row) { layer_sq_sum += g * g; }
     }
 
-    // biases: vector<double>
+    if (!std::isfinite(layer_sq_sum))
     {
-      const auto& b = layer_grad.biases;
-      const double* p = b.empty() ? nullptr : b.data();
-      for (size_t j = 0, jn = b.size(); j < jn; ++j)
-      {
-        const double g = p[j];
-        total_sq_sum += g * g;
-      }
+      Logger::error("Layer ", li, " gradient accumulation produced NaN/Inf. Resetting optimizer buffers and skipping batch.");
+      return 0.0;
     }
 
-    // recurrent_weights: vector<vector<double>>
-    for (size_t r = 0, rn = layer_grad.recurrent_weights.size(); r < rn; ++r)
-    {
-      const auto& row = layer_grad.recurrent_weights[r];
-      const double* p = row.empty() ? nullptr : row.data();
-      for (size_t j = 0, jn = row.size(); j < jn; ++j)
-      {
-        const double g = p[j];
-        total_sq_sum += g * g;
-      }
-    }
+    total_sq_sum += layer_sq_sum;
+    
+    Logger::trace([=] {
+      const double layer_norm = std::sqrt(layer_sq_sum);
+      std::ostringstream ss;
+      ss << "Grad norm layer " << li << " = " << std::setprecision(6) << layer_norm;
+      return ss.str();
+    });
   }
 
-  // Validate accumulation
   if (!std::isfinite(total_sq_sum))
   {
     Logger::error("Layers gradient accumulation produced NaN/Inf. Resetting optimizer buffers and skipping batch.");
@@ -947,39 +952,10 @@ void NeuralNetwork::apply_weight_gradients(
           double grad = 0.0;
           for(unsigned b = 0; b < batch_size; ++b)
           {
-            if (Logger::can_trace())
-            {
-              Logger::trace([&]
-              {
-                std::ostringstream ss;
-                ss << "[GRAD_DEBUG] b=" << b << ", layer=" << layer_number << ", i=" << i << ", j=" << j
-                   << ", get_gradient=" << batch_activation_gradients[b].get_gradient(layer_number, j)
-                   << ", get_outputs=" << batch_activation_gradients[b].get_outputs(layer_number-1)[i];
-                return ss.str();
-              });
-            }
             // dE/dz_j * x_i
             grad += batch_activation_gradients[b].get_gradient(layer_number, j) * batch_activation_gradients[b].get_outputs(layer_number-1)[i];
           }
-          if (Logger::can_trace())
-          {
-            Logger::trace([&]
-            {
-              std::ostringstream ss;
-              ss << "[GRAD_DEBUG] Calculated grad=" << grad << " for W[" << i << "][" << j << "]";
-              return ss.str();
-            });
-          }
           layer_gradients[layer_number].weights[i][j] = grad / static_cast<double>(batch_size);
-          if (Logger::can_trace())
-          {
-            Logger::trace([&]
-            {
-              std::ostringstream ss;
-              ss << "[GRAD] FF Layer " << layer_number << " W[" << i << "][" << j << "]: " << grad / static_cast<double>(batch_size);
-              return ss.str();
-            });
-          }
         }
       }
 
@@ -993,20 +969,40 @@ void NeuralNetwork::apply_weight_gradients(
             bias_grad += batch_activation_gradients[b].get_gradient(layer_number, j);
         }
         layer_gradients[layer_number].biases[j] = bias_grad / static_cast<double>(batch_size);
-        if (Logger::can_trace())
-        {
-          Logger::trace([&]
-          {
-            std::ostringstream ss;
-            ss << "[GRAD] FF Layer " << layer_number << " Bias[" << j << "]: " << bias_grad / static_cast<double>(batch_size);
-            return ss.str();
-          });
-        }
       }
     }
     // Residual gradients (if any)
-    std::vector<double> accumulated_residual_gradients;
-    // Add residual gradient calculation here if needed
+    const auto* residual_projector = current_layer.get_residual_projector();
+    if (residual_projector != nullptr)
+    {
+      auto residual_layer_number = current_layer.get_residual_layer_number();
+      const unsigned proj_output_size = residual_projector->output_size();
+      const unsigned proj_input_size = residual_projector->input_size();
+
+      layer_gradients[layer_number].residual_weights.resize(proj_output_size, std::vector<double>(proj_input_size, 0.0));
+
+      for (unsigned b = 0; b < batch_size; ++b)
+      {
+        const auto& next_gradients = batch_activation_gradients[b].get_gradients(layer_number);
+        const auto& residual_layer_outputs = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+
+        for (unsigned out = 0; out < proj_output_size; ++out)
+        {
+          for (unsigned in = 0; in < proj_input_size; ++in)
+          {
+            layer_gradients[layer_number].residual_weights[out][in] += next_gradients[out] * residual_layer_outputs[in];
+          }
+        }
+      }
+
+      for (unsigned out = 0; out < proj_output_size; ++out)
+      {
+        for (unsigned in = 0; in < proj_input_size; ++in)
+        {
+          layer_gradients[layer_number].residual_weights[out][in] /= static_cast<double>(batch_size);
+        }
+      }
+    }
   }
 
   // --- Apply gradients ---
@@ -1044,6 +1040,22 @@ void NeuralNetwork::apply_weight_gradients(
       }
     }
     // Apply residual weights (if any)
+    auto* residual_projector = current_layer.get_residual_projector();
+    if (residual_projector != nullptr && !layer_gradients[layer_number].residual_weights.empty())
+    {
+      const unsigned proj_output_size = residual_projector->output_size();
+      const unsigned proj_input_size = residual_projector->input_size();
+
+      for (unsigned out = 0; out < proj_output_size; ++out)
+      {
+        for (unsigned in = 0; in < proj_input_size; ++in)
+        {
+          auto& wp = residual_projector->get_weight_params(out, in);
+          double gradient = layer_gradients[layer_number].residual_weights[out][in];
+          residual_projector->apply_weight_gradient(gradient, learning_rate, wp, global_clipping_scale, _options.clip_threshold());
+        }
+      }
+    }
   }
 }
 
