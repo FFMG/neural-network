@@ -14,7 +14,8 @@ public:
   ResidualProjector(
     unsigned input_size,       // size of residual_layer_outputs (e.g., 160)
     unsigned output_size,      // size of the target layer (e.g., 128)
-    const activation& activation_method
+    const activation& activation_method,
+    double weight_decay
   )
     :
     _input_size(input_size),
@@ -29,7 +30,7 @@ public:
       auto values = activation_method.weight_initialization(input_size, 1);  // row: 1 x input_size
       for (auto& value : values)
       {
-        weights.emplace_back(WeightParam(value, 0.0, 0.0, 0.0));
+        weights.emplace_back(WeightParam(value, 0.0, 0.0, weight_decay));
       }
       _weight_params.emplace_back(weights);
     }
@@ -80,6 +81,22 @@ public:
     return projected;
   }
 
+  void apply_weight_gradient(const double gradient, const double learning_rate, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
+
+    double final_gradient = clipped_gradient;
+    if (weight_param.get_weight_decay() > 0.0)
+    {
+      final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
+    }
+
+    double new_weight = weight_param.get_value() - learning_rate * final_gradient;
+    weight_param.set_raw_gradient(clipped_gradient);
+    weight_param.set_value(new_weight);
+  }
+
   const std::vector<std::vector<WeightParam>>& get_weights() const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
@@ -90,12 +107,12 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     return _weight_params;
   }
-  inline WeightParam& get_weight_params(unsigned residual_source_index, unsigned target_neuron_index)
+  inline WeightParam& get_weight_params(unsigned out, unsigned in)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    assert(residual_source_index < _weight_params.size());
-    assert(target_neuron_index < _weight_params[residual_source_index].size());
-    return _weight_params[residual_source_index][target_neuron_index];
+    assert(out < _weight_params.size());
+    assert(in < _weight_params[out].size());
+    return _weight_params[out][in];
   }
   void update_weight(size_t out, size_t in, double delta)
   {
@@ -128,30 +145,37 @@ public:
     int residual_layer_number,
     const activation& activation_method,
     unsigned input_size,
-    unsigned  output_size
+    unsigned  output_size,
+    double weight_decay
   ) noexcept
   {
     if (residual_layer_number == 0)
     {
       return nullptr;
     }
-    std::vector<std::vector<WeightParam>> weight_params;
-    weight_params.reserve(output_size);
-    for (unsigned out = 0; out < output_size; ++out)
-    {
-      std::vector<WeightParam> weights;
-      weights.reserve(input_size);
-      auto values = activation_method.weight_initialization(input_size, 1);
-      for (auto value : values)
-      {
-        weights.emplace_back(WeightParam(value, 0.0, 0.0, 0.0));
-      }
-      weight_params.emplace_back(weights);
-    }
-    return new ResidualProjector(weight_params);
+    return new ResidualProjector(input_size, output_size, activation_method, weight_decay);
   }
 
 private:
+  static double clip_gradient(double gradient, double gradient_clip_threshold)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (!std::isfinite(gradient))
+    {
+      Logger::panic("Gradient is not finite.");
+    }
+
+    if (gradient > gradient_clip_threshold)
+    {
+      return gradient_clip_threshold;
+    }
+    if (gradient < -gradient_clip_threshold)
+    {
+      return -gradient_clip_threshold;
+    }
+    return gradient;
+  }
+
   unsigned _input_size;
   unsigned _output_size;
   std::vector<std::vector<WeightParam>> _weight_params;  // shape: [output][input]
