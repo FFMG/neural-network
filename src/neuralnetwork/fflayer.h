@@ -63,7 +63,6 @@ public:
       GradientsAndOutputs& gradients_and_outputs,
       const std::vector<double> &target_outputs,
       const std::vector<HiddenState> &hidden_states,
-      double gradient_clip_threshold,
       ErrorCalculation::type error_calculation_type) const override;
 
   void calculate_error_deltas(
@@ -87,10 +86,9 @@ public:
       const Layer &next_layer,
       const std::vector<double> &next_grad_matrix,
       const std::vector<double> &output_matrix,
-      const std::vector<HiddenState> &hidden_states,
-      double gradient_clip_threshold) const override;
+      const std::vector<HiddenState> &hidden_states) const override;
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) override;
+  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale) override;
 
   bool has_bias() const noexcept override;
 

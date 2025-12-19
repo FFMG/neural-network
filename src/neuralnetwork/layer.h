@@ -241,7 +241,6 @@ public:
     GradientsAndOutputs& gradients_and_outputs,
     const std::vector<double>& target_outputs,
     const std::vector<HiddenState>& hidden_states,
-    double gradient_clip_threshold,
     ErrorCalculation::type error_calculation_type) const = 0;
 
   inline const activation& get_activation() const noexcept
@@ -255,10 +254,9 @@ public:
     const Layer& next_layer,
     const std::vector<double>& next_grad_matrix,
     const std::vector<double>& output_matrix,
-    const std::vector<HiddenState>& hidden_states,
-    double gradient_clip_threshold) const = 0;
+    const std::vector<HiddenState>& hidden_states) const = 0;
 
-  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold) = 0;
+  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale) = 0;
 
   const std::vector<Neuron>& get_neurons() const noexcept
   {
@@ -332,25 +330,6 @@ public:
   virtual bool has_bias() const noexcept = 0;
 
   virtual Layer* clone() const = 0;
-
-  static double clip_gradient(double gradient, double gradient_clip_threshold)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (!std::isfinite(gradient))
-    {
-      Logger::panic("Gradient is not finite.");
-    }
-
-    if (gradient > gradient_clip_threshold)
-    {
-      return gradient_clip_threshold;
-    }
-    if (gradient < -gradient_clip_threshold)
-    {
-      return -gradient_clip_threshold;
-    }
-    return gradient;
-  }
 
 protected:
 

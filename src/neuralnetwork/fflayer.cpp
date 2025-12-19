@@ -229,8 +229,7 @@ void FFLayer::calculate_mse_error_deltas(
 void FFLayer::calculate_output_gradients(
   GradientsAndOutputs& gradients_and_outputs,
   const std::vector<double>& target_outputs,
-  const std::vector<HiddenState>&,
-  double gradient_clip_threshold,
+  const std::vector<HiddenState>& hidden_states,
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -240,10 +239,23 @@ void FFLayer::calculate_output_gradients(
   std::vector<double> deltas(N_total, 0.0);
   calculate_error_deltas(deltas, target_outputs, gradients_and_outputs.get_outputs(get_layer_index()), error_calculation_type);
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
   {
-    double grad = deltas[neuron_index];
-    gradients[neuron_index] = clip_gradient(grad, gradient_clip_threshold);
+    // For BCE with Sigmoid, the derivative of the loss w.r.t. pre-activation is just (a - y)
+    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    {
+      gradients[neuron_index] = deltas[neuron_index];
+    }
+  }
+  else
+  {
+    // For other cases (like MSE), we need to multiply by the activation's derivative
+    const auto& current_hidden_state = hidden_states[0];
+    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    {
+      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+      gradients[neuron_index] = deltas[neuron_index] * deriv;
+    }
   }
   gradients_and_outputs.set_gradients(get_layer_index(), gradients);
 }
@@ -253,8 +265,7 @@ void FFLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
   const std::vector<double>&,
-  const std::vector<HiddenState>& hidden_states,
-  double gradient_clip_threshold) const
+  const std::vector<HiddenState>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t N_this = get_number_neurons();
@@ -272,25 +283,22 @@ void FFLayer::calculate_hidden_gradients(
       weighted_sum += next_grad_matrix[j] * next_layer.get_weight_param(i, j).get_value();
     }
     double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
-    double g = weighted_sum * deriv;
-    grad_matrix[i] = clip_gradient(g, gradient_clip_threshold);
+    grad_matrix[i] = weighted_sum * deriv;
   }
   gradients_and_outputs.set_gradients(get_layer_index(), grad_matrix);
 }
 
-void FFLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
+void FFLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
-  
-  double final_gradient = clipped_gradient;
+  double final_gradient = gradient * clipping_scale;
   if (!is_bias && weight_param.get_weight_decay() > 0.0)
   {
     final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
   }
 
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-  weight_param.set_raw_gradient(clipped_gradient);
+  weight_param.set_raw_gradient(final_gradient);
   weight_param.set_value(new_weight);
 }
 

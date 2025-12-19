@@ -334,7 +334,6 @@ void ElmanRNNLayer::calculate_output_gradients(
   GradientsAndOutputs& gradients_and_outputs,
   const std::vector<double>& target_outputs,
   const std::vector<HiddenState>& hidden_states,
-  double gradient_clip_threshold,
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -360,15 +359,24 @@ void ElmanRNNLayer::calculate_output_gradients(
       hs_ptr = &hidden_states.back();
     }
 
-    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
     {
-      double deriv = 1.0;
-      if (hs_ptr != nullptr)
-      {
-        deriv = get_activation().activate_derivative(hs_ptr->get_pre_activation_sum_at_neuron(neuron_index));
-      }
-      double g = deltas[neuron_index] * deriv;
-      gradients[neuron_index] = clip_gradient(g, gradient_clip_threshold);
+		  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+		  {
+			  gradients[neuron_index] = deltas[neuron_index];
+		  }
+    }
+    else
+    {
+		  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+		  {
+		    double deriv = 1.0;
+		    if (hs_ptr != nullptr)
+		    {
+  			  deriv = get_activation().activate_derivative(hs_ptr->get_pre_activation_sum_at_neuron(neuron_index));
+		    }
+		    gradients[neuron_index] = deltas[neuron_index] * deriv;
+		  }
     }
   }
   else if (given_outputs.size() >= N_total && N_total > 0)
@@ -390,22 +398,33 @@ void ElmanRNNLayer::calculate_output_gradients(
       last_hs_ptr = &hidden_states.back();
     }
 
-    // Compute gradient for each neuron using last time-step output and its pre-activation derivative
-    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
     {
-      const size_t last_idx = (num_time_steps - 1) * N_total + neuron_index;
-      const double last_output = given_outputs[last_idx];
-      const double target = (neuron_index < target_outputs.size()) ? target_outputs[neuron_index] : 0.0;
-      const double delta = last_output - target;
+		  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+		  {
+		    const size_t last_idx = (num_time_steps - 1) * N_total + neuron_index;
+		    const double last_output = given_outputs[last_idx];
+		    const double target = (neuron_index < target_outputs.size()) ? target_outputs[neuron_index] : 0.0;
+		    gradients[neuron_index] = last_output - target;
+		  }
+    }
+    else
+    {
+		  // Compute gradient for each neuron using last time-step output and its pre-activation derivative
+		  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+		  {
+		    const size_t last_idx = (num_time_steps - 1) * N_total + neuron_index;
+		    const double last_output = given_outputs[last_idx];
+		    const double target = (neuron_index < target_outputs.size()) ? target_outputs[neuron_index] : 0.0;
+		    const double delta = last_output - target;
 
-      double deriv = 1.0;
-      if (last_hs_ptr != nullptr)
-      {
-        deriv = get_activation().activate_derivative(last_hs_ptr->get_pre_activation_sum_at_neuron(neuron_index));
-      }
-
-      double g = delta * deriv;
-      gradients[neuron_index] = clip_gradient(g, gradient_clip_threshold);
+		    double deriv = 1.0;
+		    if (last_hs_ptr != nullptr)
+		    {
+			    deriv = get_activation().activate_derivative(last_hs_ptr->get_pre_activation_sum_at_neuron(neuron_index));
+		    }
+		    gradients[neuron_index] = delta * deriv;
+		  }
     }
   }
   else
@@ -425,8 +444,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
   const std::vector<double>&,
-  const std::vector<HiddenState>& hidden_states,
-  double gradient_clip_threshold) const
+  const std::vector<HiddenState>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t num_time_steps = hidden_states.size();
@@ -501,7 +519,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
       // derivative uses the stored pre-activation sums for this timestep
       double deriv = get_activation().activate_derivative(hidden_states[static_cast<size_t>(t)].get_pre_activation_sum_at_neuron((unsigned)i));
       double g = grad_from_layer_and_time * deriv;
-      grad_matrix_t[i] = clip_gradient(g, gradient_clip_threshold);
+      grad_matrix_t[i] = g;
 
       // accumulate across time for final gradients used to update recurrent biases/other params
       grad_matrix[i] += grad_matrix_t[i];
@@ -576,18 +594,17 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   gradients_and_outputs.set_rnn_gradients(get_layer_index(), rnn_grad_matrix);
 }
 
-void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
+void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
-  double final_gradient = clipped_gradient;
+  double final_gradient = gradient * clipping_scale;
   if (!is_bias && weight_param.get_weight_decay() > 0.0)
   {
     final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
   }
 
   double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-  weight_param.set_raw_gradient(clipped_gradient);
+  weight_param.set_raw_gradient(final_gradient);
   weight_param.set_value(new_weight);
 }
 
