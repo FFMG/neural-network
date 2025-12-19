@@ -11,8 +11,8 @@ public:
   {
     TEST_START("Residual Xor test.")
 
-    auto batch_size = 1;
-    auto epoch = 1500;
+    auto batch_size = 3;
+    auto epoch = 100000;
 
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {
@@ -33,18 +33,19 @@ public:
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
     // std::vector<unsigned> topology = {2, 3, 1};
+    // std::vector<double> dropout = { 0.0 };
     auto options = NeuralNetworkOptions::create(topology)
       .with_dropout(dropout)
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::relu)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
-      .with_learning_rate(0.01)
+      .with_learning_rate(0.005)
       .with_clip_threshold(1.5)
       .with_learning_rate_decay_rate(0.0)
-      .with_learning_rate_boost_rate(0.05, 1.0)
+      .with_learning_rate_boost_rate(0.00, 1.0)
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::SGD)
+      .with_optimiser_type(OptimiserType::NadamW)
       .with_residual_layer_jump(3)
       .build();
 
