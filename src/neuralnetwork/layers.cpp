@@ -176,7 +176,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       optimiser_type, 
       residual_layer_number, 
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
   } 
   else 
   {
@@ -190,7 +190,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       optimiser_type, 
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
   }
 }
 
@@ -211,7 +211,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       optimiser_type, 
       residual_layer_number, 
       0.0, // no dropout for output layer
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
   } 
   else 
   {
@@ -225,7 +225,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       optimiser_type, 
       residual_layer_number,
       0.0, // no dropout for output layer
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer));
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
   }
 }
 
@@ -238,15 +238,21 @@ const std::vector<unsigned>& Layers::recurrent_layers() const noexcept
 ResidualProjector* Layers::create_residual_projector(
   const activation& activation_method,
   int residual_layer_number,
-  int number_of_neurons_in_current_layer)
+  int number_of_neurons_in_current_layer,
+  double weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  if (residual_layer_number <= 0)
+  if (residual_layer_number < 0)
   {
     return nullptr;
   }
 
   auto number_of_neurons_in_that_layer = _layers[residual_layer_number]->get_number_neurons();
 
-  return new ResidualProjector(number_of_neurons_in_that_layer, number_of_neurons_in_current_layer, activation_method);
+  return ResidualProjector::create(
+    residual_layer_number,
+    activation_method, 
+    number_of_neurons_in_that_layer, 
+    number_of_neurons_in_current_layer, 
+    weight_decay);
 }
