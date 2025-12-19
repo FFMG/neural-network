@@ -236,15 +236,17 @@ std::vector<double> ElmanRNNLayer::calculate_forward_feed(
 
 	  if (!residual_output_values.empty())
 	  {
-		  if (residual_output_values.size() != N_this)
+		  // Use the layer's residual projector if present
+		  if (const ResidualProjector* rp = get_residual_projector())
 		  {
-			  Logger::warning("Residual output values size mismatch. Expected ", N_this, " but got ", residual_output_values.size());
-		  }
-		  else
-		  {
-			  for (size_t j = 0; j < N_this; j++)
+			  auto projected = rp->project(residual_output_values); // size == N_this (output size)
+			  // add projected residual contribution to pre-activation sums
+			  for (size_t j = 0; j < N_this; ++j)
 			  {
-				  pre_activation_sums[j] += residual_output_values[j];
+				  pre_activation_sums[j] += projected[j];
+			  }
+			  if (Logger::can_trace()) {
+				  Logger::trace([=] { return Logger::factory("RNN Forward t=", t, " added residual projection sample=", pre_activation_sums.size()?pre_activation_sums[0]:0.0); });
 			  }
 		  }
 	  }
