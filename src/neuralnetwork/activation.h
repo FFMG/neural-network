@@ -29,10 +29,10 @@ public:
   activation& operator=(activation&& src) noexcept;
   ~activation() = default;
 
-  double activate(double x) const;
-  double activate_derivative(double x) const;
+  double activate(double x) const noexcept;;
+  double activate_derivative(double x) const noexcept;;
 
-  double momentum() const;
+  double momentum() const noexcept;
 
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
   double weight_initialization() const;
@@ -41,34 +41,40 @@ public:
   static std::string method_to_string(method m);
   static method string_to_method(const std::string& str);
   
-private:
-  static std::vector<double> he_initialization(int fan_in, int fan_out);
-  static std::vector<double> xavier_initialization(int fan_in, int fan_out);
-  static std::vector<double> lecun_initialization(int fan_in, int fan_out);
-  static std::vector<double> selu_initialization(int fan_in, int fan_out);
+  inline method get_method() const noexcept 
+  { 
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    return _method; 
+  }
 
-  static double calculate_selu(double x);
-  static double calculate_selu_derivative(double x);
-  static double calculate_sigmoid(double x);
-  static double calculate_sigmoid_derivative(double x);
-  static double calculate_tanh(double x);
-  static double calculate_tanh_derivative(double x);
-  static double calculate_relu(double x);
-  static double calculate_relu_derivative(double x);
-  static double calculate_leakyRelu(double x, double alpha);
-  static double calculate_leakyRelu_derivative(double x, double alpha);
-  static double calculate_PReLU(double x, double alpha);
-  static double calculate_PReLU_derivative(double x, double alpha);
-  static double calculate_linear(double x);
-  static double calculate_linear_derivative(double x);
-  static double calculate_swish(double x);
-  static double calculate_swish_derivative(double x);
-  static double calculate_mish(double x);
-  static double calculate_mish_derivative(double x);
-  static double calculate_gelu(double x);
-  static double calculate_gelu_derivative(double x);
-  static double calculate_elu(double x, double alpha);
-  static double calculate_elu_derivative(double x, double alpha);
+private:
+  static std::vector<double> he_initialization(int fan_in, int fan_out) noexcept;
+  static std::vector<double> xavier_initialization(int fan_in, int fan_out) noexcept;
+  static std::vector<double> lecun_initialization(int fan_in, int fan_out) noexcept;
+  static std::vector<double> selu_initialization(int fan_in, int fan_out) noexcept;
+
+  static double calculate_selu(double x) noexcept;
+  static double calculate_selu_derivative(double x) noexcept;
+  static double calculate_sigmoid(double x) noexcept;
+  static double calculate_sigmoid_derivative(double x) noexcept;
+  static double calculate_tanh(double x) noexcept;
+  static double calculate_tanh_derivative(double x) noexcept;
+  static double calculate_relu(double x) noexcept;
+  static double calculate_relu_derivative(double x) noexcept;
+  static double calculate_leakyRelu(double x, double alpha) noexcept;
+  static double calculate_leakyRelu_derivative(double x, double alpha) noexcept;
+  static double calculate_PReLU(double x, double alpha) noexcept;
+  static double calculate_PReLU_derivative(double x, double alpha) noexcept;
+  static double calculate_linear(double x) noexcept;
+  static double calculate_linear_derivative(double x) noexcept;
+  static double calculate_swish(double x) noexcept;
+  static double calculate_swish_derivative(double x) noexcept;
+  static double calculate_mish(double x) noexcept;
+  static double calculate_mish_derivative(double x) noexcept;
+  static double calculate_gelu(double x) noexcept;
+  static double calculate_gelu_derivative(double x) noexcept;
+  static double calculate_elu(double x, double alpha) noexcept;
+  static double calculate_elu_derivative(double x, double alpha) noexcept;
 
   method _method;
   double _alpha;

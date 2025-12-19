@@ -55,88 +55,88 @@ activation& activation::operator=(activation&& src) noexcept
   return *this;
 }
 
-double activation::calculate_linear(double x)
+double activation::calculate_linear(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x;
 }
 
-double activation::calculate_linear_derivative(double /*x*/)
+double activation::calculate_linear_derivative(double /*x*/) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1.0;
 }
 
 // Sigmoid function
-double activation::calculate_sigmoid(double x)
+double activation::calculate_sigmoid(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1 / (1 + std::exp(-x));
 }
 
 // Sigmoid derivative
-double activation::calculate_sigmoid_derivative(double x)
+double activation::calculate_sigmoid_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const auto sigmoid_output = calculate_sigmoid(x);
   return sigmoid_output * (1.0 - sigmoid_output);
 }
 
-double activation::calculate_selu(double x) 
+double activation::calculate_selu(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? x : SELU_ALPHA * (std::exp(x) - 1));
 }
 
-double activation::calculate_selu_derivative(double x) 
+double activation::calculate_selu_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? 1.0 : SELU_ALPHA * std::exp(x));
 }
 
-double activation::calculate_elu(double x, double alpha)
+double activation::calculate_elu(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x > 0.0 ? x : alpha * (std::exp(x) - 1.0);
 }
 
-double activation::calculate_elu_derivative(double x, double alpha)
+double activation::calculate_elu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-double activation::calculate_relu(double x)
+double activation::calculate_relu(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::max(0.0, x);
 }
 
-double activation::calculate_relu_derivative(double x)
+double activation::calculate_relu_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0.0) ? 1.0 : 0.0;
 }
 
-double activation::calculate_leakyRelu(double x, double alpha)
+double activation::calculate_leakyRelu(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
-double activation::calculate_leakyRelu_derivative(double x, double alpha)
+double activation::calculate_leakyRelu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_tanh(double x)
+double activation::calculate_tanh(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::tanh(x);
 }
 
-double activation::calculate_tanh_derivative(double x)
+double activation::calculate_tanh_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const auto t = std::tanh(x);
@@ -144,26 +144,26 @@ double activation::calculate_tanh_derivative(double x)
 }
 
 // PReLU Activation Function
-double activation::calculate_PReLU(double x, double alpha)
+double activation::calculate_PReLU(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
 // PReLU Derivative Function
-double activation::calculate_PReLU_derivative(double x, double alpha)
+double activation::calculate_PReLU_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_mish(double x)
+double activation::calculate_mish(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x * std::tanh(std::log1p(std::exp(x)));
 }
 
-double activation::calculate_mish_derivative(double x)
+double activation::calculate_mish_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   double sp = std::log1p(std::exp(x)); // softplus
@@ -172,7 +172,7 @@ double activation::calculate_mish_derivative(double x)
   return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
 }
 
-double activation::calculate_swish(double x) 
+double activation::calculate_swish(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
@@ -180,7 +180,7 @@ double activation::calculate_swish(double x)
   return x / (1.0 + exp_term);
 }
 
-double activation::calculate_swish_derivative(double x) 
+double activation::calculate_swish_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
@@ -190,13 +190,13 @@ double activation::calculate_swish_derivative(double x)
 }
 
 // Approximate GELU (fast, used in transformers)
-double activation::calculate_gelu(double x) 
+double activation::calculate_gelu(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
 }
 
-double activation::calculate_gelu_derivative(double x)
+double activation::calculate_gelu_derivative(double x) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
@@ -205,7 +205,7 @@ double activation::calculate_gelu_derivative(double x)
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-double activation::momentum() const
+double activation::momentum() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -232,7 +232,7 @@ double activation::momentum() const
   }
 }
 
-double activation::activate(double x) const
+double activation::activate(double x) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -275,7 +275,7 @@ double activation::activate(double x) const
   }
 }
 
-double activation::activate_derivative(double x) const
+double activation::activate_derivative(double x) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -352,7 +352,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   }
 }
 
-std::vector<double> activation::xavier_initialization(int fan_in, int fan_out)
+std::vector<double> activation::xavier_initialization(int fan_in, int fan_out) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -371,7 +371,7 @@ std::vector<double> activation::xavier_initialization(int fan_in, int fan_out)
   return weights;
 }
 
-std::vector<double> activation::he_initialization(int fan_in, int fan_out)
+std::vector<double> activation::he_initialization(int fan_in, int fan_out) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -386,7 +386,7 @@ std::vector<double> activation::he_initialization(int fan_in, int fan_out)
   return weights;
 }
 
-std::vector<double> activation::selu_initialization(int fan_in, int fan_out)
+std::vector<double> activation::selu_initialization(int fan_in, int fan_out) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
@@ -403,7 +403,7 @@ std::vector<double> activation::selu_initialization(int fan_in, int fan_out)
   return weights;
 }
 
-std::vector<double> activation::lecun_initialization(int fan_in, int fan_out)
+std::vector<double> activation::lecun_initialization(int fan_in, int fan_out) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
