@@ -205,6 +205,12 @@ public:
     return _residual_projector;
   }
 
+  ResidualProjector* get_residual_projector()
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _residual_projector;
+  }
+
   inline unsigned get_number_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
