@@ -81,19 +81,18 @@ public:
     return projected;
   }
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, WeightParam& weight_param, double clipping_scale, double gradient_clip_threshold)
+  void apply_weight_gradient(const double gradient, const double learning_rate, WeightParam& weight_param, double clipping_scale)
   {
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    auto clipped_gradient = clipping_scale <= 0.0 ? clip_gradient(gradient, gradient_clip_threshold) : gradient * clipping_scale;
+    double final_gradient = gradient * clipping_scale;
 
-    double final_gradient = clipped_gradient;
     if (weight_param.get_weight_decay() > 0.0)
     {
       final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
     }
 
     double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-    weight_param.set_raw_gradient(clipped_gradient);
+    weight_param.set_raw_gradient(final_gradient);
     weight_param.set_value(new_weight);
   }
 
@@ -157,25 +156,6 @@ public:
   }
 
 private:
-  static double clip_gradient(double gradient, double gradient_clip_threshold)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (!std::isfinite(gradient))
-    {
-      Logger::panic("Gradient is not finite.");
-    }
-
-    if (gradient > gradient_clip_threshold)
-    {
-      return gradient_clip_threshold;
-    }
-    if (gradient < -gradient_clip_threshold)
-    {
-      return -gradient_clip_threshold;
-    }
-    return gradient;
-  }
-
   unsigned _input_size;
   unsigned _output_size;
   std::vector<std::vector<WeightParam>> _weight_params;  // shape: [output][input]
