@@ -39,7 +39,8 @@ private:
     _recurrent_layers({}),
     _weight_decay(0.0),
     _error_calculation_type(ErrorCalculation::type::mse),
-    _enable_bptt(true)
+    _enable_bptt(true),
+    _bptt_max_ticks(0)
   {
   }
 
@@ -83,6 +84,7 @@ public:
       _weight_decay = nno._weight_decay;
       _error_calculation_type = nno._error_calculation_type;
       _enable_bptt = nno._enable_bptt;
+      _bptt_max_ticks = nno._bptt_max_ticks;
     }
     return *this;
   }
@@ -116,6 +118,7 @@ public:
       _weight_decay = nno._weight_decay;
       _error_calculation_type = nno._error_calculation_type;
       _enable_bptt = nno._enable_bptt;
+      _bptt_max_ticks = nno._bptt_max_ticks;
 
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -130,6 +133,7 @@ public:
       nno._shuffle_training_data = true;
       nno._weight_decay = 0.0;
       nno._error_calculation_type = ErrorCalculation::type::mse; // Reset moved-from value
+      nno._bptt_max_ticks = 0;
     }
     return *this;
   }
@@ -247,6 +251,11 @@ public:
   NeuralNetworkOptions& with_enable_bptt(bool enable_bptt)
   {
     _enable_bptt = enable_bptt;
+    return *this;
+  }
+  NeuralNetworkOptions& with_bptt_max_ticks(int bptt_max_ticks)
+  {
+    _bptt_max_ticks = bptt_max_ticks;
     return *this;
   }
   
@@ -391,62 +400,65 @@ public:
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold)
-            .with_shuffle_training_data(true)
-            .with_weight_decay(0.0)
-            .with_enable_bptt(true);
-        }
-      
-        inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
-        inline const std::vector<double>& dropout() const noexcept { return _dropout; }
-        inline const activation::method& hidden_activation_method() const noexcept { return _hidden_activation; }
-        inline const activation::method& output_activation_method() const noexcept { return _output_activation; }
-        inline double learning_rate() const noexcept { return _learning_rate; }
-        inline int number_of_epoch() const noexcept { return _number_of_epoch; }
-        inline int batch_size() const noexcept { return _batch_size; }
-        inline bool data_is_unique() const noexcept { return _data_is_unique; }
-        inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
-        inline Logger::LogLevel log_level() const noexcept { return _log_level; }
-        inline int number_of_threads() const noexcept { return _number_of_threads; }
-        inline double learning_rate_decay_rate() const noexcept { return _learning_rate_decay_rate; }
-        inline bool adaptive_learning_rate() const noexcept { return _adaptive_learning_rate; }
-        inline OptimiserType optimiser_type() const noexcept { return _optimiser_type; }
-        inline double learning_rate_restart_rate() const noexcept { return _learning_rate_restart_rate; }
-        inline double learning_rate_restart_boost() const noexcept { return _learning_rate_restart_boost; }
-        inline int residual_layer_jump() const noexcept { return _residual_layer_jump; }
-        inline double clip_threshold() const noexcept { return _clip_threshold; }
-        inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
-        inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
-        inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
-        inline const std::vector<unsigned>& recurrent_layers() const noexcept { return _recurrent_layers; }
-        inline double weight_decay() const noexcept{ return _weight_decay; }
-        inline ErrorCalculation::type error_calculation_type() const noexcept { return _error_calculation_type; }
-        inline bool enable_bptt() const noexcept { return _enable_bptt; }
-      
-      private:
-        std::vector<unsigned> _topology;
-        std::vector<double> _dropout;
-        activation::method _hidden_activation;
-        activation::method _output_activation;
-        double _learning_rate;
-        int _number_of_epoch;
-        int _batch_size;
-        bool _data_is_unique;
-        std::function<bool(NeuralNetworkHelper&)> _progress_callback;
-        Logger::LogLevel _log_level;
-        int _number_of_threads;
-        double _learning_rate_decay_rate;
-        bool _adaptive_learning_rate;
-        OptimiserType _optimiser_type;
-        double _learning_rate_restart_rate;
-        double _learning_rate_restart_boost;
-        int _residual_layer_jump;
-        double _clip_threshold;
-        double _learning_rate_warmup_start;  //  initial learning rate for warmup
-        double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
-        bool _shuffle_training_data;
-        std::vector<unsigned> _recurrent_layers;
-        double _weight_decay;
-        ErrorCalculation::type _error_calculation_type;
-        bool _enable_bptt;
-      };
+      .with_shuffle_training_data(true)
+      .with_weight_decay(0.0)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(0);
+  }
+
+  inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
+  inline const std::vector<double>& dropout() const noexcept { return _dropout; }
+  inline const activation::method& hidden_activation_method() const noexcept { return _hidden_activation; }
+  inline const activation::method& output_activation_method() const noexcept { return _output_activation; }
+  inline double learning_rate() const noexcept { return _learning_rate; }
+  inline int number_of_epoch() const noexcept { return _number_of_epoch; }
+  inline int batch_size() const noexcept { return _batch_size; }
+  inline bool data_is_unique() const noexcept { return _data_is_unique; }
+  inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
+  inline Logger::LogLevel log_level() const noexcept { return _log_level; }
+  inline int number_of_threads() const noexcept { return _number_of_threads; }
+  inline double learning_rate_decay_rate() const noexcept { return _learning_rate_decay_rate; }
+  inline bool adaptive_learning_rate() const noexcept { return _adaptive_learning_rate; }
+  inline OptimiserType optimiser_type() const noexcept { return _optimiser_type; }
+  inline double learning_rate_restart_rate() const noexcept { return _learning_rate_restart_rate; }
+  inline double learning_rate_restart_boost() const noexcept { return _learning_rate_restart_boost; }
+  inline int residual_layer_jump() const noexcept { return _residual_layer_jump; }
+  inline double clip_threshold() const noexcept { return _clip_threshold; }
+  inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
+  inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
+  inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
+  inline const std::vector<unsigned>& recurrent_layers() const noexcept { return _recurrent_layers; }
+  inline double weight_decay() const noexcept{ return _weight_decay; }
+  inline ErrorCalculation::type error_calculation_type() const noexcept { return _error_calculation_type; }
+  inline bool enable_bptt() const noexcept { return _enable_bptt; }
+  inline int bptt_max_ticks() const noexcept { return _bptt_max_ticks; }
+
+private:
+  std::vector<unsigned> _topology;
+  std::vector<double> _dropout;
+  activation::method _hidden_activation;
+  activation::method _output_activation;
+  double _learning_rate;
+  int _number_of_epoch;
+  int _batch_size;
+  bool _data_is_unique;
+  std::function<bool(NeuralNetworkHelper&)> _progress_callback;
+  Logger::LogLevel _log_level;
+  int _number_of_threads;
+  double _learning_rate_decay_rate;
+  bool _adaptive_learning_rate;
+  OptimiserType _optimiser_type;
+  double _learning_rate_restart_rate;
+  double _learning_rate_restart_boost;
+  int _residual_layer_jump;
+  double _clip_threshold;
+  double _learning_rate_warmup_start;  //  initial learning rate for warmup
+  double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
+  bool _shuffle_training_data;
+  std::vector<unsigned> _recurrent_layers;
+  double _weight_decay;
+  ErrorCalculation::type _error_calculation_type;
+  bool _enable_bptt;
+  int _bptt_max_ticks;
+};
       

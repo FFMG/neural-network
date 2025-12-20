@@ -265,7 +265,8 @@ void FFLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
   const std::vector<double>&,
-  const std::vector<HiddenState>& hidden_states) const
+  const std::vector<HiddenState>& hidden_states,
+  int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t N_this = get_number_neurons();

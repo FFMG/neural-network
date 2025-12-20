@@ -40,7 +40,7 @@ public:
       .with_hidden_activation_method(activation::method::relu)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
-      .with_learning_rate(0.001)
+      .with_learning_rate(0.0003)
       .with_clip_threshold(1.5)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.00, 1.0)

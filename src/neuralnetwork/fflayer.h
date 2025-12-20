@@ -86,7 +86,8 @@ public:
       const Layer &next_layer,
       const std::vector<double> &next_grad_matrix,
       const std::vector<double> &output_matrix,
-      const std::vector<HiddenState> &hidden_states) const override;
+      const std::vector<HiddenState> &hidden_states,
+      int bptt_max_ticks) const override;
 
   void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale) override;
 
