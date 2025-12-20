@@ -90,8 +90,8 @@ private:
   static constexpr const char* LogColorBlue   = "\033[34m";
   static constexpr const char* LogColorCyan   = "\033[36m";
 
-  static constexpr const char* OpenTag = " [ ";
-  static constexpr const char* CloseTag = " ] ";
+  static constexpr const char* OpenTag = " [";
+  static constexpr const char* CloseTag = "] ";
 
   Logger(LogLevel minLevel = LogLevel::Information) : _min_level(minLevel) 
   {
@@ -300,12 +300,12 @@ private:
 
     case LogLevel::Information:
       color_code = LogColorBlue;
-      tag = "info ";
+      tag = "info";
       break;
 
     case LogLevel::Warning:
         color_code = LogColorYellow;
-        tag = "warn ";
+        tag = "warn";
         break;
 
     case LogLevel::Error:
@@ -323,7 +323,7 @@ private:
     }
 
     // 3. Output the color-coded tag, then reset color
-    oss << OpenTag << color_code << tag << LogColorReset << CloseTag;
+    oss << color_code << OpenTag << tag << CloseTag << LogColorReset;
 
     // 4. Output the user's message arguments
     oss << message;
