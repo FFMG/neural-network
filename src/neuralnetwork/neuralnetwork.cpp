@@ -1300,12 +1300,30 @@ void NeuralNetwork::calculate_forward_feed(
       const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
       std::vector<double> previous_layer_input_for_batch_item;
-      if (options().enable_bptt() &&
-        current_layer.is_recurrent() && previous_layer.is_recurrent())
+      if (options().enable_bptt())
       {
-        previous_layer_input_for_batch_item = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+        const auto rnn_out = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+        if (!rnn_out.empty())
+        {
+          previous_layer_input_for_batch_item = rnn_out;
+        }
+        else
+        {
+          const auto out = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+          const size_t nprev = previous_layer.get_number_neurons();
+          if (nprev > 0 && out.size() > nprev && (out.size() % nprev) == 0)
+          {
+            // treat as concatenated time-series
+            previous_layer_input_for_batch_item = out;
+          }
+          else
+          {
+            // fallback to single-timestep outputs
+            previous_layer_input_for_batch_item = out;
+          }
+        }
       }
-      if (previous_layer_input_for_batch_item.empty())
+      else
       {
         previous_layer_input_for_batch_item = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
       }
