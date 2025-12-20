@@ -233,12 +233,7 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   std::vector<HiddenStates> hidden_states;
   hidden_states.resize(1, HiddenStates(get_topology()));
   std::vector<GradientsAndOutputs> gradients;
-  std::vector<unsigned> rnn_topology_vec;
-  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) 
-  {
-    rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
-  }
-  gradients.push_back(GradientsAndOutputs(get_topology(), rnn_topology_vec));
+  gradients.push_back(GradientsAndOutputs(get_topology()));
   {
     std::shared_lock<std::shared_mutex> read(_mutex);
     const std::vector<std::vector<double>> all_inputs = { inputs };
@@ -332,16 +327,12 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   std::vector<std::vector<double>> checking_outputs;
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
-  std::vector<unsigned> rnn_topology_vec;
-  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) {
-      rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
-  }
   {
     std::shared_lock read(_mutex);
     for (size_t index = 0; index < prediction_size; ++index)
     {
       std::vector<GradientsAndOutputs> gradients;
-      gradients.push_back(GradientsAndOutputs(get_topology(), rnn_topology_vec));
+      gradients.push_back(GradientsAndOutputs(get_topology()));
       std::vector<HiddenStates> hidden_states;
       hidden_states.resize(1, HiddenStates(get_topology()));
 
@@ -389,13 +380,8 @@ void NeuralNetwork::train_single_batch(
   std::vector<HiddenStates> hidden_states;
   hidden_states.resize(size, HiddenStates(get_topology()));
 
-  std::vector<unsigned> rnn_topology_vec;
-  for (unsigned rnn_layer_idx : _layers.recurrent_layers()) {
-      rnn_topology_vec.push_back(_layers[rnn_layer_idx].get_number_neurons());
-  }
-
   std::vector<GradientsAndOutputs> gradients;
-  gradients.resize(size, GradientsAndOutputs(get_topology(), rnn_topology_vec));
+  gradients.resize(size, GradientsAndOutputs(get_topology()));
 
   calculate_forward_feed(gradients, inputs_begin, size, _layers, hidden_states, true);
   calculate_back_propagation(gradients, outputs_begin, size, _layers, hidden_states);
@@ -1173,7 +1159,23 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     const auto& hidden_1 = layers[static_cast<unsigned>(layer_number + 1)];
 
     const auto output_values = get_outputs_for_layer(gradients, layer_number);
-    const auto& next_gradients = get_gradients_for_layer(gradients, layer_number+1);
+    
+    std::vector<std::vector<double>> next_gradients;
+    next_gradients.reserve(gradients.size());
+    bool next_is_rnn = hidden_1.get_layer_type() == Layer::LayerType::Recurrent;
+    for (const auto& g : gradients)
+    {
+      std::vector<double> grad;
+      if (next_is_rnn)
+      {
+        grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+      }
+      if (grad.empty())
+      {
+        grad = g.get_gradients(static_cast<unsigned>(layer_number + 1));
+      }
+      next_gradients.emplace_back(std::move(grad));
+    }
 
     // build hs for this layer
     std::vector<std::vector<HiddenState>> hs;
@@ -1245,7 +1247,16 @@ void NeuralNetwork::calculate_forward_feed(
       const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
       const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
-      const auto previous_layer_input_for_batch_item = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+      std::vector<double> previous_layer_input_for_batch_item;
+      if (current_layer.get_layer_type() == Layer::LayerType::Recurrent &&
+        previous_layer.get_layer_type() == Layer::LayerType::Recurrent)
+      {
+        previous_layer_input_for_batch_item = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+      }
+      if (previous_layer_input_for_batch_item.empty())
+      {
+        previous_layer_input_for_batch_item = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+      }
 
       // --- 2a. Prepare residual outputs if current layer uses residuals ---
       std::vector<double> residual_output_values;
@@ -1302,7 +1313,7 @@ void NeuralNetwork::calculate_forward_feed(
       // This is now handled internally by calculate_forward_feed for RNNs
       // and directly by the return value for FFLayers.
       // For FFLayers, forward_feed_result contains the output of current batch item
-      if (layers_container.recurrent_layers()[layer_number] == 0) // Not RNN, so it's FFLayer or similar
+      if (current_layer.get_layer_type() != Layer::LayerType::Recurrent)
       {
           gradients_and_output[b].set_outputs(static_cast<unsigned>(layer_number), forward_feed_result);
       }
