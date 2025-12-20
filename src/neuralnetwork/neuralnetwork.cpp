@@ -1239,7 +1239,7 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
 
     for(size_t i = 0; i < gradients.size(); ++i)
     {
-      hidden_0.calculate_hidden_gradients(gradients[i], hidden_1, next_gradients[i], output_values[i], hidden_states[i].at(layer_number));
+      hidden_0.calculate_hidden_gradients(gradients[i], hidden_1, next_gradients[i], output_values[i], hidden_states[i].at(layer_number), _options.bptt_max_ticks());
     }
   }
 }
@@ -1401,6 +1401,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
+  Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
 
   std::string hidden_layer_message = "  Hidden layers              : {";
   // Log hidden layers details

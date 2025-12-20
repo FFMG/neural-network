@@ -444,7 +444,8 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
   const std::vector<double>& /*output_matrix*/,
-  const std::vector<HiddenState>& hidden_states) const
+  const std::vector<HiddenState>& hidden_states,
+  int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 
@@ -471,7 +472,13 @@ void ElmanRNNLayer::calculate_hidden_gradients(
 
   // Backprop through time
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  for (int t = t_start; t >= 0; --t)
+  int t_end = 0;
+  if (bptt_max_ticks > 0)
+  {
+    t_end = std::max(0, t_start - bptt_max_ticks + 1);
+  }
+
+  for (int t = t_start; t >= t_end; --t)
   {
     // 1) contribution from the "next" layer at time t (either time-distributed or last-only)
     std::vector<double> grad_from_next_layer(N_this, 0.0);

@@ -51,6 +51,8 @@ public:
         .with_clip_threshold(1.0)
         .with_data_is_unique(true)
         .with_recurrent_layers(recurrent_layers)
+        .with_enable_bptt(true)
+        .with_bptt_max_ticks(16)
         .build();
 
       auto* nn = new NeuralNetwork(options);
