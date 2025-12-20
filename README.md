@@ -389,6 +389,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
 * dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
 * clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
+* enable_bptt[=true]: Enable or disable Backpropagation Through Time for RNN layers. When true (default), full sequences are passed between recurrent layers. When false, only the final timestep is passed.
 
 Remember to call `.build()` to create your option as it does error checking.
 
