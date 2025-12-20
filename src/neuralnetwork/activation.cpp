@@ -205,7 +205,7 @@ double activation::calculate_gelu_derivative(double x) noexcept
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-double activation::momentum() const noexcept
+double activation::momentum() const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -232,7 +232,7 @@ double activation::momentum() const noexcept
   }
 }
 
-double activation::activate(double x) const noexcept
+double activation::activate(double x) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -275,7 +275,7 @@ double activation::activate(double x) const noexcept
   }
 }
 
-double activation::activate_derivative(double x) const noexcept
+double activation::activate_derivative(double x) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)

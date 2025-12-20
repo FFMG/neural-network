@@ -29,10 +29,9 @@ public:
   activation& operator=(activation&& src) noexcept;
   ~activation() = default;
 
-  double activate(double x) const noexcept;;
-  double activate_derivative(double x) const noexcept;;
-
-  double momentum() const noexcept;
+  double activate(double x) const;
+  double activate_derivative(double x) const ;
+  double momentum() const;
 
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
   double weight_initialization() const;
