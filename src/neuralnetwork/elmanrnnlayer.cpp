@@ -478,35 +478,51 @@ void ElmanRNNLayer::calculate_hidden_gradients(
 
   // Backprop through time: iterate from last timestep to first.
   const int t_start = static_cast<int>(num_time_steps) - 1;
+  const bool next_is_sequence = (next_grad_matrix.size() == num_time_steps * N_next) && (num_time_steps > 0);
+
   for (int t = t_start; t >= 0; --t)
   {
     std::fill(grad_from_next_layer.begin(), grad_from_next_layer.end(), 0.0); // Reset for each time step
-    // grad_from_next_layer represents contribution from the next (non-recurrent) layer.
-    // This is only non-zero for the final time-step when the next layer consumes
-    // the last hidden-state (common for many setups). Ensure the caller provides
-    // next_grad_matrix accordingly.
-    if (t == t_start)
+
+    // Determine if we apply gradient from next layer at this time step
+    const double* current_next_grad_ptr = nullptr;
+    if (next_is_sequence)
     {
+      current_next_grad_ptr = &next_grad_matrix[t * N_next];
+    }
+    else if (t == t_start)
+    {
+      // Standard Many-to-One: only apply at the last step
       // Defensive: next_grad_matrix should be of size N_next
-      assert(next_grad_matrix.size() == N_next || N_next == 0);
+      if (next_grad_matrix.size() == N_next)
+      {
+        current_next_grad_ptr = next_grad_matrix.data();
+      }
+    }
+
+    if (current_next_grad_ptr != nullptr)
+    {
       for (size_t k = 0; k < N_next; ++k)
       {
+        const double g_k = current_next_grad_ptr[k];
+        if (g_k == 0.0) continue;
         for (size_t i = 0; i < N_this; ++i)
         {
-          // next_layer.get_weight_param(input_index, neuron_index)
-          grad_from_next_layer[i] += next_grad_matrix[k] * next_layer.get_weight_param(i, k).get_value();
+          grad_from_next_layer[i] += g_k * next_layer.get_weight_param(i, k).get_value();
         }
       }
-
-      // log a few values (or none if empty)
-      Logger::trace([=] {
-        return Logger::factory(
-          "HiddenGradients t=", t, " grad_from_next_layer[0..3]=",
-          (grad_from_next_layer.size() > 0 ? grad_from_next_layer[0] : 0.0), ",",
-          (grad_from_next_layer.size() > 1 ? grad_from_next_layer[1] : 0.0), ",",
-          (grad_from_next_layer.size() > 2 ? grad_from_next_layer[2] : 0.0), ",",
-          (grad_from_next_layer.size() > 3 ? grad_from_next_layer[3] : 0.0));
-        });
+      
+      if (t == t_start)
+      {
+         Logger::trace([=] {
+          return Logger::factory(
+            "HiddenGradients t=", t, " grad_from_next_layer[0..3]=",
+            (grad_from_next_layer.size() > 0 ? grad_from_next_layer[0] : 0.0), ",",
+            (grad_from_next_layer.size() > 1 ? grad_from_next_layer[1] : 0.0), ",",
+            (grad_from_next_layer.size() > 2 ? grad_from_next_layer[2] : 0.0), ",",
+            (grad_from_next_layer.size() > 3 ? grad_from_next_layer[3] : 0.0));
+          });
+      }
     }
 
     // Compute gradients for this time-step

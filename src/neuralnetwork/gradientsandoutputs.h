@@ -20,15 +20,6 @@ public:
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
   }
 
-  GradientsAndOutputs(const std::vector<unsigned>& topology, const std::vector<unsigned>& rnn_topology) noexcept: 
-    _outputs(topology),
-    _gradients(topology),
-    _rnn_outputs(rnn_topology),
-    _rnn_gradients(rnn_topology)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-  }
-
   GradientsAndOutputs(const GradientsAndOutputs& src) noexcept:
     _outputs(src._outputs),
     _gradients(src._gradients),
@@ -78,8 +69,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _outputs.zero();
     _gradients.zero();
-    _rnn_outputs.zero();
-    _rnn_gradients.zero();
+    _rnn_outputs.clear();
+    _rnn_gradients.clear();
   }
 
   [[nodiscard]] inline unsigned num_output_layers() const  noexcept
@@ -189,27 +180,37 @@ public:
 private:
   LayersAndNeuronsContainer _outputs;
   LayersAndNeuronsContainer _gradients;
-  LayersAndNeuronsContainer _rnn_outputs;
-  LayersAndNeuronsContainer _rnn_gradients;
+  std::map<unsigned, std::vector<double>> _rnn_outputs;
+  std::map<unsigned, std::vector<double>> _rnn_gradients;
 
 public:
   void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
   {
-    _rnn_outputs.set(layer, outputs);
+    _rnn_outputs[layer] = outputs;
   }
 
   std::vector<double> get_rnn_outputs(unsigned layer) const
   {
-    return _rnn_outputs.get_neurons(layer);
+    const auto it = _rnn_outputs.find(layer);
+    if(it == _rnn_outputs.end())
+    {
+      return {};
+    }
+    return it->second;
   }
 
   void set_rnn_gradients(unsigned layer, const std::vector<double>& gradients)
   {
-    _rnn_gradients.set(layer, gradients);
+    _rnn_gradients[layer] = gradients;
   }
 
   std::vector<double> get_rnn_gradients(unsigned layer) const
   {
-    return _rnn_gradients.get_neurons(layer);
+    const auto it = _rnn_gradients.find(layer);
+    if(it == _rnn_gradients.end())
+    {
+      return {};
+    }
+    return it->second;
   }
 };
