@@ -889,12 +889,8 @@ void NeuralNetwork::apply_weight_gradients(
           {
             const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
             // Use time-series (rnn) outputs from previous layer when available
-            std::vector<double> prev_outputs;
-            if (previous_layer.is_recurrent())
-            {
-              prev_outputs = batch_activation_gradients[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
-            }
-            else
+            std::vector<double> prev_outputs = batch_activation_gradients[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+            if (prev_outputs.empty())
             {
               prev_outputs = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(layer_number - 1));
             }
@@ -1287,20 +1283,32 @@ void NeuralNetwork::calculate_forward_feed(
 
   assert(gradients_and_output.size() == batch_size);
 
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    const auto& current_input = *(inputs_begin + b);
-    // --- 1. Store input layer outputs (no bias appended here) ---
-    gradients_and_output[b].set_outputs(0, current_input);
-
-    // --- 2. Forward propagate from first hidden layer onward ---
+          for (size_t b = 0; b < batch_size; ++b)
+          {
+            const auto& current_input = *(inputs_begin + b);
+            // --- 1. Store input layer outputs (no bias appended here) ---
+            gradients_and_output[b].set_outputs(0, current_input);
+      
+            // --- 1a. If BPTT enabled, also store expanded RNN outputs for input layer ---
+            if (options().enable_bptt() && options().bptt_max_ticks() > 1)
+            {
+              const size_t input_size = layers_container[0].get_number_neurons();
+              if (current_input.size() == input_size) // Single step provided
+              {
+                std::vector<double> expanded;
+                const int ticks = options().bptt_max_ticks();
+                expanded.reserve(input_size * ticks);
+                for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+                gradients_and_output[b].set_rnn_outputs(0, expanded);
+              }
+            }    // --- 2. Forward propagate from first hidden layer onward ---
     for (size_t layer_number = 1; layer_number < layers_container.size(); ++layer_number)
     {
       const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
       const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
       std::vector<double> previous_layer_input_for_batch_item;
-      if (options().enable_bptt())
+      if (options().enable_bptt() && current_layer.is_recurrent())
       {
         const auto rnn_out = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
         if (!rnn_out.empty())
