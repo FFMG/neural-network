@@ -446,7 +446,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const std::vector<double>& /*output_matrix*/,
   const std::vector<HiddenState>& hidden_states) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer::calculate_hidden_gradients");
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 
   const size_t num_time_steps = hidden_states.size();
   const size_t N_this = get_number_neurons();
