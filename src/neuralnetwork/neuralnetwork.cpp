@@ -888,7 +888,50 @@ void NeuralNetwork::apply_weight_gradients(
           for (unsigned b = 0; b < batch_size; ++b)
           {
             const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-            const auto& prev_outputs = batch_activation_gradients[b].get_outputs(layer_number - 1);
+            // Use time-series (rnn) outputs from previous layer when available
+            std::vector<double> prev_outputs;
+            if (previous_layer.is_recurrent())
+            {
+              prev_outputs = batch_activation_gradients[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+            }
+            else
+            {
+              prev_outputs = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+            }
+
+            // Validate sizes to avoid out-of-bounds indexing
+            if (num_time_steps > 0 && prev_outputs.size() != num_time_steps * num_prev_inputs)
+            {
+              Logger::warning("Mismatched prev_outputs size for layer ", layer_number - 1, 
+                              " expected ", (num_time_steps * num_prev_inputs), " got ", prev_outputs.size(),
+                              ". Falling back to repeating last output over time.");
+              // fallback: if scalar output (last output only), repeat it across time steps
+              if (prev_outputs.size() == num_prev_inputs)
+              {
+                std::vector<double> repeated;
+                repeated.reserve(num_time_steps * num_prev_inputs);
+                for (unsigned t = 0; t < num_time_steps; t++)
+                {
+                  repeated.insert(repeated.end(), prev_outputs.begin(), prev_outputs.end());
+                }
+                prev_outputs.swap(repeated);
+              }
+              else
+              {
+                // if size still wrong, skip this batch item to be safe
+                continue;
+              }
+            }
+
+            // ensure rnn_grads length is num_time_steps * num_outputs
+            if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
+            {
+              Logger::warning("Mismatched rnn_grads size for layer ", layer_number,
+                              " expected ", (num_time_steps * num_outputs), " got ", rnn_grads.size(),
+                              ". Skipping this batch item for this gradient term.");
+              continue;
+            }
+
             for (unsigned t = 0; t < num_time_steps; ++t)
             {
               // dE/dz_j(t) * x_i(t)
@@ -915,8 +958,8 @@ void NeuralNetwork::apply_weight_gradients(
               grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(layer_number)[t - 1].get_hidden_state_value_at_neuron(i);
             }
           }
-          // average over batch AND use the same time_scale as input weights (consistent normalization)
-          const double time_denom_rec = time_scale; // previously used (num_time_steps - 1)
+          // average over batch AND time (use num_time_steps-1 for recurrent contributions)
+          const double time_denom_rec = (num_time_steps > 1) ? static_cast<double>(num_time_steps - 1) : 1.0;
           layer_gradients[layer_number].recurrent_weights[i][j] = grad / (static_cast<double>(batch_size) * time_denom_rec);
         }
       }
@@ -928,6 +971,16 @@ void NeuralNetwork::apply_weight_gradients(
         for (unsigned b = 0; b < batch_size; ++b)
         {
           const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+          if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
+          {
+            // already warned above; skip this item
+            continue;
+          }
+          if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
+          {
+            // already warned above; skip this item
+            continue;
+          }
           for (unsigned t = 0; t < num_time_steps; ++t)
           {
             // dE/dz_j(t)
@@ -1162,11 +1215,10 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     
     std::vector<std::vector<double>> next_gradients;
     next_gradients.reserve(gradients.size());
-    bool next_is_rnn = hidden_1.get_layer_type() == Layer::LayerType::Recurrent;
     for (const auto& g : gradients)
     {
       std::vector<double> grad;
-      if (_options.enable_bptt() && next_is_rnn)
+      if (_options.enable_bptt() && hidden_1.is_recurrent())
       {
         grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
       }
@@ -1249,8 +1301,7 @@ void NeuralNetwork::calculate_forward_feed(
 
       std::vector<double> previous_layer_input_for_batch_item;
       if (options().enable_bptt() &&
-        current_layer.get_layer_type() == Layer::LayerType::Recurrent &&
-        previous_layer.get_layer_type() == Layer::LayerType::Recurrent)
+        current_layer.is_recurrent() && previous_layer.is_recurrent())
       {
         previous_layer_input_for_batch_item = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
       }
@@ -1314,7 +1365,7 @@ void NeuralNetwork::calculate_forward_feed(
       // This is now handled internally by calculate_forward_feed for RNNs
       // and directly by the return value for FFLayers.
       // For FFLayers, forward_feed_result contains the output of current batch item
-      if (current_layer.get_layer_type() != Layer::LayerType::Recurrent)
+      if (current_layer.is_recurrent())
       {
           gradients_and_output[b].set_outputs(static_cast<unsigned>(layer_number), forward_feed_result);
       }
