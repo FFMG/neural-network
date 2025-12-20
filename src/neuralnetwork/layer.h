@@ -31,8 +31,7 @@ public:
   {
     Input,
     Hidden,
-    Output,
-    Recurrent
+    Output
   };
 
 protected:
@@ -227,6 +226,11 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_output_neurons;
+  }
+
+  virtual bool is_recurrent() const noexcept {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return false;
   }
 
   virtual std::vector<double> calculate_forward_feed(

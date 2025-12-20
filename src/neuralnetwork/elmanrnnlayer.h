@@ -52,6 +52,11 @@ public:
   virtual ~ElmanRNNLayer();
 
 public:
+  bool is_recurrent() const noexcept override {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return true;
+  }
+
   std::vector<double> calculate_forward_feed(
       GradientsAndOutputs& gradients_and_outputs,
       const Layer &previous_layer,
