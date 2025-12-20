@@ -729,10 +729,10 @@ double NeuralNetwork::calculate_global_clipping_scale(const std::vector<LayerGra
     {
       auto lr = get_learning_rate();
       std::ostringstream ss;
-      ss << std::setprecision(4)
-        << "Layers gradient clipping: norm=" << norm
-        << " scale=" << clipping_scale
-        << " (learning rate: " << lr << ")";
+      ss << std::fixed << std::setprecision(15)
+         << "Layers gradient clipping: norm=" << norm
+         << " scale=" << clipping_scale
+         << " (learning rate: " << lr << ")";
       return ss.str();
     });
 
