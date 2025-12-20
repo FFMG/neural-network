@@ -443,171 +443,116 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   GradientsAndOutputs& gradients_and_outputs,
   const Layer& next_layer,
   const std::vector<double>& next_grad_matrix,
-  const std::vector<double>&,
+  const std::vector<double>& /*output_matrix*/,
   const std::vector<HiddenState>& hidden_states) const
 {
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer::calculate_hidden_gradients");
+
   const size_t num_time_steps = hidden_states.size();
   const size_t N_this = get_number_neurons();
-  const size_t N_next = next_layer.get_number_neurons();
+  const size_t N_next = next_layer.get_number_output_neurons();
 
-  // Defensive: no time steps => nothing to do
+  // Defensive: nothing to do
   if (num_time_steps == 0 || N_this == 0)
   {
     gradients_and_outputs.set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
     gradients_and_outputs.set_rnn_gradients(get_layer_index(), std::vector<double>());
-    Logger::trace([=] { 
-      return Logger::factory("HiddenGradients: empty sequence (num_time_steps=", num_time_steps, ", N_this=", N_this, ")"); 
-    });
     return;
   }
 
-  Logger::trace([=] {
-    return Logger::factory(
-      "HiddenGradients START: num_time_steps=", num_time_steps,
-      ", N_this=", N_this,
-      ", N_next=", N_next,
-      ", next_grad_matrix_size=", next_grad_matrix.size());
-    });
+  // Determine whether next_gradients are time-distributed or single-last-step
+  const bool next_is_time_distributed = (next_grad_matrix.size() == N_next * num_time_steps);
+  const bool next_is_last_only = (next_grad_matrix.size() == N_next);
 
-  std::vector<double> grad_matrix(N_this, 0.0);                     // aggregated dE/dz over time
+  // Prepare accumulators
+  std::vector<double> grad_matrix(N_this, 0.0);                      // aggregated dE/dz over time
   std::vector<double> rnn_grad_matrix(num_time_steps * N_this, 0.0); // per-time dE/dz
-  std::vector<double> d_next_h(N_this, 0.0);                        // dE/dh(t) from t+1
-  std::vector<double> grad_from_next_layer(N_this); // Declare once
-  std::vector<double> grad_matrix_t(N_this);        // Declare once
+  std::vector<double> d_next_h(N_this, 0.0);                         // dE/dh(t) from t+1
 
-  // Backprop through time: iterate from last timestep to first.
+  // Backprop through time
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  const bool next_is_sequence = (next_grad_matrix.size() == num_time_steps * N_next) && (num_time_steps > 0);
-
   for (int t = t_start; t >= 0; --t)
   {
-    std::fill(grad_from_next_layer.begin(), grad_from_next_layer.end(), 0.0); // Reset for each time step
-
-    // Determine if we apply gradient from next layer at this time step
-    const double* current_next_grad_ptr = nullptr;
-    if (next_is_sequence)
+    // 1) contribution from the "next" layer at time t (either time-distributed or last-only)
+    std::vector<double> grad_from_next_layer(N_this, 0.0);
+    if (next_is_time_distributed)
     {
-      current_next_grad_ptr = &next_grad_matrix[t * N_next];
-    }
-    else if (t == t_start)
-    {
-      // Standard Many-to-One: only apply at the last step
-      // Defensive: next_grad_matrix should be of size N_next
-      if (next_grad_matrix.size() == N_next)
-      {
-        current_next_grad_ptr = next_grad_matrix.data();
-      }
-    }
-
-    if (current_next_grad_ptr != nullptr)
-    {
+      // slice for time t: next_grad_matrix[t * N_next + k]
+      const size_t base = static_cast<size_t>(t) * N_next;
       for (size_t k = 0; k < N_next; ++k)
       {
-        const double g_k = current_next_grad_ptr[k];
-        if (g_k == 0.0) continue;
+        const double next_grad_val = next_grad_matrix[base + k];
+        if (!std::isfinite(next_grad_val)) continue;
+        // accumulate into each neuron i of this layer via next layer's input weight from i -> k
         for (size_t i = 0; i < N_this; ++i)
         {
-          grad_from_next_layer[i] += g_k * next_layer.get_weight_param(i, k).get_value();
+          grad_from_next_layer[i] += next_grad_val * next_layer.get_weight_param(static_cast<unsigned>(i), static_cast<unsigned>(k)).get_value();
         }
       }
-      
+    }
+    else if (next_is_last_only)
+    {
+      // Only add next-layer contribution at final timestep
       if (t == t_start)
       {
-         Logger::trace([=] {
-          return Logger::factory(
-            "HiddenGradients t=", t, " grad_from_next_layer[0..3]=",
-            (grad_from_next_layer.size() > 0 ? grad_from_next_layer[0] : 0.0), ",",
-            (grad_from_next_layer.size() > 1 ? grad_from_next_layer[1] : 0.0), ",",
-            (grad_from_next_layer.size() > 2 ? grad_from_next_layer[2] : 0.0), ",",
-            (grad_from_next_layer.size() > 3 ? grad_from_next_layer[3] : 0.0));
-          });
+        for (size_t k = 0; k < N_next; ++k)
+        {
+          const double next_grad_val = next_grad_matrix[k];
+          if (!std::isfinite(next_grad_val)) continue;
+          for (size_t i = 0; i < N_this; ++i)
+          {
+            grad_from_next_layer[i] += next_grad_val * next_layer.get_weight_param(static_cast<unsigned>(i), static_cast<unsigned>(k)).get_value();
+          }
+        }
+      }
+    }
+    else
+    {
+      // no next-layer contribution (shapes unexpected) — leave zeros but warn in trace
+      if (Logger::can_trace())
+      {
+        Logger::trace([=] { return Logger::factory("HiddenGradients: next_grad_matrix shape unexpected (size=", next_grad_matrix.size(), ", expected ", N_next, " or ", N_next * num_time_steps, ")"); });
       }
     }
 
-    // Compute gradients for this time-step
-    std::fill(grad_matrix_t.begin(), grad_matrix_t.end(), 0.0);
+    // 2) compute per-time gradients into pre-activation z(t)
     for (size_t i = 0; i < N_this; ++i)
     {
-      // total gradient into pre-activation z_i(t)
-      double grad_from_layer_and_time = grad_from_next_layer[i] + d_next_h[i];
-
-      // derivative uses the stored pre-activation sums for this timestep
-      double deriv = get_activation().activate_derivative(hidden_states[static_cast<size_t>(t)].get_pre_activation_sum_at_neuron((unsigned)i));
-      double g = grad_from_layer_and_time * deriv;
-      grad_matrix_t[i] = g;
-
-      // accumulate across time for final gradients used to update recurrent biases/other params
-      grad_matrix[i] += grad_matrix_t[i];
-
-      // store per-time dE/dz for use when computing weight gradients
-      rnn_grad_matrix[static_cast<size_t>(t) * N_this + i] = grad_matrix_t[i];
+      const double upstream = grad_from_next_layer[i] + d_next_h[i];
+      const double preact = hidden_states[static_cast<size_t>(t)].get_pre_activation_sum_at_neuron(static_cast<unsigned>(i));
+      const double deriv = get_activation().activate_derivative(preact);
+      double g = upstream * deriv;
+      if (!std::isfinite(g)) g = 0.0;
+      // store raw per-time gradient (no per-element clipping here)
+      rnn_grad_matrix[static_cast<size_t>(t) * N_this + i] = g;
+      grad_matrix[i] += g; // accumulate over time
     }
 
-    Logger::trace([=] 
-      {
-        // log summary for this timestep
-        double sum_abs = 0.0;
-        double max_abs = 0.0;
-        for (auto v : grad_matrix_t) {
-          sum_abs += std::fabs(v); max_abs = std::max(max_abs, std::fabs(v));
-        }
-        return Logger::factory("HiddenGradients t=", t, " grad_matrix_t_sumabs=", sum_abs, ", maxabs=", max_abs);
-      });
-
-    // Compute effect on previous hidden state h(t-1):
-    // d_next_h[i_prev] = sum_j grad_matrix_t[j] * W_h(prev=i_prev -> curr=j)
-    // iterate j (current neuron) then accumulate for each prev neuron i_prev
+    // 3) propagate through recurrent weights to form d_next_h for previous timestep
     std::fill(d_next_h.begin(), d_next_h.end(), 0.0);
     for (size_t j = 0; j < N_this; ++j)
     {
-      const double g_j = grad_matrix_t[j];
+      const double g_j = rnn_grad_matrix[static_cast<size_t>(t) * N_this + j];
       if (g_j == 0.0) continue;
       for (size_t i = 0; i < N_this; ++i)
       {
         d_next_h[i] += g_j * _recurrent_weights[i][j].get_value();
       }
-    }    
-    
-    Logger::trace([=] 
-    {
-      double sum_abs = 0.0;
-      double max_abs = 0.0;
-      for (auto v : d_next_h) 
-      { 
-        sum_abs += std::fabs(v); max_abs = std::max(max_abs, std::fabs(v)); 
-      }
-      return Logger::factory("HiddenGradients after t=", t, " d_next_h_sumabs=", sum_abs, ", maxabs=", max_abs);
-    });
+    }
   }
 
-  // final aggregated gradient stats
-  Logger::trace([=] 
-  {
-    double norm = 0.0;
-    double max_abs = 0.0;
-    for (auto v : grad_matrix) { 
-      norm += v * v; max_abs = std::max(max_abs, std::fabs(v)); 
-    }
-    norm = std::sqrt(norm);
-    return Logger::factory("HiddenGradients END: grad_matrix_norm=", norm, ", grad_matrix_maxabs=", max_abs,
-      ", sample_grad_matrix[0..3]=",
-      (grad_matrix.size() > 0 ? grad_matrix[0] : 0.0), ",",
-      (grad_matrix.size() > 1 ? grad_matrix[1] : 0.0), ",",
-      (grad_matrix.size() > 2 ? grad_matrix[2] : 0.0), ",",
-      (grad_matrix.size() > 3 ? grad_matrix[3] : 0.0));
-  });
-
-  // also log first/last entries of rnn_grad_matrix to check time distribution
-  Logger::trace([=] {
-    return Logger::factory("HiddenGradients rnn_grad_matrix first,last =",
-      rnn_grad_matrix.front(),
-      ",",
-      rnn_grad_matrix.back());
-  });
-
+  // store gradients for later weight-gradient computation
   gradients_and_outputs.set_gradients(get_layer_index(), grad_matrix);
   gradients_and_outputs.set_rnn_gradients(get_layer_index(), rnn_grad_matrix);
+
+  if (Logger::can_trace())
+  {
+    double norm = 0.0;
+    double maxabs = 0.0;
+    for (auto v : grad_matrix) { norm += v * v; maxabs = std::max(maxabs, std::fabs(v)); }
+    norm = std::sqrt(norm);
+    Logger::trace([=] { return Logger::factory("HiddenGradients END layer=", get_layer_index(), " grad_norm=", norm, " maxabs=", maxabs); });
+  }
 }
 
 void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
