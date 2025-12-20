@@ -1166,7 +1166,7 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     for (const auto& g : gradients)
     {
       std::vector<double> grad;
-      if (next_is_rnn)
+      if (_options.enable_bptt() && next_is_rnn)
       {
         grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
       }
@@ -1248,7 +1248,8 @@ void NeuralNetwork::calculate_forward_feed(
       const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
       std::vector<double> previous_layer_input_for_batch_item;
-      if (current_layer.get_layer_type() == Layer::LayerType::Recurrent &&
+      if (options().enable_bptt() &&
+        current_layer.get_layer_type() == Layer::LayerType::Recurrent &&
         previous_layer.get_layer_type() == Layer::LayerType::Recurrent)
       {
         previous_layer_input_for_batch_item = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
@@ -1348,6 +1349,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
+  Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
 
   std::string hidden_layer_message = "  Hidden layers              : {";
   // Log hidden layers details
