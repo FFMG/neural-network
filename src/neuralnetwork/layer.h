@@ -228,7 +228,7 @@ public:
     return _number_output_neurons;
   }
 
-  virtual bool is_recurrent() const noexcept {
+  virtual bool use_bptt() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return false;
   }

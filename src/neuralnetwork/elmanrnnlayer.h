@@ -52,7 +52,7 @@ public:
   virtual ~ElmanRNNLayer();
 
 public:
-  bool is_recurrent() const noexcept override {
+  bool use_bptt() const noexcept override {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return true;
   }
