@@ -1214,7 +1214,7 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     for (const auto& g : gradients)
     {
       std::vector<double> grad;
-      if (_options.enable_bptt() && hidden_1.is_recurrent())
+      if (_options.enable_bptt() && hidden_1.use_bptt())
       {
         grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
       }
@@ -1308,7 +1308,7 @@ void NeuralNetwork::calculate_forward_feed(
       const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
       std::vector<double> previous_layer_input_for_batch_item;
-      if (options().enable_bptt() && current_layer.is_recurrent())
+      if (options().enable_bptt() && current_layer.use_bptt())
       {
         const auto rnn_out = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
         if (!rnn_out.empty())
@@ -1391,7 +1391,7 @@ void NeuralNetwork::calculate_forward_feed(
       // This is now handled internally by calculate_forward_feed for RNNs
       // and directly by the return value for FFLayers.
       // For FFLayers, forward_feed_result contains the output of current batch item
-      if (current_layer.is_recurrent())
+      if (current_layer.use_bptt())
       {
           gradients_and_output[b].set_outputs(static_cast<unsigned>(layer_number), forward_feed_result);
       }
