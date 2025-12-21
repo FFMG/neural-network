@@ -1,89 +1,96 @@
 #pragma once
+#include "./libraries/instrumentor.h"
 
 #include <vector>
 #include <cassert>
 
-/**
- * @class HiddenState
- * @brief A simple container for the state of an entire layer at a single point in time.
- *
- * This class stores the pre-activation sums (z-values) and the final
- * activated output values (hidden state) for all neurons in a layer. It is
- * used to pass information between the forward and backward passes.
- */
 class HiddenState
 {
 public:
-    /**
-     * @brief Default constructor.
-     */
     HiddenState() = default;
 
-    /**
-     * @brief Constructor to initialize with a specific size.
-     * @param num_neurons The number of neurons in the layer.
-     */
-    HiddenState(unsigned num_neurons)
+    HiddenState(unsigned num_neurons) noexcept
       : _pre_activation_sums(num_neurons, 0.0),
         _hidden_state_values(num_neurons, 0.0)
     {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
     }
 
-    /**
-     * @brief Sets the pre-activation sums for the entire layer.
-     * @param sums A vector containing the pre-activation sum for each neuron.
-     */
-    void set_pre_activation_sums(const std::vector<double>& sums)
+    HiddenState(const HiddenState& src) noexcept :
+      _pre_activation_sums(src._pre_activation_sums),
+      _hidden_state_values(src._hidden_state_values)
     {
-        _pre_activation_sums = sums;
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    }
+
+    HiddenState(HiddenState&& src) noexcept :
+      _pre_activation_sums(std::move(src._pre_activation_sums)),
+      _hidden_state_values(std::move(src._hidden_state_values))
+    {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    }
+
+    HiddenState& operator=(const HiddenState& src) noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+      if (this != &src)
+      {
+        _pre_activation_sums = src._pre_activation_sums;
+        _hidden_state_values = src._hidden_state_values;
+      }
+      return *this;
+    }
+
+    HiddenState& operator=(HiddenState&& src) noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+      if (this != &src)
+      {
+        _pre_activation_sums = std::move(src._pre_activation_sums);
+        _hidden_state_values = std::move(src._hidden_state_values);
+      }
+      return *this;
+    }
+
+    inline void set_pre_activation_sums(const std::vector<double>& sums) noexcept
+    {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+      _pre_activation_sums = sums;
     }
     
-    /**
-     * @brief Sets the activated output values (hidden state) for the entire layer.
-     * @param values A vector containing the activated output for each neuron.
-     */
-    void set_hidden_state_values(const std::vector<double>& values)
+    inline void set_hidden_state_values(const std::vector<double>& values) noexcept
     {
-        _hidden_state_values = values;
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+      _hidden_state_values = values;
     }
 
-    /**
-     * @brief Gets the pre-activation sum for a specific neuron.
-     * @param neuron_index The index of the neuron.
-     * @return The pre-activation sum (z-value).
-     */
-    double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
+    inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+#if VALIDATE_DATA == 1
       assert(neuron_index < _pre_activation_sums.size());
+#endif
       return _pre_activation_sums[neuron_index];
     }
-    
-    /**
-     * @brief Gets the entire vector of pre-activation sums.
-     * @return A const reference to the vector of sums.
-     */
-    const std::vector<double>& get_pre_activation_sums() const
+
+    inline const std::vector<double>& get_pre_activation_sums() const noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
       return _pre_activation_sums;
     }
 
-    /**
-     * @brief Gets the activated output value (hidden state) for a specific neuron.
-     * @param neuron_index The index of the neuron.
-     * @return The activated output value.
-     */
-    double get_hidden_state_value_at_neuron(unsigned neuron_index) const
+    inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
+#if VALIDATE_DATA == 1
       assert(neuron_index < _hidden_state_values.size());
+#endif
       return _hidden_state_values[neuron_index];
     }
 
-    /**
-     * @brief Gets the entire vector of hidden state values.
-     * @return A const reference to the vector of activated outputs.
-     */
-    const std::vector<double>& get_hidden_state_values() const 
+    inline const std::vector<double>& get_hidden_state_values() const noexcept
     {
+      MYODDWEB_PROFILE_FUNCTION("HiddenState");
       return _hidden_state_values;
     }
 
