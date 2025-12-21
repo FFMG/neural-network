@@ -4,11 +4,11 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
-#include "residualprojector.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
+#include "residualprojector.h"
 #include "weightparam.h"
 
 #include <vector>
