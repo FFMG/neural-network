@@ -261,7 +261,58 @@ public:
     const std::vector<HiddenState>& hidden_states,
     int bptt_max_ticks) const = 0;
 
-  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale) = 0;
+  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+
+    if (!std::isfinite(gradient))
+    {
+      Logger::panic("Error while calculating input weigh gradient it invalid.");
+    }
+    auto old_velocity = weight_param.get_velocity();
+    if (!std::isfinite(old_velocity))
+    {
+      Logger::panic("Error while calculating input weigh old velocity is invalid.");
+    }
+
+    if (clipping_scale < 0.0)
+    {
+      // If clipping scale is negative, we clip the gradient to a fixed range
+      // This is useful for debugging or when we want to ensure gradients are not too large.
+      Logger::warning("Clipping gradient to a fixed range.");
+    }
+
+    double final_gradient = gradient * clipping_scale;
+    switch (_optimiser_type)
+    {
+    case OptimiserType::None:
+      apply_none_update(weight_param, final_gradient, learning_rate);
+      break;
+
+    case OptimiserType::SGD:
+      apply_sgd_update(weight_param, final_gradient, learning_rate, _activation.momentum(), is_bias);
+      break;
+
+    case OptimiserType::Adam:
+      apply_adam_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+      break;
+
+    case OptimiserType::AdamW:
+      apply_adamw_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8);
+      break;
+
+    case OptimiserType::Nadam:
+      apply_nadam_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8);
+      break;
+
+    case OptimiserType::NadamW:
+      apply_nadamw_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+      break;
+
+    default:
+      Logger::panic("Unknown optimizer type:", (int)_optimiser_type);
+    }
+  }
 
   const std::vector<Neuron>& get_neurons() const noexcept
   {
@@ -413,6 +464,183 @@ protected:
   }
 
 private:
+  inline void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
+    weight_param.set_raw_gradient(raw_gradient);
+    weight_param.set_value(new_weight);
+  }
+
+  inline void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    double previous_velocity = weight_param.get_velocity();
+
+    double velocity = momentum * previous_velocity - learning_rate * raw_gradient;
+
+    if (!is_bias && weight_param.get_weight_decay() > 0.0)
+    {
+      raw_gradient += weight_param.get_weight_decay() * weight_param.get_value();
+    }
+
+    double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
+    weight_param.set_raw_gradient(raw_gradient);
+    weight_param.set_value(new_weight);
+  }
+
+  inline void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // Update timestep
+    weight_param.increment_timestep();
+    const auto& time_step = weight_param.get_timestep();
+
+    // Update moments
+    double m = beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient;
+    double v = beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * raw_gradient * raw_gradient;
+
+    weight_param.set_first_moment_estimate(m);
+    weight_param.set_second_moment_estimate(v);
+
+    double m_hat = m / (1.0 - std::pow(beta1, time_step));
+    double v_hat = v / (1.0 - std::pow(beta2, time_step));
+
+    double adam_update = learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
+
+    // Apply decoupled weight decay (skip if bias)
+    double decayed_weight = is_bias ? weight_param.get_value()
+      : weight_param.get_value() * (1.0 - learning_rate * weight_param.get_weight_decay());
+
+    double new_weight = decayed_weight - adam_update;
+
+    weight_param.set_value(new_weight);
+    weight_param.set_raw_gradient(raw_gradient);
+  }
+
+  inline void apply_adamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,           // unclipped, averaged over batch
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon
+  ) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // Update timestep
+    weight_param.increment_timestep();
+    const auto& time_step = weight_param.get_timestep();
+
+    // Update biased first and second moment estimates
+    weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
+    weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
+
+    // Compute bias-corrected moments
+    double first_moment_estimate = weight_param.get_first_moment_estimate();
+    double m_hat = first_moment_estimate / (1.0 - std::pow(beta1, time_step));
+
+    auto second_moment_estimate = weight_param.get_second_moment_estimate();
+    double v_hat = second_moment_estimate / (1.0 - std::pow(beta2, time_step));
+
+    // AdamW update rule
+    double weight_update = learning_rate * (m_hat / (std::sqrt(v_hat) + epsilon));
+
+    // Decoupled weight decay
+    auto new_weight = weight_param.get_value();
+    new_weight *= (1.0 - learning_rate * weight_param.get_weight_decay());
+
+    // Apply update
+    new_weight -= weight_update;
+
+    weight_param.set_value(new_weight);
+    weight_param.set_raw_gradient(raw_gradient);
+  }
+
+  inline void apply_nadam_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon
+  ) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // Update timestep
+    weight_param.increment_timestep();
+    const auto& time_step = weight_param.get_timestep();
+
+    // These moment estimate updates are identical to Adam
+    weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
+    weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
+
+    double m_hat = weight_param.get_first_moment_estimate() / (1.0 - std::pow(beta1, time_step));
+    double v_hat = weight_param.get_second_moment_estimate() / (1.0 - std::pow(beta2, time_step));
+
+    // Nadam's key difference:
+    // It combines the momentum from the historical gradient (m_hat) with the
+    // momentum from the current gradient.
+    double corrected_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
+
+    // The denominator is the same as Adam's
+    double weight_update = learning_rate * (corrected_gradient / (std::sqrt(v_hat) + epsilon));
+
+    // Apply the final update (No decoupled weight decay)
+    double new_weight = weight_param.get_value() - weight_update;
+
+    weight_param.set_value(new_weight);
+    weight_param.set_raw_gradient(raw_gradient);
+  }
+
+  inline void apply_nadamw_update(
+    WeightParam& weight_param,
+    double raw_gradient,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon,
+    bool is_bias
+  ) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    // 1. Increment timestep
+    weight_param.increment_timestep();
+    const long long time_step = weight_param.get_timestep();
+
+    // 2. Update biased moment estimates
+    double first_moment = beta1 * weight_param.get_first_moment_estimate()
+      + (1.0 - beta1) * raw_gradient;
+    double second_moment = beta2 * weight_param.get_second_moment_estimate()
+      + (1.0 - beta2) * (raw_gradient * raw_gradient);
+
+    weight_param.set_first_moment_estimate(first_moment);
+    weight_param.set_second_moment_estimate(second_moment);
+
+    // 3. Bias corrections
+    double m_hat = first_moment / (1.0 - std::pow(beta1, time_step));
+    double v_hat = second_moment / (1.0 - std::pow(beta2, time_step));
+
+    // 4. NAdam momentum blend (with bias correction for gradient term)
+    double m_nadam = beta1 * m_hat
+      + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
+
+    // 5. Adaptive step
+    double step = m_nadam / (std::sqrt(v_hat) + epsilon);
+
+    // 6. Decoupled weight decay
+    double w = weight_param.get_value();
+    if (!is_bias)
+    {
+      w *= (1.0 - learning_rate * weight_param.get_weight_decay());
+    }
+
+    // 7. Apply update
+    w -= learning_rate * step;
+    weight_param.set_value(w);
+    weight_param.set_raw_gradient(raw_gradient);
+  }
+
   unsigned _layer_index;
   LayerType _layer_type;
   activation _activation;

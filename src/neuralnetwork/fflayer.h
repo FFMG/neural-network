@@ -89,8 +89,6 @@ public:
       const std::vector<HiddenState> &hidden_states,
       int bptt_max_ticks) const override;
 
-  void apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale) override;
-
   bool has_bias() const noexcept override;
 
   const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;

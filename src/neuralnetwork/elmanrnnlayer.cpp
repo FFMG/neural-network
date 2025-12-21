@@ -562,20 +562,6 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   }
 }
 
-void ElmanRNNLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  double final_gradient = gradient * clipping_scale;
-  if (!is_bias && weight_param.get_weight_decay() > 0.0)
-  {
-    final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
-  }
-
-  double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-  weight_param.set_raw_gradient(final_gradient);
-  weight_param.set_value(new_weight);
-}
-
 const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_recurrent_weight_params() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");

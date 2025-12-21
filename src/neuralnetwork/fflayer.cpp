@@ -289,20 +289,6 @@ void FFLayer::calculate_hidden_gradients(
   gradients_and_outputs.set_gradients(get_layer_index(), grad_matrix);
 }
 
-void FFLayer::apply_weight_gradient(const double gradient, const double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  double final_gradient = gradient * clipping_scale;
-  if (!is_bias && weight_param.get_weight_decay() > 0.0)
-  {
-    final_gradient += weight_param.get_weight_decay() * weight_param.get_value();
-  }
-
-  double new_weight = weight_param.get_value() - learning_rate * final_gradient;
-  weight_param.set_raw_gradient(final_gradient);
-  weight_param.set_value(new_weight);
-}
-
 Layer* FFLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
