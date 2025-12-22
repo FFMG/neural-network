@@ -114,12 +114,34 @@ public:
     for (size_t in = 0; in < _input_size; ++in)
     {
       const double val = residual_layer_outputs[in];
+      if (val == 0.0) continue;
       for (size_t out = 0; out < _output_size; ++out)
       {
         projected[out] += _w_values[in * _output_size + out] * val;
       }
     }
     return projected;
+  }
+
+  std::vector<std::vector<double>> project_batch(const std::vector<std::vector<double>>& batch_residual_layer_outputs) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    const size_t batch_size = batch_residual_layer_outputs.size();
+    std::vector<std::vector<double>> batch_projected(batch_size, std::vector<double>(_output_size, 0.0));
+    
+    for (size_t in = 0; in < _input_size; ++in)
+    {
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        const double val = batch_residual_layer_outputs[b][in];
+        if (val == 0.0) continue;
+        for (size_t out = 0; out < _output_size; ++out)
+        {
+          batch_projected[b][out] += _w_values[in * _output_size + out] * val;
+        }
+      }
+    }
+    return batch_projected;
   }
 
   void apply_weight_gradient(double gradient, double learning_rate, unsigned in, unsigned out, double clipping_scale)

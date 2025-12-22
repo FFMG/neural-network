@@ -75,82 +75,90 @@ bool FFLayer::has_bias() const noexcept
   return _has_bias_neuron;
 }
 
-std::vector<double> FFLayer::calculate_forward_feed(
-  GradientsAndOutputs& gradients_and_outputs,
+void FFLayer::calculate_forward_feed(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& previous_layer,
-  const std::vector<double>& previous_layer_inputs,
-  const std::vector<double>& residual_output_values,
-  std::vector<HiddenState>& hidden_states,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<HiddenStates>& batch_hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
-  std::vector<double> output_row(N_this, 0.0);
-  std::vector<double> pre_activation_sums(N_this, 0.0);
+  std::vector<std::vector<double>> batch_pre_activation_sums(batch_size, std::vector<double>(N_this, 0.0));
 
   // Initialize with bias values
   if (has_bias())
   {
-    for (size_t j = 0; j < N_this; j++)
+    for (size_t b = 0; b < batch_size; b++)
     {
-      pre_activation_sums[j] = get_bias_value((unsigned)j);
+      for (size_t j = 0; j < N_this; j++)
+      {
+        batch_pre_activation_sums[b][j] = get_bias_value((unsigned)j);
+      }
     }
   }
 
-  // Multiply and accumulate weights and inputs
+  // Multiply and accumulate weights and inputs (Matrix-Matrix pattern)
+  // Optimization: Loop order (i, b, j) ensures weights are in the inner loop and reused across the batch.
   for (size_t i = 0; i < N_prev; i++)
   {
-    const double input_val = previous_layer_inputs[i];
-    if (input_val == 0.0) continue;
+    for (size_t b = 0; b < batch_size; b++)
+    {
+      const double input_val = batch_gradients_and_outputs[b].get_output(get_layer_index() - 1, (unsigned)i);
+      if (input_val == 0.0) continue;
+      for (size_t j = 0; j < N_this; j++)
+      {
+        batch_pre_activation_sums[b][j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
+      }
+    }
+  }
+
+  if (!batch_residual_output_values.empty())
+  {
+    for (size_t b = 0; b < batch_size; b++)
+    {
+      if (batch_residual_output_values[b].size() == N_this)
+      {
+        for (size_t j = 0; j < N_this; j++)
+        {
+          batch_pre_activation_sums[b][j] += batch_residual_output_values[b][j];
+        }
+      }
+    }
+  }
+
+  for (size_t b = 0; b < batch_size; b++)
+  {
+    std::vector<double> output_row(N_this);
     for (size_t j = 0; j < N_this; j++)
     {
-      pre_activation_sums[j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
-    }
-  }
+      const auto& neuron = get_neuron((unsigned)j);
+      double output = get_activation().activate(batch_pre_activation_sums[b][j]);
 
-  if (!residual_output_values.empty())
-  {
-    if (residual_output_values.size() != N_this)
-    {
-		  Logger::warning("Residual output values size mismatch. Expected ", N_this, " but got ", residual_output_values.size());
-	  }
-    else
-    {
-		  for (size_t j = 0; j < N_this; j++)
-		  {
-			  pre_activation_sums[j] += residual_output_values[j];
-		  }
-	  }
-  }
-
-  for (size_t j = 0; j < N_this; j++)
-  {
-    const auto& neuron = get_neuron((unsigned)j);
-    double output = get_activation().activate(pre_activation_sums[j]);
-
-    if (is_training && neuron.is_dropout()) 
-    {
-      if (neuron.must_randomly_drop())
+      if (is_training && neuron.is_dropout()) 
       {
-        output = 0.0;
+        if (neuron.must_randomly_drop())
+        {
+          output = 0.0;
+        }
+        else
+        {
+          output /= (1.0 - neuron.get_dropout_rate());
+        }
       }
-      else
-      {
-        output /= (1.0 - neuron.get_dropout_rate());
-      }
+      output_row[j] = output;
     }
-    output_row[j] = output;
+    
+    if(!batch_hidden_states.empty())
+    {
+      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(batch_pre_activation_sums[b]);
+      batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
+    }
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output_row);
   }
-  
-  if(!hidden_states.empty())
-  {
-    hidden_states[0].set_pre_activation_sums(pre_activation_sums);
-    hidden_states[0].set_hidden_state_values(output_row);
-  }
-  gradients_and_outputs.set_outputs(get_layer_index(), output_row);
-  return output_row;
 }
 
 void FFLayer::calculate_error_deltas(
@@ -202,66 +210,75 @@ void FFLayer::calculate_mse_error_deltas(
 }
 
 void FFLayer::calculate_output_gradients(
-  GradientsAndOutputs& gradients_and_outputs,
-  const std::vector<double>& target_outputs,
-  const std::vector<HiddenState>& hidden_states,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+  const std::vector<HiddenStates>& batch_hidden_states,
   ErrorCalculation::type error_calculation_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
 
-  std::vector<double> gradients(N_total, 0.0);
-  std::vector<double> deltas(N_total, 0.0);
-  calculate_error_deltas(deltas, target_outputs, gradients_and_outputs.get_outputs(get_layer_index()), error_calculation_type);
+  for (size_t b = 0; b < batch_size; b++)
+  {
+    std::vector<double> gradients(N_total, 0.0);
+    std::vector<double> deltas(N_total, 0.0);
+    const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
+    const auto& target_outputs = *(target_outputs_begin + b);
 
-  if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-  {
-    // For BCE with Sigmoid, the derivative of the loss w.r.t. pre-activation is just (a - y)
-    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
+
+    if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
     {
-      gradients[neuron_index] = deltas[neuron_index];
+      for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+      {
+        gradients[neuron_index] = deltas[neuron_index];
+      }
     }
-  }
-  else
-  {
-    // For other cases (like MSE), we need to multiply by the activation's derivative
-    const auto& current_hidden_state = hidden_states[0];
-    for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+    else
     {
-      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
-      gradients[neuron_index] = deltas[neuron_index] * deriv;
+      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+      for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+      {
+        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+        gradients[neuron_index] = deltas[neuron_index] * deriv;
+      }
     }
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
   }
-  gradients_and_outputs.set_gradients(get_layer_index(), gradients);
 }
 
 void FFLayer::calculate_hidden_gradients(
-  GradientsAndOutputs& gradients_and_outputs,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& next_layer,
-  const std::vector<double>& next_grad_matrix,
-  const std::vector<double>&,
-  const std::vector<HiddenState>& hidden_states,
+  const std::vector<std::vector<double>>& batch_next_grad_matrix,
+  const std::vector<HiddenStates>& batch_hidden_states,
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
 
-  std::vector<double> grad_matrix(N_this, 0.0);
-
-  const auto& current_hidden_state = hidden_states[0];
-
-  for (unsigned i = 0; i < N_this; i++)
+  for (size_t b = 0; b < batch_size; b++)
   {
-    double weighted_sum = 0.0;
-    for (size_t j = 0; j < N_next; j++)
+    std::vector<double> grad_matrix(N_this, 0.0);
+    const auto& next_grad_matrix = batch_next_grad_matrix[b];
+    const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+
+    // G_this = (G_next * W_next^T)
+    for (unsigned i = 0; i < N_this; i++)
     {
-      weighted_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
+      double weighted_sum = 0.0;
+      for (size_t j = 0; j < N_next; j++)
+      {
+        weighted_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
+      }
+      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
+      grad_matrix[i] = weighted_sum * deriv;
     }
-    double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
-    grad_matrix[i] = weighted_sum * deriv;
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_matrix);
   }
-  gradients_and_outputs.set_gradients(get_layer_index(), grad_matrix);
 }
 
 Layer* FFLayer::clone() const
