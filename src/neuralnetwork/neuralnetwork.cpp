@@ -1064,13 +1064,15 @@ void NeuralNetwork::apply_weight_gradients(
       // Apply input-to-hidden weights
       for(unsigned i=0; i<num_inputs; ++i)
       {
-        auto& wp = current_layer.get_weight_param(i,j);
-        current_layer.apply_weight_gradient(layer_gradients[layer_number].weights[i][j], learning_rate, false, wp, global_clipping_scale);
+        unsigned weight_index = i * num_outputs + j;
+        current_layer.apply_weight_gradient(layer_gradients[layer_number].weights[i][j], learning_rate, false, weight_index, global_clipping_scale);
       }
 
       // Apply bias weights
-      auto& bp = current_layer.get_bias_weight_param(j);
-      current_layer.apply_weight_gradient(layer_gradients[layer_number].biases[j], learning_rate, true, bp, global_clipping_scale);
+      if (current_layer.has_bias())
+      {
+        current_layer.apply_weight_gradient(layer_gradients[layer_number].biases[j], learning_rate, true, j, global_clipping_scale);
+      }
       
       // Apply recurrent weights (if applicable)
       if (rnn_layer != nullptr)
@@ -1078,8 +1080,7 @@ void NeuralNetwork::apply_weight_gradients(
         // For each recurrent connection from previous hidden state neuron 'k' to current neuron 'j'
         for (unsigned k = 0; k < num_outputs; ++k) 
         {
-            auto& rwp = rnn_layer->get_recurrent_weight_params()[k][j]; // W_rec from k to j
-            current_layer.apply_weight_gradient(layer_gradients[layer_number].recurrent_weights[k][j], learning_rate, false, rwp, global_clipping_scale);
+            rnn_layer->apply_recurrent_weight_gradient(k, j, layer_gradients[layer_number].recurrent_weights[k][j], learning_rate, global_clipping_scale);
         }
       }
     }

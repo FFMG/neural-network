@@ -32,18 +32,6 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector);
 
-  FFLayer(
-    unsigned layer_index,
-    const std::vector<Neuron>& neurons,
-    unsigned number_input_neurons,
-    LayerType layer_type,
-    OptimiserType optimiser_type,
-    int residual_layer_number,
-    const activation::method& activation_method,
-    const std::vector<std::vector<WeightParam>>& weights,
-    const std::vector<WeightParam>& bias_weights,
-    const std::vector<std::vector<WeightParam>>& residual_weights);
-
   FFLayer(const FFLayer& src) noexcept;
   FFLayer(FFLayer&& src) noexcept;
   FFLayer& operator=(const FFLayer& src) noexcept;
@@ -95,7 +83,4 @@ public:
   std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
   
   Layer* clone() const override;
-
-private:
-  void clean();
 };
