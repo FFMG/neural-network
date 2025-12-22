@@ -11,7 +11,9 @@ public:
     _offsets(src._offsets),
     _total_size(src._total_size),
     _data(src._data),
-    _topology(src._topology)
+    _topology(src._topology),
+    _cached_layers(src._cached_layers),
+    _cache_dirty(src._cache_dirty)
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
   }
@@ -20,7 +22,9 @@ public:
     _offsets(std::move(src._offsets)),
     _total_size(src._total_size),
     _data(std::move(src._data)),
-    _topology(std::move(src._topology))
+    _topology(std::move(src._topology)),
+    _cached_layers(std::move(src._cached_layers)),
+    _cache_dirty(std::move(src._cache_dirty))
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
     src._total_size = 0;
@@ -35,6 +39,8 @@ public:
       _total_size = src._total_size;
       _data = src._data;
       _topology = src._topology;
+      _cached_layers = src._cached_layers;
+      _cache_dirty = src._cache_dirty;
     }
     return *this;
   }
@@ -48,6 +54,8 @@ public:
       _total_size = src._total_size;
       _data = std::move(src._data);
       _topology = std::move(src._topology);
+      _cached_layers = std::move(src._cached_layers);
+      _cache_dirty = std::move(src._cache_dirty);
       src._total_size = 0;
     }
     return *this;
@@ -66,10 +74,13 @@ public:
     const auto& size = _topology.size();
     _offsets.resize(size);
     _total_size = 0;
+    _cached_layers.resize(size);
+    _cache_dirty.assign(size, true);
     for(size_t layer = 0; layer < size; ++layer)
     {
       _offsets[layer] = _total_size;
       _total_size+= _topology[layer];
+      _cached_layers[layer].resize(_topology[layer]);
     }
     _data.resize(_total_size);
   }
@@ -89,6 +100,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
     std::fill(_data.begin(), _data.end(), 0.0);
+    std::fill(_cache_dirty.begin(), _cache_dirty.end(), true);
   }
 
   inline void set( unsigned layer, unsigned neuron, double&& data)
@@ -111,6 +123,7 @@ public:
     assert(number_neurons(layer) == data.size());
     const auto& layer_offset = _offsets[layer];
     std::copy(data.begin(), data.end(), _data.begin() + layer_offset);
+    _cache_dirty[layer] = true;
   }
   
   inline const double& get(unsigned layer, unsigned neuron) const noexcept
@@ -120,17 +133,17 @@ public:
     return _data[_offsets[layer]+neuron];
   }
 
-  std::vector<double> get_neurons(unsigned layer) const
+  const std::vector<double>& get_neurons(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
-    std::vector<double> data;
-    data.reserve(_topology[layer]);
-    const auto layer_offset = _offsets[layer];
-    for(size_t neuron = 0; neuron < _topology[layer]; ++neuron)
+    if (_cache_dirty[layer])
     {
-      data.emplace_back(_data[layer_offset+neuron]);
+      const auto layer_offset = _offsets[layer];
+      const auto num_neurons = _topology[layer];
+      _cached_layers[layer].assign(_data.begin() + layer_offset, _data.begin() + layer_offset + num_neurons);
+      _cache_dirty[layer] = false;
     }
-    return data;
+    return _cached_layers[layer];
   }
 
   size_t number_layers() const noexcept
@@ -169,4 +182,7 @@ private:
   size_t _total_size;
   std::vector<double, AlignedAllocator<double, 32>> _data;
   std::vector<unsigned short> _topology;
+
+  mutable std::vector<std::vector<double>> _cached_layers;
+  mutable std::vector<bool> _cache_dirty;
 };
