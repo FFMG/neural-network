@@ -536,9 +536,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // Learning rate
     //
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
-
-    // boost the learning rate base if we need to.
-    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate_base);
     _neural_network_helper->set_learning_rate(learning_rate);
 
     // callback
@@ -749,12 +746,19 @@ double NeuralNetwork::calculate_smooth_learning_rate_boost(
   }
   // Calculate the number of boosts that have occurred so far
   auto total_boosts = total_epochs / boost_interval;
+  if (total_boosts == 0)
+  {
+    // Interval is larger than total epochs, cannot apply boost strategy as defined.
+    return base_learning_rate;
+  }
+
   auto per_boost_ratio = boost_ratio / total_boosts; // e.g., if 3 boosts, each boost is 1.10^(1/3)
 
   auto cycle_position = epoch % boost_interval; // e.g., if epoch 8 and interval is 7, position is 1
   auto progress = static_cast<double>(cycle_position) / boost_interval; // e.g., 1/7 = 0.142857
 
-  // Apply cosine boost: start at 0, peak at 1, then back to 0
+  // Apply cosine boost: start at 0, peak at 1 (smooth step up)
+  // This creates a smooth staircase effect when combined with cumulative_boost.
   auto cosine_multiplier = (1.0 - std::cos(progress * M_PI)) / 2.0;
   auto current_boost = per_boost_ratio * cosine_multiplier;
 
@@ -777,15 +781,21 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   {
     learning_rate = calculate_learning_rate_warmup(epoch, completed_percent);
   }
-  // are we decaying the learning rate?
-  // this is done after warmup
-  else if (learning_rate_decay_rate != 0)
+  else
   {
-    learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
-    Logger::trace([=] 
-      {
-        return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
-      });
+    // boost the learning rate base if we need to.
+    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate);
+
+    // are we decaying the learning rate?
+    // this is done after warmup
+    if (learning_rate_decay_rate != 0)
+    {
+      learning_rate = learning_rate * std::exp(-learning_rate_decay_rate * epoch);
+      Logger::trace([=] 
+        {
+          return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+        });
+    }
   }
 
   // then get the scheduler if we can improve it further.
