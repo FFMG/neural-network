@@ -3,12 +3,14 @@
 #include <functional>
 #include <vector>
 
+#include "libraries/instrumentor.h"
+
 #include "activation.h"
 #include "errorcalculation.h"
 #include "layer.h"
 #include "logger.h"
-#include "optimiser.h"
 #include "neuralnetworkhelper.h"
+#include "optimiser.h"
 
 class NeuralNetworkHelper;
 class NeuralNetworkOptions
@@ -42,21 +44,25 @@ private:
     _enable_bptt(true),
     _bptt_max_ticks(0)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
   }
 
 public:
   NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = nno;
   }
 
   NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = std::move(nno);
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (this != &nno)
     {
       _topology = nno._topology;
@@ -91,6 +97,7 @@ public:
 
   NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (this != &nno)
     {
       _topology = std::move(nno._topology);
@@ -139,26 +146,31 @@ public:
   }
   NeuralNetworkOptions& with_hidden_activation_method(const activation::method& activation)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _hidden_activation = activation;
     return *this;
   }
   NeuralNetworkOptions& with_output_activation_method(const activation::method& activation)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _output_activation = activation;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _number_of_epoch = number_of_epoch;
     return *this;
   }
   NeuralNetworkOptions& with_batch_size(int batch_size)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _batch_size = batch_size;
     return *this;
   }
   NeuralNetworkOptions& with_data_is_unique(bool data_is_unique)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     // unique training data means that we cannot have
     // data split for epoch error checking and final error checking.
     _data_is_unique = data_is_unique;
@@ -167,100 +179,119 @@ public:
 
   NeuralNetworkOptions& with_progress_callback(const std::function<bool(NeuralNetworkHelper&)>& progress_callback)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _progress_callback = progress_callback;
     return *this;
   }
   NeuralNetworkOptions& with_log_level(const Logger::LogLevel& log_level)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _log_level = log_level;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_threads(int number_of_threads)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
     return *this;
   }
   NeuralNetworkOptions& with_dropout(const std::vector<double>& dropout)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _dropout = dropout;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate(double learning_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate = learning_rate;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate_decay_rate(double learning_rate_decay_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_decay_rate = learning_rate_decay_rate;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate_boost_rate(double every_percent, double restart_boost)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_restart_rate = every_percent;
     _learning_rate_restart_boost = restart_boost;
     return *this;
   }
   NeuralNetworkOptions& with_adaptive_learning_rates(bool adaptive_learning_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _adaptive_learning_rate = adaptive_learning_rate;
     return *this;
   }
   NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _optimiser_type = optimiser_type;
     return *this;
   }
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _residual_layer_jump = residual_layer_jump;
     return *this;
   }
   NeuralNetworkOptions& with_clip_threshold(double clip_threshold)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _clip_threshold = clip_threshold;
     return *this;
   }
   NeuralNetworkOptions& with_shuffle_training_data(bool shuffle_training_data)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _shuffle_training_data = shuffle_training_data;
     return *this;
   }
   NeuralNetworkOptions& with_recurrent_layers(std::vector<unsigned> recurrent_layers)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _recurrent_layers = recurrent_layers;
     return *this;
   }
 
   NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_warmup_start = learning_rate_warmup_start;
     _learning_rate_warmup_target = learning_rate_warmup_target;
     return *this;
   }
   NeuralNetworkOptions& with_weight_decay(double weight_decay)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _weight_decay = weight_decay;
     return *this;
   }
   NeuralNetworkOptions& with_error_calculation_type(ErrorCalculation::type error_calculation_type)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _error_calculation_type = error_calculation_type;
     return *this;
   }
   NeuralNetworkOptions& with_enable_bptt(bool enable_bptt)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _enable_bptt = enable_bptt;
     return *this;
   }
   NeuralNetworkOptions& with_bptt_max_ticks(int bptt_max_ticks)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _bptt_max_ticks = bptt_max_ticks;
     return *this;
   }
   
   NeuralNetworkOptions& build()
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     // set the log level first
     Logger::set_level(log_level());
 
@@ -354,6 +385,7 @@ public:
 
   static NeuralNetworkOptions create(const std::vector<Layer>& layers)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     auto topology = std::vector<unsigned>();
     topology.reserve(layers.size());
     for (const auto& layer : layers)
@@ -366,6 +398,7 @@ public:
 
   static NeuralNetworkOptions create(const std::vector<unsigned>& topology)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     auto clip_threshold = 1.0;
     std::vector<double> dropout = {};
     if(topology.size() > 2)
@@ -406,32 +439,32 @@ public:
       .with_bptt_max_ticks(0);
   }
 
-  inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
-  inline const std::vector<double>& dropout() const noexcept { return _dropout; }
-  inline const activation::method& hidden_activation_method() const noexcept { return _hidden_activation; }
-  inline const activation::method& output_activation_method() const noexcept { return _output_activation; }
-  inline double learning_rate() const noexcept { return _learning_rate; }
-  inline int number_of_epoch() const noexcept { return _number_of_epoch; }
-  inline int batch_size() const noexcept { return _batch_size; }
-  inline bool data_is_unique() const noexcept { return _data_is_unique; }
-  inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
-  inline Logger::LogLevel log_level() const noexcept { return _log_level; }
-  inline int number_of_threads() const noexcept { return _number_of_threads; }
-  inline double learning_rate_decay_rate() const noexcept { return _learning_rate_decay_rate; }
-  inline bool adaptive_learning_rate() const noexcept { return _adaptive_learning_rate; }
-  inline OptimiserType optimiser_type() const noexcept { return _optimiser_type; }
-  inline double learning_rate_restart_rate() const noexcept { return _learning_rate_restart_rate; }
-  inline double learning_rate_restart_boost() const noexcept { return _learning_rate_restart_boost; }
-  inline int residual_layer_jump() const noexcept { return _residual_layer_jump; }
-  inline double clip_threshold() const noexcept { return _clip_threshold; }
-  inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
-  inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
-  inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
-  inline const std::vector<unsigned>& recurrent_layers() const noexcept { return _recurrent_layers; }
-  inline double weight_decay() const noexcept{ return _weight_decay; }
-  inline ErrorCalculation::type error_calculation_type() const noexcept { return _error_calculation_type; }
-  inline bool enable_bptt() const noexcept { return _enable_bptt; }
-  inline int bptt_max_ticks() const noexcept { return _bptt_max_ticks; }
+  inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
+  inline const std::vector<double>& dropout() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _dropout; }
+  inline const activation::method& hidden_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_activation; }
+  inline const activation::method& output_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation; }
+  inline double learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate; }
+  inline int number_of_epoch() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_epoch; }
+  inline int batch_size() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _batch_size; }
+  inline bool data_is_unique() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _data_is_unique; }
+  inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _progress_callback; }
+  inline Logger::LogLevel log_level() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_level; }
+  inline int number_of_threads() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_threads; }
+  inline double learning_rate_decay_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_decay_rate; }
+  inline bool adaptive_learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
+  inline OptimiserType optimiser_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _optimiser_type; }
+  inline double learning_rate_restart_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_rate; }
+  inline double learning_rate_restart_boost() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_boost; }
+  inline int residual_layer_jump() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _residual_layer_jump; }
+  inline double clip_threshold() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _clip_threshold; }
+  inline double learning_rate_warmup_start() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_start; }
+  inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
+  inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
+  inline const std::vector<unsigned>& recurrent_layers() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _recurrent_layers; }
+  inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
+  inline ErrorCalculation::type error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _error_calculation_type; }
+  inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
+  inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
 
 private:
   std::vector<unsigned> _topology;
