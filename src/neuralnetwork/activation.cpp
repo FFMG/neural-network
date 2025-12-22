@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "logger.h"
+
 #ifndef M_PI
 # define M_PI   3.141592653589793238462643383279502884
 #endif
@@ -16,19 +18,71 @@ activation::activation(const method method, double alpha)  noexcept :
   _method(method),
   _alpha(alpha)
 {
-  MYODDWEB_PROFILE_FUNCTION("activation");
+    switch (_method)
+    {
+        case activation::method::linear:
+            _activate_ptr = &calculate_linear;
+            _derivative_ptr = &calculate_linear_derivative;
+            break;
+        case activation::method::relu:
+            _activate_ptr = &calculate_relu;
+            _derivative_ptr = &calculate_relu_derivative;
+            break;
+        case activation::method::leakyRelu:
+            _activate_ptr = &calculate_leakyRelu;
+            _derivative_ptr = &calculate_leakyRelu_derivative;
+            break;
+        case activation::method::tanh:
+            _activate_ptr = &calculate_tanh;
+            _derivative_ptr = &calculate_tanh_derivative;
+            break;
+        case activation::method::PRelu:
+            _activate_ptr = &calculate_PReLU;
+            _derivative_ptr = &calculate_PReLU_derivative;
+            break;
+        case activation::method::selu:
+            _activate_ptr = &calculate_selu;
+            _derivative_ptr = &calculate_selu_derivative;
+            break;
+        case activation::method::elu:
+            _activate_ptr = &calculate_elu;
+            _derivative_ptr = &calculate_elu_derivative;
+            break;
+        case activation::method::gelu:
+            _activate_ptr = &calculate_gelu;
+            _derivative_ptr = &calculate_gelu_derivative;
+            break;
+        case activation::method::swish:
+            _activate_ptr = &calculate_swish;
+            _derivative_ptr = &calculate_swish_derivative;
+            break;
+        case activation::method::mish:
+            _activate_ptr = &calculate_mish;
+            _derivative_ptr = &calculate_mish_derivative;
+            break;
+        case activation::method::sigmoid:
+            _activate_ptr = &calculate_sigmoid;
+            _derivative_ptr = &calculate_sigmoid_derivative;
+            break;
+        default:
+            throw std::invalid_argument("Unknown activation type!");
+    }
 }
 
 activation::activation(const activation& src) noexcept :
   _method(src._method),
-  _alpha(src._alpha)
+  _alpha(src._alpha),
+  _activate_ptr(src._activate_ptr),
+  _derivative_ptr(src._derivative_ptr)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
 
 activation::activation(activation&& src) noexcept :
   _method(src._method),
-  _alpha(src._alpha)
+  _alpha(src._alpha),
+  _activate_ptr(src._activate_ptr),
+  _derivative_ptr(src._derivative_ptr)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
@@ -40,6 +94,8 @@ activation& activation::operator=(const activation& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _activate_ptr = src._activate_ptr;
+    _derivative_ptr = src._derivative_ptr;
   }
   return *this;
 }
@@ -51,44 +107,44 @@ activation& activation::operator=(activation&& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _activate_ptr = src._activate_ptr;
+    _derivative_ptr = src._derivative_ptr;
   }
   return *this;
 }
 
-double activation::calculate_linear(double x) noexcept
+double activation::calculate_linear(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x;
 }
 
-double activation::calculate_linear_derivative(double /*x*/) noexcept
+double activation::calculate_linear_derivative(double, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1.0;
 }
 
-// Sigmoid function
-double activation::calculate_sigmoid(double x) noexcept
+double activation::calculate_sigmoid(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1 / (1 + std::exp(-x));
 }
 
-// Sigmoid derivative
-double activation::calculate_sigmoid_derivative(double x) noexcept
+double activation::calculate_sigmoid_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  const auto sigmoid_output = calculate_sigmoid(x);
+  const auto sigmoid_output = calculate_sigmoid(x, 0.0);
   return sigmoid_output * (1.0 - sigmoid_output);
 }
 
-double activation::calculate_selu(double x) noexcept
+double activation::calculate_selu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? x : SELU_ALPHA * (std::exp(x) - 1));
 }
 
-double activation::calculate_selu_derivative(double x) noexcept
+double activation::calculate_selu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? 1.0 : SELU_ALPHA * std::exp(x));
@@ -106,13 +162,13 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-double activation::calculate_relu(double x) noexcept
+double activation::calculate_relu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::max(0.0, x);
 }
 
-double activation::calculate_relu_derivative(double x) noexcept
+double activation::calculate_relu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0.0) ? 1.0 : 0.0;
@@ -130,40 +186,38 @@ double activation::calculate_leakyRelu_derivative(double x, double alpha) noexce
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_tanh(double x) noexcept
+double activation::calculate_tanh(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::tanh(x);
 }
 
-double activation::calculate_tanh_derivative(double x) noexcept
+double activation::calculate_tanh_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const auto t = std::tanh(x);
   return 1.0 - t * t;
 }
 
-// PReLU Activation Function
 double activation::calculate_PReLU(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
-// PReLU Derivative Function
 double activation::calculate_PReLU_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_mish(double x) noexcept
+double activation::calculate_mish(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x * std::tanh(std::log1p(std::exp(x)));
 }
 
-double activation::calculate_mish_derivative(double x) noexcept
+double activation::calculate_mish_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   double sp = std::log1p(std::exp(x)); // softplus
@@ -172,7 +226,7 @@ double activation::calculate_mish_derivative(double x) noexcept
   return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
 }
 
-double activation::calculate_swish(double x) noexcept
+double activation::calculate_swish(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
@@ -180,7 +234,7 @@ double activation::calculate_swish(double x) noexcept
   return x / (1.0 + exp_term);
 }
 
-double activation::calculate_swish_derivative(double x) noexcept
+double activation::calculate_swish_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
@@ -189,14 +243,13 @@ double activation::calculate_swish_derivative(double x) noexcept
   return sigmoid + x * sigmoid * (1.0 - sigmoid);
 }
 
-// Approximate GELU (fast, used in transformers)
-double activation::calculate_gelu(double x) noexcept
+double activation::calculate_gelu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
 }
 
-double activation::calculate_gelu_derivative(double x) noexcept
+double activation::calculate_gelu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
@@ -228,93 +281,7 @@ double activation::momentum() const
     return 0.99;
 
   default:
-    throw std::invalid_argument("Unknown activation type!");
-  }
-}
-
-double activation::activate(double x) const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  switch (_method)
-  {
-  case activation::method::linear:
-    return calculate_linear(x);
-
-  case activation::method::relu:
-    return calculate_relu(x);
-
-  case activation::method::leakyRelu:
-    return calculate_leakyRelu(x, _alpha);
-
-  case activation::method::tanh:
-    return calculate_tanh(x);
-
-  case activation::method::PRelu:
-    return calculate_PReLU(x, _alpha);
-
-  case activation::method::selu:
-    return calculate_selu(x);
-
-  case activation::method::elu:
-    return calculate_elu(x, _alpha);
-
-  case activation::method::gelu:
-    return calculate_gelu(x);
-
-  case activation::method::swish:
-    return calculate_swish(x);
-
-  case activation::method::mish:
-    return calculate_mish(x);
-
-  case activation::method::sigmoid:
-    return calculate_sigmoid(x);
-
-  default:
-    throw std::invalid_argument("Unknown activation type!");
-  }
-}
-
-double activation::activate_derivative(double x) const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  switch (_method)
-  {
-  case activation::method::linear:
-    return calculate_linear_derivative(x);
-
-  case activation::method::relu:
-    return calculate_relu_derivative(x);
-
-  case activation::method::leakyRelu:
-    return calculate_leakyRelu_derivative(x, _alpha);
-
-  case activation::method::tanh:
-    return calculate_tanh_derivative(x);
-
-  case activation::method::PRelu:
-    return calculate_PReLU_derivative(x, _alpha);
-
-  case activation::method::selu:
-    return calculate_selu_derivative(x);
-
-  case activation::method::elu:
-    return calculate_elu_derivative(x, _alpha);
-
-  case activation::method::gelu:
-    return calculate_gelu_derivative(x);
-
-  case activation::method::swish:
-    return calculate_swish_derivative(x);
-
-  case activation::method::mish:
-    return calculate_mish_derivative(x);
-
-  case activation::method::sigmoid:
-    return calculate_sigmoid_derivative(x);
-
-  default:
-    throw std::invalid_argument("Unknown activation type!");
+    Logger::panic("Unknown activation type!");
   }
 }
 
@@ -331,7 +298,6 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   {
   case activation::method::sigmoid:
   case activation::method::tanh:
-    // return lecun_initialization(num_neurons_current_layer, num_neurons_next_layer);
     return xavier_initialization(num_neurons_current_layer, num_neurons_next_layer);
 
   case activation::method::selu:
@@ -357,8 +323,6 @@ std::vector<double> activation::xavier_initialization(int fan_in, int fan_out) n
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-
-  // Glorot/Xavier initialization uses a uniform distribution:
   double limit = std::sqrt(6.0 / (fan_in + fan_out));
   std::uniform_real_distribution<double> dist(-limit, limit);
 
@@ -376,12 +340,11 @@ std::vector<double> activation::he_initialization(int fan_in, int fan_out) noexc
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-
   std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / fan_in));
 
   std::vector<double> weights(fan_out);
   for (double& w : weights) {
-    w = dist(gen);  // Initialize weights
+    w = dist(gen);
   }
   return weights;
 }
@@ -391,15 +354,12 @@ std::vector<double> activation::selu_initialization(int fan_in, int fan_out) noe
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-
-  // Same as LeCun normal
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
   std::vector<double> weights(fan_out);
   for (double& w : weights) {
     w = dist(gen);
   }
-
   return weights;
 }
 
@@ -408,7 +368,6 @@ std::vector<double> activation::lecun_initialization(int fan_in, int fan_out) no
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-
   std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
 
   std::vector<double> weights(fan_out);
@@ -428,7 +387,6 @@ activation::method activation::string_to_method(const std::string& str)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   std::string lower_str = str;
-  // Convert the string to lowercase for case-insensitive comparison
   std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
     [](unsigned char c) { return std::tolower(c); });
 
@@ -476,29 +434,37 @@ activation::method activation::string_to_method(const std::string& str)
   {
     return method::elu;
   }
-
-  // If no match is found, throw an exception
-  throw std::invalid_argument("Unknown method: " + str);
+  
+  Logger::panic("Unknown method: ", str);
 }
 
 std::string activation::method_to_string(method m)
 {
-  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (m)
   {
-  case method::linear:    return "linear";
-  case method::sigmoid:   return "sigmoid";
-  case method::tanh:      return "tanh";
-  case method::relu:      return "relu";
-  case method::leakyRelu: return "leakyRelu";
-  case method::PRelu:     return "PRelu";
-  case method::selu:      return "selu";
-  case method::swish:     return "swish";
-  case method::mish:      return "mish";
-  case method::gelu:      return "gelu";
-  case method::elu:       return "elu";
+  case method::linear:
+    return "linear";
+  case method::sigmoid:
+    return "sigmoid";
+  case method::tanh:
+    return "tanh";
+  case method::relu:
+    return "relu";
+  case method::leakyRelu:
+    return "leakyRelu";
+  case method::PRelu:
+    return "PRelu";
+  case method::selu:
+    return "selu";
+  case method::swish:
+    return "swish";
+  case method::mish:
+    return "mish";
+  case method::gelu:
+    return "gelu";
+  case method::elu:
+    return "elu";
   default:
-    // Handle unknown enum values by throwing an exception
-    throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
+    Logger::panic("Unknown or unsupported 'method' enum value.");
   }
 }
