@@ -475,18 +475,20 @@ private:
   inline void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    double previous_velocity = weight_param.get_velocity();
-
-    double velocity = momentum * previous_velocity - learning_rate * raw_gradient;
-
+    
     if (!is_bias && weight_param.get_weight_decay() > 0.0)
     {
       raw_gradient += weight_param.get_weight_decay() * weight_param.get_value();
     }
 
-    double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
+    double previous_velocity = weight_param.get_velocity();
+    double velocity = momentum * previous_velocity + raw_gradient;
+
+    double new_weight = weight_param.get_value() - learning_rate * velocity;
+
     weight_param.set_raw_gradient(raw_gradient);
     weight_param.set_value(new_weight);
+    weight_param.set_velocity(velocity);
   }
 
   inline void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias) const noexcept
