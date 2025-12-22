@@ -13,7 +13,7 @@ public:
     std::vector<unsigned> topology = { 3, 8, 1 };
     std::vector<unsigned> recurrent_layers = { 0, 1, 0 };
     const int number_of_epoch = 5000;
-    const double learning_rate = 0.1;
+    const double learning_rate = 0.05;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -40,7 +40,7 @@ public:
       TEST_START("ThreebitParity test - No Batch.")
         Logger::info("No Batch:");
       auto options = NeuralNetworkOptions::create(topology)
-        .with_batch_size(1)
+        .with_batch_size(3)
         .with_hidden_activation_method(activation::method::tanh)
         .with_output_activation_method(activation::method::sigmoid)
         .with_log_level(log_level)
