@@ -310,10 +310,11 @@ void ElmanRNNLayer::calculate_bce_error_deltas(
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t N_total = get_number_neurons();
+  const double denom = static_cast<double>(N_total);
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    deltas[neuron_index] = given_outputs[neuron_index] - target_outputs[neuron_index];
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) / denom;
   }
 }
 
@@ -324,9 +325,11 @@ void ElmanRNNLayer::calculate_mse_error_deltas(
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t N_total = get_number_neurons();
+  const double denom = static_cast<double>(N_total);
+
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    deltas[neuron_index] = given_outputs[neuron_index] - target_outputs[neuron_index];
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) / denom;
   }
 }
 
@@ -405,7 +408,7 @@ void ElmanRNNLayer::calculate_output_gradients(
 		    const size_t last_idx = (num_time_steps - 1) * N_total + neuron_index;
 		    const double last_output = given_outputs[last_idx];
 		    const double target = (neuron_index < target_outputs.size()) ? target_outputs[neuron_index] : 0.0;
-		    gradients[neuron_index] = last_output - target;
+		    gradients[neuron_index] = (last_output - target) / static_cast<double>(N_total);
 		  }
     }
     else
@@ -416,7 +419,7 @@ void ElmanRNNLayer::calculate_output_gradients(
 		    const size_t last_idx = (num_time_steps - 1) * N_total + neuron_index;
 		    const double last_output = given_outputs[last_idx];
 		    const double target = (neuron_index < target_outputs.size()) ? target_outputs[neuron_index] : 0.0;
-		    const double delta = last_output - target;
+		    const double delta = (last_output - target) / static_cast<double>(N_total);
 
 		    double deriv = 1.0;
 		    if (last_hs_ptr != nullptr)
