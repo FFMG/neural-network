@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <stdexcept>
 #include <utility>
 
 #include "logger.h"
@@ -14,59 +13,60 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation(const method method, double alpha)  noexcept :
+activation::activation(const method method, double alpha) :
   _method(method),
   _alpha(alpha)
 {
-    switch (_method)
-    {
-        case activation::method::linear:
-            _activate_ptr = &calculate_linear;
-            _derivative_ptr = &calculate_linear_derivative;
-            break;
-        case activation::method::relu:
-            _activate_ptr = &calculate_relu;
-            _derivative_ptr = &calculate_relu_derivative;
-            break;
-        case activation::method::leakyRelu:
-            _activate_ptr = &calculate_leakyRelu;
-            _derivative_ptr = &calculate_leakyRelu_derivative;
-            break;
-        case activation::method::tanh:
-            _activate_ptr = &calculate_tanh;
-            _derivative_ptr = &calculate_tanh_derivative;
-            break;
-        case activation::method::PRelu:
-            _activate_ptr = &calculate_PReLU;
-            _derivative_ptr = &calculate_PReLU_derivative;
-            break;
-        case activation::method::selu:
-            _activate_ptr = &calculate_selu;
-            _derivative_ptr = &calculate_selu_derivative;
-            break;
-        case activation::method::elu:
-            _activate_ptr = &calculate_elu;
-            _derivative_ptr = &calculate_elu_derivative;
-            break;
-        case activation::method::gelu:
-            _activate_ptr = &calculate_gelu;
-            _derivative_ptr = &calculate_gelu_derivative;
-            break;
-        case activation::method::swish:
-            _activate_ptr = &calculate_swish;
-            _derivative_ptr = &calculate_swish_derivative;
-            break;
-        case activation::method::mish:
-            _activate_ptr = &calculate_mish;
-            _derivative_ptr = &calculate_mish_derivative;
-            break;
-        case activation::method::sigmoid:
-            _activate_ptr = &calculate_sigmoid;
-            _derivative_ptr = &calculate_sigmoid_derivative;
-            break;
-        default:
-            throw std::invalid_argument("Unknown activation type!");
-    }
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  switch (_method)
+  {
+  case activation::method::linear:
+    _activate_ptr = &calculate_linear;
+    _derivative_ptr = &calculate_linear_derivative;
+    break;
+  case activation::method::relu:
+    _activate_ptr = &calculate_relu;
+    _derivative_ptr = &calculate_relu_derivative;
+    break;
+  case activation::method::leakyRelu:
+    _activate_ptr = &calculate_leakyRelu;
+    _derivative_ptr = &calculate_leakyRelu_derivative;
+    break;
+  case activation::method::tanh:
+    _activate_ptr = &calculate_tanh;
+    _derivative_ptr = &calculate_tanh_derivative;
+    break;
+  case activation::method::PRelu:
+    _activate_ptr = &calculate_PReLU;
+    _derivative_ptr = &calculate_PReLU_derivative;
+    break;
+  case activation::method::selu:
+    _activate_ptr = &calculate_selu;
+    _derivative_ptr = &calculate_selu_derivative;
+    break;
+  case activation::method::elu:
+    _activate_ptr = &calculate_elu;
+    _derivative_ptr = &calculate_elu_derivative;
+    break;
+  case activation::method::gelu:
+    _activate_ptr = &calculate_gelu;
+    _derivative_ptr = &calculate_gelu_derivative;
+    break;
+  case activation::method::swish:
+    _activate_ptr = &calculate_swish;
+    _derivative_ptr = &calculate_swish_derivative;
+    break;
+  case activation::method::mish:
+    _activate_ptr = &calculate_mish;
+    _derivative_ptr = &calculate_mish_derivative;
+    break;
+  case activation::method::sigmoid:
+    _activate_ptr = &calculate_sigmoid;
+    _derivative_ptr = &calculate_sigmoid_derivative;
+    break;
+  default:
+    Logger::panic("Unknown activation type!");
+  }
 }
 
 activation::activation(const activation& src) noexcept :
