@@ -57,16 +57,16 @@ public:
       return *this;
     }
 
-  protected:
-    friend class NeuralNetworkHelper;
-    friend class NeuralNetwork;
-
     NeuralNetworkHelperMetrics(long double error, ErrorCalculation::type error_type) noexcept :
       _error(error),
       _error_type(error_type)
     {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
     }
+
+  protected:
+    friend class NeuralNetworkHelper;
+    friend class NeuralNetwork;
 
     long double _error;
     ErrorCalculation::type _error_type;
