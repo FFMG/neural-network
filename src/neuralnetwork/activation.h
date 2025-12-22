@@ -24,7 +24,7 @@ public:
 
   using activation_function = double (*)(double, double);
 
-  activation(const method method, double alpha = 0.01) noexcept;
+  activation(const method method, double alpha = 0.01);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
   activation& operator=(const activation& src) noexcept;
