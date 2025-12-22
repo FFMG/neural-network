@@ -277,7 +277,6 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors = {};
-  errors.reserve(errors.size());
 
   {
     std::shared_lock read(_mutex);
@@ -302,18 +301,8 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   const auto& training_inputs = helper.training_inputs();
   const auto& taining_outputs = helper.training_outputs();
 
-  const std::vector<size_t>* checks_indexes = 0;
-  size_t prediction_size = 0;
-  if (final_check)
-  {
-    checks_indexes = &helper.final_check_indexes();
-  }
-  else
-  {
-    checks_indexes = &helper.checking_indexes();
-  }
-
-  prediction_size = checks_indexes->size();
+  const std::vector<size_t>* checks_indexes = final_check ? &helper.final_check_indexes() : &helper.checking_indexes();
+  size_t prediction_size = checks_indexes->size();
   if (prediction_size == 0)
   {
     for (size_t index = 0; index < error_types.size(); ++index)
@@ -327,25 +316,30 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   std::vector<std::vector<double>> checking_outputs;
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
+
   {
     std::shared_lock read(_mutex);
+    std::vector<std::vector<double>> batch_inputs;
+    batch_inputs.reserve(prediction_size);
     for (size_t index = 0; index < prediction_size; ++index)
     {
-      std::vector<GradientsAndOutputs> gradients;
-      gradients.push_back(GradientsAndOutputs(get_topology()));
-      std::vector<HiddenStates> hidden_states;
-      hidden_states.resize(1, HiddenStates(get_topology()));
-
       const auto& checks_index = (*checks_indexes)[index];
-      const auto& inputs = training_inputs[checks_index];
-      const std::vector<std::vector<double>> all_inputs = { inputs };
-      calculate_forward_feed(gradients, all_inputs.begin(), 1, _layers, hidden_states, false);
-      predictions.emplace_back(gradients[0].output_back());
-
-      // set the output we will need it just now.
-      checking_outputs.emplace_back(taining_outputs[checks_index]);
+      batch_inputs.push_back(training_inputs[checks_index]);
+      checking_outputs.push_back(taining_outputs[checks_index]);
     }
-  }// release the lock
+
+    std::vector<GradientsAndOutputs> batch_gradients;
+    batch_gradients.resize(prediction_size, GradientsAndOutputs(get_topology()));
+    std::vector<HiddenStates> batch_hidden_states;
+    batch_hidden_states.resize(prediction_size, HiddenStates(get_topology()));
+
+    calculate_forward_feed(batch_gradients, batch_inputs.begin(), prediction_size, _layers, batch_hidden_states, false);
+    
+    for (size_t index = 0; index < prediction_size; ++index)
+    {
+      predictions.push_back(batch_gradients[index].output_back());
+    }
+  }
 
   for (size_t index = 0; index < error_types.size(); ++index)
   {
@@ -360,11 +354,24 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::vector<std::vector<double>> outputs;
-  outputs.reserve(inputs.size());
-  for (size_t i = 0; i < inputs.size(); ++i)
+  const size_t batch_size = inputs.size();
+  if (batch_size == 0) return {};
+
+  std::vector<GradientsAndOutputs> batch_gradients;
+  batch_gradients.resize(batch_size, GradientsAndOutputs(get_topology()));
+  std::vector<HiddenStates> batch_hidden_states;
+  batch_hidden_states.resize(batch_size, HiddenStates(get_topology()));
+
   {
-    outputs.emplace_back(think(inputs[i]));
+    std::shared_lock<std::shared_mutex> read(_mutex);
+    calculate_forward_feed(batch_gradients, inputs.begin(), batch_size, _layers, batch_hidden_states, false);
+  }
+
+  std::vector<std::vector<double>> outputs;
+  outputs.reserve(batch_size);
+  for (size_t i = 0; i < batch_size; ++i)
+  {
+    outputs.push_back(batch_gradients[i].output_back());
   }
   return outputs;
 }
@@ -864,142 +871,98 @@ void NeuralNetwork::apply_weight_gradients(
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
     {
       const auto& previous_layer = layers[static_cast<unsigned>(layer_number - 1)];
-      const unsigned num_time_steps = hidden_states[0].at(layer_number).size();
+      const unsigned num_time_steps = (unsigned)hidden_states[0].at(layer_number).size();
       const unsigned num_prev_inputs = previous_layer.get_number_neurons();
 
-      const double time_scale = (num_time_steps > 0) ? static_cast<double>(num_time_steps) : 1.0;
+      const int t_start = static_cast<int>(num_time_steps) - 1;
+      const int t_end = options().enable_bptt() ? std::max(0, t_start - options().bptt_max_ticks() + 1) : t_start;
+      const int active_ticks = t_start - t_end + 1;
+
+      const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
       const double denom = static_cast<double>(batch_size) * time_scale;
 
-      // 1. Gradients for Input-to-Hidden Weights (_weights)
-      for (unsigned i = 0; i < num_inputs; ++i)
+      for (unsigned b = 0; b < batch_size; ++b)
       {
-        for (unsigned j = 0; j < num_outputs; ++j)
+        const auto& rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
+        const auto& prev_outputs_rnn = batch_activation_gradients[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
+        const auto& prev_outputs_std = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+        const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+
+        if (rnn_grads.empty() || prev_outputs.empty()) continue;
+
+        // 1. Gradients for Input-to-Hidden Weights
+        for (unsigned i = 0; i < num_inputs; ++i)
         {
-          double grad = 0.0;
-          for (unsigned b = 0; b < batch_size; ++b)
+          for (unsigned j = 0; j < num_outputs; ++j)
           {
-            const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-            // Use time-series (rnn) outputs from previous layer when available
-            std::vector<double> prev_outputs = batch_activation_gradients[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
-            if (prev_outputs.empty())
+            double grad = 0.0;
+            // Only loop over active time steps
+            for (int t = t_start; t >= t_end; --t)
             {
-              prev_outputs = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(layer_number - 1));
+              grad += rnn_grads[t * num_outputs + j] * ((prev_outputs.size() == num_prev_inputs) ? prev_outputs[i] : prev_outputs[t * num_prev_inputs + i]);
             }
-
-            // Validate sizes to avoid out-of-bounds indexing
-            if (num_time_steps > 0 && prev_outputs.size() != num_time_steps * num_prev_inputs)
-            {
-              Logger::warning("Mismatched prev_outputs size for layer ", layer_number - 1, 
-                              " expected ", (num_time_steps * num_prev_inputs), " got ", prev_outputs.size(),
-                              ". Falling back to repeating last output over time.");
-              // fallback: if scalar output (last output only), repeat it across time steps
-              if (prev_outputs.size() == num_prev_inputs)
-              {
-                std::vector<double> repeated;
-                repeated.reserve(num_time_steps * num_prev_inputs);
-                for (unsigned t = 0; t < num_time_steps; t++)
-                {
-                  repeated.insert(repeated.end(), prev_outputs.begin(), prev_outputs.end());
-                }
-                prev_outputs.swap(repeated);
-              }
-              else
-              {
-                // if size still wrong, skip this batch item to be safe
-                continue;
-              }
-            }
-
-            // ensure rnn_grads length is num_time_steps * num_outputs
-            if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
-            {
-              Logger::warning("Mismatched rnn_grads size for layer ", layer_number,
-                              " expected ", (num_time_steps * num_outputs), " got ", rnn_grads.size(),
-                              ". Skipping this batch item for this gradient term.");
-              continue;
-            }
-
-            for (unsigned t = 0; t < num_time_steps; ++t)
-            {
-              // dE/dz_j(t) * x_i(t)
-              grad += rnn_grads[t * num_outputs + j] * prev_outputs[t * num_prev_inputs + i];
-            }
+            layer_gradients[layer_number].weights[i * num_outputs + j] += grad;
           }
-          // average over batch AND time
-          layer_gradients[layer_number].weights[i * num_outputs + j] = grad / denom;
         }
-      }
 
-      // 2. Gradients for Recurrent Weights (_recurrent_weights)
-      for (unsigned i = 0; i < num_outputs; ++i) // previous hidden state neuron
-      {
-        for (unsigned j = 0; j < num_outputs; ++j) // current neuron
+        // 2. Gradients for Recurrent Weights
+        for (unsigned i = 0; i < num_outputs; ++i)
         {
-          double grad = 0.0;
-          for (unsigned b = 0; b < batch_size; ++b)
+          for (unsigned j = 0; j < num_outputs; ++j)
           {
-            const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-            for (unsigned t = 1; t < num_time_steps; ++t) // Start from t=1 as h(t-1) is used
+            double grad = 0.0;
+            // t=0 has no previous hidden state for recurrence contribution
+            int rec_t_end = std::max(1, t_end);
+            for (int t = t_start; t >= rec_t_end; --t)
             {
-              // dE/dz_j(t) * h_i(t-1)
               grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(layer_number)[t - 1].get_hidden_state_value_at_neuron(i);
             }
+            layer_gradients[layer_number].recurrent_weights[i * num_outputs + j] += grad;
           }
-          // average over batch AND time (use num_time_steps-1 for recurrent contributions)
-          const double time_denom_rec = (num_time_steps > 1) ? static_cast<double>(num_time_steps - 1) : 1.0;
-          layer_gradients[layer_number].recurrent_weights[i * num_outputs + j] = grad / (static_cast<double>(batch_size) * time_denom_rec);
+        }
+
+        // 3. Gradients for Bias Weights
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+          double bias_grad = 0.0;
+          for (int t = t_start; t >= t_end; --t)
+          {
+            bias_grad += rnn_grads[t * num_outputs + j];
+          }
+          layer_gradients[layer_number].biases[j] += bias_grad;
         }
       }
 
-      // 3. Gradients for Bias Weights (_bias_weights)
-      for (unsigned j = 0; j < num_outputs; ++j)
-      {
-        double bias_grad = 0.0;
-        for (unsigned b = 0; b < batch_size; ++b)
-        {
-          const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-          if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
-          {
-            // already warned above; skip this item
-            continue;
-          }
-          for (unsigned t = 0; t < num_time_steps; ++t)
-          {
-            // dE/dz_j(t)
-            bias_grad += rnn_grads[t * num_outputs + j];
-          }
-        }
-        layer_gradients[layer_number].biases[j] = bias_grad / denom;
-      }
+      // Final normalization
+      for (double& w : layer_gradients[layer_number].weights) w /= denom;
+      const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
+      for (double& rw : layer_gradients[layer_number].recurrent_weights) rw /= (static_cast<double>(batch_size) * time_denom_rec);
+      for (double& b_val : layer_gradients[layer_number].biases) b_val /= denom;
     }
     else // FeedForward Layer (FFLayer)
     {
-      // 1. Gradients for Weights (_weights)
-      for (unsigned i = 0; i < num_inputs; ++i) 
+      const auto& previous_layer_num = static_cast<unsigned>(layer_number - 1);
+      for (unsigned b = 0; b < batch_size; ++b)
       {
-        for (unsigned j = 0; j < num_outputs; ++j) 
-        {
-          double grad = 0.0;
-          for(unsigned b = 0; b < batch_size; ++b)
-          {
-            // dE/dz_j * x_i
-            grad += batch_activation_gradients[b].get_gradient(layer_number, j) * batch_activation_gradients[b].get_outputs(layer_number-1)[i];
-          }
-          layer_gradients[layer_number].weights[i * num_outputs + j] = grad / static_cast<double>(batch_size);
-        }
-      }
+        const auto& layer_outputs = batch_activation_gradients[b].get_outputs(previous_layer_num);
+        const auto& layer_grads = batch_activation_gradients[b].get_gradients(layer_number);
 
-      // 2. Gradients for Bias Weights (_bias_weights)
-      for(unsigned j=0; j<num_outputs; ++j)
-      {
-        double bias_grad = 0.0;
-        for(unsigned b = 0; b < batch_size; ++b)
+        for (unsigned i = 0; i < num_inputs; ++i) 
         {
-            // dE/dz_j
-            bias_grad += batch_activation_gradients[b].get_gradient(layer_number, j);
+          const double input_val = layer_outputs[i];
+          for (unsigned j = 0; j < num_outputs; ++j) 
+          {
+            layer_gradients[layer_number].weights[i * num_outputs + j] += layer_grads[j] * input_val;
+          }
         }
-        layer_gradients[layer_number].biases[j] = bias_grad / static_cast<double>(batch_size);
+
+        for(unsigned j=0; j<num_outputs; ++j)
+        {
+          layer_gradients[layer_number].biases[j] += layer_grads[j];
+        }
       }
+      for (double& w : layer_gradients[layer_number].weights) w /= static_cast<double>(batch_size);
+      for (double& b_val : layer_gradients[layer_number].biases) b_val /= static_cast<double>(batch_size);
     }
     // Residual gradients (if any)
     const auto* residual_projector = current_layer.get_residual_projector();
@@ -1089,26 +1052,6 @@ void NeuralNetwork::apply_weight_gradients(
   }
 }
 
-
-Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, unsigned current_layer_index) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto residual_layer_number = layers.get_residual_layer_number(current_layer_index);
-  if (residual_layer_number == -1)
-  {
-    return nullptr; // no residual layer
-  }
-  assert(residual_output_values.size() == 0);
-  auto* residual_layer = &(layers[static_cast<unsigned>(residual_layer_number)]);
-  auto residual_layer_neuron_size = residual_layer->get_number_neurons();
-  residual_output_values.reserve(residual_layer_neuron_size);
-  for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
-  {
-    const auto output = batch_activation_gradient.get_output(residual_layer_number, neuron_number);
-    residual_output_values.emplace_back(output);
-  }
-  return residual_layer;
-}
 
 void NeuralNetwork::calculate_back_propagation(
   std::vector<GradientsAndOutputs>& gradients,
