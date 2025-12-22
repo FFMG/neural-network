@@ -87,9 +87,6 @@ public:
 
   bool has_bias() const noexcept override;
 
-  const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
-  std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
-
   Layer* clone() const override;
 
 private:
@@ -103,7 +100,4 @@ private:
   std::vector<double> _rw_m2;
   std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
-
-  // Kept for now to limit refactoring scope
-  std::vector<std::vector<WeightParam>> _residual_weights;
 };

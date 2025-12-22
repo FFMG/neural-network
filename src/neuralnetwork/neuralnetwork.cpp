@@ -645,22 +645,13 @@ double NeuralNetwork::calculate_global_clipping_scale(const std::vector<LayerGra
     double residual_sq = 0.0;
 
     // weights
-    for (const auto& row : layer_grad.weights)
-    {
-      for (double g : row) { weight_sq += g * g; }
-    }
+    for (double g : layer_grad.weights) { weight_sq += g * g; }
     // biases
     for (double g : layer_grad.biases) { bias_sq += g * g; }
     // recurrent
-    for (const auto& row : layer_grad.recurrent_weights)
-    {
-      for (double g : row) { rec_sq += g * g; }
-    }
+    for (double g : layer_grad.recurrent_weights) { rec_sq += g * g; }
     // residual
-    for (const auto& row : layer_grad.residual_weights)
-    {
-      for (double g : row) { residual_sq += g * g; }
-    }
+    for (double g : layer_grad.residual_weights) { residual_sq += g * g; }
 
     double layer_sq_sum = weight_sq + bias_sq + rec_sq + residual_sq;
 
@@ -863,11 +854,11 @@ void NeuralNetwork::apply_weight_gradients(
     const unsigned num_outputs = current_layer.get_number_neurons();
     const unsigned num_inputs = current_layer.get_number_input_neurons();
     
-    layer_gradients[layer_number].weights.resize(num_inputs, std::vector<double>(num_outputs, 0.0));
+    layer_gradients[layer_number].weights.resize(num_inputs * num_outputs, 0.0);
     layer_gradients[layer_number].biases.resize(num_outputs, 0.0);
     if (rnn_layer != nullptr)
     {
-        layer_gradients[layer_number].recurrent_weights.resize(num_outputs, std::vector<double>(num_outputs, 0.0));
+        layer_gradients[layer_number].recurrent_weights.resize(num_outputs * num_outputs, 0.0);
     }
 
     if (rnn_layer != nullptr) // Recurrent Layer (ElmanRNNLayer)
@@ -935,7 +926,7 @@ void NeuralNetwork::apply_weight_gradients(
             }
           }
           // average over batch AND time
-          layer_gradients[layer_number].weights[i][j] = grad / denom;
+          layer_gradients[layer_number].weights[i * num_outputs + j] = grad / denom;
         }
       }
 
@@ -956,7 +947,7 @@ void NeuralNetwork::apply_weight_gradients(
           }
           // average over batch AND time (use num_time_steps-1 for recurrent contributions)
           const double time_denom_rec = (num_time_steps > 1) ? static_cast<double>(num_time_steps - 1) : 1.0;
-          layer_gradients[layer_number].recurrent_weights[i][j] = grad / (static_cast<double>(batch_size) * time_denom_rec);
+          layer_gradients[layer_number].recurrent_weights[i * num_outputs + j] = grad / (static_cast<double>(batch_size) * time_denom_rec);
         }
       }
 
@@ -967,11 +958,6 @@ void NeuralNetwork::apply_weight_gradients(
         for (unsigned b = 0; b < batch_size; ++b)
         {
           const auto rnn_grads = batch_activation_gradients[b].get_rnn_gradients(layer_number);
-          if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
-          {
-            // already warned above; skip this item
-            continue;
-          }
           if (rnn_grads.size() != static_cast<size_t>(num_time_steps * num_outputs))
           {
             // already warned above; skip this item
@@ -999,7 +985,7 @@ void NeuralNetwork::apply_weight_gradients(
             // dE/dz_j * x_i
             grad += batch_activation_gradients[b].get_gradient(layer_number, j) * batch_activation_gradients[b].get_outputs(layer_number-1)[i];
           }
-          layer_gradients[layer_number].weights[i][j] = grad / static_cast<double>(batch_size);
+          layer_gradients[layer_number].weights[i * num_outputs + j] = grad / static_cast<double>(batch_size);
         }
       }
 
@@ -1023,27 +1009,27 @@ void NeuralNetwork::apply_weight_gradients(
       const unsigned proj_output_size = residual_projector->output_size();
       const unsigned proj_input_size = residual_projector->input_size();
 
-      layer_gradients[layer_number].residual_weights.resize(proj_output_size, std::vector<double>(proj_input_size, 0.0));
+      layer_gradients[layer_number].residual_weights.assign(proj_output_size * proj_input_size, 0.0);
 
       for (unsigned b = 0; b < batch_size; ++b)
       {
         const auto& next_gradients = batch_activation_gradients[b].get_gradients(layer_number);
         const auto& residual_layer_outputs = batch_activation_gradients[b].get_outputs(static_cast<unsigned>(residual_layer_number));
 
-        for (unsigned out = 0; out < proj_output_size; ++out)
+        for (unsigned in = 0; in < proj_input_size; ++in)
         {
-          for (unsigned in = 0; in < proj_input_size; ++in)
+          for (unsigned out = 0; out < proj_output_size; ++out)
           {
-            layer_gradients[layer_number].residual_weights[out][in] += next_gradients[out] * residual_layer_outputs[in];
+            layer_gradients[layer_number].residual_weights[in * proj_output_size + out] += next_gradients[out] * residual_layer_outputs[in];
           }
         }
       }
 
-      for (unsigned out = 0; out < proj_output_size; ++out)
+      for (unsigned in = 0; in < proj_input_size; ++in)
       {
-        for (unsigned in = 0; in < proj_input_size; ++in)
+        for (unsigned out = 0; out < proj_output_size; ++out)
         {
-          layer_gradients[layer_number].residual_weights[out][in] /= static_cast<double>(batch_size);
+          layer_gradients[layer_number].residual_weights[in * proj_output_size + out] /= static_cast<double>(batch_size);
         }
       }
     }
@@ -1065,7 +1051,7 @@ void NeuralNetwork::apply_weight_gradients(
       for(unsigned i=0; i<num_inputs; ++i)
       {
         unsigned weight_index = i * num_outputs + j;
-        current_layer.apply_weight_gradient(layer_gradients[layer_number].weights[i][j], learning_rate, false, weight_index, global_clipping_scale);
+        current_layer.apply_weight_gradient(layer_gradients[layer_number].weights[weight_index], learning_rate, false, weight_index, global_clipping_scale);
       }
 
       // Apply bias weights
@@ -1080,7 +1066,7 @@ void NeuralNetwork::apply_weight_gradients(
         // For each recurrent connection from previous hidden state neuron 'k' to current neuron 'j'
         for (unsigned k = 0; k < num_outputs; ++k) 
         {
-            rnn_layer->apply_recurrent_weight_gradient(k, j, layer_gradients[layer_number].recurrent_weights[k][j], learning_rate, global_clipping_scale);
+            rnn_layer->apply_recurrent_weight_gradient(k, j, layer_gradients[layer_number].recurrent_weights[k * num_outputs + j], learning_rate, global_clipping_scale);
         }
       }
     }
@@ -1091,13 +1077,12 @@ void NeuralNetwork::apply_weight_gradients(
       const unsigned proj_output_size = residual_projector->output_size();
       const unsigned proj_input_size = residual_projector->input_size();
 
-      for (unsigned out = 0; out < proj_output_size; ++out)
+      for (unsigned in = 0; in < proj_input_size; ++in)
       {
-        for (unsigned in = 0; in < proj_input_size; ++in)
+        for (unsigned out = 0; out < proj_output_size; ++out)
         {
-          auto& wp = residual_projector->get_weight_params(out, in);
-          double gradient = layer_gradients[layer_number].residual_weights[out][in];
-          residual_projector->apply_weight_gradient(gradient, learning_rate, wp, global_clipping_scale);
+          double gradient = layer_gradients[layer_number].residual_weights[in * proj_output_size + out];
+          residual_projector->apply_weight_gradient(gradient, learning_rate, in, out, global_clipping_scale);
         }
       }
     }
