@@ -54,7 +54,7 @@ public:
   const activation::method& get_hidden_activation_method() const;
 
   NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const;
+  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false, size_t limit = 0) const;
   double get_learning_rate() const noexcept;
 
   bool has_training_data() const;
@@ -105,9 +105,15 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param, std::vector<LayerGradients>& layer_gradients);
+  void calculate_forward_feed(
+    std::vector<GradientsAndOutputs>& gradients_and_output,
+    const std::vector<std::vector<double>>& all_inputs,
+    const std::vector<size_t>& indices,
+    const Layers& layers,
+    std::vector<HiddenStates>& hidden_states,
+    bool is_training) const;
 
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const;
+  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param, std::vector<LayerGradients>& layer_gradients);
 
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
