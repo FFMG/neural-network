@@ -362,72 +362,100 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const size_t N_this = get_number_neurons();
   const size_t N_next = next_layer.get_number_output_neurons();
 
-  for (size_t b = 0; b < batch_size; b++)
+  // Assuming all items have the same num_time_steps
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0 || N_this == 0)
   {
-    const auto& hidden_states = batch_hidden_states[b].at(get_layer_index());
-    const size_t num_time_steps = hidden_states.size();
-    const auto& next_grad_matrix = batch_next_grad_matrix[b];
-
-    if (num_time_steps == 0 || N_this == 0)
+    for (size_t b = 0; b < batch_size; ++b)
     {
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>());
-      continue;
     }
+    return;
+  }
 
-    const bool next_is_time_distributed = (next_grad_matrix.size() == N_next * num_time_steps);
-    const bool next_is_last_only = (next_grad_matrix.size() == N_next);
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
-    std::vector<double> grad_matrix(N_this, 0.0);
-    std::vector<double> rnn_grad_matrix(num_time_steps * N_this, 0.0);
-    std::vector<double> d_next_h(N_this, 0.0);
-
-    const int t_start = static_cast<int>(num_time_steps) - 1;
-    int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-
-    for (int t = t_start; t >= t_end; --t)
+  // 1. Pre-calculate contribution from next layer for all relevant time steps (Matrix-Matrix reuse weights)
+  std::vector<std::vector<double>> batch_grad_from_next_all_t(batch_size, std::vector<double>(num_time_steps * N_this, 0.0));
+  
+  for (size_t i = 0; i < N_this; ++i)
+  {
+    for (size_t k = 0; k < N_next; ++k)
     {
-      std::vector<double> grad_from_next_layer(N_this, 0.0);
-      if (next_is_time_distributed)
+      const double w_ik = next_layer.get_weight_value((unsigned)i, (unsigned)k);
+      if (w_ik == 0.0) continue;
+      for (size_t b = 0; b < batch_size; ++b)
       {
-        const size_t base = static_cast<size_t>(t) * N_next;
-        for (size_t k = 0; k < N_next; ++k)
-        {
-          const double next_grad_val = next_grad_matrix[base + k];
-          if (!std::isfinite(next_grad_val)) continue;
-          for (size_t i = 0; i < N_this; ++i) grad_from_next_layer[i] += next_grad_val * next_layer.get_weight_value((unsigned)i, (unsigned)k);
-        }
-      }
-      else if (next_is_last_only && t == t_start)
-      {
-        for (size_t k = 0; k < N_next; ++k)
-        {
-          const double next_grad_val = next_grad_matrix[k];
-          if (!std::isfinite(next_grad_val)) continue;
-          for (size_t i = 0; i < N_this; ++i) grad_from_next_layer[i] += next_grad_val * next_layer.get_weight_value((unsigned)i, (unsigned)k);
-        }
-      }
+        const auto& next_grad_matrix = batch_next_grad_matrix[b];
+        const bool next_is_time_distributed = (next_grad_matrix.size() == N_next * num_time_steps);
+        const bool next_is_last_only = (next_grad_matrix.size() == N_next);
 
+        if (next_is_time_distributed)
+        {
+          for (int t = t_start; t >= t_end; --t)
+          {
+            batch_grad_from_next_all_t[b][t * N_this + i] += next_grad_matrix[t * N_next + k] * w_ik;
+          }
+        }
+        else if (next_is_last_only)
+        {
+          batch_grad_from_next_all_t[b][t_start * N_this + i] += next_grad_matrix[k] * w_ik;
+        }
+      }
+    }
+  }
+
+  // d_next_h for each batch item
+  std::vector<std::vector<double>> batch_d_next_h(batch_size, std::vector<double>(N_this, 0.0));
+  // Total grad_matrix for each batch item
+  std::vector<std::vector<double>> batch_grad_matrix(batch_size, std::vector<double>(N_this, 0.0));
+  // RNN grad matrix for each batch item
+  std::vector<std::vector<double>> batch_rnn_grad_matrix(batch_size, std::vector<double>(num_time_steps * N_this, 0.0));
+
+  for (int t = t_start; t >= t_end; --t)
+  {
+    // 2. Compute current step gradients
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& hidden_states = batch_hidden_states[b].at(get_layer_index());
+      const size_t t_offset = t * N_this;
+      
       for (size_t i = 0; i < N_this; ++i)
       {
-        const double upstream = grad_from_next_layer[i] + d_next_h[i];
-        const double deriv = get_activation().activate_derivative(hidden_states[t].get_pre_activation_sum_at_neuron((unsigned)i));
+        const double upstream = batch_grad_from_next_all_t[b][t_offset + i] + batch_d_next_h[b][i];
+        const double preact = hidden_states[t].get_pre_activation_sum_at_neuron((unsigned)i);
+        const double deriv = get_activation().activate_derivative(preact);
         double g = upstream * deriv;
         if (!std::isfinite(g)) g = 0.0;
-        rnn_grad_matrix[t * N_this + i] = g;
-        grad_matrix[i] += g;
-      }
-
-      std::fill(d_next_h.begin(), d_next_h.end(), 0.0);
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        const double g_j = rnn_grad_matrix[t * N_this + j];
-        if (g_j == 0.0) continue;
-        for (size_t i = 0; i < N_this; ++i) d_next_h[i] += g_j * get_recurrent_weight_value((unsigned)i, (unsigned)j);
+        batch_rnn_grad_matrix[b][t_offset + i] = g;
+        batch_grad_matrix[b][i] += g;
       }
     }
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_matrix);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_matrix);
+
+    // 3. Propagate through recurrent weights (Matrix-Matrix reuse weights)
+    // d_next_h[b][i] = sum_j (rnn_grad[b][t][j] * recurrent_W[i][j])
+    for (size_t b = 0; b < batch_size; ++b) std::fill(batch_d_next_h[b].begin(), batch_d_next_h[b].end(), 0.0);
+
+    for (size_t i = 0; i < N_this; ++i)
+    {
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        const double rw_ij = get_recurrent_weight_value((unsigned)i, (unsigned)j);
+        if (rw_ij == 0.0) continue;
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+          batch_d_next_h[b][i] += batch_rnn_grad_matrix[b][t * N_this + j] * rw_ij;
+        }
+      }
+    }
+  }
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), batch_grad_matrix[b]);
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), batch_rnn_grad_matrix[b]);
   }
 }
 
