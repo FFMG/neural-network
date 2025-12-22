@@ -401,7 +401,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (neuron_index < _neurons.size())
+    if (neuron_index >= _neurons.size())
     {
       Logger::panic("Index out of bounds in Layer::get_neuron.");
     }
@@ -415,7 +415,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if ((input_idx * _number_output_neurons + output_idx) < _w_values.size())
+    if ((input_idx * _number_output_neurons + output_idx) >= _w_values.size())
     {
       Logger::panic("Index out of bounds in Layer::get_weight_value.");
     }
@@ -427,7 +427,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (output_idx < _b_values.size())
+    if (output_idx >= _b_values.size())
     {
       Logger::panic("Index out of bounds in Layer::get_bias_value.");
     }
