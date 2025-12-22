@@ -78,9 +78,6 @@ public:
       int bptt_max_ticks) const override;
 
   bool has_bias() const noexcept override;
-
-  const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const override;
-  std::vector<std::vector<WeightParam>>& get_residual_weight_params() override;
   
   Layer* clone() const override;
 };

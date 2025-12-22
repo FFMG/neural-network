@@ -45,8 +45,7 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_m1(src._rw_m1),
   _rw_m2(src._rw_m2),
   _rw_timesteps(src._rw_timesteps),
-  _rw_decays(src._rw_decays),
-  _residual_weights(src._residual_weights)
+  _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -59,8 +58,7 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m1(std::move(src._rw_m1)),
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
-  _rw_decays(std::move(src._rw_decays)),
-  _residual_weights(std::move(src._residual_weights))
+  _rw_decays(std::move(src._rw_decays))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -78,7 +76,6 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
-    _residual_weights = src._residual_weights;
   }
   return *this;
 }
@@ -96,7 +93,6 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
-    _residual_weights = std::move(src._residual_weights);
   }
   return *this;
 }
@@ -623,16 +619,4 @@ Layer* ElmanRNNLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   return new ElmanRNNLayer(*this);
-}
-
-const std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _residual_weights;
-}
-
-std::vector<std::vector<WeightParam>>& ElmanRNNLayer::get_residual_weight_params()
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _residual_weights;
 }

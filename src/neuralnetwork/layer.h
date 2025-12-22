@@ -13,17 +13,6 @@
 
 #include <vector>
 
-// Forward declaration to allow Layer to be used in function signatures.
-class Layer;
-
-/**
- * @class Layer
- * @brief An abstract interface for a layer in a neural network.
- *
- * This class defines the common interface for all layer types, whether they are
- * part of a Feedforward (FNN) or Recurrent (RNN) Neural Network. It is designed
- * to be inherited by concrete layer implementations.
- */
 class Layer
 {
 public:
@@ -72,7 +61,8 @@ protected:
     }
 
     // Initialize weights
-    if (number_input_neurons > 0) {
+    if (number_input_neurons > 0) 
+    {
       const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
       _w_values.resize(num_weights);
       auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
@@ -91,7 +81,8 @@ protected:
     }
     
     // Initialize biases
-    if (has_bias) {
+    if (has_bias) 
+    {
       _b_values = _activation.weight_initialization(number_output_neurons, 1);
       _b_grads.assign(number_output_neurons, 0.0);
       _b_velocities.assign(number_output_neurons, 0.0);
@@ -260,6 +251,7 @@ public:
 
   virtual ~Layer()
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     delete _residual_projector;
     _residual_projector = nullptr;
   }
@@ -269,50 +261,61 @@ public:
 
   inline OptimiserType get_optimiser_type() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _optimiser_type;
   }
 
   inline unsigned get_layer_index() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_index;
   }
 
   inline LayerType get_layer_type() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_type;
   }
 
   inline int get_residual_layer_number() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_layer_number;
   }
 
   const ResidualProjector* get_residual_projector() const
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
   }
 
   ResidualProjector* get_residual_projector()
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
   }
 
   inline unsigned get_number_neurons() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return get_number_output_neurons();
   }
 
   inline unsigned get_number_input_neurons() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_input_neurons;
   }
 
   inline unsigned get_number_output_neurons() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_output_neurons;
   }
 
-  virtual bool use_bptt() const noexcept {
+  virtual bool use_bptt() const noexcept 
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return false;
   }
 
@@ -332,6 +335,7 @@ public:
 
   inline const activation& get_activation() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
 
@@ -345,6 +349,7 @@ public:
 
   void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     if (!std::isfinite(gradient))
     {
       Logger::panic("Error while calculating input weigh gradient it invalid.");
@@ -390,13 +395,15 @@ public:
 
   const std::vector<Neuron>& get_neurons() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _neurons;
   }
 
   const Neuron& get_neuron(unsigned int neuron_index) const
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (neuron_index >= _neurons.size())
+    if (neuron_index < _neurons.size())
     {
       Logger::panic("Index out of bounds in Layer::get_neuron.");
     }
@@ -406,18 +413,36 @@ public:
 
   // --- Weights and Biases ---
 
-  inline double get_weight_value(unsigned input_idx, unsigned output_idx) const {
+  inline double get_weight_value(unsigned input_idx, unsigned output_idx) const 
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+#if VALIDATE_DATA == 1
+    if ((input_idx * _number_output_neurons + output_idx) < _w_values.size())
+    {
+      Logger::panic("Index out of bounds in Layer::get_weight_value.");
+    }
+#endif
     return _w_values[input_idx * _number_output_neurons + output_idx];
   }
 
-  inline double get_bias_value(unsigned output_idx) const {
+  inline double get_bias_value(unsigned output_idx) const 
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+#if VALIDATE_DATA == 1
+    if (output_idx < _b_values.size())
+    {
+      Logger::panic("Index out of bounds in Layer::get_bias_value.");
+    }
+#endif
     return _b_values[output_idx];
   }
 
   // This is for serializer compatibility. It's slow.
   const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
-    if (_weights_cache_dirty) {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_weights_cache_dirty) 
+    {
       _cached_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0,0,0,0)));
       for (unsigned i = 0; i < _number_input_neurons; ++i) {
         for (unsigned j = 0; j < _number_output_neurons; ++j) {
@@ -435,9 +460,12 @@ public:
 
   const std::vector<WeightParam>& get_bias_weight_params() const
   {
-    if (_bias_weights_cache_dirty) {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_bias_weights_cache_dirty) 
+    {
       _cached_bias_weights.resize(_number_output_neurons, WeightParam(0,0,0,0));
-      for (unsigned j = 0; j < _number_output_neurons; ++j) {
+      for (unsigned j = 0; j < _number_output_neurons; ++j) 
+      {
         _cached_bias_weights[j] = WeightParam(
           _b_values[j], _b_grads[j], _b_velocities[j],
           _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
@@ -448,11 +476,29 @@ public:
     return _cached_bias_weights;
   }
   
-  virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
-  virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
+  virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_residual_projector != nullptr)
+    {
+      return _residual_projector->get_weight_params();
+    }
+    static const std::vector<std::vector<WeightParam>> empty_vec_2d;
+    return empty_vec_2d;
+  }
+
+  virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params()
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (_residual_projector != nullptr)
+    {
+      return const_cast<std::vector<std::vector<WeightParam>>&>(_residual_projector->get_weight_params());
+    }
+    static std::vector<std::vector<WeightParam>> empty_vec_2d;
+    return empty_vec_2d;
+  }
 
   virtual bool has_bias() const noexcept = 0;
-
   virtual Layer* clone() const = 0;
 
 protected:
@@ -461,6 +507,7 @@ protected:
     unsigned number_output_neurons
   )
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     std::vector<Neuron> neurons;
     neurons.reserve(number_output_neurons);
     for (unsigned neuron_number = 0; neuron_number < number_output_neurons; ++neuron_number)
@@ -477,6 +524,7 @@ protected:
 private:
   inline void apply_none_update(double raw_gradient, double learning_rate, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
 
@@ -489,6 +537,7 @@ private:
 
   inline void apply_sgd_update(double raw_gradient, double learning_rate, double momentum, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
     auto& velocities = is_bias ? _b_velocities : _w_velocities;
@@ -513,6 +562,7 @@ private:
 
   inline void apply_adam_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
     auto& m1s = is_bias ? _b_m1 : _w_m1;
@@ -542,6 +592,7 @@ private:
 
   inline void apply_adamw_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
     auto& m1s = is_bias ? _b_m1 : _w_m1;
@@ -575,6 +626,7 @@ private:
 
   inline void apply_nadam_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
     auto& m1s = is_bias ? _b_m1 : _w_m1;
@@ -603,6 +655,7 @@ private:
 
   inline void apply_nadamw_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     auto& values = is_bias ? _b_values : _w_values;
     auto& grads = is_bias ? _b_grads : _w_grads;
     auto& m1s = is_bias ? _b_m1 : _w_m1;

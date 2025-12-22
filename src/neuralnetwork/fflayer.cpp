@@ -269,18 +269,3 @@ Layer* FFLayer::clone() const
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return new FFLayer(*this);
 }
-
-// Implementations for get_residual_weight_params()
-const std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  static const std::vector<std::vector<WeightParam>> empty_vec_2d;
-  return empty_vec_2d;
-}
-
-std::vector<std::vector<WeightParam>>& FFLayer::get_residual_weight_params()
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  static std::vector<std::vector<WeightParam>> empty_vec_2d; // Non-const version
-  return empty_vec_2d;
-}
