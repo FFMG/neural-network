@@ -44,8 +44,8 @@ protected:
     unsigned number_input_neurons,
     unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
-    const std::vector<std::vector<WeightParam>>& weights,
-    const std::vector<WeightParam>& bias_weights,
+    bool has_bias,
+    double weight_decay,
     ResidualProjector* residual_projector
   ) noexcept :
     _layer_index(layer_index),
@@ -56,9 +56,9 @@ protected:
     _number_input_neurons(number_input_neurons),
     _number_output_neurons(number_output_neurons),
     _neurons(neurons),
-    _weights(weights),
-    _bias_weights(bias_weights),
-    _residual_projector(residual_projector)
+    _residual_projector(residual_projector),
+    _weights_cache_dirty(true),
+    _bias_weights_cache_dirty(true)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -67,7 +67,38 @@ protected:
     }
     if (layer_type != LayerType::Input && number_input_neurons == 0)
     {
-      Logger::warning("Warning: Non-input layer created with 0 inputs.");
+      // This is not always a problem, e.g. for a bias-only layer.
+      // Logger::warning("Warning: Non-input layer created with 0 inputs.");
+    }
+
+    // Initialize weights
+    if (number_input_neurons > 0) {
+      const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
+      _w_values.resize(num_weights);
+      auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
+      for (size_t i = 0; i < number_input_neurons; ++i) {
+        for (size_t j = 0; j < number_output_neurons; ++j) {
+          _w_values[i * number_output_neurons + j] = initial_weights[j];
+        }
+      }
+
+      _w_grads.assign(num_weights, 0.0);
+      _w_velocities.assign(num_weights, 0.0);
+      _w_m1.assign(num_weights, 0.0);
+      _w_m2.assign(num_weights, 0.0);
+      _w_timesteps.assign(num_weights, 0);
+      _w_decays.assign(num_weights, weight_decay);
+    }
+    
+    // Initialize biases
+    if (has_bias) {
+      _b_values = _activation.weight_initialization(number_output_neurons, 1);
+      _b_grads.assign(number_output_neurons, 0.0);
+      _b_velocities.assign(number_output_neurons, 0.0);
+      _b_m1.assign(number_output_neurons, 0.0);
+      _b_m2.assign(number_output_neurons, 0.0);
+      _b_timesteps.assign(number_output_neurons, 0);
+      _b_decays.assign(number_output_neurons, 0.0); // No weight decay for biases
     }
   }
 
@@ -81,9 +112,23 @@ public:
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons),
     _neurons(src._neurons),
-    _weights(src._weights),
-    _bias_weights(src._bias_weights),
-    _residual_projector(src._residual_projector)
+    _w_values(src._w_values),
+    _w_grads(src._w_grads),
+    _w_velocities(src._w_velocities),
+    _w_m1(src._w_m1),
+    _w_m2(src._w_m2),
+    _w_timesteps(src._w_timesteps),
+    _w_decays(src._w_decays),
+    _b_values(src._b_values),
+    _b_grads(src._b_grads),
+    _b_velocities(src._b_velocities),
+    _b_m1(src._b_m1),
+    _b_m2(src._b_m2),
+    _b_timesteps(src._b_timesteps),
+    _b_decays(src._b_decays),
+    _residual_projector(nullptr),
+    _weights_cache_dirty(true),
+    _bias_weights_cache_dirty(true)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (src._residual_projector != nullptr)
@@ -100,10 +145,24 @@ public:
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons),
     _neurons(std::move(src._neurons)),
-    _weights(std::move(src._weights)),
-    _bias_weights(std::move(src._bias_weights)),
+    _w_values(std::move(src._w_values)),
+    _w_grads(std::move(src._w_grads)),
+    _w_velocities(std::move(src._w_velocities)),
+    _w_m1(std::move(src._w_m1)),
+    _w_m2(std::move(src._w_m2)),
+    _w_timesteps(std::move(src._w_timesteps)),
+    _w_decays(std::move(src._w_decays)),
+    _b_values(std::move(src._b_values)),
+    _b_grads(std::move(src._b_grads)),
+    _b_velocities(std::move(src._b_velocities)),
+    _b_m1(std::move(src._b_m1)),
+    _b_m2(std::move(src._b_m2)),
+    _b_timesteps(std::move(src._b_timesteps)),
+    _b_decays(std::move(src._b_decays)),
     _residual_layer_number(src._residual_layer_number),
-    _residual_projector(src._residual_projector)
+    _residual_projector(src._residual_projector),
+    _weights_cache_dirty(true),
+    _bias_weights_cache_dirty(true)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
@@ -126,8 +185,23 @@ public:
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
       _neurons = src._neurons;
-      _weights = src._weights;
-      _bias_weights = src._bias_weights;
+
+      _w_values = src._w_values;
+      _w_grads = src._w_grads;
+      _w_velocities = src._w_velocities;
+      _w_m1 = src._w_m1;
+      _w_m2 = src._w_m2;
+      _w_timesteps = src._w_timesteps;
+      _w_decays = src._w_decays;
+      
+      _b_values = src._b_values;
+      _b_grads = src._b_grads;
+      _b_velocities = src._b_velocities;
+      _b_m1 = src._b_m1;
+      _b_m2 = src._b_m2;
+      _b_timesteps = src._b_timesteps;
+      _b_decays = src._b_decays;
+
       _residual_layer_number = src._residual_layer_number;
       delete _residual_projector;
       _residual_projector = nullptr;
@@ -135,6 +209,8 @@ public:
       {
         _residual_projector = new ResidualProjector(*src._residual_projector);
       }
+      _weights_cache_dirty = true;
+      _bias_weights_cache_dirty = true;
     }
     return *this;
   }
@@ -151,10 +227,27 @@ public:
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
       _neurons = std::move(src._neurons);
-      _weights = std::move(src._weights);
-      _bias_weights = std::move(src._bias_weights);
+      
+      _w_values = std::move(src._w_values);
+      _w_grads = std::move(src._w_grads);
+      _w_velocities = std::move(src._w_velocities);
+      _w_m1 = std::move(src._w_m1);
+      _w_m2 = std::move(src._w_m2);
+      _w_timesteps = std::move(src._w_timesteps);
+      _w_decays = std::move(src._w_decays);
+      
+      _b_values = std::move(src._b_values);
+      _b_grads = std::move(src._b_grads);
+      _b_velocities = std::move(src._b_velocities);
+      _b_m1 = std::move(src._b_m1);
+      _b_m2 = std::move(src._b_m2);
+      _b_timesteps = std::move(src._b_timesteps);
+      _b_decays = std::move(src._b_decays);
+
       delete _residual_projector;
       _residual_projector = src._residual_projector;
+      _weights_cache_dirty = true;
+      _bias_weights_cache_dirty = true;
 
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
@@ -176,60 +269,50 @@ public:
 
   inline OptimiserType get_optimiser_type() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _optimiser_type;
   }
 
   inline unsigned get_layer_index() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_index;
   }
 
   inline LayerType get_layer_type() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_type;
   }
 
   inline int get_residual_layer_number() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_layer_number;
   }
 
   const ResidualProjector* get_residual_projector() const
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
   }
 
   ResidualProjector* get_residual_projector()
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
   }
 
   inline unsigned get_number_neurons() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return get_number_output_neurons();
   }
 
   inline unsigned get_number_input_neurons() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_input_neurons;
   }
 
   inline unsigned get_number_output_neurons() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_output_neurons;
   }
 
   virtual bool use_bptt() const noexcept {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return false;
   }
 
@@ -249,7 +332,6 @@ public:
 
   inline const activation& get_activation() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
 
@@ -261,24 +343,16 @@ public:
     const std::vector<HiddenState>& hidden_states,
     int bptt_max_ticks) const = 0;
 
-  virtual void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, WeightParam& weight_param, double clipping_scale)
+  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-
     if (!std::isfinite(gradient))
     {
       Logger::panic("Error while calculating input weigh gradient it invalid.");
     }
-    auto old_velocity = weight_param.get_velocity();
-    if (!std::isfinite(old_velocity))
-    {
-      Logger::panic("Error while calculating input weigh old velocity is invalid.");
-    }
-
+    
     if (clipping_scale < 0.0)
     {
       // If clipping scale is negative, we clip the gradient to a fixed range
-      // This is useful for debugging or when we want to ensure gradients are not too large.
       Logger::warning("Clipping gradient to a fixed range.");
     }
 
@@ -286,27 +360,27 @@ public:
     switch (_optimiser_type)
     {
     case OptimiserType::None:
-      apply_none_update(weight_param, final_gradient, learning_rate);
+      apply_none_update(final_gradient, learning_rate, is_bias, weight_index);
       break;
 
     case OptimiserType::SGD:
-      apply_sgd_update(weight_param, final_gradient, learning_rate, _activation.momentum(), is_bias);
+      apply_sgd_update(final_gradient, learning_rate, _activation.momentum(), is_bias, weight_index);
       break;
 
     case OptimiserType::Adam:
-      apply_adam_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+      apply_adam_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
       break;
 
     case OptimiserType::AdamW:
-      apply_adamw_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8);
+      apply_adamw_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
       break;
 
     case OptimiserType::Nadam:
-      apply_nadam_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8);
+      apply_nadam_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
       break;
 
     case OptimiserType::NadamW:
-      apply_nadamw_update(weight_param, final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias);
+      apply_nadamw_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
       break;
 
     default:
@@ -316,13 +390,11 @@ public:
 
   const std::vector<Neuron>& get_neurons() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _neurons;
   }
 
   const Neuron& get_neuron(unsigned int neuron_index) const
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
     if (neuron_index >= _neurons.size())
     {
@@ -334,117 +406,56 @@ public:
 
   // --- Weights and Biases ---
 
+  inline double get_weight_value(unsigned input_idx, unsigned output_idx) const {
+    return _w_values[input_idx * _number_output_neurons + output_idx];
+  }
+
+  inline double get_bias_value(unsigned output_idx) const {
+    return _b_values[output_idx];
+  }
+
+  // This is for serializer compatibility. It's slow.
   const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _weights;
+    if (_weights_cache_dirty) {
+      _cached_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0,0,0,0)));
+      for (unsigned i = 0; i < _number_input_neurons; ++i) {
+        for (unsigned j = 0; j < _number_output_neurons; ++j) {
+          const auto idx = i * _number_output_neurons + j;
+          _cached_weights[i][j] = WeightParam(
+            _w_values[idx], _w_grads[idx], _w_velocities[idx],
+            _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
+          );
+        }
+      }
+      _weights_cache_dirty = false;
+    }
+    return _cached_weights;
   }
 
-  const std::vector<WeightParam>& get_weight_param(unsigned int input_neuron_number) const
+  const std::vector<WeightParam>& get_bias_weight_params() const
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _weights[input_neuron_number];
+    if (_bias_weights_cache_dirty) {
+      _cached_bias_weights.resize(_number_output_neurons, WeightParam(0,0,0,0));
+      for (unsigned j = 0; j < _number_output_neurons; ++j) {
+        _cached_bias_weights[j] = WeightParam(
+          _b_values[j], _b_grads[j], _b_velocities[j],
+          _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
+        );
+      }
+      _bias_weights_cache_dirty = false;
+    }
+    return _cached_bias_weights;
   }
-
-  const WeightParam& get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index) const
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _weights[input_neuron_number][neuron_index];
-  }
-
-  inline WeightParam& get_weight_param(unsigned int input_neuron_number, unsigned int neuron_index)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _weights[input_neuron_number][neuron_index];
-  }
-
-  inline const std::vector<WeightParam>& get_bias_weight_params() const
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _bias_weights;
-  }
-
-  inline const WeightParam& get_bias_weight_param(unsigned int neuron_index) const
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _bias_weights[neuron_index];
-  }
-
-  inline WeightParam& get_bias_weight_param(unsigned int neuron_index)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _bias_weights[neuron_index];
-  }
-
+  
   virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const = 0;
   virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params() = 0;
 
-  /**
-   * @brief Checks if the layer has a bias neuron.
-   * @return True if the layer includes a bias, false otherwise.
-   */
   virtual bool has_bias() const noexcept = 0;
 
   virtual Layer* clone() const = 0;
 
 protected:
-
-  static std::vector<std::vector<WeightParam>> create_weights(
-    double weight_decay,
-    LayerType layer_type,
-    const activation& activation_method,
-    unsigned number_input_neurons,
-    unsigned number_output_neurons
-  )
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-#if VALIDATE_DATA == 1
-    if (number_input_neurons == 0)
-    {
-      assert(layer_type == LayerType::Input);
-      return {};
-    }
-#endif
-
-    std::vector<std::vector<WeightParam>> weights;
-    weights.resize(number_input_neurons);
-    for (unsigned i = 0; i < number_input_neurons; ++i)
-    {
-      auto inner_weights = activation_method.weight_initialization(number_output_neurons, number_input_neurons);
-      assert(inner_weights.size() == number_output_neurons);
-      weights[i].reserve(number_output_neurons);
-      for (unsigned o = 0; o < number_output_neurons; ++o)
-      {
-        const auto& weight = inner_weights[o];
-        weights[i].emplace_back(WeightParam(weight, 0.0, 0.0, weight_decay));
-      }
-    }
-    return weights;
-  }
-
-  static std::vector<WeightParam> create_bias_weights(
-    bool has_bias,
-    const activation& activation_method,
-    unsigned number_output_neurons
-  )
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (!has_bias)
-    {
-      return {};
-    }
-
-    std::vector<WeightParam> bias_weights;
-    bias_weights.reserve(number_output_neurons);
-    auto weights = activation_method.weight_initialization(number_output_neurons, 1);
-    for (unsigned o = 0; o < number_output_neurons; ++o)
-    {
-      const auto& weight = weights[o];
-      bias_weights.emplace_back(WeightParam(weight, 0.0, 0.0, 0.0));
-    }
-    return bias_weights;
-  }
-
   static std::vector<Neuron> create_neurons(
     double dropout_rate,
     unsigned number_output_neurons
@@ -464,201 +475,202 @@ protected:
   }
 
 private:
-  inline void apply_none_update(WeightParam& weight_param, double raw_gradient, double learning_rate) const noexcept
+  inline void apply_none_update(double raw_gradient, double learning_rate, bool is_bias, unsigned idx)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    double new_weight = weight_param.get_value() - learning_rate * raw_gradient;
-    weight_param.set_raw_gradient(raw_gradient);
-    weight_param.set_value(new_weight);
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+
+    double new_weight = values[idx] - learning_rate * raw_gradient;
+    grads[idx] = raw_gradient;
+    values[idx] = new_weight;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
   }
 
-  inline void apply_sgd_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double momentum, bool is_bias) const noexcept
+  inline void apply_sgd_update(double raw_gradient, double learning_rate, double momentum, bool is_bias, unsigned idx)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+    auto& velocities = is_bias ? _b_velocities : _w_velocities;
+    auto& decays = is_bias ? _b_decays : _w_decays;
     
-    if (!is_bias && weight_param.get_weight_decay() > 0.0)
+    if (!is_bias && decays[idx] > 0.0)
     {
-      raw_gradient += weight_param.get_weight_decay() * weight_param.get_value();
+      raw_gradient += decays[idx] * values[idx];
     }
 
-    double previous_velocity = weight_param.get_velocity();
+    double previous_velocity = velocities[idx];
     double velocity = momentum * previous_velocity + raw_gradient;
 
-    double new_weight = weight_param.get_value() - learning_rate * velocity;
+    double new_weight = values[idx] - learning_rate * velocity;
 
-    weight_param.set_raw_gradient(raw_gradient);
-    weight_param.set_value(new_weight);
-    weight_param.set_velocity(velocity);
+    grads[idx] = raw_gradient;
+    values[idx] = new_weight;
+    velocities[idx] = velocity;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
   }
 
-  inline void apply_adam_update(WeightParam& weight_param, double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias) const noexcept
+  inline void apply_adam_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    // Update timestep
-    weight_param.increment_timestep();
-    const auto& time_step = weight_param.get_timestep();
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+    auto& m1s = is_bias ? _b_m1 : _w_m1;
+    auto& m2s = is_bias ? _b_m2 : _w_m2;
+    auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
+    auto& decays = is_bias ? _b_decays : _w_decays;
+    
+    timesteps[idx]++;
+    const auto& time_step = timesteps[idx];
 
-    // Update moments
-    double m = beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient;
-    double v = beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * raw_gradient * raw_gradient;
+    m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
+    m2s[idx] = beta2 * m2s[idx] + (1.0 - beta2) * raw_gradient * raw_gradient;
 
-    weight_param.set_first_moment_estimate(m);
-    weight_param.set_second_moment_estimate(v);
-
-    double m_hat = m / (1.0 - std::pow(beta1, time_step));
-    double v_hat = v / (1.0 - std::pow(beta2, time_step));
+    double m_hat = m1s[idx] / (1.0 - std::pow(beta1, time_step));
+    double v_hat = m2s[idx] / (1.0 - std::pow(beta2, time_step));
 
     double adam_update = learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
-
-    // Apply decoupled weight decay (skip if bias)
-    double decayed_weight = is_bias ? weight_param.get_value()
-      : weight_param.get_value() * (1.0 - learning_rate * weight_param.get_weight_decay());
-
+    
+    double decayed_weight = is_bias ? values[idx] : values[idx] * (1.0 - learning_rate * decays[idx]);
     double new_weight = decayed_weight - adam_update;
 
-    weight_param.set_value(new_weight);
-    weight_param.set_raw_gradient(raw_gradient);
+    values[idx] = new_weight;
+    grads[idx] = raw_gradient;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
   }
 
-  inline void apply_adamw_update(
-    WeightParam& weight_param,
-    double raw_gradient,           // unclipped, averaged over batch
-    double learning_rate,
-    double beta1,
-    double beta2,
-    double epsilon
-  ) const noexcept
+  inline void apply_adamw_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    // Update timestep
-    weight_param.increment_timestep();
-    const auto& time_step = weight_param.get_timestep();
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+    auto& m1s = is_bias ? _b_m1 : _w_m1;
+    auto& m2s = is_bias ? _b_m2 : _w_m2;
+    auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
+    auto& decays = is_bias ? _b_decays : _w_decays;
 
-    // Update biased first and second moment estimates
-    weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
-    weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
+    timesteps[idx]++;
+    const auto& time_step = timesteps[idx];
 
-    // Compute bias-corrected moments
-    double first_moment_estimate = weight_param.get_first_moment_estimate();
-    double m_hat = first_moment_estimate / (1.0 - std::pow(beta1, time_step));
+    m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
+    m2s[idx] = beta2 * m2s[idx] + (1.0 - beta2) * (raw_gradient * raw_gradient);
 
-    auto second_moment_estimate = weight_param.get_second_moment_estimate();
-    double v_hat = second_moment_estimate / (1.0 - std::pow(beta2, time_step));
+    double m_hat = m1s[idx] / (1.0 - std::pow(beta1, time_step));
+    double v_hat = m2s[idx] / (1.0 - std::pow(beta2, time_step));
 
-    // AdamW update rule
     double weight_update = learning_rate * (m_hat / (std::sqrt(v_hat) + epsilon));
-
-    // Decoupled weight decay
-    auto new_weight = weight_param.get_value();
-    new_weight *= (1.0 - learning_rate * weight_param.get_weight_decay());
-
-    // Apply update
-    new_weight -= weight_update;
-
-    weight_param.set_value(new_weight);
-    weight_param.set_raw_gradient(raw_gradient);
-  }
-
-  inline void apply_nadam_update(
-    WeightParam& weight_param,
-    double raw_gradient,
-    double learning_rate,
-    double beta1,
-    double beta2,
-    double epsilon
-  ) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    // Update timestep
-    weight_param.increment_timestep();
-    const auto& time_step = weight_param.get_timestep();
-
-    // These moment estimate updates are identical to Adam
-    weight_param.set_first_moment_estimate(beta1 * weight_param.get_first_moment_estimate() + (1.0 - beta1) * raw_gradient);
-    weight_param.set_second_moment_estimate(beta2 * weight_param.get_second_moment_estimate() + (1.0 - beta2) * (raw_gradient * raw_gradient));
-
-    double m_hat = weight_param.get_first_moment_estimate() / (1.0 - std::pow(beta1, time_step));
-    double v_hat = weight_param.get_second_moment_estimate() / (1.0 - std::pow(beta2, time_step));
-
-    // Nadam's key difference:
-    // It combines the momentum from the historical gradient (m_hat) with the
-    // momentum from the current gradient.
-    double corrected_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
-
-    // The denominator is the same as Adam's
-    double weight_update = learning_rate * (corrected_gradient / (std::sqrt(v_hat) + epsilon));
-
-    // Apply the final update (No decoupled weight decay)
-    double new_weight = weight_param.get_value() - weight_update;
-
-    weight_param.set_value(new_weight);
-    weight_param.set_raw_gradient(raw_gradient);
-  }
-
-  inline void apply_nadamw_update(
-    WeightParam& weight_param,
-    double raw_gradient,
-    double learning_rate,
-    double beta1,
-    double beta2,
-    double epsilon,
-    bool is_bias
-  ) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    // 1. Increment timestep
-    weight_param.increment_timestep();
-    const long long time_step = weight_param.get_timestep();
-
-    // 2. Update biased moment estimates
-    double first_moment = beta1 * weight_param.get_first_moment_estimate()
-      + (1.0 - beta1) * raw_gradient;
-    double second_moment = beta2 * weight_param.get_second_moment_estimate()
-      + (1.0 - beta2) * (raw_gradient * raw_gradient);
-
-    weight_param.set_first_moment_estimate(first_moment);
-    weight_param.set_second_moment_estimate(second_moment);
-
-    // 3. Bias corrections
-    double m_hat = first_moment / (1.0 - std::pow(beta1, time_step));
-    double v_hat = second_moment / (1.0 - std::pow(beta2, time_step));
-
-    // 4. NAdam momentum blend (with bias correction for gradient term)
-    double m_nadam = beta1 * m_hat
-      + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
-
-    // 5. Adaptive step
-    double step = m_nadam / (std::sqrt(v_hat) + epsilon);
-
-    // 6. Decoupled weight decay
-    double w = weight_param.get_value();
-    if (!is_bias)
-    {
-      w *= (1.0 - learning_rate * weight_param.get_weight_decay());
+    
+    double new_weight = values[idx];
+    if (!is_bias) {
+      new_weight *= (1.0 - learning_rate * decays[idx]);
     }
 
-    // 7. Apply update
-    w -= learning_rate * step;
-    weight_param.set_value(w);
-    weight_param.set_raw_gradient(raw_gradient);
+    new_weight -= weight_update;
+
+    values[idx] = new_weight;
+    grads[idx] = raw_gradient;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
   }
 
+  inline void apply_nadam_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
+  {
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+    auto& m1s = is_bias ? _b_m1 : _w_m1;
+    auto& m2s = is_bias ? _b_m2 : _w_m2;
+    auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
+
+    timesteps[idx]++;
+    const auto& time_step = timesteps[idx];
+    
+    m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
+    m2s[idx] = beta2 * m2s[idx] + (1.0 - beta2) * (raw_gradient * raw_gradient);
+
+    double m_hat = m1s[idx] / (1.0 - std::pow(beta1, time_step));
+    double v_hat = m2s[idx] / (1.0 - std::pow(beta2, time_step));
+
+    double corrected_gradient = (beta1 * m_hat) + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
+    double weight_update = learning_rate * (corrected_gradient / (std::sqrt(v_hat) + epsilon));
+    
+    double new_weight = values[idx] - weight_update;
+
+    values[idx] = new_weight;
+    grads[idx] = raw_gradient;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
+  }
+
+  inline void apply_nadamw_update(double raw_gradient, double learning_rate, double beta1, double beta2, double epsilon, bool is_bias, unsigned idx)
+  {
+    auto& values = is_bias ? _b_values : _w_values;
+    auto& grads = is_bias ? _b_grads : _w_grads;
+    auto& m1s = is_bias ? _b_m1 : _w_m1;
+    auto& m2s = is_bias ? _b_m2 : _w_m2;
+    auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
+    auto& decays = is_bias ? _b_decays : _w_decays;
+
+    timesteps[idx]++;
+    const long long time_step = timesteps[idx];
+    
+    m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
+    m2s[idx] = beta2 * m2s[idx] + (1.0 - beta2) * (raw_gradient * raw_gradient);
+
+    double m_hat = m1s[idx] / (1.0 - std::pow(beta1, time_step));
+    double v_hat = m2s[idx] / (1.0 - std::pow(beta2, time_step));
+
+    double m_nadam = beta1 * m_hat + ((1.0 - beta1) * raw_gradient) / (1.0 - std::pow(beta1, time_step));
+    double step = m_nadam / (std::sqrt(v_hat) + epsilon);
+    
+    double w = values[idx];
+    if (!is_bias)
+    {
+      w *= (1.0 - learning_rate * decays[idx]);
+    }
+    
+    w -= learning_rate * step;
+    values[idx] = w;
+    grads[idx] = raw_gradient;
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
+  }
+
+protected:
   unsigned _layer_index;
   LayerType _layer_type;
   activation _activation;
   OptimiserType _optimiser_type;
   int _residual_layer_number;
 
-  unsigned _number_input_neurons;  //  number of neurons in previous layer
-  unsigned _number_output_neurons; //  number of neurons in this layer
-
-  // N_prev = number of neurons in previous layer
-  // N_this = number of neurons in this layer
-  // Size: [N_prev][N_this]
-  std::vector<std::vector<WeightParam>> _weights;
-  std::vector<WeightParam> _bias_weights;
+  unsigned _number_input_neurons;
+  unsigned _number_output_neurons;
 
   std::vector<Neuron> _neurons;
   
+  // Structure of Arrays (SoA) for weights
+  std::vector<double> _w_values;
+  std::vector<double> _w_grads;
+  std::vector<double> _w_velocities;
+  std::vector<double> _w_m1; // first moment
+  std::vector<double> _w_m2; // second moment
+  std::vector<long long> _w_timesteps;
+  std::vector<double> _w_decays;
+
+  // Structure of Arrays (SoA) for biases
+  std::vector<double> _b_values;
+  std::vector<double> _b_grads;
+  std::vector<double> _b_velocities;
+  std::vector<double> _b_m1;
+  std::vector<double> _b_m2;
+  std::vector<long long> _b_timesteps;
+  std::vector<double> _b_decays;
+  
   ResidualProjector* _residual_projector;
+
+private:
+  // Caches for serializer compatibility
+  mutable std::vector<std::vector<WeightParam>> _cached_weights;
+  mutable bool _weights_cache_dirty;
+  mutable std::vector<WeightParam> _cached_bias_weights;
+  mutable bool _bias_weights_cache_dirty;
 };

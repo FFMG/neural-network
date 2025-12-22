@@ -28,8 +28,8 @@ FFLayer::FFLayer(
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     create_neurons(dropout_rate, num_neurons_in_this_layer),
-    create_weights(weight_decay, layer_type, activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
-    create_bias_weights(true, activation_method, num_neurons_in_this_layer),
+    _has_bias_neuron,
+    weight_decay,
     residual_projector)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -37,34 +37,6 @@ FFLayer::FFLayer(
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
   Layer(src)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-}
-
-FFLayer::FFLayer(
-  unsigned layer_index,
-  const std::vector<Neuron>& neurons,
-  unsigned number_input_neurons,
-  LayerType layer_type,
-  OptimiserType optimiser_type,
-  int residual_layer_number,
-  const activation::method& activation_method,
-  const std::vector<std::vector<WeightParam>>& weights,
-  const std::vector<WeightParam>& bias_weights,
-  const std::vector<std::vector<WeightParam>>& residual_weights
-) : 
-  Layer(
-    layer_index,
-    layer_type,
-    activation_method,
-    optimiser_type,
-    residual_layer_number,
-    number_input_neurons,
-    static_cast<unsigned>(neurons.size()),
-    neurons,
-    weights,
-    bias_weights,
-    ResidualProjector::create(residual_weights))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -112,28 +84,29 @@ std::vector<double> FFLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_prev = previous_layer.get_number_neurons();
-  const size_t N_this = get_number_neurons();
+  const auto N_prev = get_number_input_neurons();
+  const auto N_this = get_number_neurons();
 
   std::vector<double> output_row(N_this, 0.0);
   std::vector<double> pre_activation_sums(N_this, 0.0);
 
-  for (size_t j = 0; j < N_this; j++)
+  // Initialize with bias values
+  if (has_bias())
   {
-    if (!get_bias_weight_params().empty())
+    for (size_t j = 0; j < N_this; j++)
     {
-      pre_activation_sums[j] = get_bias_weight_param(j).get_value();
+      pre_activation_sums[j] = get_bias_value((unsigned)j);
     }
   }
 
+  // Multiply and accumulate weights and inputs
   for (size_t i = 0; i < N_prev; i++)
   {
-    double input_val = previous_layer_inputs[i];
+    const double input_val = previous_layer_inputs[i];
     if (input_val == 0.0) continue;
-    const auto& weight_row = get_weight_param(i);
     for (size_t j = 0; j < N_this; j++)
     {
-      pre_activation_sums[j] += input_val * weight_row[j].get_value();
+      pre_activation_sums[j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
     }
   }
 
@@ -271,8 +244,8 @@ void FFLayer::calculate_hidden_gradients(
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t N_this = get_number_neurons();
-  const size_t N_next = next_layer.get_number_neurons();
+  const auto N_this = get_number_neurons();
+  const auto N_next = next_layer.get_number_neurons();
 
   std::vector<double> grad_matrix(N_this, 0.0);
 
@@ -283,7 +256,7 @@ void FFLayer::calculate_hidden_gradients(
     double weighted_sum = 0.0;
     for (size_t j = 0; j < N_next; j++)
     {
-      weighted_sum += next_grad_matrix[j] * next_layer.get_weight_param(i, j).get_value();
+      weighted_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
     }
     double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
     grad_matrix[i] = weighted_sum * deriv;

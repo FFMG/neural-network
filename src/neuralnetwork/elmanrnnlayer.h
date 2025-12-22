@@ -32,19 +32,6 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector);
 
-  ElmanRNNLayer(
-    unsigned layer_index,
-    const std::vector<Neuron>& neurons,
-    unsigned number_input_neurons,
-    LayerType layer_type,
-    OptimiserType optimiser_type,
-    int residual_layer_number,
-    const activation::method& activation_method,
-    const std::vector<std::vector<WeightParam>>& weights,
-    const std::vector<std::vector<WeightParam>>& recurrent_weights,
-    const std::vector<WeightParam>& bias_weights,
-    const std::vector<std::vector<WeightParam>>& residual_weights);
-
   ElmanRNNLayer(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer(ElmanRNNLayer&& src) noexcept;
   ElmanRNNLayer& operator=(const ElmanRNNLayer& src) noexcept;
@@ -53,7 +40,6 @@ public:
 
 public:
   bool use_bptt() const noexcept override {
-    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return true;
   }
 
@@ -95,8 +81,9 @@ public:
     const std::vector<HiddenState>& hidden_states,
     int bptt_max_ticks) const override;
 
-  const std::vector<std::vector<WeightParam>>& get_recurrent_weight_params() const;
-  std::vector<std::vector<WeightParam>>& get_recurrent_weight_params();
+  void apply_recurrent_weight_gradient(unsigned from_neuron, unsigned to_neuron, double gradient, double learning_rate, double clipping_scale);
+
+  double get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const;
 
   bool has_bias() const noexcept override;
 
@@ -106,9 +93,17 @@ public:
   Layer* clone() const override;
 
 private:
-  void resize_residual_weights(double weight_decay);
+  void initialize_recurrent_weights(double weight_decay);
+  
+  // SoA for recurrent weights
+  std::vector<double> _rw_values;
+  std::vector<double> _rw_grads;
+  std::vector<double> _rw_velocities;
+  std::vector<double> _rw_m1;
+  std::vector<double> _rw_m2;
+  std::vector<long long> _rw_timesteps;
+  std::vector<double> _rw_decays;
 
-  // Size: [N_this][N_this]
-  std::vector<std::vector<WeightParam>> _recurrent_weights;
+  // Kept for now to limit refactoring scope
   std::vector<std::vector<WeightParam>> _residual_weights;
 };
