@@ -5,6 +5,7 @@
 #include "activation.h"
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
+#include "hiddenstates.h"
 #include "hiddenstate.h"
 #include "neuron.h"
 #include "optimiser.h"
@@ -319,32 +320,29 @@ public:
     return false;
   }
 
-  virtual std::vector<double> calculate_forward_feed(
-    GradientsAndOutputs& gradients_and_outputs,
+  virtual void calculate_forward_feed(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& previous_layer,
-    const std::vector<double>& previous_layer_inputs,
-    const std::vector<double>& residual_output_values,
-    std::vector<HiddenState>& hidden_states,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
     bool is_training) const = 0;
 
   virtual void calculate_output_gradients(
-    GradientsAndOutputs& gradients_and_outputs,
-    const std::vector<double>& target_outputs,
-    const std::vector<HiddenState>& hidden_states,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+    const std::vector<HiddenStates>& batch_hidden_states,
     ErrorCalculation::type error_calculation_type) const = 0;
 
   inline const activation& get_activation() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
 
   virtual void calculate_hidden_gradients(
-    GradientsAndOutputs& gradients_and_outputs,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& next_layer,
-    const std::vector<double>& next_grad_matrix,
-    const std::vector<double>& output_matrix,
-    const std::vector<HiddenState>& hidden_states,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks) const = 0;
 
   void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)

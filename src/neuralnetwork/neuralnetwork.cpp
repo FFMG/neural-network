@@ -1132,9 +1132,10 @@ void NeuralNetwork::calculate_back_propagation_input_layer(
   
   // input layer is all 0, (bias is included)
   const auto& input_gradients = std::vector<double>(layers.input_layer().get_number_neurons(), 0.0);
-  std::vector<std::vector<double>> full_input_gradients;
-  full_input_gradients.resize(gradients.size(), input_gradients);
-  set_gradients_for_layer(gradients, 0, full_input_gradients);
+  for (size_t i = 0; i < gradients.size(); ++i)
+  {
+      gradients[i].set_gradients(0, input_gradients);
+  }
 }
 
 void NeuralNetwork::calculate_back_propagation_output_layer(
@@ -1145,31 +1146,10 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
   const std::vector<HiddenStates>& hidden_states)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-#if VALIDATE_DATA == 1
-  assert(batch_size == gradients.size());
-  for (auto gradients_index = 0; gradients_index < batch_size; ++gradients_index)
-  {
-    // the given output gradient does not have bias.
-    assert((*(outputs_begin + gradients_index)).size() == gradients[gradients_index].output_back().size());
-  }
-#endif
-
-  // set the output gradient
   const auto& output_layer_number = static_cast<unsigned>(layers.size() - 1);
   auto& output_layer = layers.output_layer();
   
-  // build hs for output layer
-  std::vector<std::vector<HiddenState>> hs;
-  hs.reserve(hidden_states.size());
-  for (const auto& state : hidden_states)
-  {
-      hs.push_back(state.at(output_layer_number));
-  }
-
-  for(size_t i = 0; i < batch_size; ++i)
-  {
-    output_layer.calculate_output_gradients(gradients[i], *(outputs_begin + i), hidden_states[i].at(output_layer_number), _options.error_calculation_type());
-  }
+  output_layer.calculate_output_gradients(gradients, outputs_begin, hidden_states, _options.error_calculation_type());
 }
 
 void NeuralNetwork::calculate_back_propagation_hidden_layers(
@@ -1177,26 +1157,15 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
     const Layers& layers,
     const std::vector<HiddenStates>& hidden_states)
 {
-  // get the last calculated gradients, (in this case from the output layer).
-  const unsigned output_layer_number = static_cast<unsigned>(layers.size() - 1);
-  std::vector<std::vector<double>> next_activation_gradients;
-  next_activation_gradients.reserve(gradients.size());
-  for (auto& gradient : gradients)
-  {
-    next_activation_gradients.emplace_back(gradient.get_gradients(output_layer_number));
-  }
-
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   // we are going backward from output to input
-  for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
+  for (auto layer_number = (int)layers.size() - 2; layer_number > 0; --layer_number)
   {
-    // Input => Hidden(0) => Hidden(1) => Output
     auto& hidden_0 = layers[static_cast<unsigned>(layer_number)];
     const auto& hidden_1 = layers[static_cast<unsigned>(layer_number + 1)];
 
-    const auto output_values = get_outputs_for_layer(gradients, layer_number);
-    
-    std::vector<std::vector<double>> next_gradients;
-    next_gradients.reserve(gradients.size());
+    std::vector<std::vector<double>> batch_next_gradients;
+    batch_next_gradients.reserve(gradients.size());
     for (const auto& g : gradients)
     {
       std::vector<double> grad;
@@ -1208,52 +1177,10 @@ void NeuralNetwork::calculate_back_propagation_hidden_layers(
       {
         grad = g.get_gradients(static_cast<unsigned>(layer_number + 1));
       }
-      next_gradients.emplace_back(std::move(grad));
+      batch_next_gradients.emplace_back(std::move(grad));
     }
 
-    // build hs for this layer
-    std::vector<std::vector<HiddenState>> hs;
-    hs.reserve(hidden_states.size());
-    for(const auto& state : hidden_states)
-    {
-        hs.push_back(state.at(layer_number));
-    }
-
-    for(size_t i = 0; i < gradients.size(); ++i)
-    {
-      hidden_0.calculate_hidden_gradients(gradients[i], hidden_1, next_gradients[i], output_values[i], hidden_states[i].at(layer_number), _options.bptt_max_ticks());
-    }
-  }
-}
-
-std::vector<std::vector<double>> NeuralNetwork::get_outputs_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const
-{
-  std::vector<std::vector<double>> outputs;
-  outputs.reserve(source.size());
-  for (const auto& gradient : source)
-  {
-    outputs.emplace_back(gradient.get_outputs(layer_number));
-  }
-  return outputs;
-}
-
-std::vector<std::vector<double>> NeuralNetwork::get_gradients_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const
-{
-  std::vector<std::vector<double>> gradients;
-  gradients.reserve(source.size());
-  for (const auto& gradient : source)
-  {
-    gradients.emplace_back(gradient.get_gradients(layer_number));
-  }
-  return gradients;
-}
-
-void NeuralNetwork::set_gradients_for_layer(std::vector<GradientsAndOutputs>& source, unsigned layer_number, const std::vector<std::vector<double>>& gradients) const
-{
-  assert(source.size() == gradients.size());
-  for (auto gradients_index = 0; gradients_index < gradients.size(); ++gradients_index)
-  {
-    source[gradients_index].set_gradients(layer_number, gradients[gradients_index]);
+    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, _options.bptt_max_ticks());
   }
 }
 
@@ -1261,7 +1188,7 @@ void NeuralNetwork::calculate_forward_feed(
   std::vector<GradientsAndOutputs>& gradients_and_output,
   std::vector<std::vector<double>>::const_iterator inputs_begin,
   size_t batch_size,
-  const Layers& layers_container,
+  const Layers& layers_container, 
   std::vector<HiddenStates>& hidden_states,
   bool is_training) const
 {
@@ -1269,123 +1196,74 @@ void NeuralNetwork::calculate_forward_feed(
 
   assert(gradients_and_output.size() == batch_size);
 
-          for (size_t b = 0; b < batch_size; ++b)
-          {
-            const auto& current_input = *(inputs_begin + b);
-            // --- 1. Store input layer outputs (no bias appended here) ---
-            gradients_and_output[b].set_outputs(0, current_input);
-      
-            // --- 1a. If BPTT enabled, also store expanded RNN outputs for input layer ---
-            if (options().enable_bptt() && options().bptt_max_ticks() > 1)
-            {
-              const size_t input_size = layers_container[0].get_number_neurons();
-              if (current_input.size() == input_size) // Single step provided
-              {
-                std::vector<double> expanded;
-                const int ticks = options().bptt_max_ticks();
-                expanded.reserve(input_size * ticks);
-                for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
-                gradients_and_output[b].set_rnn_outputs(0, expanded);
-              }
-            }    // --- 2. Forward propagate from first hidden layer onward ---
-    for (size_t layer_number = 1; layer_number < layers_container.size(); ++layer_number)
-    {
-      const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
-      const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
+  // --- 1. Store input layer outputs for the entire batch ---
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& current_input = *(inputs_begin + b);
+    gradients_and_output[b].set_outputs(0, current_input);
 
-      std::vector<double> previous_layer_input_for_batch_item;
-      if (options().enable_bptt() && current_layer.use_bptt())
+    if (options().enable_bptt() && options().bptt_max_ticks() > 1)
+    {
+      const size_t input_size = layers_container[0].get_number_neurons();
+      if (current_input.size() == input_size)
       {
-        const auto rnn_out = gradients_and_output[b].get_rnn_outputs(static_cast<unsigned>(layer_number - 1));
-        if (!rnn_out.empty())
+        std::vector<double> expanded;
+        const int ticks = options().bptt_max_ticks();
+        expanded.reserve(input_size * ticks);
+        for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+        gradients_and_output[b].set_rnn_outputs(0, expanded);
+      }
+    }
+  }
+
+  // --- 2. Forward propagate layer by layer for the entire batch ---
+  for (size_t layer_number = 1; layer_number < layers_container.size(); ++layer_number)
+  {
+    const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
+    const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
+
+    // Prepare batched residual outputs if needed
+    std::vector<std::vector<double>> batch_residual_values;
+    const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
+    if (residual_projector != nullptr)
+    {
+      auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
+      std::vector<std::vector<double>> batch_residual_inputs;
+      batch_residual_values.reserve(batch_size);
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        batch_residual_inputs.emplace_back(gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number)));
+      }
+      batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
+    }
+
+    // Ensure hidden state vectors are sized correctly
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        if (current_layer.use_bptt())
         {
-          previous_layer_input_for_batch_item = rnn_out;
+            std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+            if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+            const size_t n_prev = previous_layer.get_number_neurons();
+            const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
+            hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
         }
         else
         {
-          const auto out = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
-          const size_t nprev = previous_layer.get_number_neurons();
-          if (nprev > 0 && out.size() > nprev && (out.size() % nprev) == 0)
-          {
-            // treat as concatenated time-series
-            previous_layer_input_for_batch_item = out;
-          }
-          else
-          {
-            // fallback to single-timestep outputs
-            previous_layer_input_for_batch_item = out;
-          }
+            hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
         }
-      }
-      else
-      {
-        previous_layer_input_for_batch_item = gradients_and_output[b].get_outputs(static_cast<unsigned>(layer_number - 1));
-      }
-
-      // --- 2a. Prepare residual outputs if current layer uses residuals ---
-      std::vector<double> residual_output_values;
-      const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
-      if (residual_projector != nullptr)
-      {
-        auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
-        std::vector<double> residual_layer_outputs = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
-
-        residual_output_values = residual_projector->project(residual_layer_outputs);
-      }
-
-      // --- 2b. Build hidden-state slices for this layer ---
-      std::vector<std::vector<HiddenState>> hs_batch;
-      hs_batch.push_back(hidden_states[b].at(layer_number));
-
-      // --- 2c. Call layer forward
-      std::vector<HiddenState>& layer_hidden_states = hidden_states[b].at(layer_number);
-      // Calculate num_time_steps for the current layer's inputs
-      const size_t N_prev = previous_layer.get_number_neurons();
-      const size_t current_num_time_steps = N_prev > 0 ? previous_layer_input_for_batch_item.size() / N_prev : 0;
-      layer_hidden_states.resize(current_num_time_steps); // Resize to num_time_steps
-      
-      std::vector<double> forward_feed_result = current_layer.calculate_forward_feed(
-        gradients_and_output[b], // Pass gradients_and_output for this batch item
-        previous_layer,
-        previous_layer_input_for_batch_item,
-        residual_output_values,
-        layer_hidden_states, // Pass the resized vector
-        is_training);
-
-      // --- 2d. Log activations (diagnostic) ---
-      if (Logger::can_trace())
-      {
-        double sum = 0.0;
-        double max_abs = 0.0;
-        for (const auto& val : forward_feed_result)
-        {
-          sum += val;
-          max_abs = std::max(max_abs, std::fabs(val));
-        }
-        const double total_values = static_cast<double>(forward_feed_result.size());
-        double mean = sum / total_values;
-        if (std::fabs(mean) < 1e-6 || std::fabs(mean) > 10 || std::fabs(max_abs) > 50)
-        {
-          Logger::trace([=]
-            {
-              return Logger::factory("[ACT] Batch ", b, " Layer ", layer_number, ": mean=", mean, ", max=", max_abs);
-            });
-        }
-      }
-
-      // --- 2e. Store outputs into gradients_and_output ---
-      // This is now handled internally by calculate_forward_feed for RNNs
-      // and directly by the return value for FFLayers.
-      // For FFLayers, forward_feed_result contains the output of current batch item
-      if (current_layer.use_bptt())
-      {
-          gradients_and_output[b].set_outputs(static_cast<unsigned>(layer_number), forward_feed_result);
-      }
-      // If it's an RNN, set_outputs and set_rnn_outputs are handled inside ElmanRNNLayer::calculate_forward_feed.
     }
+
+    // Call batched forward feed
+    current_layer.calculate_forward_feed(
+      gradients_and_output,
+      previous_layer,
+      batch_residual_values,
+      hidden_states,
+      is_training
+    );
   }
 }
-
 void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs) const

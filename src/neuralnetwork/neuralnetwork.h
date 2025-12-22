@@ -97,10 +97,6 @@ private:
     const size_t size
   );
 
-  void set_gradients_for_layer(std::vector<GradientsAndOutputs>& source, unsigned layer_number, const std::vector<std::vector<double>>& gradients) const;
-  std::vector<std::vector<double>> get_outputs_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const;
-  std::vector<std::vector<double>> get_gradients_for_layer(const std::vector<GradientsAndOutputs>& source, unsigned layer_number) const;
-
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& gradients_and_output,
     std::vector<std::vector<double>>::const_iterator inputs_begin,
