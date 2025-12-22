@@ -97,7 +97,7 @@ public:
     this->_gradients.set(layer, neuron, gradient);
   }
 
-  std::vector<double> get_gradients(unsigned layer) const
+  [[nodiscard]] inline const std::vector<double>& get_gradients(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     return this->_gradients.get_neurons(layer);
@@ -133,7 +133,7 @@ public:
     return static_cast<unsigned>(this->_gradients.number_neurons(layer));
   }
 
-  [[nodiscard]] inline std::vector<double> get_outputs(unsigned layer) const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_outputs(unsigned layer) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     return this->_outputs.get_neurons(layer);
@@ -165,7 +165,7 @@ public:
     this->_outputs.set(layer, outputs);
   }
   
-  [[nodiscard]] std::vector<double> output_back() const
+  [[nodiscard]] const std::vector<double>& output_back() const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     const size_t size = this->_outputs.number_layers();
@@ -189,12 +189,13 @@ public:
     _rnn_outputs[layer] = outputs;
   }
 
-  std::vector<double> get_rnn_outputs(unsigned layer) const
+  const std::vector<double>& get_rnn_outputs(unsigned layer) const
   {
     const auto it = _rnn_outputs.find(layer);
     if(it == _rnn_outputs.end())
     {
-      return {};
+      static const std::vector<double> empty = {};
+      return empty;
     }
     return it->second;
   }
@@ -204,12 +205,13 @@ public:
     _rnn_gradients[layer] = gradients;
   }
 
-  std::vector<double> get_rnn_gradients(unsigned layer) const
+  const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
     const auto it = _rnn_gradients.find(layer);
     if(it == _rnn_gradients.end())
     {
-      return {};
+      static const std::vector<double> empty = {};
+      return empty;
     }
     return it->second;
   }
