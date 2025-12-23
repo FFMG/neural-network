@@ -1,5 +1,4 @@
 #pragma once
-
 #include <algorithm>
 #include <chrono>     // Required for time operations (std::chrono)
 #include <functional>
@@ -7,64 +6,71 @@
 #include <iostream>   // Required for std::cout and std::endl
 #include <string>     // Required for std::string
 #include <sstream>    // Required for std::stringstream to build the time string
+#include <stdexcept>
 #include <type_traits>
 
 class Logger
 {
 public:
-  enum class LogLevel 
+  enum class LogLevel
   {
     Trace,
     Debug,
     Information,
     Warning,
     Error,
+    Panic,
     None
   };
 
-  static std::string level_to_string(LogLevel level) 
+  static std::string level_to_string(LogLevel level)
   {
-    switch (level) 
+    switch (level)
     {
-      case LogLevel::Trace:        return "Trace";
-      case LogLevel::Information:  return "Info";
-      case LogLevel::Warning:      return "Warning";
-      case LogLevel::Error:        return "Error";
-      case LogLevel::None:         return "None";
+    case LogLevel::Trace:        return "Trace";
+    case LogLevel::Information:  return "Info";
+    case LogLevel::Warning:      return "Warning";
+    case LogLevel::Error:        return "Error";
+    case LogLevel::Panic:        return "Panic";
+    case LogLevel::None:         return "None";
 
-      case LogLevel::Debug:
-      default:                     return "Debug";
+    case LogLevel::Debug:
+    default:                     return "Debug";
     }
   }
 
-  static LogLevel string_to_level(const std::string& str) 
+  static LogLevel string_to_level(const std::string& str)
   {
     std::string lower_str = str;
     // Convert the string to lowercase for case-insensitive comparison
     std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
       [](unsigned char c) { return std::tolower(c); });
 
-    if(lower_str == "trace")
+    if (lower_str == "trace")
     {
       return LogLevel::Trace;
     }
-    if(lower_str == "debug")
+    if (lower_str == "debug")
     {
       return LogLevel::Debug;
-    }      
-    if(lower_str == "info" || lower_str == "information")
+    }
+    if (lower_str == "info" || lower_str == "information")
     {
       return LogLevel::Information;
     }
-    if(lower_str == "warn" || lower_str == "warning") 
+    if (lower_str == "warn" || lower_str == "warning")
     {
       return LogLevel::Warning;
     }
-    if(lower_str == "error")  
+    if (lower_str == "error")
     {
       return LogLevel::Error;
     }
-    if(lower_str == "none")  
+    if (lower_str == "panic")
+    {
+      return LogLevel::Panic;
+    }
+    if (lower_str == "none")
     {
       return LogLevel::None;
     }
@@ -77,19 +83,22 @@ private:
   // ANSI escape codes for text colors. These codes work on most modern terminals
   // (Linux, macOS, and recent versions of Windows Terminal/PowerShell).
   // They instruct the terminal to change the color of subsequent text.
-  static constexpr const char* LogColorReset  = "\033[0m";   // Resets text color to default
-  static constexpr const char* LogColorRed    = "\033[31m";
-  static constexpr const char* LogColorGreen  = "\033[32m";
+  static constexpr const char* LogColorReset = "\033[0m";   // Resets text color to default
+  static constexpr const char* LogColorRed = "\033[31m";
+  static constexpr const char* LogColorGreen = "\033[32m";
   static constexpr const char* LogColorYellow = "\033[33m";
-  static constexpr const char* LogColorBlue   = "\033[34m";
-  static constexpr const char* LogColorCyan   = "\033[36m";
+  static constexpr const char* LogColorBlue = "\033[34m";
+  static constexpr const char* LogColorCyan = "\033[36m";
 
-  Logger(LogLevel minLevel = LogLevel::Information) : _min_level(minLevel) 
+  static constexpr const char* OpenTag = " [";
+  static constexpr const char* CloseTag = "] ";
+
+  Logger(LogLevel minLevel = LogLevel::Information) : _min_level(minLevel)
   {
   }
 
   // Static method to get the singleton instance
-  static Logger& instance() 
+  static Logger& instance()
   {
     static Logger instance;
     return instance;
@@ -102,7 +111,7 @@ public:
   Logger(Logger&&) = delete;
   Logger& operator=(Logger&&) = delete;
 
-  static void set_level(LogLevel level) 
+  static void set_level(LogLevel level)
   {
     instance()._min_level = level;
   }
@@ -142,25 +151,38 @@ public:
     log(LogLevel::Error, std::forward<Args>(args)...);
   }
 
+  template <typename... Args>
+  [[noreturn]] static void panic(Args&&... args)
+  {
+    log(LogLevel::Panic, std::forward<Args>(args)...);
+#if defined(_MSC_VER)
+    __assume(0);
+#elif defined(__clang__) || defined(__GNUC__)
+    __builtin_unreachable();
+#else
+    ((void)0);
+#endif
+  }
+
   static inline bool can_trace()
   {
-    return can_log(LogLevel::Trace);
+    return instance().can_log(LogLevel::Trace);
   }
   static inline bool can_debug()
   {
-    return can_log(LogLevel::Debug);
+    return instance().can_log(LogLevel::Debug);
   }
   static inline bool can_info()
   {
-    return can_log(LogLevel::Information);
+    return instance().can_log(LogLevel::Information);
   }
   static inline bool can_warning()
   {
-    return can_log(LogLevel::Warning);
+    return instance().can_log(LogLevel::Warning);
   }
   static inline bool can_error()
   {
-    return can_log(LogLevel::Error);
+    return instance().can_log(LogLevel::Error);
   }
 
   template <typename... Args>
@@ -173,10 +195,9 @@ public:
 private:
   LogLevel _min_level; // Stores the minimum logging level set by the user
 
-  static bool can_log(LogLevel level)
+  bool can_log(LogLevel level) const
   {
-    // Only log if the current message's level is at or above the minimum configured level
-    return level >= instance()._min_level;
+    return (level == LogLevel::Panic || level >= _min_level);
   }
 
   static std::string get_current_time_string()
@@ -193,7 +214,7 @@ private:
     return ss.str();
   }
 
-  static void print_args(std::ostringstream& )
+  static void print_args(std::ostringstream&)
   {
     // No-op: This function does nothing, serving as the stopping point
     // for the recursion in the print_args variadic template.
@@ -203,7 +224,7 @@ private:
   template <typename T, typename... Args>
   static void print_args(std::ostringstream& oss, T&& first_arg, Args&&... rest)
   {
-    if constexpr (std::is_same_v<std::decay_t<T>, std::function<std::string()>> )
+    if constexpr (std::is_same_v<std::decay_t<T>, std::function<std::string()>>)
     {
       //  exact function
       oss << first_arg();
@@ -230,7 +251,7 @@ private:
     }
 
     // The function is only called if the log level is sufficient.
-    std::ostringstream oss; 
+    std::ostringstream oss;
     oss << message_factory();
     instance().string(level, oss.str());
   }
@@ -238,6 +259,10 @@ private:
   template <typename... Args>
   static void log(LogLevel level, Args&&... args)
   {
+    if (!instance().can_log(level))
+    {
+      return;
+    }
     std::ostringstream oss;
     print_args(oss, std::forward<Args>(args)...);
     oss << std::endl;
@@ -247,7 +272,7 @@ private:
   void string(LogLevel level, std::string message) const
   {
     // Only log if the current message's level is at or above the minimum configured level
-    if (level < _min_level)
+    if (!can_log(level))
     {
       return;
     }
@@ -261,44 +286,54 @@ private:
     const char* color_code = LogColorReset; // Default to no color
     std::string tag;
 
-    switch (level) 
+    switch (level)
     {
     case LogLevel::Trace:
       color_code = LogColorCyan;
-      tag = "[TRC]";
+      tag = "trace";
       break;
 
     case LogLevel::Debug:
       color_code = LogColorGreen;
-      tag = "[DBG]";
+      tag = "debug";
       break;
 
     case LogLevel::Information:
       color_code = LogColorBlue;
-      tag = "[INF]";
+      tag = "info";
       break;
 
     case LogLevel::Warning:
-        color_code = LogColorYellow;
-        tag = "[WRN]";
-        break;
+      color_code = LogColorYellow;
+      tag = "warn";
+      break;
 
     case LogLevel::Error:
-        color_code = LogColorRed;
-        tag = "[ERR]";
-        break;
+      color_code = LogColorRed;
+      tag = "error";
+      break;
+
+    case LogLevel::Panic:
+      color_code = LogColorRed;
+      tag = "panic";
+      break;
 
     case LogLevel::None: // Should not be reached for logging, but included for completeness
-        return; // If somehow called with None, just return
+      return; // If somehow called with None, just return
     }
 
     // 3. Output the color-coded tag, then reset color
-    oss << color_code << tag << LogColorReset << " ";
+    oss << color_code << OpenTag << tag << CloseTag << LogColorReset;
 
     // 4. Output the user's message arguments
     oss << message;
 
     // 5. Print the final message to the console
     std::cout << oss.str();
+
+    if (level == LogLevel::Panic)
+    {
+      throw std::runtime_error(oss.str());
+    }
   }
 };
