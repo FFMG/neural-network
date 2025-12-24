@@ -779,6 +779,12 @@ public:
     stop();
   }
 
+  inline unsigned int get_number_of_threads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    return _number_of_threads;
+  }
+
   void stop() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
@@ -910,6 +916,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     stop();
+  }
+
+  inline unsigned int get_number_of_threads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    return _number_of_threads;
   }
 
   void stop()

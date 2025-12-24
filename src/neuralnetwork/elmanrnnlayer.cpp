@@ -2,12 +2,6 @@
 #include "elmanrnnlayer.h"
 #include "logger.h"
 
-#include <iostream>
-#include <numeric>
-#include <future>
-#include <thread>
-#include <algorithm>
-
 constexpr bool _has_bias_neuron = true;
 
 ElmanRNNLayer::ElmanRNNLayer(
@@ -34,10 +28,12 @@ ElmanRNNLayer::ElmanRNNLayer(
     _has_bias_neuron,
     weight_decay,
     residual_projector
-  )
+  ),
+  _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   initialize_recurrent_weights(weight_decay);
+  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
@@ -48,9 +44,11 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_m1(src._rw_m1),
   _rw_m2(src._rw_m2),
   _rw_timesteps(src._rw_timesteps),
-  _rw_decays(src._rw_decays)
+  _rw_decays(src._rw_decays),
+  _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
@@ -61,9 +59,11 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m1(std::move(src._rw_m1)),
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
-  _rw_decays(std::move(src._rw_decays))
+  _rw_decays(std::move(src._rw_decays)),
+  _task_queue_pool(src._task_queue_pool)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  src._task_queue_pool = nullptr;
 }
 
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
@@ -79,6 +79,9 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
+
+    delete _task_queue_pool;
+    _task_queue_pool = new TaskQueuePool<void>();
   }
   return *this;
 }
@@ -96,11 +99,18 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
+
+    delete _task_queue_pool;
+    _task_queue_pool = src._task_queue_pool;
+    src._task_queue_pool = nullptr;
   }
   return *this;
 }
 
-ElmanRNNLayer::~ElmanRNNLayer() = default;
+ElmanRNNLayer::~ElmanRNNLayer()
+{
+  delete _task_queue_pool;
+}
 
 void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
 {
@@ -228,25 +238,24 @@ void ElmanRNNLayer::calculate_forward_feed(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  if (batch_size < num_threads * 2) num_threads = 1;
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_forward_pass(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_forward_pass, start, end));
+      _task_queue_pool->enqueue([=]()
+        {
+          run_forward_pass(start, end);
+        });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 
   for (size_t b = 0; b < batch_size; ++b)
@@ -367,25 +376,23 @@ void ElmanRNNLayer::calculate_output_gradients(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  if (batch_size < num_threads * 2) num_threads = 1;
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_output_gradients(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_output_gradients, start, end));
+      _task_queue_pool->enqueue([=]() {
+        run_output_gradients( start, end);
+      });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 }
 
@@ -503,25 +510,24 @@ void ElmanRNNLayer::calculate_hidden_gradients(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  if (batch_size < num_threads * 2) num_threads = 1;
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_hidden_gradients(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_hidden_gradients, start, end));
+      _task_queue_pool->enqueue([=]()
+        {
+          run_hidden_gradients(start, end);
+        });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 }
 
