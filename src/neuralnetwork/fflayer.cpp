@@ -2,12 +2,6 @@
 #include "fflayer.h"
 #include "logger.h"
 
-#include <iostream>
-#include <numeric>
-#include <future>
-#include <thread>
-#include <algorithm>
-
 constexpr bool _has_bias_neuron = true;
 
 FFLayer::FFLayer(
@@ -33,21 +27,28 @@ FFLayer::FFLayer(
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     _has_bias_neuron,
     weight_decay,
-    residual_projector)
+    residual_projector
+  ),
+  _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
-  Layer(src)
+  Layer(src),
+  _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
-  Layer(std::move(src))
+  Layer(std::move(src)),
+  _task_queue_pool(src._task_queue_pool)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  src._task_queue_pool = nullptr;
 }
 
 FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
@@ -56,6 +57,9 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   if(this != &src)
   {
     Layer::operator=(src);
+
+    delete _task_queue_pool;
+    _task_queue_pool = new TaskQueuePool<void>();
   }
   return *this;
 }
@@ -66,11 +70,18 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   if(this != &src)
   {
     Layer::operator=(std::move(src));
+
+    delete _task_queue_pool;
+    _task_queue_pool = src._task_queue_pool;
+    src._task_queue_pool = nullptr;
   }
   return *this;
 }
 
-FFLayer::~FFLayer() = default;
+FFLayer::~FFLayer()
+{
+  delete _task_queue_pool;
+}
 
 bool FFLayer::has_bias() const noexcept
 {
@@ -168,26 +179,24 @@ void FFLayer::calculate_forward_feed(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  // If batch is small, don't over-thread
-  if (batch_size < num_threads * 2) num_threads = 1; 
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_forward_pass(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_forward_pass, start, end));
+      _task_queue_pool->enqueue([=]()
+        {
+          run_forward_pass(start, end);
+        });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 }
 
@@ -280,25 +289,24 @@ void FFLayer::calculate_output_gradients(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  if (batch_size < num_threads * 2) num_threads = 1;
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_output_gradients(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_output_gradients, start, end));
+      _task_queue_pool->enqueue([=]()
+        {
+          run_output_gradients(start, end);
+        });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 }
 
@@ -337,25 +345,24 @@ void FFLayer::calculate_hidden_gradients(
     }
   };
 
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0) num_threads = 2;
-  if (batch_size < num_threads * 2) num_threads = 1;
-
-  if (num_threads <= 1)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (batch_size < (num_threads * 2))
   {
     run_hidden_gradients(0, batch_size);
   }
   else
   {
-    std::vector<std::future<void>> futures;
     size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      futures.push_back(std::async(std::launch::async, run_hidden_gradients, start, end));
+      _task_queue_pool->enqueue([=]()
+        {
+          run_hidden_gradients(start, end);
+        });
     }
-    for (auto& f : futures) f.get();
+    _task_queue_pool->get();
   }
 }
 Layer* FFLayer::clone() const
