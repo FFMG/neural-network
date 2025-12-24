@@ -40,7 +40,10 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
   _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
+  if (src._task_queue_pool != nullptr)
+  {
+    _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+  }
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
@@ -59,7 +62,10 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
     Layer::operator=(src);
 
     delete _task_queue_pool;
-    _task_queue_pool = new TaskQueuePool<void>();
+    if (src._task_queue_pool != nullptr)
+    {
+      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+    }
   }
   return *this;
 }

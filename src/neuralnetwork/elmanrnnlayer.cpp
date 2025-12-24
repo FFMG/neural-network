@@ -48,7 +48,10 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _task_queue_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
+  if (src._task_queue_pool != nullptr)
+  {
+    _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+  }
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
@@ -81,7 +84,11 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_decays = src._rw_decays;
 
     delete _task_queue_pool;
-    _task_queue_pool = new TaskQueuePool<void>();
+    _task_queue_pool = nullptr;
+    if (src._task_queue_pool != nullptr)
+    {
+      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+    }
   }
   return *this;
 }
