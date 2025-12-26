@@ -196,30 +196,66 @@ void ElmanRNNLayer::calculate_forward_feed(
 
         if (get_layer_type() != LayerType::Input)
         {
-          std::vector<double> prev_inputs = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-          if (prev_inputs.empty()) prev_inputs = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-          
-          for (size_t i = 0; i < N_prev; ++i)
+          const auto& prev_inputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+          const auto& prev_inputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+          const bool use_rnn_input = !prev_inputs_rnn.empty();
+          const double* prev_inputs_ptr = use_rnn_input ? prev_inputs_rnn.data() : prev_inputs_std.data();
+          const size_t prev_inputs_size = use_rnn_input ? prev_inputs_rnn.size() : prev_inputs_std.size();
+
+          // Input-to-Hidden: W * x_t
+          // This loop is dominated by memory access to weights.
+          constexpr size_t BLOCK_SIZE = 32;
+          for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
           {
-            double val = (prev_inputs.size() == N_prev) ? prev_inputs[i] : (prev_inputs.size() >= (t + 1) * N_prev ? prev_inputs[t * N_prev + i] : 0.0);
-            if (val == 0.0) continue;
-            for (size_t j = 0; j < N_this; ++j)
-            {
-              pre_activation_sums[j] += val * get_weight_value((unsigned)i, (unsigned)j);
-            }
+             size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
+             for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+             {
+               size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+               
+               for (size_t i = i0; i < i_limit; ++i)
+               {
+                 double val = 0.0;
+                 if (prev_inputs_size == N_prev) val = prev_inputs_ptr[i];
+                 else if (prev_inputs_size >= (t + 1) * N_prev) val = prev_inputs_ptr[t * N_prev + i];
+                 
+                 if (val == 0.0) continue;
+
+                 for (size_t j = j0; j < j_limit; ++j)
+                 {
+                   pre_activation_sums[j] += val * get_weight_value((unsigned)i, (unsigned)j);
+                 }
+               }
+             }
           }
         }
 
         if (t > 0 && (get_layer_type() == LayerType::Hidden || get_layer_type() == LayerType::Output))
         {
-          for (size_t i = 0; i < N_this; ++i)
+          // Hidden-to-Hidden: U * h_{t-1}
+          const auto& prev_hidden_state = batch_hidden_states[b].at(get_layer_index())[t - 1];
+          // We can't easily get raw pointer here without exposing it in HiddenState, 
+          // but let's assume get_hidden_state_value_at_neuron is inline and fast enough 
+          // or we can use the vector reference.
+          const auto& h_prev_vec = prev_hidden_state.get_hidden_state_values();
+          const double* h_prev_ptr = h_prev_vec.data();
+
+          constexpr size_t BLOCK_SIZE = 32;
+          for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
           {
-            const double h_prev_i = batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_value_at_neuron((unsigned)i);
-            if (h_prev_i == 0.0) continue;
-            for (size_t j = 0; j < N_this; ++j)
-            {
-              pre_activation_sums[j] += h_prev_i * get_recurrent_weight_value((unsigned)i, (unsigned)j);
-            }
+              size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+              for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+              {
+                  size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+                  for (size_t i = i0; i < i_limit; ++i)
+                  {
+                      const double h_prev_i = h_prev_ptr[i];
+                      if (h_prev_i == 0.0) continue;
+                      for (size_t j = j0; j < j_limit; ++j)
+                      {
+                          pre_activation_sums[j] += h_prev_i * get_recurrent_weight_value((unsigned)i, (unsigned)j);
+                      }
+                  }
+              }
           }
         }
 

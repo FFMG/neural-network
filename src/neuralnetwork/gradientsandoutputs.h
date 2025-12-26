@@ -103,6 +103,18 @@ public:
     return this->_gradients.get_neurons(layer);
   }
 
+  [[nodiscard]] inline double* get_gradients_raw(unsigned layer)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    return this->_gradients.get_raw_ptr(layer);
+  }
+
+  [[nodiscard]] inline const double* get_gradients_raw(unsigned layer) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    return this->_gradients.get_raw_ptr(layer);
+  }
+
   void set_gradients(unsigned layer, const std::vector<double>& gradients)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
@@ -137,6 +149,18 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     return this->_outputs.get_neurons(layer);
+  }
+
+  [[nodiscard]] inline double* get_outputs_raw(unsigned layer)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    return this->_outputs.get_raw_ptr(layer);
+  }
+
+  [[nodiscard]] inline const double* get_outputs_raw(unsigned layer) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    return this->_outputs.get_raw_ptr(layer);
   }
 
   [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
