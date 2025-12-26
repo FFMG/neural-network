@@ -107,11 +107,18 @@ void FFLayer::calculate_forward_feed(
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
-  std::vector<std::vector<double>> batch_pre_activation_sums(batch_size, std::vector<double>(N_this, 0.0));
+  std::vector<double> batch_pre_activation_sums(batch_size * N_this, 0.0);
 
   // Initialize with bias values and Matrix-Matrix multiplication
   auto run_forward_pass = [&](size_t start, size_t end) 
   {
+    std::vector<double> output_row(N_this);
+    std::vector<double> temp_pre_activations;
+    if (!batch_hidden_states.empty())
+    {
+      temp_pre_activations.resize(N_this);
+    }
+
     // Initialize with bias values
     if (has_bias())
     {
@@ -119,7 +126,7 @@ void FFLayer::calculate_forward_feed(
       {
         for (size_t j = 0; j < N_this; j++)
         {
-          batch_pre_activation_sums[b][j] = get_bias_value((unsigned)j);
+          batch_pre_activation_sums[b * N_this + j] = get_bias_value((unsigned)j);
         }
       }
     }
@@ -133,7 +140,7 @@ void FFLayer::calculate_forward_feed(
         if (input_val == 0.0) continue;
         for (size_t j = 0; j < N_this; j++)
         {
-          batch_pre_activation_sums[b][j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
+          batch_pre_activation_sums[b * N_this + j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
         }
       }
     }
@@ -147,7 +154,7 @@ void FFLayer::calculate_forward_feed(
         {
           for (size_t j = 0; j < N_this; j++)
           {
-            batch_pre_activation_sums[b][j] += batch_residual_output_values[b][j];
+            batch_pre_activation_sums[b * N_this + j] += batch_residual_output_values[b][j];
           }
         }
       }
@@ -156,11 +163,10 @@ void FFLayer::calculate_forward_feed(
     // Activation
     for (size_t b = start; b < end; b++)
     {
-      std::vector<double> output_row(N_this);
       for (size_t j = 0; j < N_this; j++)
       {
         const auto& neuron = get_neuron((unsigned)j);
-        double output = get_activation().activate(batch_pre_activation_sums[b][j]);
+        double output = get_activation().activate(batch_pre_activation_sums[b * N_this + j]);
 
         if (is_training && neuron.is_dropout()) 
         {
@@ -178,7 +184,11 @@ void FFLayer::calculate_forward_feed(
       
       if(!batch_hidden_states.empty())
       {
-        batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(batch_pre_activation_sums[b]);
+        for (size_t j = 0; j < N_this; ++j) 
+        {
+          temp_pre_activations[j] = batch_pre_activation_sums[b * N_this + j];
+        }
+        batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
         batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
       }
       batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output_row);
@@ -266,10 +276,11 @@ void FFLayer::calculate_output_gradients(
 
   auto run_output_gradients = [&](size_t start, size_t end)
   {
+    std::vector<double> gradients(N_total, 0.0);
+    std::vector<double> deltas(N_total, 0.0);
+
     for (size_t b = start; b < end; b++)
     {
-      std::vector<double> gradients(N_total, 0.0);
-      std::vector<double> deltas(N_total, 0.0);
       const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
       const auto& target_outputs = *(target_outputs_begin + b);
 
@@ -330,9 +341,10 @@ void FFLayer::calculate_hidden_gradients(
 
   auto run_hidden_gradients = [&](size_t start, size_t end)
   {
+    std::vector<double> grad_matrix(N_this, 0.0);
+
     for (size_t b = start; b < end; b++)
     {
-      std::vector<double> grad_matrix(N_this, 0.0);
       const auto& next_grad_matrix = batch_next_grad_matrix[b];
       const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
 
