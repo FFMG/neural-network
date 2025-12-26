@@ -132,17 +132,41 @@ void FFLayer::calculate_forward_feed(
     }
 
     // Multiply and accumulate weights and inputs
-    for (size_t i = 0; i < N_prev; i++)
+    // Tiled matrix multiplication for cache locality
+    constexpr size_t BLOCK_SIZE = 64; 
+
+    for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
     {
-      for (size_t b = start; b < end; b++)
-      {
-        const double input_val = batch_gradients_and_outputs[b].get_output(get_layer_index() - 1, (unsigned)i);
-        if (input_val == 0.0) continue;
-        for (size_t j = 0; j < N_this; j++)
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
+        for (size_t b0 = start; b0 < end; b0 += BLOCK_SIZE)
         {
-          batch_pre_activation_sums[b * N_this + j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
+            size_t b_limit = std::min(b0 + BLOCK_SIZE, end);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            {
+                size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
+
+                for (size_t i = i0; i < i_limit; ++i)
+                {
+                    for (size_t b = b0; b < b_limit; ++b)
+                    {
+                        const double input_val = batch_gradients_and_outputs[b].get_output(get_layer_index() - 1, (unsigned)i);
+                        // Accessing raw pointer here would be faster if we exposed it for read as well, 
+                        // but get_output is inline and checks bounds, optimizing access inside inner loop is key.
+                        // Optimization: hoist get_output or use raw pointer if available.
+                        // Since we optimized GradientsAndOutputs, let's assume we can get raw ptrs if we refactor input access.
+                        // For now, keeping get_output but blocking helps.
+
+                        if (input_val == 0.0) continue;
+                        
+                        double* sum_ptr = &batch_pre_activation_sums[b * N_this];
+                        for (size_t j = j0; j < j_limit; ++j)
+                        {
+                             sum_ptr[j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
+                        }
+                    }
+                }
+            }
         }
-      }
     }
 
     // Residuals
@@ -163,6 +187,8 @@ void FFLayer::calculate_forward_feed(
     // Activation
     for (size_t b = start; b < end; b++)
     {
+      const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+      
       for (size_t j = 0; j < N_this; j++)
       {
         const auto& neuron = get_neuron((unsigned)j);
@@ -180,6 +206,7 @@ void FFLayer::calculate_forward_feed(
           }
         }
         output_row[j] = output;
+        output_ptr[j] = output; // Write directly to raw output buffer
       }
       
       if(!batch_hidden_states.empty())
@@ -191,7 +218,7 @@ void FFLayer::calculate_forward_feed(
         batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
         batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
       }
-      batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output_row);
+      // batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output_row); // Removed: Writing to raw ptr instead
     }
   };
 
@@ -342,22 +369,38 @@ void FFLayer::calculate_hidden_gradients(
   auto run_hidden_gradients = [&](size_t start, size_t end)
   {
     std::vector<double> grad_matrix(N_this, 0.0);
+    constexpr size_t BLOCK_SIZE = 64;
 
     for (size_t b = start; b < end; b++)
     {
+      std::fill(grad_matrix.begin(), grad_matrix.end(), 0.0);
       const auto& next_grad_matrix = batch_next_grad_matrix[b];
       const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
 
       // G_this = (G_next * W_next^T)
+      // Tiled multiplication
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      {
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
+          for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
+          {
+              size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_next);
+              for (size_t i = i0; i < i_limit; ++i)
+              {
+                  double partial_sum = 0.0;
+                  for (size_t j = j0; j < j_limit; ++j)
+                  {
+                      partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
+                  }
+                  grad_matrix[i] += partial_sum;
+              }
+          }
+      }
+
       for (unsigned i = 0; i < N_this; i++)
       {
-        double weighted_sum = 0.0;
-        for (size_t j = 0; j < N_next; j++)
-        {
-          weighted_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
-        }
         double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
-        grad_matrix[i] = weighted_sum * deriv;
+        grad_matrix[i] *= deriv;
       }
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_matrix);
     }
