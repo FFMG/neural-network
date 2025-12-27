@@ -9,6 +9,9 @@
 #include <numeric>
 #include <random>
 #include <string>
+#include <future>
+#include <thread>
+#include <algorithm>
 
 #ifndef M_PI
 # define M_PI   3.141592653589793238462643383279502884
@@ -859,7 +862,7 @@ void NeuralNetwork::apply_weight_gradients(
   layer_gradients.resize(num_layers);
 
   // --- Store unclipped gradients ---
-  for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
+  auto compute_layer_gradients = [&](int layer_number)
   {
     auto& current_layer = layers[static_cast<unsigned>(layer_number)];
     
@@ -1002,11 +1005,20 @@ void NeuralNetwork::apply_weight_gradients(
         }
       }
     }
+  };
+
+  std::vector<std::future<void>> futures;
+  for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
+  {
+      futures.push_back(std::async(std::launch::async, compute_layer_gradients, layer_number));
   }
+  for (auto& f : futures) f.get();
+  futures.clear();
 
   // --- Apply gradients ---
   double global_clipping_scale = calculate_global_clipping_scale(layer_gradients);
-  for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
+  
+  auto apply_layer_gradients = [&](int layer_number)
   {
     auto& current_layer = layers[layer_number];
     auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&current_layer);
@@ -1055,7 +1067,13 @@ void NeuralNetwork::apply_weight_gradients(
         }
       }
     }
+  };
+
+  for (int layer_number = num_layers - 1; layer_number > 0; --layer_number)
+  {
+      futures.push_back(std::async(std::launch::async, apply_layer_gradients, layer_number));
   }
+  for (auto& f : futures) f.get();
 }
 
 

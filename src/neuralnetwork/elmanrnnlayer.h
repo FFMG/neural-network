@@ -8,11 +8,10 @@
 #endif
 
 #include "errorcalculation.h"
-#include "gradientsandoutputs.h"
 #include "hiddenstate.h"
 #include "layer.h"
+#include "taskqueue.h"
 
-#include <cassert>
 #include <vector>
 
 class ElmanRNNLayer final : public Layer
@@ -98,4 +97,6 @@ private:
   std::vector<double> _rw_m2;
   std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
+
+  TaskQueuePool<void>* _task_queue_pool;
 };

@@ -133,6 +133,21 @@ public:
     return _data[_offsets[layer]+neuron];
   }
 
+  const double* get_raw_ptr(unsigned layer) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+    ensure_size(layer, 0);
+    return _data.data() + _offsets[layer];
+  }
+
+  double* get_raw_ptr(unsigned layer)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+    ensure_size(layer, 0);
+    _cache_dirty[layer] = true;
+    return _data.data() + _offsets[layer];
+  }
+
   const std::vector<double>& get_neurons(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
