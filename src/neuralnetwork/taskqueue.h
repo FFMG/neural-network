@@ -298,10 +298,8 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::unique_lock<std::mutex> lock(_mutex);
-    _condition_busy_task_complete.wait(lock, [this]
-      {
-        return _total_pending_tasks.load() == 0;
-      });
+    
+    wait_for_all_tasks(lock);
 
     _total_completed_tasks.store(0);
   }
@@ -363,6 +361,8 @@ private:
           // If this was the last pending task, notify waiters.
           if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
           {
+            // We only take the lock if we are the one transitioning to 0, ensuring we don't race with the waiter's sleep.
+            std::unique_lock<std::mutex> lock(_mutex);
             _condition_busy_task_complete.notify_all();
           }
         }
@@ -377,6 +377,8 @@ private:
         // If this was the last pending task, notify waiters.
         if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
+          // We only take the lock if we are the one transitioning to 0, ensuring we don't race with the waiter's sleep.
+          std::unique_lock<std::mutex> lock(_mutex);
           _condition_busy_task_complete.notify_all();
         }
         throw; // re-throw after logging and notifying
@@ -779,6 +781,12 @@ public:
     stop();
   }
 
+  inline unsigned int get_number_of_threads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    return _number_of_threads;
+  }
+
   void stop() 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
@@ -910,6 +918,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
     stop();
+  }
+
+  inline unsigned int get_number_of_threads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    return _number_of_threads;
   }
 
   void stop()

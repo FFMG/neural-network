@@ -8,11 +8,10 @@
 #endif
 
 #include "errorcalculation.h"
-#include "weightparam.h"
-#include "layer.h"
 #include "hiddenstate.h"
+#include "layer.h"
+#include "taskqueue.h"
 
-#include <cassert>
 #include <vector>
 
 class FFLayer final : public Layer
@@ -78,4 +77,6 @@ public:
   bool has_bias() const noexcept override;
   
   Layer* clone() const override;
+
+  TaskQueuePool<void>* _task_queue_pool;
 };
