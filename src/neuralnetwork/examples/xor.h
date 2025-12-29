@@ -3,8 +3,6 @@
 #include "../neuralnetworkserializer.h"
 #include "helper.h"
 
-#include <iomanip>
-
 class ExampleXor
 {
 private:
@@ -18,10 +16,11 @@ private:
       .with_log_level(log_level)
       .with_dropout({0.2})
       .with_learning_rate(0.1)
+      .with_learning_rate_warmup(0.01, 0.075)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::None)
+      .with_optimiser_type(OptimiserType::SGD)
       .build();
 
     return new NeuralNetwork(options);
@@ -48,16 +47,14 @@ private:
     // pass an array of array to think about
     // the result should be close to the training output.
     auto outputs = nn.think(training_inputs);
-    std::cout << "Output After Training:" << std::endl;
-    std::cout << std::fixed << std::setprecision(10);
+    Logger::info("Output After Training:", std::fixed, std::setprecision(10));
     for (const auto& row : outputs) 
     {
       for (double val : row) 
       {
-        std::cout << val << std::endl;
+        Logger::info("  ", val);
       }
     }
-    std::cout << std::endl;  
   }
 
 public:
@@ -67,7 +64,7 @@ public:
 
     // the file we will be loading from
     const char* file_name = "./xor.nn";
-    const unsigned epoch = 1500;
+    const unsigned epoch = 5000;
     const unsigned batch_size = 1;
 
     // assume that it does not exist
@@ -87,12 +84,11 @@ public:
         NeuralNetworkSerializer::save(*nn, file_name);
 
         auto nn_saved = NeuralNetworkSerializer::load(file_name);
-        std::cout << "Output from saved file:" << std::endl;
-        std::cout << std::fixed << std::setprecision(10);
+        Logger::info("Output from saved file:", std::fixed, std::setprecision(10));
         auto t1 = nn_saved->think({ 0, 0, 1 });
-        std::cout << t1.front() << std::endl;//  should be close to 0
+        Logger::info("  ", t1.front(), " (should be close to 0)");
         auto t2 = nn_saved->think({ 1, 1, 1 });
-        std::cout << t2.front() << std::endl; //  should be close to 1
+        Logger::info("  ", t2.front(), " (should be close to 1)");
 
         delete nn_saved;
       }
@@ -108,23 +104,21 @@ public:
 
     auto metrics = nn->calculate_forecast_metric( ErrorCalculation::type::rmse);
 
-    std::cout << "Error: " << metrics.error() << std::endl;
+    Logger::info("Error: ", metrics.error());
 
-    std::cout << "Output After Training:" << std::endl;
-    std::cout << std::fixed << std::setprecision(10);
+    Logger::info("Output After Training:", std::fixed, std::setprecision(10));
 
     // or we can train with a single inut
     // we know that the output only has one value.
     auto t1 = nn->think({ 0, 0, 1 });
-    std::cout << t1.front() << " (should be close to 0)" << std::endl;//  should be close to 0
+    Logger::info("  ", t1.front(), " (should be close to 0)");
 
     // or we can train with a single inut
     // we know that the output only has one value.
     auto t2 = nn->think({ 1, 1, 1 });
-    std::cout << t2.front() << " (should be close to 1)" << std::endl; //  should be close to 1
+    Logger::info("  ", t2.front(), " (should be close to 1)");
 
     delete nn;
     TEST_END
-    std::cout << std::endl;
   }
 };
