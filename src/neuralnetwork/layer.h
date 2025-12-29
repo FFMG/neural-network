@@ -12,6 +12,8 @@
 #include "residualprojector.h"
 #include "weightparam.h"
 
+#include <cmath>
+#include <memory>
 #include <vector>
 
 class Layer
@@ -91,6 +93,62 @@ protected:
       _b_m2.assign(number_output_neurons, 0.0);
       _b_timesteps.assign(number_output_neurons, 0);
       _b_decays.assign(number_output_neurons, 0.0); // No weight decay for biases
+    }
+  }
+
+  Layer(
+    unsigned layer_index,
+    const LayerType layer_type,
+    const activation activation,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    const ResidualProjector* residual_projector
+  ) noexcept :
+    _layer_index(layer_index),
+    _layer_type(layer_type),
+    _activation(activation),
+    _optimiser_type(optimiser_type),
+    _residual_layer_number(residual_layer_number),
+    _number_input_neurons(number_input_neurons),
+    _number_output_neurons(number_output_neurons),
+    _neurons(neurons),
+    _w_values(w_values),
+    _w_grads(w_grads),
+    _w_velocities(w_velocities),
+    _w_m1(w_m1),
+    _w_m2(w_m2),
+    _w_timesteps(w_timesteps),
+    _w_decays(w_decays),
+    _b_values(b_values),
+    _b_grads(b_grads),
+    _b_velocities(b_velocities),
+    _b_m1(b_m1),
+    _b_m2(b_m2),
+    _b_timesteps(b_timesteps),
+    _b_decays(b_decays),
+    _residual_projector(nullptr)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (residual_projector != nullptr)
+    {
+      _residual_projector = new ResidualProjector(*residual_projector);
     }
   }
 
@@ -498,6 +556,77 @@ public:
 
   virtual bool has_bias() const noexcept = 0;
   virtual Layer* clone() const = 0;
+
+  inline const std::vector<double>& get_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_values;
+  }
+  inline const std::vector<double>& get_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_grads;
+  }
+  inline const std::vector<double>& get_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_velocities;
+  }
+  inline const std::vector<double>& get_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_m1;
+  }
+  inline const std::vector<double>& get_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_m2;
+  }
+  inline const std::vector<long long>& get_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_timesteps;
+  }
+  inline const std::vector<double>& get_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _w_decays;
+  }
+  inline const std::vector<double>& get_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_values;
+  }
+  inline const std::vector<double>& get_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_grads;
+  }
+  inline const std::vector<double>& get_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_velocities;
+  }
+  inline const std::vector<double>& get_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_m1;
+  }
+  inline const std::vector<double>& get_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_m2;
+  }
+  inline const std::vector<long long> get_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_timesteps;
+  }
+  inline const std::vector<double>& get_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _b_decays;
+  }
 
 protected:
   static std::vector<Neuron> create_neurons(
