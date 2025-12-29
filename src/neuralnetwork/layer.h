@@ -143,7 +143,9 @@ protected:
     _b_m2(b_m2),
     _b_timesteps(b_timesteps),
     _b_decays(b_decays),
-    _residual_projector(nullptr)
+    _residual_projector(nullptr),
+    _weights_cache_dirty(true),
+    _bias_weights_cache_dirty(true)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr)
