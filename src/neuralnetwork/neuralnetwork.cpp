@@ -50,6 +50,20 @@ NeuralNetwork::NeuralNetwork(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
 
+NeuralNetwork::NeuralNetwork(
+  const Layers& layers,
+  const NeuralNetworkOptions& options,
+  const std::map<ErrorCalculation::type, double>& errors
+) :
+  _learning_rate(options.learning_rate()),
+  _layers(layers),
+  _options(options),
+  _neural_network_helper(nullptr),
+  _saved_errors(errors)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+}
+
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _layers(src._layers),
   _options(src._options),
@@ -103,10 +117,10 @@ const activation::method& NeuralNetwork::get_hidden_activation_method() const
   return _options.hidden_activation_method();
 }
 
-const std::vector<std::unique_ptr<Layer>>& NeuralNetwork::get_layers() const
+const Layers& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _layers.get_layers();
+  return _layers;
 }
 
 const std::vector<unsigned>& NeuralNetwork::get_topology() const
