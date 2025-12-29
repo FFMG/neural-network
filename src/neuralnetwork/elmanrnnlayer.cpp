@@ -69,6 +69,74 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   src._task_queue_pool = nullptr;
 }
 
+ElmanRNNLayer::ElmanRNNLayer(
+  unsigned layer_index,
+  const LayerType layer_type,
+  const activation activation,
+  const OptimiserType optimiser_type,
+  int residual_layer_number,
+  unsigned number_input_neurons,
+  unsigned number_output_neurons,
+  const std::vector<Neuron>& neurons,
+  const std::vector<double>& w_values,
+  const std::vector<double>& w_grads,
+  const std::vector<double>& w_velocities,
+  const std::vector<double>& w_m1,
+  const std::vector<double>& w_m2,
+  const std::vector<long long>& w_timesteps,
+  const std::vector<double>& w_decays,
+  const std::vector<double>& b_values,
+  const std::vector<double>& b_grads,
+  const std::vector<double>& b_velocities,
+  const std::vector<double>& b_m1,
+  const std::vector<double>& b_m2,
+  const std::vector<long long>& b_timesteps,
+  const std::vector<double>& b_decays,
+  const std::vector<double>& rw_values,
+  const std::vector<double>& rw_grads,
+  const std::vector<double>& rw_velocities,
+  const std::vector<double>& rw_m1,
+  const std::vector<double>& rw_m2,
+  const std::vector<long long>& rw_timesteps,
+  const std::vector<double>& rw_decays,
+  const ResidualProjector* residual_projector
+) noexcept :
+  Layer(
+    layer_index,
+    layer_type,
+    activation,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    residual_projector),
+    _rw_values(rw_values),
+    _rw_grads(rw_grads),
+    _rw_velocities(rw_velocities),
+    _rw_m1(rw_m1),
+    _rw_m2(rw_m2),
+    _rw_timesteps(rw_timesteps),
+    _rw_decays(rw_decays)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  _task_queue_pool = new TaskQueuePool<void>();
+}
+
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
