@@ -4267,7 +4267,7 @@ namespace TinyJSON
     return value->get_boolean();
   }
 
-  void TJValueObject::set_floats(const TJCHAR* key, const std::vector<long double>& values)
+  void TJValueObject::set_raw_floats(const TJCHAR* key, const std::vector<long double>& values)
   {
     if (nullptr == _members)
     {
@@ -4285,7 +4285,7 @@ namespace TinyJSON
     TJHelper::move_member_to_members(member, _members);
   }
 
-  void TJValueObject::set_numbers(const TJCHAR* key, const std::vector<long long>& values)
+  void TJValueObject::set_raw_numbers(const TJCHAR* key, const std::vector<long long>& values)
   {
     if (nullptr == _members)
     {
