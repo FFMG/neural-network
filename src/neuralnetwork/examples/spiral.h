@@ -155,9 +155,10 @@ public:
     }
 
     auto metrics = nn->calculate_forecast_metrics( 
-      {
-        ErrorCalculation::type::rmse,
-        ErrorCalculation::type::bce_loss });
+    {
+      ErrorCalculation::type::rmse,
+      ErrorCalculation::type::bce_loss 
+    });
     Logger::debug("Error rmse: ", metrics[0].error());
     Logger::debug("Error bce:  ", metrics[1].error());
 

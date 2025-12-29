@@ -992,8 +992,8 @@ void NeuralNetwork::apply_weight_gradients(
     if (residual_projector != nullptr)
     {
       auto residual_layer_number = current_layer.get_residual_layer_number();
-      const unsigned proj_output_size = residual_projector->output_size();
-      const unsigned proj_input_size = residual_projector->input_size();
+      const unsigned proj_output_size = residual_projector->get_output_size();
+      const unsigned proj_input_size = residual_projector->get_input_size();
 
       layer_gradients[layer_number].residual_weights.assign(proj_output_size * proj_input_size, 0.0);
 
@@ -1069,8 +1069,8 @@ void NeuralNetwork::apply_weight_gradients(
     auto* residual_projector = current_layer.get_residual_projector();
     if (residual_projector != nullptr && !layer_gradients[layer_number].residual_weights.empty())
     {
-      const unsigned proj_output_size = residual_projector->output_size();
-      const unsigned proj_input_size = residual_projector->input_size();
+      const unsigned proj_output_size = residual_projector->get_output_size();
+      const unsigned proj_input_size = residual_projector->get_input_size();
 
       for (unsigned in = 0; in < proj_input_size; ++in)
       {
