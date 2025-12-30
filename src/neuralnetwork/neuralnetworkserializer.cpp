@@ -728,7 +728,7 @@ void NeuralNetworkSerializer::add_elmanrnnLayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_floats("w-grads", layer.get_w_grads());
   layer_object->set_floats("w-velocities", layer.get_w_velocities());
   layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m1", layer.get_w_m2());
+  layer_object->set_floats("w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
   layer_object->set_floats("w-decays", layer.get_w_decays());
 
@@ -744,7 +744,7 @@ void NeuralNetworkSerializer::add_elmanrnnLayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_floats("rw-grads", layer.get_rw_grads());
   layer_object->set_floats("rw-velocities", layer.get_rw_velocities());
   layer_object->set_floats("rw-m1", layer.get_rw_m1());
-  layer_object->set_floats("rw-m1", layer.get_rw_m2());
+  layer_object->set_floats("rw-m2", layer.get_rw_m2());
   layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
   layer_object->set_floats("rw-decays", layer.get_rw_decays());
 
@@ -783,7 +783,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_floats("w-grads", layer.get_w_grads());
   layer_object->set_floats("w-velocities", layer.get_w_velocities());
   layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m1", layer.get_w_m2());
+  layer_object->set_floats("w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
   layer_object->set_floats("w-decays", layer.get_w_decays());
 
@@ -820,7 +820,7 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_residual_projector(const R
   residual_projector_object->set_floats("w-grads", residual_projector->get_w_grads());
   residual_projector_object->set_floats("w-velocities", residual_projector->get_w_velocities());
   residual_projector_object->set_floats("w-m1", residual_projector->get_w_m1());
-  residual_projector_object->set_floats("w-m1", residual_projector->get_w_m2());
+  residual_projector_object->set_floats("w-m2", residual_projector->get_w_m2());
   residual_projector_object->set_numbers("w-timesteps", residual_projector->get_w_timesteps());
   residual_projector_object->set_floats("w-decays", residual_projector->get_w_decays());
   return residual_projector_object;
