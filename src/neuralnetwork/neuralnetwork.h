@@ -114,15 +114,17 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch, const std::vector<HiddenStates>& hidden_states, unsigned num_layers_param, std::vector<LayerGradients>& layer_gradients);
+  void update_weights(
+    Layers& layers,
+    const std::vector<GradientsAndOutputs>& batch_gradients,
+    double learning_rate,
+    const std::vector<HiddenStates>& hidden_states);
 
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void break_indexes(const std::vector<size_t>& indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
   void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
   void create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
-
-  double calculate_global_clipping_scale(const std::vector<LayerGradients>& layer_gradients) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;

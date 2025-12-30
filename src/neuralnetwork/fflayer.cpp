@@ -436,20 +436,20 @@ void FFLayer::calculate_hidden_gradients(
       // Tiled multiplication
       for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
-          for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
+        for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
+        {
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_next);
+          for (size_t i = i0; i < i_limit; ++i)
           {
-              size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_next);
-              for (size_t i = i0; i < i_limit; ++i)
-              {
-                  double partial_sum = 0.0;
-                  for (size_t j = j0; j < j_limit; ++j)
-                  {
-                      partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
-                  }
-                  grad_matrix[i] += partial_sum;
-              }
+            double partial_sum = 0.0;
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
+            }
+            grad_matrix[i] += partial_sum;
           }
+        }
       }
 
       for (unsigned i = 0; i < N_this; i++)
@@ -481,8 +481,101 @@ void FFLayer::calculate_hidden_gradients(
     _task_queue_pool->get();
   }
 }
+
 Layer* FFLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   return new FFLayer(*this);
+}
+
+void FFLayer::calculate_and_store_gradients(
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  const Layer& previous_layer)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
+  if (batch_size == 0)
+  {
+    return;
+  }
+
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  // Reset gradients
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  if(has_bias())
+  {
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
+
+  for (unsigned b = 0; b < batch_size; ++b)
+  {
+    const auto& layer_outputs = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+    const auto& layer_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      const double input_val = layer_outputs[i];
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        _w_grads[i * num_outputs + j] += layer_grads[j] * input_val;
+      }
+    }
+
+    if (has_bias())
+    {
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        _b_grads[j] += layer_grads[j];
+      }
+    }
+  }
+
+  // Average gradients over batch
+  for (double& grad : _w_grads) grad /= static_cast<double>(batch_size);
+  if (has_bias())
+  {
+    for (double& grad : _b_grads)
+    {
+      grad /= static_cast<double>(batch_size);
+    }
+  }
+}
+
+double FFLayer::get_gradient_norm_sq() const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  double norm_sq = 0.0;
+  for (const double grad : _w_grads) norm_sq += grad * grad;
+  if (has_bias())
+  {
+    for (const double grad : _b_grads)
+    {
+      norm_sq += grad * grad;
+    }
+  }
+  return norm_sq;
+}
+
+void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  for (unsigned j = 0; j < num_outputs; ++j)
+  {
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      unsigned weight_index = i * num_outputs + j;
+      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+    }
+
+    if (has_bias())
+    {
+      apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+    }
+  }
 }

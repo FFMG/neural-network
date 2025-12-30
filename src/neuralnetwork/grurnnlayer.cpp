@@ -1143,3 +1143,71 @@ Layer* GRURNNLayer::clone() const
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   return new GRURNNLayer(*this);
 }
+
+void GRURNNLayer::calculate_and_store_gradients(
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    const Layer& previous_layer)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  // TODO
+  // Implementation of BPTT for GRU weight gradients.
+  // This is a complex function and is left as a placeholder.
+  // A full implementation would:
+  // 1. Traverse backwards through time (from t_start to t_end).
+  // 2. For each time step, calculate the gradients of the loss with respect to
+  //    the parameters of the z, r, and h_hat gates (dL/dWz, dL/dUz, dL/dbz, etc.).
+  // 3. This requires the intermediate values (z_t, r_t, h_hat_pre) that we stored
+  //    in `HiddenState` during the forward pass.
+  // 4. The gradients would be accumulated over all time steps in the BPTT window
+  //    and all samples in the batch.
+  // 5. Finally, the accumulated gradients would be stored in the layer's gradient
+  //    vectors (_w_grads, _z_w_grads, _r_w_grads, etc.).
+}
+
+double GRURNNLayer::get_gradient_norm_sq() const
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  double norm_sq = 0.0;
+  auto sum_sq = [&](const std::vector<double>& grads) 
+  {
+    for (const double grad : grads)
+    {
+      norm_sq += grad * grad;
+    }
+  };
+    
+  sum_sq(_w_grads);
+  sum_sq(_b_grads);
+  sum_sq(_rw_grads);
+  sum_sq(_z_w_grads);
+  sum_sq(_z_rw_grads);
+  sum_sq(_z_b_grads);
+  sum_sq(_r_w_grads);
+  sum_sq(_r_rw_grads);
+  sum_sq(_r_b_grads);
+
+  return norm_sq;
+}
+
+void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  // TODO: This function is placeholder for now.
+  // A full implementation would apply the gradients to all 9 sets of weights.
+  // Example for one set of weights (_w_grads):
+  /*
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  for (unsigned j = 0; j < num_outputs; ++j) 
+  {
+    for (unsigned i = 0; i < num_inputs; ++i) 
+    {
+      unsigned index = i * num_outputs + j;
+      apply_weight_gradient(_w_grads[index], learning_rate, false, index, clipping_scale);
+    }
+  }
+  // ... This would be repeated for all 8 other gradient buffers ...
+  */
+}

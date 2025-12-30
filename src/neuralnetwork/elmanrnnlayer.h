@@ -119,6 +119,15 @@ public:
 
   Layer* clone() const override;
 
+  void calculate_and_store_gradients(
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    const Layer& previous_layer) override;
+
+  double get_gradient_norm_sq() const override;
+
+  void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
   inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
