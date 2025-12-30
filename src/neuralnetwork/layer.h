@@ -405,6 +405,15 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks) const = 0;
 
+  virtual void calculate_and_store_gradients(
+      const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+      const std::vector<HiddenStates>& hidden_states,
+      const Layer& previous_layer) = 0;
+
+  virtual double get_gradient_norm_sq() const = 0;
+
+  virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
+
   void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -650,7 +659,6 @@ protected:
     return neurons;
   }
 
-private:
   inline void apply_none_update(double raw_gradient, double learning_rate, bool is_bias, unsigned idx)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

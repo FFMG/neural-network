@@ -738,3 +738,152 @@ Layer* ElmanRNNLayer::clone() const
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   return new ElmanRNNLayer(*this);
 }
+
+void ElmanRNNLayer::calculate_and_store_gradients(
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  const Layer& previous_layer)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
+  if (batch_size == 0)
+  {
+    return;
+  }
+
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  // Reset gradients
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
+
+  const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  // TODO: BPTT max ticks should be an option
+  const int t_end = 0; // For now, full BPTT
+  const int active_ticks = t_start - t_end + 1;
+
+  const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
+  const double denom = static_cast<double>(batch_size) * time_scale;
+
+  for (unsigned b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
+    const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+    const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+
+    if (rnn_grads.empty() || prev_outputs.empty()) continue;
+
+    // 1. Gradients for Input-to-Hidden Weights
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        double grad = 0.0;
+        for (int t = t_start; t >= t_end; --t)
+        {
+          grad += rnn_grads[t * num_outputs + j] * ((prev_outputs.size() == num_inputs) ? prev_outputs[i] : prev_outputs[t * num_inputs + i]);
+        }
+        _w_grads[i * num_outputs + j] += grad;
+      }
+    }
+
+    // 2. Gradients for Recurrent Weights
+    for (unsigned i = 0; i < num_outputs; ++i)
+    {
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        double grad = 0.0;
+        int rec_t_end = std::max(1, t_end);
+        for (int t = t_start; t >= rec_t_end; --t)
+        {
+          grad += rnn_grads[t * num_outputs + j] * hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_value_at_neuron(i);
+        }
+        _rw_grads[i * num_outputs + j] += grad;
+      }
+    }
+
+    // 3. Gradients for Bias Weights
+    if (has_bias())
+    {
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        double bias_grad = 0.0;
+        for (int t = t_start; t >= t_end; --t)
+        {
+          bias_grad += rnn_grads[t * num_outputs + j];
+        }
+        _b_grads[j] += bias_grad;
+      }
+    }
+  }
+
+  // Final normalization
+  for (double& grad : _w_grads)
+  {
+    grad /= denom;
+  }
+  const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
+  for (double& grad : _rw_grads) grad /= (static_cast<double>(batch_size) * time_denom_rec);
+  if(has_bias())
+  {
+    for (double& grad : _b_grads)
+    {
+      grad /= denom;
+    }
+  }
+}
+
+double ElmanRNNLayer::get_gradient_norm_sq() const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  double norm_sq = 0.0;
+  for (const double grad : _w_grads)
+  {
+    norm_sq += grad * grad;
+  }
+  for (const double grad : _rw_grads)
+  {
+    norm_sq += grad * grad;
+  }
+  if (has_bias())
+  {
+      for (const double grad : _b_grads) norm_sq += grad * grad;
+  }
+  return norm_sq;
+}
+
+void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  for (unsigned j = 0; j < num_outputs; ++j)
+  {
+    // Apply input-to-hidden weights
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      unsigned weight_index = i * num_outputs + j;
+      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+    }
+
+    // Apply bias weights
+    if (has_bias())
+    {
+      apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+    }
+        
+    // Apply recurrent weights
+    for (unsigned k = 0; k < num_outputs; ++k)
+    {
+      apply_recurrent_weight_gradient(k, j, _rw_grads[k * num_outputs + j], learning_rate, clipping_scale);
+    }
+  }
+}
