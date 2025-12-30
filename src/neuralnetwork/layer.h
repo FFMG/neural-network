@@ -770,7 +770,30 @@ protected:
     auto& m2s = is_bias ? _b_m2 : _w_m2;
     auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
 
-    timesteps[idx]++;
+#if VALIDATE_DATA == 1
+    if (idx >= m1s.size())
+    {
+      Logger::panic("m1s size is invalid in apply_nadam_update!");
+    }
+    if (idx >= m2s.size())
+    {
+      Logger::panic("m2s size is invalid in apply_nadam_update!");
+    }
+    if (idx >= values.size())
+    {
+      Logger::panic("values size is invalid in apply_nadam_update!");
+    }
+    if (idx >= grads.size())
+    {
+      Logger::panic("grads size is invalid in apply_nadam_update!");
+    }
+    if (idx >= timesteps.size())
+    {
+      Logger::panic("timesteps size is invalid in apply_nadam_update!");
+    }
+#endif
+
+    ++timesteps[idx];
     const auto& time_step = timesteps[idx];
     
     m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
@@ -800,9 +823,31 @@ protected:
     auto& timesteps = is_bias ? _b_timesteps : _w_timesteps;
     auto& decays = is_bias ? _b_decays : _w_decays;
 
-    timesteps[idx]++;
+#if VALIDATE_DATA == 1
+    if (idx >= m1s.size())
+    {
+      Logger::panic("m1s size is invalid in apply_nadamw_update!");
+    }
+    if (idx >= m2s.size())
+    {
+      Logger::panic("m2s size is invalid in apply_nadamw_update!");
+    }
+    if (idx >= values.size())
+    {
+      Logger::panic("values size is invalid in apply_nadamw_update!");
+    }
+    if (idx >= grads.size())
+    {
+      Logger::panic("grads size is invalid in apply_nadamw_update!");
+    }
+    if (idx >= timesteps.size())
+    {
+      Logger::panic("timesteps size is invalid in apply_nadamw_update!");
+    }
+#endif
+    ++timesteps[idx];
     const long long time_step = timesteps[idx];
-    
+
     m1s[idx] = beta1 * m1s[idx] + (1.0 - beta1) * raw_gradient;
     m2s[idx] = beta2 * m2s[idx] + (1.0 - beta2) * (raw_gradient * raw_gradient);
 
