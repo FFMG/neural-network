@@ -31,6 +31,32 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector);
 
+  FFLayer(
+    unsigned layer_index,
+    const LayerType layer_type,
+    const activation activation,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    const ResidualProjector* residual_projector
+  ) noexcept;
+
   FFLayer(const FFLayer& src) noexcept;
   FFLayer(FFLayer&& src) noexcept;
   FFLayer& operator=(const FFLayer& src) noexcept;

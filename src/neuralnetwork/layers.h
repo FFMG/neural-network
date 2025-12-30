@@ -25,9 +25,15 @@ public:
     int residual_layer_jump) noexcept;
   Layers(const Layers& layers) noexcept;
   Layers(Layers&& layers) noexcept;
-
+  
   Layers& operator=(const Layers& layers) noexcept;
   Layers& operator=(Layers&& layers) noexcept;
+
+  Layers(
+    const std::vector<std::unique_ptr<Layer>>& layers,
+    double weight_decay,
+    const std::vector<unsigned>& recurrent_layers
+    ) noexcept;
   
   virtual ~Layers();
 
@@ -40,7 +46,7 @@ public:
   int get_residual_layer_number(unsigned index) const noexcept;
   const ResidualProjector* get_residual_layer_projector(unsigned index) const noexcept;
 
-  inline size_t size() const
+  inline size_t size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return _layers.size();
@@ -56,6 +62,18 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return *_layers.back();
+  }
+
+  inline double get_weight_decay() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+    return _weight_decay;
+  }
+
+  inline const std::vector<unsigned>& get_recurrent_layers() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+    return _recurrent_layers;
   }
 
 private:

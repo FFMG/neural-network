@@ -49,7 +49,8 @@ Layers::Layers(
 Layers::~Layers() = default;
 
 Layers::Layers(const Layers& src) noexcept :
-  _recurrent_layers(src._recurrent_layers) // Copy _recurrent_layers
+  _weight_decay(src._weight_decay),
+  _recurrent_layers(src._recurrent_layers)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _layers.reserve(src._layers.size());
@@ -59,7 +60,27 @@ Layers::Layers(const Layers& src) noexcept :
   }
 }
 
-Layers::Layers(Layers&& src) noexcept = default;
+Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers,
+  double weight_decay,
+  const std::vector<unsigned>& recurrent_layers
+) noexcept :
+  _weight_decay(weight_decay),
+  _recurrent_layers(recurrent_layers)
+{
+  _layers.reserve(layers.size());
+  for (const auto& layer : layers)
+  {
+    _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
+  }
+}
+
+Layers::Layers(Layers&& src) noexcept :
+  _layers(std::move(src._layers)),
+  _recurrent_layers(std::move(src._recurrent_layers))
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  _weight_decay = src._weight_decay;
+}
 
 Layers& Layers::operator=(const Layers& src) noexcept
 {
@@ -72,12 +93,24 @@ Layers& Layers::operator=(const Layers& src) noexcept
     {
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
+    _weight_decay = src._weight_decay;
     _recurrent_layers = src._recurrent_layers;
   }
   return *this;
 }
 
-Layers& Layers::operator=(Layers&& src) noexcept = default;
+Layers& Layers::operator=(Layers&& src) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  if (this != &src)
+  {
+    _layers = std::move(src._layers);
+    _weight_decay = src._weight_decay;
+    src._weight_decay = 0.0;
+    _recurrent_layers = std::move(src._recurrent_layers);
+  }
+  return *this;
+}
 
 const Layer& Layers::operator[](unsigned index ) const
 {

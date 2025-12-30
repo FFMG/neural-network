@@ -81,30 +81,23 @@ private:
       .with_learning_rate_boost_rate(0.0, 0.0) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
-      .with_recurrent_layers({0, 0, 0, 0})
+      .with_recurrent_layers({0, 1, 1, 0})
       .build();
 
     return new NeuralNetwork(options);
   }
 
-  static void train_neural_network(NeuralNetwork& nn)
+  static void think_neural_network(NeuralNetwork& nn)
   {
     std::vector<std::vector<double>> training_inputs;
     std::vector<std::vector<double>> training_outputs;
     TwoMoonLoader::load_csv("./examples/two_moons.csv", training_inputs, training_outputs);
 
-    Logger::debug("Loaded ", training_inputs.size(), " samples.");
-    Logger::debug("First sample: x1=" ,training_inputs[0][0] 
-                 ," x2=", training_inputs[0][1] 
-                 ," label=", training_outputs[0][0]);    
-    // the topology is 3 input, 1 output and one hidden layer with 3 neuron
-    nn.train(training_inputs, training_outputs);
-
     // pass an array of array to think about
     // the result should be close to the training output.
     auto outputs = nn.think(training_inputs);
     Logger::info("Output After Training:");
-    for (size_t i = 0; i < outputs.size(); ++i) 
+    for (size_t i = 0; i < outputs.size(); ++i)
     {
       for (size_t j = 0; j < outputs[i].size(); ++j)
       {
@@ -124,6 +117,22 @@ private:
         Logger::info(" ", std::fixed, std::setprecision(10), test_outputs[i][j], " exp: ", training_test_outputs[i][j]);
       }
     }
+  }
+
+  static void train_neural_network(NeuralNetwork& nn)
+  {
+    std::vector<std::vector<double>> training_inputs;
+    std::vector<std::vector<double>> training_outputs;
+    TwoMoonLoader::load_csv("./examples/two_moons.csv", training_inputs, training_outputs);
+
+    Logger::debug("Loaded ", training_inputs.size(), " samples.");
+    Logger::debug("First sample: x1=" ,training_inputs[0][0] 
+                 ," x2=", training_inputs[0][1] 
+                 ," label=", training_outputs[0][0]);    
+    // the topology is 3 input, 1 output and one hidden layer with 3 neuron
+    nn.train(training_inputs, training_outputs);
+
+    think_neural_network(nn);
   }
 
 public:
@@ -153,7 +162,7 @@ public:
     NeuralNetwork* nn = nullptr;
     if(use_file)
     {
-      // nn = NeuralNetworkSerializer::load(file_name);
+      nn = NeuralNetworkSerializer::load(file_name);
       if( nullptr == nn )
       {
         // we need to create it
@@ -164,6 +173,10 @@ public:
 
         // save it
         NeuralNetworkSerializer::save(*nn, file_name);
+      }
+      else
+      {
+        think_neural_network(*nn);
       }
     }
     else

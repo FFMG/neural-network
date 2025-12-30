@@ -26,8 +26,10 @@ public:
     const size_t num_weights = static_cast<size_t>(input_size) * output_size;
     _w_values.resize(num_weights);
     auto initial_weights = activation_method.weight_initialization(output_size, input_size);
-    for (size_t i = 0; i < input_size; ++i) {
-      for (size_t j = 0; j < output_size; ++j) {
+    for (size_t i = 0; i < input_size; ++i) 
+    {
+      for (size_t j = 0; j < output_size; ++j) 
+      {
         _w_values[i * output_size + j] = initial_weights[j];
       }
     }
@@ -58,8 +60,10 @@ public:
     _w_timesteps.resize(num_weights);
     _w_decays.resize(num_weights);
 
-    for (unsigned j = 0; j < _output_size; ++j) {
-      for (unsigned i = 0; i < _input_size; ++i) {
+    for (unsigned j = 0; j < _output_size; ++j) 
+    {
+      for (unsigned i = 0; i < _input_size; ++i) 
+      {
         const auto& wp = weight_params[j][i];
         const auto idx = i * _output_size + j;
         _w_values[idx] = wp.get_value();
@@ -98,6 +102,31 @@ public:
     _w_m2(std::move(rp._w_m2)),
     _w_timesteps(std::move(rp._w_timesteps)),
     _w_decays(std::move(rp._w_decays)),
+    _weights_cache_dirty(true)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+  }
+
+  ResidualProjector(
+    unsigned input_size,
+    unsigned output_size,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays
+   ) noexcept :
+    _input_size(input_size),
+    _output_size(output_size),
+    _w_values(w_values),
+    _w_grads(w_grads),
+    _w_velocities(w_velocities),
+    _w_m1(w_m1),
+    _w_m2(w_m2),
+    _w_timesteps(w_timesteps),
+    _w_decays(w_decays),
     _weights_cache_dirty(true)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
@@ -160,18 +189,16 @@ public:
     _weights_cache_dirty = true;
   }
 
-  const std::vector<std::vector<WeightParam>>& get_weights() const
-  {
-    return get_weight_params();
-  }
-
   inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    if (_weights_cache_dirty) {
+    if (_weights_cache_dirty) 
+    {
       _cached_weights.assign(_output_size, std::vector<WeightParam>(_input_size, WeightParam(0,0,0,0)));
-      for (unsigned j = 0; j < _output_size; ++j) {
-        for (unsigned i = 0; i < _input_size; ++i) {
+      for (unsigned j = 0; j < _output_size; ++j) 
+      {
+        for (unsigned i = 0; i < _input_size; ++i) 
+        {
           const auto idx = i * _output_size + j;
           _cached_weights[j][i] = WeightParam(
             _w_values[idx], _w_grads[idx], _w_velocities[idx],
@@ -184,18 +211,6 @@ public:
     return _cached_weights;
   }
 
-  // This is a bit of a hack to maintain compatibility while refactoring.
-  // We can't return a reference to a WeightParam that doesn't exist.
-  // Instead, we'll return a WeightParam by value, but then apply_weight_gradient
-  // won't be able to update it.
-  // So we need to change how this is used in apply_weight_gradients.
-  /*
-  inline WeightParam& get_weight_params(unsigned out, unsigned in)
-  {
-    // ...
-  }
-  */
-
   void update_weight(size_t out, size_t in, double delta)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
@@ -204,18 +219,55 @@ public:
     _weights_cache_dirty = true;
   }
 
-  inline unsigned input_size() const {
+  inline unsigned get_input_size() const noexcept
+  {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     return _input_size;
-  };
-  inline unsigned output_size() const {
+  }
+  inline unsigned get_output_size() const noexcept
+  {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     return _output_size;
-  };
+  }
+  inline const std::vector<double>& get_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_values;
+  }
+  inline const std::vector<double>& get_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_grads;
+  }
+  inline const std::vector<double>& get_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_velocities;
+  }
+  inline const std::vector<double>& get_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_m1;
+  }
+  inline const std::vector<double>& get_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_m2;
+  }
+  inline const std::vector<long long>& get_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_timesteps;
+  }
+  inline const std::vector<double>& get_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    return _w_decays;
+  }
 
   static ResidualProjector* create(const std::vector<std::vector<WeightParam>>& residual_weights)
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     if (residual_weights.empty())
     {
       return nullptr;

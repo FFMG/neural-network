@@ -1,6 +1,7 @@
 #include "./libraries/instrumentor.h"
 #include "fflayer.h"
 #include "logger.h"
+#include <numeric>
 
 constexpr bool _has_bias_neuron = true;
 
@@ -44,6 +45,60 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
   {
     _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
   }
+}
+
+FFLayer::FFLayer(
+  unsigned layer_index,
+  const LayerType layer_type,
+  const activation activation,
+  const OptimiserType optimiser_type,
+  int residual_layer_number,
+  unsigned number_input_neurons,
+  unsigned number_output_neurons,
+  const std::vector<Neuron>& neurons,
+  const std::vector<double>& w_values,
+  const std::vector<double>& w_grads,
+  const std::vector<double>& w_velocities,
+  const std::vector<double>& w_m1,
+  const std::vector<double>& w_m2,
+  const std::vector<long long>& w_timesteps,
+  const std::vector<double>& w_decays,
+  const std::vector<double>& b_values,
+  const std::vector<double>& b_grads,
+  const std::vector<double>& b_velocities,
+  const std::vector<double>& b_m1,
+  const std::vector<double>& b_m2,
+  const std::vector<long long>& b_timesteps,
+  const std::vector<double>& b_decays,
+  const ResidualProjector* residual_projector
+) noexcept : 
+  Layer(
+    layer_index,
+    layer_type,
+    activation,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    residual_projector)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
