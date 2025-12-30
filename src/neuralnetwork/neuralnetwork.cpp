@@ -80,7 +80,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
   {
     // to remain c++99 compliant we will not use std::scoped_lock
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
-    std::unique_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
+    std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
     std::lock(lhs_lock, rhs_lock);
 
     _learning_rate = src._learning_rate;
@@ -274,7 +274,7 @@ NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecas
 
 bool NeuralNetwork::has_training_data() const
 {
-  std::shared_lock read(_mutex);
+  std::shared_lock<std::shared_mutex> read(_mutex);
   if (nullptr != _neural_network_helper)
   {
     return true; // we are currently training.
@@ -292,25 +292,23 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors;
   errors.reserve(error_types.size());
 
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  if (nullptr == _neural_network_helper)
   {
-    std::shared_lock read(_mutex);
-    if (nullptr == _neural_network_helper)
+    for (const auto& error_type : error_types)
     {
-      for (const auto& error_type : error_types)
+      const auto& saved_error = _saved_errors.find(error_type);
+      if (saved_error == _saved_errors.end())
       {
-        const auto& saved_error = _saved_errors.find(error_type);
-        if (saved_error == _saved_errors.end())
-        {
-          errors.emplace_back(0.0, error_type);
-          Logger::warning("Trying to get training metrics:", (int)error_type, " when no training was done!");
-        }
-        else
-        {
-          errors.emplace_back(saved_error->second, error_type);
-        }
+        errors.emplace_back(0.0, error_type);
+        Logger::warning("Trying to get training metrics:", (int)error_type, " when no training was done!");
       }
-      return errors;
+      else
+      {
+        errors.emplace_back(saved_error->second, error_type);
+      }
     }
+    return errors;
   }
 
   const NeuralNetworkHelper& helper = *_neural_network_helper;
@@ -339,19 +337,16 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
 
+  std::vector<GradientsAndOutputs> batch_gradients(prediction_size, GradientsAndOutputs(get_topology()));
+  std::vector<HiddenStates> batch_hidden_states(prediction_size, HiddenStates(get_topology()));
+  std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
+
+  calculate_forward_feed(batch_gradients, training_inputs, sub_indices, _layers, batch_hidden_states, false);
+
+  for (size_t i = 0; i < prediction_size; ++i)
   {
-    std::shared_lock read(_mutex);
-    std::vector<GradientsAndOutputs> batch_gradients(prediction_size, GradientsAndOutputs(get_topology()));
-    std::vector<HiddenStates> batch_hidden_states(prediction_size, HiddenStates(get_topology()));
-    std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
-
-    calculate_forward_feed(batch_gradients, training_inputs, sub_indices, _layers, batch_hidden_states, false);
-
-    for (size_t i = 0; i < prediction_size; ++i)
-    {
-      predictions.push_back(batch_gradients[i].output_back());
-      checking_outputs.push_back(taining_outputs[sub_indices[i]]);
-    }
+    predictions.push_back(batch_gradients[i].output_back());
+    checking_outputs.push_back(taining_outputs[sub_indices[i]]);
   }
 
   for (const auto& error_type : error_types)
@@ -443,17 +438,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 //  }
 
   // create the neural network helper.
-  delete _neural_network_helper;
-  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    delete _neural_network_helper;
+    _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
 
-  // set all the indexes in the helper, either shiffled or not.
-  if (options().shuffle_training_data())
-  {
-    create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
-  }
-  else
-  {
-    create_indexes(*_neural_network_helper, _options.data_is_unique());
+    // set all the indexes in the helper, either shiffled or not.
+    if (options().shuffle_training_data())
+    {
+      create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
+    }
+    else
+    {
+      create_indexes(*_neural_network_helper, _options.data_is_unique());
+    }
   }
 
   // create the callback task if we need one.
@@ -681,9 +679,10 @@ void NeuralNetwork::update_weights(
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < num_layers; ++i)
   {
-      futures.push_back(std::async(std::launch::async, [&, i]() {
-          layers[i].apply_stored_gradients(learning_rate, clipping_scale);
-      }));
+    futures.push_back(std::async(std::launch::async, [&, i]() 
+    {
+      layers[i].apply_stored_gradients(learning_rate, clipping_scale);
+    }));
   }
   for (auto& f : futures)
   {
