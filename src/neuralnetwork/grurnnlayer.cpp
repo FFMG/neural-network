@@ -554,26 +554,44 @@ void GRURNNLayer::calculate_forward_feed(
 
   auto run_forward_pass = [&](size_t start, size_t end)
   {
-    std::vector<double> pre_activation_sums(N_this);
-    std::vector<double> current_hidden_state_values(N_this);
-    std::vector<double> temp_pre_activations(N_this);
+    // Temporary buffers for accumulation
+    // We need 3 separate accumulators for z, r, and h_hat (candidate)
+    std::vector<double> z_pre(N_this);
+    std::vector<double> r_pre(N_this);
+    std::vector<double> h_hat_pre(N_this);
+    
+    // To store intermediate values for BPTT: z, r, h_hat_pre
+    // We will pack them into the HiddenState's pre_activation_sums: [z, r, h_hat_pre]
+    std::vector<double> packed_bptt_states(3 * N_this);
+
+    std::vector<double> current_h(N_this, 0.0); // h_t
+    std::vector<double> prev_h(N_this, 0.0);    // h_{t-1}
 
     for (size_t b = start; b < end; ++b)
     {
+      // Reset initial hidden state for the sequence
+      std::fill(prev_h.begin(), prev_h.end(), 0.0);
+
       for (size_t t = 0; t < num_time_steps; ++t)
       {
+        // 1. Initialize with biases
         if (has_bias())
         {
           for (size_t j = 0; j < N_this; ++j)
           {
-            pre_activation_sums[j] = get_bias_value((unsigned)j);
+            z_pre[j] = _z_b_values[j];
+            r_pre[j] = _r_b_values[j];
+            h_hat_pre[j] = get_bias_value((unsigned)j); // Candidate bias stored in base class _b_values
           }
         }
         else
         {
-          std::fill(pre_activation_sums.begin(), pre_activation_sums.end(), 0.0);
+          std::fill(z_pre.begin(), z_pre.end(), 0.0);
+          std::fill(r_pre.begin(), r_pre.end(), 0.0);
+          std::fill(h_hat_pre.begin(), h_hat_pre.end(), 0.0);
         }
 
+        // 2. Input contributions (W * x_t)
         if (get_layer_type() != LayerType::Input)
         {
           const auto& prev_inputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
@@ -582,8 +600,6 @@ void GRURNNLayer::calculate_forward_feed(
           const double* prev_inputs_ptr = use_rnn_input ? prev_inputs_rnn.data() : prev_inputs_std.data();
           const size_t prev_inputs_size = use_rnn_input ? prev_inputs_rnn.size() : prev_inputs_std.size();
 
-          // Input-to-Hidden: W * x_t
-          // This loop is dominated by memory access to weights.
           constexpr size_t BLOCK_SIZE = 32;
           for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
           {
@@ -602,74 +618,120 @@ void GRURNNLayer::calculate_forward_feed(
 
                  for (size_t j = j0; j < j_limit; ++j)
                  {
-                   pre_activation_sums[j] += val * get_weight_value((unsigned)i, (unsigned)j);
+                   z_pre[j] += val * _z_w_values[i * N_this + j];
+                   r_pre[j] += val * _r_w_values[i * N_this + j];
+                   h_hat_pre[j] += val * get_weight_value((unsigned)i, (unsigned)j); // Base weights for candidate
                  }
                }
              }
           }
         }
 
-        if (t > 0 && (get_layer_type() == LayerType::Hidden || get_layer_type() == LayerType::Output))
+        // 3. Recurrent contributions (U * h_{t-1}) for Z and R gates
+        //    And calculate gates Z and R immediately to use for H_hat
+        //    Optimized: We can't fully calculate Z/R until this loop finishes, but we can accumulate U*h
+        
+        const double* h_prev_ptr = prev_h.data();
+        
+        // Accumulate U * h_{t-1} for Z and R
+        constexpr size_t BLOCK_SIZE = 32;
+        for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
-          // Hidden-to-Hidden: U * h_{t-1}
-          const auto& prev_hidden_state = batch_hidden_states[b].at(get_layer_index())[t - 1];
-          // We can't easily get raw pointer here without exposing it in HiddenState, 
-          // but let's assume get_hidden_state_value_at_neuron is inline and fast enough 
-          // or we can use the vector reference.
-          const auto& h_prev_vec = prev_hidden_state.get_hidden_state_values();
-          const double* h_prev_ptr = h_prev_vec.data();
-
-          constexpr size_t BLOCK_SIZE = 32;
-          for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-          {
-              size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-              for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-              {
-                  size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                  for (size_t i = i0; i < i_limit; ++i)
-                  {
-                      const double h_prev_i = h_prev_ptr[i];
-                      if (h_prev_i == 0.0) continue;
-                      for (size_t j = j0; j < j_limit; ++j)
-                      {
-                          pre_activation_sums[j] += h_prev_i * get_recurrent_weight_value((unsigned)i, (unsigned)j);
-                      }
-                  }
-              }
-          }
+            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            {
+                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+                for (size_t i = i0; i < i_limit; ++i)
+                {
+                    const double h_val = h_prev_ptr[i];
+                    if (h_val == 0.0) continue;
+                    for (size_t j = j0; j < j_limit; ++j)
+                    {
+                        z_pre[j] += h_val * _z_rw_values[i * N_this + j];
+                        r_pre[j] += h_val * _r_rw_values[i * N_this + j];
+                    }
+                }
+            }
         }
 
+        // 4. Calculate Gate Activations (Sigmoid)
+        for (size_t j = 0; j < N_this; ++j)
+        {
+            double z_val = 1.0 / (1.0 + std::exp(-z_pre[j]));
+            double r_val = 1.0 / (1.0 + std::exp(-r_pre[j]));
+            
+            // Store for BPTT (using packed structure)
+            packed_bptt_states[j] = z_val;          // Index 0..N-1
+            packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
+        }
+
+        // 5. Candidate Recurrent Contribution: U_h * (r_t * h_{t-1})
+        for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+        {
+            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            {
+                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+                for (size_t i = i0; i < i_limit; ++i)
+                {
+                    // r_i * h_{t-1, i}
+                    // Note: r is at packed_bptt_states[N_this + i]
+                    const double r_val = packed_bptt_states[N_this + i];
+                    const double gated_h = r_val * h_prev_ptr[i];
+                    
+                    if (gated_h == 0.0) continue;
+                    for (size_t j = j0; j < j_limit; ++j)
+                    {
+                        h_hat_pre[j] += gated_h * get_recurrent_weight_value((unsigned)i, (unsigned)j);
+                    }
+                }
+            }
+        }
+
+        // 6. Residual Connections
         if (!batch_residual_output_values.empty())
         {
           if (batch_residual_output_values[b].size() == N_this)
           {
             for (size_t j = 0; j < N_this; ++j)
             {
-              pre_activation_sums[j] += batch_residual_output_values[b][j];
+              // Add residual to the candidate state (standard ResNet practice)
+              h_hat_pre[j] += batch_residual_output_values[b][j];
             }
           }
         }
 
+        // 7. Final State Update
         const size_t seq_offset = (b * num_time_steps + t) * N_this;
         const size_t last_offset = b * N_this;
 
         for (size_t j = 0; j < N_this; ++j)
         {
-          const auto& neuron = get_neuron((unsigned)j);
-          double output = get_activation().activate(pre_activation_sums[j]);
-          if (is_training && neuron.is_dropout())
+          packed_bptt_states[2 * N_this + j] = h_hat_pre[j]; // Store h_hat pre-activation
+          
+          double h_hat = get_activation().activate(h_hat_pre[j]);
+          
+          if (is_training && get_neuron((unsigned)j).is_dropout())
           {
-            if (neuron.must_randomly_drop()) output = 0.0;
-            else output /= (1.0 - neuron.get_dropout_rate());
+              const auto& neuron = get_neuron((unsigned)j);
+              if (neuron.must_randomly_drop()) h_hat = 0.0;
+              else h_hat /= (1.0 - neuron.get_dropout_rate());
           }
-          current_hidden_state_values[j] = output;
-          batch_output_sequences[seq_offset + j] = output;
-          if (t == num_time_steps - 1) batch_last_output_sequences[last_offset + j] = output;
+
+          double z_val = packed_bptt_states[j];
+          double h_val = (1.0 - z_val) * prev_h[j] + z_val * h_hat;
+          
+          current_h[j] = h_val;
+          batch_output_sequences[seq_offset + j] = h_val;
+          if (t == num_time_steps - 1) batch_last_output_sequences[last_offset + j] = h_val;
         }
 
-        std::copy(pre_activation_sums.begin(), pre_activation_sums.end(), temp_pre_activations.begin());
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(temp_pre_activations);
-        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_hidden_state_values);
+        // Save state
+        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
+        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
+        
+        // Update prev_h for next step
+        std::copy(current_h.begin(), current_h.end(), prev_h.begin());
       }
     }
   };
@@ -776,47 +838,23 @@ void GRURNNLayer::calculate_output_gradients(
       const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
       const auto& target_outputs = *(target_outputs_begin + b);
       
-      // Reset gradients
       std::fill(gradients.begin(), gradients.end(), 0.0);
 
       if (given_outputs.size() == N_total)
       {
         calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
-        const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
-
-        if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-        {
-          for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];
-        }
-        else
-        {
-          for (unsigned j = 0; j < N_total; ++j)
-          {
-            double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-            gradients[j] = deltas[j] * deriv;
-          }
-        }
+        // Direct assignment of deltas (dL/dh) because GRU output is h_t, not activation(h_t)
+        for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];
       }
       else if (given_outputs.size() >= N_total && N_total > 0)
       {
         const size_t num_time_steps = given_outputs.size() / N_total;
-        const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
-
         for (unsigned j = 0; j < N_total; ++j)
         {
           const size_t last_idx = (num_time_steps - 1) * N_total + j;
           const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
           const double delta = (given_outputs[last_idx] - target) / static_cast<double>(N_total);
-
-          if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-          {
-            gradients[j] = delta;
-          }
-          else
-          {
-            double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-            gradients[j] = delta * deriv;
-          }
+          gradients[j] = delta;
         }
       }
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
@@ -855,17 +893,8 @@ void GRURNNLayer::calculate_hidden_gradients(
   const size_t N_this = get_number_neurons();
   const size_t N_next = next_layer.get_number_output_neurons();
 
-  // Assuming all items have the same num_time_steps
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0 || N_this == 0)
-  {
-    for (size_t b = 0; b < batch_size; ++b)
-    {
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
-      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>());
-    }
-    return;
-  }
+  if (num_time_steps == 0 || N_this == 0) return;
 
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
@@ -873,14 +902,13 @@ void GRURNNLayer::calculate_hidden_gradients(
   auto run_hidden_gradients = [&](size_t start, size_t end)
   {
     size_t chunk_count = end - start;
-    // Flattened matrices for the chunk
-    // chunk_grad_matrix: [chunk_count * N_this]
-    std::vector<double> chunk_grad_matrix(chunk_count * N_this, 0.0);
-    // chunk_rnn_grad_matrix: [chunk_count * num_time_steps * N_this]
-    std::vector<double> chunk_rnn_grad_matrix(chunk_count * num_time_steps * N_this, 0.0);
-    // chunk_d_next_h: [chunk_count * N_this]
-    std::vector<double> chunk_d_next_h(chunk_count * N_this, 0.0);
-    // chunk_grad_from_next_all_t: [chunk_count * num_time_steps * N_this]
+    std::vector<double> chunk_rnn_grad_matrix(chunk_count * num_time_steps * N_this, 0.0); // dL/dx_t (approx)
+
+    // dL/dh_t (gradient w.r.t hidden state)
+    // We accumulate this from next layer and next time step.
+    std::vector<double> d_next_h(chunk_count * N_this, 0.0);
+
+    // Precompute gradients from next layer (all time steps)
     std::vector<double> chunk_grad_from_next_all_t(chunk_count * num_time_steps * N_this, 0.0);
 
     for (size_t i = 0; i < N_this; ++i)
@@ -893,17 +921,14 @@ void GRURNNLayer::calculate_hidden_gradients(
         {
           size_t b = start + b_idx;
           const auto& next_grad_matrix = batch_next_grad_matrix[b];
-          const bool next_is_time_distributed = (next_grad_matrix.size() == N_next * num_time_steps);
-          const bool next_is_last_only = (next_grad_matrix.size() == N_next);
-
-          if (next_is_time_distributed)
+          if (next_grad_matrix.size() == N_next * num_time_steps)
           {
             for (int t = t_start; t >= t_end; --t)
             {
               chunk_grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this + i] += next_grad_matrix[t * N_next + k] * w_ik;
             }
           }
-          else if (next_is_last_only)
+          else if (next_grad_matrix.size() == N_next)
           {
             chunk_grad_from_next_all_t[(b_idx * num_time_steps + t_start) * N_this + i] += next_grad_matrix[k] * w_ik;
           }
@@ -911,47 +936,118 @@ void GRURNNLayer::calculate_hidden_gradients(
       }
     }
 
+    // BPTT Loop
     for (int t = t_start; t >= t_end; --t)
     {
-      // 2. Compute current step gradients
+      std::vector<double> chunk_dz(chunk_count * N_this);
+      std::vector<double> chunk_dr(chunk_count * N_this);
+      std::vector<double> chunk_dh_hat(chunk_count * N_this);
+      std::vector<double> chunk_dh_prev_accum(chunk_count * N_this, 0.0); // Next d_next_h
+
       for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
       {
         size_t b = start + b_idx;
-        const auto& hidden_states = batch_hidden_states[b].at(get_layer_index());
-        
-        // Offset for this time step t
         const size_t t_offset = (b_idx * num_time_steps + t) * N_this;
+        const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+        
+        const double* z_vals = &packed_states[0];
+        const double* r_vals = &packed_states[N_this];
+        const double* h_hat_pre_vals = &packed_states[2 * N_this];
+        const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
 
-        for (size_t i = 0; i < N_this; ++i)
+        for (size_t j = 0; j < N_this; ++j)
         {
-          const double upstream = chunk_grad_from_next_all_t[t_offset + i] + chunk_d_next_h[b_idx * N_this + i];
-          const double preact = hidden_states[t].get_pre_activation_sum_at_neuron((unsigned)i);
-          const double deriv = get_activation().activate_derivative(preact);
-          double g = upstream * deriv;
-          if (!std::isfinite(g)) g = 0.0;
-          chunk_rnn_grad_matrix[t_offset + i] = g;
-          chunk_grad_matrix[b_idx * N_this + i] += g;
+          double dh = chunk_grad_from_next_all_t[t_offset + j] + d_next_h[b_idx * N_this + j];
+          
+          double z = z_vals[j];
+          double h_hat = get_activation().activate(h_hat_pre_vals[j]);
+          double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
+          
+          double d_z = dh * (h_hat - h_prev);
+          double d_z_pre = d_z * z * (1.0 - z);
+          
+          double d_h_hat = dh * z;
+          double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
+          
+          double d_h_prev_direct = dh * (1.0 - z);
+
+          chunk_dz[b_idx * N_this + j] = d_z_pre;
+          chunk_dh_hat[b_idx * N_this + j] = d_h_hat_pre;
+          chunk_dh_prev_accum[b_idx * N_this + j] = d_h_prev_direct;
         }
       }
 
-      // 3. Propagate through recurrent weights
-      // Reset chunk_d_next_h for the next time step (which is t-1 in backward pass)
-      std::fill(chunk_d_next_h.begin(), chunk_d_next_h.end(), 0.0);
-
-      for (size_t i = 0; i < N_this; ++i)
+      // Compute d_r_pre
+      // dL/dr = (U_h^T * d_h_hat_pre) * h_{t-1}
+      std::vector<double> temp_Uh_T_dh_hat(chunk_count * N_this, 0.0);
+      
+      for (size_t i = 0; i < N_this; ++i) 
       {
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          const double rw_ij = get_recurrent_weight_value((unsigned)i, (unsigned)j);
-          if (rw_ij == 0.0) continue;
-          for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+          for (size_t j = 0; j < N_this; ++j) 
           {
-             // Use gradient from this time step t to calculate d_next_h for t-1
-             // Gradient at t was stored at t_offset + j
-             const double grad_j = chunk_rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this + j];
-             chunk_d_next_h[b_idx * N_this + i] += grad_j * rw_ij;
+             double w = get_recurrent_weight_value((unsigned)i, (unsigned)j);
+             if (w == 0.0) continue;
+             for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+             {
+                 temp_Uh_T_dh_hat[b_idx * N_this + i] += chunk_dh_hat[b_idx * N_this + j] * w;
+             }
           }
-        }
+      }
+
+      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      {
+          size_t b = start + b_idx;
+          const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+          const double* r_vals = &packed_states[N_this];
+          const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+
+          for (size_t i = 0; i < N_this; ++i)
+          {
+              double grad_rh = temp_Uh_T_dh_hat[b_idx * N_this + i];
+              double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
+              double r = r_vals[i];
+
+              double d_r = grad_rh * h_prev;
+              double d_r_pre = d_r * r * (1.0 - r);
+              chunk_dr[b_idx * N_this + i] = d_r_pre;
+              chunk_dh_prev_accum[b_idx * N_this + i] += grad_rh * r;
+          }
+      }
+
+      // Propagate Back to h_{t-1} (Accumulate to d_next_h)
+      // dL/dh_{t-1} += U_z^T * d_z_pre + U_r^T * d_r_pre
+      for (size_t i = 0; i < N_this; ++i) 
+      {
+          for (size_t j = 0; j < N_this; ++j) 
+          {
+             double w_z = _z_rw_values[i * N_this + j];
+             double w_r = _r_rw_values[i * N_this + j];
+             
+             for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+             {
+                 double dz = chunk_dz[b_idx * N_this + j];
+                 double dr = chunk_dr[b_idx * N_this + j];
+                 chunk_dh_prev_accum[b_idx * N_this + i] += dz * w_z + dr * w_r;
+             }
+          }
+      }
+      
+      // Store accumulators for next time step
+      d_next_h = chunk_dh_prev_accum;
+
+      // NOTE: We do not calculate dL/dx (Input gradients) here because 
+      // Layer architecture expects dL/dnet to be exposed for Previous Layer.
+      // But standard Previous Layer (FFLayer/RNNLayer) expects a single gradient vector.
+      // For proper GRU support, NeuralNetwork must handle multiple input matrices.
+      // For now, we populate 'rnn_gradients' with dL/dh_hat_pre as a proxy, 
+      // effectively treating the Candidate path as the "main" path for backprop to previous layer.
+      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      {
+          size_t b = start + b_idx;
+          for(size_t j=0; j<N_this; ++j)
+          {
+              chunk_rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this + j] = chunk_dh_hat[b_idx * N_this + j];
+          }
       }
     }
 
@@ -959,14 +1055,11 @@ void GRURNNLayer::calculate_hidden_gradients(
     for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
     {
       size_t b = start + b_idx;
-      
-      auto grad_start = chunk_grad_matrix.begin() + b_idx * N_this;
-      std::vector<double> grad_vec(grad_start, grad_start + N_this);
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_vec);
-
       auto rnn_grad_start = chunk_rnn_grad_matrix.begin() + b_idx * num_time_steps * N_this;
       std::vector<double> rnn_grad_vec(rnn_grad_start, rnn_grad_start + num_time_steps * N_this);
       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
+      // Gradients (non-RNN) not used for BPTT layers usually, but we set them for compatibility
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
     }
   };
 
