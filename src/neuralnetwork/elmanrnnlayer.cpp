@@ -310,20 +310,20 @@ void ElmanRNNLayer::calculate_forward_feed(
           constexpr size_t BLOCK_SIZE = 32;
           for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
           {
-              size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-              for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            {
+              size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+              for (size_t i = i0; i < i_limit; ++i)
               {
-                  size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                  for (size_t i = i0; i < i_limit; ++i)
-                  {
-                      const double h_prev_i = h_prev_ptr[i];
-                      if (h_prev_i == 0.0) continue;
-                      for (size_t j = j0; j < j_limit; ++j)
-                      {
-                          pre_activation_sums[j] += h_prev_i * get_recurrent_weight_value((unsigned)i, (unsigned)j);
-                      }
-                  }
+                const double h_prev_i = h_prev_ptr[i];
+                if (h_prev_i == 0.0) continue;
+                for (size_t j = j0; j < j_limit; ++j)
+                {
+                  pre_activation_sums[j] += h_prev_i * get_recurrent_weight_value((unsigned)i, (unsigned)j);
+                }
               }
+            }
           }
         }
 
