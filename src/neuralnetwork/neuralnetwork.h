@@ -37,6 +37,7 @@ class NeuralNetwork
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
+  NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::map<ErrorCalculation::type, double>& errors);
 
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&);
@@ -49,7 +50,7 @@ public:
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
-  const std::vector<std::unique_ptr<Layer>>& get_layers() const;
+  const Layers& get_layers() const;
   const activation::method& get_output_activation_method() const;
   const activation::method& get_hidden_activation_method() const;
 

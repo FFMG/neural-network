@@ -31,6 +31,39 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector);
 
+  ElmanRNNLayer(
+    unsigned layer_index,
+    const LayerType layer_type,
+    const activation activation,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    const std::vector<double>& rw_values,
+    const std::vector<double>& rw_grads,
+    const std::vector<double>& rw_velocities,
+    const std::vector<double>& rw_m1,
+    const std::vector<double>& rw_m2,
+    const std::vector<long long>& rw_timesteps,
+    const std::vector<double>& rw_decays,
+    const ResidualProjector* residual_projector
+  ) noexcept;
+
   ElmanRNNLayer(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer(ElmanRNNLayer&& src) noexcept;
   ElmanRNNLayer& operator=(const ElmanRNNLayer& src) noexcept;
@@ -86,6 +119,41 @@ public:
 
   Layer* clone() const override;
 
+  inline const std::vector<double>& get_rw_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_values;
+  }
+  inline const std::vector<double>& get_rw_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_grads;
+  }
+  inline const std::vector<double>& get_rw_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_velocities;
+  }
+  inline const std::vector<double>& get_rw_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_m1;
+  }
+  inline const std::vector<double>& get_rw_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_m2;
+  }
+  inline const std::vector<long long>& get_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_timesteps;
+  }
+  inline const std::vector<double>& get_rw_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_decays;
+  }
 private:
   void initialize_recurrent_weights(double weight_decay);
   

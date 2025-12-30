@@ -12,7 +12,7 @@ public:
     TEST_START("Residual Xor test.")
 
     auto batch_size = 3;
-    auto epoch = 100000;
+    auto epoch = 10000;
 
     // XOR training input, 3 values in at a time.
     std::vector<std::vector<double>> training_inputs = {
@@ -41,7 +41,7 @@ public:
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
       .with_learning_rate(0.0003)
-      .with_clip_threshold(1.5)
+      .with_clip_threshold(2.0)
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.00, 1.0)
       .with_number_of_epoch(epoch)
