@@ -139,6 +139,7 @@
     <ClCompile Include="activation.cpp" />
     <ClCompile Include="elmanrnnlayer.cpp" />
     <ClCompile Include="fflayer.cpp" />
+    <ClCompile Include="grurnnlayer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
     <ClCompile Include="libraries\tracy\TracyClient.cpp" />
@@ -152,6 +153,7 @@
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="aligned_allocator.h" />
+    <ClInclude Include="grurnnlayer.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
