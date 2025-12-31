@@ -445,7 +445,7 @@ void FFLayer::calculate_hidden_gradients(
             double partial_sum = 0.0;
             for (size_t j = j0; j < j_limit; ++j)
             {
-              partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(i, (unsigned)j);
+              partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(static_cast<unsigned>(i), static_cast<unsigned>(j));
             }
             grad_matrix[i] += partial_sum;
           }
