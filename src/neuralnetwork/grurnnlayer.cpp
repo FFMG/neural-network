@@ -1193,21 +1193,139 @@ double GRURNNLayer::get_gradient_norm_sq() const
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  // TODO: This function is placeholder for now.
-  // A full implementation would apply the gradients to all 9 sets of weights.
-  // Example for one set of weights (_w_grads):
-  /*
+
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
+  const double momentum = get_activation().momentum();
+  const OptimiserType optimiser = get_optimiser_type();
 
-  for (unsigned j = 0; j < num_outputs; ++j) 
+  // Lambda to apply gradients to arbitrary weight vectors (for z and r gates)
+  auto apply_gradient_to_vector = [&](
+    std::vector<double>& values,
+    std::vector<double>& grads,
+    std::vector<double>& velocities,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    std::vector<long long>& timesteps,
+    const std::vector<double>& decays,
+    unsigned idx,
+    double gradient)
   {
-    for (unsigned i = 0; i < num_inputs; ++i) 
+    double final_gradient = gradient * clipping_scale;
+    
+    // L2 Regularization for SGD (Gradient Decay)
+    if (optimiser == OptimiserType::SGD && decays[idx] > 0.0)
     {
-      unsigned index = i * num_outputs + j;
-      apply_weight_gradient(_w_grads[index], learning_rate, false, index, clipping_scale);
+      final_gradient += decays[idx] * values[idx];
+    }
+
+    switch (optimiser)
+    {
+    case OptimiserType::None:
+      values[idx] -= learning_rate * final_gradient;
+      grads[idx] = final_gradient;
+      break;
+
+    case OptimiserType::SGD:
+      velocities[idx] = momentum * velocities[idx] + final_gradient;
+      values[idx] -= learning_rate * velocities[idx];
+      grads[idx] = final_gradient;
+      break;
+
+    case OptimiserType::Adam:
+    case OptimiserType::AdamW:
+    case OptimiserType::Nadam:
+    case OptimiserType::NadamW:
+    {
+      const double beta1 = 0.9;
+      const double beta2 = 0.999;
+      const double epsilon = 1e-8;
+
+      timesteps[idx]++;
+      const auto& time_step = timesteps[idx];
+
+      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * final_gradient * final_gradient;
+
+      double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
+      double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
+
+      double step = 0.0;
+      if (optimiser == OptimiserType::Nadam || optimiser == OptimiserType::NadamW)
+      {
+         double m_nadam = beta1 * m_hat + ((1.0 - beta1) * final_gradient) / (1.0 - std::pow(beta1, time_step));
+         step = m_nadam / (std::sqrt(v_hat) + epsilon);
+      }
+      else // Adam / AdamW
+      {
+         step = m_hat / (std::sqrt(v_hat) + epsilon);
+      }
+
+      double current_weight = values[idx];
+      
+      // Weight Decay for AdamW / NadamW
+      if (optimiser == OptimiserType::AdamW || optimiser == OptimiserType::NadamW)
+      {
+         current_weight *= (1.0 - learning_rate * decays[idx]);
+      }
+
+      values[idx] = current_weight - learning_rate * step;
+      grads[idx] = final_gradient;
+      break;
+    }
+    default:
+      break;
+    }
+  };
+
+  // Iterate over all neurons
+  for (unsigned j = 0; j < num_outputs; ++j)
+  {
+    // 1. Input-to-Hidden Weights
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      // A. Candidate State (Uses Base Layer storage)
+      // Index for base layer input weights
+      unsigned w_idx = i * num_outputs + j;
+      apply_weight_gradient(_w_grads[w_idx], learning_rate, false, w_idx, clipping_scale);
+
+      // B. Update Gate (z)
+      // Assuming same indexing: i * num_outputs + j
+      unsigned z_w_idx = i * num_outputs + j;
+      apply_gradient_to_vector(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, z_w_idx, _z_w_grads[z_w_idx]);
+
+      // C. Reset Gate (r)
+      unsigned r_w_idx = i * num_outputs + j;
+      apply_gradient_to_vector(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, r_w_idx, _r_w_grads[r_w_idx]);
+    }
+
+    // 2. Recurrent Weights (Hidden-to-Hidden)
+    for (unsigned k = 0; k < num_outputs; ++k)
+    {
+       // Indexing for recurrent weights: k (from) * num_outputs + j (to)
+       unsigned rec_idx = k * num_outputs + j;
+
+       // A. Candidate State
+       apply_recurrent_weight_gradient(k, j, _rw_grads[rec_idx], learning_rate, clipping_scale);
+
+       // B. Update Gate (z)
+       apply_gradient_to_vector(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx]);
+
+       // C. Reset Gate (r)
+       apply_gradient_to_vector(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx]);
+    }
+
+    // 3. Bias Weights
+    if (has_bias())
+    {
+       // A. Candidate State
+       apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+
+       // B. Update Gate (z)
+       apply_gradient_to_vector(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j]);
+
+       // C. Reset Gate (r)
+       apply_gradient_to_vector(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j]);
     }
   }
-  // ... This would be repeated for all 8 other gradient buffers ...
-  */
 }
