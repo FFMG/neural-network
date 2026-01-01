@@ -25,7 +25,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _layers(
     options.topology(), 
     options.weight_decay(),
-    options.recurrent_layers(),
     options.dropout(),
     options.hidden_activation_method(), 
     options.output_activation_method(),

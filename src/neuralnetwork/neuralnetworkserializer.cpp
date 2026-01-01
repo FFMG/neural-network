@@ -55,7 +55,7 @@ Layers NeuralNetworkSerializer::create_layers(
   if(number_of_layers <= 2)
   {
     Logger::error("The number of layers must be at least 2, (input+output)");
-    return Layers(layers, 0, {});
+    return Layers(layers, 0);
   }
 
   layers.reserve(number_of_layers);
@@ -65,7 +65,7 @@ Layers NeuralNetworkSerializer::create_layers(
   if (nullptr == layers_array)
   {
     Logger::error("Could not locate the layers array.");
-    return Layers(layers, 0, {});
+    return Layers(layers, 0);
   }
 
   unsigned number_input_neurons = 0;
@@ -94,9 +94,8 @@ Layers NeuralNetworkSerializer::create_layers(
 
   const auto* json_object = static_cast<const TinyJSON::TJValueObject*>(&json);
   auto weight_decay = json_object->get_float("layers-weight-decay");
-  auto recurrent_layers = json_object->get_numbers<unsigned>("recurrent-layers");
 
-  return Layers(layers, weight_decay, recurrent_layers);
+  return Layers(layers, weight_decay);
 }
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnLayer(
@@ -850,7 +849,6 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   }
   json.set("layers", layers_array);
   json.set_float("layers-weight-decay", layers.get_weight_decay());
-  json.set_numbers("recurrent-layers", layers.get_recurrent_layers());
   delete layers_array;
 }
 

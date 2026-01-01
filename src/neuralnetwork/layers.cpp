@@ -7,18 +7,15 @@
 Layers::Layers(
   const std::vector<unsigned>& topology,
   double weight_decay_param, // Renamed for clarity in initializer list
-  const std::vector<unsigned>& recurrent_layers_param, // Renamed for clarity in initializer list
   const std::vector<double>& dropout_layers,
   const activation::method& hidden_activation,
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump) noexcept :
-  _weight_decay(weight_decay_param), // Initialize _weight_decay here
-  _recurrent_layers(recurrent_layers_param) // Initialize _recurrent_layers here
+  _weight_decay(weight_decay_param) // Initialize _weight_decay here
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
-  assert(recurrent_layers_param.size() == topology.size() && "The recurrence layer size must match the topology");
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
 
@@ -34,14 +31,14 @@ Layers::Layers(
     auto dropout_rate = dropout_layers[layer_number-1];
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    layer = create_hidden_layer(num_neurons_current_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, recurrent_layers_param, residual_layer_number, dropout_rate);
+    layer = create_hidden_layer(num_neurons_current_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
 
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, recurrent_layers_param, residual_layer_number);
+  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, residual_layer_number);
 
   _layers.emplace_back(std::move(layer));
 }
@@ -49,8 +46,7 @@ Layers::Layers(
 Layers::~Layers() = default;
 
 Layers::Layers(const Layers& src) noexcept :
-  _weight_decay(src._weight_decay),
-  _recurrent_layers(src._recurrent_layers)
+  _weight_decay(src._weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _layers.reserve(src._layers.size());
@@ -60,12 +56,8 @@ Layers::Layers(const Layers& src) noexcept :
   }
 }
 
-Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers,
-  double weight_decay,
-  const std::vector<unsigned>& recurrent_layers
-) noexcept :
-  _weight_decay(weight_decay),
-  _recurrent_layers(recurrent_layers)
+Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers, double weight_decay) noexcept :
+  _weight_decay(weight_decay)
 {
   _layers.reserve(layers.size());
   for (const auto& layer : layers)
@@ -75,8 +67,7 @@ Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers,
 }
 
 Layers::Layers(Layers&& src) noexcept :
-  _layers(std::move(src._layers)),
-  _recurrent_layers(std::move(src._recurrent_layers))
+  _layers(std::move(src._layers))
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _weight_decay = src._weight_decay;
@@ -94,7 +85,6 @@ Layers& Layers::operator=(const Layers& src) noexcept
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
     _weight_decay = src._weight_decay;
-    _recurrent_layers = src._recurrent_layers;
   }
   return *this;
 }
@@ -107,7 +97,6 @@ Layers& Layers::operator=(Layers&& src) noexcept
     _layers = std::move(src._layers);
     _weight_decay = src._weight_decay;
     src._weight_decay = 0.0;
-    _recurrent_layers = std::move(src._recurrent_layers);
   }
   return *this;
 }
@@ -193,11 +182,11 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
   );
 }
 
-std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate)
+std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  if (recurrent_layers[layer_index] > 0) 
+  if (false/*TODO FIX THIS*/)
   {
     return std::make_unique<ElmanRNNLayer>(
       layer_index, 
@@ -227,11 +216,11 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  if (recurrent_layers[layer_index] > 0) 
+  if (false /*TODO FIX THIS*/)
   { 
     // Check if this layer should be recurrent
     return std::make_unique<ElmanRNNLayer>(
@@ -260,12 +249,6 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
       0.0, // no dropout for output layer
       create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
   }
-}
-
-const std::vector<unsigned>& Layers::recurrent_layers() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Layers");
-  return _recurrent_layers;
 }
 
 ResidualProjector* Layers::create_residual_projector(
