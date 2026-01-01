@@ -55,7 +55,7 @@ Layers NeuralNetworkSerializer::create_layers(
   if(number_of_layers <= 2)
   {
     Logger::error("The number of layers must be at least 2, (input+output)");
-    return Layers(layers, 0, {});
+    return Layers(layers, 0);
   }
 
   layers.reserve(number_of_layers);
@@ -65,7 +65,7 @@ Layers NeuralNetworkSerializer::create_layers(
   if (nullptr == layers_array)
   {
     Logger::error("Could not locate the layers array.");
-    return Layers(layers, 0, {});
+    return Layers(layers, 0);
   }
 
   unsigned number_input_neurons = 0;
@@ -94,9 +94,8 @@ Layers NeuralNetworkSerializer::create_layers(
 
   const auto* json_object = static_cast<const TinyJSON::TJValueObject*>(&json);
   auto weight_decay = json_object->get_float("layers-weight-decay");
-  auto recurrent_layers = json_object->get_numbers<unsigned>("recurrent-layers");
 
-  return Layers(layers, weight_decay, recurrent_layers);
+  return Layers(layers, weight_decay);
 }
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnLayer(
@@ -259,6 +258,30 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   return layer;
 }
 
+std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
+{
+  const auto* hidden_layers_array = static_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("hidden-layers"));
+  if (nullptr == hidden_layers_array)
+  {
+    Logger::panic("Could not find hidden layers option!");
+  }
+  std::vector<LayerDetails> hidden_layer;
+  hidden_layer.reserve(hidden_layers_array->get_number_of_items());
+  for (const auto& hlo : *hidden_layers_array)
+  {
+    const auto* phlo = static_cast<const TinyJSON::TJValueObject*>(&hlo);
+    if (nullptr == phlo)
+    {
+      Logger::panic("Invalid hidden layer option is not an object!");
+    }
+    hidden_layer.emplace_back(LayerDetails(
+      LayerDetails::type_from_string(phlo->try_get_string("type")), 
+      phlo->get_number<unsigned>("size")
+    ));
+  }
+  return hidden_layer;
+}
+
 ResidualProjector* NeuralNetworkSerializer::get_residual_projector(const TinyJSON::TJValueObject& layer_object)
 {
   const auto* residual_projector_object = static_cast<const TinyJSON::TJValueObject*>(layer_object.try_get_value("residual-projector"));
@@ -378,7 +401,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto dropouts = options_object->get_floats<double>("dropout", false, false);
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false); 
-  auto recurrent_layers = options_object->get_numbers<unsigned>("recurrent-layers", false, false);
+  auto hidden_layers = get_hidden_layers(*options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
 
   return NeuralNetworkOptions::create(topology)
@@ -399,7 +422,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_dropout(dropouts)
     .with_log_level(log_level)
     .with_shuffle_training_data(shuffle_training_data)
-    .with_recurrent_layers(recurrent_layers)
+    .with_hidden_layers(hidden_layers)
     .with_weight_decay(weight_decay)
     .build();
 }
@@ -646,11 +669,10 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto dropout_list = new TinyJSON::TJValueArray();
   dropout_list->add_floats(options.dropout());
 
-  auto recurrent_list = new TinyJSON::TJValueArray();
-  recurrent_list->add_numbers(options.recurrent_layers());
+  auto hidden_layer_list = add_hidden_layers(options.hidden_layers());
 
   options_object->set("topology", topology_list);
-  options_object->set("recurrent-layers", recurrent_list);
+  options_object->set("hidden-layers", hidden_layer_list);
   options_object->set("dropout", dropout_list);
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
   options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
@@ -674,6 +696,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
   json.set("options", options_object);
 
+  delete hidden_layer_list;
   delete dropout_list;
   delete topology_list;
   delete options_object;
@@ -807,6 +830,21 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   delete layer_object;
 }
 
+TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails> hidden_layers)
+{
+  auto hidden_layers_array = new TinyJSON::TJValueArray();
+  for (const auto& hl : hidden_layers)
+  {
+    auto hidden_layer_object = new TinyJSON::TJValueObject();
+    hidden_layer_object->set_string("type", hl.get_type_string().c_str());
+    hidden_layer_object->set_number("size", hl.get_size());
+
+    hidden_layers_array->add(hidden_layer_object);
+    delete hidden_layer_object;
+  }
+  return hidden_layers_array;
+}
+
 TinyJSON::TJValueObject* NeuralNetworkSerializer::add_residual_projector(const ResidualProjector* residual_projector)
 {
   if (nullptr == residual_projector)
@@ -850,7 +888,6 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   }
   json.set("layers", layers_array);
   json.set_float("layers-weight-decay", layers.get_weight_decay());
-  json.set_numbers("recurrent-layers", layers.get_recurrent_layers());
   delete layers_array;
 }
 
