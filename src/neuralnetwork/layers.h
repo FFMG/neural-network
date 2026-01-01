@@ -17,7 +17,6 @@ public:
   Layers(
     const std::vector<unsigned>& topology, 
     double weight_decay,
-    const std::vector<unsigned>& recurrent_layers,
     const std::vector<double>& dropout_layers,
     const activation::method& hidden_activation,
     const activation::method& output_activation,
@@ -31,8 +30,7 @@ public:
 
   Layers(
     const std::vector<std::unique_ptr<Layer>>& layers,
-    double weight_decay,
-    const std::vector<unsigned>& recurrent_layers
+    double weight_decay
     ) noexcept;
   
   virtual ~Layers();
@@ -70,24 +68,14 @@ public:
     return _weight_decay;
   }
 
-  inline const std::vector<unsigned>& get_recurrent_layers() const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layers");
-    return _recurrent_layers;
-  }
-
 private:
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number);
-  std::unique_ptr<Layer> create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number, double dropout_rate);
-  std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, const std::vector<unsigned>& recurrent_layers, int residual_layer_number);
+  std::unique_ptr<Layer> create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate);
+  std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 
   std::vector<std::unique_ptr<Layer>> _layers;
   double _weight_decay;
-  std::vector<unsigned> _recurrent_layers;
-
-public:
-  const std::vector<unsigned>& recurrent_layers() const noexcept;
 };
