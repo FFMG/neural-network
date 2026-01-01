@@ -2,6 +2,10 @@
 
 #include "./libraries/instrumentor.h"
 
+#include "logger.h"
+
+#include <string>
+
 class LayerDetails
 {
 public:
@@ -76,6 +80,52 @@ public:
   {
     return _layer_size;
   }
+  inline std::string get_type_string() const {
+    switch (_layer_type)
+    {
+    case LayerType::None:
+      return "None";
+
+    case LayerType::FF:
+      return "FF";
+
+    case LayerType::Elman:
+      return "Elman";
+
+    case LayerType::Gru:
+      return "Gru";
+
+    default:
+      Logger::panic("Unknown Layer type: ", (int)_layer_type);
+    }
+  }
+
+  inline static LayerType type_from_string(const std::string& str)
+  {
+    std::string lower_str = str;
+    // Convert the string to lowercase for case-insensitive comparison
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+      [](unsigned char c) { return std::tolower(c); });
+
+    if (lower_str == "none")
+    {
+      return LayerType::None;
+    }
+    if (lower_str == "ff")
+    {
+      return LayerType::FF;
+    }
+    if (lower_str == "elman")
+    {
+      return LayerType::Elman;
+    }
+    if (lower_str == "gru")
+    {
+      return LayerType::Gru;
+    }
+    Logger::panic("Unknown Layer type: ", str);
+  }
+
 private:
   LayerType _layer_type;
   unsigned _layer_size;
