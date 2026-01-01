@@ -6,13 +6,14 @@
 
 Layers::Layers(
   const std::vector<unsigned>& topology,
-  double weight_decay_param, // Renamed for clarity in initializer list
+  const std::vector<LayerDetails>& hidden_layers,
+  double weight_decay,
   const std::vector<double>& dropout_layers,
   const activation::method& hidden_activation,
   const activation::method& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump) noexcept :
-  _weight_decay(weight_decay_param) // Initialize _weight_decay here
+  _weight_decay(weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
@@ -26,12 +27,15 @@ Layers::Layers(
   // then the hidden layers
   for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
   {
+    const auto hidden_layer_number = layer_number - 1;
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
-    auto dropout_rate = dropout_layers[layer_number-1];
+    auto dropout_rate = dropout_layers[hidden_layer_number];
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    layer = create_hidden_layer(num_neurons_current_layer, _weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate);
+    auto& layer_details = hidden_layers[hidden_layer_number];
+
+    layer = create_hidden_layer(_weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, layer_details);
 
     _layers.emplace_back(std::move(layer));
   }
@@ -182,12 +186,23 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
   );
 }
 
-std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+std::unique_ptr<Layer> Layers::create_hidden_layer(
+  double weight_decay, 
+  const Layer& previous_layer, 
+  const activation::method& activation, 
+  const OptimiserType& optimiser_type, 
+  int residual_layer_number, 
+  double dropout_rate, 
+  const LayerDetails& layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  if (false/*TODO FIX THIS*/)
+
+  unsigned num_neurons_in_this_layer = layer_details.get_size();
+
+  switch (layer_details.get_type())
   {
+  case LayerDetails::LayerType::Elman:
     return std::make_unique<ElmanRNNLayer>(
       layer_index, 
       previous_layer.get_number_neurons(), 
@@ -199,9 +214,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       residual_layer_number, 
       dropout_rate,
       create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
-  } 
-  else 
-  {
+  
+  case LayerDetails::LayerType::FF:
     return std::make_unique<FFLayer>(
       layer_index, 
       previous_layer.get_number_neurons(),
@@ -213,6 +227,9 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(unsigned num_neurons_in_this_
       residual_layer_number,
       dropout_rate,
       create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
+
+  default:
+    Logger::panic("Unknown or unsupported layer type!");
   }
 }
 
@@ -220,35 +237,17 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  if (false /*TODO FIX THIS*/)
-  { 
-    // Check if this layer should be recurrent
-    return std::make_unique<ElmanRNNLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::LayerType::Output, 
-      activation, 
-      optimiser_type, 
-      residual_layer_number, 
-      0.0, // no dropout for output layer
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
-  } 
-  else 
-  {
-    return std::make_unique<FFLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::LayerType::Output, 
-      activation, 
-      optimiser_type, 
-      residual_layer_number,
-      0.0, // no dropout for output layer
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
-  }
+  return std::make_unique<FFLayer>(
+    layer_index, 
+    previous_layer.get_number_neurons(),
+    num_neurons_in_this_layer, 
+    weight_decay, 
+    Layer::LayerType::Output, 
+    activation, 
+    optimiser_type, 
+    residual_layer_number,
+    0.0, // no dropout for output layer
+    create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
 }
 
 ResidualProjector* Layers::create_residual_projector(

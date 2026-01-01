@@ -24,6 +24,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(
     options.topology(), 
+    options.hidden_layers(),
     options.weight_decay(),
     options.dropout(),
     options.hidden_activation_method(), 
@@ -1087,15 +1088,15 @@ void NeuralNetwork::log_training_info(
   hidden_layer_message += "}";
   Logger::info(hidden_layer_message);
 
-  const auto& rl =_options.recurrent_layers();
+  const auto& hl =_options.hidden_layers();
   std::string recurrent_layer_message =
-    "  Recurrent layers           : {";
+    "  Hidden layers           : {";
 
   // Log recurrent layers details
-  for (size_t rl_index = 1; rl_index < rl.size() - 1; ++rl_index)
+  for (size_t hl_index = 1; hl_index < hl.size() - 1; ++hl_index)
   {
-    recurrent_layer_message += std::to_string(rl[rl_index]);
-    if (rl_index < rl.size() - 2)
+    recurrent_layer_message += hl[hl_index].get_type_string();
+    if (hl_index < hl.size() - 2)
     {
       recurrent_layer_message += ", ";
     }
