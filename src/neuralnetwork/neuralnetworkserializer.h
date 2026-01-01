@@ -41,6 +41,7 @@ private:
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
+  static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
 
   static ResidualProjector* get_residual_projector(const TinyJSON::TJValueObject& layer_object);
 
@@ -55,4 +56,5 @@ private:
   static void add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json);
   static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);
+  static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails> hidden_layers);
 };

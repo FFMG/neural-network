@@ -902,7 +902,7 @@ void GRURNNLayer::calculate_hidden_gradients(
   auto run_hidden_gradients = [&](size_t start, size_t end)
   {
     size_t chunk_count = end - start;
-    std::vector<double> chunk_rnn_grad_matrix(chunk_count * num_time_steps * N_this, 0.0); // dL/dx_t (approx)
+    std::vector<double> chunk_rnn_grad_matrix(chunk_count * num_time_steps * 3 * N_this, 0.0); // [d_h_hat, d_z, d_r] packed
 
     // dL/dh_t (gradient w.r.t hidden state)
     // We accumulate this from next layer and next time step.
@@ -1039,14 +1039,18 @@ void GRURNNLayer::calculate_hidden_gradients(
       // Layer architecture expects dL/dnet to be exposed for Previous Layer.
       // But standard Previous Layer (FFLayer/RNNLayer) expects a single gradient vector.
       // For proper GRU support, NeuralNetwork must handle multiple input matrices.
-      // For now, we populate 'rnn_gradients' with dL/dh_hat_pre as a proxy, 
-      // effectively treating the Candidate path as the "main" path for backprop to previous layer.
+      // We populate 'rnn_gradients' with [d_h_hat_pre, d_z_pre, d_r_pre] (packed).
+      // Placing d_h_hat_pre first allows previous layers (like FFLayer) to use it as a proxy gradient 
+      // combined with Candidate weights, providing a reasonable approximation for backprop.
       for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
       {
           size_t b = start + b_idx;
           for(size_t j=0; j<N_this; ++j)
           {
-              chunk_rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this + j] = chunk_dh_hat[b_idx * N_this + j];
+              size_t base_idx = (b_idx * num_time_steps + t) * 3 * N_this;
+              chunk_rnn_grad_matrix[base_idx + j] = chunk_dh_hat[b_idx * N_this + j];          // 0..N: d_h_hat_pre
+              chunk_rnn_grad_matrix[base_idx + N_this + j] = chunk_dz[b_idx * N_this + j];     // N..2N: d_z_pre
+              chunk_rnn_grad_matrix[base_idx + 2 * N_this + j] = chunk_dr[b_idx * N_this + j]; // 2N..3N: d_r_pre
           }
       }
     }
@@ -1055,8 +1059,8 @@ void GRURNNLayer::calculate_hidden_gradients(
     for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
     {
       size_t b = start + b_idx;
-      auto rnn_grad_start = chunk_rnn_grad_matrix.begin() + b_idx * num_time_steps * N_this;
-      std::vector<double> rnn_grad_vec(rnn_grad_start, rnn_grad_start + num_time_steps * N_this);
+      auto rnn_grad_start = chunk_rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
+      std::vector<double> rnn_grad_vec(rnn_grad_start, rnn_grad_start + num_time_steps * 3 * N_this);
       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
       // Gradients (non-RNN) not used for BPTT layers usually, but we set them for compatibility
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
@@ -1150,19 +1154,204 @@ void GRURNNLayer::calculate_and_store_gradients(
     const Layer& previous_layer)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  // TODO
-  // Implementation of BPTT for GRU weight gradients.
-  // This is a complex function and is left as a placeholder.
-  // A full implementation would:
-  // 1. Traverse backwards through time (from t_start to t_end).
-  // 2. For each time step, calculate the gradients of the loss with respect to
-  //    the parameters of the z, r, and h_hat gates (dL/dWz, dL/dUz, dL/dbz, etc.).
-  // 3. This requires the intermediate values (z_t, r_t, h_hat_pre) that we stored
-  //    in `HiddenState` during the forward pass.
-  // 4. The gradients would be accumulated over all time steps in the BPTT window
-  //    and all samples in the batch.
-  // 5. Finally, the accumulated gradients would be stored in the layer's gradient
-  //    vectors (_w_grads, _z_w_grads, _r_w_grads, etc.).
+  const size_t batch_size = batch_gradients_and_outputs.size();
+  if (batch_size == 0)
+  {
+    return;
+  }
+
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+
+  // 1. Clear gradients
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
+
+  std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
+  std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
+  }
+
+  std::fill(_r_w_grads.begin(), _r_w_grads.end(), 0.0);
+  std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
+  }
+
+  const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  const int t_end = 0; // Full BPTT for now
+  const int active_ticks = t_start - t_end + 1;
+
+  const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
+  
+  // TODO: Check if normalization by time_scale is standard for this codebase. 
+  // ElmanRNNLayer normalizes RW by (batch * time) but W by (batch * time) too?
+  // Let's follow ElmanRNNLayer pattern: Input W divided by (batch * time), RW by (batch * time).
+  const double denom = static_cast<double>(batch_size) * time_scale;
+
+  // Use a thread-local accumulator pattern or just atomic accumulation?
+  // Since we are running single-threaded per layer in update_weights usually (or layer-parallel),
+  // we can just accumulate directly.
+  for (unsigned b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
+    const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+    const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+
+    // We expect rnn_grads to be packed: [T * 3 * N]
+    // Layout at time t: [d_h_hat (N), d_z (N), d_r (N)]
+    if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * 3 * num_outputs) continue;
+
+    for (int t = t_start; t >= t_end; --t)
+    {
+      const size_t base_idx = t * 3 * num_outputs;
+      const double* d_h_hat_ptr = &rnn_grads[base_idx];
+      const double* d_z_ptr = &rnn_grads[base_idx + num_outputs];
+      const double* d_r_ptr = &rnn_grads[base_idx + 2 * num_outputs];
+
+      const double* prev_input_ptr = nullptr;
+      if (prev_outputs.size() == num_inputs)
+      {
+        prev_input_ptr = prev_outputs.data(); // Static input
+      }
+      else if (prev_outputs.size() >= (t + 1) * num_inputs)
+      {
+        prev_input_ptr = &prev_outputs[t * num_inputs];
+      }
+       
+      const double* prev_hidden_ptr = nullptr;
+      if (t > 0)
+      {
+        prev_hidden_ptr = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data();
+      }
+
+      // 1. Input Weights Gradients (W * x)
+      if (prev_input_ptr)
+      {
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+          double dh = d_h_hat_ptr[j];
+          double dz = d_z_ptr[j];
+          double dr = d_r_ptr[j];
+
+          for (unsigned i = 0; i < num_inputs; ++i)
+          {
+            double x = prev_input_ptr[i];
+            _w_grads[i * num_outputs + j] += dh * x;
+            _z_w_grads[i * num_outputs + j] += dz * x;
+            _r_w_grads[i * num_outputs + j] += dr * x;
+          }
+        }
+      }
+
+      // 2. Recurrent Weights Gradients (U * h_{t-1})
+      if (prev_hidden_ptr)
+      {
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+          double dh = d_h_hat_ptr[j];
+          double dz = d_z_ptr[j];
+          double dr = d_r_ptr[j];
+               
+          // For h_hat, the recurrent input is actually (r_t * h_{t-1})
+          // We need r_t for this sample/time.
+          // It's stored in hidden_states[t] pre-activation sums, index N..2N (sigmoid applied? No, sums are pre-activations).
+          // Wait, apply_stored_gradients needs gradients w.r.t weights.
+          // dL/dU_h = dL/d_h_hat_pre * (r * h_{t-1})
+          // dL/dU_z = dL/d_z_pre * h_{t-1}
+          // dL/dU_r = dL/d_r_pre * h_{t-1}
+
+          // Retrieve r_t (post-activation)
+          // The hidden_state stores pre-activations.
+          // batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums()[N + j] is r_pre?
+          // Wait, in calculate_forward_feed:
+          // packed_bptt_states[j] = z_val;          // Index 0..N-1
+          // packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
+          // packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+               
+          const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+          double r_val = packed[num_outputs + j]; 
+          // Note: packed stores ACTIVATED z and r values (0..1), but PRE-ACTIVATED h_hat.
+               
+          for (unsigned k = 0; k < num_outputs; ++k)
+          {
+            double h_prev = prev_hidden_ptr[k];
+                   
+            // Candidate State Recurrent: U_h * (r * h_prev)
+            _rw_grads[k * num_outputs + j] += dh * (r_val * h_prev);
+
+            // Update Gate Recurrent: U_z * h_prev
+            _z_rw_grads[k * num_outputs + j] += dz * h_prev;
+
+            // Reset Gate Recurrent: U_r * h_prev
+            _r_rw_grads[k * num_outputs + j] += dr * h_prev;
+          }
+        }
+      }
+
+      // 3. Bias Gradients
+      if (has_bias())
+      {
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+          _b_grads[j] += d_h_hat_ptr[j];
+          _z_b_grads[j] += d_z_ptr[j];
+          _r_b_grads[j] += d_r_ptr[j];
+        }
+      }
+    }
+  }
+
+  // Final Normalization
+  auto normalize = [&](std::vector<double>& grads)
+  {
+    for (double& g : grads)
+    {
+      g /= denom;
+    }
+  };
+
+  normalize(_w_grads);
+  normalize(_z_w_grads);
+  normalize(_r_w_grads);
+
+  // Recurrent weights might typically be normalized differently if sequence length varies,
+  // but here we use the same denom.
+  // Note: ElmanRNNLayer normalizes recurrent weights by (batch_size * (active_ticks - 1))?
+  // Let's check ElmanRNNLayer: 
+  // const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
+  // for (double& grad : _rw_grads) grad /= (static_cast<double>(batch_size) * time_denom_rec);
+  
+  const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
+  const double denom_rec = static_cast<double>(batch_size) * time_denom_rec;
+  
+  auto normalize_rec = [&](std::vector<double>& grads)
+    {
+      for (double& g : grads)
+      {
+        g /= denom_rec;
+      }
+    };
+
+  normalize_rec(_rw_grads);
+  normalize_rec(_z_rw_grads);
+  normalize_rec(_r_rw_grads);
+
+  if (has_bias())
+  {
+    normalize(_b_grads);
+    normalize(_z_b_grads);
+    normalize(_r_b_grads);
+  }
 }
 
 double GRURNNLayer::get_gradient_norm_sq() const
@@ -1193,21 +1382,139 @@ double GRURNNLayer::get_gradient_norm_sq() const
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  // TODO: This function is placeholder for now.
-  // A full implementation would apply the gradients to all 9 sets of weights.
-  // Example for one set of weights (_w_grads):
-  /*
+
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
+  const double momentum = get_activation().momentum();
+  const OptimiserType optimiser = get_optimiser_type();
 
-  for (unsigned j = 0; j < num_outputs; ++j) 
+  // Lambda to apply gradients to arbitrary weight vectors (for z and r gates)
+  auto apply_gradient_to_vector = [&](
+    std::vector<double>& values,
+    std::vector<double>& grads,
+    std::vector<double>& velocities,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    std::vector<long long>& timesteps,
+    const std::vector<double>& decays,
+    unsigned idx,
+    double gradient)
   {
-    for (unsigned i = 0; i < num_inputs; ++i) 
+    double final_gradient = gradient * clipping_scale;
+    
+    // L2 Regularization for SGD (Gradient Decay)
+    if (optimiser == OptimiserType::SGD && decays[idx] > 0.0)
     {
-      unsigned index = i * num_outputs + j;
-      apply_weight_gradient(_w_grads[index], learning_rate, false, index, clipping_scale);
+      final_gradient += decays[idx] * values[idx];
+    }
+
+    switch (optimiser)
+    {
+    case OptimiserType::None:
+      values[idx] -= learning_rate * final_gradient;
+      grads[idx] = final_gradient;
+      break;
+
+    case OptimiserType::SGD:
+      velocities[idx] = momentum * velocities[idx] + final_gradient;
+      values[idx] -= learning_rate * velocities[idx];
+      grads[idx] = final_gradient;
+      break;
+
+    case OptimiserType::Adam:
+    case OptimiserType::AdamW:
+    case OptimiserType::Nadam:
+    case OptimiserType::NadamW:
+    {
+      const double beta1 = 0.9;
+      const double beta2 = 0.999;
+      const double epsilon = 1e-8;
+
+      timesteps[idx]++;
+      const auto& time_step = timesteps[idx];
+
+      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * final_gradient * final_gradient;
+
+      double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
+      double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
+
+      double step = 0.0;
+      if (optimiser == OptimiserType::Nadam || optimiser == OptimiserType::NadamW)
+      {
+         double m_nadam = beta1 * m_hat + ((1.0 - beta1) * final_gradient) / (1.0 - std::pow(beta1, time_step));
+         step = m_nadam / (std::sqrt(v_hat) + epsilon);
+      }
+      else // Adam / AdamW
+      {
+         step = m_hat / (std::sqrt(v_hat) + epsilon);
+      }
+
+      double current_weight = values[idx];
+      
+      // Weight Decay for AdamW / NadamW
+      if (optimiser == OptimiserType::AdamW || optimiser == OptimiserType::NadamW)
+      {
+         current_weight *= (1.0 - learning_rate * decays[idx]);
+      }
+
+      values[idx] = current_weight - learning_rate * step;
+      grads[idx] = final_gradient;
+      break;
+    }
+    default:
+      break;
+    }
+  };
+
+  // Iterate over all neurons
+  for (unsigned j = 0; j < num_outputs; ++j)
+  {
+    // 1. Input-to-Hidden Weights
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      // A. Candidate State (Uses Base Layer storage)
+      // Index for base layer input weights
+      unsigned w_idx = i * num_outputs + j;
+      apply_weight_gradient(_w_grads[w_idx], learning_rate, false, w_idx, clipping_scale);
+
+      // B. Update Gate (z)
+      // Assuming same indexing: i * num_outputs + j
+      unsigned z_w_idx = i * num_outputs + j;
+      apply_gradient_to_vector(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, z_w_idx, _z_w_grads[z_w_idx]);
+
+      // C. Reset Gate (r)
+      unsigned r_w_idx = i * num_outputs + j;
+      apply_gradient_to_vector(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, r_w_idx, _r_w_grads[r_w_idx]);
+    }
+
+    // 2. Recurrent Weights (Hidden-to-Hidden)
+    for (unsigned k = 0; k < num_outputs; ++k)
+    {
+       // Indexing for recurrent weights: k (from) * num_outputs + j (to)
+       unsigned rec_idx = k * num_outputs + j;
+
+       // A. Candidate State
+       apply_recurrent_weight_gradient(k, j, _rw_grads[rec_idx], learning_rate, clipping_scale);
+
+       // B. Update Gate (z)
+       apply_gradient_to_vector(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx]);
+
+       // C. Reset Gate (r)
+       apply_gradient_to_vector(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx]);
+    }
+
+    // 3. Bias Weights
+    if (has_bias())
+    {
+       // A. Candidate State
+       apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+
+       // B. Update Gate (z)
+       apply_gradient_to_vector(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j]);
+
+       // C. Reset Gate (r)
+       apply_gradient_to_vector(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j]);
     }
   }
-  // ... This would be repeated for all 8 other gradient buffers ...
-  */
 }

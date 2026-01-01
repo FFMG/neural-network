@@ -68,12 +68,17 @@ private:
   static NeuralNetwork* create_neural_network(Logger::LogLevel log_level, unsigned epoch, unsigned batch_size, double learning_rate)
   {
     std::vector<unsigned> topology = {2, 8, 8, 1};
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8),
+      LayerDetails(LayerDetails::LayerType::Elman, 8)
+    };
+
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_hidden_activation_method(activation::method::tanh)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
-      .with_dropout({0.0, 0.0})
+      .with_dropout({ 0.0, 0.0 })
       .with_learning_rate(learning_rate)
       .with_clip_threshold(2)
       .with_learning_rate_warmup(0, 0) // from 1/2 LR to LR
@@ -81,7 +86,7 @@ private:
       .with_learning_rate_boost_rate(0.0, 0.0) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
-      .with_recurrent_layers({0, 1, 1, 0})
+      .with_hidden_layers(hidden_layers)
       .build();
 
     return new NeuralNetwork(options);

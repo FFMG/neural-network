@@ -8,6 +8,7 @@
 #include "activation.h"
 #include "errorcalculation.h"
 #include "layer.h"
+#include "layerdetails.h"
 #include "logger.h"
 #include "neuralnetworkhelper.h"
 #include "optimiser.h"
@@ -38,13 +39,16 @@ private:
     _learning_rate_warmup_start(0.0),
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
-    _recurrent_layers({}),
     _weight_decay(0.0),
     _error_calculation_type(ErrorCalculation::type::mse),
     _enable_bptt(true),
     _bptt_max_ticks(0)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    for (int i = 1; i < topology.size() - 1; ++i)
+    {
+      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i]));
+    }
   }
 
 public:
@@ -66,6 +70,7 @@ public:
     if (this != &nno)
     {
       _topology = nno._topology;
+      _hidden_layers = nno._hidden_layers;
       _dropout = nno._dropout;
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
@@ -86,7 +91,6 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
-      _recurrent_layers = nno._recurrent_layers;
       _weight_decay = nno._weight_decay;
       _error_calculation_type = nno._error_calculation_type;
       _enable_bptt = nno._enable_bptt;
@@ -101,6 +105,7 @@ public:
     if (this != &nno)
     {
       _topology = std::move(nno._topology);
+      _hidden_layers = std::move(nno._hidden_layers);
       _dropout = std::move(nno._dropout);
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
@@ -121,12 +126,11 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
-      _recurrent_layers = std::move(nno._recurrent_layers);
       _weight_decay = nno._weight_decay;
       _error_calculation_type = nno._error_calculation_type;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
-
+      
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -250,12 +254,6 @@ public:
     _shuffle_training_data = shuffle_training_data;
     return *this;
   }
-  NeuralNetworkOptions& with_recurrent_layers(std::vector<unsigned> recurrent_layers)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _recurrent_layers = recurrent_layers;
-    return *this;
-  }
 
   NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
   {
@@ -286,6 +284,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _bptt_max_ticks = bptt_max_ticks;
+    return *this;
+  }
+  NeuralNetworkOptions& with_hidden_layers(const std::vector<LayerDetails>& hidden_layers) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _hidden_layers = hidden_layers;
     return *this;
   }
   
@@ -355,27 +359,6 @@ public:
     {
       Logger::panic("The learning rate warm up target must range between 0.0 and 1.0.");
     }
-    if (_recurrent_layers.size() == 0)
-    {
-      _recurrent_layers.resize(_topology.size(), 0);
-    }
-    else if (_recurrent_layers.size() == (_topology.size() - 2))
-    {
-      // add 0 in front and back for input/output
-      _recurrent_layers.insert(_recurrent_layers.begin(), 0);
-      _recurrent_layers.push_back(0);
-    }
-    else if (_recurrent_layers.size() == _topology.size())
-    {
-      if (_recurrent_layers.front() != 0 || _recurrent_layers.back() != 0)
-      {
-        Logger::panic("The input/output recurrent layer must be zero!");
-      }
-    }
-    else if (_recurrent_layers.size() != _topology.size())
-    {
-      Logger::panic("The recurrent layer must be the same size as the topology, (or size -2).");
-    }
     if (_weight_decay < 0)
     {
       Logger::panic("The weight decay cannot be -ve!");
@@ -440,6 +423,7 @@ public:
   }
 
   inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
+  inline const std::vector<LayerDetails>& hidden_layers() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_layers; }
   inline const std::vector<double>& dropout() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _dropout; }
   inline const activation::method& hidden_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_activation; }
   inline const activation::method& output_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation; }
@@ -460,7 +444,6 @@ public:
   inline double learning_rate_warmup_start() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_start; }
   inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
   inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
-  inline const std::vector<unsigned>& recurrent_layers() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _recurrent_layers; }
   inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
   inline ErrorCalculation::type error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _error_calculation_type; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
@@ -468,6 +451,7 @@ public:
 
 private:
   std::vector<unsigned> _topology;
+  std::vector<LayerDetails> _hidden_layers;
   std::vector<double> _dropout;
   activation::method _hidden_activation;
   activation::method _output_activation;
@@ -488,10 +472,8 @@ private:
   double _learning_rate_warmup_start;  //  initial learning rate for warmup
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
-  std::vector<unsigned> _recurrent_layers;
   double _weight_decay;
   ErrorCalculation::type _error_calculation_type;
   bool _enable_bptt;
   int _bptt_max_ticks;
 };
-      

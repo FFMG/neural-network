@@ -28,8 +28,10 @@ public:
       output_size
     };
 
-    // mark which layers are recurrent (0 = input, last = output not recurrent)
-    std::vector<unsigned> recurrent_layers = { 0, 1, 1, 0 };
+    std::vector<LayerDetails> hidden_layers = { 
+      LayerDetails(LayerDetails::LayerType::Elman, 64),
+      LayerDetails(LayerDetails::LayerType::Elman, 64)
+    };
 
     const int number_of_epoch = 2000;
     const double learning_rate = 0.01;
@@ -83,7 +85,7 @@ public:
         .with_optimiser_type(OptimiserType::NadamW)
         .with_clip_threshold(5.0)
         .with_data_is_unique(false)
-        .with_recurrent_layers(recurrent_layers)
+        .with_hidden_layers(hidden_layers)
         .build();
 
       auto* nn = new NeuralNetwork(options);
