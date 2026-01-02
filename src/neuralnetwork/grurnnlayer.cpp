@@ -1151,7 +1151,8 @@ Layer* GRURNNLayer::clone() const
 void GRURNNLayer::calculate_and_store_gradients(
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,
-    const Layer& previous_layer)
+    const Layer& previous_layer,
+    int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
@@ -1187,14 +1188,15 @@ void GRURNNLayer::calculate_and_store_gradients(
 
   const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  const int t_end = 0; // Full BPTT for now
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const int active_ticks = t_start - t_end + 1;
 
   const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
   
-  // TODO: Check if normalization by time_scale is standard for this codebase. 
-  // ElmanRNNLayer normalizes RW by (batch * time) but W by (batch * time) too?
-  // Let's follow ElmanRNNLayer pattern: Input W divided by (batch * time), RW by (batch * time).
+  // Normalization follows ElmanRNNLayer pattern:
+  // - Input weights (W, z_w, r_w): normalized by (batch_size * active_ticks)
+  // - Recurrent weights (RW, z_rw, r_rw): normalized by (batch_size * (active_ticks - 1))
+  // This matches the number of times each weight is used in BPTT.
   const double denom = static_cast<double>(batch_size) * time_scale;
 
   // Use a thread-local accumulator pattern or just atomic accumulation?

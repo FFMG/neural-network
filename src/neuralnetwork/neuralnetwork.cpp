@@ -646,7 +646,7 @@ void NeuralNetwork::update_weights(
   // TODO: This can be parallelized.
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1]);
+    layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1], _options.bptt_max_ticks());
   }
 
   // 2. Calculate global gradient norm for clipping
