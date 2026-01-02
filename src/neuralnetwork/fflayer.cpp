@@ -491,7 +491,8 @@ Layer* FFLayer::clone() const
 void FFLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& hidden_states,
-  const Layer& previous_layer)
+  const Layer& previous_layer,
+  int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
