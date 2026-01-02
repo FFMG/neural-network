@@ -1,7 +1,8 @@
+#include "elmanrnnlayer.h"
+#include "fflayer.h"
+#include "grurnnlayer.h"
 #include "layers.h"
 #include "logger.h"
-#include "fflayer.h"
-#include "elmanrnnlayer.h"
 #include <cassert>
 
 Layers::Layers(
@@ -214,7 +215,20 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       residual_layer_number, 
       dropout_rate,
       create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
-  
+
+  case LayerDetails::LayerType::Gru:
+    return std::make_unique<GRURNNLayer>(
+      layer_index,
+      previous_layer.get_number_neurons(),
+      num_neurons_in_this_layer,
+      weight_decay,
+      Layer::LayerType::Hidden,
+      activation,
+      optimiser_type,
+      residual_layer_number,
+      dropout_rate,
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
+
   case LayerDetails::LayerType::FF:
     return std::make_unique<FFLayer>(
       layer_index, 
