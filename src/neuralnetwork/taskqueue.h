@@ -524,7 +524,6 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
-    _state.store(State::Started);
     while (_state.load(std::memory_order_relaxed) == State::Started)
     {
       std::function<R()> task;
@@ -994,10 +993,6 @@ public:
   }
 
 private:
-  unsigned int _number_of_threads;
-  std::vector<std::unique_ptr<TaskQueue<void>>> _task_queues;
-  std::atomic<unsigned int> _threads_index;
-
   void start()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
@@ -1011,4 +1006,8 @@ private:
       return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
+
+  unsigned int _number_of_threads;
+  std::vector<std::unique_ptr<TaskQueue<void>>> _task_queues;
+  std::atomic<unsigned int> _threads_index;
 };
