@@ -9,9 +9,6 @@
 #include <numeric>
 #include <random>
 #include <string>
-#include <future>
-#include <thread>
-#include <algorithm>
 
 #ifndef M_PI
 # define M_PI   3.141592653589793238462643383279502884
@@ -92,7 +89,13 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
 
     if (src._neural_network_helper != nullptr)
     {
-      _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
+      _neural_network_helper = new NeuralNetworkHelper(
+        *this, 
+        src._neural_network_helper->learning_rate(),
+        src._neural_network_helper->number_of_epoch(),
+        src._neural_network_helper->training_inputs(),
+        src._neural_network_helper->training_outputs());
+      _neural_network_helper->set_epoch(src._neural_network_helper->epoch());
     }
   }
   return *this;
@@ -141,7 +144,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   return shuffled_indexes;
 }
 
-void NeuralNetwork::create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
+void NeuralNetwork::create_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
@@ -160,7 +163,7 @@ void NeuralNetwork::create_indexes(NeuralNetworkHelper& neural_network_helper, b
   neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
 }
 
-void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
+void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
@@ -283,8 +286,6 @@ bool NeuralNetwork::has_training_data() const
   // do we have saved error, (from file).
   return !_saved_errors.empty();
 }
-
-
 
 std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check, size_t limit) const
 {
@@ -438,21 +439,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 //  }
 
   // create the neural network helper.
-  {
-    std::unique_lock<std::shared_mutex> lock(_mutex);
-    delete _neural_network_helper;
-    _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
-
-    // set all the indexes in the helper, either shiffled or not.
-    if (options().shuffle_training_data())
-    {
-      create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
-    }
-    else
-    {
-      create_indexes(*_neural_network_helper, _options.data_is_unique());
-    }
-  }
+  recreate_neural_network_helper(number_of_epoch, training_inputs, training_outputs);
 
   // create the callback task if we need one.
   SingleTaskQueue<bool>* callback_task = nullptr;
@@ -596,6 +583,23 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   MYODDWEB_PROFILE_MARK();
 }
 
+void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
+{
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  delete _neural_network_helper;
+  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+
+  // set all the indexes in the helper, either shiffled or not.
+  if (options().shuffle_training_data())
+  {
+    create_shuffled_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+  }
+  else
+  {
+    create_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+  }
+}
+
 bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -642,19 +646,10 @@ void NeuralNetwork::update_weights(
     
   // 1. Have each layer calculate and store its own gradients
   // TODO: This can be parallelized.
-  std::vector<std::future<void>> futures;
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    futures.push_back(std::async(std::launch::async, [&, i]() 
-      {
-        layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1]);
-      }));
+    layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1]);
   }
-  for (auto& f : futures)
-  {
-    f.get();
-  }
-  futures.clear();
 
   // 2. Calculate global gradient norm for clipping
   double total_norm_sq = 0.0;
@@ -675,18 +670,11 @@ void NeuralNetwork::update_weights(
   }
     
   // 3. Apply the stored (and now clipped) gradients
-  // This must be done with a write lock.
+  // TODO: This can be parallelized.
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    futures.push_back(std::async(std::launch::async, [&, i]() 
-    {
-      layers[i].apply_stored_gradients(learning_rate, clipping_scale);
-    }));
-  }
-  for (auto& f : futures)
-  {
-    f.get();
+    layers[i].apply_stored_gradients(learning_rate, clipping_scale);
   }
 }
 
@@ -1074,34 +1062,22 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
 
-  std::string hidden_layer_message = "  Hidden layers              : {";
-  // Log hidden layers details
-  for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
+  const auto& hl =_options.hidden_layers();
+  std::string hidden_layer_message =
+    "  Hidden layers              : {";
+
+  // Log recurrent layers details
+  for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
   {
-    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].get_number_neurons());
-    if (layer < _layers.size() - 2)
+    hidden_layer_message += hl[hl_index].get_type_string();
+    hidden_layer_message += (" (" + std::to_string(hl[hl_index].get_size()) + ")");
+    if (hl_index < hl.size() - 1)
     {
       hidden_layer_message += ", ";
     }
   }
   hidden_layer_message += "}";
   Logger::info(hidden_layer_message);
-
-  const auto& hl =_options.hidden_layers();
-  std::string recurrent_layer_message =
-    "  Hidden layers           : {";
-
-  // Log recurrent layers details
-  for (size_t hl_index = 1; hl_index < hl.size() - 1; ++hl_index)
-  {
-    recurrent_layer_message += hl[hl_index].get_type_string();
-    if (hl_index < hl.size() - 2)
-    {
-      recurrent_layer_message += ", ";
-    }
-  }
-  recurrent_layer_message += "}";
-  Logger::info(recurrent_layer_message);
 
   std::string dropout_layer_message = 
                                 "  Hidden layers dropout rate : {";

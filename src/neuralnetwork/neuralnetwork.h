@@ -123,12 +123,14 @@ private:
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void break_indexes(const std::vector<size_t>& indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
-  void create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
-  void create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
+  void create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
+  void create_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
+
+  void recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
   bool CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const;
 

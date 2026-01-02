@@ -730,7 +730,8 @@ void ElmanRNNLayer::apply_recurrent_weight_gradient(unsigned from_neuron, unsign
 
 double ElmanRNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const
 {
-    return _rw_values[from_neuron * get_number_neurons() + to_neuron];
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  return _rw_values[from_neuron * get_number_neurons() + to_neuron];
 }
 
 Layer* ElmanRNNLayer::clone() const
