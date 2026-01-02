@@ -647,7 +647,7 @@ void NeuralNetwork::update_weights(
   {
     futures.push_back(std::async(std::launch::async, [&, i]() 
       {
-        layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1]);
+        layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1], _options.bptt_max_ticks());
       }));
   }
   for (auto& f : futures)

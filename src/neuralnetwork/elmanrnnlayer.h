@@ -122,7 +122,8 @@ public:
   void calculate_and_store_gradients(
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,
-    const Layer& previous_layer) override;
+    const Layer& previous_layer,
+    int bptt_max_ticks) override;
 
   double get_gradient_norm_sq() const override;
 

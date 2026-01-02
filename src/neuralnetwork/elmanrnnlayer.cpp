@@ -742,7 +742,8 @@ Layer* ElmanRNNLayer::clone() const
 void ElmanRNNLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& hidden_states,
-  const Layer& previous_layer)
+  const Layer& previous_layer,
+  int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
@@ -764,8 +765,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(
 
   const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  // TODO: BPTT max ticks should be an option
-  const int t_end = 0; // For now, full BPTT
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const int active_ticks = t_start - t_end + 1;
 
   const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
