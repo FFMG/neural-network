@@ -138,7 +138,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
   auto w_decays = layer_object.get_floats<double>("w-decays");
 
-  auto b_values = layer_object.get_floats<double>("b_values");
+  auto b_values = layer_object.get_floats<double>("b-values");
   auto b_grads = layer_object.get_floats<double>("b-grads");
   auto b_velocities = layer_object.get_floats<double>("b-velocities");
   auto b_m1 = layer_object.get_floats<double>("b-m1");
@@ -226,7 +226,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
   auto w_decays = layer_object.get_floats<double>("w-decays");
 
-  auto b_values = layer_object.get_floats<double>("b_values");
+  auto b_values = layer_object.get_floats<double>("b-values");
   auto b_grads = layer_object.get_floats<double>("b-grads");
   auto b_velocities = layer_object.get_floats<double>("b-velocities");
   auto b_m1 = layer_object.get_floats<double>("b-m1");
@@ -258,7 +258,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto z_rw_timesteps = layer_object.get_numbers<long long>("z-rw-timesteps");
   auto z_rw_decays = layer_object.get_floats<double>("z-rw-decays");
 
-  auto z_b_values = layer_object.get_floats<double>("z-b_values");
+  auto z_b_values = layer_object.get_floats<double>("z-b-values");
   auto z_b_grads = layer_object.get_floats<double>("z-b-grads");
   auto z_b_velocities = layer_object.get_floats<double>("z-b-velocities");
   auto z_b_m1 = layer_object.get_floats<double>("z-b-m1");
@@ -282,7 +282,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto r_rw_timesteps = layer_object.get_numbers<long long>("r-rw-timesteps");
   auto r_rw_decays = layer_object.get_floats<double>("r-rw-decays");
 
-  auto r_b_values = layer_object.get_floats<double>("r-b_values");
+  auto r_b_values = layer_object.get_floats<double>("r-b-values");
   auto r_b_grads = layer_object.get_floats<double>("r-b-grads");
   auto r_b_velocities = layer_object.get_floats<double>("r-b-velocities");
   auto r_b_m1 = layer_object.get_floats<double>("r-b-m1");
@@ -405,7 +405,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto w_m2 = layer_object.get_floats<double>("w-m2");
   auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
   auto w_decays = layer_object.get_floats<double>("w-decays");
-  auto b_values = layer_object.get_floats<double>("b_values");
+  auto b_values = layer_object.get_floats<double>("b-values");
   auto b_grads = layer_object.get_floats<double>("b-grads");
   auto b_velocities = layer_object.get_floats<double>("b-velocities");
   auto b_m1 = layer_object.get_floats<double>("b-m1");
@@ -943,7 +943,7 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
   layer_object->set_floats("w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b_values", layer.get_b_values());
+  layer_object->set_floats("b-values", layer.get_b_values());
   layer_object->set_floats("b-grads", layer.get_b_grads());
   layer_object->set_floats("b-velocities", layer.get_b_velocities());
   layer_object->set_floats("b-m1", layer.get_b_m1());
@@ -998,7 +998,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
   layer_object->set_floats("w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b_values", layer.get_b_values());
+  layer_object->set_floats("b-values", layer.get_b_values());
   layer_object->set_floats("b-grads", layer.get_b_grads());
   layer_object->set_floats("b-velocities", layer.get_b_velocities());
   layer_object->set_floats("b-m1", layer.get_b_m1());
@@ -1102,7 +1102,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
   layer_object->set_floats("w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b_values", layer.get_b_values());
+  layer_object->set_floats("b-values", layer.get_b_values());
   layer_object->set_floats("b-grads", layer.get_b_grads());
   layer_object->set_floats("b-velocities", layer.get_b_velocities());
   layer_object->set_floats("b-m1", layer.get_b_m1());
