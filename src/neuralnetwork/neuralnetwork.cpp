@@ -1,7 +1,5 @@
-#include "elmanrnnlayer.h"
 #include "logger.h"
 #include "neuralnetwork.h"
-#include "layergradients.h"
 
 #include <cassert>
 #include <cmath>
