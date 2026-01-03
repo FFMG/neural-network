@@ -49,6 +49,7 @@ protected:
     _number_output_neurons(number_output_neurons),
     _neurons(neurons),
     _residual_projector(residual_projector),
+    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -144,6 +145,7 @@ protected:
     _b_timesteps(b_timesteps),
     _b_decays(b_decays),
     _residual_projector(nullptr),
+    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -392,6 +394,22 @@ public:
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,
     ErrorCalculation::type error_calculation_type) const = 0;
+
+  void calculate_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs,
+    ErrorCalculation::type error_calculation_type) const;
+
+  void calculate_mse_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
+  void calculate_bce_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
 
   inline const activation& get_activation() const noexcept
   {
@@ -872,6 +890,10 @@ protected:
   }
 
 protected:
+  /**
+   * All the values below need to be serialised
+   */
+
   unsigned _layer_index;
   LayerType _layer_type;
   activation _activation;
@@ -902,6 +924,11 @@ protected:
   std::vector<double> _b_decays;
   
   ResidualProjector* _residual_projector;
+
+  /**
+   * All the values below do not need to be serialised
+   */
+  double _inv_num_neurons;
 
 private:
   // Caches for serializer compatibility
