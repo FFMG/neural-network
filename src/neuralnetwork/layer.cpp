@@ -30,7 +30,7 @@ void Layer::calculate_bce_error_deltas(
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) / denom;
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
   }
 }
 
@@ -45,6 +45,6 @@ void Layer::calculate_mse_error_deltas(
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) / denom;
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
   }
 }
