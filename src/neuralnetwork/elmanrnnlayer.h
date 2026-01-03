@@ -88,22 +88,6 @@ public:
       const std::vector<HiddenStates> &batch_hidden_states,
       ErrorCalculation::type error_calculation_type) const  override;
 
-  void calculate_error_deltas(
-    std::vector<double>& deltas,
-    const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs,
-    ErrorCalculation::type error_calculation_type) const;
-
-  void calculate_mse_error_deltas(
-    std::vector<double>& deltas,
-    const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
-
-  void calculate_bce_error_deltas(
-    std::vector<double>& deltas,
-    const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
-
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& next_layer,
