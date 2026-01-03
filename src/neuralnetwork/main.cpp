@@ -2,11 +2,12 @@
 //
 #include "logger.h"
 
+#include "./examples/addingproblem.h"
 #include "./examples/copymemory.h"
 #include "./examples/residualxor.h"
+#include "./examples/spiral.h"
 #include "./examples/threebitparity.h"
 #include "./examples/twomoon.h"
-#include "./examples/spiral.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
 
@@ -25,6 +26,8 @@ int main()
 
   // Two Moon
   ExampleTwoMoon::TwoMoon(log_level, true);
+  // Adding Problem
+  ExampleAddingProblem::AddingProblem(log_level);
 
   // XOR
   ExampleXor::Xor(log_level, true);

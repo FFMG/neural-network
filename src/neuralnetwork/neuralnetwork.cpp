@@ -899,12 +899,12 @@ void NeuralNetwork::calculate_forward_feed(
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& current_input = *(inputs_begin + b);
-    gradients_and_output[b].set_outputs(0, current_input);
+    const size_t input_size = layers_container[0].get_number_neurons();
 
-    if (options().enable_bptt() && options().bptt_max_ticks() > 1)
+    if (current_input.size() == input_size)
     {
-      const size_t input_size = layers_container[0].get_number_neurons();
-      if (current_input.size() == input_size)
+      gradients_and_output[b].set_outputs(0, current_input);
+      if (options().enable_bptt() && options().bptt_max_ticks() > 1)
       {
         std::vector<double> expanded;
         const int ticks = options().bptt_max_ticks();
@@ -912,6 +912,21 @@ void NeuralNetwork::calculate_forward_feed(
         for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
         gradients_and_output[b].set_rnn_outputs(0, expanded);
       }
+    }
+    else if (options().enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
+    {
+      // Sequence input provided!
+      // Set the standard output to the LAST time step (so strict topology checks pass)
+      std::vector<double> last_step(current_input.end() - input_size, current_input.end());
+      gradients_and_output[b].set_outputs(0, last_step);
+       
+      // Set the full sequence for RNN layers to consume
+      gradients_and_output[b].set_rnn_outputs(0, current_input);
+    }
+    else
+    {
+      // Fallback (will likely assert if size mismatch)
+      gradients_and_output[b].set_outputs(0, current_input);
     }
   }
 
@@ -980,12 +995,12 @@ void NeuralNetwork::calculate_forward_feed(
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& current_input = all_inputs[indices[b]];
-    gradients_and_output[b].set_outputs(0, current_input);
+    const size_t input_size = layers_container[0].get_number_neurons();
 
-    if (options().enable_bptt() && options().bptt_max_ticks() > 1)
+    if (current_input.size() == input_size)
     {
-      const size_t input_size = layers_container[0].get_number_neurons();
-      if (current_input.size() == input_size)
+      gradients_and_output[b].set_outputs(0, current_input);
+      if (options().enable_bptt() && options().bptt_max_ticks() > 1)
       {
         std::vector<double> expanded;
         const int ticks = options().bptt_max_ticks();
@@ -993,6 +1008,21 @@ void NeuralNetwork::calculate_forward_feed(
         for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
         gradients_and_output[b].set_rnn_outputs(0, expanded);
       }
+    }
+    else if (options().enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
+    {
+       // Sequence input provided!
+       // Set the standard output to the LAST time step (so strict topology checks pass)
+       std::vector<double> last_step(current_input.end() - input_size, current_input.end());
+       gradients_and_output[b].set_outputs(0, last_step);
+       
+       // Set the full sequence for RNN layers to consume
+       gradients_and_output[b].set_rnn_outputs(0, current_input);
+    }
+    else
+    {
+       // Fallback (will likely assert if size mismatch)
+       gradients_and_output[b].set_outputs(0, current_input);
     }
   }
 
