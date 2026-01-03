@@ -49,6 +49,7 @@ protected:
     _number_output_neurons(number_output_neurons),
     _neurons(neurons),
     _residual_projector(residual_projector),
+    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -144,6 +145,7 @@ protected:
     _b_timesteps(b_timesteps),
     _b_decays(b_decays),
     _residual_projector(nullptr),
+    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -843,6 +845,10 @@ protected:
   }
 
 protected:
+  /**
+   * All the values below need to be serialised
+   */
+
   unsigned _layer_index;
   LayerType _layer_type;
   activation _activation;
@@ -873,6 +879,11 @@ protected:
   std::vector<double> _b_decays;
   
   ResidualProjector* _residual_projector;
+
+  /**
+   * All the values below do not need to be serialised
+   */
+  double _inv_num_neurons;
 
 private:
   // Caches for serializer compatibility
