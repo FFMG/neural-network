@@ -393,6 +393,22 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     ErrorCalculation::type error_calculation_type) const = 0;
 
+  void calculate_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs,
+    ErrorCalculation::type error_calculation_type) const;
+
+  void calculate_mse_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
+  void calculate_bce_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
   inline const activation& get_activation() const noexcept
   {
     return _activation;
