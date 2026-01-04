@@ -181,6 +181,7 @@ public:
     _b_timesteps(src._b_timesteps),
     _b_decays(src._b_decays),
     _residual_projector(nullptr),
+    _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -215,6 +216,7 @@ public:
     _b_decays(std::move(src._b_decays)),
     _residual_layer_number(src._residual_layer_number),
     _residual_projector(src._residual_projector),
+    _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true)
   {
@@ -255,6 +257,8 @@ public:
       _b_m2 = src._b_m2;
       _b_timesteps = src._b_timesteps;
       _b_decays = src._b_decays;
+
+      _inv_num_neurons = src._inv_num_neurons;
 
       _residual_layer_number = src._residual_layer_number;
       delete _residual_projector;
@@ -297,6 +301,8 @@ public:
       _b_m2 = std::move(src._b_m2);
       _b_timesteps = std::move(src._b_timesteps);
       _b_decays = std::move(src._b_decays);
+
+      _inv_num_neurons = src._inv_num_neurons;
 
       delete _residual_projector;
       _residual_projector = src._residual_projector;
