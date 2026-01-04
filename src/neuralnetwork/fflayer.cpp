@@ -29,22 +29,15 @@ FFLayer::FFLayer(
     _has_bias_neuron,
     weight_decay,
     residual_projector
-  ),
-  _task_queue_pool(nullptr)
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
-  Layer(src),
-  _task_queue_pool(nullptr)
+  Layer(src)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (src._task_queue_pool != nullptr)
-  {
-    _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-  }
 }
 
 FFLayer::FFLayer(
@@ -98,15 +91,12 @@ FFLayer::FFLayer(
     residual_projector)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
-  Layer(std::move(src)),
-  _task_queue_pool(src._task_queue_pool)
+  Layer(std::move(src))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  src._task_queue_pool = nullptr;
 }
 
 FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
@@ -115,12 +105,6 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   if(this != &src)
   {
     Layer::operator=(src);
-
-    delete _task_queue_pool;
-    if (src._task_queue_pool != nullptr)
-    {
-      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-    }
   }
   return *this;
 }
@@ -131,17 +115,12 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   if(this != &src)
   {
     Layer::operator=(std::move(src));
-
-    delete _task_queue_pool;
-    _task_queue_pool = src._task_queue_pool;
-    src._task_queue_pool = nullptr;
   }
   return *this;
 }
 
 FFLayer::~FFLayer()
 {
-  delete _task_queue_pool;
 }
 
 bool FFLayer::has_bias() const noexcept

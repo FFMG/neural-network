@@ -10,7 +10,6 @@
 #include "errorcalculation.h"
 #include "hiddenstate.h"
 #include "layer.h"
-#include "taskqueue.h"
 
 #include <vector>
 
@@ -97,6 +96,4 @@ public:
   double get_gradient_norm_sq() const override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
-
-  TaskQueuePool<void>* _task_queue_pool;
 };
