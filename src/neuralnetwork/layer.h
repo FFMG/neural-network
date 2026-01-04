@@ -10,6 +10,7 @@
 #include "neuron.h"
 #include "optimiser.h"
 #include "residualprojector.h"
+#include "taskqueue.h"
 #include "weightparam.h"
 
 #include <cmath>
@@ -51,7 +52,8 @@ protected:
     _residual_projector(residual_projector),
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true)
+    _bias_weights_cache_dirty(true),
+    _task_queue_pool(new TaskQueuePool<void>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -61,7 +63,7 @@ protected:
     if (layer_type != LayerType::Input && number_input_neurons == 0)
     {
       // This is not always a problem, e.g. for a bias-only layer.
-      // Logger::warning("Warning: Non-input layer created with 0 inputs.");
+      Logger::warning("Warning: Non-input layer created with 0 inputs.");
     }
 
     // Initialize weights
@@ -147,7 +149,8 @@ protected:
     _residual_projector(nullptr),
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true)
+    _bias_weights_cache_dirty(true),
+    _task_queue_pool(new TaskQueuePool<void>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr)
@@ -183,12 +186,17 @@ public:
     _residual_projector(nullptr),
     _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true)
+    _bias_weights_cache_dirty(true),
+    _task_queue_pool(nullptr)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (src._residual_projector != nullptr)
     {
       _residual_projector = new ResidualProjector(*src._residual_projector);
+    }
+    if (src._task_queue_pool != nullptr)
+    {
+      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
     }
   }
 
@@ -218,7 +226,8 @@ public:
     _residual_projector(src._residual_projector),
     _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true)
+    _bias_weights_cache_dirty(true),
+    _task_queue_pool(src._task_queue_pool)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
@@ -228,6 +237,7 @@ public:
     src._number_output_neurons = 0;
     src._residual_layer_number = 0;
     src._residual_projector = nullptr;
+    src._task_queue_pool = nullptr;
   }
 
   Layer& operator=(const Layer& src) noexcept
@@ -269,6 +279,13 @@ public:
       }
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
+
+      delete _task_queue_pool;
+      _task_queue_pool = nullptr;
+      if (src._task_queue_pool != nullptr)
+      {
+        _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+      }
     }
     return *this;
   }
@@ -308,12 +325,16 @@ public:
       _residual_projector = src._residual_projector;
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
+      
+      delete _task_queue_pool;
+      _task_queue_pool = src._task_queue_pool;
 
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
       src._number_input_neurons = 0;
       src._number_output_neurons = 0;
       src._residual_projector = nullptr;
+      src._task_queue_pool = nullptr;
     }
     return *this;
   }
@@ -323,6 +344,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     delete _residual_projector;
     _residual_projector = nullptr;
+    delete _task_queue_pool;
+    _task_queue_pool = nullptr;
   }
 
 
@@ -885,6 +908,8 @@ protected:
   std::vector<double> _b_decays;
   
   ResidualProjector* _residual_projector;
+
+  TaskQueuePool<void>* _task_queue_pool;
 
   /**
    * All the values below do not need to be serialised

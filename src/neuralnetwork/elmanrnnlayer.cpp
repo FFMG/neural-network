@@ -28,12 +28,10 @@ ElmanRNNLayer::ElmanRNNLayer(
     _has_bias_neuron,
     weight_decay,
     residual_projector
-  ),
-  _task_queue_pool(nullptr)
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   initialize_recurrent_weights(weight_decay);
-  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
@@ -44,14 +42,9 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_m1(src._rw_m1),
   _rw_m2(src._rw_m2),
   _rw_timesteps(src._rw_timesteps),
-  _rw_decays(src._rw_decays),
-  _task_queue_pool(nullptr)
+  _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if (src._task_queue_pool != nullptr)
-  {
-    _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-  }
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
@@ -62,11 +55,9 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m1(std::move(src._rw_m1)),
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
-  _rw_decays(std::move(src._rw_decays)),
-  _task_queue_pool(src._task_queue_pool)
+  _rw_decays(std::move(src._rw_decays))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  src._task_queue_pool = nullptr;
 }
 
 ElmanRNNLayer::ElmanRNNLayer(
@@ -130,13 +121,11 @@ ElmanRNNLayer::ElmanRNNLayer(
     _rw_velocities(rw_velocities),
     _rw_m1(rw_m1),
     _rw_m2(rw_m2),
-    _rw_timesteps(rw_timesteps),
-    _rw_decays(rw_decays)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
-}
-
+      _rw_timesteps(rw_timesteps),
+      _rw_decays(rw_decays)
+    {
+      MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    }
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -150,13 +139,6 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
-
-    delete _task_queue_pool;
-    _task_queue_pool = nullptr;
-    if (src._task_queue_pool != nullptr)
-    {
-      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-    }
   }
   return *this;
 }
@@ -174,17 +156,12 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
-
-    delete _task_queue_pool;
-    _task_queue_pool = src._task_queue_pool;
-    src._task_queue_pool = nullptr;
   }
   return *this;
 }
 
 ElmanRNNLayer::~ElmanRNNLayer()
 {
-  delete _task_queue_pool;
 }
 
 void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)

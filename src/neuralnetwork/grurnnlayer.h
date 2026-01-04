@@ -10,7 +10,6 @@
 #include "errorcalculation.h"
 #include "hiddenstate.h"
 #include "layer.h"
-#include "taskqueue.h"
 
 #include <vector>
 
@@ -306,6 +305,4 @@ private:
   std::vector<double> _r_b_m2;
   std::vector<long long> _r_b_timesteps;
   std::vector<double> _r_b_decays;
-
-  TaskQueuePool<void>* _task_queue_pool;
 };
