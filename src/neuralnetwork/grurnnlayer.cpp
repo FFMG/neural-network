@@ -28,12 +28,10 @@ GRURNNLayer::GRURNNLayer(
     _has_bias_neuron,
     weight_decay,
     residual_projector
-  ),
-  _task_queue_pool(nullptr)
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   initialize_recurrent_weights(weight_decay);
-  _task_queue_pool = new TaskQueuePool<void>();
 }
 
 GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
@@ -88,14 +86,9 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_m1(src._r_b_m1),
   _r_b_m2(src._r_b_m2),
   _r_b_timesteps(src._r_b_timesteps),
-  _r_b_decays(src._r_b_decays),
-  _task_queue_pool(nullptr)
+  _r_b_decays(src._r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  if (src._task_queue_pool != nullptr)
-  {
-    _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-  }
 }
 
 GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
@@ -150,11 +143,9 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m1(std::move(src._r_b_m1)),
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
-  _r_b_decays(std::move(src._r_b_decays)),
-  _task_queue_pool(src._task_queue_pool)
+  _r_b_decays(std::move(src._r_b_decays))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  src._task_queue_pool = nullptr;
 }
 
 GRURNNLayer::GRURNNLayer(
@@ -306,13 +297,11 @@ GRURNNLayer::GRURNNLayer(
     _r_b_velocities(r_b_velocities),
     _r_b_m1(r_b_m1),
     _r_b_m2(r_b_m2),
-    _r_b_timesteps(r_b_timesteps),
-    _r_b_decays(r_b_decays)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  _task_queue_pool = new TaskQueuePool<void>();
-}
-
+      _r_b_timesteps(r_b_timesteps),
+      _r_b_decays(r_b_decays)
+    {
+      MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    }
 GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -372,13 +361,6 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
-
-    delete _task_queue_pool;
-    _task_queue_pool = nullptr;
-    if (src._task_queue_pool != nullptr)
-    {
-      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
-    }
   }
   return *this;
 }
@@ -442,17 +424,12 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
-
-    delete _task_queue_pool;
-    _task_queue_pool = src._task_queue_pool;
-    src._task_queue_pool = nullptr;
   }
   return *this;
 }
 
 GRURNNLayer::~GRURNNLayer()
 {
-  delete _task_queue_pool;
 }
 
 void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
