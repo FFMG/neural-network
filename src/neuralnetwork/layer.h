@@ -53,7 +53,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(new TaskQueuePool<void>())
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -150,7 +150,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(new TaskQueuePool<void>())
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr)
@@ -194,9 +194,9 @@ public:
     {
       _residual_projector = new ResidualProjector(*src._residual_projector);
     }
-    if (src._task_queue_pool != nullptr)
+    if (src._task_queue_pool)
     {
-      _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+      _task_queue_pool = std::make_unique<TaskQueuePool<void>>(src._task_queue_pool->get_number_of_threads());
     }
   }
 
@@ -227,7 +227,7 @@ public:
     _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(src._task_queue_pool)
+    _task_queue_pool(std::move(src._task_queue_pool))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
@@ -237,7 +237,6 @@ public:
     src._number_output_neurons = 0;
     src._residual_layer_number = 0;
     src._residual_projector = nullptr;
-    src._task_queue_pool = nullptr;
   }
 
   Layer& operator=(const Layer& src) noexcept
@@ -280,11 +279,13 @@ public:
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
 
-      delete _task_queue_pool;
-      _task_queue_pool = nullptr;
-      if (src._task_queue_pool != nullptr)
+      if (src._task_queue_pool)
       {
-        _task_queue_pool = new TaskQueuePool<void>(src._task_queue_pool->get_number_of_threads());
+        _task_queue_pool = std::make_unique<TaskQueuePool<void>>(src._task_queue_pool->get_number_of_threads());
+      }
+      else
+      {
+        _task_queue_pool.reset();
       }
     }
     return *this;
@@ -326,15 +327,13 @@ public:
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
       
-      delete _task_queue_pool;
-      _task_queue_pool = src._task_queue_pool;
+      _task_queue_pool = std::move(src._task_queue_pool);
 
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
       src._number_input_neurons = 0;
       src._number_output_neurons = 0;
       src._residual_projector = nullptr;
-      src._task_queue_pool = nullptr;
     }
     return *this;
   }
@@ -344,8 +343,6 @@ public:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     delete _residual_projector;
     _residual_projector = nullptr;
-    delete _task_queue_pool;
-    _task_queue_pool = nullptr;
   }
 
 
@@ -909,7 +906,7 @@ protected:
   
   ResidualProjector* _residual_projector;
 
-  TaskQueuePool<void>* _task_queue_pool;
+  std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
 
   /**
    * All the values below do not need to be serialised
