@@ -189,8 +189,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
     residual_projector
   );
 
-  delete residual_projector;
-
   return layer;
 }
 
@@ -369,8 +367,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     residual_projector
   );
 
-  delete residual_projector;
-
   return layer;
 }
 
@@ -440,8 +436,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_decays,
     residual_projector
   );
-
-  delete residual_projector;
 
   return layer;
 }
@@ -849,8 +843,7 @@ TinyJSON::TJValue* NeuralNetworkSerializer::add_weight_param(const WeightParam& 
 void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json)
 {
   auto options_object = new TinyJSON::TJValueObject();
-  json.set("options", options_object);
-
+  
   auto topology_list = new TinyJSON::TJValueArray();
   topology_list->add_numbers(options.topology());
 
