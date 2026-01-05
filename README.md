@@ -371,7 +371,9 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 ```
 
 * hidden_activation_method[=sigmoid]
+* hidden_activation_alpha[=0.01]: The alpha value for the hidden layer activation function (e.g., for Leaky ReLU).
 * output_activation_method[=sigmoid]
+* output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)

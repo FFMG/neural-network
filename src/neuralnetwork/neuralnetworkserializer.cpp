@@ -123,7 +123,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
-  auto activation_method = activation::string_to_method(activation_method_string);
+  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
   auto layer_type_number = layer_object.get_number<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
@@ -209,7 +210,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
-  auto activation_method = activation::string_to_method(activation_method_string);
+  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
   auto layer_type_number = layer_object.get_number<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
@@ -387,7 +389,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
-  auto activation_method = activation::string_to_method(activation_method_string);
+  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
   auto layer_type_number = layer_object.get_number<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
@@ -563,6 +566,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto output_activation_string = options_object->try_get_string("output-activation", false);
   auto hidden_activation = activation::string_to_method(hidden_activation_string);
   auto output_activation = activation::string_to_method(output_activation_string);
+  auto hidden_activation_alpha = options_object->get_float<double>("hidden-activation-alpha", true, false);
+  auto output_activation_alpha = options_object->get_float<double>("output-activation-alpha", true, false);
   
   auto learning_rate = options_object->get_float<double>("learning-rate");
   auto learning_rate_warmup_start = options_object->get_float<double>("learning-rate-warmup-start");
@@ -589,6 +594,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
     .with_output_activation_method(output_activation)
+    .with_hidden_activation_alpha(hidden_activation_alpha)
+    .with_output_activation_alpha(output_activation_alpha)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
     .with_batch_size(batch_size)
@@ -858,6 +865,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
   options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
+  options_object->set_float("hidden-activation-alpha", options.hidden_activation_alpha());
+  options_object->set_float("output-activation-alpha", options.output_activation_alpha());
   options_object->set_float("learning-rate", options.learning_rate());
   options_object->set_float("learning-rate-warmup-start", options.learning_rate_warmup_start());
   options_object->set_float("learning-rate-warmup-target", options.learning_rate_warmup_target());
@@ -924,6 +933,7 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
+  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -979,6 +989,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
+  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1083,6 +1094,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
+  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());

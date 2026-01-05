@@ -24,7 +24,7 @@ public:
 
   using activation_function = double (*)(double, double);
 
-  activation(const method method, double alpha = 0.01);
+  activation(const method method, double alpha);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
   activation& operator=(const activation& src) noexcept;
@@ -47,6 +47,12 @@ public:
   { 
     MYODDWEB_PROFILE_FUNCTION("activation");
     return _method; 
+  }
+
+  inline double get_alpha() const noexcept
+  {
+	  MYODDWEB_PROFILE_FUNCTION("activation");
+	  return _alpha;
   }
 
 private:
