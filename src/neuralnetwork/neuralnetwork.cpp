@@ -25,8 +25,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.hidden_layers(),
     options.weight_decay(),
     options.dropout(),
-    options.hidden_activation_method(), 
-    options.output_activation_method(),
+    activation(options.hidden_activation_method(), options.hidden_activation_alpha()), 
+    activation(options.output_activation_method(), options.output_activation_alpha()),
     options.optimiser_type(),
     options.residual_layer_jump()),
   _options(options),
@@ -1094,7 +1094,9 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
   Logger::info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
+  Logger::info(tab, "Hidden activation alpha    : ", std::fixed, std::setprecision(5), _options.hidden_activation_alpha());
   Logger::info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
+  Logger::info(tab, "Output activation alpha    : ", std::fixed, std::setprecision(5), _options.output_activation_alpha());
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
