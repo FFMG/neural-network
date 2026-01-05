@@ -22,6 +22,8 @@ private:
     _dropout({}),
     _hidden_activation(activation::method::sigmoid),
     _output_activation(activation::method::sigmoid),
+    _hidden_activation_alpha(0.01),
+    _output_activation_alpha(0.01),
     _learning_rate(0.15),
     _number_of_epoch(1000),
     _batch_size(1),
@@ -74,6 +76,8 @@ public:
       _dropout = nno._dropout;
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
+	  _hidden_activation_alpha = nno._hidden_activation_alpha;
+	  _output_activation_alpha = nno._output_activation_alpha;
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -109,6 +113,8 @@ public:
       _dropout = std::move(nno._dropout);
       _hidden_activation = nno._hidden_activation;
       _output_activation = nno._output_activation;
+      _hidden_activation_alpha = nno._hidden_activation_alpha;
+      _output_activation_alpha = nno._output_activation_alpha;
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -158,6 +164,18 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _output_activation = activation;
+    return *this;
+  }
+  NeuralNetworkOptions& with_hidden_activation_alpha(double alpha)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _hidden_activation_alpha = alpha;
+    return *this;
+  }
+  NeuralNetworkOptions& with_output_activation_alpha(double alpha)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_activation_alpha = alpha;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -363,6 +381,14 @@ public:
     {
       Logger::panic("The weight decay cannot be -ve!");
     }
+    if (_hidden_activation_alpha < 0.0)
+    {
+      Logger::panic("The hidden activation alpha cannot be negative!");
+    }
+    if (_output_activation_alpha < 0.0)
+    {
+      Logger::panic("The output activation alpha cannot be negative!");
+    }
     return *this;
   }
 
@@ -427,6 +453,8 @@ public:
   inline const std::vector<double>& dropout() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _dropout; }
   inline const activation::method& hidden_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_activation; }
   inline const activation::method& output_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation; }
+  inline double hidden_activation_alpha() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_activation_alpha; }
+  inline double output_activation_alpha() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation_alpha; }
   inline double learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate; }
   inline int number_of_epoch() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_epoch; }
   inline int batch_size() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _batch_size; }
@@ -455,6 +483,8 @@ private:
   std::vector<double> _dropout;
   activation::method _hidden_activation;
   activation::method _output_activation;
+  double _hidden_activation_alpha;
+  double _output_activation_alpha;
   double _learning_rate;
   int _number_of_epoch;
   int _batch_size;

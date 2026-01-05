@@ -10,7 +10,7 @@ GRURNNLayer::GRURNNLayer(
   unsigned num_neurons_in_this_layer, 
   double weight_decay,
   LayerType layer_type, 
-  const activation::method& activation_method,
+  const activation& activation_method,
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
   double dropout_rate,
@@ -300,7 +300,7 @@ GRURNNLayer::GRURNNLayer(
       _r_b_timesteps(r_b_timesteps),
       _r_b_decays(r_b_decays)
     {
-      MYODDWEB_PROFILE_FUNCTION("FFLayer");
+      MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     }
 GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
 {
