@@ -31,7 +31,7 @@ protected:
   Layer(
     unsigned layer_index,
     LayerType layer_type,
-    const activation::method& activation_method,
+    const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,

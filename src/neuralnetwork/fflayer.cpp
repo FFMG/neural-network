@@ -11,7 +11,7 @@ FFLayer::FFLayer(
   unsigned num_neurons_in_this_layer,
   double weight_decay,
   LayerType layer_type,
-  const activation::method& activation_method,
+  const activation& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
   double dropout_rate,

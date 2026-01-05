@@ -10,8 +10,8 @@ Layers::Layers(
   const std::vector<LayerDetails>& hidden_layers,
   double weight_decay,
   const std::vector<double>& dropout_layers,
-  const activation::method& hidden_activation,
-  const activation::method& output_activation,
+  const activation& hidden_activation,
+  const activation& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump) noexcept :
   _weight_decay(weight_decay)
@@ -179,7 +179,7 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     num_neurons_in_this_layer, 
     weight_decay, 
     Layer::LayerType::Input, 
-    activation::method::linear, 
+    activation(activation::method::linear, 0.00),   //  Linear has no activation apha
     OptimiserType::None, 
     residual_layer_number, 
     0.0,    // no dropout for input layer
@@ -190,7 +190,7 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
 std::unique_ptr<Layer> Layers::create_hidden_layer(
   double weight_decay, 
   const Layer& previous_layer, 
-  const activation::method& activation, 
+  const activation& activation, 
   const OptimiserType& optimiser_type, 
   int residual_layer_number, 
   double dropout_rate, 
@@ -247,7 +247,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
