@@ -27,9 +27,11 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.optimiser_type(),
     options.residual_layer_jump()),
   _options(options),
-  _neural_network_helper(nullptr)
+  _neural_network_helper(nullptr),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
 }
 
 NeuralNetwork::NeuralNetwork(
@@ -54,9 +56,11 @@ NeuralNetwork::NeuralNetwork(
   _layers(layers),
   _options(options),
   _neural_network_helper(nullptr),
-  _saved_errors(errors)
+  _saved_errors(errors),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
@@ -82,6 +86,10 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _layers = src._layers;
     _options = src._options;
     _saved_errors = src._saved_errors;
+
+    delete _update_weights_pool;
+    _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
+
     delete _neural_network_helper;
     _neural_network_helper = nullptr;
 
@@ -102,8 +110,12 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
 NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
+
+  delete _update_weights_pool;
+  _update_weights_pool = nullptr;
 }
 
 const activation::method& NeuralNetwork::get_output_activation_method() const
@@ -428,14 +440,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   Logger::info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-// TODO - re-add queues
-// create the thread pool if we need one ...
-//  TaskQueuePool<std::vector<GradientsAndOutputs>>* task_pool = nullptr;
-//  if (batch_size > 1)
-//  {
-//    task_pool = new TaskQueuePool<std::vector<GradientsAndOutputs>>(_options.number_of_threads());
-//  }
-
   // create the neural network helper.
   recreate_neural_network_helper(number_of_epoch, training_inputs, training_outputs);
 
@@ -503,27 +507,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
       const size_t total_size = end_size - start_index;
 
-      // TODO re-add queue
-      /*
-      if (task_pool != nullptr)
-      {
-        task_pool->enqueue([=]()
-          {
-            train_single_batch(
-              batch_training_inputs.begin() + start_index,
-              batch_training_outputs.begin() + start_index,
-              total_size);
-          });
-      }
-      else
-      */
-      {
-        //  size is 1, it is faster to not use a thread.
-        train_single_batch(
-            batch_training_inputs.begin() + start_index,
-            batch_training_outputs.begin() + start_index,
-            total_size);
-      }
+      train_single_batch(
+          batch_training_inputs.begin() + start_index,
+          batch_training_outputs.begin() + start_index,
+          total_size);
     }
     MYODDWEB_PROFILE_MARK();
 
@@ -542,15 +529,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     MYODDWEB_PROFILE_MARK();
   }
-
-  // TODO re-add queue
-  /*
-  if(task_pool != nullptr)
-  {
-    task_pool->stop();
-    delete task_pool;
-  }
-  */
 
   auto metrics = calculate_forecast_metrics(
     {
@@ -643,11 +621,15 @@ void NeuralNetwork::update_weights(
   const unsigned num_layers = static_cast<unsigned>(layers.size());
     
   // 1. Have each layer calculate and store its own gradients
-  // TODO: This can be parallelized.
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1], _options.bptt_max_ticks());
+    _update_weights_pool->enqueue(
+      [&, i]()
+      {
+        layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1], _options.bptt_max_ticks());
+      });
   }
+  _update_weights_pool->get();
 
   // 2. Calculate global gradient norm for clipping
   double total_norm_sq = 0.0;
@@ -672,8 +654,11 @@ void NeuralNetwork::update_weights(
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    layers[i].apply_stored_gradients(learning_rate, clipping_scale);
+    _update_weights_pool->enqueue( [&, i]() {
+          layers[i].apply_stored_gradients(learning_rate, clipping_scale);
+      });
   }
+  _update_weights_pool->get();
 }
 
 double NeuralNetwork::calculate_smooth_learning_rate_boost(
