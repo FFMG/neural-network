@@ -14,8 +14,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
   double dropout_rate,
-  ResidualProjector* residual_projector,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  ResidualProjector* residual_projector
   ) :
   Layer(
     layer_index, 
@@ -28,8 +27,7 @@ ElmanRNNLayer::ElmanRNNLayer(
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     _has_bias_neuron,
     weight_decay,
-    residual_projector,
-    task_queue_pool
+    residual_projector
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -92,8 +90,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   const std::vector<double>& rw_m2,
   const std::vector<long long>& rw_timesteps,
   const std::vector<double>& rw_decays,
-  const ResidualProjector* residual_projector,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  const ResidualProjector* residual_projector
 ) noexcept :
   Layer(
     layer_index,
@@ -118,18 +115,19 @@ ElmanRNNLayer::ElmanRNNLayer(
     b_m2,
     b_timesteps,
     b_decays,
-    residual_projector,
-    task_queue_pool),
+    residual_projector
+    ),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
     _rw_m1(rw_m1),
     _rw_m2(rw_m2),
-      _rw_timesteps(rw_timesteps),
-      _rw_decays(rw_decays)
-    {
-      MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-    }
+    _rw_timesteps(rw_timesteps),
+    _rw_decays(rw_decays)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+}
+
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");

@@ -39,8 +39,7 @@ protected:
     const std::vector<Neuron>& neurons,
     bool has_bias,
     double weight_decay,
-    ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+    ResidualProjector* residual_projector
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
@@ -54,7 +53,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(task_queue_pool)
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -123,8 +122,7 @@ protected:
     const std::vector<double>& b_m2,
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+    const ResidualProjector* residual_projector
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
@@ -152,7 +150,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(task_queue_pool)
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr)
@@ -189,12 +187,16 @@ public:
     _inv_num_neurons(src._inv_num_neurons),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(src._task_queue_pool)
+    _task_queue_pool(nullptr)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (src._residual_projector != nullptr)
     {
       _residual_projector = new ResidualProjector(*src._residual_projector);
+    }
+    if (src._task_queue_pool)
+    {
+      _task_queue_pool = std::make_unique<TaskQueuePool<void>>(src._task_queue_pool->get_number_of_threads());
     }
   }
 
@@ -277,7 +279,14 @@ public:
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
 
-      _task_queue_pool = src._task_queue_pool;
+      if (src._task_queue_pool)
+      {
+        _task_queue_pool = std::make_unique<TaskQueuePool<void>>(src._task_queue_pool->get_number_of_threads());
+      }
+      else
+      {
+        _task_queue_pool.reset();
+      }
     }
     return *this;
   }
@@ -942,7 +951,7 @@ protected:
   
   ResidualProjector* _residual_projector;
 
-  std::shared_ptr<TaskQueuePool<void>> _task_queue_pool;
+  std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
 
   /**
    * All the values below do not need to be serialised
