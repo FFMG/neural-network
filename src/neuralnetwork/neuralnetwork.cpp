@@ -7,9 +7,6 @@
 #include <numeric>
 #include <random>
 #include <string>
-#include <future>
-#include <thread>
-#include <algorithm>
 
 #ifndef M_PI
 # define M_PI   3.141592653589793238462643383279502884
@@ -30,9 +27,11 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.optimiser_type(),
     options.residual_layer_jump()),
   _options(options),
-  _neural_network_helper(nullptr)
+  _neural_network_helper(nullptr),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
 }
 
 NeuralNetwork::NeuralNetwork(
@@ -57,9 +56,11 @@ NeuralNetwork::NeuralNetwork(
   _layers(layers),
   _options(options),
   _neural_network_helper(nullptr),
-  _saved_errors(errors)
+  _saved_errors(errors),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
@@ -85,6 +86,10 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _layers = src._layers;
     _options = src._options;
     _saved_errors = src._saved_errors;
+
+    delete _update_weights_pool;
+    _update_weights_pool = new TaskQueuePool<void>(_options.number_of_threads());
+
     delete _neural_network_helper;
     _neural_network_helper = nullptr;
 
@@ -99,8 +104,12 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
 NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
+
+  delete _update_weights_pool;
+  _update_weights_pool = nullptr;
 }
 
 const activation::method& NeuralNetwork::get_output_activation_method() const
@@ -606,21 +615,15 @@ void NeuralNetwork::update_weights(
 
   const unsigned num_layers = static_cast<unsigned>(layers.size());
     
-  // 1. Have each layer calculate and store its own gradients
-  // TODO: This can be parallelized.
-  std::vector<std::future<void>> futures;
   for (unsigned i = 1; i < num_layers; ++i)
   {
-    futures.push_back(std::async(std::launch::async, [&, i]() 
+    _update_weights_pool->enqueue(
+      [&, i]()
       {
         layers[i].calculate_and_store_gradients(batch_gradients, hidden_states, layers[i-1], _options.bptt_max_ticks());
-      }));
+      });
   }
-  for (auto& f : futures)
-  {
-    f.get();
-  }
-  futures.clear();
+  _update_weights_pool->get();
 
   // 2. Calculate global gradient norm for clipping
   double total_norm_sq = 0.0;
@@ -645,14 +648,11 @@ void NeuralNetwork::update_weights(
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < num_layers; ++i)
   {
-      futures.push_back(std::async(std::launch::async, [&, i]() {
+    _update_weights_pool->enqueue( [&, i]() {
           layers[i].apply_stored_gradients(learning_rate, clipping_scale);
-      }));
+      });
   }
-  for (auto& f : futures)
-  {
-    f.get();
-  }
+  _update_weights_pool->get();
 }
 
 double NeuralNetwork::calculate_smooth_learning_rate_boost(
