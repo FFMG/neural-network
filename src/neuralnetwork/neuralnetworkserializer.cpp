@@ -68,8 +68,6 @@ Layers NeuralNetworkSerializer::create_layers(
     return Layers(layers, 0);
   }
 
-  auto task_queue_pool = std::make_shared<TaskQueuePool<void>>();
-
   unsigned number_input_neurons = 0;
   for(unsigned layer_index = 0; layer_index < static_cast<unsigned>(number_of_layers); ++layer_index)
   {
@@ -78,7 +76,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "fflayer")
     {
       layers.emplace_back(
-        std::move(create_fflayer(layer_index, *layer_object, task_queue_pool))
+        std::move(create_fflayer(layer_index, *layer_object))
       );
       continue;
     }
@@ -86,7 +84,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "elmanrnnlayer")
     {
       layers.emplace_back(
-        std::move(create_elmanrnnlayer(layer_index, *layer_object, task_queue_pool))
+        std::move(create_elmanrnnlayer(layer_index, *layer_object))
       );
       continue;
     }
@@ -94,7 +92,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "grurnnlayer")
     {
       layers.emplace_back(
-        std::move(create_grurnnlayer(layer_index, *layer_object, task_queue_pool))
+        std::move(create_grurnnlayer(layer_index, *layer_object))
       );
       continue;
     }
@@ -105,13 +103,12 @@ Layers NeuralNetworkSerializer::create_layers(
   const auto* json_object = static_cast<const TinyJSON::TJValueObject*>(&json);
   auto weight_decay = json_object->get_float("layers-weight-decay");
 
-  return Layers(layers, weight_decay, task_queue_pool);
+  return Layers(layers, weight_decay);
 }
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   unsigned layer_index,
-  const TinyJSON::TJValueObject& layer_object,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  const TinyJSON::TJValueObject& layer_object
 )
 {
   // get the neurons
@@ -190,8 +187,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
     rw_m2,
     rw_timesteps,
     rw_decays,
-    residual_projector,
-    task_queue_pool
+    residual_projector
   );
 
   return layer;
@@ -199,8 +195,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   unsigned layer_index,
-  const TinyJSON::TJValueObject& layer_object,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  const TinyJSON::TJValueObject& layer_object
 )
 {
   // get the neurons
@@ -371,8 +366,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     r_b_m2,
     r_b_timesteps,
     r_b_decays,
-    residual_projector,
-    task_queue_pool
+    residual_projector
   );
 
   return layer;
@@ -380,8 +374,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   unsigned layer_index,
-  const TinyJSON::TJValueObject& layer_object,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  const TinyJSON::TJValueObject& layer_object
 )
 {
   // get the neurons
@@ -444,8 +437,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_m2,
     b_timesteps,
     b_decays,
-    residual_projector,
-    task_queue_pool
+    residual_projector
   );
 
   return layer;

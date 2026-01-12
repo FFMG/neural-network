@@ -28,8 +28,7 @@ public:
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
     double dropout_rate,
-    ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool);
+    ResidualProjector* residual_projector);
 
   ElmanRNNLayer(
     unsigned layer_index,
@@ -61,8 +60,7 @@ public:
     const std::vector<double>& rw_m2,
     const std::vector<long long>& rw_timesteps,
     const std::vector<double>& rw_decays,
-    const ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+    const ResidualProjector* residual_projector
   ) noexcept;
 
   ElmanRNNLayer(const ElmanRNNLayer& src) noexcept;

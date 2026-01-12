@@ -33,8 +33,7 @@ public:
 
   Layers(
     const std::vector<std::unique_ptr<Layer>>& layers,
-    double weight_decay,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool = nullptr
+    double weight_decay
     ) noexcept;
   
   virtual ~Layers();
@@ -74,7 +73,7 @@ public:
 
 private:
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
-  std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, std::shared_ptr<TaskQueuePool<void>> task_queue_pool);
+  static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number);
   std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details );
   std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number);
 
@@ -82,5 +81,4 @@ private:
 
   std::vector<std::unique_ptr<Layer>> _layers;
   double _weight_decay;
-  std::shared_ptr<TaskQueuePool<void>> _task_queue_pool;
 };
