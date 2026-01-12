@@ -14,8 +14,7 @@ GRURNNLayer::GRURNNLayer(
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
   double dropout_rate,
-  ResidualProjector* residual_projector,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  ResidualProjector* residual_projector
   ) :
   Layer(
     layer_index, 
@@ -28,8 +27,7 @@ GRURNNLayer::GRURNNLayer(
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     _has_bias_neuron,
     weight_decay,
-    residual_projector,
-    task_queue_pool
+    residual_projector
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -224,8 +222,7 @@ GRURNNLayer::GRURNNLayer(
   const std::vector<double>& r_b_m2,
   const std::vector<long long>& r_b_timesteps,
   const std::vector<double>& r_b_decays,
-  const ResidualProjector* residual_projector,
-  std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+  const ResidualProjector* residual_projector
 ) noexcept :
   Layer(
     layer_index,
@@ -250,8 +247,7 @@ GRURNNLayer::GRURNNLayer(
     b_m2,
     b_timesteps,
     b_decays,
-    residual_projector,
-    task_queue_pool),
+    residual_projector),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
@@ -301,11 +297,12 @@ GRURNNLayer::GRURNNLayer(
     _r_b_velocities(r_b_velocities),
     _r_b_m1(r_b_m1),
     _r_b_m2(r_b_m2),
-      _r_b_timesteps(r_b_timesteps),
-      _r_b_decays(r_b_decays)
-    {
-      MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    }
+    _r_b_timesteps(r_b_timesteps),
+    _r_b_decays(r_b_decays)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+}
+
 GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");

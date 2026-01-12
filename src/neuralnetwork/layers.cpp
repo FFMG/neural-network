@@ -14,8 +14,7 @@ Layers::Layers(
   const activation& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump) noexcept :
-  _weight_decay(weight_decay),
-  _task_queue_pool(std::make_shared<TaskQueuePool<void>>())
+  _weight_decay(weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
@@ -23,7 +22,7 @@ Layers::Layers(
   _layers.reserve(number_of_layers);
 
   // add the input layer
-  auto layer = create_input_layer(topology[0], _weight_decay, -1, _task_queue_pool);
+  auto layer = create_input_layer(topology[0], _weight_decay, -1);
   _layers.emplace_back(std::move(layer));
 
   // then the hidden layers
@@ -52,8 +51,7 @@ Layers::Layers(
 Layers::~Layers() = default;
 
 Layers::Layers(const Layers& src) noexcept :
-  _weight_decay(src._weight_decay),
-  _task_queue_pool(src._task_queue_pool)
+  _weight_decay(src._weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _layers.reserve(src._layers.size());
@@ -63,9 +61,8 @@ Layers::Layers(const Layers& src) noexcept :
   }
 }
 
-Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers, double weight_decay, std::shared_ptr<TaskQueuePool<void>> task_queue_pool) noexcept :
-  _weight_decay(weight_decay),
-  _task_queue_pool(task_queue_pool ? task_queue_pool : std::make_shared<TaskQueuePool<void>>())
+Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers, double weight_decay) noexcept :
+  _weight_decay(weight_decay)
 {
   _layers.reserve(layers.size());
   for (const auto& layer : layers)
@@ -79,7 +76,6 @@ Layers::Layers(Layers&& src) noexcept :
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _weight_decay = src._weight_decay;
-  _task_queue_pool = std::move(src._task_queue_pool);
 }
 
 Layers& Layers::operator=(const Layers& src) noexcept
@@ -94,7 +90,6 @@ Layers& Layers::operator=(const Layers& src) noexcept
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
     _weight_decay = src._weight_decay;
-    _task_queue_pool = src._task_queue_pool;
   }
   return *this;
 }
@@ -107,7 +102,6 @@ Layers& Layers::operator=(Layers&& src) noexcept
     _layers = std::move(src._layers);
     _weight_decay = src._weight_decay;
     src._weight_decay = 0.0;
-    _task_queue_pool = std::move(src._task_queue_pool);
   }
   return *this;
 }
@@ -176,7 +170,7 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
   return residual_layer_index;
 }
 
-std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, std::shared_ptr<TaskQueuePool<void>> task_queue_pool)
+std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return std::make_unique<FFLayer>(
@@ -189,8 +183,7 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     OptimiserType::None, 
     residual_layer_number, 
     0.0,    // no dropout for input layer
-    nullptr, // no residual projector for input
-    task_queue_pool
+    nullptr // no residual projector for input
   );
 }
 
@@ -221,8 +214,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type, 
       residual_layer_number, 
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay),
-      _task_queue_pool);
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
 
   case LayerDetails::LayerType::Gru:
     return std::make_unique<GRURNNLayer>(
@@ -235,8 +227,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type,
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay),
-      _task_queue_pool);
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
 
   case LayerDetails::LayerType::FF:
     return std::make_unique<FFLayer>(
@@ -249,8 +240,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type, 
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay),
-      _task_queue_pool);
+      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
 
   default:
     Logger::panic("Unknown or unsupported layer type!");
@@ -271,8 +261,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     optimiser_type, 
     residual_layer_number,
     0.0, // no dropout for output layer
-    create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay),
-    _task_queue_pool);
+    create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay));
 }
 
 ResidualProjector* Layers::create_residual_projector(
