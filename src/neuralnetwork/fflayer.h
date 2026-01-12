@@ -28,8 +28,7 @@ public:
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
     double dropout_rate,
-    ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool);
+    ResidualProjector* residual_projector);
 
   FFLayer(
     unsigned layer_index,
@@ -54,8 +53,7 @@ public:
     const std::vector<double>& b_m2,
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector,
-    std::shared_ptr<TaskQueuePool<void>> task_queue_pool
+    const ResidualProjector* residual_projector
   ) noexcept;
 
   FFLayer(const FFLayer& src) noexcept;
