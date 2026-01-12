@@ -147,6 +147,7 @@ private:
   NeuralNetworkOptions _options;
   NeuralNetworkHelper* _neural_network_helper;
   std::map<ErrorCalculation::type, double> _saved_errors;
+  TaskQueuePool<void>* _update_weights_pool;
 
   Rng _rng;
 };
