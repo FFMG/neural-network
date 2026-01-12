@@ -432,14 +432,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   Logger::info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-// TODO - re-add queues
-// create the thread pool if we need one ...
-//  TaskQueuePool<std::vector<GradientsAndOutputs>>* task_pool = nullptr;
-//  if (batch_size > 1)
-//  {
-//    task_pool = new TaskQueuePool<std::vector<GradientsAndOutputs>>(_options.number_of_threads());
-//  }
-
   // create the neural network helper.
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
@@ -518,27 +510,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
       const size_t total_size = end_size - start_index;
 
-      // TODO re-add queue
-      /*
-      if (task_pool != nullptr)
-      {
-        task_pool->enqueue([=]()
-          {
-            train_single_batch(
-              batch_training_inputs.begin() + start_index,
-              batch_training_outputs.begin() + start_index,
-              total_size);
-          });
-      }
-      else
-      */
-      {
-        //  size is 1, it is faster to not use a thread.
-        train_single_batch(
-            batch_training_inputs.begin() + start_index,
-            batch_training_outputs.begin() + start_index,
-            total_size);
-      }
+      train_single_batch(
+          batch_training_inputs.begin() + start_index,
+          batch_training_outputs.begin() + start_index,
+          total_size);
     }
     MYODDWEB_PROFILE_MARK();
 
@@ -557,15 +532,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     MYODDWEB_PROFILE_MARK();
   }
-
-  // TODO re-add queue
-  /*
-  if(task_pool != nullptr)
-  {
-    task_pool->stop();
-    delete task_pool;
-  }
-  */
 
   auto metrics = calculate_forecast_metrics(
     {
