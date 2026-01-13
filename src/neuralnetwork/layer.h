@@ -39,7 +39,8 @@ protected:
     const std::vector<Neuron>& neurons,
     bool has_bias,
     double weight_decay,
-    ResidualProjector* residual_projector
+    ResidualProjector* residual_projector,
+    int number_of_threads
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
@@ -53,7 +54,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (number_output_neurons == 0)
@@ -122,7 +123,8 @@ protected:
     const std::vector<double>& b_m2,
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector
+    const ResidualProjector* residual_projector,
+    int number_of_threads
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
@@ -150,7 +152,7 @@ protected:
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
     _bias_weights_cache_dirty(true),
-    _task_queue_pool(std::make_unique<TaskQueuePool<void>>())
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr)

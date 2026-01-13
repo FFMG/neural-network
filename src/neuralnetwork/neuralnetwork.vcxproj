@@ -155,6 +155,7 @@
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="aligned_allocator.h" />
     <ClInclude Include="examples\addingproblem.h" />
+    <ClInclude Include="examples\syntheticsentiment.h" />
     <ClInclude Include="grurnnlayer.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />

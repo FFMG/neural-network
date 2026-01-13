@@ -14,8 +14,9 @@ ElmanRNNLayer::ElmanRNNLayer(
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
   double dropout_rate,
-  ResidualProjector* residual_projector
-  ) :
+  ResidualProjector* residual_projector,
+  int number_of_threads
+  ) noexcept :
   Layer(
     layer_index, 
     layer_type, 
@@ -27,7 +28,8 @@ ElmanRNNLayer::ElmanRNNLayer(
     create_neurons(dropout_rate, num_neurons_in_this_layer),
     _has_bias_neuron,
     weight_decay,
-    residual_projector
+    residual_projector,
+    number_of_threads
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -90,7 +92,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   const std::vector<double>& rw_m2,
   const std::vector<long long>& rw_timesteps,
   const std::vector<double>& rw_decays,
-  const ResidualProjector* residual_projector
+  const ResidualProjector* residual_projector,
+  int number_of_threads
 ) noexcept :
   Layer(
     layer_index,
@@ -115,7 +118,8 @@ ElmanRNNLayer::ElmanRNNLayer(
     b_m2,
     b_timesteps,
     b_decays,
-    residual_projector
+    residual_projector,
+    number_of_threads
     ),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
@@ -385,7 +389,50 @@ void ElmanRNNLayer::calculate_output_gradients(
   const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
 
-  auto run_output_gradients = [&](size_t start, size_t end)
+  // --- Neuron-Parallel Implementation (Small Batch) ---
+  auto run_output_gradients_neuron_parallel = [&](size_t start, size_t end)
+  {
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
+      const auto& target_outputs = *(target_outputs_begin + b);
+      double* gradients_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+      
+      const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
+
+      // Determine correct output index (last time step)
+      size_t output_offset = 0;
+      if (given_outputs.size() >= N_total && N_total > 0)
+      {
+        const size_t num_time_steps = given_outputs.size() / N_total;
+        output_offset = (num_time_steps - 1) * N_total;
+      }
+      
+      const bool is_bce_sigmoid = (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid);
+
+      for (size_t j = start; j < end; ++j)
+      {
+        const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
+        const double given = (output_offset + j < given_outputs.size()) ? given_outputs[output_offset + j] : 0.0;
+          
+        // Compute Delta: (y - t) / N
+        const double delta = (given - target) * _inv_num_neurons;
+          
+        if (is_bce_sigmoid)
+        {
+          gradients_ptr[j] = delta;
+        }
+        else
+        {
+          const double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron((unsigned)j));
+          gradients_ptr[j] = delta * deriv;
+        }
+      }
+    }
+  };
+
+  // --- Batch-Parallel Implementation (Large Batch) ---
+  auto run_output_gradients_batch_parallel = [&](size_t start, size_t end)
   {
     std::vector<double> gradients(N_total, 0.0);
     std::vector<double> deltas(N_total, 0.0);
@@ -395,46 +442,50 @@ void ElmanRNNLayer::calculate_output_gradients(
       const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
       const auto& target_outputs = *(target_outputs_begin + b);
       
-      // Reset gradients
       std::fill(gradients.begin(), gradients.end(), 0.0);
 
-      if (given_outputs.size() == N_total)
-      {
-        calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
-        const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
-
-        if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-        {
-          for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];
-        }
-        else
-        {
-          for (unsigned j = 0; j < N_total; ++j)
-          {
-            double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-            gradients[j] = deltas[j] * deriv;
-          }
-        }
-      }
-      else if (given_outputs.size() >= N_total && N_total > 0)
+      if (given_outputs.size() >= N_total && N_total > 0)
       {
         const size_t num_time_steps = given_outputs.size() / N_total;
         const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
-
-        for (unsigned j = 0; j < N_total; ++j)
+         
+        if (given_outputs.size() == N_total)
         {
-          const size_t last_idx = (num_time_steps - 1) * N_total + j;
-          const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
-          const double delta = (given_outputs[last_idx] - target) / static_cast<double>(N_total);
-
+          calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
           if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
           {
-            gradients[j] = delta;
+            for (unsigned j = 0; j < N_total; ++j)
+            {
+              gradients[j] = deltas[j];
+            }
           }
           else
           {
-            double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-            gradients[j] = delta * deriv;
+            for (unsigned j = 0; j < N_total; ++j)
+            {
+              double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
+              gradients[j] = deltas[j] * deriv;
+            }
+          }
+        }
+        else
+        {
+          // Sequence case
+          for (unsigned j = 0; j < N_total; ++j)
+          {
+            const size_t last_idx = (num_time_steps - 1) * N_total + j;
+            const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
+            const double delta = (given_outputs[last_idx] - target) * _inv_num_neurons;
+
+            if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
+            {
+              gradients[j] = delta;
+            }
+            else
+            {
+              double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
+              gradients[j] = delta * deriv;
+            }
           }
         }
       }
@@ -443,9 +494,33 @@ void ElmanRNNLayer::calculate_output_gradients(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (batch_size < num_threads)
   {
-    run_output_gradients(0, batch_size);
+    // Small batch: Use neuron parallelism if beneficial
+    if (N_total >= 64 && num_threads > 1)
+    {
+      // Pre-allocate gradients
+      for (size_t b = 0; b < batch_size; ++b) 
+      {
+        batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_total, 0.0));
+      }
+       
+      size_t chunk_size = (N_total + num_threads - 1) / num_threads;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+        size_t start = t * chunk_size;
+        size_t end = std::min(start + chunk_size, N_total);
+        if (start < end)
+        {
+          _task_queue_pool->enqueue([=]() { run_output_gradients_neuron_parallel(start, end); });
+        }
+      }
+      _task_queue_pool->get();
+    }
+    else
+    {
+      run_output_gradients_batch_parallel(0, batch_size);
+    }
   }
   else
   {
@@ -455,7 +530,7 @@ void ElmanRNNLayer::calculate_output_gradients(
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
       _task_queue_pool->enqueue([=]() {
-        run_output_gradients( start, end);
+        run_output_gradients_batch_parallel(start, end);
       });
     }
     _task_queue_pool->get();
