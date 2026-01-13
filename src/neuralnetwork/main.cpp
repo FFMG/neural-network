@@ -10,6 +10,7 @@
 #include "./examples/copymemory.h"
 #include "./examples/residualxor.h"
 #include "./examples/spiral.h"
+#include "./examples/syntheticsentiment.h"
 #include "./examples/threebitparity.h"
 #include "./examples/twomoon.h"
 #include "./examples/xor.h"
@@ -42,6 +43,8 @@ int main()
 
   // 3-bit Parity
   ExampleThreebitParity::ThreebitParity(log_level);
+  // Synthetic Sentiment
+  ExampleSyntheticSentiment::SyntheticSentiment(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 
