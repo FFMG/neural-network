@@ -95,7 +95,7 @@ private:
   void train_single_batch(
     const std::vector<std::vector<double>>::const_iterator inputs_begin, 
     const std::vector<std::vector<double>>::const_iterator outputs_begin,
-    const size_t size
+    const size_t batch_size
   );
 
   void calculate_forward_feed(
@@ -106,7 +106,7 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void calculate_forward_feed(
+  void calculate_forward_feed_for_forecast_metrics(
     std::vector<GradientsAndOutputs>& gradients_and_output,
     const std::vector<std::vector<double>>& all_inputs,
     const std::vector<size_t>& indices,

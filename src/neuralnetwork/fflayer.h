@@ -28,7 +28,8 @@ public:
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
     double dropout_rate,
-    ResidualProjector* residual_projector);
+    ResidualProjector* residual_projector,
+    int number_of_threads);
 
   FFLayer(
     unsigned layer_index,
@@ -53,7 +54,8 @@ public:
     const std::vector<double>& b_m2,
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector
+    const ResidualProjector* residual_projector,
+    int number_of_threads
   ) noexcept;
 
   FFLayer(const FFLayer& src) noexcept;

@@ -37,9 +37,9 @@ private:
   static std::vector<std::vector<WeightParam>> get_weights(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
   static std::vector<WeightParam> get_bias_weights(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
   static Layers create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json);
-  static std::unique_ptr<Layer> create_fflayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object);
-  static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object);
-  static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object);
+  static std::unique_ptr<Layer> create_fflayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
