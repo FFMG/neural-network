@@ -25,7 +25,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     activation(options.hidden_activation_method(), options.hidden_activation_alpha()), 
     activation(options.output_activation_method(), options.output_activation_alpha()),
     options.optimiser_type(),
-    options.residual_layer_jump()),
+    options.residual_layer_jump(), 
+    options.number_of_threads()),
   _options(options),
   _neural_network_helper(nullptr),
   _update_weights_pool(nullptr)
