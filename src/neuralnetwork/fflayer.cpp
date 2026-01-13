@@ -356,7 +356,32 @@ void FFLayer::calculate_hidden_gradients(
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
 
-  auto run_hidden_gradients = [&](size_t start, size_t end)
+  // --- Neuron-Parallel Implementation (Small Batch) ---
+  auto run_hidden_gradients_neuron_parallel = [&](size_t i_start, size_t i_end)
+  {
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& next_grad_matrix = batch_next_grad_matrix[b];
+      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+      double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+
+      // G_this[i] = sum(G_next[j] * W_next[i, j]) * activation_derivative(pre_act[i])
+      for (size_t i = i_start; i < i_end; ++i)
+      {
+        double sum = 0.0;
+        for (size_t j = 0; j < N_next; ++j)
+        {
+          sum += next_grad_matrix[j] * next_layer.get_weight_value(static_cast<unsigned>(i), static_cast<unsigned>(j));
+        }
+         
+        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+        grad_ptr[i] = sum * deriv;
+      }
+    }
+  };
+
+  // --- Batch-Parallel Implementation (Large Batch) ---
+  auto run_hidden_gradients_batch_parallel = [&](size_t start, size_t end)
   {
     std::vector<double> grad_matrix(N_this, 0.0);
     constexpr size_t BLOCK_SIZE = 64;
@@ -397,9 +422,33 @@ void FFLayer::calculate_hidden_gradients(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (batch_size < num_threads)
   {
-    run_hidden_gradients(0, batch_size);
+    // Small batch: Use neuron parallelism if beneficial
+    if (N_this >= 64 && num_threads > 1)
+    {
+      // Pre-allocate gradients for all batches
+      for (size_t b = 0; b < batch_size; ++b) 
+      {
+        batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
+      }
+
+      size_t chunk_size = (N_this + num_threads - 1) / num_threads;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+        size_t start = t * chunk_size;
+        size_t end = std::min(start + chunk_size, (size_t)N_this);
+        if (start < end)
+        {
+          _task_queue_pool->enqueue([=]() { run_hidden_gradients_neuron_parallel(start, end); });
+        }
+      }
+      _task_queue_pool->get();
+    }
+    else
+    {
+      run_hidden_gradients_batch_parallel(0, batch_size);
+    }
   }
   else
   {
@@ -410,7 +459,7 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
       _task_queue_pool->enqueue([=]()
         {
-          run_hidden_gradients(start, end);
+          run_hidden_gradients_batch_parallel(start, end);
         });
     }
     _task_queue_pool->get();
