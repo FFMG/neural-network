@@ -291,8 +291,6 @@ bool NeuralNetwork::has_training_data() const
   return !_saved_errors.empty();
 }
 
-
-
 std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check, size_t limit) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -352,7 +350,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     std::vector<HiddenStates> batch_hidden_states(prediction_size, HiddenStates(get_topology()));
     std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
 
-    calculate_forward_feed(batch_gradients, training_inputs, sub_indices, _layers, batch_hidden_states, false);
+    calculate_forward_feed_for_forecast_metrics(batch_gradients, training_inputs, sub_indices, _layers, batch_hidden_states, false);
 
     for (size_t i = 0; i < prediction_size; ++i)
     {
@@ -398,19 +396,19 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
 void NeuralNetwork::train_single_batch(
     std::vector<std::vector<double>>::const_iterator inputs_begin, 
     std::vector<std::vector<double>>::const_iterator outputs_begin,
-    const size_t size
+    const size_t batch_size
   )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(size, HiddenStates(get_topology()));
+  hidden_states.resize(batch_size, HiddenStates(get_topology()));
 
   std::vector<GradientsAndOutputs> gradients;
-  gradients.resize(size, GradientsAndOutputs(get_topology()));
+  gradients.resize(batch_size, GradientsAndOutputs(get_topology()));
 
-  calculate_forward_feed(gradients, inputs_begin, size, _layers, hidden_states, true);
-  calculate_back_propagation(gradients, outputs_begin, size, _layers, hidden_states);
+  calculate_forward_feed(gradients, inputs_begin, batch_size, _layers, hidden_states, true);
+  calculate_back_propagation(gradients, outputs_begin, batch_size, _layers, hidden_states);
   update_weights(_layers, gradients, _learning_rate, hidden_states);
 }
 
@@ -920,18 +918,18 @@ void NeuralNetwork::calculate_forward_feed(
     // Ensure hidden state vectors are sized correctly
     for (size_t b = 0; b < batch_size; ++b)
     {
-        if (current_layer.use_bptt())
-        {
-            std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-            if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
-            const size_t n_prev = previous_layer.get_number_neurons();
-            const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
-            hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
-        }
-        else
-        {
-            hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
-        }
+      if (current_layer.use_bptt())
+      {
+        std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+        if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+        const size_t n_prev = previous_layer.get_number_neurons();
+        const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
+        hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
+      }
+      else
+      {
+        hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
+      }
     }
 
     // Call batched forward feed
@@ -944,7 +942,8 @@ void NeuralNetwork::calculate_forward_feed(
     );
   }
 }
-void NeuralNetwork::calculate_forward_feed(
+
+void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
   std::vector<GradientsAndOutputs>& gradients_and_output,
   const std::vector<std::vector<double>>& all_inputs,
   const std::vector<size_t>& indices,
@@ -1040,6 +1039,7 @@ void NeuralNetwork::calculate_forward_feed(
     );
   }
 }
+
 void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_inputs,
   const std::vector<std::vector<double>>& training_outputs) const
