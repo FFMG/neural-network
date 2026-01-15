@@ -410,7 +410,7 @@ void ElmanRNNLayer::calculate_output_gradients(
         output_offset = (num_time_steps - 1) * N_total;
       }
       
-      const bool is_bce_sigmoid = (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid);
+      const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
       for (size_t j = start; j < end; ++j)
       {
@@ -420,7 +420,7 @@ void ElmanRNNLayer::calculate_output_gradients(
         // Compute Delta: (y - t) / N
         const double delta = (given - target) * _inv_num_neurons;
           
-        if (is_bce_sigmoid)
+        if (is_not_using_activation_derivative)
         {
           gradients_ptr[j] = delta;
         }

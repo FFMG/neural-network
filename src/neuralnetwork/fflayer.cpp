@@ -300,6 +300,8 @@ void FFLayer::calculate_output_gradients(
     std::vector<double> gradients(N_total, 0.0);
     std::vector<double> deltas(N_total, 0.0);
 
+    const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
+
     for (size_t b = start; b < end; b++)
     {
       const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
@@ -307,7 +309,7 @@ void FFLayer::calculate_output_gradients(
 
       calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
 
-      if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
+      if (is_not_using_activation_derivative)
       {
         for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
         {
