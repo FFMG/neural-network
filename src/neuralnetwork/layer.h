@@ -359,6 +359,9 @@ public:
 
     case ErrorCalculation::type::cross_entropy:
       return get_activation().get_method() == activation::method::softmax;
+
+    case ErrorCalculation::type::mse:
+      return get_activation().get_method() == activation::method::linear;
     }
 
     // default
