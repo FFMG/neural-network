@@ -324,10 +324,12 @@ void ElmanRNNLayer::calculate_forward_feed(
         const size_t seq_offset = (b * num_time_steps + t) * N_this;
         const size_t last_offset = b * N_this;
 
+        get_activation().activate(pre_activation_sums.data(), pre_activation_sums.data() + N_this);
+
         for (size_t j = 0; j < N_this; ++j)
         {
           const auto& neuron = get_neuron((unsigned)j);
-          double output = get_activation().activate(pre_activation_sums[j]);
+          double output = pre_activation_sums[j];
           if (is_training && neuron.is_dropout())
           {
             if (neuron.must_randomly_drop()) output = 0.0;

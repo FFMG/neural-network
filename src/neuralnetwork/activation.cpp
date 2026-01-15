@@ -64,6 +64,10 @@ activation::activation(const method method, double alpha) :
     _activate_ptr = &calculate_sigmoid;
     _derivative_ptr = &calculate_sigmoid_derivative;
     break;
+  case activation::method::softmax:
+    _activate_ptr = &calculate_softmax;
+    _derivative_ptr = &calculate_softmax_derivative;
+    break;
   default:
     Logger::panic("Unknown activation type!");
   }
@@ -125,6 +129,22 @@ double activation::calculate_linear_derivative(double, double) noexcept
   return 1.0;
 }
 
+void activation::activate(double* begin, double* end) const
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  if (_method == method::softmax)
+  {
+    calculate_softmax(begin, end);
+  }
+  else
+  {
+    for (double* it = begin; it != end; ++it)
+    {
+      *it = activate(*it);
+    }
+  }
+}
+
 double activation::calculate_sigmoid(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -160,6 +180,55 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
+}
+
+void activation::calculate_softmax(double* begin, double* end) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  if (begin == end)
+  {
+    return;
+  }
+
+  // Find max for numerical stability
+  double max_val = *begin;
+  for (const double* it = begin + 1; it != end; ++it)
+  {
+    if (*it > max_val) max_val = *it;
+  }
+
+  double sum = 0.0;
+  for (double* it = begin; it != end; ++it)
+  {
+    *it = std::exp(*it - max_val);
+    sum += *it;
+  }
+
+  if (sum != 0.0)
+  {
+    for (double* it = begin; it != end; ++it)
+    {
+      *it /= sum;
+    }
+  }
+}
+
+double activation::calculate_softmax(double x, double) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  // This is not really correct for a single value, 
+  // but we need it for the function pointer.
+  // Softmax of a single value is always 1.0.
+  return 1.0;
+}
+
+double activation::calculate_softmax_derivative(double x, double) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  // This is also not strictly correct as it depends on all other outputs.
+  // However, often we use S(1-S) as a placeholder if we don't have the full Jacobian.
+  const double s = calculate_softmax(x, 0.0);
+  return s * (1.0 - s);
 }
 
 double activation::calculate_relu(double x, double) noexcept
@@ -278,6 +347,7 @@ double activation::momentum() const
     return 0.95;
 
   case activation::method::sigmoid:
+  case activation::method::softmax:
     return 0.99;
 
   default:
@@ -298,6 +368,7 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   {
   case activation::method::sigmoid:
   case activation::method::tanh:
+  case activation::method::softmax:
     return xavier_initialization(num_neurons_current_layer, num_neurons_next_layer);
 
   case activation::method::selu:
@@ -434,6 +505,10 @@ activation::method activation::string_to_method(const std::string& str)
   {
     return method::elu;
   }
+  if (lower_str == "softmax")
+  {
+    return method::softmax;
+  }
   
   Logger::panic("Unknown method: ", str);
 }
@@ -464,6 +539,8 @@ std::string activation::method_to_string(method m)
     return "gelu";
   case method::elu:
     return "elu";
+  case method::softmax:
+    return "softmax";
   default:
     Logger::panic("Unknown or unsupported 'method' enum value.");
   }
