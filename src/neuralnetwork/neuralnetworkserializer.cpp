@@ -596,6 +596,13 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false); 
   auto hidden_layers = get_hidden_layers(*options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
+  
+  int bptt_max_ticks = options_object->get_number<int>("bptt-max-ticks");
+  
+  auto error_calculation_type_string = options_object->try_get_string("error-calculation-type");
+  auto error_calculation_type = ErrorCalculation::string_to_type(error_calculation_type_string == nullptr ? "rmse" : error_calculation_type_string);
+  
+  bool enable_bptt = options_object->get_boolean("enable-bptt");
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -619,6 +626,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_shuffle_training_data(shuffle_training_data)
     .with_hidden_layers(hidden_layers)
     .with_weight_decay(weight_decay)
+    .with_bptt_max_ticks(bptt_max_ticks)
+    .with_error_calculation_type(error_calculation_type)
+    .with_enable_bptt(enable_bptt)
     .build();
 }
 
@@ -889,6 +899,9 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("clip-threshold", options.clip_threshold());
   options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
   options_object->set_float("weight-decay", options.weight_decay());
+  options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
+  options_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(options.error_calculation_type()).c_str());
+  options_object->set_boolean("enable-bptt", options.enable_bptt());
 
   json.set("options", options_object);
 
