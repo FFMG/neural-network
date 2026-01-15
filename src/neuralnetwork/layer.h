@@ -439,6 +439,11 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
 
+  void calculate_cross_entropy_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
   inline const activation& get_activation() const noexcept
   {
     return _activation;
