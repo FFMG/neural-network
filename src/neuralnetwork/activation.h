@@ -19,7 +19,8 @@ public:
     swish,
     mish,
     gelu,
-    elu
+    elu,
+    softmax
   };
 
   using activation_function = double (*)(double, double);
@@ -32,6 +33,8 @@ public:
   ~activation() = default;
 
   inline double activate(double x) const { return _activate_ptr(x, _alpha); }
+  void activate(double* begin, double* end) const;
+
   inline double activate_derivative(double x) const { return _derivative_ptr(x, _alpha); }
 
   double momentum() const;
@@ -83,6 +86,9 @@ private:
   static double calculate_gelu_derivative(double x, double alpha) noexcept;
   static double calculate_elu(double x, double alpha) noexcept;
   static double calculate_elu_derivative(double x, double alpha) noexcept;
+  static void calculate_softmax(double* begin, double* end) noexcept;
+  static double calculate_softmax(double x, double alpha) noexcept;
+  static double calculate_softmax_derivative(double x, double alpha) noexcept;
 
   method _method;
   double _alpha;

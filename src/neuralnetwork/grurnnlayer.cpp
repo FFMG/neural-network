@@ -687,11 +687,15 @@ void GRURNNLayer::calculate_forward_feed(
         const size_t seq_offset = (b * num_time_steps + t) * N_this;
         const size_t last_offset = b * N_this;
 
+        // Use range-based activation for candidate state
+        std::vector<double> h_hat_vec = h_hat_pre;
+        get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this);
+
         for (size_t j = 0; j < N_this; ++j)
         {
           packed_bptt_states[2 * N_this + j] = h_hat_pre[j]; // Store h_hat pre-activation
           
-          double h_hat = get_activation().activate(h_hat_pre[j]);
+          double h_hat = h_hat_vec[j];
           
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
@@ -957,12 +961,16 @@ void GRURNNLayer::calculate_hidden_gradients(
              const double* grad_from_next_ptr = &grad_from_next_all_t[t_offset];
              const double* d_next_h_ptr = &d_next_h[b * N_this];
 
+             std::vector<double> h_hat_vals(N_this);
+             std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
+             get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
+
              for (size_t j = i_start; j < i_end; ++j)
              {
                 double dh = grad_from_next_ptr[j] + d_next_h_ptr[j];
 
                 double z = z_vals[j];
-                double h_hat = get_activation().activate(h_hat_pre_vals[j]);
+                double h_hat = h_hat_vals[j];
                 double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
 
                 double d_z = dh * (h_hat - h_prev);
@@ -1177,11 +1185,15 @@ void GRURNNLayer::calculate_hidden_gradients(
         const double* grad_next_ptr = &chunk_grad_from_next_all_t[t_offset];
         const double* d_next_h_ptr = &d_next_h[b_idx * N_this];
 
+        std::vector<double> h_hat_vals(N_this);
+        std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
+        get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
+
         for (size_t j = 0; j < N_this; ++j)
         {
           double dh = grad_next_ptr[j] + d_next_h_ptr[j];
           double z = z_vals[j];
-          double h_hat = get_activation().activate(h_hat_pre_vals[j]);
+          double h_hat = h_hat_vals[j];
           double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
           
           double d_z = dh * (h_hat - h_prev);

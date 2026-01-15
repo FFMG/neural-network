@@ -226,11 +226,15 @@ void FFLayer::calculate_forward_feed(
     for (size_t b = start; b < end; b++)
     {
       const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+      double* current_pre_act = &batch_pre_activation_sums[b * N_this];
+
+      // Use range-based activation
+      get_activation().activate(current_pre_act, current_pre_act + N_this);
       
       for (size_t j = 0; j < N_this; j++)
       {
         const auto& neuron = get_neuron((unsigned)j);
-        double output = get_activation().activate(batch_pre_activation_sums[b * N_this + j]);
+        double output = current_pre_act[j];
 
         if (is_training && neuron.is_dropout()) 
         {
