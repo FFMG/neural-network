@@ -216,6 +216,7 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 double activation::calculate_softmax(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
+  Logger::warning("Calling the softmax activation indicate that the wrong error type/activation pair was used!");
   // This is not really correct for a single value, 
   // but we need it for the function pointer.
   // Softmax of a single value is always 1.0.
@@ -225,6 +226,7 @@ double activation::calculate_softmax(double x, double) noexcept
 double activation::calculate_softmax_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
+  Logger::warning("Calling the softmax activation derivative indicate that the wrong error type/activation pair was used!");
   // This is also not strictly correct as it depends on all other outputs.
   // However, often we use S(1-S) as a placeholder if we don't have the full Jacobian.
   const double s = calculate_softmax(x, 0.0);
