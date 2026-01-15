@@ -349,6 +349,21 @@ public:
 
 
   // --- Core Layer Properties ---
+  inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (error_calculation_type)
+    {
+    case ErrorCalculation::type::bce_loss:
+      return get_activation().get_method() == activation::method::sigmoid;
+
+    case ErrorCalculation::type::cross_entropy:
+      return get_activation().get_method() == activation::method::softmax;
+    }
+
+    // default
+    return false;
+  }
 
   inline OptimiserType get_optimiser_type() const noexcept
   {
