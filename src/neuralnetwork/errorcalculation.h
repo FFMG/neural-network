@@ -30,7 +30,8 @@ public:
     smape,
     wape,
     directional_accuracy,
-    bce_loss
+    bce_loss,
+    cross_entropy
   };
 public:
 
@@ -61,6 +62,8 @@ public:
       return "directional-accuracy";
     case ErrorCalculation::type::bce_loss:
       return "bce-loss";
+    case ErrorCalculation::type::cross_entropy:
+      return "cross-entropy";
     }
     Logger::panic("Unknown activation type!");
   }
@@ -116,6 +119,10 @@ public:
     {
       return ErrorCalculation::type::bce_loss;
     }
+    if (lower_str == "cross-entropy")
+    {
+      return ErrorCalculation::type::cross_entropy;
+    }
     Logger::panic("Unknown error type: ", str);
 
   }
@@ -157,6 +164,9 @@ public:
 
     case type::bce_loss:
       return calculate_bce_loss(ground_truth, predictions);
+
+    case type::cross_entropy:
+      return calculate_cross_entropy(ground_truth, predictions);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -577,5 +587,45 @@ public:
     }
 
     return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
+  }
+
+  static double calculate_cross_entropy(
+    const std::vector<std::vector<double>>& ground_truths,
+    const std::vector<std::vector<double>>& predictions)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (predictions.size() != ground_truths.size() || predictions.empty())
+    {
+      Logger::panic("Mismatched number of samples");
+    }
+
+    double total_loss = 0.0;
+    size_t sequence_count = 0;
+    const double eps = 1e-12;
+
+    for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+    {
+      const auto& gt = ground_truths[seq_idx];
+      const auto& pred = predictions[seq_idx];
+
+      if (gt.size() != pred.size() || gt.empty())
+      {
+        continue;
+      }
+
+      double sample_loss = 0.0;
+      for (size_t i = 0; i < gt.size(); ++i)
+      {
+        if (gt[i] > 0.0)
+        {
+           double p = std::max(eps, std::min(1.0 - eps, pred[i]));
+           sample_loss += -gt[i] * std::log(p);
+        }
+      }
+      total_loss += sample_loss;
+      ++sequence_count;
+    }
+
+    return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count);
   }
 };
