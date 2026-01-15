@@ -660,8 +660,9 @@ std::map<ErrorCalculation::type, double> NeuralNetworkSerializer::get_errors(con
   errors[ErrorCalculation::type::mape] = tj_errors->get_float<double>("mape", true, false);
   errors[ErrorCalculation::type::smape ] = tj_errors->get_float<double>("smape", true, false);
   errors[ErrorCalculation::type::wape ] = tj_errors->get_float<double>("wape", true, false);
+  errors[ErrorCalculation::type::directional_accuracy] = tj_errors->get_float<double>("directional-accuracy", true, false);
   errors[ErrorCalculation::type::bce_loss ] = tj_errors->get_float<double>("bce-loss", true, false);
-  errors[ErrorCalculation::type::directional_accuracy ] = tj_errors->get_float<double>("directional-accuracy", true, false);
+  errors[ErrorCalculation::type::cross_entropy] = tj_errors->get_float<double>("cross-entropy", true, false);
 
   return errors;
 }
@@ -1231,7 +1232,8 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
     ErrorCalculation::type::smape,
     ErrorCalculation::type::wape,
     ErrorCalculation::type::directional_accuracy,
-    ErrorCalculation::type::bce_loss
+    ErrorCalculation::type::bce_loss,
+    ErrorCalculation::type::cross_entropy
   });
 
   auto tj_errors = new TinyJSON::TJValueObject();
@@ -1245,6 +1247,7 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   tj_errors->set_float("wape"       , metrics[7].error());
   tj_errors->set_float("directional-accuracy", metrics[8].error());
   tj_errors->set_float("bce-loss"   , metrics[9].error());
+  tj_errors->set_float("cross-entropy", metrics[10].error());
 
   json.set("errors", tj_errors);
   delete tj_errors;

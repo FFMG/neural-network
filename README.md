@@ -277,11 +277,11 @@ You can use the `NeuralNetworkHelper& nn` to calculate the metrics.
 auto current_epoch_number = nn.epoch();
 auto total_number_of_epoch = nn.number_of_epoch();
 
-auto metrics = nn.calculate_forecast_metrics{ NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape});
+auto metrics = nn.calculate_forecast_metrics{ ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape});
 
 // use the rmse error and mape
 
-metrics = nn.calculate_forecast_metrics({NeuralNetworkOptions::ErrorCalculation::huber_loss, NeuralNetworkOptions::ForecastAccuracy::smape});
+metrics = nn.calculate_forecast_metrics({ErrorCalculation::huber_loss, NeuralNetworkOptions::ForecastAccuracy::smape});
 
 // use the hubber loss error and smape
 ```
@@ -372,8 +372,10 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 
 * hidden_activation_method[=sigmoid]
 * hidden_activation_alpha[=0.01]: The alpha value for the hidden layer activation function (e.g., for Leaky ReLU).
+* hidden_error_calculation_type[=mse]
 * output_activation_method[=sigmoid]
 * output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
+* output_error_calculation_type[=mse]
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
@@ -423,8 +425,8 @@ auto options = NeuralNetworkOptions::create({1, 4, 1})
 auto* nn = new NeuralNetwork(options);
 
 ...
-auto error_types = {NeuralNetworkOptions::ErrorCalculation::huber_loss, 
- NeuralNetworkOptions::ErrorCalculation::rmse };
+auto error_types = {ErrorCalculation::huber_loss, 
+ ErrorCalculation::rmse };
 auto errors = nn->calculate_forecast_metrics( error_types);
 
 // errors[0] = huber_loss
@@ -434,14 +436,16 @@ auto errors = nn->calculate_forecast_metrics( error_types);
 
 ### Error Calculations
 
-  * NeuralNetworkOptions::ErrorCalculation::none
-  * NeuralNetworkOptions::ErrorCalculation::huber_loss
-  * NeuralNetworkOptions::ErrorCalculation::mae
-  * NeuralNetworkOptions::ErrorCalculation::mse
-  * NeuralNetworkOptions::ErrorCalculation::nrmse
-  * NeuralNetworkOptions::ErrorCalculation::rmse
-  * NeuralNetworkOptions::ErrorCalculation::mape
-  * NeuralNetworkOptions::ErrorCalculation::smape
-  * NeuralNetworkOptions::ErrorCalculation::wape
-  * NeuralNetworkOptions::ErrorCalculation::directional_accuracy
-  * NeuralNetworkOptions::ErrorCalculation::bce_loss
+  * ErrorCalculation::none
+  * ErrorCalculation::huber_loss
+  * ErrorCalculation::mae
+  * ErrorCalculation::mse
+  * ErrorCalculation::nrmse
+  * ErrorCalculation::rmse
+  * ErrorCalculation::mape
+  * ErrorCalculation::smape
+  * ErrorCalculation::wape
+  * ErrorCalculation::directional_accuracy
+  * ErrorCalculation::bce_loss
+  * ErrorCalculation::bce_loss
+  * ErrorCalculation::cross_entropy
