@@ -826,7 +826,7 @@ void NeuralNetwork::calculate_back_propagation_output_layer(
   const auto& output_layer_number = static_cast<unsigned>(layers.size() - 1);
   auto& output_layer = layers.output_layer();
   
-  output_layer.calculate_output_gradients(gradients, outputs_begin, hidden_states, _options.error_calculation_type());
+  output_layer.calculate_output_gradients(gradients, outputs_begin, hidden_states, _options.output_error_calculation_type());
 }
 
 void NeuralNetwork::calculate_back_propagation_hidden_layers(
@@ -1073,10 +1073,19 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "  Restart rate             : ", _options.learning_rate_restart_rate());
   Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
-  Logger::info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
-  Logger::info(tab, "Hidden activation alpha    : ", std::fixed, std::setprecision(5), _options.hidden_activation_alpha());
-  Logger::info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
-  Logger::info(tab, "Output activation alpha    : ", std::fixed, std::setprecision(5), _options.output_activation_alpha());
+
+  // Hidden
+  Logger::info(tab, "Hidden                     : ");
+  Logger::info(tab, "  Activation method        : ", activation::method_to_string(get_hidden_activation_method()));
+  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.hidden_activation_alpha());
+  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.hidden_error_calculation_type()));
+
+  // Output
+  Logger::info(tab, "Output                     : ");
+  Logger::info(tab, "  Activation method        : ", activation::method_to_string(get_output_activation_method()));
+  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.output_activation_alpha());
+  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.output_error_calculation_type()));
+
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());

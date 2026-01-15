@@ -599,8 +599,11 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   
   int bptt_max_ticks = options_object->get_number<int>("bptt-max-ticks");
   
-  auto error_calculation_type_string = options_object->try_get_string("error-calculation-type");
-  auto error_calculation_type = ErrorCalculation::string_to_type(error_calculation_type_string == nullptr ? "rmse" : error_calculation_type_string);
+  auto hidden_error_calculation_type_string = options_object->try_get_string("hidden-error-calculation-type");
+  auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
+
+  auto hidden_error_calculation_type = ErrorCalculation::string_to_type(hidden_error_calculation_type_string == nullptr ? "mse" : hidden_error_calculation_type_string);
+  auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
   
   bool enable_bptt = options_object->get_boolean("enable-bptt");
 
@@ -627,7 +630,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_hidden_layers(hidden_layers)
     .with_weight_decay(weight_decay)
     .with_bptt_max_ticks(bptt_max_ticks)
-    .with_error_calculation_type(error_calculation_type)
+    .with_hidden_error_calculation_type(hidden_error_calculation_type)
+    .with_output_error_calculation_type(output_error_calculation_type)
     .with_enable_bptt(enable_bptt)
     .build();
 }
@@ -900,7 +904,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
   options_object->set_float("weight-decay", options.weight_decay());
   options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
-  options_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(options.error_calculation_type()).c_str());
+  options_object->set_string("hidden-error-calculation-type", ErrorCalculation::type_to_string(options.hidden_error_calculation_type()).c_str());
+  options_object->set_string("output-error-calculation-type", ErrorCalculation::type_to_string(options.output_error_calculation_type()).c_str());
   options_object->set_boolean("enable-bptt", options.enable_bptt());
 
   json.set("options", options_object);
