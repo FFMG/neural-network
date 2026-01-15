@@ -9,7 +9,9 @@
 
 #include "./libraries/instrumentor.h"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 #include "logger.h"
 
@@ -31,6 +33,92 @@ public:
     bce_loss
   };
 public:
+
+  inline static std::string type_to_string(const ErrorCalculation::type& type)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    switch (type)
+    {
+    case ErrorCalculation::type::none:
+      return "none";
+    case ErrorCalculation::type::huber_loss: 
+      return "huber-loss";
+    case ErrorCalculation::type::mae: 
+      return "mae";
+    case ErrorCalculation::type::mse: 
+      return "mse";
+    case ErrorCalculation::type::rmse: 
+      return "rmse";
+    case ErrorCalculation::type::nrmse: 
+      return "nrmse";
+    case ErrorCalculation::type::mape: 
+      return "mape";
+    case ErrorCalculation::type::smape: 
+      return "smape";
+    case ErrorCalculation::type::wape: 
+      return "wape";
+    case ErrorCalculation::type::directional_accuracy: 
+      return "directional-accuracy";
+    case ErrorCalculation::type::bce_loss:
+      return "bce-loss";
+    }
+    Logger::panic("Unknown activation type!");
+  }
+
+  inline static type string_to_type(const std::string& str)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    std::string lower_str = str;
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+      [](unsigned char c) { return std::tolower(c); });
+
+    if (lower_str == "none")
+    {
+      return ErrorCalculation::type::none;
+    }
+    if (lower_str == "huber-loss")
+    {
+      return ErrorCalculation::type::huber_loss;
+    }
+    if (lower_str == "mae")
+    {
+      return ErrorCalculation::type::mae;
+    }
+    if (lower_str == "mse")
+    {
+      return ErrorCalculation::type::mse;
+    }
+    if (lower_str == "rmse")
+    {
+      return ErrorCalculation::type::rmse;
+    }
+    if (lower_str == "nrmse")
+    {
+      return ErrorCalculation::type::nrmse;
+    }
+    if (lower_str == "mape")
+    {
+      return ErrorCalculation::type::mape;
+    }
+    if (lower_str == "smape")
+    {
+      return ErrorCalculation::type::smape;
+    }
+    if (lower_str == "wape")
+    {
+      return ErrorCalculation::type::wape;
+    }
+    if (lower_str == "directional-accuracy")
+    {
+      return ErrorCalculation::type::directional_accuracy;
+    }
+    if (lower_str == "bce-loss")
+    {
+      return ErrorCalculation::type::bce_loss;
+    }
+    Logger::panic("Unknown error type: ", str);
+
+  }
 
   static double calculate_error(type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
   {
