@@ -1078,7 +1078,6 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Hidden                     : ");
   Logger::info(tab, "  Activation method        : ", activation::method_to_string(get_hidden_activation_method()));
   Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.hidden_activation_alpha());
-  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.hidden_error_calculation_type()));
 
   // Output
   Logger::info(tab, "Output                     : ");

@@ -372,7 +372,6 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 
 * hidden_activation_method[=sigmoid]
 * hidden_activation_alpha[=0.01]: The alpha value for the hidden layer activation function (e.g., for Leaky ReLU).
-* hidden_error_calculation_type[=mse]
 * output_activation_method[=sigmoid]
 * output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
 * output_error_calculation_type[=mse]
@@ -425,8 +424,9 @@ auto options = NeuralNetworkOptions::create({1, 4, 1})
 auto* nn = new NeuralNetwork(options);
 
 ...
-auto error_types = {ErrorCalculation::huber_loss, 
- ErrorCalculation::rmse };
+auto error_types = {
+  ErrorCalculation::huber_loss, 
+  ErrorCalculation::rmse };
 auto errors = nn->calculate_forecast_metrics( error_types);
 
 // errors[0] = huber_loss
