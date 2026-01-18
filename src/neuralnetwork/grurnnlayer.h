@@ -141,7 +141,7 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks) const override;
 
-  void apply_recurrent_weight_gradient(unsigned from_neuron, unsigned to_neuron, double gradient, double learning_rate, double clipping_scale);
+
 
   double get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const;
 
