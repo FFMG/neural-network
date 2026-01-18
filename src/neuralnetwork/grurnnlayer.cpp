@@ -639,35 +639,35 @@ void GRURNNLayer::calculate_forward_feed(
         // 4. Calculate Gate Activations (Sigmoid)
         for (size_t j = 0; j < N_this; ++j)
         {
-            double z_val = 1.0 / (1.0 + std::exp(-z_pre[j]));
-            double r_val = 1.0 / (1.0 + std::exp(-r_pre[j]));
+          double z_val = 1.0 / (1.0 + std::exp(-z_pre[j]));
+          double r_val = 1.0 / (1.0 + std::exp(-r_pre[j]));
             
-            // Store for BPTT (using packed structure)
-            packed_bptt_states[j] = z_val;          // Index 0..N-1
-            packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
+          // Store for BPTT (using packed structure)
+          packed_bptt_states[j] = z_val;          // Index 0..N-1
+          packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
         }
 
         // 5. Candidate Recurrent Contribution: U_h * (r_t * h_{t-1})
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          {
+            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+            for (size_t i = i0; i < i_limit; ++i)
             {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    // r_i * h_{t-1, i}
-                    // Note: r is at packed_bptt_states[N_this + i]
-                    const double r_val = packed_bptt_states[N_this + i];
-                    const double gated_h = r_val * h_prev_ptr[i];
+              // r_i * h_{t-1, i}
+              // Note: r is at packed_bptt_states[N_this + i]
+              const double r_val = packed_bptt_states[N_this + i];
+              const double gated_h = r_val * h_prev_ptr[i];
                     
-                    if (gated_h == 0.0) continue;
-                    for (size_t j = j0; j < j_limit; ++j)
-                    {
-                        h_hat_pre[j] += gated_h * get_recurrent_weight_value((unsigned)i, (unsigned)j);
-                    }
-                }
+              if (gated_h == 0.0) continue;
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                h_hat_pre[j] += gated_h * get_recurrent_weight_value((unsigned)i, (unsigned)j);
+              }
             }
+          }
         }
 
         // 6. Residual Connections
@@ -942,178 +942,188 @@ void GRURNNLayer::calculate_hidden_gradients(
     // BPTT Loop
     for (int t = t_start; t >= t_end; --t)
     {
-       // Clear accumulators
-       std::fill(curr_dh_prev_accum.begin(), curr_dh_prev_accum.end(), 0.0);
-       std::fill(temp_Uh_T_dh_hat.begin(), temp_Uh_T_dh_hat.end(), 0.0);
+      // Clear accumulators
+      std::fill(curr_dh_prev_accum.begin(), curr_dh_prev_accum.end(), 0.0);
+      std::fill(temp_Uh_T_dh_hat.begin(), temp_Uh_T_dh_hat.end(), 0.0);
 
-       // Step 1: Calculate gradients w.r.t gates (dz, dh_hat) and direct dh_prev
-       auto step1_job = [&](size_t i_start, size_t i_end)
-       {
-          for (size_t b = 0; b < batch_size; ++b)
+      // Step 1: Calculate gradients w.r.t gates (dz, dh_hat) and direct dh_prev
+      auto step1_job = [&](size_t i_start, size_t i_end)
+      {
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+          const size_t t_offset = (b * num_time_steps + t) * N_this;
+          const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+          const double* z_vals = &packed_states[0];
+          // const double* r_vals = &packed_states[N_this]; // Not needed for step 1
+          const double* h_hat_pre_vals = &packed_states[2 * N_this];
+          const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+
+          const double* grad_from_next_ptr = &grad_from_next_all_t[t_offset];
+          const double* d_next_h_ptr = &d_next_h[b * N_this];
+
+          std::vector<double> h_hat_vals(N_this);
+          std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
+          get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
+
+          for (size_t j = i_start; j < i_end; ++j)
           {
-             const size_t t_offset = (b * num_time_steps + t) * N_this;
-             const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-             const double* z_vals = &packed_states[0];
-             // const double* r_vals = &packed_states[N_this]; // Not needed for step 1
-             const double* h_hat_pre_vals = &packed_states[2 * N_this];
-             const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+            double dh = grad_from_next_ptr[j] + d_next_h_ptr[j];
 
-             const double* grad_from_next_ptr = &grad_from_next_all_t[t_offset];
-             const double* d_next_h_ptr = &d_next_h[b * N_this];
+            double z = z_vals[j];
+            double h_hat = h_hat_vals[j];
+            double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
 
-             std::vector<double> h_hat_vals(N_this);
-             std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
-             get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
+            double d_z = dh * (h_hat - h_prev);
+            double d_z_pre = d_z * z * (1.0 - z);
 
-             for (size_t j = i_start; j < i_end; ++j)
-             {
-                double dh = grad_from_next_ptr[j] + d_next_h_ptr[j];
+            double d_h_hat = dh * z;
+            double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
 
-                double z = z_vals[j];
-                double h_hat = h_hat_vals[j];
-                double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
+            double d_h_prev_direct = dh * (1.0 - z);
 
-                double d_z = dh * (h_hat - h_prev);
-                double d_z_pre = d_z * z * (1.0 - z);
-
-                double d_h_hat = dh * z;
-                double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
-
-                double d_h_prev_direct = dh * (1.0 - z);
-
-                curr_dz[b * N_this + j] = d_z_pre;
-                curr_dh_hat[b * N_this + j] = d_h_hat_pre;
-                curr_dh_prev_accum[b * N_this + j] = d_h_prev_direct;
-             }
+            curr_dz[b * N_this + j] = d_z_pre;
+            curr_dh_hat[b * N_this + j] = d_h_hat_pre;
+            curr_dh_prev_accum[b * N_this + j] = d_h_prev_direct;
           }
-       };
+        }
+      };
        
-       for (unsigned int th = 0; th < num_threads; ++th) {
-          size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-          if (start < end) _task_queue_pool->enqueue([&, start, end]() { step1_job(start, end); });
-       }
+      for (unsigned int th = 0; th < num_threads; ++th) 
+      {
+        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
+        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
+          { 
+            step1_job(start, end); 
+          });
+      }
        _task_queue_pool->get();
 
-       // Step 2: Calculate temp_Uh = d_h_hat_pre * U_h^T  (needed for dL/dr)
-       // Matrix-Vector Mul: temp_Uh[i] += dh_hat[j] * W[i, j]
-       // Loop order: i (outer parallel), j (inner sum)
-       auto step2_job = [&](size_t i_start, size_t i_end)
-       {
-          for (size_t b = 0; b < batch_size; ++b)
-          {
-             const double* dh_hat_ptr = &curr_dh_hat[b * N_this];
-             double* temp_ptr = &temp_Uh_T_dh_hat[b * N_this];
+      // Step 2: Calculate temp_Uh = d_h_hat_pre * U_h^T  (needed for dL/dr)
+      // Matrix-Vector Mul: temp_Uh[i] += dh_hat[j] * W[i, j]
+      // Loop order: i (outer parallel), j (inner sum)
+      auto step2_job = [&](size_t i_start, size_t i_end)
+      {
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            const double* dh_hat_ptr = &curr_dh_hat[b * N_this];
+            double* temp_ptr = &temp_Uh_T_dh_hat[b * N_this];
 
-             for (size_t i = i_start; i < i_end; ++i)
-             {
+            for (size_t i = i_start; i < i_end; ++i)
+            {
+              double sum = 0.0;
+              // Accumulate over j (columns of W, rows of dh_hat)
+              // W is _rw_values[i * N + j] ? No, get_recurrent_weight_value(i, j)
+              // Wait, logic check:
+              // Original: 
+              // for i (from), for j (to): temp[i] += dh_hat[j] * W(i, j)
+              // where W(i, j) is weight FROM i TO j.
+              // Yes, U^T * vec means sum_j ( W_ji * vec_j )?
+              // Here we want dL/dr_i. r_i affects h_hat_i via h_prev_i.
+              // Wait. h_hat_j = ... + W_ij * (r_i * h_prev_i) ...
+              // So d_h_hat_j / d_r_i = W_ij * h_prev_i.
+              // dL/dr_i = sum_j ( dL/d_h_hat_j * W_ij ) * h_prev_i.
+              // So we need sum_j ( dh_hat[j] * W(i, j) ).
+              // So for each i, we dot product dh_hat and W[i, :].
+                
+              // Cache-friendly: W[i * N + j] is contiguous in j.
+              // dh_hat[j] is contiguous.
+              // So i as outer loop is good.
+                
+              const double* w_row_ptr = &_rw_values[i * N_this]; // Assuming row-major [i*N + j]
+              for (size_t j = 0; j < N_this; ++j)
+              {
+                  sum += dh_hat_ptr[j] * w_row_ptr[j];
+              }
+              temp_ptr[i] = sum;
+            }
+        }
+      };
+
+      for (unsigned int th = 0; th < num_threads; ++th) {
+        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
+        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
+          { 
+            step2_job(start, end); 
+          });
+      }
+      _task_queue_pool->get();
+
+      // Step 3: Calculate dr and propagate to dh_prev
+      // dL/dh_{t-1} += U_z^T * dz + U_r^T * dr
+      // Also calculate dr from temp_Uh
+      auto step3_job = [&](size_t i_start, size_t i_end)
+      {
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+            const double* r_vals = &packed_states[N_this];
+            const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+              
+            const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b * N_this];
+              
+            // 3a. Calculate dr
+            for (size_t i = i_start; i < i_end; ++i)
+            {
+                double grad_rh = temp_Uh_ptr[i];
+                double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
+                double r = r_vals[i];
+
+                double d_r = grad_rh * h_prev;
+                double d_r_pre = d_r * r * (1.0 - r);
+                  
+                curr_dr[b * N_this + i] = d_r_pre;
+                  
+                // Add contribution to dh_prev from Candidate gate (part of it)
+                // The candidate contribution to h_prev is r * (U^T * dh_hat). 
+                // Wait, original: chunk_dh_prev_accum[...i] += grad_rh * r;
+                // grad_rh is (U^T * dh_hat)_i. Correct.
+                curr_dh_prev_accum[b * N_this + i] += grad_rh * r;
+            }
+              
+            // 3b. Propagate U_z and U_r to dh_prev
+            // dL/dh_prev_i += sum_j ( dz_j * W_z(i,j) + dr_j * W_r(i,j) )
+            // Again, row-major access for W(i, j) is good.
+            for (size_t i = i_start; i < i_end; ++i)
+            {
                 double sum = 0.0;
-                // Accumulate over j (columns of W, rows of dh_hat)
-                // W is _rw_values[i * N + j] ? No, get_recurrent_weight_value(i, j)
-                // Wait, logic check:
-                // Original: 
-                // for i (from), for j (to): temp[i] += dh_hat[j] * W(i, j)
-                // where W(i, j) is weight FROM i TO j.
-                // Yes, U^T * vec means sum_j ( W_ji * vec_j )?
-                // Here we want dL/dr_i. r_i affects h_hat_i via h_prev_i.
-                // Wait. h_hat_j = ... + W_ij * (r_i * h_prev_i) ...
-                // So d_h_hat_j / d_r_i = W_ij * h_prev_i.
-                // dL/dr_i = sum_j ( dL/d_h_hat_j * W_ij ) * h_prev_i.
-                // So we need sum_j ( dh_hat[j] * W(i, j) ).
-                // So for each i, we dot product dh_hat and W[i, :].
-                
-                // Cache-friendly: W[i * N + j] is contiguous in j.
-                // dh_hat[j] is contiguous.
-                // So i as outer loop is good.
-                
-                const double* w_row_ptr = &_rw_values[i * N_this]; // Assuming row-major [i*N + j]
+                const double* wz_row = &_z_rw_values[i * N_this];
+                const double* wr_row = &_r_rw_values[i * N_this];
+                const double* dz_ptr = &curr_dz[b * N_this];
+                const double* dr_ptr = &curr_dr[b * N_this];
+
                 for (size_t j = 0; j < N_this; ++j)
                 {
-                   sum += dh_hat_ptr[j] * w_row_ptr[j];
+                  sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
                 }
-                temp_ptr[i] = sum;
-             }
-          }
-       };
+                curr_dh_prev_accum[b * N_this + i] += sum;
+            }
+        }
+      };
 
-       for (unsigned int th = 0; th < num_threads; ++th) {
-          size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-          if (start < end) _task_queue_pool->enqueue([&, start, end]() { step2_job(start, end); });
-       }
-       _task_queue_pool->get();
+      for (unsigned int th = 0; th < num_threads; ++th) {
+        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
+        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
+          { 
+            step3_job(start, end); 
+          });
+      }
+      _task_queue_pool->get();
 
-       // Step 3: Calculate dr and propagate to dh_prev
-       // dL/dh_{t-1} += U_z^T * dz + U_r^T * dr
-       // Also calculate dr from temp_Uh
-       auto step3_job = [&](size_t i_start, size_t i_end)
-       {
-          for (size_t b = 0; b < batch_size; ++b)
-          {
-              const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-              const double* r_vals = &packed_states[N_this];
-              const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-              
-              const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b * N_this];
-              
-              // 3a. Calculate dr
-              for (size_t i = i_start; i < i_end; ++i)
-              {
-                  double grad_rh = temp_Uh_ptr[i];
-                  double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
-                  double r = r_vals[i];
+      // Store state for next iter
+      d_next_h = curr_dh_prev_accum; // Copy
 
-                  double d_r = grad_rh * h_prev;
-                  double d_r_pre = d_r * r * (1.0 - r);
-                  
-                  curr_dr[b * N_this + i] = d_r_pre;
-                  
-                  // Add contribution to dh_prev from Candidate gate (part of it)
-                  // The candidate contribution to h_prev is r * (U^T * dh_hat). 
-                  // Wait, original: chunk_dh_prev_accum[...i] += grad_rh * r;
-                  // grad_rh is (U^T * dh_hat)_i. Correct.
-                  curr_dh_prev_accum[b * N_this + i] += grad_rh * r;
-              }
-              
-              // 3b. Propagate U_z and U_r to dh_prev
-              // dL/dh_prev_i += sum_j ( dz_j * W_z(i,j) + dr_j * W_r(i,j) )
-              // Again, row-major access for W(i, j) is good.
-              for (size_t i = i_start; i < i_end; ++i)
-              {
-                 double sum = 0.0;
-                 const double* wz_row = &_z_rw_values[i * N_this];
-                 const double* wr_row = &_r_rw_values[i * N_this];
-                 const double* dz_ptr = &curr_dz[b * N_this];
-                 const double* dr_ptr = &curr_dr[b * N_this];
-
-                 for (size_t j = 0; j < N_this; ++j)
-                 {
-                    sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
-                 }
-                 curr_dh_prev_accum[b * N_this + i] += sum;
-              }
-          }
-       };
-
-       for (unsigned int th = 0; th < num_threads; ++th) {
-          size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-          if (start < end) _task_queue_pool->enqueue([&, start, end]() { step3_job(start, end); });
-       }
-       _task_queue_pool->get();
-
-       // Store state for next iter
-       d_next_h = curr_dh_prev_accum; // Copy
-
-       // Store gradients to output matrix (needed for previous layer)
-       // Packed: [d_h_hat, d_z, d_r]
-       for (size_t b = 0; b < batch_size; ++b)
-       {
-          size_t base_idx = (b * num_time_steps + t) * 3 * N_this;
-          for (size_t j = 0; j < N_this; ++j)
-          {
-             rnn_grad_matrix[base_idx + j] = curr_dh_hat[b * N_this + j];
-             rnn_grad_matrix[base_idx + N_this + j] = curr_dz[b * N_this + j];
-             rnn_grad_matrix[base_idx + 2 * N_this + j] = curr_dr[b * N_this + j];
-          }
-       }
+      // Store gradients to output matrix (needed for previous layer)
+      // Packed: [d_h_hat, d_z, d_r]
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        size_t base_idx = (b * num_time_steps + t) * 3 * N_this;
+        for (size_t j = 0; j < N_this; ++j)
+        {
+            rnn_grad_matrix[base_idx + j] = curr_dh_hat[b * N_this + j];
+            rnn_grad_matrix[base_idx + N_this + j] = curr_dz[b * N_this + j];
+            rnn_grad_matrix[base_idx + 2 * N_this + j] = curr_dr[b * N_this + j];
+        }
+      }
     } // End BPTT Loop
 
     // Copy results
