@@ -14,6 +14,17 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   //  any errors will not throw, just return null
   TinyJSON::parse_options options_parse = {};
   options_parse.throw_exception = false;
+  options_parse.callback_function = [&](TinyJSON::parse_options::message_type message_type, const TJCHAR* exception_message) {
+    if (message_type == TinyJSON::parse_options::fatal)
+    {
+      Logger::panic(exception_message);
+    }
+    else
+    {
+      Logger::warning(exception_message);
+    }
+    };
+
   auto* tj = TinyJSON::TJ::parse_file(path.c_str(), options_parse);
   if(nullptr == tj)
   {
