@@ -484,9 +484,22 @@ public:
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
 
-  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
+  void apply_update_to_weight(
+    std::vector<double>& values,
+    std::vector<double>& grads,
+    std::vector<double>& velocities,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    std::vector<long long>& timesteps,
+    const std::vector<double>& decays,
+    unsigned idx,
+    double gradient,
+    double learning_rate,
+    double clipping_scale)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+
+    // validation
     if (!std::isfinite(gradient))
     {
       Logger::panic("Error while calculating input weigh gradient it invalid.");
@@ -499,34 +512,115 @@ public:
     }
 
     double final_gradient = gradient * clipping_scale;
+
+    // L2 Regularization (Decay) for SGD
+    // For Adam/Nadam etc, decay is often handled differently (e.g. AdamW decoupled decay)
+    if (_optimiser_type == OptimiserType::SGD && decays.size() > idx && decays[idx] > 0.0)
+    {
+      final_gradient += decays[idx] * values[idx];
+    }
+
     switch (_optimiser_type)
     {
     case OptimiserType::None:
-      apply_none_update(final_gradient, learning_rate, is_bias, weight_index);
+      {
+        values[idx] -= learning_rate * final_gradient;
+        grads[idx] = final_gradient;
+      }
       break;
 
     case OptimiserType::SGD:
-      apply_sgd_update(final_gradient, learning_rate, _activation.momentum(), is_bias, weight_index);
+      {
+        double previous_velocity = velocities[idx];
+        double velocity = _activation.momentum() * previous_velocity + final_gradient;
+        values[idx] -= learning_rate * velocity;
+        velocities[idx] = velocity;
+        grads[idx] = final_gradient;
+      }
       break;
 
     case OptimiserType::Adam:
-      apply_adam_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
-      break;
-
     case OptimiserType::AdamW:
-      apply_adamw_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
+      {
+        const double beta1 = 0.9;
+        const double beta2 = 0.999;
+        const double epsilon = 1e-8;
+
+        timesteps[idx]++;
+        const auto& time_step = timesteps[idx];
+
+        m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+        m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * (final_gradient * final_gradient);
+
+        double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
+        double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
+
+        double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
+        
+        double current_weight = values[idx];
+        if (_optimiser_type == OptimiserType::AdamW && decays.size() > idx)
+        {
+          current_weight *= (1.0 - learning_rate * decays[idx]);
+        }
+
+        values[idx] = current_weight - learning_rate * update_step;
+        grads[idx] = final_gradient;
+      }
       break;
 
     case OptimiserType::Nadam:
-      apply_nadam_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
-      break;
-
     case OptimiserType::NadamW:
-      apply_nadamw_update(final_gradient, learning_rate, 0.9, 0.999, 1e-8, is_bias, weight_index);
+      {
+        const double beta1 = 0.9;
+        const double beta2 = 0.999;
+        const double epsilon = 1e-8;
+
+        timesteps[idx]++;
+        const auto& time_step = timesteps[idx];
+    
+        m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+        m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * (final_gradient * final_gradient);
+
+        double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
+        double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
+
+        double m_nadam = beta1 * m_hat + ((1.0 - beta1) * final_gradient) / (1.0 - std::pow(beta1, time_step));
+        double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
+    
+        double current_weight = values[idx];
+        if (_optimiser_type == OptimiserType::NadamW && decays.size() > idx)
+        {
+          current_weight *= (1.0 - learning_rate * decays[idx]);
+        }
+
+        values[idx] = current_weight - learning_rate * update_step;
+        grads[idx] = final_gradient;
+      }
       break;
 
     default:
       Logger::panic("Unknown optimizer type:", (int)_optimiser_type);
+    }
+    
+    // Mark caches as dirty? The caller handles this or we assume generic dirty.
+    // The previous implementation marked specific caches.
+    // Since this is a generic method, we can't easily know which cache to mark dirty.
+    // We can set both to dirty to be safe, or leave it to the caller.
+    // The original `apply_weight_gradient` set both to dirty.
+    _weights_cache_dirty = true;
+    _bias_weights_cache_dirty = true;
+  }
+
+  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (is_bias)
+    {
+      apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, weight_index, gradient, learning_rate, clipping_scale);
+    }
+    else
+    {
+      apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, gradient, learning_rate, clipping_scale);
     }
   }
 

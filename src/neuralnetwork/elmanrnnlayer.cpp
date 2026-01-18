@@ -687,54 +687,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   }
 }
 
-void ElmanRNNLayer::apply_recurrent_weight_gradient(unsigned from_neuron, unsigned to_neuron, double gradient, double learning_rate, double clipping_scale)
-{
-    const unsigned idx = from_neuron * get_number_neurons() + to_neuron;
-    
-    double final_gradient = gradient * clipping_scale;
-    if (get_optimiser_type() == OptimiserType::SGD && _rw_decays[idx] > 0.0)
-    {
-      final_gradient += _rw_decays[idx] * _rw_values[idx];
-    }
 
-    switch (get_optimiser_type())
-    {
-        case OptimiserType::None: {
-            _rw_values[idx] -= learning_rate * final_gradient;
-            _rw_grads[idx] = final_gradient;
-            break;
-        }
-        case OptimiserType::SGD: {
-            _rw_velocities[idx] = get_activation().momentum() * _rw_velocities[idx] + final_gradient;
-            _rw_values[idx] -= learning_rate * _rw_velocities[idx];
-            _rw_grads[idx] = final_gradient;
-            break;
-        }
-        case OptimiserType::Adam:
-        case OptimiserType::AdamW:
-        case OptimiserType::Nadam:
-        case OptimiserType::NadamW: {
-            const double beta1 = 0.9;
-            const double beta2 = 0.999;
-            const double epsilon = 1e-8;
-
-            _rw_timesteps[idx]++;
-            _rw_m1[idx] = beta1 * _rw_m1[idx] + (1.0 - beta1) * final_gradient;
-            _rw_m2[idx] = beta2 * _rw_m2[idx] + (1.0 - beta2) * final_gradient * final_gradient;
-
-            double m_hat = _rw_m1[idx] / (1.0 - std::pow(beta1, _rw_timesteps[idx]));
-            double v_hat = _rw_m2[idx] / (1.0 - std::pow(beta2, _rw_timesteps[idx]));
-            
-            double decay = (get_optimiser_type() == OptimiserType::AdamW || get_optimiser_type() == OptimiserType::NadamW) ? (1.0 - learning_rate * _rw_decays[idx]) : 1.0;
-
-            _rw_values[idx] = _rw_values[idx] * decay - learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
-            _rw_grads[idx] = final_gradient;
-            break;
-        }
-        default:
-            break;
-    }
-}
 
 double ElmanRNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const
 {
@@ -892,7 +845,8 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
     // Apply recurrent weights
     for (unsigned k = 0; k < num_outputs; ++k)
     {
-      apply_recurrent_weight_gradient(k, j, _rw_grads[k * num_outputs + j], learning_rate, clipping_scale);
+      const unsigned idx = k * num_outputs + j;
+      apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, idx, _rw_grads[idx], learning_rate, clipping_scale);
     }
   }
 }

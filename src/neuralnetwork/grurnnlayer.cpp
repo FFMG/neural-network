@@ -406,7 +406,6 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _z_b_m2 = std::move(src._z_b_m2);
     _z_b_timesteps = std::move(src._z_b_timesteps);
     _z_b_decays = std::move(src._z_b_decays);
-
     // Reset Gate (r)
     _r_w_values = std::move(src._r_w_values);
     _r_w_grads = std::move(src._r_w_grads);
@@ -859,340 +858,65 @@ void GRURNNLayer::calculate_hidden_gradients(
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
-  // --- 1. Neuron-Parallel Implementation (Small Batch) ---
-  auto run_hidden_gradients_neuron_parallel = [&]()
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  size_t chunk_size = (batch_size + num_threads - 1) / num_threads;
+
+  auto batch_bptt_worker = [&](size_t start, size_t end)
   {
-    // Flattened storage for all batches/time steps
-    // [batch_idx * num_time_steps * N_this + t * N_this + i]
-    // But since we process bptt serially in t, we only strictly need full storage for the final output (rnn_grad_matrix)
-    // and the "from next layer" gradients.
-    // For intermediate BPTT values (dz, dr, etc.), we can reuse buffers or keep them full size.
-    // Let's keep the structure similar to the serial version for clarity but parallelize the loops.
+    // Pre-allocate all needed buffers for this chunk
+    std::vector<double> grad_from_next_all_t((end - start) * num_time_steps * N_this, 0.0);
+    std::vector<double> d_next_h((end - start) * N_this, 0.0);
+    std::vector<double> rnn_grad_matrix((end - start) * num_time_steps * 3 * N_this, 0.0);
 
-    // 1. Precompute gradients from next layer (all time steps)
-    std::vector<double> grad_from_next_all_t(batch_size * num_time_steps * N_this, 0.0);
-
-    auto precompute_job = [&](size_t i_start, size_t i_end)
+    // Precompute gradients from next layer (all time steps)
+    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
-       for (size_t b = 0; b < batch_size; ++b)
-       {
-         const auto& next_grad_matrix = batch_next_grad_matrix[b];
-         const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
-         
-         for (int t = t_start; t >= t_end; --t)
-         {
-           // Determine pointer to next_grad for this time step
-           const double* next_grad_ptr = nullptr;
-           if (next_grad_is_seq) next_grad_ptr = &next_grad_matrix[t * N_next];
-           else if (t == t_start) next_grad_ptr = next_grad_matrix.data(); // Standard (non-RNN) target only at last step? 
-           // If standard output is provided for RNN layer, it usually applies to the last step or all? 
-           // The original code:
-           // if (size == N * T) use [t]
-           // else if (size == N) use [k] but only add to t_start index?
-           // Original: if (next_grad_matrix.size() == N_next) chunk_grad...[(b_idx * num_time_steps + t_start) * N_this + i] += ...
-           
-           if (next_grad_ptr == nullptr && next_grad_matrix.size() == N_next && t == t_start)
-           {
-              next_grad_ptr = next_grad_matrix.data();
-           }
+      size_t b = start + b_idx;
+      const auto& next_grad_matrix = batch_next_grad_matrix[b];
+      const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
 
-           if (next_grad_ptr)
-           {
-             double* dest_ptr = &grad_from_next_all_t[(b * num_time_steps + t) * N_this];
-             for (size_t i = i_start; i < i_end; ++i)
-             {
-               double sum = 0.0;
-               for (size_t k = 0; k < N_next; ++k)
-               {
-                 sum += next_grad_ptr[k] * next_layer.get_weight_value((unsigned)i, (unsigned)k);
-               }
-               dest_ptr[i] = sum;
-             }
-           }
-         }
-       }
-    };
-    
-    // Dispatch Precompute
-    const auto& num_threads = _task_queue_pool->get_number_of_threads();
-    size_t chunk_size = (N_this + num_threads - 1) / num_threads;
-    for (unsigned int th = 0; th < num_threads; ++th)
-    {
-       size_t start = th * chunk_size;
-       size_t end = std::min(start + chunk_size, N_this);
-       if (start < end) {
-         _task_queue_pool->enqueue([&, start, end]() { precompute_job(start, end); });
-       }
-    }
-    _task_queue_pool->get();
-
-    // dL/dh_{t} (accumulator from previous BPTT step, initially 0)
-    std::vector<double> d_next_h(batch_size * N_this, 0.0);
-
-    // Final Output: rnn_grad_matrix [b * t * 3 * N]
-    std::vector<double> rnn_grad_matrix(batch_size * num_time_steps * 3 * N_this, 0.0);
-    
-    // Temporary buffers for current step
-    std::vector<double> curr_dz(batch_size * N_this);
-    std::vector<double> curr_dr(batch_size * N_this);
-    std::vector<double> curr_dh_hat(batch_size * N_this);
-    std::vector<double> curr_dh_prev_accum(batch_size * N_this); // For accumulating d_next_h for next step
-    std::vector<double> temp_Uh_T_dh_hat(batch_size * N_this);
-
-    // BPTT Loop
-    for (int t = t_start; t >= t_end; --t)
-    {
-      // Clear accumulators
-      std::fill(curr_dh_prev_accum.begin(), curr_dh_prev_accum.end(), 0.0);
-      std::fill(temp_Uh_T_dh_hat.begin(), temp_Uh_T_dh_hat.end(), 0.0);
-
-      // Step 1: Calculate gradients w.r.t gates (dz, dh_hat) and direct dh_prev
-      auto step1_job = [&](size_t i_start, size_t i_end)
+      for (int t = t_start; t >= t_end; --t)
       {
-        for (size_t b = 0; b < batch_size; ++b)
+        const double* next_grad_ptr = nullptr;
+        if (next_grad_is_seq) next_grad_ptr = &next_grad_matrix[t * N_next];
+        else if (t == t_start && next_grad_matrix.size() == N_next) next_grad_ptr = next_grad_matrix.data();
+
+        if (next_grad_ptr)
         {
-          const size_t t_offset = (b * num_time_steps + t) * N_this;
-          const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-          const double* z_vals = &packed_states[0];
-          // const double* r_vals = &packed_states[N_this]; // Not needed for step 1
-          const double* h_hat_pre_vals = &packed_states[2 * N_this];
-          const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-
-          const double* grad_from_next_ptr = &grad_from_next_all_t[t_offset];
-          const double* d_next_h_ptr = &d_next_h[b * N_this];
-
-          std::vector<double> h_hat_vals(N_this);
-          std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
-          get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
-
-          for (size_t j = i_start; j < i_end; ++j)
+          double* dest_ptr = &grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
+          for (size_t i = 0; i < N_this; ++i)
           {
-            double dh = grad_from_next_ptr[j] + d_next_h_ptr[j];
-
-            double z = z_vals[j];
-            double h_hat = h_hat_vals[j];
-            double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-
-            double d_z = dh * (h_hat - h_prev);
-            double d_z_pre = d_z * z * (1.0 - z);
-
-            double d_h_hat = dh * z;
-            double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
-
-            double d_h_prev_direct = dh * (1.0 - z);
-
-            curr_dz[b * N_this + j] = d_z_pre;
-            curr_dh_hat[b * N_this + j] = d_h_hat_pre;
-            curr_dh_prev_accum[b * N_this + j] = d_h_prev_direct;
+            double sum = 0.0;
+            for (size_t k = 0; k < N_next; ++k)
+            {
+              sum += next_grad_ptr[k] * next_layer.get_weight_value((unsigned)i, (unsigned)k);
+            }
+            dest_ptr[i] = sum;
           }
         }
-      };
-       
-      for (unsigned int th = 0; th < num_threads; ++th) 
-      {
-        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
-          { 
-            step1_job(start, end); 
-          });
       }
-       _task_queue_pool->get();
-
-      // Step 2: Calculate temp_Uh = d_h_hat_pre * U_h^T  (needed for dL/dr)
-      // Matrix-Vector Mul: temp_Uh[i] += dh_hat[j] * W[i, j]
-      // Loop order: i (outer parallel), j (inner sum)
-      auto step2_job = [&](size_t i_start, size_t i_end)
-      {
-        for (size_t b = 0; b < batch_size; ++b)
-        {
-            const double* dh_hat_ptr = &curr_dh_hat[b * N_this];
-            double* temp_ptr = &temp_Uh_T_dh_hat[b * N_this];
-
-            for (size_t i = i_start; i < i_end; ++i)
-            {
-              double sum = 0.0;
-              // Accumulate over j (columns of W, rows of dh_hat)
-              // W is _rw_values[i * N + j] ? No, get_recurrent_weight_value(i, j)
-              // Wait, logic check:
-              // Original: 
-              // for i (from), for j (to): temp[i] += dh_hat[j] * W(i, j)
-              // where W(i, j) is weight FROM i TO j.
-              // Yes, U^T * vec means sum_j ( W_ji * vec_j )?
-              // Here we want dL/dr_i. r_i affects h_hat_i via h_prev_i.
-              // Wait. h_hat_j = ... + W_ij * (r_i * h_prev_i) ...
-              // So d_h_hat_j / d_r_i = W_ij * h_prev_i.
-              // dL/dr_i = sum_j ( dL/d_h_hat_j * W_ij ) * h_prev_i.
-              // So we need sum_j ( dh_hat[j] * W(i, j) ).
-              // So for each i, we dot product dh_hat and W[i, :].
-                
-              // Cache-friendly: W[i * N + j] is contiguous in j.
-              // dh_hat[j] is contiguous.
-              // So i as outer loop is good.
-                
-              const double* w_row_ptr = &_rw_values[i * N_this]; // Assuming row-major [i*N + j]
-              for (size_t j = 0; j < N_this; ++j)
-              {
-                  sum += dh_hat_ptr[j] * w_row_ptr[j];
-              }
-              temp_ptr[i] = sum;
-            }
-        }
-      };
-
-      for (unsigned int th = 0; th < num_threads; ++th) {
-        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
-          { 
-            step2_job(start, end); 
-          });
-      }
-      _task_queue_pool->get();
-
-      // Step 3: Calculate dr and propagate to dh_prev
-      // dL/dh_{t-1} += U_z^T * dz + U_r^T * dr
-      // Also calculate dr from temp_Uh
-      auto step3_job = [&](size_t i_start, size_t i_end)
-      {
-        for (size_t b = 0; b < batch_size; ++b)
-        {
-            const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-            const double* r_vals = &packed_states[N_this];
-            const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-              
-            const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b * N_this];
-              
-            // 3a. Calculate dr
-            for (size_t i = i_start; i < i_end; ++i)
-            {
-                double grad_rh = temp_Uh_ptr[i];
-                double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
-                double r = r_vals[i];
-
-                double d_r = grad_rh * h_prev;
-                double d_r_pre = d_r * r * (1.0 - r);
-                  
-                curr_dr[b * N_this + i] = d_r_pre;
-                  
-                // Add contribution to dh_prev from Candidate gate (part of it)
-                // The candidate contribution to h_prev is r * (U^T * dh_hat). 
-                // Wait, original: chunk_dh_prev_accum[...i] += grad_rh * r;
-                // grad_rh is (U^T * dh_hat)_i. Correct.
-                curr_dh_prev_accum[b * N_this + i] += grad_rh * r;
-            }
-              
-            // 3b. Propagate U_z and U_r to dh_prev
-            // dL/dh_prev_i += sum_j ( dz_j * W_z(i,j) + dr_j * W_r(i,j) )
-            // Again, row-major access for W(i, j) is good.
-            for (size_t i = i_start; i < i_end; ++i)
-            {
-                double sum = 0.0;
-                const double* wz_row = &_z_rw_values[i * N_this];
-                const double* wr_row = &_r_rw_values[i * N_this];
-                const double* dz_ptr = &curr_dz[b * N_this];
-                const double* dr_ptr = &curr_dr[b * N_this];
-
-                for (size_t j = 0; j < N_this; ++j)
-                {
-                  sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
-                }
-                curr_dh_prev_accum[b * N_this + i] += sum;
-            }
-        }
-      };
-
-      for (unsigned int th = 0; th < num_threads; ++th) {
-        size_t start = th * chunk_size; size_t end = std::min(start + chunk_size, N_this);
-        if (start < end) _task_queue_pool->enqueue([&, start, end]() 
-          { 
-            step3_job(start, end); 
-          });
-      }
-      _task_queue_pool->get();
-
-      // Store state for next iter
-      d_next_h = curr_dh_prev_accum; // Copy
-
-      // Store gradients to output matrix (needed for previous layer)
-      // Packed: [d_h_hat, d_z, d_r]
-      for (size_t b = 0; b < batch_size; ++b)
-      {
-        size_t base_idx = (b * num_time_steps + t) * 3 * N_this;
-        for (size_t j = 0; j < N_this; ++j)
-        {
-            rnn_grad_matrix[base_idx + j] = curr_dh_hat[b * N_this + j];
-            rnn_grad_matrix[base_idx + N_this + j] = curr_dz[b * N_this + j];
-            rnn_grad_matrix[base_idx + 2 * N_this + j] = curr_dr[b * N_this + j];
-        }
-      }
-    } // End BPTT Loop
-
-    // Copy results
-    for (size_t b = 0; b < batch_size; ++b)
-    {
-       auto start_it = rnn_grad_matrix.begin() + b * num_time_steps * 3 * N_this;
-       std::vector<double> rnn_grad_vec(start_it, start_it + num_time_steps * 3 * N_this);
-       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
-       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
-    }
-  };
-
-  // --- 2. Batch-Parallel Implementation (Large Batch) ---
-  auto run_hidden_gradients_batch_parallel = [&](size_t start, size_t end)
-  {
-    size_t chunk_count = end - start;
-    std::vector<double> chunk_rnn_grad_matrix(chunk_count * num_time_steps * 3 * N_this, 0.0);
-    std::vector<double> d_next_h(chunk_count * N_this, 0.0);
-    std::vector<double> chunk_grad_from_next_all_t(chunk_count * num_time_steps * N_this, 0.0);
-
-    // Optimized Loop Order: b -> t -> i -> k
-    for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
-    {
-       size_t b = start + b_idx;
-       const auto& next_grad_matrix = batch_next_grad_matrix[b];
-       const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
-
-       for (int t = t_start; t >= t_end; --t)
-       {
-          const double* next_grad_ptr = nullptr;
-          if (next_grad_is_seq) next_grad_ptr = &next_grad_matrix[t * N_next];
-          else if (t == t_start && next_grad_matrix.size() == N_next) next_grad_ptr = next_grad_matrix.data();
-
-          if (next_grad_ptr)
-          {
-             double* dest_ptr = &chunk_grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
-             for (size_t i = 0; i < N_this; ++i)
-             {
-                double sum = 0.0;
-                for (size_t k = 0; k < N_next; ++k)
-                {
-                   sum += next_grad_ptr[k] * next_layer.get_weight_value((unsigned)i, (unsigned)k);
-                }
-                dest_ptr[i] = sum;
-             }
-          }
-       }
     }
 
     // BPTT Loop
     for (int t = t_start; t >= t_end; --t)
     {
-      std::vector<double> chunk_dz(chunk_count * N_this);
-      std::vector<double> chunk_dr(chunk_count * N_this);
-      std::vector<double> chunk_dh_hat(chunk_count * N_this);
-      std::vector<double> chunk_dh_prev_accum(chunk_count * N_this, 0.0);
+      std::vector<double> chunk_dz((end - start) * N_this);
+      std::vector<double> chunk_dr((end - start) * N_this);
+      std::vector<double> chunk_dh_hat((end - start) * N_this);
+      std::vector<double> chunk_dh_prev_accum((end - start) * N_this, 0.0);
 
       // Step 1: dz, dh_hat
-      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
       {
         size_t b = start + b_idx;
         const size_t t_offset = (b_idx * num_time_steps + t) * N_this;
         const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-        
+
         const double* z_vals = &packed_states[0];
         const double* h_hat_pre_vals = &packed_states[2 * N_this];
         const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
 
-        const double* grad_next_ptr = &chunk_grad_from_next_all_t[t_offset];
+        const double* grad_next_ptr = &grad_from_next_all_t[t_offset];
         const double* d_next_h_ptr = &d_next_h[b_idx * N_this];
 
         std::vector<double> h_hat_vals(N_this);
@@ -1205,10 +929,10 @@ void GRURNNLayer::calculate_hidden_gradients(
           double z = z_vals[j];
           double h_hat = h_hat_vals[j];
           double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-          
+
           double d_z = dh * (h_hat - h_prev);
           double d_z_pre = d_z * z * (1.0 - z);
-          
+
           double d_h_hat = dh * z;
           double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
           double d_h_prev_direct = dh * (1.0 - z);
@@ -1220,172 +944,107 @@ void GRURNNLayer::calculate_hidden_gradients(
       }
 
       // Step 2: temp_Uh (dL/dr part)
-      // Optimized Loop: b -> i -> j
-      std::vector<double> temp_Uh_T_dh_hat(chunk_count * N_this, 0.0);
-      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      std::vector<double> temp_Uh_T_dh_hat((end - start) * N_this, 0.0);
+      for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
       {
-         const double* dh_hat_ptr = &chunk_dh_hat[b_idx * N_this];
-         double* temp_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
-         
-         for (size_t i = 0; i < N_this; ++i)
-         {
-             double sum = 0.0;
-             const double* w_row = &_rw_values[i * N_this];
-             for (size_t j = 0; j < N_this; ++j)
-             {
-                 sum += dh_hat_ptr[j] * w_row[j];
-             }
-             temp_ptr[i] = sum;
-         }
+        const double* dh_hat_ptr = &chunk_dh_hat[b_idx * N_this];
+        double* temp_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
+
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double sum = 0.0;
+          const double* w_row = &_rw_values[i * N_this];
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            sum += dh_hat_ptr[j] * w_row[j];
+          }
+          temp_ptr[i] = sum;
+        }
       }
 
       // Step 3: dr and propagate
-      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
       {
-          size_t b = start + b_idx;
-          const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-          const double* r_vals = &packed_states[N_this];
-          const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-          const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
+        size_t b = start + b_idx;
+        const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+        const double* r_vals = &packed_states[N_this];
+        const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+        const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
 
-          // 3a. dr
-          for (size_t i = 0; i < N_this; ++i)
+        // 3a. dr
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double grad_rh = temp_Uh_ptr[i];
+          double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
+          double r = r_vals[i];
+
+          double d_r = grad_rh * h_prev;
+          double d_r_pre = d_r * r * (1.0 - r);
+          chunk_dr[b_idx * N_this + i] = d_r_pre;
+          chunk_dh_prev_accum[b_idx * N_this + i] += grad_rh * r;
+        }
+
+        // 3b. Propagate U_z and U_r
+        const double* dz_ptr = &chunk_dz[b_idx * N_this];
+        const double* dr_ptr = &chunk_dr[b_idx * N_this];
+        double* dh_accum_ptr = &chunk_dh_prev_accum[b_idx * N_this];
+
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double sum = 0.0;
+          const double* wz_row = &_z_rw_values[i * N_this];
+          const double* wr_row = &_r_rw_values[i * N_this];
+          for (size_t j = 0; j < N_this; ++j)
           {
-              double grad_rh = temp_Uh_ptr[i];
-              double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
-              double r = r_vals[i];
-
-              double d_r = grad_rh * h_prev;
-              double d_r_pre = d_r * r * (1.0 - r);
-              chunk_dr[b_idx * N_this + i] = d_r_pre;
-              chunk_dh_prev_accum[b_idx * N_this + i] += grad_rh * r;
+            sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
           }
-
-          // 3b. Propagate U_z and U_r
-          const double* dz_ptr = &chunk_dz[b_idx * N_this];
-          const double* dr_ptr = &chunk_dr[b_idx * N_this];
-          double* dh_accum_ptr = &chunk_dh_prev_accum[b_idx * N_this];
-
-          for (size_t i = 0; i < N_this; ++i)
-          {
-             double sum = 0.0;
-             const double* wz_row = &_z_rw_values[i * N_this];
-             const double* wr_row = &_r_rw_values[i * N_this];
-             for (size_t j = 0; j < N_this; ++j)
-             {
-                 sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
-             }
-             dh_accum_ptr[i] += sum;
-          }
+          dh_accum_ptr[i] += sum;
+        }
       }
-      
+
+      // Store state for next iter
       d_next_h = chunk_dh_prev_accum;
 
-      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+      // Store gradients to output matrix (needed for previous layer)
+      // Packed: [d_h_hat, d_z, d_r]
+      for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
       {
-          size_t base_idx = (b_idx * num_time_steps + t) * 3 * N_this;
-          for(size_t j=0; j<N_this; ++j)
-          {
-              chunk_rnn_grad_matrix[base_idx + j] = chunk_dh_hat[b_idx * N_this + j];
-              chunk_rnn_grad_matrix[base_idx + N_this + j] = chunk_dz[b_idx * N_this + j];
-              chunk_rnn_grad_matrix[base_idx + 2 * N_this + j] = chunk_dr[b_idx * N_this + j];
-          }
+        size_t base_idx = (b_idx * num_time_steps + t) * 3 * N_this;
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          rnn_grad_matrix[base_idx + j] = chunk_dh_hat[b_idx * N_this + j];
+          rnn_grad_matrix[base_idx + N_this + j] = chunk_dz[b_idx * N_this + j];
+          rnn_grad_matrix[base_idx + 2 * N_this + j] = chunk_dr[b_idx * N_this + j];
+        }
       }
-    }
+    } // End BPTT Loop
 
-    for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
+    // Copy results
+    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
       size_t b = start + b_idx;
-      auto rnn_grad_start = chunk_rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
-      std::vector<double> rnn_grad_vec(rnn_grad_start, rnn_grad_start + num_time_steps * 3 * N_this);
+      auto start_it = rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
+      std::vector<double> rnn_grad_vec(start_it, start_it + num_time_steps * 3 * N_this);
       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
     }
   };
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  
-  // Decide which parallelization strategy to use
-  if (batch_size < num_threads)
+  // Launch threads for each batch chunk
+  if (batch_size < 2 * num_threads)
   {
-     // Small batch: Use neuron-level parallelism if beneficial
-     // If N_this is very small, overhead might dominate, but generally 64+ is fine.
-     // Also requires we are not inside a worker thread already (assumed top level call).
-     if (N_this >= 64 && num_threads > 1)
-     {
-        run_hidden_gradients_neuron_parallel();
-     }
-     else
-     {
-        run_hidden_gradients_batch_parallel(0, batch_size);
-     }
+    batch_bptt_worker(0, batch_size);
   }
   else
   {
-    // Large batch: Split by batch
-    size_t chunk_size = batch_size / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
       size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]()
-        {
-          run_hidden_gradients_batch_parallel(start, end);
-        });
+      _task_queue_pool->enqueue([=]() { batch_bptt_worker(start, end); });
     }
     _task_queue_pool->get();
   }
-}
-
-void GRURNNLayer::apply_recurrent_weight_gradient(unsigned from_neuron, unsigned to_neuron, double gradient, double learning_rate, double clipping_scale)
-{
-    const unsigned idx = from_neuron * get_number_neurons() + to_neuron;
-    
-    double final_gradient = gradient * clipping_scale;
-    if (get_optimiser_type() == OptimiserType::SGD && _rw_decays[idx] > 0.0)
-    {
-      final_gradient += _rw_decays[idx] * _rw_values[idx];
-    }
-
-    switch (get_optimiser_type())
-    {
-    case OptimiserType::None:
-      _rw_values[idx] -= learning_rate * final_gradient;
-      _rw_grads[idx] = final_gradient;
-      break;
-
-    case OptimiserType::SGD:
-      _rw_velocities[idx] = get_activation().momentum() * _rw_velocities[idx] + final_gradient;
-      _rw_values[idx] -= learning_rate * _rw_velocities[idx];
-      _rw_grads[idx] = final_gradient;
-      break;
-
-    case OptimiserType::Adam:
-    case OptimiserType::AdamW:
-    case OptimiserType::Nadam:
-    case OptimiserType::NadamW:
-      {
-        const double beta1 = 0.9;
-        const double beta2 = 0.999;
-        const double epsilon = 1e-8;
-
-        _rw_timesteps[idx]++;
-        _rw_m1[idx] = beta1 * _rw_m1[idx] + (1.0 - beta1) * final_gradient;
-        _rw_m2[idx] = beta2 * _rw_m2[idx] + (1.0 - beta2) * final_gradient * final_gradient;
-
-        double m_hat = _rw_m1[idx] / (1.0 - std::pow(beta1, _rw_timesteps[idx]));
-        double v_hat = _rw_m2[idx] / (1.0 - std::pow(beta2, _rw_timesteps[idx]));
-
-        double decay = (get_optimiser_type() == OptimiserType::AdamW || get_optimiser_type() == OptimiserType::NadamW) ? (1.0 - learning_rate * _rw_decays[idx]) : 1.0;
-
-        _rw_values[idx] = _rw_values[idx] * decay - learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
-        _rw_grads[idx] = final_gradient;
-      }
-      break;
-
-    default:
-        break;
-    }
 }
 
 double GRURNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const
@@ -1639,87 +1298,6 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
 
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
-  const double momentum = get_activation().momentum();
-  const OptimiserType optimiser = get_optimiser_type();
-
-  // Lambda to apply gradients to arbitrary weight vectors (for z and r gates)
-  auto apply_gradient_to_vector = [&](
-    std::vector<double>& values,
-    std::vector<double>& grads,
-    std::vector<double>& velocities,
-    std::vector<double>& m1,
-    std::vector<double>& m2,
-    std::vector<long long>& timesteps,
-    const std::vector<double>& decays,
-    unsigned idx,
-    double gradient)
-  {
-    double final_gradient = gradient * clipping_scale;
-    
-    // L2 Regularization for SGD (Gradient Decay)
-    if (optimiser == OptimiserType::SGD && decays[idx] > 0.0)
-    {
-      final_gradient += decays[idx] * values[idx];
-    }
-
-    switch (optimiser)
-    {
-    case OptimiserType::None:
-      values[idx] -= learning_rate * final_gradient;
-      grads[idx] = final_gradient;
-      break;
-
-    case OptimiserType::SGD:
-      velocities[idx] = momentum * velocities[idx] + final_gradient;
-      values[idx] -= learning_rate * velocities[idx];
-      grads[idx] = final_gradient;
-      break;
-
-    case OptimiserType::Adam:
-    case OptimiserType::AdamW:
-    case OptimiserType::Nadam:
-    case OptimiserType::NadamW:
-    {
-      const double beta1 = 0.9;
-      const double beta2 = 0.999;
-      const double epsilon = 1e-8;
-
-      timesteps[idx]++;
-      const auto& time_step = timesteps[idx];
-
-      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
-      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * final_gradient * final_gradient;
-
-      double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
-      double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
-
-      double step = 0.0;
-      if (optimiser == OptimiserType::Nadam || optimiser == OptimiserType::NadamW)
-      {
-         double m_nadam = beta1 * m_hat + ((1.0 - beta1) * final_gradient) / (1.0 - std::pow(beta1, time_step));
-         step = m_nadam / (std::sqrt(v_hat) + epsilon);
-      }
-      else // Adam / AdamW
-      {
-         step = m_hat / (std::sqrt(v_hat) + epsilon);
-      }
-
-      double current_weight = values[idx];
-      
-      // Weight Decay for AdamW / NadamW
-      if (optimiser == OptimiserType::AdamW || optimiser == OptimiserType::NadamW)
-      {
-         current_weight *= (1.0 - learning_rate * decays[idx]);
-      }
-
-      values[idx] = current_weight - learning_rate * step;
-      grads[idx] = final_gradient;
-      break;
-    }
-    default:
-      break;
-    }
-  };
 
   // Iterate over all neurons
   for (unsigned j = 0; j < num_outputs; ++j)
@@ -1727,19 +1305,16 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
     // 1. Input-to-Hidden Weights
     for (unsigned i = 0; i < num_inputs; ++i)
     {
+      unsigned idx = i * num_outputs + j;
+
       // A. Candidate State (Uses Base Layer storage)
-      // Index for base layer input weights
-      unsigned w_idx = i * num_outputs + j;
-      apply_weight_gradient(_w_grads[w_idx], learning_rate, false, w_idx, clipping_scale);
+      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale);
 
       // B. Update Gate (z)
-      // Assuming same indexing: i * num_outputs + j
-      unsigned z_w_idx = i * num_outputs + j;
-      apply_gradient_to_vector(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, z_w_idx, _z_w_grads[z_w_idx]);
+      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale);
 
       // C. Reset Gate (r)
-      unsigned r_w_idx = i * num_outputs + j;
-      apply_gradient_to_vector(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, r_w_idx, _r_w_grads[r_w_idx]);
+      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale);
     }
 
     // 2. Recurrent Weights (Hidden-to-Hidden)
@@ -1749,13 +1324,13 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
        unsigned rec_idx = k * num_outputs + j;
 
        // A. Candidate State
-       apply_recurrent_weight_gradient(k, j, _rw_grads[rec_idx], learning_rate, clipping_scale);
+       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale);
 
        // B. Update Gate (z)
-       apply_gradient_to_vector(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx]);
+       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale);
 
        // C. Reset Gate (r)
-       apply_gradient_to_vector(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx]);
+       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale);
     }
 
     // 3. Bias Weights
@@ -1765,10 +1340,10 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
        apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
 
        // B. Update Gate (z)
-       apply_gradient_to_vector(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j]);
+       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j], learning_rate, clipping_scale);
 
        // C. Reset Gate (r)
-       apply_gradient_to_vector(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j]);
+       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j], learning_rate, clipping_scale);
     }
   }
 }
