@@ -18,6 +18,7 @@
 #endif
 
 #include <algorithm>
+#include <functional>
 #include <exception>
 #include <iterator>
 #include <type_traits>
@@ -118,6 +119,16 @@ class TJDictionary;
       rfc8259
     };
 
+    enum message_type
+    {
+      trace,
+      debug,
+      info,
+      warning,
+      error,
+      fatal
+    };
+
     /// <summary>
     /// The RFC specification we want to follow.
     /// </summary>
@@ -131,7 +142,20 @@ class TJDictionary;
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;  
+    unsigned int max_depth = 64;
+
+    /// <summary>
+    /// The callback function that will be called on errors/warnings/etc.
+    //  0 = trace
+    //  1 = debug
+    //  2 = info
+    //  3 = warning
+    //  4 = error
+    //  5 = fatal/panic/exception
+    /// <summary>
+    std::function<void(message_type, const TJCHAR*)> callback_function = [] (message_type, const TJCHAR*) {
+      // do nothing
+    };
   };
 
   /// <summary>
