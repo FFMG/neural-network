@@ -19,7 +19,7 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::cross_entropy:
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs);
   default:
-    Logger::panic("ErrorCalculation type is not supported for Layer!");
+    Logger::panic("Error calculation type is not supported for Layer!");
   }
 }
 
