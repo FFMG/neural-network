@@ -12,6 +12,8 @@ void Layer::calculate_error_deltas(
   {
   case ErrorCalculation::type::mse:
     return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
+  case ErrorCalculation::type::rmse:
+    return calculate_rmse_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::bce_loss:
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::cross_entropy:
@@ -64,5 +66,38 @@ void Layer::calculate_mse_error_deltas(
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
+  }
+}
+
+void Layer::calculate_rmse_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  const size_t N_total = get_number_neurons();
+
+  // 1. Calculate MSE sum
+  double sum_squared_error = 0.0;
+  for (unsigned i = 0; i < N_total; ++i)
+  {
+    const double diff = given_outputs[i] - target_outputs[i];
+    sum_squared_error += diff * diff;
+  }
+
+  // 2. Calculate RMSE
+  // Avoid division by zero if RMSE is 0 (perfect prediction)
+  const double mse = sum_squared_error * _inv_num_neurons;
+  const double rmse = std::sqrt(mse);
+  const double epsilon = 1e-12;
+  const double divisor = (rmse < epsilon) ? epsilon : rmse;
+
+  // 3. Calculate deltas
+  // dE/dy = (1 / (N * RMSE)) * (y - t)
+  const double factor = _inv_num_neurons / divisor;
+
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  {
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * factor;
   }
 }
