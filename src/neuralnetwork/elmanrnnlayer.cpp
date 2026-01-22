@@ -348,21 +348,25 @@ void ElmanRNNLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (num_threads <= 1)
   {
     run_forward_pass(0, batch_size);
   }
   else
   {
-    size_t chunk_size = batch_size / num_threads;
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]()
-        {
-          run_forward_pass(start, end);
-        });
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]()
+          {
+            run_forward_pass(start, end);
+          });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
@@ -496,44 +500,46 @@ void ElmanRNNLayer::calculate_output_gradients(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < num_threads)
+  if (num_threads > 1 && batch_size < num_threads && N_total >= 64)
   {
-    // Small batch: Use neuron parallelism if beneficial
-    if (N_total >= 64 && num_threads > 1)
+    // Small batch but many neurons: Use neuron parallelism
+    // Pre-allocate gradients
+    for (size_t b = 0; b < batch_size; ++b) 
     {
-      // Pre-allocate gradients
-      for (size_t b = 0; b < batch_size; ++b) 
-      {
-        batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_total, 0.0));
-      }
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_total, 0.0));
+    }
        
-      size_t chunk_size = (N_total + num_threads - 1) / num_threads;
-      for (unsigned int t = 0; t < num_threads; ++t)
-      {
-        size_t start = t * chunk_size;
-        size_t end = std::min(start + chunk_size, N_total);
-        if (start < end)
-        {
-          _task_queue_pool->enqueue([=]() { run_output_gradients_neuron_parallel(start, end); });
-        }
-      }
-      _task_queue_pool->get();
-    }
-    else
-    {
-      run_output_gradients_batch_parallel(0, batch_size);
-    }
-  }
-  else
-  {
-    size_t chunk_size = batch_size / num_threads;
+    size_t chunk_size = (N_total + num_threads - 1) / num_threads;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]() {
-        run_output_gradients_batch_parallel(start, end);
-      });
+      size_t end = std::min(start + chunk_size, N_total);
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]() { run_output_gradients_neuron_parallel(start, end); });
+      }
+    }
+    _task_queue_pool->get();
+  }
+  else if (num_threads <= 1)
+  {
+    run_output_gradients_batch_parallel(0, batch_size);
+  }
+  else
+  {
+    // Batch parallelism
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]() {
+          run_output_gradients_batch_parallel(start, end);
+        });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
@@ -667,21 +673,25 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (num_threads <= 1)
   {
     run_hidden_gradients(0, batch_size);
   }
   else
   {
-    size_t chunk_size = batch_size / num_threads;
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]()
-        {
-          run_hidden_gradients(start, end);
-        });
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]()
+          {
+            run_hidden_gradients(start, end);
+          });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
