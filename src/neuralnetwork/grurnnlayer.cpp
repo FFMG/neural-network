@@ -722,21 +722,26 @@ void GRURNNLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (num_threads <= 1)
   {
     run_forward_pass(0, batch_size);
   }
   else
   {
-    size_t chunk_size = batch_size / num_threads;
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]()
-        {
-          run_forward_pass(start, end);
-        });
+      // Distribute remainder one by one
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]()
+          {
+            run_forward_pass(start, end);
+          });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
@@ -757,21 +762,26 @@ void GRURNNLayer::calculate_forward_feed(
     }
   };
 
-  if (num_threads <= 1 || batch_size < num_threads)
+  if (num_threads <= 1)
   {
     set_outputs_func(0, batch_size);
   }
   else
   {
-    size_t chunk_size = batch_size / num_threads;
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([&, start, end]()
-        {
-          set_outputs_func(start, end);
-        });
+      // Distribute remainder one by one
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([&, start, end]()
+          {
+            set_outputs_func(start, end);
+          });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
@@ -821,20 +831,24 @@ void GRURNNLayer::calculate_output_gradients(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (batch_size < (num_threads * 2))
+  if (num_threads <= 1)
   {
     run_output_gradients(0, batch_size);
   }
   else
   {
-    size_t chunk_size = batch_size / num_threads;
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]() {
-        run_output_gradients( start, end);
-      });
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]() {
+          run_output_gradients( start, end);
+        });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
@@ -1031,17 +1045,22 @@ void GRURNNLayer::calculate_hidden_gradients(
   };
 
   // Launch threads for each batch chunk
-  if (batch_size < 2 * num_threads)
+  if (num_threads <= 1)
   {
     batch_bptt_worker(0, batch_size);
   }
   else
   {
+    size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t start = t * chunk_size;
-      size_t end = (t == num_threads - 1) ? batch_size : start + chunk_size;
-      _task_queue_pool->enqueue([=]() { batch_bptt_worker(start, end); });
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]() { batch_bptt_worker(start, end); });
+      }
+      start = end;
     }
     _task_queue_pool->get();
   }
