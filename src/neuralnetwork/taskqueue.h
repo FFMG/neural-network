@@ -771,7 +771,6 @@ public:
         _number_of_threads = 2;
       }
     }
-    start();
   }
 
   ~TaskQueuePool()
@@ -837,6 +836,7 @@ public:
   void enqueue(F&& f, Args&&... args) 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    std::call_once(_start_flag, [this] { start(); });
     unsigned int index = _threads_index.fetch_add(1, std::memory_order_relaxed) % _number_of_threads;
     _task_queues[index]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
   }
@@ -872,6 +872,7 @@ private:
   unsigned int _number_of_threads;
   std::vector<std::unique_ptr<TaskQueue<R>>> _task_queues;
   std::atomic<unsigned int> _threads_index;
+  std::once_flag _start_flag;
 
   void start() 
   {
@@ -910,7 +911,6 @@ public:
         _number_of_threads = 2;
       }
     }
-    start();
   }
 
   ~TaskQueuePool()
@@ -976,6 +976,7 @@ public:
   void enqueue(F&& f, Args&&... args)
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
+    std::call_once(_start_flag, [this] { start(); });
     unsigned int index = _threads_index.fetch_add(1, std::memory_order_relaxed) % _number_of_threads;
     _task_queues[index]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
   }
@@ -1010,4 +1011,5 @@ private:
   unsigned int _number_of_threads;
   std::vector<std::unique_ptr<TaskQueue<void>>> _task_queues;
   std::atomic<unsigned int> _threads_index;
+  std::once_flag _start_flag;
 };
