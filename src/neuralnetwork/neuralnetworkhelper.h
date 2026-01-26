@@ -92,11 +92,11 @@ public:
       _learning_rate = src._learning_rate;
       _number_of_epoch = src._number_of_epoch;
       _epoch = src._epoch;
+      _training_inputs = src._training_inputs;
+      _training_outputs = src._training_outputs;
       _training_indexes = src._training_indexes;
       _checking_indexes = src._checking_indexes;
       _final_check_indexes = src._final_check_indexes;
-      _training_inputs = src._training_inputs;
-      _training_outputs = src._training_outputs;
     }
     return *this;
   }
@@ -110,11 +110,11 @@ public:
       _learning_rate = src._learning_rate;
       _number_of_epoch = src._number_of_epoch;
       _epoch = src._epoch;
+      _training_inputs = std::move(src._training_inputs);
+      _training_outputs = std::move(src._training_outputs);
       _training_indexes = std::move(src._training_indexes);
       _checking_indexes = std::move(src._checking_indexes);
       _final_check_indexes = std::move(src._final_check_indexes);
-      _training_inputs = std::move(src._training_inputs);
-      _training_outputs = std::move(src._training_outputs);
       src._neural_network = nullptr;
       src._learning_rate = 0;
       src._number_of_epoch = 0;

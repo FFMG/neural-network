@@ -96,13 +96,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
 
     if (src._neural_network_helper != nullptr)
     {
-      _neural_network_helper = new NeuralNetworkHelper(
-        *this, 
-        src._neural_network_helper->learning_rate(),
-        src._neural_network_helper->number_of_epoch(),
-        src._neural_network_helper->training_inputs(),
-        src._neural_network_helper->training_outputs());
-      _neural_network_helper->set_epoch(src._neural_network_helper->epoch());
+      _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
     }
   }
   return *this;
