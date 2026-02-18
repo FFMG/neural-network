@@ -41,6 +41,7 @@ private:
     _learning_rate_warmup_start(0.0),
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
+    _shuffle_bptt_batches(true),
     _weight_decay(0.0),
     _output_error_calculation_type(ErrorCalculation::type::mse),
     _enable_bptt(true),
@@ -95,6 +96,7 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
+      _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _weight_decay = nno._weight_decay;
       _output_error_calculation_type = nno._output_error_calculation_type;
       _enable_bptt = nno._enable_bptt;
@@ -132,6 +134,7 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
+      _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _weight_decay = nno._weight_decay;
       _output_error_calculation_type = nno._output_error_calculation_type;
       _enable_bptt = nno._enable_bptt;
@@ -148,6 +151,7 @@ public:
       nno._learning_rate_warmup_start = 0.0;
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
+      nno._shuffle_bptt_batches = true;
       nno._weight_decay = 0.0;
       nno._output_error_calculation_type = ErrorCalculation::type::mse;
       nno._bptt_max_ticks = 0;
@@ -270,6 +274,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _shuffle_training_data = shuffle_training_data;
+    return *this;
+  }
+  NeuralNetworkOptions& with_shuffle_bptt_batches(bool shuffle_bptt_batches)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _shuffle_bptt_batches = shuffle_bptt_batches;
     return *this;
   }
 
@@ -443,6 +453,7 @@ public:
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold)
       .with_shuffle_training_data(true)
+      .with_shuffle_bptt_batches(true)
       .with_weight_decay(0.0)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(0);
@@ -472,6 +483,7 @@ public:
   inline double learning_rate_warmup_start() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_start; }
   inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
   inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
+  inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
   inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
   inline ErrorCalculation::type output_error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_error_calculation_type; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
@@ -502,6 +514,7 @@ private:
   double _learning_rate_warmup_start;  //  initial learning rate for warmup
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
+  bool _shuffle_bptt_batches;
   double _weight_decay;
   ErrorCalculation::type _output_error_calculation_type;
   bool _enable_bptt;

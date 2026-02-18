@@ -236,17 +236,22 @@ void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_netw
   create_batch_from_indexes(neural_network_helper.training_indexes(), training_inputs, training_outputs, shuffled_training_inputs, shuffled_training_outputs);
 }
 
-void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const
+void NeuralNetwork::create_batch_from_indexes(
+  const std::vector<size_t>& indexes, 
+  const std::vector<std::vector<double>>& training_inputs, 
+  const std::vector<std::vector<double>>& training_outputs, 
+  std::vector<std::vector<double>>& training_inputs_data, 
+  std::vector<std::vector<double>>& training_outputs_data) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  shuffled_training_inputs.clear();
-  shuffled_training_outputs.clear();
-  shuffled_training_inputs.reserve(shuffled_indexes.size());
-  shuffled_training_outputs.reserve(shuffled_indexes.size());
-  for( auto shuffled_index : shuffled_indexes)
+  training_inputs_data.clear();
+  training_outputs_data.clear();
+  training_inputs_data.reserve(indexes.size());
+  training_outputs_data.reserve(indexes.size());
+  for( auto shuffled_index : indexes)
   {
-    shuffled_training_inputs.emplace_back(training_inputs[shuffled_index]);
-    shuffled_training_outputs.emplace_back(training_outputs[shuffled_index]);
+    training_inputs_data.emplace_back(training_inputs[shuffled_index]);
+    training_outputs_data.emplace_back(training_outputs[shuffled_index]);
   }
 }
 
@@ -413,6 +418,70 @@ void NeuralNetwork::train_single_batch(
   update_weights(_layers, gradients, _learning_rate, hidden_states);
 }
 
+void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, unsigned bptt_size, bool is_shuffled, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
+{
+  bptt_inputs.clear();
+  bptt_outputs.clear();
+
+  size_t total_samples = inputs.size();
+  if (total_samples != outputs.size())
+  {
+    Logger::panic("The trainning input data size does not match the output data size!");
+  }
+  if (total_samples != outputs.size())
+  {
+    Logger::panic("The trainning input/output data size is zero ... what's the point?");
+  }
+
+  // Create sequences
+  std::vector<std::vector<std::vector<double>>> sequences_inputs;
+  std::vector<std::vector<std::vector<double>>> sequences_outputs;
+
+  for (size_t start_idx = 0; start_idx < total_samples; start_idx += bptt_size)
+  {
+    size_t end_idx = std::min(start_idx + bptt_size, total_samples);
+
+    std::vector<std::vector<double>> seq_input(inputs.begin() + start_idx, inputs.begin() + end_idx);
+    std::vector<std::vector<double>> seq_output(outputs.begin() + start_idx, outputs.begin() + end_idx);
+
+    // Optionally skip incomplete sequences (last one)
+    if (seq_input.size() < bptt_size)
+    {
+      continue;
+    }
+
+    sequences_inputs.push_back(std::move(seq_input));
+    sequences_outputs.push_back(std::move(seq_output));
+  }
+
+  // Shuffle sequences if needed
+  if (!is_shuffled)
+  {
+    bptt_inputs = std::move(sequences_inputs);
+    bptt_outputs = std::move(sequences_outputs);
+    return;
+  }
+
+  std::vector<size_t> indices(sequences_inputs.size());
+  for (size_t i = 0; i < indices.size(); ++i) indices[i] = i;
+
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(indices.begin(), indices.end(), g);
+
+  std::vector<std::vector<std::vector<double>>> shuffled_inputs;
+  std::vector<std::vector<std::vector<double>>> shuffled_outputs;
+
+  for (size_t idx : indices)
+  {
+    shuffled_inputs.push_back(std::move(sequences_inputs[idx]));
+    shuffled_outputs.push_back(std::move(sequences_outputs[idx]));
+  }
+
+  bptt_inputs = std::move(shuffled_inputs);
+  bptt_outputs = std::move(shuffled_outputs);
+}
+
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -497,20 +566,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
+  std::vector<std::vector<std::vector<double>>> bptt_in;
+  std::vector<std::vector<std::vector<double>>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
-    for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
-    {
-      const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
-      const size_t total_size = end_size - start_index;
+    create_bptt_batches(batch_training_inputs, batch_training_outputs, _options.bptt_max_ticks(), _options.shuffle_bptt_batches(), bptt_in, bptt_out);
 
-      train_single_batch(
-          batch_training_inputs.begin() + start_index,
-          batch_training_outputs.begin() + start_index,
-          total_size);
+    const auto bptt_indexes_size = bptt_out.size();
+    for (size_t bptt_index = 0; bptt_index < bptt_indexes_size; ++bptt_index)
+    {
+      const auto total_size = bptt_out[bptt_index].size();
+      train_single_batch( bptt_in[bptt_index].begin(), bptt_out[bptt_index].begin(), total_size);
     }
     MYODDWEB_PROFILE_MARK();
 
@@ -1086,6 +1155,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
+  Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
 
   const auto& hl =_options.hidden_layers();
   std::string hidden_layer_message =

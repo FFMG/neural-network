@@ -132,10 +132,10 @@ public:
   {
     TEST_START("Synthetic Sentiment Analysis (GRU)");
 
-    const size_t sequence_length = 10;
+    const size_t sequence_length = 32;
     const size_t train_samples = 2000;
     const size_t test_samples = 200;
-    const unsigned epochs = 50; 
+    const unsigned epochs = 20; 
     const unsigned batch_size = 16;
     const double learning_rate = 0.005;
 
@@ -165,9 +165,12 @@ public:
         .with_hidden_layers(hidden_layers)
         .with_number_of_epoch(epochs)
         .with_enable_bptt(true)
+        .with_number_of_threads(4)
         .with_bptt_max_ticks((int)sequence_length)
         .with_data_is_unique(false) // Generated data might have duplicates
-        .with_clip_threshold(5.0) 
+        .with_clip_threshold(5.0)
+        .with_shuffle_training_data(false)
+        .with_shuffle_bptt_batches(true)
         .build();    
     NeuralNetwork nn(options);
 
