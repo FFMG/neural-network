@@ -392,6 +392,8 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
 * dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
 * clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
+* shuffle_training_data[=true]: If true, the training data is shuffled before each epoch.
+* shuffle_bptt_batches[=true]: If true, the BPTT batches are shuffled before each epoch.
 * enable_bptt[=true]: Enable or disable Backpropagation Through Time for RNN layers. When true (default), full sequences are passed between recurrent layers. When false, only the final timestep is passed.
 * bptt_max_ticks[=0]: Limits the number of time steps (ticks) to propagate gradients backward during BPTT. 0 means unlimited (full BPTT). This is useful for long sequences to save memory and avoid vanishing gradients.
 
