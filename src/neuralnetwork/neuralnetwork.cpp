@@ -410,10 +410,19 @@ void NeuralNetwork::train_single_batch(
   update_weights(_layers, gradients, _learning_rate, hidden_states);
 }
 
-void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, unsigned bptt_size, bool is_shuffled, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
+void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
 {
   bptt_inputs.clear();
   bptt_outputs.clear();
+
+  const auto& bptt_size = _options.bptt_max_ticks();
+  if (bptt_size <= 1 || !_options.enable_bptt())
+  {
+    bptt_inputs.push_back(inputs);
+    bptt_outputs.push_back(outputs);
+    return;
+  }
+  const auto& is_shuffled = _options.shuffle_bptt_batches();
 
   size_t total_samples = inputs.size();
   if (total_samples != outputs.size())
@@ -565,7 +574,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
-    create_bptt_batches(batch_training_inputs, batch_training_outputs, _options.bptt_max_ticks(), _options.shuffle_bptt_batches(), bptt_in, bptt_out);
+    create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
     const auto bptt_indexes_size = bptt_out.size();
     for (size_t bptt_index = 0; bptt_index < bptt_indexes_size; ++bptt_index)
@@ -1130,25 +1139,23 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
 
   // Hidden
-  Logger::info(tab, "Hidden                     : ");
+  Logger::info(tab, "Hidden layers              : ");
   const auto& hl = _options.hidden_layers();
-  std::string hidden_layer_message = tab;
-  hidden_layer_message += "  Layers                   : {";
-
+  
   // Log recurrent layers details
   for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
   {
     const auto& this_hl = hl[hl_index];
-    hidden_layer_message += this_hl.get_type_string();
-    hidden_layer_message += (" (size: " + std::to_string(this_hl.get_size()) + ", method: " + activation::method_to_string(this_hl.get_activation().get_method()) + ", alpha:" + std::to_string(this_hl.get_activation().get_alpha()) + ")");
-    if (hl_index < hl.size() - 1)
-    {
-      hidden_layer_message += ", ";
-    }
+    Logger::info(tab,
+      "  [", hl_index, "] Type    : ", this_hl.get_type_string());
+    Logger::info(tab,
+      "    Size                   : ", this_hl.get_size());
+    Logger::info(tab,
+      "    Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()));
+    Logger::info(tab,
+      "    Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha());
   }
-  hidden_layer_message += "}";
-  Logger::info(hidden_layer_message);
-
+  
   std::string dropout_layer_message =
     "  Hidden layers dropout rate : {";
 
