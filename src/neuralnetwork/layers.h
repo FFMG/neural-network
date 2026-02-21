@@ -21,7 +21,6 @@ public:
     const std::vector<LayerDetails>& hidden_layers, //  TODO: topolody and hidden layers should be put together.
     double weight_decay,
     const std::vector<double>& dropout_layers,
-    const activation& hidden_activation,
     const activation& output_activation,
     const OptimiserType& optimiser_type,
     int residual_layer_jump,
@@ -75,7 +74,7 @@ public:
 private:
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, int number_of_threads);
-  std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details, int number_of_threads);
+  std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details, int number_of_threads);
   std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads);
 
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;

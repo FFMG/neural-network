@@ -22,7 +22,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.hidden_layers(),
     options.weight_decay(),
     options.dropout(),
-    activation(options.hidden_activation_method(), options.hidden_activation_alpha()), 
     activation(options.output_activation_method(), options.output_activation_alpha()),
     options.optimiser_type(),
     options.residual_layer_jump(), 
@@ -41,7 +40,6 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_hidden_activation_method(hidden_layer_activation)
     .with_output_activation_method(output_layer_activation)
     .build())
 {
@@ -117,12 +115,6 @@ const activation::method& NeuralNetwork::get_output_activation_method() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _options.output_activation_method();
-}
-
-const activation::method& NeuralNetwork::get_hidden_activation_method() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _options.hidden_activation_method();
 }
 
 const Layers& NeuralNetwork::get_layers() const
@@ -1139,8 +1131,36 @@ void NeuralNetwork::log_training_info(
 
   // Hidden
   Logger::info(tab, "Hidden                     : ");
-  Logger::info(tab, "  Activation method        : ", activation::method_to_string(get_hidden_activation_method()));
-  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.hidden_activation_alpha());
+  const auto& hl = _options.hidden_layers();
+  std::string hidden_layer_message = tab;
+  hidden_layer_message += "  Layers                   : {";
+
+  // Log recurrent layers details
+  for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
+  {
+    const auto& this_hl = hl[hl_index];
+    hidden_layer_message += this_hl.get_type_string();
+    hidden_layer_message += (" (size: " + std::to_string(this_hl.get_size()) + ", method: " + activation::method_to_string(this_hl.get_activation().get_method()) + ", alpha:" + std::to_string(this_hl.get_activation().get_alpha()) + ")");
+    if (hl_index < hl.size() - 1)
+    {
+      hidden_layer_message += ", ";
+    }
+  }
+  hidden_layer_message += "}";
+  Logger::info(hidden_layer_message);
+
+  std::string dropout_layer_message =
+    "  Hidden layers dropout rate : {";
+
+  // Log dropout rates for hidden layers
+  for (auto& dropout : options().dropout())
+  {
+    dropout_layer_message += std::to_string(dropout);
+    dropout_layer_message += ", ";
+  }
+  dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
+  dropout_layer_message += "}";
+  Logger::info(dropout_layer_message);
 
   // Output
   Logger::info(tab, "Output                     : ");
@@ -1156,36 +1176,6 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
-
-  const auto& hl =_options.hidden_layers();
-  std::string hidden_layer_message =
-    "  Hidden layers              : {";
-
-  // Log recurrent layers details
-  for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
-  {
-    hidden_layer_message += hl[hl_index].get_type_string();
-    hidden_layer_message += (" (" + std::to_string(hl[hl_index].get_size()) + ")");
-    if (hl_index < hl.size() - 1)
-    {
-      hidden_layer_message += ", ";
-    }
-  }
-  hidden_layer_message += "}";
-  Logger::info(hidden_layer_message);
-
-  std::string dropout_layer_message = 
-                                "  Hidden layers dropout rate : {";
-
-  // Log dropout rates for hidden layers
-  for( auto& dropout : options().dropout())
-  {
-    dropout_layer_message += std::to_string(dropout);
-    dropout_layer_message += ", ";
-  }
-  dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
-  dropout_layer_message += "}";
-  Logger::info(dropout_layer_message);
 
   Logger::info(tab, "Batch size                 : ", _options.batch_size());
   if (_options.batch_size() > 1)

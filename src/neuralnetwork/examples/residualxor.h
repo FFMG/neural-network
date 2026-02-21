@@ -30,6 +30,13 @@ public:
       {0.0}
     };
 
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+    };
+
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
     // std::vector<unsigned> topology = {2, 3, 1};
@@ -37,7 +44,6 @@ public:
     auto options = NeuralNetworkOptions::create(topology)
       .with_dropout(dropout)
       .with_batch_size(batch_size)
-      .with_hidden_activation_method(activation::method::relu)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
       .with_learning_rate(0.0003)
@@ -47,6 +53,7 @@ public:
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::NadamW)
       .with_residual_layer_jump(3)
+      .with_hidden_layers(hidden_layers)
       .build();
 
     const char* file_name = "./residualxor.nn";
