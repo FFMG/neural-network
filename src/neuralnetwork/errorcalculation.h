@@ -503,7 +503,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
   }
 
-  static double calculate_directional_accuracy(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance = 0.001 /* threshold below which movement is ignored*/ )
+  static double calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance = 0.001)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     if (predictions.size() != ground_truths.size() || predictions.empty())
@@ -519,29 +519,31 @@ public:
       const auto& gt = ground_truths[seq_idx];
       const auto& pred = predictions[seq_idx];
 
-      if (gt.size() != pred.size() || gt.size() < 2)
+      if (gt.size() != pred.size() || gt.empty())
       {
-        continue; // Skip sequences that are too short
+        Logger::panic("The provided ground truth for directional accuracy is either not the correct size or is empty.");
       }
 
-      for (size_t i = 1; i < gt.size(); ++i)
+      for (size_t i = 0; i < gt.size(); ++i)
       {
-        double gt_diff = gt[i] - gt[i - 1];
-        double pred_diff = pred[i] - pred[i - 1];
+        double gt_val = gt[i];
+        double pred_val = pred[i];
 
-        // Ignore negligible ground truth movements (noise)
-        if (std::abs(gt_diff) < neutral_tolerance)
+        // Ignore small ground truth moves
+        if (std::abs(gt_val) < neutral_tolerance)
         {
           continue;
         }
 
-        if ((gt_diff * pred_diff) > 0.0)
+        if ((gt_val * pred_val) > 0.0)
         {
           ++correct;
         }
+
         ++total;
       }
     }
+
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
