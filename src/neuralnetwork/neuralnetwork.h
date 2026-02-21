@@ -52,7 +52,6 @@ public:
   const std::vector<unsigned>& get_topology() const;
   const Layers& get_layers() const;
   const activation::method& get_output_activation_method() const;
-  const activation::method& get_hidden_activation_method() const;
 
   NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false, size_t limit = 0) const;

@@ -69,13 +69,12 @@ private:
   {
     std::vector<unsigned> topology = {2, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8),
-      LayerDetails(LayerDetails::LayerType::Elman, 8)
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01))
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
-      .with_hidden_activation_method(activation::method::tanh)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
       .with_dropout({ 0.0, 0.0 })

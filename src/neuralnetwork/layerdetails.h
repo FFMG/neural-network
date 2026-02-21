@@ -5,6 +5,7 @@
 #include "logger.h"
 
 #include <string>
+#include "activation.h"
 
 class LayerDetails
 {
@@ -18,26 +19,28 @@ public:
   };
 
 public:
-  LayerDetails( LayerType layer_type, unsigned layer_size) noexcept :
+  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation) noexcept :
     _layer_type(layer_type),
-    _layer_size(layer_size)
+    _layer_size(layer_size),
+    _activation(activation)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
 
   LayerDetails(const LayerDetails& src) noexcept :
     _layer_type(src._layer_type),
-    _layer_size(src._layer_size)
+    _layer_size(src._layer_size),
+    _activation(src._activation)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
 
   LayerDetails(LayerDetails&& src) noexcept :
     _layer_type(src._layer_type),
-    _layer_size(src._layer_size)
+    _layer_size(src._layer_size),
+    _activation(std::move(src._activation))
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
-    src._layer_type = LayerType::None;
     src._layer_size = 0;
   }
 
@@ -48,6 +51,7 @@ public:
     {
       _layer_type = src._layer_type;
       _layer_size = src._layer_size;
+      _activation = src._activation;
     }
     return *this;
   }
@@ -59,10 +63,10 @@ public:
     {
       _layer_type = src._layer_type;
       _layer_size = src._layer_size;
+      _activation = std::move(src._activation);
 
       src._layer_type = LayerType::None;
       src._layer_size = 0;
-
     }
     return *this;
   }
@@ -72,7 +76,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
 
-  inline LayerType get_type() const noexcept
+  inline const LayerType& get_type() const noexcept
   {
     return _layer_type;
   }
@@ -125,8 +129,12 @@ public:
     }
     Logger::panic("Unknown Layer type: ", str);
   }
-
+  inline const activation& get_activation() const noexcept
+  {
+    return _activation;
+  }
 private:
   LayerType _layer_type;
   unsigned _layer_size;
+  activation _activation;
 };

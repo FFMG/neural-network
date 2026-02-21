@@ -10,7 +10,6 @@ Layers::Layers(
   const std::vector<LayerDetails>& hidden_layers,
   double weight_decay,
   const std::vector<double>& dropout_layers,
-  const activation& hidden_activation,
   const activation& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump, 
@@ -37,7 +36,7 @@ Layers::Layers(
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     auto& layer_details = hidden_layers[hidden_layer_number];
 
-    layer = create_hidden_layer(_weight_decay, previous_layer, hidden_activation, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
+    layer = create_hidden_layer(_weight_decay, previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
 
     _layers.emplace_back(std::move(layer));
   }
@@ -192,7 +191,6 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
 std::unique_ptr<Layer> Layers::create_hidden_layer(
   double weight_decay, 
   const Layer& previous_layer, 
-  const activation& activation, 
   const OptimiserType& optimiser_type, 
   int residual_layer_number, 
   double dropout_rate, 
@@ -213,11 +211,11 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       num_neurons_in_this_layer, 
       weight_decay, 
       Layer::LayerType::Hidden, 
-      activation, 
+      layer_details.get_activation(),
       optimiser_type, 
       residual_layer_number, 
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay),
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
       number_of_threads);
 
   case LayerDetails::LayerType::Gru:
@@ -227,11 +225,11 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       num_neurons_in_this_layer,
       weight_decay,
       Layer::LayerType::Hidden,
-      activation,
+      layer_details.get_activation(),
       optimiser_type,
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay), 
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
       number_of_threads);
 
   case LayerDetails::LayerType::FF:
@@ -241,11 +239,11 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       num_neurons_in_this_layer, 
       weight_decay, 
       Layer::LayerType::Hidden, 
-      activation, 
+      layer_details.get_activation(),
       optimiser_type, 
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay), 
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
       number_of_threads);
 
   default:

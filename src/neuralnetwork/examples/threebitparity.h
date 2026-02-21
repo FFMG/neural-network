@@ -12,11 +12,11 @@ public:
   {
     std::vector<unsigned> topology = { 3, 8, 1 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01)),
     };
     
     const int number_of_epoch = 5000;
-    const double learning_rate = 0.05;
+    const double learning_rate = 0.01;
 
     std::vector<std::vector<double>> training_inputs = {
       {0, 0, 0},
@@ -43,8 +43,7 @@ public:
       TEST_START("ThreebitParity test - No Batch.")
         Logger::info("No Batch:");
       auto options = NeuralNetworkOptions::create(topology)
-        .with_batch_size(3)
-        .with_hidden_activation_method(activation::method::tanh)
+        .with_batch_size(1)
         .with_output_activation_method(activation::method::sigmoid)
         .with_log_level(log_level)
         .with_learning_rate(learning_rate)

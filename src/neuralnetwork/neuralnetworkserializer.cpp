@@ -476,9 +476,13 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     {
       Logger::panic("Invalid hidden layer option is not an object!");
     }
+    const auto hidden_method = activation::string_to_method(phlo->try_get_string("activation-method", false));
+    const auto hidden_alpha = phlo->get_float("activation-alpha", false);
+
     hidden_layer.emplace_back(LayerDetails(
       LayerDetails::type_from_string(phlo->try_get_string("type")), 
-      phlo->get_number<unsigned>("size")
+      phlo->get_number<unsigned>("size"),
+      activation(hidden_method, hidden_alpha)
     ));
   }
   return hidden_layer;
@@ -583,7 +587,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto output_activation_string = options_object->try_get_string("output-activation", false);
   auto hidden_activation = activation::string_to_method(hidden_activation_string);
   auto output_activation = activation::string_to_method(output_activation_string);
-  auto hidden_activation_alpha = options_object->get_float<double>("hidden-activation-alpha", true, false);
   auto output_activation_alpha = options_object->get_float<double>("output-activation-alpha", true, false);
   
   auto learning_rate = options_object->get_float<double>("learning-rate");
@@ -617,9 +620,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
   return NeuralNetworkOptions::create(topology)
-    .with_hidden_activation_method(hidden_activation)
     .with_output_activation_method(output_activation)
-    .with_hidden_activation_alpha(hidden_activation_alpha)
     .with_output_activation_alpha(output_activation_alpha)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
@@ -893,9 +894,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set("hidden-layers", hidden_layer_list);
   options_object->set("dropout", dropout_list);
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
-  options_object->set_string("hidden-activation", activation::method_to_string(options.hidden_activation_method()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
-  options_object->set_float("hidden-activation-alpha", options.hidden_activation_alpha());
   options_object->set_float("output-activation-alpha", options.output_activation_alpha());
   options_object->set_float("learning-rate", options.learning_rate());
   options_object->set_float("learning-rate-warmup-start", options.learning_rate_warmup_start());
@@ -1169,6 +1168,8 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     auto hidden_layer_object = new TinyJSON::TJValueObject();
     hidden_layer_object->set_string("type", hl.get_type_string().c_str());
     hidden_layer_object->set_number("size", hl.get_size());
+    hidden_layer_object->set_string("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
+    hidden_layer_object->set_float("activation-alpha", hl.get_activation().get_alpha());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
