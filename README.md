@@ -60,10 +60,10 @@ The hidden layer information helps you to refine the hidden layer information
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -104,10 +104,10 @@ For very deep networks it might be best to set a value of ~5.0
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -150,18 +150,16 @@ The rate must be between 0.0 and 1.0 and you must have the exact number of dropo
 
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
-    std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),  // <-- 0.2 dropout (20%)
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
-      .with_dropout(dropout)
       .with_hidden_layers(hidden_layers)
       ...
       .build();
@@ -266,7 +264,7 @@ int main()
 {
   // create the NN
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01)),
+    LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01), 0.0),
   };
 
   auto options = NeuralNetworkOptions::create({ 3,8,1 })
@@ -418,7 +416,11 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 
 ```
 
-* hidden_layers: The hidden layers information, this is a std::vector<LayerDetails> with LayerDetails( type, size, activation)
+* hidden_layers: The hidden layers information, this is a std::vector<LayerDetails> with LayerDetails
+  * Type 
+  * Size 
+  * Activation
+  * Dropout
 * output_activation_method[=sigmoid]
 * output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
 * output_error_calculation_type[=mse]
@@ -437,7 +439,6 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
 * optimiser_type[=SGD]: The optimiser we will use during training.
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
-* dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
 * clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
 * shuffle_training_data[=true]: If true, the training data is shuffled before each epoch.
 * shuffle_bptt_batches[=true]: If true, the BPTT batches are shuffled before each epoch.
