@@ -43,6 +43,7 @@ int main()
 
   // 3-bit Parity
   ExampleThreebitParity::ThreebitParity(log_level);
+
   // Synthetic Sentiment
   ExampleSyntheticSentiment::SyntheticSentiment(log_level);
 
