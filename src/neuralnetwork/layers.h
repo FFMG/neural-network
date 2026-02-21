@@ -20,7 +20,6 @@ public:
     const std::vector<unsigned>& topology,
     const std::vector<LayerDetails>& hidden_layers, //  TODO: topolody and hidden layers should be put together.
     double weight_decay,
-    const std::vector<double>& dropout_layers,
     const activation& output_activation,
     const OptimiserType& optimiser_type,
     int residual_layer_jump,
