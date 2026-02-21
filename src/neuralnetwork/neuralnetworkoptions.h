@@ -42,7 +42,7 @@ private:
     _weight_decay(0.0),
     _output_error_calculation_type(ErrorCalculation::type::mse),
     _enable_bptt(true),
-    _bptt_max_ticks(1)
+    _bptt_max_ticks(0)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     for (int i = 1; i < topology.size() - 1; ++i)
@@ -360,11 +360,6 @@ public:
     {
       Logger::panic("The output activation alpha cannot be negative!");
     }
-    if (_bptt_max_ticks == 0)
-    {
-      Logger::warning("bptt max ticks was 0, setting it to 1.");
-      _bptt_max_ticks = 1;
-    }
     return *this;
   }
 
@@ -414,7 +409,7 @@ public:
       .with_shuffle_bptt_batches(true)
       .with_weight_decay(0.0)
       .with_enable_bptt(true)
-      .with_bptt_max_ticks(1);
+      .with_bptt_max_ticks(0);
   }
 
   inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
