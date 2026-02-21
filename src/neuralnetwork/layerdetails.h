@@ -19,10 +19,11 @@ public:
   };
 
 public:
-  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation) noexcept :
+  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation, double dropout) noexcept :
     _layer_type(layer_type),
     _layer_size(layer_size),
-    _activation(activation)
+    _activation(activation),
+    _dropout(dropout)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -30,7 +31,8 @@ public:
   LayerDetails(const LayerDetails& src) noexcept :
     _layer_type(src._layer_type),
     _layer_size(src._layer_size),
-    _activation(src._activation)
+    _activation(src._activation),
+    _dropout(src._dropout)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -38,7 +40,8 @@ public:
   LayerDetails(LayerDetails&& src) noexcept :
     _layer_type(src._layer_type),
     _layer_size(src._layer_size),
-    _activation(std::move(src._activation))
+    _activation(std::move(src._activation)),
+    _dropout(src._dropout)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_size = 0;
@@ -52,6 +55,7 @@ public:
       _layer_type = src._layer_type;
       _layer_size = src._layer_size;
       _activation = src._activation;
+      _dropout = src._dropout;
     }
     return *this;
   }
@@ -64,9 +68,11 @@ public:
       _layer_type = src._layer_type;
       _layer_size = src._layer_size;
       _activation = std::move(src._activation);
+      _dropout = src._dropout;
 
       src._layer_type = LayerType::None;
       src._layer_size = 0;
+      src._dropout = 0.0;
     }
     return *this;
   }
@@ -75,16 +81,19 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
-
   inline const LayerType& get_type() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _layer_type;
   }
   inline unsigned get_size() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _layer_size;
   }
-  inline std::string get_type_string() const {
+  inline std::string get_type_string() const 
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     switch (_layer_type)
     {
     case LayerType::None:
@@ -106,6 +115,7 @@ public:
 
   inline static LayerType type_from_string(const std::string& str)
   {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     std::string lower_str = str;
     // Convert the string to lowercase for case-insensitive comparison
     std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
@@ -131,10 +141,17 @@ public:
   }
   inline const activation& get_activation() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _activation;
+  }
+  inline double get_dropout() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _dropout;
   }
 private:
   LayerType _layer_type;
   unsigned _layer_size;
   activation _activation;
+  double _dropout;
 };

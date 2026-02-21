@@ -29,8 +29,8 @@ public:
     };
 
     std::vector<LayerDetails> hidden_layers = { 
-      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01)),
-      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01))
+      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0)
     };
 
     const int number_of_epoch = 2000;

@@ -84,7 +84,7 @@ public:
     // Output: 1 neuron (Linear)
     std::vector<unsigned> topology = { 2, 100, 1 };
     std::vector<LayerDetails> hidden_layers = {
-        LayerDetails(LayerDetails::LayerType::Gru, 100, activation(activation::method::tanh, 0.01))
+        LayerDetails(LayerDetails::LayerType::Gru, 100, activation(activation::method::tanh, 0.01), 0.0)
     };
     
     auto options = NeuralNetworkOptions::create(topology)

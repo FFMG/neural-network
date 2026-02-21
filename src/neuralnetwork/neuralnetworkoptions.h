@@ -19,7 +19,6 @@ class NeuralNetworkOptions
 private:
   NeuralNetworkOptions(const std::vector<unsigned>& topology) :
     _topology(topology),
-    _dropout({}),
     _output_activation(activation::method::sigmoid),
     _output_activation_alpha(0.01),
     _learning_rate(0.15),
@@ -48,7 +47,7 @@ private:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     for (int i = 1; i < topology.size() - 1; ++i)
     {
-      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01)));
+      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0));
     }
   }
 
@@ -72,7 +71,6 @@ public:
     {
       _topology = nno._topology;
       _hidden_layers = nno._hidden_layers;
-      _dropout = nno._dropout;
       _output_activation = nno._output_activation;
 	    _output_activation_alpha = nno._output_activation_alpha;
       _learning_rate = nno._learning_rate;
@@ -108,7 +106,6 @@ public:
     {
       _topology = std::move(nno._topology);
       _hidden_layers = std::move(nno._hidden_layers);
-      _dropout = std::move(nno._dropout);
       _output_activation = nno._output_activation;
       _output_activation_alpha = nno._output_activation_alpha;
       _learning_rate = nno._learning_rate;
@@ -201,12 +198,6 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
-    return *this;
-  }
-  NeuralNetworkOptions& with_dropout(const std::vector<double>& dropout)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _dropout = dropout;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate(double learning_rate)
@@ -309,21 +300,13 @@ public:
     // set the log level first
     Logger::set_level(log_level());
 
-    if (topology().size() < 2)
+    if (topology().size() < 2 + hidden_layers().size())
     {
       Logger::panic("The topology is not value, you must have at least 2 layers.");
     }
-    if (dropout().size() == 0)
+    for (const auto& hl : hidden_layers())
     {
-      _dropout = std::vector<double>(topology().size() - 2, 0.0);
-    }
-    if (dropout().size() != topology().size() -2)
-    {
-      Logger::panic("The dropout size must be exactly the topology size less the input and outpout layers.");
-    }
-    for (auto& dropout : dropout())
-    {
-      if(dropout < 0.0 || dropout > 1.0)
+      if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
       }
@@ -402,10 +385,8 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     auto clip_threshold = 1.0;
-    std::vector<double> dropout = {};
     if(topology.size() > 2)
     {
-      dropout.resize(topology.size() - 2, 0.0);
       if (topology.size() > 8)  //  6 hidden
       {
         clip_threshold = 2.0;
@@ -415,12 +396,7 @@ public:
         clip_threshold = 0.5;
       }
     }
-    else
-    {
-      dropout = {};
-    }
     return NeuralNetworkOptions(topology)
-      .with_dropout(dropout)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
       .with_output_activation_method(activation::method::sigmoid)

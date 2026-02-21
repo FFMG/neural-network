@@ -152,7 +152,7 @@ public:
     // Output: 1 (Sigmoid)
     std::vector<unsigned> topology = { VOCAB_SIZE, 24, 1 };
     std::vector<LayerDetails> hidden_layers = {
-        LayerDetails(LayerDetails::LayerType::Gru, 24, activation(activation::method::tanh, 0.01))
+        LayerDetails(LayerDetails::LayerType::Gru, 24, activation(activation::method::tanh, 0.01), 0.0)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
