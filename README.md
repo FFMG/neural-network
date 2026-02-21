@@ -46,6 +46,37 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * LAMB
 * Lion
 
+### Hidden Layers
+
+The hidden layer information helps you to refine the hidden layer information
+
+* Layer type: 
+  * FF: Standard feed-forward layer for basic non-linear transformations.
+  * Elman: Simple recurrent layer that maintains a hidden state for processing sequential data.
+  * Gru: Gated recurrent unit layer designed to handle the vanishing gradient problem in long sequences.
+* Layer size: number of neuron in the hidden layer.
+* the activation object, (activation methods and alpha)
+
+```cpp
+    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_clip_threshold(2.0)
+      .with_hidden_layers(hidden_layers)
+      ...
+      .build();
+```
+
+Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
+
+
 ### Residual layer
 
 You can use [residual layers](https://en.wikipedia.org/wiki/Residual_neural_network) during training, for that you simply need to define a jump
@@ -72,10 +103,17 @@ For very deep networks it might be best to set a value of ~5.0
 
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+    };
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
       .with_clip_threshold(2.0)
+      .with_hidden_layers(hidden_layers)
       ...
       .build();
 ```
@@ -114,9 +152,17 @@ The rate must be between 0.0 and 1.0 and you must have the exact number of dropo
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
 
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01)),
+    };
+
     auto options = NeuralNetworkOptions::create(topology)
       ...
       .with_dropout(dropout)
+      .with_hidden_layers(hidden_layers)
       ...
       .build();
 ```
@@ -155,7 +201,6 @@ int main()
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
   auto options = NeuralNetworkOptions::create({ 3,4,1 })
     .with_batch_size(batch_size)
-    .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
@@ -220,13 +265,17 @@ You can use `NeuralNetworkSerializer::save( ... )` to save a trained network and
 int main()
 {
   // create the NN
-  auto options = NeuralNetworkOptions::create({ 3,2,1 })
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01)),
+  };
+
+  auto options = NeuralNetworkOptions::create({ 3,8,1 })
   .with_batch_size(batch_size)
-  .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
+  .with_hidden_layers(hidden_layers)
   .build();
 
   auto nn = new NeuralNetwork(options);
@@ -315,7 +364,6 @@ int main()
 
   auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
-    .with_hidden_activation_method(activation::method::sigmoid)
     .with_output_activation_method(activation::method::sigmoid)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
@@ -370,8 +418,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 
 ```
 
-* hidden_activation_method[=sigmoid]
-* hidden_activation_alpha[=0.01]: The alpha value for the hidden layer activation function (e.g., for Leaky ReLU).
+* hidden_layers: The hidden layers information, this is a std::vector<LayerDetails> with LayerDetails( type, size, activation)
 * output_activation_method[=sigmoid]
 * output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
 * output_error_calculation_type[=mse]
@@ -416,7 +463,6 @@ After training you can get the calculated error as well as the mean absolute per
 ...
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
-  .with_hidden_activation_method(activation::method::sigmoid)
   .with_output_activation_method(activation::method::sigmoid)
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
