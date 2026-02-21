@@ -21,7 +21,6 @@ NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
     options.topology(), 
     options.hidden_layers(),
     options.weight_decay(),
-    options.dropout(),
     activation(options.output_activation_method(), options.output_activation_alpha()),
     options.optimiser_type(),
     options.residual_layer_jump(), 
@@ -1154,20 +1153,9 @@ void NeuralNetwork::log_training_info(
       "    Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()));
     Logger::info(tab,
       "    Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha());
+    Logger::info(tab,
+      "    Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout());
   }
-  
-  std::string dropout_layer_message =
-    "  Hidden layers dropout rate : {";
-
-  // Log dropout rates for hidden layers
-  for (auto& dropout : options().dropout())
-  {
-    dropout_layer_message += std::to_string(dropout);
-    dropout_layer_message += ", ";
-  }
-  dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
-  dropout_layer_message += "}";
-  Logger::info(dropout_layer_message);
 
   // Output
   Logger::info(tab, "Output                     : ");

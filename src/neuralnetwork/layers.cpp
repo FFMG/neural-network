@@ -9,15 +9,20 @@ Layers::Layers(
   const std::vector<unsigned>& topology,
   const std::vector<LayerDetails>& hidden_layers,
   double weight_decay,
-  const std::vector<double>& dropout_layers,
   const activation& output_activation,
   const OptimiserType& optimiser_type,
-  int residual_layer_jump, 
+  int residual_layer_jump,
   int number_of_threads) noexcept :
   _weight_decay(weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  assert(dropout_layers.size() == topology.size() -2 && "Dropout layers size must match the number of hidden layers");
+#if VALIDATE_DATA == 1
+  if(hidden_layers.size() != topology.size() - 2)
+  {
+    Logger::panic("The topology size does not match the layer details size!");
+  }
+#endif
+
   const auto& number_of_layers = topology.size();
   _layers.reserve(number_of_layers);
 
@@ -29,13 +34,13 @@ Layers::Layers(
   for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
   {
     const auto hidden_layer_number = layer_number - 1;
+    const auto& layer_details = hidden_layers[hidden_layer_number];
     auto num_neurons_current_layer = topology[layer_number];
     auto num_neurons_next_layer = topology[layer_number + 1];
-    auto dropout_rate = dropout_layers[hidden_layer_number];
+    auto dropout_rate = layer_details.get_dropout();
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    auto& layer_details = hidden_layers[hidden_layer_number];
-
+    
     layer = create_hidden_layer(_weight_decay, previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
 
     _layers.emplace_back(std::move(layer));
