@@ -604,17 +604,17 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto dropouts = options_object->get_floats<double>("dropout", false, false);
-  auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false); 
+  auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
   
+  auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
   int bptt_max_ticks = options_object->get_number<int>("bptt-max-ticks");
-  
+  auto shuffle_bptt_batches = options_object->get_boolean("shuffle-bptt-batches", false, false);
+
   auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
   auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
-  
-  bool enable_bptt = options_object->get_boolean("enable-bptt");
 
   return NeuralNetworkOptions::create(topology)
     .with_hidden_activation_method(hidden_activation)
@@ -639,6 +639,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_hidden_layers(hidden_layers)
     .with_weight_decay(weight_decay)
     .with_bptt_max_ticks(bptt_max_ticks)
+    .with_shuffle_bptt_batches(shuffle_bptt_batches)
     .with_output_error_calculation_type(output_error_calculation_type)
     .with_enable_bptt(enable_bptt)
     .build();
@@ -915,6 +916,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
   options_object->set_string("output-error-calculation-type", ErrorCalculation::type_to_string(options.output_error_calculation_type()).c_str());
   options_object->set_boolean("enable-bptt", options.enable_bptt());
+  options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
 
   json.set("options", options_object);
 
