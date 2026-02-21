@@ -482,7 +482,8 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     hidden_layer.emplace_back(LayerDetails(
       LayerDetails::type_from_string(phlo->try_get_string("type")), 
       phlo->get_number<unsigned>("size"),
-      activation(hidden_method, hidden_alpha)
+      activation(hidden_method, hidden_alpha),
+      phlo->get_float<double>("dropout")
     ));
   }
   return hidden_layer;
@@ -604,7 +605,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto learning_rate_restart_boost = options_object->get_float<double>("learning-rate-restart-boost");
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
-  auto dropouts = options_object->get_floats<double>("dropout", false, false);
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
@@ -632,7 +632,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_residual_layer_jump(residual_layer_jump)
     .with_clip_threshold(clip_threshold)
     .with_learning_rate_warmup(learning_rate_warmup_start, learning_rate_warmup_target)
-    .with_dropout(dropouts)
     .with_log_level(log_level)
     .with_shuffle_training_data(shuffle_training_data)
     .with_hidden_layers(hidden_layers)
@@ -883,14 +882,10 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto topology_list = new TinyJSON::TJValueArray();
   topology_list->add_numbers(options.topology());
 
-  auto dropout_list = new TinyJSON::TJValueArray();
-  dropout_list->add_floats(options.dropout());
-
   auto hidden_layer_list = add_hidden_layers(options.hidden_layers());
 
   options_object->set("topology", topology_list);
   options_object->set("hidden-layers", hidden_layer_list);
-  options_object->set("dropout", dropout_list);
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
   options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
   options_object->set_float("output-activation-alpha", options.output_activation_alpha());
@@ -918,7 +913,6 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   json.set("options", options_object);
 
   delete hidden_layer_list;
-  delete dropout_list;
   delete topology_list;
   delete options_object;
 }
@@ -1021,6 +1015,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
   layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
+  layer_object->set_float("dropout", layer.get_dropout());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1168,6 +1163,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set_number("size", hl.get_size());
     hidden_layer_object->set_string("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
     hidden_layer_object->set_float("activation-alpha", hl.get_activation().get_alpha());
+    hidden_layer_object->set_float("dropout", hl.get_dropout());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;

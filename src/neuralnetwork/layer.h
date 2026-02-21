@@ -469,8 +469,19 @@ public:
 
   inline const activation& get_activation() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
+
+  inline double get_dropout() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (get_number_neurons() == 0)
+    {
+      return 0.0;
+    }
+    return get_neuron(0).get_dropout_rate();
+  }  
 
   virtual void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,

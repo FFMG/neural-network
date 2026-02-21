@@ -10,14 +10,13 @@ private:
   {
     std::vector<unsigned> topology = {3,2,1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 0.01))
+      LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 0.01), 0.2)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_output_activation_method(activation::method::sigmoid)
       .with_log_level(log_level)
-      .with_dropout({0.2})
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.01, 0.075)
       .with_learning_rate_decay_rate(0.0)
