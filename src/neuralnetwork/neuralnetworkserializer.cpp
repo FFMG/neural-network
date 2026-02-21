@@ -583,9 +583,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   
   auto log_level_string = options_object->try_get_string("log-level", false);
   auto log_level = Logger::string_to_level(log_level_string);
-  auto hidden_activation_string = options_object->try_get_string("hidden-activation", false);
   auto output_activation_string = options_object->try_get_string("output-activation", false);
-  auto hidden_activation = activation::string_to_method(hidden_activation_string);
   auto output_activation = activation::string_to_method(output_activation_string);
   auto output_activation_alpha = options_object->get_float<double>("output-activation-alpha", true, false);
   
