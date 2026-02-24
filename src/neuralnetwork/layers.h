@@ -7,17 +7,21 @@
   #endif
 #endif
 
+#include <memory>
+#include <shared_mutex>
+
 #include "layer.h"
 #include "layerdetails.h"
-#include "residualprojector.h"
-#include <memory>
+#include "neuralnetworkoptions.h"
 #include "optimiser.h"
+#include "residualprojector.h"
+#include "taskqueue.h"
 
 class Layers
 {
 public:
   Layers(
-    const std::vector<unsigned>& topology,
+    const NeuralNetworkOptions& options,
     const std::vector<LayerDetails>& hidden_layers, //  TODO: topolody and hidden layers should be put together.
     double weight_decay,
     const activation& output_activation,
@@ -31,6 +35,7 @@ public:
   Layers& operator=(Layers&& layers) noexcept;
 
   Layers(
+    const NeuralNetworkOptions& options,
     const std::vector<std::unique_ptr<Layer>>& layers,
     double weight_decay
     ) noexcept;
@@ -58,6 +63,12 @@ public:
     return *_layers.front();
   }
 
+  inline const Layer& hidden_layer(unsigned index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+    return *_layers.at(index);
+  }
+
   inline const Layer& output_layer() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -70,7 +81,44 @@ public:
     return _weight_decay;
   }
 
+  const std::vector<HiddenStates> calculate_forward_feed(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients_and_output,
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
+    size_t batch_size,
+    bool is_training) const;
+
+  void calculate_back_propagation(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    size_t batch_size,
+    const std::vector<HiddenStates>& hidden_states) const;
+
+  void update_weights(
+    const NeuralNetworkOptions& options,
+    const std::vector<GradientsAndOutputs>& batch_gradients,
+    double learning_rate,
+    const std::vector<HiddenStates>& hidden_states);
+
 private:
+
+  void calculate_back_propagation_input_layer(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients) const;
+
+  void calculate_back_propagation_output_layer(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    size_t batch_size,
+    const std::vector<HiddenStates>& hidden_states) const;
+
+  void calculate_back_propagation_hidden_layers(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients,
+    const std::vector<HiddenStates>& hidden_states) const;
+
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, int number_of_threads);
   std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details, int number_of_threads);
@@ -80,4 +128,7 @@ private:
 
   std::vector<std::unique_ptr<Layer>> _layers;
   double _weight_decay;
+
+  mutable std::shared_mutex _mutex;
+  TaskQueuePool<void>* _update_weights_pool;
 };

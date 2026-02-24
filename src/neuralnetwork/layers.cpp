@@ -6,16 +6,20 @@
 #include <cassert>
 
 Layers::Layers(
-  const std::vector<unsigned>& topology,
+  const NeuralNetworkOptions& options,
   const std::vector<LayerDetails>& hidden_layers,
   double weight_decay,
   const activation& output_activation,
   const OptimiserType& optimiser_type,
   int residual_layer_jump,
   int number_of_threads) noexcept :
-  _weight_decay(weight_decay)
+  _weight_decay(weight_decay),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
+  _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
+
+  const auto& topology = options.topology();
 #if VALIDATE_DATA == 1
   if(hidden_layers.size() != topology.size() - 2)
   {
@@ -53,12 +57,18 @@ Layers::Layers(
   _layers.emplace_back(std::move(layer));
 }
 
-Layers::~Layers() = default;
+Layers::~Layers()
+{
+  delete _update_weights_pool;
+  _update_weights_pool = nullptr;
+}
 
 Layers::Layers(const Layers& src) noexcept :
-  _weight_decay(src._weight_decay)
+  _weight_decay(src._weight_decay),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
+  _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
   _layers.reserve(src._layers.size());
   for(const auto& layer : src._layers)
   {
@@ -66,9 +76,14 @@ Layers::Layers(const Layers& src) noexcept :
   }
 }
 
-Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers, double weight_decay) noexcept :
-  _weight_decay(weight_decay)
+Layers::Layers(
+  const NeuralNetworkOptions& options,
+  const std::vector<std::unique_ptr<Layer>>& layers, 
+  double weight_decay) noexcept :
+  _weight_decay(weight_decay),
+  _update_weights_pool(nullptr)
 {
+  _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
   _layers.reserve(layers.size());
   for (const auto& layer : layers)
   {
@@ -77,10 +92,14 @@ Layers::Layers(const std::vector<std::unique_ptr<Layer>>& layers, double weight_
 }
 
 Layers::Layers(Layers&& src) noexcept :
-  _layers(std::move(src._layers))
+  _layers(std::move(src._layers)),
+  _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _weight_decay = src._weight_decay;
+
+  _update_weights_pool = src._update_weights_pool;
+  src._update_weights_pool = nullptr;
 }
 
 Layers& Layers::operator=(const Layers& src) noexcept
@@ -88,6 +107,9 @@ Layers& Layers::operator=(const Layers& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("Layers");
   if(this != &src)
   {
+    delete _update_weights_pool;
+    _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
+
     _layers.clear();
     _layers.reserve(src._layers.size());
     for(const auto& layer : src._layers)
@@ -294,4 +316,236 @@ ResidualProjector* Layers::create_residual_projector(
     number_of_neurons_in_that_layer, 
     number_of_neurons_in_current_layer, 
     weight_decay);
+}
+
+const std::vector<HiddenStates> Layers::calculate_forward_feed(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients_and_output,
+  std::vector<std::vector<double>>::const_iterator inputs_begin,
+  size_t batch_size,
+  bool is_training) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  std::vector<HiddenStates> hidden_states;
+  hidden_states.resize(batch_size, HiddenStates(options.topology()));
+
+  assert(gradients_and_output.size() == batch_size);
+
+  std::shared_lock<std::shared_mutex> read(_mutex);
+
+  // --- 1. Store input layer outputs for the entire batch ---
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& current_input = *(inputs_begin + b);
+    const size_t input_size = input_layer().get_number_neurons();
+
+    if (current_input.size() == input_size)
+    {
+      gradients_and_output[b].set_outputs(0, current_input);
+      if (options.enable_bptt() && options.bptt_max_ticks() > 1)
+      {
+        std::vector<double> expanded;
+        const int ticks = options.bptt_max_ticks();
+        expanded.reserve(input_size * ticks);
+        for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+        gradients_and_output[b].set_rnn_outputs(0, expanded);
+      }
+    }
+    else if (options.enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
+    {
+      // Sequence input provided!
+      // Set the standard output to the LAST time step (so strict topology checks pass)
+      std::vector<double> last_step(current_input.end() - input_size, current_input.end());
+      gradients_and_output[b].set_outputs(0, last_step);
+
+      // Set the full sequence for RNN layers to consume
+      gradients_and_output[b].set_rnn_outputs(0, current_input);
+    }
+    else
+    {
+      // Fallback (will likely assert if size mismatch)
+      gradients_and_output[b].set_outputs(0, current_input);
+    }
+  }
+
+  // --- 2. Forward propagate layer by layer for the entire batch ---
+  for (size_t layer_number = 1; layer_number < size(); ++layer_number)
+  {
+    const auto& previous_layer = hidden_layer(static_cast<unsigned>(layer_number - 1));
+    const auto& current_layer = hidden_layer(static_cast<unsigned>(layer_number));
+
+    // Prepare batched residual outputs if needed
+    std::vector<std::vector<double>> batch_residual_values;
+    const auto* residual_projector = get_residual_layer_projector(static_cast<unsigned>(layer_number));
+    if (residual_projector != nullptr)
+    {
+      auto residual_layer_number = get_residual_layer_number(static_cast<unsigned>(layer_number));
+      std::vector<std::vector<double>> batch_residual_inputs;
+      batch_residual_values.reserve(batch_size);
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        batch_residual_inputs.emplace_back(gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number)));
+      }
+      batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
+    }
+
+    // Ensure hidden state vectors are sized correctly
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      if (current_layer.use_bptt())
+      {
+        std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+        if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+        const size_t n_prev = previous_layer.get_number_neurons();
+        const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
+        hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
+      }
+      else
+      {
+        hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
+      }
+    }
+
+    // Call batched forward feed
+    current_layer.calculate_forward_feed(
+      gradients_and_output,
+      previous_layer,
+      batch_residual_values,
+      hidden_states,
+      is_training
+    );
+  }
+  return hidden_states;
+}
+
+void Layers::calculate_back_propagation(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
+  size_t batch_size,
+  const std::vector<HiddenStates>& hidden_states) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  calculate_back_propagation_output_layer(options, gradients, outputs_begin, batch_size, hidden_states);
+  calculate_back_propagation_hidden_layers(options, gradients, hidden_states);
+  calculate_back_propagation_input_layer(options, gradients);
+}
+
+void Layers::calculate_back_propagation_input_layer(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  // input layer is all 0, (bias is included)
+  const auto& input_gradients = std::vector<double>(input_layer().get_number_neurons(), 0.0);
+  for (size_t i = 0; i < gradients.size(); ++i)
+  {
+    gradients[i].set_gradients(0, input_gradients);
+  }
+}
+
+void Layers::calculate_back_propagation_output_layer(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
+  size_t batch_size,
+  const std::vector<HiddenStates>& hidden_states) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  const auto& output_layer_number = static_cast<unsigned>(size() - 1);
+  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_error_calculation_type());
+}
+
+void Layers::calculate_back_propagation_hidden_layers(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients,
+  const std::vector<HiddenStates>& hidden_states) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  // we are going backward from output to input
+  for (auto layer_number = (int)size() - 2; layer_number > 0; --layer_number)
+  {
+    auto& hidden_0 = hidden_layer(static_cast<unsigned>(layer_number));
+    const auto& hidden_1 = hidden_layer(static_cast<unsigned>(layer_number + 1));
+
+    std::vector<std::vector<double>> batch_next_gradients;
+    batch_next_gradients.reserve(gradients.size());
+    for (const auto& g : gradients)
+    {
+      std::vector<double> grad;
+      if (options.enable_bptt() && hidden_1.use_bptt())
+      {
+        grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+      }
+      if (grad.empty())
+      {
+        grad = g.get_gradients(static_cast<unsigned>(layer_number + 1));
+      }
+      batch_next_gradients.emplace_back(std::move(grad));
+    }
+
+    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, options.bptt_max_ticks());
+  }
+}
+
+void Layers::update_weights(
+  const NeuralNetworkOptions& options,
+  const std::vector<GradientsAndOutputs>& batch_gradients,
+  double learning_rate,
+  const std::vector<HiddenStates>& hidden_states)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  if (batch_gradients.empty())
+  {
+    return;
+  }
+
+  // 1. Have each layer calculate and store its own gradients
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    _update_weights_pool->enqueue(
+      [&, this, i]()
+      {
+        auto& layer_a = *_layers.at(i);
+        auto& layer_b = *_layers.at(i -1);
+        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, options.bptt_max_ticks());
+      });
+  }
+  _update_weights_pool->get();
+
+  // 2. Calculate global gradient norm for clipping
+  double total_norm_sq = 0.0;
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    auto& layer_a = *_layers.at(i);
+    total_norm_sq += layer_a.get_gradient_norm_sq();
+  }
+
+  double clipping_scale = 1.0;
+  const double gradient_clip_threshold = options.clip_threshold();
+  if (gradient_clip_threshold > 0.0 && total_norm_sq > 0.0)
+  {
+    const double norm = std::sqrt(total_norm_sq);
+    if (norm > gradient_clip_threshold)
+    {
+      clipping_scale = gradient_clip_threshold / norm;
+    }
+  }
+
+  // 3. Apply the stored (and now clipped) gradients
+  // TODO: This can be parallelized.
+  std::unique_lock<std::shared_mutex> write(_mutex);
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    _update_weights_pool->enqueue([&, this, i]() 
+      {
+        auto& layer_a = *_layers.at(i);
+        layer_a.apply_stored_gradients(learning_rate, clipping_scale);
+      });
+  }
+  _update_weights_pool->get();
 }
