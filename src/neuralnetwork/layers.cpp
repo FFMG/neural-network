@@ -3,7 +3,6 @@
 #include "grurnnlayer.h"
 #include "layers.h"
 #include "logger.h"
-#include <cassert>
 
 Layers::Layers(
   const NeuralNetworkOptions& options,
@@ -128,6 +127,11 @@ Layers& Layers::operator=(Layers&& src) noexcept
   {
     _layers = std::move(src._layers);
     _weight_decay = src._weight_decay;
+
+    delete _update_weights_pool;
+    _update_weights_pool = src._update_weights_pool;
+
+    src._update_weights_pool = nullptr;
     src._weight_decay = 0.0;
   }
   return *this;
@@ -136,9 +140,12 @@ Layers& Layers::operator=(Layers&& src) noexcept
 const Layer& Layers::operator[](unsigned index ) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  #ifndef NDEBUG
-  assert(index < _layers.size());
-  #endif
+#if VALIDATE_DATA == 1
+  if (index >= _layers.size())
+  {
+    Logger::panic("Layers trying to get an index past the size!");
+  }
+#endif
   return *_layers[index];
 }
 
@@ -146,7 +153,10 @@ Layer& Layers::operator[](unsigned index )
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 #if VALIDATE_DATA ==1
-  assert(index < _layers.size());
+  if (index >= _layers.size())
+  {
+    Logger::panic("Layers trying to get an index past the size!");
+  }
 #endif
   return *_layers[index];
 }
@@ -155,7 +165,10 @@ const ResidualProjector* Layers::get_residual_layer_projector(unsigned index) co
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 #if VALIDATE_DATA ==1
-  assert(index < _layers.size());
+  if (index >= _layers.size())
+  {
+    Logger::panic("Layers trying to get a residual layer projector index past the size!");
+  }
 #endif
   return _layers[index]->get_residual_projector();
 }
@@ -164,7 +177,10 @@ int Layers::get_residual_layer_number(unsigned index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 #if VALIDATE_DATA ==1
-  assert(index < _layers.size());
+  if (index >= _layers.size())
+  {
+    Logger::panic("Layers trying to get a residual layer projector index past the size!");
+  }
 #endif
   return _layers[index]->get_residual_layer_number();
 }
@@ -330,7 +346,12 @@ const std::vector<HiddenStates> Layers::calculate_forward_feed(
   std::vector<HiddenStates> hidden_states;
   hidden_states.resize(batch_size, HiddenStates(options.topology()));
 
-  assert(gradients_and_output.size() == batch_size);
+#if VALIDATE_DATA ==1
+  if (gradients_and_output.size() != batch_size)
+  {
+    Logger::panic("Layers trying calculate forward feed but output size does not match batch size!");
+  }
+#endif
 
   std::shared_lock<std::shared_mutex> read(_mutex);
 
