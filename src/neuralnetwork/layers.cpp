@@ -4,21 +4,16 @@
 #include "layers.h"
 #include "logger.h"
 
-Layers::Layers(
-  const NeuralNetworkOptions& options,
-  const std::vector<LayerDetails>& hidden_layers,
-  double weight_decay,
-  const activation& output_activation,
-  const OptimiserType& optimiser_type,
-  int residual_layer_jump,
-  int number_of_threads) noexcept :
-  _weight_decay(weight_decay),
+Layers::Layers(const NeuralNetworkOptions& options) noexcept :
+  _weight_decay(options.weight_decay()),
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
 
   const auto& topology = options.topology();
+
+  const auto& hidden_layers = options.hidden_layers();
 #if VALIDATE_DATA == 1
   if(hidden_layers.size() != topology.size() - 2)
   {
@@ -30,8 +25,12 @@ Layers::Layers(
   _layers.reserve(number_of_layers);
 
   // add the input layer
+  const auto& number_of_threads = options.number_of_threads();
   auto layer = create_input_layer(topology[0], _weight_decay, -1, number_of_threads);
   _layers.emplace_back(std::move(layer));
+
+  const auto& optimiser_type = options.optimiser_type();
+  const auto& residual_layer_jump = options.residual_layer_jump();
 
   // then the hidden layers
   for (size_t layer_number = 1; layer_number < number_of_layers -1; ++layer_number)
@@ -50,6 +49,7 @@ Layers::Layers(
   }
 
   // finally, the output layer
+  const auto& output_activation = activation(options.output_activation_method(), options.output_activation_alpha());
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
   layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, residual_layer_number, number_of_threads);
 

@@ -17,14 +17,7 @@ static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
-  _layers(
-    options, 
-    options.hidden_layers(),
-    options.weight_decay(),
-    activation(options.output_activation_method(), options.output_activation_alpha()),
-    options.optimiser_type(),
-    options.residual_layer_jump(), 
-    options.number_of_threads()),
+  _layers(options),
   _options(options),
   _neural_network_helper(nullptr)
 {

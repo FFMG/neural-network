@@ -10,6 +10,7 @@
 #include <memory>
 #include <shared_mutex>
 
+#include "gradientsandoutputs.h"
 #include "layer.h"
 #include "layerdetails.h"
 #include "neuralnetworkoptions.h"
@@ -20,14 +21,7 @@
 class Layers
 {
 public:
-  Layers(
-    const NeuralNetworkOptions& options,
-    const std::vector<LayerDetails>& hidden_layers, //  TODO: topolody and hidden layers should be put together.
-    double weight_decay,
-    const activation& output_activation,
-    const OptimiserType& optimiser_type,
-    int residual_layer_jump,
-    int number_of_threads) noexcept;
+  Layers(const NeuralNetworkOptions& options) noexcept;
   Layers(const Layers& layers) noexcept;
   Layers(Layers&& layers) noexcept;
   

@@ -17,20 +17,18 @@
 
 #include "activation.h"
 #include "adaptivelearningratescheduler.h"
-#include "gradientsandoutputs.h" // Include the new header
 #include "errorcalculation.h"
+#include "gradientsandoutputs.h"
 #include "hiddenstates.h"
+#include "layer.h"
+#include "layergradients.h"
 #include "layers.h"
+#include "neuralnetworkhelper.h"
+#include "neuralnetworkoptions.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "rng.h"
 #include "taskqueue.h"
-#include "neuralnetworkhelper.h"
-#include "neuralnetworkoptions.h"
-#include "layergradients.h"
-#include "layer.h"
-
-class NeuralNetwork;
 
 class NeuralNetwork
 {
