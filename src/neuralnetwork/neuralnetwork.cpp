@@ -229,16 +229,17 @@ void NeuralNetwork::create_batch_from_indexes(
   }
 }
 
+std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _layers.think(_options, inputs);
+}
+
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   // TODO validate the input size matches out topology
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.push_back(GradientsAndOutputs(get_topology()));
-  const std::vector<std::vector<double>> all_inputs = { inputs };
-  _layers.calculate_forward_feed(options(), gradients, all_inputs.begin(), 1, false);
-  return gradients.front().output_back();
+  return _layers.think(_options, inputs);
 }
 
 double NeuralNetwork::get_learning_rate() const noexcept
@@ -343,25 +344,6 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   return errors;
 }
 
-std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const size_t batch_size = inputs.size();
-  if (batch_size == 0) return {};
-
-  std::vector<GradientsAndOutputs> batch_gradients;
-  batch_gradients.resize(batch_size, GradientsAndOutputs(get_topology()));
-  _layers.calculate_forward_feed(options(), batch_gradients, inputs.begin(), batch_size, false);
-
-  std::vector<std::vector<double>> outputs;
-  outputs.reserve(batch_size);
-  for (size_t i = 0; i < batch_size; ++i)
-  {
-    outputs.push_back(batch_gradients[i].output_back());
-  }
-  return outputs;
-}
-
 void NeuralNetwork::train_single_batch(
     std::vector<std::vector<double>>::const_iterator inputs_begin, 
     std::vector<std::vector<double>>::const_iterator outputs_begin,
@@ -369,13 +351,7 @@ void NeuralNetwork::train_single_batch(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.resize(batch_size, GradientsAndOutputs(get_topology()));
-
-  const auto hidden_states = _layers.calculate_forward_feed(options(), gradients, inputs_begin, batch_size, true);
-  _layers.calculate_back_propagation(options(), gradients, outputs_begin, batch_size, hidden_states);
-  _layers.update_weights(options(), gradients, _learning_rate, hidden_states);
+  _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
 
 void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const

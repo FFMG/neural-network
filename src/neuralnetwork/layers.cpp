@@ -570,3 +570,51 @@ void Layers::update_weights(
   }
   _update_weights_pool->get();
 }
+
+std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  const size_t batch_size = inputs.size();
+  if (batch_size == 0) return {};
+
+  std::vector<GradientsAndOutputs> batch_gradients;
+  batch_gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
+  calculate_forward_feed(options, batch_gradients, inputs.begin(), batch_size, false);
+
+  std::vector<std::vector<double>> outputs;
+  outputs.reserve(batch_size);
+  for (size_t i = 0; i < batch_size; ++i)
+  {
+    outputs.push_back(batch_gradients[i].output_back());
+  }
+  return outputs;
+}
+
+std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const
+{
+  // TODO validate the input size matches out topology
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  std::vector<GradientsAndOutputs> gradients;
+  gradients.push_back(GradientsAndOutputs(options.topology()));
+  const std::vector<std::vector<double>> all_inputs = { inputs };
+  calculate_forward_feed(options, gradients, all_inputs.begin(), 1, false);
+  return gradients.front().output_back();
+}
+
+void Layers::train(
+  const NeuralNetworkOptions& options, 
+  const double learning_rate,
+  std::vector<std::vector<double>>::const_iterator& inputs_begin,
+  std::vector<std::vector<double>>::const_iterator& outputs_begin,
+  const size_t batch_size)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  std::vector<GradientsAndOutputs> gradients;
+  gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
+
+  const auto hidden_states = calculate_forward_feed(options, gradients, inputs_begin, batch_size, true);
+  calculate_back_propagation(options, gradients, outputs_begin, batch_size, hidden_states);
+  update_weights(options, gradients, learning_rate, hidden_states);
+}
