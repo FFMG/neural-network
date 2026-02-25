@@ -75,6 +75,16 @@ public:
     return _weight_decay;
   }
 
+  void train(
+    const NeuralNetworkOptions& options, 
+    const double learning_rate,
+    std::vector<std::vector<double>>::const_iterator& training_inputs, 
+    std::vector<std::vector<double>>::const_iterator& training_outputs,
+    const size_t batch_size);
+  std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
+  std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
+
+private:
   const std::vector<HiddenStates> calculate_forward_feed(
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients_and_output,
@@ -94,8 +104,6 @@ public:
     const std::vector<GradientsAndOutputs>& batch_gradients,
     double learning_rate,
     const std::vector<HiddenStates>& hidden_states);
-
-private:
 
   void calculate_back_propagation_input_layer(
     const NeuralNetworkOptions& options,
