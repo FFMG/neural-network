@@ -43,7 +43,6 @@ public:
   virtual ~NeuralNetwork();
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
-
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
 
