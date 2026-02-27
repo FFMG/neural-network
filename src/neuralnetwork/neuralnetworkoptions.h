@@ -1,5 +1,4 @@
 #pragma once
-#include <cassert>
 #include <functional>
 #include <vector>
 
@@ -42,7 +41,8 @@ private:
     _weight_decay(0.0),
     _output_error_calculation_type(ErrorCalculation::type::mse),
     _enable_bptt(true),
-    _bptt_max_ticks(0)
+    _bptt_max_ticks(0),
+    _update_training_monitor_percent(0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     for (int i = 1; i < topology.size() - 1; ++i)
@@ -95,6 +95,7 @@ public:
       _output_error_calculation_type = nno._output_error_calculation_type;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
+      _update_training_monitor_percent = nno._update_training_monitor_percent;
     }
     return *this;
   }
@@ -130,6 +131,7 @@ public:
       _output_error_calculation_type = nno._output_error_calculation_type;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
+      _update_training_monitor_percent = nno._update_training_monitor_percent;
       
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -146,6 +148,7 @@ public:
       nno._weight_decay = 0.0;
       nno._output_error_calculation_type = ErrorCalculation::type::mse;
       nno._bptt_max_ticks = 0;
+      nno._update_training_monitor_percent = 0.0;
     }
     return *this;
   }
@@ -287,6 +290,12 @@ public:
     _bptt_max_ticks = bptt_max_ticks;
     return *this;
   }
+  NeuralNetworkOptions& with_update_training_monitor_percent(double update_training_monitor_percent)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _update_training_monitor_percent = update_training_monitor_percent;
+    return *this;
+  }
   NeuralNetworkOptions& with_hidden_layers(const std::vector<LayerDetails>& hidden_layers) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -360,6 +369,10 @@ public:
     {
       Logger::panic("The output activation alpha cannot be negative!");
     }
+    if (update_training_monitor_percent() < 0.0 || update_training_monitor_percent() > 1.0)
+    {
+      Logger::panic("The update training monitor percent must be between 0.0 and 1.0!");
+    }
     return *this;
   }
 
@@ -409,7 +422,8 @@ public:
       .with_shuffle_bptt_batches(true)
       .with_weight_decay(0.0)
       .with_enable_bptt(true)
-      .with_bptt_max_ticks(0);
+      .with_bptt_max_ticks(0)
+      .with_update_training_monitor_percent(0.0);
   }
 
   inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -438,6 +452,7 @@ public:
   inline ErrorCalculation::type output_error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_error_calculation_type; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
+  inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
 
 private:
   std::vector<unsigned> _topology;
@@ -466,4 +481,5 @@ private:
   ErrorCalculation::type _output_error_calculation_type;
   bool _enable_bptt;
   int _bptt_max_ticks;
+  double _update_training_monitor_percent;
 };

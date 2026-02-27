@@ -4,6 +4,7 @@
 #include "./libraries/instrumentor.h"
 #include "errorcalculation.h"
 #include "neuralnetworkoptions.h"
+#include "trainingmonitor.h"
 
 class NeuralNetwork;
 class NeuralNetworkHelper
@@ -92,11 +93,13 @@ public:
       _learning_rate = src._learning_rate;
       _number_of_epoch = src._number_of_epoch;
       _epoch = src._epoch;
+      _percent_complete = src._percent_complete;
       _training_inputs = src._training_inputs;
       _training_outputs = src._training_outputs;
       _training_indexes = src._training_indexes;
       _checking_indexes = src._checking_indexes;
       _final_check_indexes = src._final_check_indexes;
+      _training_monitor = src._training_monitor;
     }
     return *this;
   }
@@ -110,46 +113,81 @@ public:
       _learning_rate = src._learning_rate;
       _number_of_epoch = src._number_of_epoch;
       _epoch = src._epoch;
+      _percent_complete = src._percent_complete;
       _training_inputs = std::move(src._training_inputs);
       _training_outputs = std::move(src._training_outputs);
       _training_indexes = std::move(src._training_indexes);
       _checking_indexes = std::move(src._checking_indexes);
       _final_check_indexes = std::move(src._final_check_indexes);
+      _training_monitor = std::move(src._training_monitor);
       src._neural_network = nullptr;
       src._learning_rate = 0;
       src._number_of_epoch = 0;
       src._epoch = 0;
+      src._percent_complete = 0;
     }
     return *this;
   }
   virtual ~NeuralNetworkHelper() = default;
 
-  inline double learning_rate() const noexcept
+  [[nodiscard]] inline double learning_rate() const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _learning_rate; 
   }
-  
-  void set_learning_rate(double learning_rate) noexcept {
+  [[nodiscard]] void set_learning_rate(double learning_rate) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _learning_rate = learning_rate; 
   }
 
-  inline unsigned number_of_epoch() const noexcept
+  [[nodiscard]] inline unsigned number_of_epoch() const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _number_of_epoch; 
   }
-  inline unsigned epoch() const noexcept
+  [[nodiscard]] inline unsigned epoch() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _epoch; 
   }
-
-  inline size_t sample_size() const noexcept
+  [[nodiscard]] inline double percent_complete() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    return _percent_complete; 
+  }
+  [[nodiscard]] bool is_at_epoch_interval(double percent) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    if (percent <= 0.0)
+    {
+      return false;
+    }
+    const auto update_interval = std::max<unsigned>(1, static_cast<unsigned>(std::round(percent * _number_of_epoch)));
+    return _epoch % update_interval == 0;
+  }
+  [[nodiscard]] inline size_t sample_size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
     return _training_inputs.size();
+  }
+  [[nodiscard]] inline const TrainingMonitor& training_monitor() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    return _training_monitor;
+  }
+
+  void add_training_monitor_metrics()
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    const auto& metrics = calculate_forecast_metrics({
+      ErrorCalculation::type::directional_accuracy,
+      ErrorCalculation::type::rmse
+      });
+
+    for (const auto& metric : metrics)
+    {
+      _training_monitor.add_metric(metric.error_type(), metric.error());
+    }
   }
 
   NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
@@ -166,6 +204,7 @@ public:
     _learning_rate(learning_rate),
     _number_of_epoch(number_of_epoch),
     _epoch(0),
+    _percent_complete(0.0),
     _training_inputs(training_inputs),
     _training_outputs(training_outputs)
   {
@@ -174,7 +213,11 @@ public:
 
   void set_epoch(unsigned epoch) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    _epoch = epoch; 
+    if (_epoch != epoch)
+    {
+      _epoch = epoch;
+      _percent_complete = _number_of_epoch == 0 ? 0.0 : static_cast<double>(_epoch) / _number_of_epoch;
+    }
   }
 
   void move_indexes (
@@ -223,9 +266,11 @@ private:
   double _learning_rate;
   unsigned _number_of_epoch;
   unsigned _epoch;
+  double _percent_complete;
   std::vector<std::vector<double>> _training_inputs;
   std::vector<std::vector<double>> _training_outputs;
   std::vector<size_t> _training_indexes;
   std::vector<size_t> _checking_indexes;
   std::vector<size_t> _final_check_indexes;
+  TrainingMonitor _training_monitor;
 };
