@@ -932,4 +932,18 @@ void NeuralNetwork::log_training_info(
       Logger::info(tab, "Number of threads          : ", _options.number_of_threads());
     }
   }
+
+  if (_options.final_error_calculation_types().size() == 0)
+  {
+    Logger::info(tab, "Final error(s) metrics :\n", tab, tab, "None");
+  }
+  else
+  {
+    std::string message = "Final error(s) metrics :";
+    for (const auto& type : _options.final_error_calculation_types())
+    {
+      message += Logger::factory("\n", tab, tab, ErrorCalculation::type_to_string(type));
+    }
+    Logger::info(message);
+  }
 }
