@@ -615,6 +615,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
   auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
+  auto update_training_monitor_percent = options_object->get_float<double>("update-training-monitor-percent");
+
   auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
   return NeuralNetworkOptions::create(topology)
@@ -640,6 +642,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_shuffle_bptt_batches(shuffle_bptt_batches)
     .with_output_error_calculation_type(output_error_calculation_type)
     .with_enable_bptt(enable_bptt)
+    .with_update_training_monitor_percent(update_training_monitor_percent)
     .build();
 }
 
@@ -909,6 +912,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_string("output-error-calculation-type", ErrorCalculation::type_to_string(options.output_error_calculation_type()).c_str());
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
+  options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
 
   json.set("options", options_object);
 

@@ -53,6 +53,7 @@ public:
   NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
   std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false, size_t limit = 0) const;
   double get_learning_rate() const noexcept;
+  double get_percent_complete() const noexcept;
 
   bool has_training_data() const;
 
