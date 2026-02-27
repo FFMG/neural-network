@@ -248,6 +248,17 @@ double NeuralNetwork::get_learning_rate() const noexcept
   return _learning_rate;
 }
 
+double NeuralNetwork::get_percent_complete() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  if (nullptr == _neural_network_helper)
+  {
+    return 1.0;
+  }
+  return _neural_network_helper->percent_complete();
+}
+
 NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
