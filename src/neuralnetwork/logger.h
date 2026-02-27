@@ -1,13 +1,26 @@
 #pragma once
+
+// C headers
+#include <cassert>
+#include <cctype>
+#include <cstdio>
+#ifndef NDEBUG
+#include <cstring>
+#endif
+
+// C++ headers
 #include <algorithm>
-#include <chrono>     // Required for time operations (std::chrono)
+#include <chrono>
 #include <functional>
-#include <iomanip>    // Required for std::put_time and std::setfill/std::setw for formatting
-#include <iostream>   // Required for std::cout and std::endl
-#include <string>     // Required for std::string
-#include <sstream>    // Required for std::stringstream to build the time string
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
+#include <string>
+#if __cplusplus >= 201703L
+#include <string_view>
+#endif
 #include <type_traits>
+#include <utility>
 
 class Logger
 {
@@ -33,7 +46,6 @@ public:
     case LogLevel::Error:        return "Error";
     case LogLevel::Panic:        return "Panic";
     case LogLevel::None:         return "None";
-
     case LogLevel::Debug:
     default:                     return "Debug";
     }
@@ -90,8 +102,15 @@ private:
   static constexpr const char* LogColorBlue = "\033[34m";
   static constexpr const char* LogColorCyan = "\033[36m";
 
-  static constexpr const char* OpenTag = " [";
-  static constexpr const char* CloseTag = "] ";
+  static constexpr const size_t TimeStringLen = 12; // "HH:MM:SS.mmm" is 12 characters long
+  static constexpr const size_t TimeStringBufferSize = 16;
+  static constexpr const size_t TagLen = 7; // e.g. "[trace]"
+
+#if __cplusplus >= 201703L
+  using MessageParam = std::string_view;
+#else
+  using MessageParam = std::string;
+#endif
 
   Logger(LogLevel minLevel = LogLevel::Information) : _min_level(minLevel)
   {
@@ -200,18 +219,40 @@ private:
     return (level == LogLevel::Panic || level >= _min_level);
   }
 
-  static std::string get_current_time_string()
+  // Buffer for formatting user argument in log()
+  static std::ostringstream& get_msg_oss()
+  {
+    thread_local std::ostringstream oss;
+    oss.str("");
+    oss.clear();
+    return oss;
+  }
+
+  // Buffer for formatting the final log message with timestamp and tag
+  static std::ostringstream& get_msg_fmt_oss()
+  {
+    thread_local std::ostringstream oss;
+    oss.str("");
+    oss.clear();
+    return oss;
+  }
+  
+  static void get_current_time_string(char (&buf)[TimeStringBufferSize])
   {
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
-    auto duration = now.time_since_epoch();
-    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration) % 1000;
+    struct tm local_tm;
+#if defined(_MSC_VER)
+    localtime_s(&local_tm, &in_time_t);
+#else
+    localtime_r(&in_time_t, &local_tm);
+#endif
 
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&in_time_t), "%H:%M:%S");
-    ss << "." << std::setfill('0') << std::setw(3) << millis.count();
-    return ss.str();
+    snprintf(buf, TimeStringBufferSize, "%02d:%02d:%02d.%03d", 
+      local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec, 
+      static_cast<int>(millis.count()));
   }
 
   static void print_args(std::ostringstream&)
@@ -243,19 +284,6 @@ private:
     print_args(oss, std::forward<Args>(rest)...);
   }
 
-  static void with_factory(LogLevel level, std::function<std::string()> message_factory)
-  {
-    if (level < instance()._min_level)
-    {
-      return;
-    }
-
-    // The function is only called if the log level is sufficient.
-    std::ostringstream oss;
-    oss << message_factory();
-    instance().string(level, oss.str());
-  }
-
   template <typename... Args>
   static void log(LogLevel level, Args&&... args)
   {
@@ -263,72 +291,101 @@ private:
     {
       return;
     }
-    std::ostringstream oss;
+    auto& oss = get_msg_oss();
     print_args(oss, std::forward<Args>(args)...);
-    oss << std::endl;
+    oss << '\n';
+#if __cplusplus >= 202002L
+    instance().string(level, oss.view());
+#elif __cplusplus >= 201703L
+    {
+      auto msg = oss.str();
+      instance().string(level, msg);
+    }
+#else
     instance().string(level, oss.str());
+#endif    
   }
 
-  void string(LogLevel level, std::string message) const
+  void string(LogLevel level, MessageParam message) const
   {
-    // Only log if the current message's level is at or above the minimum configured level
-    if (!can_log(level))
-    {
-      return;
-    }
-
-    std::ostringstream oss;
-
-    // 1. Output the current time
-    oss << get_current_time_string() << " ";
+    // 1. The current time
+    char time_str[TimeStringBufferSize];
+    get_current_time_string(time_str);
 
     // 2. Determine color and tag based on log level
     const char* color_code = LogColorReset; // Default to no color
-    std::string tag;
+    const char* tag;
 
     switch (level)
     {
     case LogLevel::Trace:
       color_code = LogColorCyan;
-      tag = "trace";
+      tag = "[trace]";
       break;
 
     case LogLevel::Debug:
       color_code = LogColorGreen;
-      tag = "debug";
+      tag = "[debug]";
       break;
 
     case LogLevel::Information:
       color_code = LogColorBlue;
-      tag = "info";
+      tag = "[info ]";
       break;
 
     case LogLevel::Warning:
       color_code = LogColorYellow;
-      tag = "warn";
+      tag = "[warn ]";
       break;
 
     case LogLevel::Error:
       color_code = LogColorRed;
-      tag = "error";
+      tag = "[error]";
       break;
 
     case LogLevel::Panic:
       color_code = LogColorRed;
-      tag = "panic";
+      tag = "[panic]";
       break;
 
     case LogLevel::None: // Should not be reached for logging, but included for completeness
       return; // If somehow called with None, just return
+
+      default:
+        color_code = LogColorReset;
+        tag = "[ unk ]";
+        break;
     }
 
-    // 3. Output the color-coded tag, then reset color
-    oss << color_code << OpenTag << tag << CloseTag << LogColorReset;
+    // sanity check in case we add new tags
+#ifndef NDEBUG
+    assert(strlen(tag) == TagLen);
+#endif
+    // 3. prepare for output
+    constexpr size_t indent_len = TimeStringLen + 1 + TagLen + 1; // time + space + tag + space
+    char indent[24];
+    std::fill_n(indent, indent_len, ' ');
+    indent[indent_len] = '\0';
 
-    // 4. Output the user's message arguments
-    oss << message;
+    // 4. Output the color-coded tag, then reset color
+    auto& oss = get_msg_fmt_oss();
+    oss << time_str << ' ' << color_code << tag << LogColorReset << ' ';
 
-    // 5. Print the final message to the console
+    // 5. Output the user's message arguments
+    size_t start = 0;
+    size_t pos = 0;
+    while ((pos = message.find('\n', start)) != std::string::npos)
+    {
+      oss.write(message.data() + start, pos - start + 1);
+      start = pos + 1;
+      if(start < message.size())
+      {
+        oss.write(indent, indent_len);
+      }
+    }
+    oss.write(message.data() + start, message.size() - start);
+
+    // 6. Print the final message to the console
     std::cout << oss.str();
 
     if (level == LogLevel::Panic)
