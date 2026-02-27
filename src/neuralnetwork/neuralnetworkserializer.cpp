@@ -35,6 +35,17 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   // get the options first so the logger is set
   auto options = get_and_build_options(*tj);
 
+  // if we have a final learning rate we want to use that.
+  auto json_object = dynamic_cast<const TinyJSON::TJValueObject*>(tj);
+  if (nullptr != json_object)
+  {
+    auto final_learning_rate = json_object->get_float<double>("final-learning-rate", true, false);
+    if (final_learning_rate != 0.0)
+    {
+      options.with_learning_rate(final_learning_rate);
+    }
+  }
+
   auto errors = get_errors(*tj);
 
   // create the layer and validate that the topology matches.
@@ -135,6 +146,10 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
+  if (activation_method_string == nullptr)
+  {
+    Logger::panic("Missing layer 'activation-method'.");
+  }
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
@@ -224,6 +239,10 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
+  if (activation_method_string == nullptr)
+  {
+    Logger::panic("Missing layer 'activation-method'.");
+  }
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
@@ -405,6 +424,10 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto activation_method_string = layer_object.try_get_string("activation-method");
+  if (activation_method_string == nullptr)
+  {
+    Logger::panic("Missing layer 'activation-method'.");
+  }
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
@@ -476,11 +499,13 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     {
       Logger::panic("Invalid hidden layer option is not an object!");
     }
-    const auto hidden_method = activation::string_to_method(phlo->try_get_string("activation-method", false));
+    const auto hidden_method_string = phlo->try_get_string("activation-method", false);
+    const auto hidden_method = activation::string_to_method(hidden_method_string == nullptr ? "sigmoid" : hidden_method_string);
     const auto hidden_alpha = phlo->get_float("activation-alpha", false);
 
+    const auto layer_type_string = phlo->try_get_string("type");
     hidden_layer.emplace_back(LayerDetails(
-      LayerDetails::type_from_string(phlo->try_get_string("type")), 
+      LayerDetails::type_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
       phlo->get_number<unsigned>("size"),
       activation(hidden_method, hidden_alpha),
       phlo->get_float<double>("dropout")
@@ -537,16 +562,6 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   delete tj;
 }
 
-double NeuralNetworkSerializer::get_mean_absolute_percentage_error(const TinyJSON::TJValue& json)
-{
-  auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  if (nullptr == object)
-  {
-    return 0.0;
-  }
-  return object->get_float("mean-absolute-percentage-error", true, false);
-}
-
 NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJSON::TJValue& json)
 {
   auto default_option = NeuralNetworkOptions::create({ 1,1 }).build();
@@ -583,9 +598,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   }
   
   auto log_level_string = options_object->try_get_string("log-level", false);
-  auto log_level = Logger::string_to_level(log_level_string);
+  auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
   auto output_activation_string = options_object->try_get_string("output-activation", false);
-  auto output_activation = activation::string_to_method(output_activation_string);
+  auto output_activation = activation::string_to_method(output_activation_string == nullptr ? "sigmoid" : output_activation_string);
   auto output_activation_alpha = options_object->get_float<double>("output-activation-alpha", true, false);
   
   auto learning_rate = options_object->get_float<double>("learning-rate");
@@ -599,7 +614,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto learning_rate_decay_rate = options_object->get_float<double>("learning-rate-decay-rate");
   auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
   auto optimiser_type_string = options_object->try_get_string("optimiser-type");
-  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
 
   auto learning_rate_restart_rate = options_object->get_float<double>("learning-rate-restart-rate");
   auto learning_rate_restart_boost = options_object->get_float<double>("learning-rate-restart-boost");
@@ -1043,7 +1058,6 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
   layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
-  layer_object->set_float("dropout", layer.get_dropout());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());

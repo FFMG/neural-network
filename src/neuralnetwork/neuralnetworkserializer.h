@@ -30,7 +30,6 @@ private:
 
   static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
   static std::map<ErrorCalculation::type, double> get_errors(const TinyJSON::TJValue& json);
-  static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
   static std::vector<WeightParam> get_weight_params(const TinyJSON::TJValueObject& parent);
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number);
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
