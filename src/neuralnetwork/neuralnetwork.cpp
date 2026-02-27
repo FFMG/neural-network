@@ -367,6 +367,7 @@ void NeuralNetwork::train_single_batch(
 
 void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   bptt_inputs.clear();
   bptt_outputs.clear();
 
@@ -526,9 +527,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<std::vector<std::vector<double>>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
+    // set the values
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
+    // (re) create the bptt batches
     create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
     const auto bptt_indexes_size = bptt_out.size();
@@ -544,6 +547,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
     _neural_network_helper->set_learning_rate(learning_rate);
 
+    // update the training monitor metrics
+    if (_neural_network_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
+    {
+      Logger::trace([=] {
+        return Logger::factory("Updating training monitor at epoch #", epoch, " of ", number_of_epoch);
+        });
+      _neural_network_helper->add_training_monitor_metrics();
+    }
+
     // callback
     // 
     if (!CallCallback(progress_callback, callback_task))
@@ -555,16 +567,19 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
   }
 
-  auto metrics = calculate_forecast_metrics(
+  Logger::info([this]
     {
-      ErrorCalculation::type::rmse,
-      ErrorCalculation::type::mape,
-      ErrorCalculation::type::wape
-    }, true);
+      const auto& metrics = calculate_forecast_metrics(
+        {
+          ErrorCalculation::type::rmse,
+          ErrorCalculation::type::mape,
+          ErrorCalculation::type::wape
+        }, true);
 
-  Logger::info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
-  Logger::info("Final mean absolute error (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error()*100.0);
-  Logger::info("Final weighted absolute error (WAPE): ", std::fixed, std::setprecision(15), metrics[2].error() * 100.0);
+      return Logger::factory("Final RMSE Error: ", std::fixed, std::setprecision(15), metrics[0].error(),
+        "\nFinal mean absolute error (MAPE): ", std::fixed, std::setprecision(15), metrics[1].error() * 100.0,
+        "\nFinal weighted absolute error (WAPE): ", std::fixed, std::setprecision(15), metrics[2].error() * 100.0);
+    });
 
   // finaly learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
@@ -586,6 +601,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
 void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::unique_lock<std::shared_mutex> lock(_mutex);
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
