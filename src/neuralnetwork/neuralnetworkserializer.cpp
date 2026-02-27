@@ -122,8 +122,8 @@ Layers NeuralNetworkSerializer::create_layers(
     Logger::panic("Unknown Layer type:", type);
   }
 
-  const auto* json_object = static_cast<const TinyJSON::TJValueObject*>(&json);
-  auto weight_decay = json_object->get_float("layers-weight-decay");
+  const auto* json_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
+  auto weight_decay = json_object != nullptr ? json_object->get_float<double>("layers-weight-decay", true, false) : 0.0;
 
   return Layers(options, layers, weight_decay);
 }
