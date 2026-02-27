@@ -595,7 +595,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
   auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
   auto data_is_unique = options_object->get_boolean("data-is-unique");
-  auto number_of_threads = static_cast<int>(options_object->get_number("number-of-threads"));
+  auto number_of_threads = options_object->get_number<int>("number-of-threads");
   auto learning_rate_decay_rate = options_object->get_float<double>("learning-rate-decay-rate");
   auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
   auto optimiser_type_string = options_object->try_get_string("optimiser-type");
@@ -619,6 +619,20 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
   auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
+  auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
+  std::vector<ErrorCalculation::type> final_error_calculation_types = {};
+  if (nullptr != final_error_calculation_types_array)
+  {
+    for (unsigned i = 0; i < final_error_calculation_types_array->get_number_of_items(); ++i)
+    {
+      auto type_string = dynamic_cast<const TinyJSON::TJValueString*>(final_error_calculation_types_array->at(i));
+      if (nullptr != type_string)
+      {
+        final_error_calculation_types.push_back(ErrorCalculation::string_to_type(type_string->get_string()));
+      }
+    }
+  }
+
   return NeuralNetworkOptions::create(topology)
     .with_output_activation_method(output_activation)
     .with_output_activation_alpha(output_activation_alpha)
@@ -641,6 +655,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_bptt_max_ticks(bptt_max_ticks)
     .with_shuffle_bptt_batches(shuffle_bptt_batches)
     .with_output_error_calculation_type(output_error_calculation_type)
+    .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
     .build();
@@ -910,6 +925,15 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("weight-decay", options.weight_decay());
   options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
   options_object->set_string("output-error-calculation-type", ErrorCalculation::type_to_string(options.output_error_calculation_type()).c_str());
+
+  auto final_error_calculation_types_list = new TinyJSON::TJValueArray();
+  for (const auto& type : options.final_error_calculation_types())
+  {
+    final_error_calculation_types_list->add_string(ErrorCalculation::type_to_string(type).c_str());
+  }
+  options_object->set("final-error-calculation-types", final_error_calculation_types_list);
+  delete final_error_calculation_types_list;
+
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());

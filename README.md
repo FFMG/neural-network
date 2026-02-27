@@ -444,6 +444,8 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * shuffle_bptt_batches[=true]: If true, the BPTT batches are shuffled before each epoch.
 * enable_bptt[=true]: Enable or disable Backpropagation Through Time for RNN layers. When true (default), full sequences are passed between recurrent layers. When false, only the final timestep is passed.
 * bptt_max_ticks[=0]: Limits the number of time steps (ticks) to propagate gradients backward during BPTT. 0 means unlimited (full BPTT). This is useful for long sequences to save memory and avoid vanishing gradients.
+* final_error_calculation_types[={}]: A list of error calculation types that will be displayed after training in a summary of error(s). If empty, no final calculation will be done.
+* update_training_monitor_percent[=0.0]: This value (between 0.0 and 1.0) is used to say how often, during training, we will be updating the training monitor value. 0.0 means no update.
 
 Remember to call `.build()` to create your option as it does error checking.
 

@@ -40,6 +40,7 @@ private:
     _shuffle_bptt_batches(true),
     _weight_decay(0.0),
     _output_error_calculation_type(ErrorCalculation::type::mse),
+    _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
     _update_training_monitor_percent(0.0)
@@ -96,6 +97,7 @@ public:
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
+      _final_error_calculation_types = nno._final_error_calculation_types;
     }
     return *this;
   }
@@ -129,6 +131,7 @@ public:
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _weight_decay = nno._weight_decay;
       _output_error_calculation_type = nno._output_error_calculation_type;
+      _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
@@ -147,6 +150,7 @@ public:
       nno._shuffle_bptt_batches = true;
       nno._weight_decay = 0.0;
       nno._output_error_calculation_type = ErrorCalculation::type::mse;
+      nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
     }
@@ -278,6 +282,12 @@ public:
     _output_error_calculation_type = error_calculation_type;
     return *this;
   }
+  NeuralNetworkOptions& with_final_error_calculation_types(const std::vector<ErrorCalculation::type>& final_error_calculation_types)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _final_error_calculation_types = final_error_calculation_types;
+    return *this;
+  }
   NeuralNetworkOptions& with_enable_bptt(bool enable_bptt)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -306,6 +316,11 @@ public:
   NeuralNetworkOptions& build()
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+
+    // remove any duplicates from the final error calculation types.
+    std::sort(_final_error_calculation_types.begin(), _final_error_calculation_types.end());
+    _final_error_calculation_types.erase(std::unique(_final_error_calculation_types.begin(), _final_error_calculation_types.end()), _final_error_calculation_types.end());
+
     // set the log level first
     Logger::set_level(log_level());
 
@@ -450,6 +465,7 @@ public:
   inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
   inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
   inline ErrorCalculation::type output_error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_error_calculation_type; }
+  inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
   inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
@@ -479,6 +495,7 @@ private:
   bool _shuffle_bptt_batches;
   double _weight_decay;
   ErrorCalculation::type _output_error_calculation_type;
+  std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;
   int _bptt_max_ticks;
   double _update_training_monitor_percent;

@@ -567,19 +567,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
   }
 
-  Logger::info([this]
+  if (Logger::can_info() && options().final_error_calculation_types().size() > 0)
+  {
+    const auto& metrics = calculate_forecast_metrics(options().final_error_calculation_types(), true);
+    std::string message = "";
+    for (const auto metric : metrics)
     {
-      const auto& metrics = calculate_forecast_metrics(
-        {
-          ErrorCalculation::type::rmse,
-          ErrorCalculation::type::mape,
-          ErrorCalculation::type::wape
-        }, true);
-
-      return Logger::factory("Final RMSE Error: ", std::fixed, std::setprecision(15), metrics[0].error(),
-        "\nFinal mean absolute error (MAPE): ", std::fixed, std::setprecision(15), metrics[1].error() * 100.0,
-        "\nFinal weighted absolute error (WAPE): ", std::fixed, std::setprecision(15), metrics[2].error() * 100.0);
-    });
+      if (!message.empty())
+      {
+        message += "\n";
+      }
+      message += Logger::factory("Final ", ErrorCalculation::type_to_string(metric.error_type()), " error: ", std::fixed, std::setprecision(15), metric.error());
+    }
+    Logger::info(message);
+  }
 
   // finaly learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
