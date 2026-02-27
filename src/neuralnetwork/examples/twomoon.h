@@ -85,6 +85,11 @@ private:
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::SGD)
       .with_hidden_layers(hidden_layers)
+      .with_final_error_calculation_types({ ErrorCalculation::type::rmse,
+        ErrorCalculation::type::mape,
+        ErrorCalculation::type::wape,
+        ErrorCalculation::type::directional_accuracy
+        })
       .build();
 
     return new NeuralNetwork(options);

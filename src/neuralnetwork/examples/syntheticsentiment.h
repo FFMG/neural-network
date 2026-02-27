@@ -158,7 +158,7 @@ public:
     auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(batch_size)
         .with_output_activation_method(activation::method::sigmoid)
-        .with_log_level(log_level)
+        .with_log_level(Logger::LogLevel::Trace)
         .with_learning_rate(learning_rate)
         .with_optimiser_type(OptimiserType::Adam)
         .with_hidden_layers(hidden_layers)
@@ -170,6 +170,12 @@ public:
         .with_clip_threshold(5.0)
         .with_shuffle_training_data(false)
         .with_shuffle_bptt_batches(true)
+        .with_update_training_monitor_percent(0.1)
+        .with_final_error_calculation_types({ ErrorCalculation::type::rmse,
+          ErrorCalculation::type::mape,
+          ErrorCalculation::type::wape,
+          ErrorCalculation::type::directional_accuracy
+          })
         .build();    
     NeuralNetwork nn(options);
 
