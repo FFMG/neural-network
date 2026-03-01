@@ -361,6 +361,7 @@ public:
       return get_activation().get_method() == activation::method::softmax;
 
     case ErrorCalculation::type::mse:
+    case ErrorCalculation::type::huber_loss:
       return get_activation().get_method() == activation::method::linear;
     }
 
@@ -446,6 +447,11 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type) const;
+
+  void calculate_huber_loss_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
 
   void calculate_mse_error_deltas(
     std::vector<double>& deltas,

@@ -10,6 +10,8 @@ void Layer::calculate_error_deltas(
   MYODDWEB_PROFILE_FUNCTION("Layer");
   switch (error_calculation_type)
   {
+  case ErrorCalculation::type::huber_loss:
+    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::mse:
     return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::rmse:
@@ -19,7 +21,32 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::cross_entropy:
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs);
   default:
-    Logger::panic("Error calculation type is not supported for Layer!");
+    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type)," is not supported for Layer!");
+  }
+}
+
+void Layer::calculate_huber_loss_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  const size_t N_total = get_number_neurons();
+  const double delta = 1.0; // Default delta for Huber loss
+
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  {
+    const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
+    const double abs_error = std::abs(error);
+
+    if (abs_error <= delta)
+    {
+      deltas[neuron_index] = error * _inv_num_neurons;
+    }
+    else
+    {
+      deltas[neuron_index] = (error > 0 ? delta : -delta) * _inv_num_neurons;
+    }
   }
 }
 

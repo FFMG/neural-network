@@ -416,22 +416,23 @@ void ElmanRNNLayer::calculate_output_gradients(
       
       const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
+      std::vector<double> deltas(N_total, 0.0);
+      std::vector<double> target_slice(target_outputs.begin(), target_outputs.begin() + std::min(target_outputs.size(), (size_t)N_total));
+      if (target_slice.size() < N_total) target_slice.resize(N_total, 0.0);
+      std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
+
+      calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+
       for (size_t j = start; j < end; ++j)
       {
-        const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
-        const double given = (output_offset + j < given_outputs.size()) ? given_outputs[output_offset + j] : 0.0;
-          
-        // Compute Delta: (y - t) / N
-        const double delta = (given - target) * _inv_num_neurons;
-          
         if (is_not_using_activation_derivative)
         {
-          gradients_ptr[j] = delta;
+          gradients_ptr[j] = deltas[j];
         }
         else
         {
           const double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron((unsigned)j));
-          gradients_ptr[j] = delta * deriv;
+          gradients_ptr[j] = deltas[j] * deriv;
         }
       }
     }
@@ -454,44 +455,36 @@ void ElmanRNNLayer::calculate_output_gradients(
       {
         const size_t num_time_steps = given_outputs.size() / N_total;
         const auto& last_hs = batch_hidden_states[b].at(get_layer_index()).back();
-         
+        const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
+
+        std::vector<double> target_slice(target_outputs.begin(), target_outputs.begin() + std::min(target_outputs.size(), (size_t)N_total));
+        if (target_slice.size() < N_total) target_slice.resize(N_total, 0.0);
+
         if (given_outputs.size() == N_total)
         {
-          calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
-          if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-          {
-            for (unsigned j = 0; j < N_total; ++j)
-            {
-              gradients[j] = deltas[j];
-            }
-          }
-          else
-          {
-            for (unsigned j = 0; j < N_total; ++j)
-            {
-              double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-              gradients[j] = deltas[j] * deriv;
-            }
-          }
+          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type);
         }
         else
         {
           // Sequence case
+          const size_t output_offset = (num_time_steps - 1) * N_total;
+          std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
+          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+        }
+
+        if (is_not_using_activation_derivative)
+        {
           for (unsigned j = 0; j < N_total; ++j)
           {
-            const size_t last_idx = (num_time_steps - 1) * N_total + j;
-            const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
-            const double delta = (given_outputs[last_idx] - target) * _inv_num_neurons;
-
-            if (error_calculation_type == ErrorCalculation::type::bce_loss && get_activation().get_method() == activation::method::sigmoid)
-            {
-              gradients[j] = delta;
-            }
-            else
-            {
-              double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
-              gradients[j] = delta * deriv;
-            }
+            gradients[j] = deltas[j];
+          }
+        }
+        else
+        {
+          for (unsigned j = 0; j < N_total; ++j)
+          {
+            double deriv = get_activation().activate_derivative(last_hs.get_pre_activation_sum_at_neuron(j));
+            gradients[j] = deltas[j] * deriv;
           }
         }
       }
