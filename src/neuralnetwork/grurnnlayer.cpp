@@ -809,22 +809,24 @@ void GRURNNLayer::calculate_output_gradients(
       
       std::fill(gradients.begin(), gradients.end(), 0.0);
 
-      if (given_outputs.size() == N_total)
+      if (given_outputs.size() >= N_total && N_total > 0)
       {
-        calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
+        std::vector<double> target_slice(target_outputs.begin(), target_outputs.begin() + std::min(target_outputs.size(), (size_t)N_total));
+        if (target_slice.size() < N_total) target_slice.resize(N_total, 0.0);
+
+        if (given_outputs.size() == N_total)
+        {
+          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type);
+        }
+        else
+        {
+          const size_t num_time_steps = given_outputs.size() / N_total;
+          const size_t output_offset = (num_time_steps - 1) * N_total;
+          std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
+          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+        }
         // Direct assignment of deltas (dL/dh) because GRU output is h_t, not activation(h_t)
         for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];
-      }
-      else if (given_outputs.size() >= N_total && N_total > 0)
-      {
-        const size_t num_time_steps = given_outputs.size() / N_total;
-        for (unsigned j = 0; j < N_total; ++j)
-        {
-          const size_t last_idx = (num_time_steps - 1) * N_total + j;
-          const double target = (j < target_outputs.size()) ? target_outputs[j] : 0.0;
-          const double delta = (given_outputs[last_idx] - target) / static_cast<double>(N_total);
-          gradients[j] = delta;
-        }
       }
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
     }
