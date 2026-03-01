@@ -362,6 +362,7 @@ public:
 
     case ErrorCalculation::type::mse:
     case ErrorCalculation::type::huber_loss:
+    case ErrorCalculation::type::log_cosh:
       return get_activation().get_method() == activation::method::linear;
     }
 
@@ -469,6 +470,11 @@ public:
     const std::vector<double>& given_outputs) const;
 
   void calculate_cross_entropy_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
+  void calculate_log_cosh_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
