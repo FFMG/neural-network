@@ -20,6 +20,8 @@ void Layer::calculate_error_deltas(
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::cross_entropy:
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs);
+  case ErrorCalculation::type::log_cosh:
+    return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs);
   default:
     Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type)," is not supported for Layer!");
   }
@@ -126,5 +128,21 @@ void Layer::calculate_rmse_error_deltas(
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * factor;
+  }
+}
+
+void Layer::calculate_log_cosh_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  const size_t N_total = get_number_neurons();
+
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  {
+    const double x = given_outputs[neuron_index] - target_outputs[neuron_index];
+    // d/dx log(cosh(x)) = tanh(x)
+    deltas[neuron_index] = std::tanh(x) * _inv_num_neurons;
   }
 }
