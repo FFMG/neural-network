@@ -487,16 +487,23 @@ auto errors = nn->calculate_forecast_metrics( error_types);
 
 ### Error Calculations
 
-  * ErrorCalculation::none
-  * ErrorCalculation::huber_loss
-  * ErrorCalculation::mae
-  * ErrorCalculation::mse
-  * ErrorCalculation::nrmse
-  * ErrorCalculation::rmse
-  * ErrorCalculation::mape
-  * ErrorCalculation::smape
-  * ErrorCalculation::wape
-  * ErrorCalculation::directional_accuracy
-  * ErrorCalculation::bce_loss
-  * ErrorCalculation::bce_loss
-  * ErrorCalculation::cross_entropy
+  * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::mae
+  * ErrorCalculation::type::mse
+  * ErrorCalculation::type::rmse
+  * ErrorCalculation::type::nrmse
+  * ErrorCalculation::type::mape
+  * ErrorCalculation::type::smape
+  * ErrorCalculation::type::wape
+  * ErrorCalculation::type::directional_accuracy
+  * ErrorCalculation::type::bce_loss
+  * ErrorCalculation::type::cross_entropy
+  * ErrorCalculation::type::log_cosh
+
+### Output Loss Error Calculations
+
+  * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::mse
+  * ErrorCalculation::type::rmse
+  * ErrorCalculation::type::bce_loss
+  * ErrorCalculation::type::cross_entropy
