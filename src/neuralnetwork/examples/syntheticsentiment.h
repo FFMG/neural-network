@@ -154,10 +154,11 @@ public:
     std::vector<LayerDetails> hidden_layers = {
         LayerDetails(LayerDetails::LayerType::Gru, 24, activation(activation::method::tanh, 0.01), 0.0)
     };
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
 
     auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(batch_size)
-        .with_output_activation_method(activation::method::sigmoid)
+        .with_output_layer(output_layer)
         .with_log_level(Logger::LogLevel::Trace)
         .with_learning_rate(learning_rate)
         .with_optimiser_type(OptimiserType::Adam)

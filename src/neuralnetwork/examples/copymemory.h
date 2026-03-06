@@ -33,6 +33,8 @@ public:
       LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0)
     };
 
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
+
     const int number_of_epoch = 2000;
     const double learning_rate = 0.01;
 
@@ -76,7 +78,7 @@ public:
 
       auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(64)
-        .with_output_activation_method(activation::method::sigmoid)
+        .with_output_layer(output_layer)
         .with_log_level(log_level)
         .with_learning_rate(learning_rate)
         .with_number_of_epoch(number_of_epoch)
