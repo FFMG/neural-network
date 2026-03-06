@@ -49,9 +49,9 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   }
 
   // finally, the output layer
-  const auto& output_activation = activation(options.output_activation_method(), options.output_activation_alpha());
+  const auto& output_layer_detault = options.output_layer();
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_activation, optimiser_type, residual_layer_number, number_of_threads);
+  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_detault.get_activation(), optimiser_type, residual_layer_number, number_of_threads);
 
   _layers.emplace_back(std::move(layer));
 }
@@ -477,7 +477,7 @@ void Layers::calculate_back_propagation_output_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   const auto& output_layer_number = static_cast<unsigned>(size() - 1);
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_error_calculation_type());
+  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_layer().get_output_error_calculation_type());
 }
 
 void Layers::calculate_back_propagation_hidden_layers(

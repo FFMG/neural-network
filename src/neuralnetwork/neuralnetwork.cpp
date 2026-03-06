@@ -30,7 +30,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_output_activation_method(output_layer_activation)
+    .with_output_layer(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -91,12 +91,6 @@ NeuralNetwork::~NeuralNetwork()
 
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
-}
-
-const activation::method& NeuralNetwork::get_output_activation_method() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _options.output_activation_method();
 }
 
 const Layers& NeuralNetwork::get_layers() const
@@ -907,9 +901,9 @@ void NeuralNetwork::log_training_info(
 
   // Output
   Logger::info(tab, "Output                     : ");
-  Logger::info(tab, "  Activation method        : ", activation::method_to_string(get_output_activation_method()));
-  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.output_activation_alpha());
-  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.output_error_calculation_type()));
+  Logger::info(tab, "  Activation method        : ", activation::method_to_string(_options.output_layer().get_activation().get_method()));
+  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.output_layer().get_activation().get_alpha());
+  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.output_layer().get_output_error_calculation_type()));
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());

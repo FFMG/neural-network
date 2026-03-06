@@ -11,6 +11,7 @@
 #include "logger.h"
 #include "neuralnetworkhelper.h"
 #include "optimiser.h"
+#include "outputlayerdetails.h"
 
 class NeuralNetworkHelper;
 class NeuralNetworkOptions
@@ -18,8 +19,7 @@ class NeuralNetworkOptions
 private:
   NeuralNetworkOptions(const std::vector<unsigned>& topology) :
     _topology(topology),
-    _output_activation(activation::method::sigmoid),
-    _output_activation_alpha(0.01),
+    _output_layer(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse),
     _learning_rate(0.15),
     _number_of_epoch(1000),
     _batch_size(1),
@@ -39,13 +39,17 @@ private:
     _shuffle_training_data(true),
     _shuffle_bptt_batches(true),
     _weight_decay(0.0),
-    _output_error_calculation_type(ErrorCalculation::type::mse),
     _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
     _update_training_monitor_percent(0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    if (topology.size() < 2)
+    {
+      Logger::panic("The topology must contain at least an input and an output layer!");
+    }
+    _output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
     for (int i = 1; i < topology.size() - 1; ++i)
     {
       _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0));
@@ -53,13 +57,15 @@ private:
   }
 
 public:
-  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept :
+    _output_layer(nno._output_layer)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = nno;
   }
 
-  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept :
+    _output_layer(std::move(nno._output_layer))
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = std::move(nno);
@@ -72,8 +78,7 @@ public:
     {
       _topology = nno._topology;
       _hidden_layers = nno._hidden_layers;
-      _output_activation = nno._output_activation;
-	    _output_activation_alpha = nno._output_activation_alpha;
+      _output_layer = nno._output_layer;
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -93,7 +98,6 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _weight_decay = nno._weight_decay;
-      _output_error_calculation_type = nno._output_error_calculation_type;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
@@ -109,8 +113,7 @@ public:
     {
       _topology = std::move(nno._topology);
       _hidden_layers = std::move(nno._hidden_layers);
-      _output_activation = nno._output_activation;
-      _output_activation_alpha = nno._output_activation_alpha;
+      _output_layer = std::move(nno._output_layer);
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -130,7 +133,6 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _weight_decay = nno._weight_decay;
-      _output_error_calculation_type = nno._output_error_calculation_type;
       _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
@@ -149,23 +151,16 @@ public:
       nno._shuffle_training_data = true;
       nno._shuffle_bptt_batches = true;
       nno._weight_decay = 0.0;
-      nno._output_error_calculation_type = ErrorCalculation::type::mse;
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
     }
     return *this;
   }
-  NeuralNetworkOptions& with_output_activation_method(const activation::method& activation)
+  NeuralNetworkOptions& with_output_layer(const OutputLayerDetails& output_layer)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _output_activation = activation;
-    return *this;
-  }
-  NeuralNetworkOptions& with_output_activation_alpha(double alpha)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _output_activation_alpha = alpha;
+    _output_layer = output_layer;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -276,12 +271,6 @@ public:
     _weight_decay = weight_decay;
     return *this;
   }
-  NeuralNetworkOptions& with_output_error_calculation_type(ErrorCalculation::type error_calculation_type)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _output_error_calculation_type = error_calculation_type;
-    return *this;
-  }
   NeuralNetworkOptions& with_final_error_calculation_types(const std::vector<ErrorCalculation::type>& final_error_calculation_types)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -380,10 +369,6 @@ public:
     {
       Logger::panic("The weight decay cannot be -ve!");
     }
-    if (_output_activation_alpha < 0.0)
-    {
-      Logger::panic("The output activation alpha cannot be negative!");
-    }
     if (update_training_monitor_percent() < 0.0 || update_training_monitor_percent() > 1.0)
     {
       Logger::panic("The update training monitor percent must be between 0.0 and 1.0!");
@@ -422,7 +407,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_activation_method(activation::method::sigmoid)
+      .with_output_layer(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
@@ -443,8 +428,7 @@ public:
 
   inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
   inline const std::vector<LayerDetails>& hidden_layers() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_layers; }
-  inline const activation::method& output_activation_method() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation; }
-  inline double output_activation_alpha() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_activation_alpha; }
+  inline const OutputLayerDetails& output_layer() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_layer; }
   inline double learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate; }
   inline int number_of_epoch() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_epoch; }
   inline int batch_size() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _batch_size; }
@@ -464,7 +448,6 @@ public:
   inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
   inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
   inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
-  inline ErrorCalculation::type output_error_calculation_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_error_calculation_type; }
   inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
@@ -473,8 +456,7 @@ public:
 private:
   std::vector<unsigned> _topology;
   std::vector<LayerDetails> _hidden_layers;
-  activation::method _output_activation;
-  double _output_activation_alpha;
+  OutputLayerDetails _output_layer;
   double _learning_rate;
   int _number_of_epoch;
   int _batch_size;
@@ -494,7 +476,6 @@ private:
   bool _shuffle_training_data;
   bool _shuffle_bptt_batches;
   double _weight_decay;
-  ErrorCalculation::type _output_error_calculation_type;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;
   int _bptt_max_ticks;

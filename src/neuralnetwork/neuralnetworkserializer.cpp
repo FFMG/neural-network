@@ -483,6 +483,27 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   return layer;
 }
 
+OutputLayerDetails NeuralNetworkSerializer::get_output_layer(unsigned output_size, const TinyJSON::TJValueObject& options_object)
+{
+  const auto* output_layer_object = static_cast<const TinyJSON::TJValueObject*>(options_object.try_get_value("output-layer"));
+  if (nullptr == output_layer_object)
+  {
+    Logger::panic("Could not find output layer option!");
+  }
+
+  auto output_error_calculation_typ_str = output_layer_object->try_get_string("error-calculation-type", true);
+  if (nullptr == output_error_calculation_typ_str)
+  {
+    Logger::panic("Could not find output layer error-calculation-type option!");
+  }
+  auto output_method = activation::string_to_method(output_layer_object->try_get_string("activation-method", false));
+  auto output_alpha = output_layer_object->get_float("activation-alpha");
+  const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
+  const auto output_activation_method = activation(output_method, output_alpha);
+
+  return OutputLayerDetails(output_size, output_activation_method, output_error_calculation_type);
+}
+
 std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
 {
   const auto* hidden_layers_array = static_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("hidden-layers"));
@@ -599,9 +620,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   
   auto log_level_string = options_object->try_get_string("log-level", false);
   auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
-  auto output_activation_string = options_object->try_get_string("output-activation", false);
-  auto output_activation = activation::string_to_method(output_activation_string == nullptr ? "sigmoid" : output_activation_string);
-  auto output_activation_alpha = options_object->get_float<double>("output-activation-alpha", true, false);
   
   auto learning_rate = options_object->get_float<double>("learning-rate");
   auto learning_rate_warmup_start = options_object->get_float<double>("learning-rate-warmup-start");
@@ -622,6 +640,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
+  auto output_layer = get_output_layer(topology.back(), *options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
   
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
@@ -649,8 +668,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   }
 
   return NeuralNetworkOptions::create(topology)
-    .with_output_activation_method(output_activation)
-    .with_output_activation_alpha(output_activation_alpha)
+    .with_output_layer(output_layer)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
     .with_batch_size(batch_size)
@@ -669,7 +687,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_weight_decay(weight_decay)
     .with_bptt_max_ticks(bptt_max_ticks)
     .with_shuffle_bptt_batches(shuffle_bptt_batches)
-    .with_output_error_calculation_type(output_error_calculation_type)
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
@@ -915,13 +932,13 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto topology_list = new TinyJSON::TJValueArray();
   topology_list->add_numbers(options.topology());
 
+  auto output_layer_object = add_output_layer(options.output_layer());
   auto hidden_layer_list = add_hidden_layers(options.hidden_layers());
-
+  
   options_object->set("topology", topology_list);
+  options_object->set("output-layer", output_layer_object);
   options_object->set("hidden-layers", hidden_layer_list);
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
-  options_object->set_string("output-activation", activation::method_to_string(options.output_activation_method()).c_str());
-  options_object->set_float("output-activation-alpha", options.output_activation_alpha());
   options_object->set_float("learning-rate", options.learning_rate());
   options_object->set_float("learning-rate-warmup-start", options.learning_rate_warmup_start());
   options_object->set_float("learning-rate-warmup-target", options.learning_rate_warmup_target());
@@ -939,7 +956,6 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
   options_object->set_float("weight-decay", options.weight_decay());
   options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
-  options_object->set_string("output-error-calculation-type", ErrorCalculation::type_to_string(options.output_error_calculation_type()).c_str());
 
   auto final_error_calculation_types_list = new TinyJSON::TJValueArray();
   for (const auto& type : options.final_error_calculation_types())
@@ -955,6 +971,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
   json.set("options", options_object);
 
+  delete output_layer_object;
   delete hidden_layer_list;
   delete topology_list;
   delete options_object;
@@ -1195,7 +1212,16 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   delete layer_object;
 }
 
-TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails> hidden_layers)
+TinyJSON::TJValueObject* NeuralNetworkSerializer::add_output_layer(const OutputLayerDetails& output_layer)
+{
+  auto output_layer_object = new TinyJSON::TJValueObject();
+  output_layer_object->set_string("activation-method", activation::method_to_string(output_layer.get_activation().get_method()).c_str());
+  output_layer_object->set_float("activation-alpha", output_layer.get_activation().get_alpha());
+  output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer.get_output_error_calculation_type()).c_str());
+  return output_layer_object;
+}
+
+TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails>& hidden_layers)
 {
   auto hidden_layers_array = new TinyJSON::TJValueArray();
   for (const auto& hl : hidden_layers)

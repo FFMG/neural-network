@@ -30,6 +30,8 @@ public:
       {0.0}
     };
 
+    std::vector<unsigned> topology = { 2, 8, 8, 8, 8, 1 };
+
     std::vector<LayerDetails> hidden_layers = {
       LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
       LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
@@ -37,13 +39,13 @@ public:
       LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
     };
 
-    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
     
     // std::vector<unsigned> topology = {2, 3, 1};
     // std::vector<double> dropout = { 0.0 };
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
-      .with_output_activation_method(activation::method::sigmoid)
+      .with_output_layer(output_layer)
       .with_log_level(log_level)
       .with_learning_rate(0.0003)
       .with_clip_threshold(2.0)

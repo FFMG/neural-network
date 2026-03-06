@@ -13,9 +13,11 @@ private:
       LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 0.01), 0.2)
     };
 
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
+
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
-      .with_output_activation_method(activation::method::sigmoid)
+      .with_output_layer(output_layer)
       .with_log_level(log_level)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.01, 0.075)
