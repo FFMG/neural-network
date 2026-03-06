@@ -163,6 +163,12 @@ public:
     _output_layer = output_layer;
     return *this;
   }
+  NeuralNetworkOptions& with_output_layer(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_layer = OutputLayerDetails(layer_size, activation, output_error_calculation_type);
+    return *this;
+  }
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
