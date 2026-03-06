@@ -199,7 +199,7 @@ int main()
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
   auto options = NeuralNetworkOptions::create({ 3,4,1 })
     .with_batch_size(batch_size)
-    .with_output_activation_method(activation::method::sigmoid)
+    .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -269,7 +269,7 @@ int main()
 
   auto options = NeuralNetworkOptions::create({ 3,8,1 })
   .with_batch_size(batch_size)
-  .with_output_activation_method(activation::method::sigmoid)
+  .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
@@ -362,7 +362,7 @@ int main()
 
   auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
-    .with_output_activation_method(activation::method::sigmoid)
+    .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -421,9 +421,13 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Size 
   * Activation
   * Dropout
-* output_activation_method[=sigmoid]
-* output_activation_alpha[=0.01]: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
-* output_error_calculation_type[=mse]
+* output_layer[1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse]
+  NB: You can also pass a `OutputLayerDetails` object.
+  * Layer size
+  * activation
+    * Method: The actuvation method, for example `sigmoid`.
+    * alpha: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
+  * Output error calculation: The error calculation, for example, `ErrorCalculation::type::mse`.
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
@@ -466,7 +470,7 @@ After training you can get the calculated error as well as the mean absolute per
 ...
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
-  .with_output_activation_method(activation::method::sigmoid)
+  .with_output_layer(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse))
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
