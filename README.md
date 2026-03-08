@@ -503,6 +503,7 @@ auto errors = nn->calculate_forecast_metrics( error_types);
   * ErrorCalculation::type::bce_loss
   * ErrorCalculation::type::cross_entropy
   * ErrorCalculation::type::log_cosh
+  * ErrorCalculation::type::directional_confidence_score
 
 ### Output Loss Error Calculations
 

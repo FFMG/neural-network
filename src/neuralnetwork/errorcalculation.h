@@ -32,7 +32,8 @@ public:
     directional_accuracy,
     bce_loss,
     cross_entropy,
-    log_cosh
+    log_cosh,
+    directional_confidence_score
   };
 public:
 
@@ -67,6 +68,8 @@ public:
       return "cross-entropy";
     case type::log_cosh:
       return "log-cosh";
+    case type::directional_confidence_score:
+      return "directional-confidence-score";
     }
     Logger::panic("Unknown activation type!");
   }
@@ -118,6 +121,10 @@ public:
     {
       return type::directional_accuracy;
     }
+    if (lower_str == "directional-confidence-score")
+    {
+      return type::directional_confidence_score;
+    }
     if (lower_str == "bce-loss")
     {
       return type::bce_loss;
@@ -168,6 +175,9 @@ public:
 
     case type::directional_accuracy:
       return calculate_directional_accuracy(ground_truth, predictions);
+
+    case type::directional_confidence_score:
+      return calculate_directional_confidence_score(ground_truth, predictions);
 
     case type::bce_loss:
       return calculate_bce_loss(ground_truth, predictions);
@@ -524,6 +534,58 @@ public:
       }
     }
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
+  }
+
+  static double calculate_directional_confidence_score( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions,double neutral_tolerance = 0.001,double confidence_threshold = 0.05)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+#if VALIDATE_DATA == 1
+    if (predictions.size() != ground_truths.size() || predictions.empty())
+    {
+      Logger::panic("Input vectors must have the same, non-zero size.");
+    }
+#endif
+
+    size_t correct = 0;
+    size_t total = 0;
+
+    for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+    {
+      const auto& gt = ground_truths[seq_idx];
+      const auto& pred = predictions[seq_idx];
+
+      if (gt.size() != pred.size() || gt.empty())
+      {
+        Logger::panic("Ground truth size mismatch.");
+      }
+
+      for (size_t i = 0; i < gt.size(); ++i)
+      {
+        double gt_val = gt[i];
+        double pred_val = pred[i];
+
+        // Ignore tiny real moves
+        if (std::abs(gt_val) < neutral_tolerance)
+        {
+          continue;
+        }
+
+        // Ignore weak predictions (confidence filter)
+        if (std::abs(pred_val) < confidence_threshold)
+        {
+          continue;
+        }
+
+        if ((gt_val * pred_val) > 0.0)
+        {
+          ++correct;
+        }
+
+        ++total;
+      }
+    }
+
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
   static double calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance = 0.001)
