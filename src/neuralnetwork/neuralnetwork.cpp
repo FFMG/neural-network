@@ -343,7 +343,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   for (const auto& error_type : error_types)
   {
     errors.emplace_back(
-      ErrorCalculation::calculate_error(error_type, checking_outputs, predictions),
+      ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, _options.error_evaluation_config()),
       error_type);
   }
   return errors;
@@ -915,6 +915,24 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
 
   Logger::info(tab, "Batch size                 : ", _options.batch_size());
+  if (_options.final_error_calculation_types().size() == 0)
+  {
+    Logger::info(tab, "Final error(s) metrics     :\n", tab, tab, "None");
+  }
+  else
+  {
+    std::string message = tab;
+    message += "Final error(s) metrics     :";
+    for (const auto& type : _options.final_error_calculation_types())
+    {
+      message += Logger::factory("\n", tab, tab, ErrorCalculation::type_to_string(type));
+    }
+    Logger::info(message);
+  }
+  Logger::info(tab, "Error evaluation config    :\n", std::fixed, std::setprecision(5),
+    tab, tab, "confidence-threshold     : ", _options.error_evaluation_config().confidence_threshold, "\n",
+    tab, tab, "neutral-tolerance        : ", _options.error_evaluation_config().neutral_tolerance);
+
   if (_options.batch_size() > 1)
   {
     if (_options.number_of_threads() <= 0)
@@ -925,19 +943,5 @@ void NeuralNetwork::log_training_info(
     {
       Logger::info(tab, "Number of threads          : ", _options.number_of_threads());
     }
-  }
-
-  if (_options.final_error_calculation_types().size() == 0)
-  {
-    Logger::info(tab, "Final error(s) metrics :\n", tab, tab, "None");
-  }
-  else
-  {
-    std::string message = "Final error(s) metrics :";
-    for (const auto& type : _options.final_error_calculation_types())
-    {
-      message += Logger::factory("\n", tab, tab, ErrorCalculation::type_to_string(type));
-    }
-    Logger::info(message);
   }
 }

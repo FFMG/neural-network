@@ -42,7 +42,8 @@ private:
     _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
-    _update_training_monitor_percent(0.0)
+    _update_training_monitor_percent(0.0),
+    _error_evaluation_config{ 0.001 , 0.01 }
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -102,6 +103,7 @@ public:
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
       _final_error_calculation_types = nno._final_error_calculation_types;
+      _error_evaluation_config = nno._error_evaluation_config;
     }
     return *this;
   }
@@ -137,6 +139,7 @@ public:
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
+      _error_evaluation_config = nno._error_evaluation_config;
       
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -154,6 +157,7 @@ public:
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
+      _error_evaluation_config = { 0.001, 0.01 };
     }
     return *this;
   }
@@ -281,6 +285,13 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _final_error_calculation_types = final_error_calculation_types;
+    return *this;
+  }
+
+  NeuralNetworkOptions& with_error_evaluation_config(const ErrorCalculation::EvaluationConfig& error_evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _error_evaluation_config = error_evaluation_config;
     return *this;
   }
   NeuralNetworkOptions& with_enable_bptt(bool enable_bptt)
@@ -455,6 +466,7 @@ public:
   inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
   inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
   inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
+  inline const ErrorCalculation::EvaluationConfig& error_evaluation_config() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _error_evaluation_config; }
   inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
   inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
@@ -483,6 +495,7 @@ private:
   bool _shuffle_bptt_batches;
   double _weight_decay;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
+  ErrorCalculation::EvaluationConfig _error_evaluation_config;
   bool _enable_bptt;
   int _bptt_max_ticks;
   double _update_training_monitor_percent;

@@ -18,6 +18,12 @@
 class ErrorCalculation
 {
 public:
+  struct EvaluationConfig
+  {
+    double neutral_tolerance = 0.001;
+    double confidence_threshold = 0.01;
+  };
+
   enum class type
   {
     none,
@@ -37,7 +43,6 @@ public:
     prediction_coverage
   };
 public:
-
   inline static std::string type_to_string(const ErrorCalculation::type& type)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -148,7 +153,7 @@ public:
 
   }
 
-  static double calculate_error(type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+  static double calculate_error(type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     switch (error_type)
@@ -184,7 +189,7 @@ public:
       return calculate_directional_accuracy(ground_truth, predictions);
 
     case type::directional_confidence_score:
-      return calculate_directional_confidence_score(ground_truth, predictions);
+      return calculate_directional_confidence_score(ground_truth, predictions, evaluation_config);
 
     case type::bce_loss:
       return calculate_bce_loss(ground_truth, predictions);
@@ -196,7 +201,7 @@ public:
       return calculate_log_cosh(ground_truth, predictions);
 
     case type::prediction_coverage:
-      return calculate_prediction_coverage(predictions);
+      return calculate_prediction_coverage(predictions, evaluation_config);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -546,7 +551,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
   }
 
-  static double calculate_directional_confidence_score( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions,double neutral_tolerance = 0.001,double confidence_threshold = 0.05)
+  static double calculate_directional_confidence_score( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -575,13 +580,13 @@ public:
         double pred_val = pred[i];
 
         // Ignore tiny real moves
-        if (std::abs(gt_val) < neutral_tolerance)
+        if (std::abs(gt_val) < evaluation_config.neutral_tolerance)
         {
           continue;
         }
 
         // Ignore weak predictions (confidence filter)
-        if (std::abs(pred_val) < confidence_threshold)
+        if (std::abs(pred_val) < evaluation_config.confidence_threshold)
         {
           continue;
         }
@@ -771,7 +776,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count);
   }
 
-  static double calculate_prediction_coverage( const std::vector<std::vector<double>>& predictions, double confidence_threshold = 0.01)
+  static double calculate_prediction_coverage( const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
   {
 #if VALIDATE_DATA == 1
     if (predictions.empty())
@@ -792,7 +797,7 @@ public:
 
       for (double v : seq)
       {
-        if (std::abs(v) > confidence_threshold)
+        if (std::abs(v) > evaluation_config.confidence_threshold)
         {
           ++confident;
         }
