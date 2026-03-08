@@ -33,7 +33,8 @@ public:
     bce_loss,
     cross_entropy,
     log_cosh,
-    directional_confidence_score
+    directional_confidence_score,
+    prediction_coverage
   };
 public:
 
@@ -70,6 +71,8 @@ public:
       return "log-cosh";
     case type::directional_confidence_score:
       return "directional-confidence-score";
+    case type::prediction_coverage:
+      return "prediction-coverage";
     }
     Logger::panic("Unknown activation type!");
   }
@@ -124,6 +127,10 @@ public:
     if (lower_str == "directional-confidence-score")
     {
       return type::directional_confidence_score;
+    }
+    if (lower_str == "prediction-coverage")
+    {
+      return type::prediction_coverage;
     }
     if (lower_str == "bce-loss")
     {
@@ -187,6 +194,9 @@ public:
 
     case type::log_cosh:
       return calculate_log_cosh(ground_truth, predictions);
+
+    case type::prediction_coverage:
+      return calculate_prediction_coverage(predictions);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -759,5 +769,37 @@ public:
     }
 
     return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count);
+  }
+
+  static double calculate_prediction_coverage( const std::vector<std::vector<double>>& predictions, double confidence_threshold = 0.01)
+  {
+#if VALIDATE_DATA == 1
+    if (predictions.empty())
+    {
+      Logger::panic("Prediction vector cannot be empty.");
+    }
+#endif
+
+    size_t confident = 0;
+    size_t total = 0;
+
+    for (const auto& seq : predictions)
+    {
+      if (seq.empty())
+      {
+        Logger::panic("Prediction sequence cannot be empty.");
+      }
+
+      for (double v : seq)
+      {
+        if (std::abs(v) > confidence_threshold)
+        {
+          ++confident;
+        }
+
+        ++total;
+      }
+    }
+    return (total == 0) ? 0.0 : static_cast<double>(confident) / total;
   }
 };
