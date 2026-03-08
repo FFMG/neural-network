@@ -709,18 +709,27 @@ std::map<ErrorCalculation::type, double> NeuralNetworkSerializer::get_errors(con
     return errors;
   }
 
-  errors[ErrorCalculation::type::huber_loss ] = tj_errors->get_float<double>("huber-loss", true, false);
-  errors[ErrorCalculation::type::mae ] = tj_errors->get_float<double>("mae", true, false);
-  errors[ErrorCalculation::type::mse ] = tj_errors->get_float<double>("mse", true, false);
-  errors[ErrorCalculation::type::rmse ] = tj_errors->get_float<double>("rmse", true, false);
-  errors[ErrorCalculation::type::nrmse ] = tj_errors->get_float<double>("nrmse", true, false);
-  errors[ErrorCalculation::type::mape] = tj_errors->get_float<double>("mape", true, false);
-  errors[ErrorCalculation::type::smape ] = tj_errors->get_float<double>("smape", true, false);
-  errors[ErrorCalculation::type::wape ] = tj_errors->get_float<double>("wape", true, false);
-  errors[ErrorCalculation::type::directional_accuracy] = tj_errors->get_float<double>("directional-accuracy", true, false);
-  errors[ErrorCalculation::type::bce_loss ] = tj_errors->get_float<double>("bce-loss", true, false);
-  errors[ErrorCalculation::type::cross_entropy] = tj_errors->get_float<double>("cross-entropy", true, false);
+  std::vector<ErrorCalculation::type> error_types = {
+    ErrorCalculation::type::huber_loss,
+    ErrorCalculation::type::mae,
+    ErrorCalculation::type::mse,
+    ErrorCalculation::type::rmse,
+    ErrorCalculation::type::nrmse,
+    ErrorCalculation::type::mape,
+    ErrorCalculation::type::smape,
+    ErrorCalculation::type::wape,
+    ErrorCalculation::type::directional_accuracy,
+    ErrorCalculation::type::bce_loss,
+    ErrorCalculation::type::cross_entropy,
+    ErrorCalculation::type::log_cosh,
+    ErrorCalculation::type::directional_confidence_score,
+    ErrorCalculation::type::prediction_coverage
+  };
 
+  for (const auto& error_type : error_types)
+  {
+    errors[error_type] = tj_errors->get_float<double>(ErrorCalculation::type_to_string(error_type).c_str(), true, false);
+  }
   return errors;
 }
 
@@ -1294,7 +1303,7 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
 
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
-  auto metrics = nn.calculate_forecast_metrics({ 
+  auto error_types = {
     ErrorCalculation::type::huber_loss,
     ErrorCalculation::type::mae,
     ErrorCalculation::type::mse,
@@ -1305,21 +1314,18 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
     ErrorCalculation::type::wape,
     ErrorCalculation::type::directional_accuracy,
     ErrorCalculation::type::bce_loss,
-    ErrorCalculation::type::cross_entropy
-  });
+    ErrorCalculation::type::cross_entropy,
+    ErrorCalculation::type::log_cosh,
+    ErrorCalculation::type::directional_confidence_score,
+    ErrorCalculation::type::prediction_coverage
+  };
+  auto metrics = nn.calculate_forecast_metrics(error_types);
 
   auto tj_errors = new TinyJSON::TJValueObject();
-  tj_errors->set_float("huber-loss" , metrics[0].error());
-  tj_errors->set_float("mae"        , metrics[1].error());
-  tj_errors->set_float("mse"        , metrics[2].error());
-  tj_errors->set_float("rmse"       , metrics[3].error());
-  tj_errors->set_float("nrmse"      , metrics[4].error());
-  tj_errors->set_float("mape"       , metrics[5].error());
-  tj_errors->set_float("smape"      , metrics[6].error());
-  tj_errors->set_float("wape"       , metrics[7].error());
-  tj_errors->set_float("directional-accuracy", metrics[8].error());
-  tj_errors->set_float("bce-loss"   , metrics[9].error());
-  tj_errors->set_float("cross-entropy", metrics[10].error());
+  for (const auto& metric : metrics)
+  {
+    tj_errors->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
+  }
 
   json.set("errors", tj_errors);
   delete tj_errors;
