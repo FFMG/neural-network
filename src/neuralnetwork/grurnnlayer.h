@@ -246,6 +246,15 @@ public:
   inline const std::vector<double>& get_r_b_decays() const noexcept { return _r_b_decays; }
 
 private:
+  void calculate_bptt_batch_chunk(
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks) const;
+
   void initialize_recurrent_weights(double weight_decay);
   
   // SoA for recurrent weights (Candidate State)
