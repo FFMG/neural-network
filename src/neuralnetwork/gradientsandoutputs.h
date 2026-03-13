@@ -229,6 +229,11 @@ public:
     _rnn_gradients[layer] = gradients;
   }
 
+  void set_rnn_gradients(unsigned layer, std::vector<double>&& gradients)
+  {
+    _rnn_gradients[layer] = std::move(gradients);
+  }
+
   const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
     const auto it = _rnn_gradients.find(layer);

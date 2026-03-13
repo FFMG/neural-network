@@ -1072,13 +1072,16 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
   } // End BPTT Loop
 
-  // Copy results
+  // Copy results - optimized to move sequence chunks
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
     size_t b = start + b_idx;
     auto start_it = rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
-    std::vector<double> rnn_grad_vec(start_it, start_it + num_time_steps * 3 * N_this);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
+    
+    // Construct the vector directly in the move-enabled setter to avoid redundant copy
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(start_it, start_it + num_time_steps * 3 * N_this));
+    
+    // Efficiently zero out gradients for this layer index
     batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
   }
 }
