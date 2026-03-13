@@ -400,19 +400,19 @@ public:
     return _residual_projector;
   }
 
-  ResidualProjector* get_residual_projector()
+  [[nodiscard]] inline ResidualProjector* get_residual_projector() noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
   }
 
-  inline unsigned get_number_neurons() const noexcept
+  [[nodiscard]] inline unsigned get_number_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return get_number_output_neurons();
   }
 
-  inline unsigned get_number_input_neurons() const noexcept
+  [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_input_neurons;
