@@ -428,7 +428,7 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
-  }
+}
   return *this;
 }
 
@@ -877,36 +877,45 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   std::vector<double> d_next_h((end - start) * N_this, 0.0);
   std::vector<double> rnn_grad_matrix((end - start) * num_time_steps * 3 * N_this, 0.0);
 
-  // Precompute gradients from next layer (all time steps)
-  for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
+  // Precompute gradients from next layer (all time steps) using tiling for cache locality
+  constexpr size_t BLOCK_SIZE = 64;
+  for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
   {
-    size_t b = start + b_idx;
-    const auto& next_grad_matrix = batch_next_grad_matrix[b];
-    const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
-
+    size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
     for (int t = t_start; t >= t_end; --t)
     {
-      const double* next_grad_ptr = nullptr;
-      if (next_grad_is_seq)
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
-        next_grad_ptr = &next_grad_matrix[t * N_next];
-      }
-      else if (t == t_start && next_grad_matrix.size() == N_next)
-      {
-        next_grad_ptr = next_grad_matrix.data();
-      }
-
-      if (next_grad_ptr)
-      {
-        double* dest_ptr = &grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
-        for (size_t i = 0; i < N_this; ++i)
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
         {
-          double sum = 0.0;
-          for (size_t k = 0; k < N_next; ++k)
+          size_t b = start + b_idx;
+          const auto& next_grad_matrix = batch_next_grad_matrix[b];
+          const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
+
+          const double* next_grad_ptr = nullptr;
+          if (next_grad_is_seq)
           {
-            sum += next_grad_ptr[k] * next_layer.get_weight_value((unsigned)i, (unsigned)k);
+            next_grad_ptr = &next_grad_matrix[t * N_next];
           }
-          dest_ptr[i] = sum;
+          else if (t == t_start && next_grad_matrix.size() == N_next)
+          {
+            next_grad_ptr = next_grad_matrix.data();
+          }
+
+          if (next_grad_ptr)
+          {
+            double* dest_ptr = &grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
+            for (size_t i = i0; i < i_limit; ++i)
+            {
+              double sum = 0.0;
+              for (size_t k = 0; k < N_next; ++k)
+              {
+                sum += next_grad_ptr[k] * next_layer.get_weight_value((unsigned)i, (unsigned)k);
+              }
+              dest_ptr[i] += sum;
+            }
+          }
         }
       }
     }
@@ -961,62 +970,88 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       }
     }
 
-    // Step 2: temp_Uh (dL/dr part)
+    // Step 2: temp_Uh (dL/dr part) using tiling and cache-friendly access
     std::vector<double> temp_Uh_T_dh_hat((end - start) * N_this, 0.0);
-    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
+    for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
-      const double* dh_hat_ptr = &chunk_dh_hat[b_idx * N_this];
-      double* temp_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
-
-      for (size_t i = 0; i < N_this; ++i)
+      size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
-        double sum = 0.0;
-        const double* w_row = &_rw_values[i * N_this];
-        for (size_t j = 0; j < N_this; ++j)
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
         {
-          sum += dh_hat_ptr[j] * w_row[j];
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double* w_row = &_rw_values[i * N_this];
+            for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
+            {
+              const double* dh_hat_ptr = &chunk_dh_hat[b_idx * N_this];
+              double sum = 0.0;
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                sum += dh_hat_ptr[j] * w_row[j];
+              }
+              temp_Uh_T_dh_hat[b_idx * N_this + i] += sum;
+            }
+          }
         }
-        temp_ptr[i] = sum;
       }
     }
 
-    // Step 3: dr and propagate
-    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
+    // Step 3: dr and propagate using tiling and cache-friendly access
+    for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
-      size_t b = start + b_idx;
-      const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-      const double* r_vals = &packed_states[N_this];
-      const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-      const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
-
-      // 3a. dr
-      for (size_t i = 0; i < N_this; ++i)
+      size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
+      
+      // 3a. dr calculation (remains simple, but tiled for consistency)
+      for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
       {
-        double grad_rh = temp_Uh_ptr[i];
-        double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
-        double r = r_vals[i];
+        size_t b = start + b_idx;
+        const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+        const double* r_vals = &packed_states[N_this];
+        const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+        const double* temp_Uh_ptr = &temp_Uh_T_dh_hat[b_idx * N_this];
 
-        double d_r = grad_rh * h_prev;
-        double d_r_pre = d_r * r * (1.0 - r);
-        chunk_dr[b_idx * N_this + i] = d_r_pre;
-        chunk_dh_prev_accum[b_idx * N_this + i] += grad_rh * r;
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double grad_rh = temp_Uh_ptr[i];
+          double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
+          double r = r_vals[i];
+
+          double d_r = grad_rh * h_prev;
+          double d_r_pre = d_r * r * (1.0 - r);
+          chunk_dr[b_idx * N_this + i] = d_r_pre;
+          chunk_dh_prev_accum[b_idx * N_this + i] += grad_rh * r;
+        }
       }
 
-      // 3b. Propagate U_z and U_r
-      const double* dz_ptr = &chunk_dz[b_idx * N_this];
-      const double* dr_ptr = &chunk_dr[b_idx * N_this];
-      double* dh_accum_ptr = &chunk_dh_prev_accum[b_idx * N_this];
-
-      for (size_t i = 0; i < N_this; ++i)
+      // 3b. Propagate U_z and U_r using tiling
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
-        double sum = 0.0;
-        const double* wz_row = &_z_rw_values[i * N_this];
-        const double* wr_row = &_r_rw_values[i * N_this];
-        for (size_t j = 0; j < N_this; ++j)
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
         {
-          sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double* wz_row = &_z_rw_values[i * N_this];
+            const double* wr_row = &_r_rw_values[i * N_this];
+            for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
+            {
+              const double* dz_ptr = &chunk_dz[b_idx * N_this];
+              const double* dr_ptr = &chunk_dr[b_idx * N_this];
+              double sum = 0.0;
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
+              }
+              chunk_dh_prev_accum[b_idx * N_this + i] += sum;
+            }
+          }
         }
-        dh_accum_ptr[i] += sum;
       }
     }
 
