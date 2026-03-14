@@ -30,7 +30,8 @@ GRURNNLayer::GRURNNLayer(
     weight_decay,
     residual_projector,
     number_of_threads
-  )
+  ),
+  _workspaces(std::max(1, number_of_threads))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   initialize_recurrent_weights(weight_decay);
@@ -88,7 +89,8 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_m1(src._r_b_m1),
   _r_b_m2(src._r_b_m2),
   _r_b_timesteps(src._r_b_timesteps),
-  _r_b_decays(src._r_b_decays)
+  _r_b_decays(src._r_b_decays),
+  _workspaces(src._workspaces.size())
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
@@ -145,7 +147,8 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m1(std::move(src._r_b_m1)),
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
-  _r_b_decays(std::move(src._r_b_decays))
+  _r_b_decays(std::move(src._r_b_decays)),
+  _workspaces(std::move(src._workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
@@ -252,6 +255,7 @@ GRURNNLayer::GRURNNLayer(
     b_decays,
     residual_projector,
     number_of_threads),
+    _workspaces(std::max(1, number_of_threads)),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
@@ -366,6 +370,7 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
+    _workspaces = src._workspaces;
   }
   return *this;
 }
@@ -428,7 +433,8 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
-}
+    _workspaces = std::move(src._workspaces);
+  }
   return *this;
 }
 
@@ -863,7 +869,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& batch_next_grad_matrix,
   const std::vector<HiddenStates>& batch_hidden_states,
-  int bptt_max_ticks) const
+  int bptt_max_ticks,
+  BPTTWorkspace& workspace) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t N_this = get_number_neurons();
@@ -1128,7 +1135,7 @@ void GRURNNLayer::calculate_hidden_gradients(
   // Launch threads for each batch chunk
   if (num_threads <= 1)
   {
-    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks);
+    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, _workspaces[0]);
   }
   else
   {
@@ -1139,9 +1146,9 @@ void GRURNNLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([this, start, end, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks]()
+        _task_queue_pool->enqueue([this, start, end, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, t]()
         {
-          calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks);
+          calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, _workspaces[t]);
         });
       }
       start = end;

@@ -246,6 +246,19 @@ public:
   inline const std::vector<double>& get_r_b_decays() const noexcept { return _r_b_decays; }
 
 private:
+  struct BPTTWorkspace {
+    std::vector<double> grad_from_next_all_t;
+    std::vector<double> d_next_h;
+    std::vector<double> rnn_grad_matrix;
+    std::vector<double> chunk_dz;
+    std::vector<double> chunk_dr;
+    std::vector<double> chunk_dh_hat;
+    std::vector<double> chunk_dh_prev_accum;
+    std::vector<double> h_hat_vals;
+    std::vector<double> temp_Uh_T_dh_hat;
+  };
+  mutable std::vector<BPTTWorkspace> _workspaces;
+
   void calculate_bptt_batch_chunk(
     size_t start,
     size_t end,
@@ -253,7 +266,8 @@ private:
     const Layer& next_layer,
     const std::vector<std::vector<double>>& batch_next_grad_matrix,
     const std::vector<HiddenStates>& batch_hidden_states,
-    int bptt_max_ticks) const;
+    int bptt_max_ticks,
+    BPTTWorkspace& workspace) const;
 
   void initialize_recurrent_weights(double weight_decay);
   
