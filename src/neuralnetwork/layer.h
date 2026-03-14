@@ -684,6 +684,18 @@ public:
     return _w_values[input_idx * _number_output_neurons + output_idx];
   }
 
+  inline const double* get_weights_raw(unsigned input_idx) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+#if VALIDATE_DATA == 1
+    if ((input_idx * _number_output_neurons) >= _w_values.size())
+    {
+      Logger::panic("Index out of bounds in Layer::get_weights_raw.");
+    }
+#endif
+    return &_w_values[input_idx * _number_output_neurons];
+  }
+
   inline double get_bias_value(unsigned output_idx) const 
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
