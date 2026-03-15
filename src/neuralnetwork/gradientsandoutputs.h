@@ -244,4 +244,14 @@ public:
     }
     return it->second;
   }
+
+  double* get_rnn_gradients_raw(unsigned layer, size_t size)
+  {
+    auto& vec = _rnn_gradients[layer];
+    if (vec.size() != size)
+    {
+      vec.resize(size);
+    }
+    return vec.data();
+  }
 };

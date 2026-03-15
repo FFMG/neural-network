@@ -1178,17 +1178,23 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
   } // End BPTT Loop
 
-  // Copy results - optimized to move sequence chunks
+  // Copy results - optimized to write directly into GradientsAndOutputs buffers
+  const size_t grad_size = num_time_steps * 3 * N_this;
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
     size_t b = start + b_idx;
-    auto start_it = workspace.rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
     
-    // Construct the vector directly in the move-enabled setter to avoid redundant copy
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(start_it, start_it + num_time_steps * 3 * N_this));
+    // 1. Write RNN gradients directly into GradientsAndOutputs internal buffer
+    double* dest = batch_gradients_and_outputs[b].get_rnn_gradients_raw(get_layer_index(), grad_size);
+    const double* src = &workspace.rnn_grad_matrix[b_idx * grad_size];
+    std::copy(src, src + grad_size, dest);
     
-    // Efficiently zero out gradients for this layer index
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
+    // 2. Efficiently zero out standard gradients for this layer index
+    double* std_grads = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+    if (std_grads)
+    {
+      std::fill(std_grads, std_grads + N_this, 0.0);
+    }
   }
 }
 
