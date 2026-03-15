@@ -349,7 +349,7 @@ public:
 
 
   // --- Core Layer Properties ---
-  inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
+  [[nodiscard]] inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     switch (error_calculation_type)
@@ -370,31 +370,31 @@ public:
     return false;
   }
 
-  inline OptimiserType get_optimiser_type() const noexcept
+  [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _optimiser_type;
   }
 
-  inline unsigned get_layer_index() const noexcept
+  [[nodiscard]] inline unsigned get_layer_index() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_index;
   }
 
-  inline LayerType get_layer_type() const noexcept
+  [[nodiscard]] inline LayerType get_layer_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_type;
   }
 
-  inline int get_residual_layer_number() const noexcept
+  [[nodiscard]] inline int get_residual_layer_number() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_layer_number;
   }
 
-  const ResidualProjector* get_residual_projector() const
+  [[nodiscard]] const ResidualProjector* get_residual_projector() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _residual_projector;
@@ -418,13 +418,13 @@ public:
     return _number_input_neurons;
   }
 
-  inline unsigned get_number_output_neurons() const noexcept
+  [[nodiscard]] inline unsigned get_number_output_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _number_output_neurons;
   }
 
-  virtual bool use_bptt() const noexcept 
+  [[nodiscard]] virtual bool use_bptt() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return false;
@@ -479,13 +479,13 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
 
-  inline const activation& get_activation() const noexcept
+  [[nodiscard]] inline const activation& get_activation() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
   }
 
-  inline double get_dropout() const noexcept
+  [[nodiscard]] inline double get_dropout() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (get_number_neurons() == 0)
@@ -652,13 +652,13 @@ public:
     }
   }
 
-  const std::vector<Neuron>& get_neurons() const noexcept
+  [[nodiscard]] const std::vector<Neuron>& get_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _neurons;
   }
 
-  const Neuron& get_neuron(unsigned int neuron_index) const
+  [[nodiscard]] inline const Neuron& get_neuron(unsigned int neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
@@ -672,7 +672,7 @@ public:
 
   // --- Weights and Biases ---
 
-  inline double get_weight_value(unsigned input_idx, unsigned output_idx) const 
+  [[nodiscard]] inline double get_weight_value(unsigned input_idx, unsigned output_idx) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
@@ -684,7 +684,7 @@ public:
     return _w_values[input_idx * _number_output_neurons + output_idx];
   }
 
-  inline const double* get_weights_raw(unsigned input_idx) const noexcept
+  [[nodiscard]] inline const double* get_weights_raw(unsigned input_idx) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
@@ -696,7 +696,7 @@ public:
     return &_w_values[input_idx * _number_output_neurons];
   }
 
-  inline double get_bias_value(unsigned output_idx) const 
+  [[nodiscard]] inline double get_bias_value(unsigned output_idx) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
@@ -709,7 +709,7 @@ public:
   }
 
   // This is for serializer compatibility. It's slow.
-  const std::vector<std::vector<WeightParam>>& get_weight_params() const
+  [[nodiscard]] const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (_weights_cache_dirty) 
@@ -729,7 +729,7 @@ public:
     return _cached_weights;
   }
 
-  const std::vector<WeightParam>& get_bias_weight_params() const
+  [[nodiscard]] const std::vector<WeightParam>& get_bias_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (_bias_weights_cache_dirty) 
@@ -747,7 +747,7 @@ public:
     return _cached_bias_weights;
   }
   
-  virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
+  [[nodiscard]] virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (_residual_projector != nullptr)
@@ -758,7 +758,7 @@ public:
     return empty_vec_2d;
   }
 
-  virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params()
+  [[nodiscard]] virtual std::vector<std::vector<WeightParam>>& get_residual_weight_params()
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (_residual_projector != nullptr)
@@ -772,72 +772,72 @@ public:
   virtual bool has_bias() const noexcept = 0;
   virtual Layer* clone() const = 0;
 
-  inline const std::vector<double>& get_w_values() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_values;
   }
-  inline const std::vector<double>& get_w_grads() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_grads() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_grads;
   }
-  inline const std::vector<double>& get_w_velocities() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_velocities() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_velocities;
   }
-  inline const std::vector<double>& get_w_m1() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_m1() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_m1;
   }
-  inline const std::vector<double>& get_w_m2() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_m2() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_m2;
   }
-  inline const std::vector<long long>& get_w_timesteps() const noexcept
+  [[nodiscard]] inline const std::vector<long long>& get_w_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_timesteps;
   }
-  inline const std::vector<double>& get_w_decays() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_w_decays() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _w_decays;
   }
-  inline const std::vector<double>& get_b_values() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_values;
   }
-  inline const std::vector<double>& get_b_grads() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_grads() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_grads;
   }
-  inline const std::vector<double>& get_b_velocities() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_velocities() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_velocities;
   }
-  inline const std::vector<double>& get_b_m1() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_m1() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_m1;
   }
-  inline const std::vector<double>& get_b_m2() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_m2() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_m2;
   }
-  inline const std::vector<long long>& get_b_timesteps() const noexcept
+  [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_timesteps;
   }
-  inline const std::vector<double>& get_b_decays() const noexcept
+  [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_decays;
