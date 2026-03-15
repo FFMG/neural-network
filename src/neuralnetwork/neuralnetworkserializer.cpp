@@ -182,7 +182,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto rw_timesteps = layer_object.get_numbers<long long>("rw-timesteps");
   auto rw_decays = layer_object.get_floats<double>("rw-decays");
 
-  auto residual_projector = get_residual_projector(layer_object);
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<ElmanRNNLayer>(
     layer_index,
@@ -214,7 +214,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
     rw_m2,
     rw_timesteps,
     rw_decays,
-    residual_projector,
+    residual_projector.get(),
     number_of_threads
   );
 
@@ -323,7 +323,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto r_b_timesteps = layer_object.get_numbers<long long>("r-b-timesteps");
   auto r_b_decays = layer_object.get_floats<double>("r-b-decays");
 
-  auto residual_projector = get_residual_projector(layer_object);
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<GRURNNLayer>(
     layer_index,
@@ -399,7 +399,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     r_b_m2,
     r_b_timesteps,
     r_b_decays,
-    residual_projector,
+    residual_projector.get(),
     number_of_threads
   );
 
@@ -451,7 +451,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
   auto b_decays = layer_object.get_floats<double>("b-decays");
 
-  auto residual_projector = get_residual_projector(layer_object);
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<FFLayer>(
     layer_index,
@@ -476,7 +476,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_m2,
     b_timesteps,
     b_decays,
-    residual_projector,
+    residual_projector.get(),
     number_of_threads
   );
 
