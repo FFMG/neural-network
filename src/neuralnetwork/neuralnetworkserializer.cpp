@@ -780,40 +780,6 @@ const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(const T
   return layer_object;
 }
 
-std::vector<WeightParam> NeuralNetworkSerializer::get_bias_weights(const TinyJSON::TJValueObject& layer_object, unsigned layer_number)
-{
-  auto bias_object = dynamic_cast<const TinyJSON::TJValueObject*>(layer_object.try_get_value("bias-weights"));
-  if (nullptr == bias_object)
-  {
-    // no residual layer...
-    Logger::error("No bias weights for layer number: ", layer_number);
-    return {};
-  }
-  auto size = bias_object->get_number<unsigned>("size", false, false);
-  std::vector<WeightParam> all_weight_params;
-  all_weight_params.reserve(size);
-  return get_weight_params(*bias_object);
-}
-
-std::vector<std::vector<WeightParam>> NeuralNetworkSerializer::get_weights(const TinyJSON::TJValueObject& layer_object, unsigned layer_number)
-{
-  auto weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("weights"));
-  if (nullptr == weights_array)
-  {
-    Logger::warning("Layer number: ", layer_number, " has no weights!");
-    return {};
-  }
-
-  std::vector<std::vector<WeightParam>> all_weight_params;
-  for(const auto& weight_array : *weights_array)
-  {
-    const auto* weight_array_object = static_cast<const TinyJSON::TJValueObject*>(&weight_array);
-    auto weight_params = get_weight_params(*weight_array_object);
-    all_weight_params.emplace_back(std::move(weight_params));
-  }
-  return all_weight_params;
-}
-
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number)
 {
   const auto* layer_object = get_layer_object(json, layer_number);
