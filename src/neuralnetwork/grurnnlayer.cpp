@@ -1032,8 +1032,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
 
     // Step 2: temp_Uh (dL/dr part) hoisted from the time loop (Vectorized Dot Product)
+    // Using transposed candidate recurrent weights _rw_values_T
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
+    const double* rw_values_T_ptr = _rw_values_T.data();
 
     for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
@@ -1047,7 +1049,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
           for (size_t i = i0; i < i_limit; ++i)
           {
-            const double* w_row = &rw_values_ptr[i * N_this];
+            const double* w_row = &rw_values_T_ptr[i * N_this];
             for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
             {
               const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
@@ -1114,6 +1116,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       }
 
       // 3b. Propagate U_z and U_r using tiling (Vectorized Dot Product)
+      // Using transposed gate recurrent weights
+      const double* z_rw_values_T_ptr = _z_rw_values_T.data();
+      const double* r_rw_values_T_ptr = _r_rw_values_T.data();
+
       for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
         size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
@@ -1123,8 +1129,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
           for (size_t i = i0; i < i_limit; ++i)
           {
-            const double* wz_row = &z_rw_values_ptr[i * N_this];
-            const double* wr_row = &r_rw_values_ptr[i * N_this];
+            const double* wz_row = &z_rw_values_T_ptr[i * N_this];
+            const double* wr_row = &r_rw_values_T_ptr[i * N_this];
             for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
             {
               const double* dz_ptr = &dz_ptr_all[b_idx * N_this];
@@ -1218,6 +1224,21 @@ void GRURNNLayer::calculate_hidden_gradients(
   if (_workspaces.size() < num_threads)
   {
     _workspaces.resize(std::max(1u, (unsigned int)num_threads));
+  }
+
+  // Transpose recurrent weights once per batch for Step 2 and 3b cache-friendly access
+  _rw_values_T.resize(N_this * N_this);
+  _z_rw_values_T.resize(N_this * N_this);
+  _r_rw_values_T.resize(N_this * N_this);
+
+  for (size_t i = 0; i < N_this; ++i)
+  {
+    for (size_t j = 0; j < N_this; ++j)
+    {
+      _rw_values_T[j * N_this + i] = _rw_values[i * N_this + j];
+      _z_rw_values_T[j * N_this + i] = _z_rw_values[i * N_this + j];
+      _r_rw_values_T[j * N_this + i] = _r_rw_values[i * N_this + j];
+    }
   }
 
   // Launch threads for each batch chunk

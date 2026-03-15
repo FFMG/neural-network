@@ -260,6 +260,9 @@ private:
     AlignedVector temp_Uh_T_dh_hat;
   };
   mutable std::vector<BPTTWorkspace> _workspaces;
+  mutable BPTTWorkspace::AlignedVector _rw_values_T;
+  mutable BPTTWorkspace::AlignedVector _z_rw_values_T;
+  mutable BPTTWorkspace::AlignedVector _r_rw_values_T;
 
   void calculate_bptt_batch_chunk(
     size_t start,
