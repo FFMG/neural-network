@@ -10,6 +10,7 @@
 #include "errorcalculation.h"
 #include "hiddenstate.h"
 #include "layer.h"
+#include "aligned_allocator.h"
 
 #include <vector>
 
@@ -247,15 +248,16 @@ public:
 
 private:
   struct BPTTWorkspace {
-    std::vector<double> grad_from_next_all_t;
-    std::vector<double> d_next_h;
-    std::vector<double> rnn_grad_matrix;
-    std::vector<double> chunk_dz;
-    std::vector<double> chunk_dr;
-    std::vector<double> chunk_dh_hat;
-    std::vector<double> chunk_dh_prev_accum;
-    std::vector<double> h_hat_vals;
-    std::vector<double> temp_Uh_T_dh_hat;
+    using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
+    AlignedVector grad_from_next_all_t;
+    AlignedVector d_next_h;
+    AlignedVector rnn_grad_matrix;
+    AlignedVector chunk_dz;
+    AlignedVector chunk_dr;
+    AlignedVector chunk_dh_hat;
+    AlignedVector chunk_dh_prev_accum;
+    AlignedVector h_hat_vals;
+    AlignedVector temp_Uh_T_dh_hat;
   };
   mutable std::vector<BPTTWorkspace> _workspaces;
 

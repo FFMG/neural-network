@@ -1,6 +1,7 @@
 #include "./libraries/instrumentor.h"
 #include "grurnnlayer.h"
 #include "logger.h"
+#include <immintrin.h>
 
 constexpr bool _has_bias_neuron = true;
 
@@ -879,14 +880,14 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
-  // Pre-allocate all needed buffers for this chunk
-  std::vector<double> grad_from_next_all_t((end - start) * num_time_steps * N_this, 0.0);
-  std::vector<double> d_next_h((end - start) * N_this, 0.0);
-  std::vector<double> rnn_grad_matrix((end - start) * num_time_steps * 3 * N_this, 0.0);
+  // Use workspace instead of local allocations to avoid repeated memory management
+  workspace.grad_from_next_all_t.assign((end - start) * num_time_steps * N_this, 0.0);
+  workspace.d_next_h.assign((end - start) * N_this, 0.0);
+  workspace.rnn_grad_matrix.assign((end - start) * num_time_steps * 3 * N_this, 0.0);
 
   // Precompute gradients from next layer (all time steps) using tiling for cache locality
   constexpr size_t BLOCK_SIZE = 64;
-  double* grad_next_all_ptr = grad_from_next_all_t.data();
+  double* grad_next_all_ptr = workspace.grad_from_next_all_t.data();
 
   for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
   {
@@ -917,12 +918,23 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
             double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
             for (size_t i = i0; i < i_limit; ++i)
             {
-              double sum = 0.0;
               const double* next_w_row = next_layer.get_weights_raw((unsigned)i);
-              for (size_t k = 0; k < N_next; ++k)
+              
+              // Vectorized Dot Product for Step 0
+              __m256d sum_vec = _mm256_setzero_pd();
+              size_t k = 0;
+              for (; k + 3 < N_next; k += 4)
               {
-                sum += next_grad_ptr[k] * next_w_row[k];
+                __m256d g = _mm256_loadu_pd(&next_grad_ptr[k]);
+                __m256d w = _mm256_loadu_pd(&next_w_row[k]);
+                sum_vec = _mm256_fmadd_pd(g, w, sum_vec);
               }
+              
+              double buffer[4];
+              _mm256_storeu_pd(buffer, sum_vec);
+              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
+              for (; k < N_next; ++k) sum += next_grad_ptr[k] * next_w_row[k];
+              
               dest_ptr[i] += sum;
             }
           }
@@ -931,19 +943,19 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
   }
 
-  // Pre-allocate chunk-level buffers once to avoid re-allocation in the time loop
-  std::vector<double> chunk_dz((end - start) * N_this);
-  std::vector<double> chunk_dr((end - start) * N_this);
-  std::vector<double> chunk_dh_hat((end - start) * N_this);
-  std::vector<double> chunk_dh_prev_accum((end - start) * N_this);
-  std::vector<double> h_hat_vals(N_this);
+  // Prep chunk-level buffers from workspace
+  workspace.chunk_dz.resize((end - start) * N_this);
+  workspace.chunk_dr.resize((end - start) * N_this);
+  workspace.chunk_dh_hat.resize((end - start) * N_this);
+  workspace.chunk_dh_prev_accum.resize((end - start) * N_this);
+  workspace.h_hat_vals.resize(N_this);
 
-  double* dz_ptr_all = chunk_dz.data();
-  double* dr_ptr_all = chunk_dr.data();
-  double* dh_hat_ptr_all = chunk_dh_hat.data();
-  double* dh_prev_accum_ptr_all = chunk_dh_prev_accum.data();
-  double* d_next_h_ptr_base = d_next_h.data();
-  double* rnn_grad_ptr_all = rnn_grad_matrix.data();
+  double* dz_ptr_all = workspace.chunk_dz.data();
+  double* dr_ptr_all = workspace.chunk_dr.data();
+  double* dh_hat_ptr_all = workspace.chunk_dh_hat.data();
+  double* dh_prev_accum_ptr_all = workspace.chunk_dh_prev_accum.data();
+  double* d_next_h_ptr_base = workspace.d_next_h.data();
+  double* rnn_grad_ptr_all = workspace.rnn_grad_matrix.data();
 
   const double* rw_values_ptr = _rw_values.data();
   const double* z_rw_values_ptr = _z_rw_values.data();
@@ -952,9 +964,9 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   // BPTT Loop
   for (int t = t_start; t >= t_end; --t)
   {
-    std::fill(chunk_dh_prev_accum.begin(), chunk_dh_prev_accum.end(), 0.0);
+    std::fill(workspace.chunk_dh_prev_accum.begin(), workspace.chunk_dh_prev_accum.end(), 0.0);
 
-    // Step 1: dz, dh_hat
+    // Step 1: dz, dh_hat (Vectorized)
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
       size_t b = start + b_idx;
@@ -968,12 +980,38 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* grad_next_ptr = &grad_next_all_ptr[t_offset];
       const double* d_next_h_ptr = &d_next_h_ptr_base[b_idx * N_this];
 
-      std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_vals.begin());
-      get_activation().activate(h_hat_vals.data(), h_hat_vals.data() + N_this);
+      std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, workspace.h_hat_vals.begin());
+      get_activation().activate(workspace.h_hat_vals.data(), workspace.h_hat_vals.data() + N_this);
 
-      const double* h_hat_ptr = h_hat_vals.data();
+      const double* h_hat_ptr = workspace.h_hat_vals.data();
 
-      for (size_t j = 0; j < N_this; ++j)
+      size_t j = 0;
+      __m256d one = _mm256_set1_pd(1.0);
+      for (; j + 3 < N_this; j += 4)
+      {
+        __m256d dh = _mm256_add_pd(_mm256_loadu_pd(&grad_next_ptr[j]), _mm256_loadu_pd(&d_next_h_ptr[j]));
+        __m256d z = _mm256_loadu_pd(&z_vals[j]);
+        __m256d h_hat = _mm256_loadu_pd(&h_hat_ptr[j]);
+        __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
+
+        __m256d d_z = _mm256_mul_pd(dh, _mm256_sub_pd(h_hat, h_prev));
+        __m256d d_z_pre = _mm256_mul_pd(d_z, _mm256_mul_pd(z, _mm256_sub_pd(one, z)));
+
+        __m256d d_h_hat = _mm256_mul_pd(dh, z);
+        
+        // Scalar fallback for activation derivative (hard to vectorize virtual call)
+        double derivatives[4];
+        for(int k=0; k<4; ++k) derivatives[k] = get_activation().activate_derivative(h_hat_pre_vals[j+k]);
+        __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_loadu_pd(derivatives));
+        
+        __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
+
+        _mm256_storeu_pd(&dz_ptr_all[b_idx * N_this + j], d_z_pre);
+        _mm256_storeu_pd(&dh_hat_ptr_all[b_idx * N_this + j], d_h_hat_pre);
+        _mm256_storeu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + j], d_h_prev_direct);
+      }
+
+      for (; j < N_this; ++j)
       {
         double dh = grad_next_ptr[j] + d_next_h_ptr[j];
         double z = z_vals[j];
@@ -993,9 +1031,9 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       }
     }
 
-    // Step 2: temp_Uh (dL/dr part) using tiling and cache-friendly access
-    std::vector<double> temp_Uh_T_dh_hat((end - start) * N_this, 0.0);
-    double* temp_Uh_ptr_all = temp_Uh_T_dh_hat.data();
+    // Step 2: temp_Uh (dL/dr part) hoisted from the time loop (Vectorized Dot Product)
+    workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
+    double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
 
     for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
@@ -1013,11 +1051,18 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
             for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
             {
               const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
-              double sum = 0.0;
-              for (size_t j = j0; j < j_limit; ++j)
+              
+              __m256d sum_vec = _mm256_setzero_pd();
+              size_t j = j0;
+              for (; j + 3 < j_limit; j += 4)
               {
-                sum += dh_hat_ptr[j] * w_row[j];
+                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dh_hat_ptr[j]), _mm256_loadu_pd(&w_row[j]), sum_vec);
               }
+              double buffer[4];
+              _mm256_storeu_pd(buffer, sum_vec);
+              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
+              for (; j < j_limit; ++j) sum += dh_hat_ptr[j] * w_row[j];
+              
               temp_Uh_ptr_all[b_idx * N_this + i] += sum;
             }
           }
@@ -1025,7 +1070,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       }
     }
 
-    // Step 3: dr and propagate using tiling and cache-friendly access
+    // Step 3: dr and propagate using tiling and cache-friendly access (Vectorized Dot Product)
     for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
       size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
@@ -1039,7 +1084,23 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
         const double* temp_Uh_ptr = &temp_Uh_ptr_all[b_idx * N_this];
 
-        for (size_t i = 0; i < N_this; ++i)
+        size_t i = 0;
+        for (; i + 3 < N_this; i += 4)
+        {
+          __m256d grad_rh = _mm256_loadu_pd(&temp_Uh_ptr[i]);
+          __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[i]) : _mm256_setzero_pd();
+          __m256d r = _mm256_loadu_pd(&r_vals[i]);
+          
+          __m256d d_r = _mm256_mul_pd(grad_rh, h_prev);
+          __m256d d_r_pre = _mm256_mul_pd(d_r, _mm256_mul_pd(r, _mm256_sub_pd(_mm256_set1_pd(1.0), r)));
+          _mm256_storeu_pd(&dr_ptr_all[b_idx * N_this + i], d_r_pre);
+          
+          __m256d dh_prev = _mm256_mul_pd(grad_rh, r);
+          __m256d current_dh_prev = _mm256_loadu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + i]);
+          _mm256_storeu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + i], _mm256_add_pd(current_dh_prev, dh_prev));
+        }
+
+        for (; i < N_this; ++i)
         {
           double grad_rh = temp_Uh_ptr[i];
           double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
@@ -1052,7 +1113,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         }
       }
 
-      // 3b. Propagate U_z and U_r using tiling
+      // 3b. Propagate U_z and U_r using tiling (Vectorized Dot Product)
       for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
         size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
@@ -1068,11 +1129,19 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
             {
               const double* dz_ptr = &dz_ptr_all[b_idx * N_this];
               const double* dr_ptr = &dr_ptr_all[b_idx * N_this];
-              double sum = 0.0;
-              for (size_t j = j0; j < j_limit; ++j)
+              
+              __m256d sum_vec = _mm256_setzero_pd();
+              size_t j = j0;
+              for (; j + 3 < j_limit; j += 4)
               {
-                sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
+                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dz_ptr[j]), _mm256_loadu_pd(&wz_row[j]), sum_vec);
+                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dr_ptr[j]), _mm256_loadu_pd(&wr_row[j]), sum_vec);
               }
+              double buffer[4];
+              _mm256_storeu_pd(buffer, sum_vec);
+              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
+              for (; j < j_limit; ++j) sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
+              
               dh_prev_accum_ptr_all[b_idx * N_this + i] += sum;
             }
           }
@@ -1081,7 +1150,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
 
     // Store state for next iter
-    std::copy(chunk_dh_prev_accum.begin(), chunk_dh_prev_accum.end(), d_next_h.begin());
+    std::copy(workspace.chunk_dh_prev_accum.begin(), workspace.chunk_dh_prev_accum.end(), workspace.d_next_h.begin());
 
     // Store gradients to output matrix (needed for previous layer)
     // Packed: [d_h_hat, d_z, d_r]
@@ -1093,7 +1162,14 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* src_dz = &dz_ptr_all[b_idx * N_this];
       const double* src_dr = &dr_ptr_all[b_idx * N_this];
 
-      for (size_t j = 0; j < N_this; ++j)
+      size_t j = 0;
+      for (; j + 3 < N_this; j += 4)
+      {
+        _mm256_storeu_pd(&dest[j], _mm256_loadu_pd(&src_h_hat[j]));
+        _mm256_storeu_pd(&dest[N_this + j], _mm256_loadu_pd(&src_dz[j]));
+        _mm256_storeu_pd(&dest[2 * N_this + j], _mm256_loadu_pd(&src_dr[j]));
+      }
+      for (; j < N_this; ++j)
       {
         dest[j] = src_h_hat[j];
         dest[N_this + j] = src_dz[j];
@@ -1106,7 +1182,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
     size_t b = start + b_idx;
-    auto start_it = rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
+    auto start_it = workspace.rnn_grad_matrix.begin() + b_idx * num_time_steps * 3 * N_this;
     
     // Construct the vector directly in the move-enabled setter to avoid redundant copy
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(start_it, start_it + num_time_steps * 3 * N_this));
@@ -1131,6 +1207,12 @@ void GRURNNLayer::calculate_hidden_gradients(
   if (num_time_steps == 0 || N_this == 0) return;
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
+
+  // Ensure workspaces are properly sized for the current number of threads
+  if (_workspaces.size() < num_threads)
+  {
+    _workspaces.resize(std::max(1u, (unsigned int)num_threads));
+  }
 
   // Launch threads for each batch chunk
   if (num_threads <= 1)
