@@ -85,11 +85,12 @@ public:
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
 
 private:
-  const std::vector<HiddenStates> calculate_forward_feed(
+  void calculate_forward_feed(
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients_and_output,
     std::vector<std::vector<double>>::const_iterator inputs_begin,
     size_t batch_size,
+    std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
   void calculate_back_propagation(

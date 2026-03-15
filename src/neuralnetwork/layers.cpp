@@ -334,22 +334,24 @@ ResidualProjector* Layers::create_residual_projector(
     weight_decay);
 }
 
-const std::vector<HiddenStates> Layers::calculate_forward_feed(
+void Layers::calculate_forward_feed(
   const NeuralNetworkOptions& options,
   std::vector<GradientsAndOutputs>& gradients_and_output,
   std::vector<std::vector<double>>::const_iterator inputs_begin,
   size_t batch_size,
+  std::vector<HiddenStates>& hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(batch_size, HiddenStates(options.topology()));
 
 #if VALIDATE_DATA ==1
   if (gradients_and_output.size() != batch_size)
   {
     Logger::panic("Layers trying calculate forward feed but output size does not match batch size!");
+  }
+  if (hidden_states.size() != batch_size)
+  {
+    Logger::panic("Layers trying calculate forward feed but hidden states size does not match batch size!");
   }
 #endif
 
@@ -437,7 +439,6 @@ const std::vector<HiddenStates> Layers::calculate_forward_feed(
       is_training
     );
   }
-  return hidden_states;
 }
 
 void Layers::calculate_back_propagation(
@@ -579,7 +580,10 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
 
   std::vector<GradientsAndOutputs> batch_gradients;
   batch_gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
-  calculate_forward_feed(options, batch_gradients, inputs.begin(), batch_size, false);
+  std::vector<HiddenStates> hidden_states;
+  hidden_states.resize(batch_size, HiddenStates(options.topology()));
+
+  calculate_forward_feed(options, batch_gradients, inputs.begin(), batch_size, hidden_states, false);
 
   std::vector<std::vector<double>> outputs;
   outputs.reserve(batch_size);
@@ -592,18 +596,20 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
 
 std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const
 {
-  // TODO validate the input size matches out topology
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
   std::vector<GradientsAndOutputs> gradients;
   gradients.push_back(GradientsAndOutputs(options.topology()));
+  std::vector<HiddenStates> hidden_states;
+  hidden_states.resize(1, HiddenStates(options.topology()));
+
   const std::vector<std::vector<double>> all_inputs = { inputs };
-  calculate_forward_feed(options, gradients, all_inputs.begin(), 1, false);
+  calculate_forward_feed(options, gradients, all_inputs.begin(), 1, hidden_states, false);
   return gradients.front().output_back();
 }
 
 void Layers::train(
-  const NeuralNetworkOptions& options, 
+  const NeuralNetworkOptions& options,
   const double learning_rate,
   std::vector<std::vector<double>>::const_iterator& inputs_begin,
   std::vector<std::vector<double>>::const_iterator& outputs_begin,
@@ -614,7 +620,10 @@ void Layers::train(
   std::vector<GradientsAndOutputs> gradients;
   gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
 
-  const auto hidden_states = calculate_forward_feed(options, gradients, inputs_begin, batch_size, true);
+  std::vector<HiddenStates> hidden_states;
+  hidden_states.resize(batch_size, HiddenStates(options.topology()));
+
+  calculate_forward_feed(options, gradients, inputs_begin, batch_size, hidden_states, true);
   calculate_back_propagation(options, gradients, outputs_begin, batch_size, hidden_states);
   update_weights(options, gradients, learning_rate, hidden_states);
 }
