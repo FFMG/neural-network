@@ -832,7 +832,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_m2;
   }
-  inline const std::vector<long long> get_b_timesteps() const noexcept
+  inline const std::vector<long long>& get_b_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _b_timesteps;
