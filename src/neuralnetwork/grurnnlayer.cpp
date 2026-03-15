@@ -524,53 +524,67 @@ void GRURNNLayer::calculate_forward_feed(
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
+  if (batch_size == 0) return;
+
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t N_this = get_number_neurons();
 
+  // 1. Flatten inputs [BatchSize x T x N_prev]
   std::vector<double> sample_inputs = batch_gradients_and_outputs[0].get_rnn_outputs(previous_layer.get_layer_index());
   if (sample_inputs.empty())
   {
       sample_inputs = batch_gradients_and_outputs[0].get_outputs(previous_layer.get_layer_index());
   }
   const size_t num_time_steps = N_prev > 0 ? sample_inputs.size() / N_prev : 0;
+  if (num_time_steps == 0) return;
 
-  // Flattened storage:
-  // batch_output_sequences: [batch_size * num_time_steps * N_this]
-  // batch_last_output_sequences: [batch_size * N_this]
+  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+      const double* src = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t src_size = !rnn_in.empty() ? rnn_in.size() : std_in.size();
+
+      if (src_size == num_time_steps * N_prev)
+      {
+          std::copy(src, src + src_size, flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+      }
+      else if (src_size == N_prev)
+      {
+          for (size_t t = 0; t < num_time_steps; ++t)
+              std::copy(src, src + N_prev, flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+      }
+  }
+
+  // 2. Output sequence buffer
   std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
-  std::vector<double> batch_last_output_sequences(batch_size * N_this, 0.0);
 
   auto run_forward_pass = [&](size_t start, size_t end)
   {
-    // Temporary buffers for accumulation
-    // We need 3 separate accumulators for z, r, and h_hat (candidate)
-    std::vector<double> z_pre(N_this);
-    std::vector<double> r_pre(N_this);
-    std::vector<double> h_hat_pre(N_this);
-    
-    // To store intermediate values for BPTT: z, r, h_hat_pre
-    // We will pack them into the HiddenState's pre_activation_sums: [z, r, h_hat_pre]
+    std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
     std::vector<double> packed_bptt_states(3 * N_this);
+    std::vector<double> prev_h(N_this, 0.0), current_h(N_this, 0.0);
 
-    std::vector<double> current_h(N_this, 0.0); // h_t
-    std::vector<double> prev_h(N_this, 0.0);    // h_{t-1}
+    const double* W_z = _z_w_values.data();
+    const double* W_r = _r_w_values.data();
+    const double* W_h = get_w_values().data();
+    const double* U_z = _z_rw_values.data();
+    const double* U_r = _r_rw_values.data();
+    const double* U_h = _rw_values.data();
 
     for (size_t b = start; b < end; ++b)
     {
-      // Reset initial hidden state for the sequence
       std::fill(prev_h.begin(), prev_h.end(), 0.0);
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        // 1. Initialize with biases
+        // a. Initialize with bias
         if (has_bias())
         {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            z_pre[j] = _z_b_values[j];
-            r_pre[j] = _r_b_values[j];
-            h_hat_pre[j] = get_bias_value((unsigned)j); // Candidate bias stored in base class _b_values
-          }
+          std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre.begin());
+          std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre.begin());
+          std::copy(get_b_values().begin(), get_b_values().end(), h_hat_pre.begin());
         }
         else
         {
@@ -579,50 +593,31 @@ void GRURNNLayer::calculate_forward_feed(
           std::fill(h_hat_pre.begin(), h_hat_pre.end(), 0.0);
         }
 
-        // 2. Input contributions (W * x_t)
-        if (get_layer_type() != LayerType::Input)
+        // b. Input-to-Gates (W * x_t) - Tiled
+        const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
+        constexpr size_t BLOCK_SIZE = 64;
+        for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
         {
-          const auto& prev_inputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-          const auto& prev_inputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-          const bool use_rnn_input = !prev_inputs_rnn.empty();
-          const double* prev_inputs_ptr = use_rnn_input ? prev_inputs_rnn.data() : prev_inputs_std.data();
-          const size_t prev_inputs_size = use_rnn_input ? prev_inputs_rnn.size() : prev_inputs_std.size();
-
-          constexpr size_t BLOCK_SIZE = 32;
-          for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
-          {
-             size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-             for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-             {
-               size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-               
-               for (size_t i = i0; i < i_limit; ++i)
-               {
-                 double val = 0.0;
-                 if (prev_inputs_size == N_prev) val = prev_inputs_ptr[i];
-                 else if (prev_inputs_size >= (t + 1) * N_prev) val = prev_inputs_ptr[t * N_prev + i];
-                 
-                 if (val == 0.0) continue;
-
-                 for (size_t j = j0; j < j_limit; ++j)
-                 {
-                   z_pre[j] += val * _z_w_values[i * N_this + j];
-                   r_pre[j] += val * _r_w_values[i * N_this + j];
-                   h_hat_pre[j] += val * get_weight_value((unsigned)i, (unsigned)j); // Base weights for candidate
-                 }
-               }
-             }
-          }
+            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+            {
+                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+                for (size_t i = i0; i < i_limit; ++i)
+                {
+                    const double x_val = x_t[i];
+                    if (x_val == 0.0) continue;
+                    for (size_t j = j0; j < j_limit; ++j)
+                    {
+                        z_pre[j] += x_val * W_z[i * N_this + j];
+                        r_pre[j] += x_val * W_r[i * N_this + j];
+                        h_hat_pre[j] += x_val * W_h[i * N_this + j];
+                    }
+                }
+            }
         }
 
-        // 3. Recurrent contributions (U * h_{t-1}) for Z and R gates
-        //    And calculate gates Z and R immediately to use for H_hat
-        //    Optimized: We can't fully calculate Z/R until this loop finishes, but we can accumulate U*h
-        
+        // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
         const double* h_prev_ptr = prev_h.data();
-        
-        // Accumulate U * h_{t-1} for Z and R
-        constexpr size_t BLOCK_SIZE = 32;
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
             size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
@@ -635,95 +630,65 @@ void GRURNNLayer::calculate_forward_feed(
                     if (h_val == 0.0) continue;
                     for (size_t j = j0; j < j_limit; ++j)
                     {
-                        z_pre[j] += h_val * _z_rw_values[i * N_this + j];
-                        r_pre[j] += h_val * _r_rw_values[i * N_this + j];
+                        z_pre[j] += h_val * U_z[i * N_this + j];
+                        r_pre[j] += h_val * U_r[i * N_this + j];
                     }
                 }
             }
         }
 
-        // 4. Calculate Gate Activations (Sigmoid)
+        // d. Calculate Gates
         for (size_t j = 0; j < N_this; ++j)
         {
-          double z_val = 1.0 / (1.0 + std::exp(-z_pre[j]));
-          double r_val = 1.0 / (1.0 + std::exp(-r_pre[j]));
-            
-          // Store for BPTT (using packed structure)
-          packed_bptt_states[j] = z_val;          // Index 0..N-1
-          packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
+          double z = 1.0 / (1.0 + std::exp(-z_pre[j]));
+          double r = 1.0 / (1.0 + std::exp(-r_pre[j]));
+          packed_bptt_states[j] = z;
+          packed_bptt_states[N_this + j] = r;
         }
 
-        // 5. Candidate Recurrent Contribution: U_h * (r_t * h_{t-1})
+        // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-          {
-            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-            for (size_t i = i0; i < i_limit; ++i)
+            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
             {
-              // r_i * h_{t-1, i}
-              // Note: r is at packed_bptt_states[N_this + i]
-              const double r_val = packed_bptt_states[N_this + i];
-              const double gated_h = r_val * h_prev_ptr[i];
-                    
-              if (gated_h == 0.0) continue;
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                h_hat_pre[j] += gated_h * get_recurrent_weight_value((unsigned)i, (unsigned)j);
-              }
+                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+                for (size_t i = i0; i < i_limit; ++i)
+                {
+                    const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
+                    if (gated_h == 0.0) continue;
+                    for (size_t j = j0; j < j_limit; ++j) h_hat_pre[j] += gated_h * U_h[i * N_this + j];
+                }
             }
-          }
         }
 
-        // 6. Residual Connections
-        if (!batch_residual_output_values.empty())
+        // f. Residuals and Candidate Activation
+        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-          if (batch_residual_output_values[b].size() == N_this)
-          {
-            for (size_t j = 0; j < N_this; ++j)
-            {
-              // Add residual to the candidate state (standard ResNet practice)
-              h_hat_pre[j] += batch_residual_output_values[b][j];
-            }
-          }
+            for (size_t j = 0; j < N_this; ++j) h_hat_pre[j] += batch_residual_output_values[b][j];
         }
 
-        // 7. Final State Update
-        const size_t seq_offset = (b * num_time_steps + t) * N_this;
-        const size_t last_offset = b * N_this;
-
-        // Use range-based activation for candidate state
         std::vector<double> h_hat_vec = h_hat_pre;
         get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this);
 
+        // g. Final State Update
         for (size_t j = 0; j < N_this; ++j)
         {
-          packed_bptt_states[2 * N_this + j] = h_hat_pre[j]; // Store h_hat pre-activation
-          
+          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
           double h_hat = h_hat_vec[j];
-          
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
               const auto& neuron = get_neuron((unsigned)j);
               if (neuron.must_randomly_drop()) h_hat = 0.0;
               else h_hat /= (1.0 - neuron.get_dropout_rate());
           }
-
-          double z_val = packed_bptt_states[j];
-          double h_val = (1.0 - z_val) * prev_h[j] + z_val * h_hat;
-          
-          current_h[j] = h_val;
-          batch_output_sequences[seq_offset + j] = h_val;
-          if (t == num_time_steps - 1) batch_last_output_sequences[last_offset + j] = h_val;
+          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
+          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
 
-        // Save state
         batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
         batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
-        
-        // Update prev_h for next step
-        std::copy(current_h.begin(), current_h.end(), prev_h.begin());
+        prev_h = current_h;
       }
     }
   };
@@ -738,59 +703,22 @@ void GRURNNLayer::calculate_forward_feed(
     size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      // Distribute remainder one by one
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([=]()
-          {
-            run_forward_pass(start, end);
-          });
-      }
+      if (start < end) _task_queue_pool->enqueue([=]() { run_forward_pass(start, end); });
       start = end;
     }
     _task_queue_pool->get();
   }
 
-  auto set_outputs_func = [&](size_t start, size_t end)
+  // 3. Store results
+  for (size_t b = 0; b < batch_size; ++b)
   {
-    for (size_t b = start; b < end; ++b)
-    {
-      auto start_seq = batch_output_sequences.begin() + b * num_time_steps * N_this;
-      auto end_seq = start_seq + num_time_steps * N_this;
-      std::vector<double> seq_vec(start_seq, end_seq);
-      batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_vec);
-
-      auto start_last = batch_last_output_sequences.begin() + b * N_this;
-      auto end_last = start_last + N_this;
-      std::vector<double> last_vec(start_last, end_last);
-      batch_gradients_and_outputs[b].set_outputs(get_layer_index(), last_vec);
-    }
-  };
-
-  if (num_threads <= 1)
-  {
-    set_outputs_func(0, batch_size);
-  }
-  else
-  {
-    size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
-    {
-      // Distribute remainder one by one
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([&, start, end]()
-          {
-            set_outputs_func(start, end);
-          });
-      }
-      start = end;
-    }
-    _task_queue_pool->get();
+    const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
+    
+    const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
   }
 }
 
