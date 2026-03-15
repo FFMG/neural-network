@@ -145,129 +145,73 @@ void FFLayer::calculate_forward_feed(
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
+  if (batch_size == 0) return;
+
+  // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
+  std::vector<double> batch_inputs(batch_size * N_prev);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+      const double* src = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index() - 1);
+      std::copy(src, src + N_prev, batch_inputs.begin() + b * N_prev);
+  }
+
   std::vector<double> batch_pre_activation_sums(batch_size * N_this, 0.0);
 
-  // Initialize with bias values and Matrix-Matrix multiplication
-  auto run_forward_pass = [&](size_t start, size_t end) 
+  // 2. Initialize with bias values
+  if (has_bias())
   {
-    std::vector<double> output_row(N_this);
-    std::vector<double> temp_pre_activations;
-    if (!batch_hidden_states.empty())
+    for (size_t b = 0; b < batch_size; b++)
     {
-      temp_pre_activations.resize(N_this);
-    }
-
-    // Initialize with bias values
-    if (has_bias())
-    {
-      for (size_t b = start; b < end; b++)
-      {
-        for (size_t j = 0; j < N_this; j++)
-        {
-          batch_pre_activation_sums[b * N_this + j] = get_bias_value((unsigned)j);
-        }
-      }
-    }
-
-    // Multiply and accumulate weights and inputs
-    // Tiled matrix multiplication for cache locality
-    constexpr size_t BLOCK_SIZE = 64; 
-
-    for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
-    {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
-        for (size_t b0 = start; b0 < end; b0 += BLOCK_SIZE)
-        {
-            size_t b_limit = std::min(b0 + BLOCK_SIZE, end);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-            {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
-
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    for (size_t b = b0; b < b_limit; ++b)
-                    {
-                        const double input_val = batch_gradients_and_outputs[b].get_output(get_layer_index() - 1, (unsigned)i);
-                        // Accessing raw pointer here would be faster if we exposed it for read as well, 
-                        // but get_output is inline and checks bounds, optimizing access inside inner loop is key.
-                        // Optimization: hoist get_output or use raw pointer if available.
-                        // Since we optimized GradientsAndOutputs, let's assume we can get raw ptrs if we refactor input access.
-                        // For now, keeping get_output but blocking helps.
-
-                        if (input_val == 0.0) continue;
-                        
-                        double* sum_ptr = &batch_pre_activation_sums[b * N_this];
-                        for (size_t j = j0; j < j_limit; ++j)
-                        {
-                             sum_ptr[j] += input_val * get_weight_value((unsigned)i, (unsigned)j);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Residuals
-    if (!batch_residual_output_values.empty())
-    {
-      for (size_t b = start; b < end; b++)
-      {
-        if (batch_residual_output_values[b].size() == N_this)
-        {
-          for (size_t j = 0; j < N_this; j++)
-          {
-            batch_pre_activation_sums[b * N_this + j] += batch_residual_output_values[b][j];
-          }
-        }
-      }
-    }
-
-    // Activation
-    for (size_t b = start; b < end; b++)
-    {
-      const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-      double* current_pre_act = &batch_pre_activation_sums[b * N_this];
-
-      // Use range-based activation
-      get_activation().activate(current_pre_act, current_pre_act + N_this);
-      
+      double* dest = &batch_pre_activation_sums[b * N_this];
       for (size_t j = 0; j < N_this; j++)
       {
-        const auto& neuron = get_neuron((unsigned)j);
-        double output = current_pre_act[j];
-
-        if (is_training && neuron.is_dropout()) 
-        {
-          if (neuron.must_randomly_drop())
-          {
-            output = 0.0;
-          }
-          else
-          {
-            output /= (1.0 - neuron.get_dropout_rate());
-          }
-        }
-        output_row[j] = output;
-        output_ptr[j] = output; // Write directly to raw output buffer
+        dest[j] = get_bias_value((unsigned)j);
       }
-      
-      if(!batch_hidden_states.empty())
-      {
-        for (size_t j = 0; j < N_this; ++j) 
-        {
-          temp_pre_activations[j] = batch_pre_activation_sums[b * N_this + j];
-        }
-        batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
-        batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
-      }
-      // batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output_row); // Removed: Writing to raw ptr instead
     }
+  }
+
+  // 3. Batched Matrix-Matrix multiplication (GEMM)
+  // Y = X * W where X is [BatchSize x N_prev] and W is [N_prev x N_this]
+  auto run_gemm = [&](size_t b_start, size_t b_end)
+  {
+      constexpr size_t BLOCK_SIZE = 64;
+      const double* W = get_w_values().data();
+
+      for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+      {
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
+          for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
+          {
+              size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
+              for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+              {
+                  size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
+
+                  for (size_t b = b0; b < b_limit; ++b)
+                  {
+                      for (size_t i = i0; i < i_limit; ++i)
+                      {
+                          const double x_val = batch_inputs[b * N_prev + i];
+                          if (x_val == 0.0) continue;
+
+                          double* y_row = &batch_pre_activation_sums[b * N_this];
+                          const double* w_row = &W[i * N_this];
+
+                          for (size_t j = j0; j < j_limit; ++j)
+                          {
+                              y_row[j] += x_val * w_row[j];
+                          }
+                      }
+                  }
+              }
+          }
+      }
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_forward_pass(0, batch_size);
+    run_gemm(0, batch_size);
   }
   else
   {
@@ -278,14 +222,90 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]()
-          {
-            run_forward_pass(start, end);
-          });
+        _task_queue_pool->enqueue([=]() { run_gemm(start, end); });
       }
       start = end;
     }
     _task_queue_pool->get();
+  }
+
+  // 4. Residuals, Activation and Dropout
+  auto run_post_gemm = [&](size_t start, size_t end)
+  {
+      std::vector<double> output_row(N_this);
+      std::vector<double> temp_pre_activations;
+      if (!batch_hidden_states.empty())
+      {
+          temp_pre_activations.resize(N_this);
+      }
+
+      for (size_t b = start; b < end; b++)
+      {
+          double* current_pre_act = &batch_pre_activation_sums[b * N_this];
+
+          // Residuals
+          if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+          {
+              for (size_t j = 0; j < N_this; j++)
+              {
+                  current_pre_act[j] += batch_residual_output_values[b][j];
+              }
+          }
+
+          // Activation
+          get_activation().activate(current_pre_act, current_pre_act + N_this);
+
+          const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+          for (size_t j = 0; j < N_this; j++)
+          {
+              const auto& neuron = get_neuron((unsigned)j);
+              double output = current_pre_act[j];
+
+              if (is_training && neuron.is_dropout())
+              {
+                  if (neuron.must_randomly_drop())
+                  {
+                      output = 0.0;
+                  }
+                  else
+                  {
+                      output /= (1.0 - neuron.get_dropout_rate());
+                  }
+              }
+              output_row[j] = output;
+              output_ptr[j] = output;
+          }
+
+          if (!batch_hidden_states.empty())
+          {
+              for (size_t j = 0; j < N_this; ++j)
+              {
+                  temp_pre_activations[j] = batch_pre_activation_sums[b * N_this + j];
+              }
+              batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
+              batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
+          }
+      }
+  };
+
+  if (num_threads <= 1)
+  {
+      run_post_gemm(0, batch_size);
+  }
+  else
+  {
+      size_t start = 0;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+          size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+          size_t end = start + size;
+          if (start < end)
+          {
+              _task_queue_pool->enqueue([=]() { run_post_gemm(start, end); });
+          }
+          start = end;
+      }
+      _task_queue_pool->get();
   }
 }
 
@@ -370,115 +390,112 @@ void FFLayer::calculate_hidden_gradients(
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
 
-  // --- Neuron-Parallel Implementation (Small Batch) ---
-  auto run_hidden_gradients_neuron_parallel = [&](size_t i_start, size_t i_end)
+  if (batch_size == 0) return;
+
+  // 1. Flatten next-layer gradients for the whole batch [BatchSize x N_next]
+  std::vector<double> flattened_next_grads(batch_size * N_next);
+  for (size_t b = 0; b < batch_size; ++b)
   {
-    for (size_t b = 0; b < batch_size; ++b)
-    {
-      const auto& next_grad_matrix = batch_next_grad_matrix[b];
-      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-      double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+      std::copy(batch_next_grad_matrix[b].begin(), batch_next_grad_matrix[b].end(), flattened_next_grads.begin() + b * N_next);
+  }
 
-      // G_this[i] = sum(G_next[j] * W_next[i, j]) * activation_derivative(pre_act[i])
-      for (size_t i = i_start; i < i_end; ++i)
-      {
-        double sum = 0.0;
-        for (size_t j = 0; j < N_next; ++j)
-        {
-          sum += next_grad_matrix[j] * next_layer.get_weight_value(static_cast<unsigned>(i), static_cast<unsigned>(j));
-        }
-         
-        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-        grad_ptr[i] = sum * deriv;
-      }
-    }
-  };
+  // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
+  // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
+  std::vector<double> flattened_this_grads(batch_size * N_this, 0.0);
 
-  // --- Batch-Parallel Implementation (Large Batch) ---
-  auto run_hidden_gradients_batch_parallel = [&](size_t start, size_t end)
+  auto run_gemm_backward = [&](size_t b_start, size_t b_end)
   {
-    std::vector<double> grad_matrix(N_this, 0.0);
-    constexpr size_t BLOCK_SIZE = 64;
+      constexpr size_t BLOCK_SIZE = 64;
+      // W_next is stored as [N_this x N_next]
+      const double* W_next = next_layer.get_w_values().data();
 
-    for (size_t b = start; b < end; b++)
-    {
-      std::fill(grad_matrix.begin(), grad_matrix.end(), 0.0);
-      const auto& next_grad_matrix = batch_next_grad_matrix[b];
-      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-
-      // G_this = (G_next * W_next^T)
-      // Tiled multiplication
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
       {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
-        for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
-        {
           size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_next);
-          for (size_t i = i0; i < i_limit; ++i)
+          for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
           {
-            double partial_sum = 0.0;
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              partial_sum += next_grad_matrix[j] * next_layer.get_weight_value(static_cast<unsigned>(i), static_cast<unsigned>(j));
-            }
-            grad_matrix[i] += partial_sum;
-          }
-        }
-      }
+              size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
+              for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+              {
+                  size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
 
-      for (unsigned i = 0; i < N_this; i++)
-      {
-        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
-        grad_matrix[i] *= deriv;
+                  for (size_t b = b0; b < b_limit; ++b)
+                  {
+                      const double* g_next_row = &flattened_next_grads[b * N_next];
+                      double* g_this_row = &flattened_this_grads[b * N_this];
+
+                      for (size_t i = i0; i < i_limit; ++i)
+                      {
+                          const double* w_next_row = &W_next[i * N_next];
+                          double sum = 0.0;
+                          for (size_t j = j0; j < j_limit; ++j)
+                          {
+                              sum += g_next_row[j] * w_next_row[j];
+                          }
+                          g_this_row[i] += sum;
+                      }
+                  }
+              }
+          }
       }
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_matrix);
-    }
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads > 1 && batch_size < num_threads && N_this >= 64)
+  if (num_threads <= 1)
   {
-    // Small batch but many neurons: Use neuron parallelism
-    // Pre-allocate gradients for all batches
-    for (size_t b = 0; b < batch_size; ++b) 
-    {
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::vector<double>(N_this, 0.0));
-    }
-
-    size_t chunk_size = (N_this + num_threads - 1) / num_threads;
-    for (unsigned int t = 0; t < num_threads; ++t)
-    {
-      size_t start = t * chunk_size;
-      size_t end = std::min(start + chunk_size, (size_t)N_this);
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([=]() { run_hidden_gradients_neuron_parallel(start, end); });
-      }
-    }
-    _task_queue_pool->get();
-  }
-  else if (num_threads <= 1)
-  {
-    run_hidden_gradients_batch_parallel(0, batch_size);
+      run_gemm_backward(0, batch_size);
   }
   else
   {
-    // Batch parallelism
-    size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
-    {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end)
+      size_t start = 0;
+      for (unsigned int t = 0; t < num_threads; ++t)
       {
-        _task_queue_pool->enqueue([=]()
+          size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+          size_t end = start + size;
+          if (start < end)
           {
-            run_hidden_gradients_batch_parallel(start, end);
-          });
+              _task_queue_pool->enqueue([=]() { run_gemm_backward(start, end); });
+          }
+          start = end;
       }
-      start = end;
-    }
-    _task_queue_pool->get();
+      _task_queue_pool->get();
+  }
+
+  // 3. Apply activation derivative and store results
+  auto run_post_gemm_backward = [&](size_t start, size_t end)
+  {
+      for (size_t b = start; b < end; b++)
+      {
+          const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+          double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+          const double* g_this_row = &flattened_this_grads[b * N_this];
+
+          for (size_t i = 0; i < N_this; i++)
+          {
+              double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+              grad_ptr[i] = g_this_row[i] * deriv;
+          }
+      }
+  };
+
+  if (num_threads <= 1)
+  {
+      run_post_gemm_backward(0, batch_size);
+  }
+  else
+  {
+      size_t start = 0;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+          size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+          size_t end = start + size;
+          if (start < end)
+          {
+              _task_queue_pool->enqueue([=]() { run_post_gemm_backward(start, end); });
+          }
+          start = end;
+      }
+      _task_queue_pool->get();
   }
 }
 
@@ -490,7 +507,7 @@ Layer* FFLayer::clone() const
 
 void FFLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const std::vector<HiddenStates>& hidden_states,
+  const std::vector<HiddenStates>& /*hidden_states*/,
   const Layer& previous_layer,
   int /*bptt_max_ticks*/)
 {
@@ -504,43 +521,79 @@ void FFLayer::calculate_and_store_gradients(
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
 
-  // Reset gradients
+  // 1. Flatten inputs and gradients for the whole batch
+  std::vector<double> batch_inputs(batch_size * num_inputs);
+  std::vector<double> batch_grads(batch_size * num_outputs);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+      const double* src_in = batch_gradients_and_outputs[b].get_outputs_raw(previous_layer.get_layer_index());
+      std::copy(src_in, src_in + num_inputs, batch_inputs.begin() + b * num_inputs);
+
+      const double* src_grad = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+      std::copy(src_grad, src_grad + num_outputs, batch_grads.begin() + b * num_outputs);
+  }
+
+  // 2. Reset gradients
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
   if(has_bias())
   {
     std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
   }
 
-  for (unsigned b = 0; b < batch_size; ++b)
+  // 3. Batched Weight Gradient Calculation (W_grad = X^T * G)
+  constexpr size_t BLOCK_SIZE = 64;
+  for (size_t i0 = 0; i0 < num_inputs; i0 += BLOCK_SIZE)
   {
-    const auto& layer_outputs = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-    const auto& layer_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
-
-    for (unsigned i = 0; i < num_inputs; ++i)
-    {
-      const double input_val = layer_outputs[i];
-      for (unsigned j = 0; j < num_outputs; ++j)
+      size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)num_inputs);
+      for (size_t j0 = 0; j0 < num_outputs; j0 += BLOCK_SIZE)
       {
-        _w_grads[i * num_outputs + j] += layer_grads[j] * input_val;
-      }
-    }
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)num_outputs);
+          for (size_t b0 = 0; b0 < batch_size; b0 += BLOCK_SIZE)
+          {
+              size_t b_limit = std::min(b0 + BLOCK_SIZE, batch_size);
 
-    if (has_bias())
-    {
-      for (unsigned j = 0; j < num_outputs; ++j)
-      {
-        _b_grads[j] += layer_grads[j];
+              for (size_t i = i0; i < i_limit; ++i)
+              {
+                  for (size_t b = b0; b < b_limit; ++b)
+                  {
+                      const double x_val = batch_inputs[b * num_inputs + i];
+                      if (x_val == 0.0) continue;
+
+                      const double* g_row = &batch_grads[b * num_outputs];
+                      double* w_grad_row = &_w_grads[i * num_outputs];
+
+                      for (size_t j = j0; j < j_limit; ++j)
+                      {
+                          w_grad_row[j] += x_val * g_row[j];
+                      }
+                  }
+              }
+          }
       }
-    }
   }
 
-  // Average gradients over batch
-  for (double& grad : _w_grads) grad /= static_cast<double>(batch_size);
+  // 4. Bias Gradients (Sum of batch gradients)
+  if (has_bias())
+  {
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+          const double* g_row = &batch_grads[b * num_outputs];
+          for (unsigned j = 0; j < num_outputs; ++j)
+          {
+              _b_grads[j] += g_row[j];
+          }
+      }
+  }
+
+  // 5. Average gradients over batch
+  const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
+  for (double& grad : _w_grads) grad *= inv_batch_size;
   if (has_bias())
   {
     for (double& grad : _b_grads)
     {
-      grad /= static_cast<double>(batch_size);
+      grad *= inv_batch_size;
     }
   }
 }
