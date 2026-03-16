@@ -147,7 +147,16 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return _rw_decays;
   }
+
 private:
+  // Hoisted buffers for performance
+  mutable std::vector<double> _flattened_batch_inputs_buffer;
+  mutable std::vector<double> _batch_output_sequences_buffer;
+  mutable std::vector<double> _flattened_next_grads_buffer;
+  mutable std::vector<double> _flattened_inputs_buffer;
+  mutable std::vector<double> _flattened_rnn_grads_buffer;
+  mutable std::vector<double> _flattened_prev_h_buffer;
+
   void initialize_recurrent_weights(double weight_decay);
   
   // SoA for recurrent weights

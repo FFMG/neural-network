@@ -221,7 +221,7 @@ void ElmanRNNLayer::calculate_forward_feed(
   const size_t num_time_steps = N_prev > 0 ? sample_inputs.size() / N_prev : 0;
   if (num_time_steps == 0) return;
 
-  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
+  _flattened_batch_inputs_buffer.resize(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
       const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
@@ -231,20 +231,20 @@ void ElmanRNNLayer::calculate_forward_feed(
 
       if (src_size == num_time_steps * N_prev)
       {
-          std::copy(src, src + src_size, flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+          std::copy(src, src + src_size, _flattened_batch_inputs_buffer.begin() + b * num_time_steps * N_prev);
       }
       else if (src_size == N_prev)
       {
           // Broadcast single input across all time steps
           for (size_t t = 0; t < num_time_steps; ++t)
           {
-              std::copy(src, src + N_prev, flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+              std::copy(src, src + N_prev, _flattened_batch_inputs_buffer.begin() + (b * num_time_steps + t) * N_prev);
           }
       }
   }
 
   // 2. Output buffer
-  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
+  _batch_output_sequences_buffer.assign(batch_size * num_time_steps * N_this, 0.0);
 
   // 3. Process time steps sequentially (due to recurrent dependency)
   auto run_forward_pass = [&](size_t start, size_t end)
@@ -270,7 +270,7 @@ void ElmanRNNLayer::calculate_forward_feed(
         }
 
         // b. Input-to-Hidden (W * x_t) - Tiled
-        const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
+        const double* x_t = &_flattened_batch_inputs_buffer[(b * num_time_steps + t) * N_prev];
         constexpr size_t BLOCK_SIZE = 64;
         for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
         {
@@ -329,7 +329,7 @@ void ElmanRNNLayer::calculate_forward_feed(
             else output /= (1.0 - neuron.get_dropout_rate());
           }
           current_hidden_state_values[j] = output;
-          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = output;
+          _batch_output_sequences_buffer[(b * num_time_steps + t) * N_this + j] = output;
         }
 
         batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(pre_activation_sums);
@@ -364,10 +364,10 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
+    const double* seq_ptr = &_batch_output_sequences_buffer[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
     
-    const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
+    const double* last_ptr = &_batch_output_sequences_buffer[(b * num_time_steps + num_time_steps - 1) * N_this];
     batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
   }
 }
@@ -678,21 +678,24 @@ void ElmanRNNLayer::calculate_and_store_gradients(
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
   // 1. Reset gradients
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
   std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  if (has_bias()) std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
 
   // 2. Flatten batch inputs and rnn gradients for efficiency
-  std::vector<double> flattened_inputs(batch_size * num_time_steps * num_inputs, 0.0);
-  std::vector<double> flattened_rnn_grads(batch_size * num_time_steps * num_outputs, 0.0);
-  std::vector<double> flattened_prev_h(batch_size * num_time_steps * num_outputs, 0.0);
+  _flattened_inputs_buffer.resize(batch_size * num_time_steps * num_inputs);
+  std::fill(_flattened_inputs_buffer.begin(), _flattened_inputs_buffer.end(), 0.0);
+  _flattened_rnn_grads_buffer.resize(batch_size * num_time_steps * num_outputs);
+  std::fill(_flattened_rnn_grads_buffer.begin(), _flattened_rnn_grads_buffer.end(), 0.0);
+  _flattened_prev_h_buffer.resize(batch_size * num_time_steps * num_outputs);
+  std::fill(_flattened_prev_h_buffer.begin(), _flattened_prev_h_buffer.end(), 0.0);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
       const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
       if (rnn_grads.size() == num_time_steps * num_outputs)
       {
-          std::copy(rnn_grads.begin(), rnn_grads.end(), flattened_rnn_grads.begin() + b * num_time_steps * num_outputs);
+          std::copy(rnn_grads.begin(), rnn_grads.end(), _flattened_rnn_grads_buffer.begin() + b * num_time_steps * num_outputs);
       }
 
       const auto& prev_rnn_out = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
@@ -702,18 +705,18 @@ void ElmanRNNLayer::calculate_and_store_gradients(
 
       if (src_in_size == num_time_steps * num_inputs)
       {
-          std::copy(src_in, src_in + src_in_size, flattened_inputs.begin() + b * num_time_steps * num_inputs);
+          std::copy(src_in, src_in + src_in_size, _flattened_inputs_buffer.begin() + b * num_time_steps * num_inputs);
       }
       else if (src_in_size == num_inputs)
       {
           for (size_t t = 0; t < num_time_steps; ++t)
-              std::copy(src_in, src_in + num_inputs, flattened_inputs.begin() + (b * num_time_steps + t) * num_inputs);
+              std::copy(src_in, src_in + num_inputs, _flattened_inputs_buffer.begin() + (b * num_time_steps + t) * num_inputs);
       }
 
       for (size_t t = 1; t < num_time_steps; ++t)
       {
           const auto& h_prev = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values();
-          std::copy(h_prev.begin(), h_prev.end(), flattened_prev_h.begin() + (b * num_time_steps + t) * num_outputs);
+          std::copy(h_prev.begin(), h_prev.end(), _flattened_prev_h_buffer.begin() + (b * num_time_steps + t) * num_outputs);
       }
   }
 
@@ -729,13 +732,13 @@ void ElmanRNNLayer::calculate_and_store_gradients(
           {
               for (int t = t_start; t >= t_end; --t)
               {
-                  const double* x_row = &flattened_inputs[(b * num_time_steps + t) * num_inputs];
-                  const double* g_row = &flattened_rnn_grads[(b * num_time_steps + t) * num_outputs];
+                  const double* x_row = &_flattened_inputs_buffer[(b * num_time_steps + t) * num_inputs];
+                  const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
                   for (size_t i = i0; i < i_limit; ++i)
                   {
                       const double x_val = x_row[i];
                       if (x_val == 0.0) continue;
-                      double* w_grad_row = &_w_grads[i * num_outputs];
+                      double* w_grad_row = &this->_w_grads[i * num_outputs];
                       for (size_t j = j0; j < j_limit; ++j) w_grad_row[j] += x_val * g_row[j];
                   }
               }
@@ -754,8 +757,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(
           {
               for (int t = t_start; t >= std::max(1, t_end); --t)
               {
-                  const double* h_prev_row = &flattened_prev_h[(b * num_time_steps + t) * num_outputs];
-                  const double* g_row = &flattened_rnn_grads[(b * num_time_steps + t) * num_outputs];
+                  const double* h_prev_row = &_flattened_prev_h_buffer[(b * num_time_steps + t) * num_outputs];
+                  const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
                   for (size_t i = i0; i < i_limit; ++i)
                   {
                       const double h_val = h_prev_row[i];
@@ -775,8 +778,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(
       {
           for (int t = t_start; t >= t_end; --t)
           {
-              const double* g_row = &flattened_rnn_grads[(b * num_time_steps + t) * num_outputs];
-              for (unsigned j = 0; j < num_outputs; ++j) _b_grads[j] += g_row[j];
+              const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
+              for (unsigned j = 0; j < num_outputs; ++j) this->_b_grads[j] += g_row[j];
           }
       }
   }
@@ -785,8 +788,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(
   const int active_ticks = t_start - t_end + 1;
   const double denom = static_cast<double>(batch_size) * active_ticks;
   const double inv_denom = 1.0 / (denom > 0 ? denom : 1.0);
-  for (double& grad : _w_grads) grad *= inv_denom;
-  if (has_bias()) for (double& grad : _b_grads) grad *= inv_denom;
+  for (double& grad : this->_w_grads) grad *= inv_denom;
+  if (has_bias()) for (double& grad : this->_b_grads) grad *= inv_denom;
 
   const double denom_rec = static_cast<double>(batch_size) * (active_ticks > 1 ? active_ticks - 1 : 1.0);
   const double inv_denom_rec = 1.0 / denom_rec;
@@ -797,7 +800,7 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   double norm_sq = 0.0;
-  for (const double grad : _w_grads)
+  for (const double grad : this->_w_grads)
   {
     norm_sq += grad * grad;
   }
@@ -807,7 +810,7 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
   }
   if (has_bias())
   {
-      for (const double grad : _b_grads) norm_sq += grad * grad;
+      for (const double grad : this->_b_grads) norm_sq += grad * grad;
   }
   return norm_sq;
 }
@@ -824,13 +827,13 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
     for (unsigned i = 0; i < num_inputs; ++i)
     {
       unsigned weight_index = i * num_outputs + j;
-      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
     }
 
     // Apply bias weights
     if (has_bias())
     {
-      apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
     }
         
     // Apply recurrent weights

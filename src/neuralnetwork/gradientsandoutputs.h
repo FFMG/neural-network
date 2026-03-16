@@ -69,8 +69,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _outputs.zero();
     _gradients.zero();
-    _rnn_outputs.clear();
-    _rnn_gradients.clear();
+    if (!_rnn_outputs.empty()) _rnn_outputs.clear();
+    if (!_rnn_gradients.empty()) _rnn_gradients.clear();
   }
 
   [[nodiscard]] inline unsigned num_output_layers() const  noexcept
