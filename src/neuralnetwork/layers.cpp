@@ -631,12 +631,8 @@ void Layers::train(
     _training_hidden_states_buffer.resize(batch_size, HiddenStates(options.topology()));
   }
 
-  // We must zero the buffers before use as they might contain data from previous batches/epochs
-  for (size_t i = 0; i < batch_size; ++i)
-  {
-    _training_gradients_buffer[i].zero();
-  }
-
+  // 2. Calculate gradients via back-propagation
+  // Note: calculate_forward_feed and calculate_back_propagation now fully manage their buffers.
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
   update_weights(options, _training_gradients_buffer, learning_rate, _training_hidden_states_buffer);

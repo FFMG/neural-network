@@ -98,4 +98,12 @@ public:
   double get_gradient_norm_sq() const override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
+private:
+  // Hoisted buffers for performance
+  mutable std::vector<double> _batch_inputs_buffer;
+  mutable std::vector<double> _batch_pre_activation_sums_buffer;
+  mutable std::vector<double> _batch_grads_buffer;
+  mutable std::vector<double> _flattened_next_grads_buffer;
+  mutable std::vector<double> _flattened_this_grads_buffer;
 };

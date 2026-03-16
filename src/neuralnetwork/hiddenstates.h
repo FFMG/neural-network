@@ -50,6 +50,18 @@ public:
     }
     return *this;
   }
+
+  void zero()
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    for (auto& layer : _states)
+    {
+      if (!layer.empty())
+      {
+        layer.clear();
+      }
+    }
+  }
   
   std::vector<HiddenState>& at(size_t layer_number)
   {
