@@ -92,6 +92,8 @@ Layers::Layers(
 
 Layers::Layers(Layers&& src) noexcept :
   _layers(std::move(src._layers)),
+  _training_gradients_buffer(std::move(src._training_gradients_buffer)),
+  _training_hidden_states_buffer(std::move(src._training_hidden_states_buffer)),
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -127,6 +129,9 @@ Layers& Layers::operator=(Layers&& src) noexcept
   {
     _layers = std::move(src._layers);
     _weight_decay = src._weight_decay;
+
+    _training_gradients_buffer = std::move(src._training_gradients_buffer);
+    _training_hidden_states_buffer = std::move(src._training_hidden_states_buffer);
 
     delete _update_weights_pool;
     _update_weights_pool = src._update_weights_pool;
@@ -617,13 +622,22 @@ void Layers::train(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
+  if (_training_gradients_buffer.size() < batch_size)
+  {
+    _training_gradients_buffer.resize(batch_size, GradientsAndOutputs(options.topology()));
+  }
+  if (_training_hidden_states_buffer.size() < batch_size)
+  {
+    _training_hidden_states_buffer.resize(batch_size, HiddenStates(options.topology()));
+  }
 
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(batch_size, HiddenStates(options.topology()));
+  // We must zero the buffers before use as they might contain data from previous batches/epochs
+  for (size_t i = 0; i < batch_size; ++i)
+  {
+    _training_gradients_buffer[i].zero();
+  }
 
-  calculate_forward_feed(options, gradients, inputs_begin, batch_size, hidden_states, true);
-  calculate_back_propagation(options, gradients, outputs_begin, batch_size, hidden_states);
-  update_weights(options, gradients, learning_rate, hidden_states);
+  calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
+  calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
+  update_weights(options, _training_gradients_buffer, learning_rate, _training_hidden_states_buffer);
 }

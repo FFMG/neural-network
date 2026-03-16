@@ -132,6 +132,9 @@ private:
   std::vector<std::unique_ptr<Layer>> _layers;
   double _weight_decay;
 
+  std::vector<GradientsAndOutputs> _training_gradients_buffer;
+  std::vector<HiddenStates> _training_hidden_states_buffer;
+
   mutable std::shared_mutex _mutex;
   TaskQueuePool<void>* _update_weights_pool;
 };
