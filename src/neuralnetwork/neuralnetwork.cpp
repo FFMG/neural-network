@@ -365,24 +365,32 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   bptt_inputs.clear();
   bptt_outputs.clear();
 
-  const auto& bptt_size = _options.bptt_max_ticks();
-  if (bptt_size <= 1 || !_options.enable_bptt())
+  const size_t total_samples = inputs.size();
+  if (total_samples == 0)
   {
-    bptt_inputs.push_back(inputs);
-    bptt_outputs.push_back(outputs);
     return;
   }
-  const auto& is_shuffled = _options.shuffle_bptt_batches();
+  if (total_samples != outputs.size())
+  {
+    Logger::panic("The training input data size does not match the output data size!");
+  }
 
-  size_t total_samples = inputs.size();
-  if (total_samples != outputs.size())
+  const auto& bptt_size = _options.bptt_max_ticks();
+  const size_t batch_size = static_cast<size_t>(_options.batch_size());
+
+  // If BPTT is disabled or sequence length is 1, we just need to split the data into batches of 'batch_size'
+  if (bptt_size <= 1 || !_options.enable_bptt())
   {
-    Logger::panic("The trainning input data size does not match the output data size!");
+    for (size_t i = 0; i < total_samples; i += batch_size)
+    {
+      size_t end_idx = std::min(i + batch_size, total_samples);
+      bptt_inputs.emplace_back(inputs.begin() + i, inputs.begin() + end_idx);
+      bptt_outputs.emplace_back(outputs.begin() + i, outputs.begin() + end_idx);
+    }
+    return;
   }
-  if (total_samples != outputs.size())
-  {
-    Logger::panic("The trainning input/output data size is zero ... what's the point?");
-  }
+
+  const auto& is_shuffled = _options.shuffle_bptt_batches();
 
   // Create sequences
   std::vector<std::vector<std::vector<double>>> sequences_inputs;
