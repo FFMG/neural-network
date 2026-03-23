@@ -5,15 +5,16 @@ void Layer::calculate_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  ErrorCalculation::type error_calculation_type) const
+  ErrorCalculation::type error_calculation_type,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   switch (error_calculation_type)
   {
   case ErrorCalculation::type::huber_loss:
-    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config);
   case ErrorCalculation::type::huber_direction_loss:
-    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config);
   case ErrorCalculation::type::mse:
     return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::rmse:
@@ -32,13 +33,17 @@ void Layer::calculate_error_deltas(
 void Layer::calculate_huber_direction_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   const size_t N_total = get_number_neurons();
-  const double delta = 1.0;          // Huber threshold
-  const double lambda = 0.05;        // Direction penalty strength (tune this)
+
+  const double& delta = evaluation_config.huber_delta;                   // Huber threshold
+  const double& lambda = evaluation_config.direction_lambda;             // Direction penalty strength
+  const double& neutral_tolerance = evaluation_config.neutral_tolerance; // Ignore tiny targets
+  const bool use_direction_penalty = evaluation_config.use_direction_penalty;
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
@@ -56,23 +61,29 @@ void Layer::calculate_huber_direction_loss_error_deltas(
     }
     else
     {
-      grad = (error > 0 ? delta : -delta);
+      grad = (error > 0.0 ? delta : -delta);
     }
 
-    // --- Direction penalty ---
-    // Only apply if both are non-zero and signs mismatch
-    if (target != 0.0 && output != 0.0)
+    // --- Optional Direction Penalty ---
+    if (use_direction_penalty)
     {
-      const bool sign_mismatch = (target > 0.0 && output < 0.0) ||
-        (target < 0.0 && output > 0.0);
-
-      if (sign_mismatch)
+      // Only apply if target is meaningful (not noise)
+      if (std::abs(target) > neutral_tolerance)
       {
-        // Push output toward correct direction
-        // Gradient should reduce sign error
-        const double direction_grad = (output > 0.0 ? 1.0 : -1.0);
+        const bool sign_mismatch =
+          (target > 0.0 && output < 0.0) ||
+          (target < 0.0 && output > 0.0);
 
-        grad += lambda * direction_grad;
+        if (sign_mismatch)
+        {
+          // Smooth directional push (prevents collapse to zero)
+          const double direction_grad = output;
+
+          // Stronger penalty for stronger signals
+          const double strength = std::abs(target);
+
+          grad += lambda * strength * direction_grad;
+        }
       }
     }
 
@@ -83,25 +94,30 @@ void Layer::calculate_huber_direction_loss_error_deltas(
 void Layer::calculate_huber_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
+
   const size_t N_total = get_number_neurons();
-  const double delta = 1.0; // Default delta for Huber loss
+  const double& delta = evaluation_config.huber_delta;
 
   for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
   {
     const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
     const double abs_error = std::abs(error);
 
+    double grad;
     if (abs_error <= delta)
     {
-      deltas[neuron_index] = error * _inv_num_neurons;
+      grad = error;
     }
     else
     {
-      deltas[neuron_index] = (error > 0 ? delta : -delta) * _inv_num_neurons;
+      grad = (error > 0.0 ? delta : -delta);
     }
+
+    deltas[neuron_index] = grad * _inv_num_neurons;
   }
 }
 

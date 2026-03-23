@@ -483,7 +483,7 @@ void Layers::calculate_back_propagation_output_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   const auto& output_layer_number = static_cast<unsigned>(size() - 1);
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_layer().get_output_error_calculation_type());
+  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_layer().get_output_error_calculation_type(), options.error_evaluation_config());
 }
 
 void Layers::calculate_back_propagation_hidden_layers(

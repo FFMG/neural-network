@@ -726,7 +726,8 @@ void GRURNNLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  ErrorCalculation::type error_calculation_type) const
+  ErrorCalculation::type error_calculation_type,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
@@ -751,14 +752,14 @@ void GRURNNLayer::calculate_output_gradients(
 
         if (given_outputs.size() == N_total)
         {
-          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type);
+          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type, evaluation_config);
         }
         else
         {
           const size_t num_time_steps = given_outputs.size() / N_total;
           const size_t output_offset = (num_time_steps - 1) * N_total;
           std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
-          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type, evaluation_config);
         }
         // Direct assignment of deltas (dL/dh) because GRU output is h_t, not activation(h_t)
         for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];

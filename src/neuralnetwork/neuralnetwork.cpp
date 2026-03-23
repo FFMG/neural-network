@@ -939,7 +939,10 @@ void NeuralNetwork::log_training_info(
   }
   Logger::info(tab, "Error evaluation config    :\n", std::fixed, std::setprecision(5),
     tab, tab, "confidence-threshold     : ", _options.error_evaluation_config().confidence_threshold, "\n",
-    tab, tab, "neutral-tolerance        : ", _options.error_evaluation_config().neutral_tolerance);
+    tab, tab, "neutral-tolerance        : ", _options.error_evaluation_config().neutral_tolerance, "\n",
+    tab, tab, "huber delta              : ", _options.error_evaluation_config().huber_delta, "\n",
+    tab, tab, "direction lambda         : ", _options.error_evaluation_config().direction_lambda, "\n",
+    tab, tab, "use direction penalty    : ", _options.error_evaluation_config().use_direction_penalty ? "true" : "false");
 
   if (_options.batch_size() > 1)
   {
