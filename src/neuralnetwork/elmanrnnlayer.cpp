@@ -376,7 +376,8 @@ void ElmanRNNLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  ErrorCalculation::type error_calculation_type) const
+  ErrorCalculation::type error_calculation_type,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
@@ -408,7 +409,7 @@ void ElmanRNNLayer::calculate_output_gradients(
       if (target_slice.size() < N_total) target_slice.resize(N_total, 0.0);
       std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
 
-      calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+      calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type, evaluation_config);
 
       for (size_t j = start; j < end; ++j)
       {
@@ -449,14 +450,14 @@ void ElmanRNNLayer::calculate_output_gradients(
 
         if (given_outputs.size() == N_total)
         {
-          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type);
+          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type, evaluation_config);
         }
         else
         {
           // Sequence case
           const size_t output_offset = (num_time_steps - 1) * N_total;
           std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
-          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type);
+          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type, evaluation_config);
         }
 
         if (is_not_using_activation_derivative)

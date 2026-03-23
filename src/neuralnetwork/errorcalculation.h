@@ -22,6 +22,9 @@ public:
   {
     double neutral_tolerance = 0.001;
     double confidence_threshold = 0.01;
+    double huber_delta = 1.0;
+    double direction_lambda = 0.05;
+    bool   use_direction_penalty = true;
   };
 
   enum class type

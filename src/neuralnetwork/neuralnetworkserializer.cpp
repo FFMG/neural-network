@@ -673,6 +673,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   {
     error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral-tolerance");
     error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence-threshold");
+    error_evaluation_config.huber_delta = error_evaluation_config_object->get_float<double>("huber-delta");
+    error_evaluation_config.direction_lambda = error_evaluation_config_object->get_float<double>("direction-lambda");
+    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get_boolean("use-direction-penalty");
   }
 
   return NeuralNetworkOptions::create(topology)
@@ -956,6 +959,10 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto error_evaluation_config_object = new TinyJSON::TJValueObject();
   error_evaluation_config_object->set_float("neutral-tolerance", options.error_evaluation_config().neutral_tolerance);
   error_evaluation_config_object->set_float("confidence-threshold", options.error_evaluation_config().confidence_threshold);
+  error_evaluation_config_object->set_float("huber-delta", options.error_evaluation_config().huber_delta);
+  error_evaluation_config_object->set_float("direction-lambda", options.error_evaluation_config().direction_lambda);
+  error_evaluation_config_object->set_boolean("use-direction-penalty", options.error_evaluation_config().use_direction_penalty);
+
   options_object->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
 

@@ -313,7 +313,8 @@ void FFLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  ErrorCalculation::type error_calculation_type) const
+  ErrorCalculation::type error_calculation_type,
+  const ErrorCalculation::EvaluationConfig& evaluation_config) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
@@ -331,7 +332,7 @@ void FFLayer::calculate_output_gradients(
       const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
       const auto& target_outputs = *(target_outputs_begin + b);
 
-      calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type);
+      calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config);
 
       if (is_not_using_activation_derivative)
       {
