@@ -454,6 +454,11 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
 
+  void calculate_huber_direction_loss_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs) const;
+
   void calculate_mse_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,

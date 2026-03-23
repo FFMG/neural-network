@@ -28,6 +28,7 @@ public:
   {
     none,
     huber_loss,
+    huber_direction_loss,
     mae,
     mse,
     rmse,
@@ -52,6 +53,8 @@ public:
       return "none";
     case type::huber_loss: 
       return "huber-loss";
+    case type::huber_direction_loss:
+      return "huber-direction-loss";
     case type::mae: 
       return "mae";
     case type::mse: 
@@ -96,6 +99,10 @@ public:
     if (lower_str == "huber-loss")
     {
       return type::huber_loss;
+    }
+    if (lower_str == "huber-direction-loss")
+    {
+      return type::huber_direction_loss;
     }
     if (lower_str == "mae")
     {
@@ -163,6 +170,9 @@ public:
 
     case type::huber_loss:
       return calculate_huber_loss_error(ground_truth, predictions);
+
+    case type::huber_direction_loss:
+      return calculate_huber_direction_loss(ground_truth, predictions);
 
     case type::mae:
       return calculate_mae_error(ground_truth, predictions);
@@ -240,6 +250,62 @@ public:
         {
           total_loss += delta * (abs_error - 0.5 * delta);
         }
+        ++count;
+      }
+    }
+    return (count > 0) ? (total_loss / count) : 0.0;
+  }
+
+  static double calculate_huber_direction_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0, double lambda = 0.2)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+#if VALIDATE_DATA == 1
+    if (ground_truth.size() != predictions.size())
+    {
+      Logger::panic("Mismatched number of samples");
+    }
+#endif
+
+    double total_loss = 0.0;
+    size_t count = 0;
+
+    for (size_t i = 0; i < ground_truth.size(); ++i)
+    {
+      if (ground_truth[i].size() != predictions[i].size())
+      {
+        Logger::panic("Mismatched vector sizes at index ", i);
+      }
+
+      for (size_t j = 0; j < ground_truth[i].size(); ++j)
+      {
+        const double target = ground_truth[i][j];
+        const double output = predictions[i][j];
+
+        const double error = target - output;
+        const double abs_error = std::abs(error);
+
+        double loss = 0.0;
+        if (abs_error <= delta)
+        {
+          loss = 0.5 * error * error;
+        }
+        else
+        {
+          loss = delta * (abs_error - 0.5 * delta);
+        }
+
+        // Direction penalty
+        if (target != 0.0 && output != 0.0)
+        {
+          const bool sign_mismatch = (target > 0.0 && output < 0.0) ||
+                                     (target < 0.0 && output > 0.0);
+
+          if (sign_mismatch)
+          {
+            loss += lambda * std::abs(output);
+          }
+        }
+        total_loss += loss;
         ++count;
       }
     }

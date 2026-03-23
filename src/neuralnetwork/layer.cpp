@@ -12,6 +12,8 @@ void Layer::calculate_error_deltas(
   {
   case ErrorCalculation::type::huber_loss:
     return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs);
+  case ErrorCalculation::type::huber_direction_loss:
+    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::mse:
     return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
   case ErrorCalculation::type::rmse:
@@ -24,6 +26,57 @@ void Layer::calculate_error_deltas(
     return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs);
   default:
     Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type)," is not supported for Layer!");
+  }
+}
+
+void Layer::calculate_huber_direction_loss_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+
+  const size_t N_total = get_number_neurons();
+  const double delta = 1.0;          // Huber threshold
+  const double lambda = 0.05;        // Direction penalty strength (tune this)
+
+  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  {
+    const double target = target_outputs[neuron_index];
+    const double output = given_outputs[neuron_index];
+
+    const double error = output - target;
+    const double abs_error = std::abs(error);
+
+    // --- Base Huber gradient ---
+    double grad;
+    if (abs_error <= delta)
+    {
+      grad = error;
+    }
+    else
+    {
+      grad = (error > 0 ? delta : -delta);
+    }
+
+    // --- Direction penalty ---
+    // Only apply if both are non-zero and signs mismatch
+    if (target != 0.0 && output != 0.0)
+    {
+      const bool sign_mismatch = (target > 0.0 && output < 0.0) ||
+        (target < 0.0 && output > 0.0);
+
+      if (sign_mismatch)
+      {
+        // Push output toward correct direction
+        // Gradient should reduce sign error
+        const double direction_grad = (output > 0.0 ? 1.0 : -1.0);
+
+        grad += lambda * direction_grad;
+      }
+    }
+
+    deltas[neuron_index] = grad * _inv_num_neurons;
   }
 }
 
