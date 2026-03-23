@@ -492,6 +492,7 @@ auto errors = nn->calculate_forecast_metrics( error_types);
 ### Error Calculations
 
   * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::huber_direction_loss
   * ErrorCalculation::type::mae
   * ErrorCalculation::type::mse
   * ErrorCalculation::type::rmse
@@ -508,6 +509,7 @@ auto errors = nn->calculate_forecast_metrics( error_types);
 ### Output Loss Error Calculations
 
   * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::huber_direction_loss
   * ErrorCalculation::type::mse
   * ErrorCalculation::type::rmse
   * ErrorCalculation::type::bce_loss

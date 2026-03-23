@@ -671,8 +671,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   ErrorCalculation::EvaluationConfig error_evaluation_config;
   if (nullptr != error_evaluation_config_object)
   {
-    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral_tolerance");
-    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence_threshold");
+    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral-tolerance");
+    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence-threshold");
   }
 
   return NeuralNetworkOptions::create(topology)
@@ -954,8 +954,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
 
   auto error_evaluation_config_object = new TinyJSON::TJValueObject();
-  error_evaluation_config_object->set_float("neutral_tolerance", options.error_evaluation_config().neutral_tolerance);
-  error_evaluation_config_object->set_float("confidence_threshold", options.error_evaluation_config().confidence_threshold);
+  error_evaluation_config_object->set_float("neutral-tolerance", options.error_evaluation_config().neutral_tolerance);
+  error_evaluation_config_object->set_float("confidence-threshold", options.error_evaluation_config().confidence_threshold);
   options_object->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
 
