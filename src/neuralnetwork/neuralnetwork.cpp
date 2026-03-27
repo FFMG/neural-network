@@ -73,6 +73,9 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _layers = src._layers;
     _options = src._options;
     _saved_errors = src._saved_errors;
+    _last_metrics = src._last_metrics;
+    _gradients_pool = src._gradients_pool;
+    _hidden_states_pool = src._hidden_states_pool;
 
     delete _neural_network_helper;
     _neural_network_helper = nullptr;
@@ -327,15 +330,39 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
 
   {
     std::shared_lock read(_mutex);
-    std::vector<GradientsAndOutputs> batch_gradients(prediction_size, GradientsAndOutputs(get_topology()));
-    std::vector<HiddenStates> batch_hidden_states(prediction_size, HiddenStates(get_topology()));
+
+    // resize the pool if needed
+    if (_gradients_pool.size() < prediction_size)
+    {
+      _gradients_pool.reserve(prediction_size);
+      while (_gradients_pool.size() < prediction_size)
+      {
+        _gradients_pool.emplace_back(get_topology());
+      }
+    }
+    if (_hidden_states_pool.size() < prediction_size)
+    {
+      _hidden_states_pool.reserve(prediction_size);
+      while (_hidden_states_pool.size() < prediction_size)
+      {
+        _hidden_states_pool.emplace_back(get_topology());
+      }
+    }
+
+    // zero out the pool items we are about to use
+    for (size_t i = 0; i < prediction_size; ++i)
+    {
+      _gradients_pool[i].zero();
+      _hidden_states_pool[i].zero();
+    }
+
     std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
 
-    calculate_forward_feed_for_forecast_metrics(batch_gradients, training_inputs, sub_indices, _layers, batch_hidden_states, false);
+    calculate_forward_feed_for_forecast_metrics(_gradients_pool, training_inputs, sub_indices, _layers, _hidden_states_pool, false);
 
     for (size_t i = 0; i < prediction_size; ++i)
     {
-      predictions.push_back(batch_gradients[i].output_back());
+      predictions.push_back(_gradients_pool[i].output_back());
       checking_outputs.push_back(taining_outputs[sub_indices[i]]);
     }
   }
@@ -732,12 +759,24 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   // This is done after warmup and is throttled to run every 5 epochs
   if (_options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target() && epoch % 5 == 0)
   {
-    auto metric = calculate_forecast_metrics(
+    if (!_adaptive_lr_task.busy())
+    {
+      if (_adaptive_lr_task.has_result())
       {
-        ErrorCalculation::type::rmse,
-      }, false, 100 /*limit*/);
-    learning_rate = learning_rate_scheduler.update(metric[0].error(), learning_rate, epoch, number_of_epoch);
-    Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+        _last_metrics = _adaptive_lr_task.get();
+      }
+
+      // start a new task
+      _adaptive_lr_task.call([this]() {
+        return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false, 100 /*limit*/);
+        });
+    }
+
+    if (!_last_metrics.empty())
+    {
+      learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
+      Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+    }
   }
   return learning_rate;
 }

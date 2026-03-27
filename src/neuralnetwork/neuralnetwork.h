@@ -110,4 +110,9 @@ private:
   std::map<ErrorCalculation::type, double> _saved_errors;
   
   Rng _rng;
+
+  mutable SingleTaskQueue<std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics>> _adaptive_lr_task;
+  mutable std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> _last_metrics;
+  mutable std::vector<GradientsAndOutputs> _gradients_pool;
+  mutable std::vector<HiddenStates> _hidden_states_pool;
 };
