@@ -600,11 +600,11 @@ ErrorCalculation::EvaluationConfig NeuralNetworkSerializer::get_error_evaluation
 
   if (nullptr != error_evaluation_config_object)
   {
-    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get<double>("neutral-tolerance");
-    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get<double>("confidence-threshold");
-    error_evaluation_config.huber_delta = error_evaluation_config_object->get<double>("huber-delta");
-    error_evaluation_config.direction_lambda = error_evaluation_config_object->get<double>("direction-lambda");
-    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get<bool>("use-direction-penalty");
+    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral-tolerance");
+    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence-threshold");
+    error_evaluation_config.huber_delta = error_evaluation_config_object->get_float<double>("huber-delta");
+    error_evaluation_config.direction_lambda = error_evaluation_config_object->get_float<double>("direction-lambda");
+    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get_boolean("use-direction-penalty");
   }
 
   return error_evaluation_config;
