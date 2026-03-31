@@ -6,27 +6,43 @@ void Layer::calculate_error_deltas(
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
   ErrorCalculation::type error_calculation_type,
-  const ErrorCalculation::EvaluationConfig& evaluation_config) const
+  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  unsigned start_neuron,
+  unsigned end_neuron) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
+
+#if VALIDATE_DATA == 1
+  if (end_neuron < start_neuron )
+  {
+    Logger::panic("end neuron cannot be less than start neuron!");
+  }
+  if (end_neuron > get_number_neurons() - 1)
+  {
+    Logger::panic("end neuron Cannot be greater than ", get_number_neurons() -1, "!");
+  }
+#endif
+
+  std::span<Neuron> neurons_span(const_cast<Neuron*>(&_neurons[start_neuron]), end_neuron - start_neuron + 1);
+
   switch (error_calculation_type)
   {
   case ErrorCalculation::type::huber_loss:
-    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config);
+    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, neurons_span);
   case ErrorCalculation::type::huber_direction_loss:
-    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config);
+    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, neurons_span);
   case ErrorCalculation::type::mse:
-    return calculate_mse_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_mse_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::rmse:
-    return calculate_rmse_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_rmse_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::bce_loss:
-    return calculate_bce_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_bce_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::cross_entropy:
-    return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::log_cosh:
-    return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs);
+    return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   default:
-    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type)," is not supported for Layer!");
+    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type), " is not supported for Layer!");
   }
 }
 
@@ -34,19 +50,19 @@ void Layer::calculate_huber_direction_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const ErrorCalculation::EvaluationConfig& evaluation_config) const
+  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-
-  const size_t N_total = get_number_neurons();
 
   const double& delta = evaluation_config.huber_delta;                   // Huber threshold
   const double& lambda = evaluation_config.direction_lambda;             // Direction penalty strength
   const double& neutral_tolerance = evaluation_config.neutral_tolerance; // Ignore tiny targets
   const bool use_direction_penalty = evaluation_config.use_direction_penalty;
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     const double target = target_outputs[neuron_index];
     const double output = given_outputs[neuron_index];
 
@@ -95,15 +111,16 @@ void Layer::calculate_huber_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const ErrorCalculation::EvaluationConfig& evaluation_config) const
+  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
-  const size_t N_total = get_number_neurons();
   const double& delta = evaluation_config.huber_delta;
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
     const double abs_error = std::abs(error);
 
@@ -124,15 +141,16 @@ void Layer::calculate_huber_loss_error_deltas(
 void Layer::calculate_cross_entropy_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const size_t N_total = get_number_neurons();
   
   // This delta calculation assumes Softmax activation is used at the output layer.
   // dL/dz = y_pred - y_true
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
   }
 }
@@ -140,14 +158,14 @@ void Layer::calculate_cross_entropy_error_deltas(
 void Layer::calculate_bce_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const size_t N_total = get_number_neurons();
-  const double denom = static_cast<double>(N_total);
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
   }
 }
@@ -155,14 +173,14 @@ void Layer::calculate_bce_error_deltas(
 void Layer::calculate_mse_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const size_t N_total = get_number_neurons();
-  const double denom = static_cast<double>(N_total);
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
   }
 }
@@ -170,15 +188,16 @@ void Layer::calculate_mse_error_deltas(
 void Layer::calculate_rmse_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const size_t N_total = get_number_neurons();
 
   // 1. Calculate MSE sum
   double sum_squared_error = 0.0;
-  for (unsigned i = 0; i < N_total; ++i)
+  for (const auto& neuron : neurons)
   {
+    const unsigned i = neuron.get_index();
     const double diff = given_outputs[i] - target_outputs[i];
     sum_squared_error += diff * diff;
   }
@@ -194,8 +213,9 @@ void Layer::calculate_rmse_error_deltas(
   // dE/dy = (1 / (N * RMSE)) * (y - t)
   const double factor = _inv_num_neurons / divisor;
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * factor;
   }
 }
@@ -203,13 +223,14 @@ void Layer::calculate_rmse_error_deltas(
 void Layer::calculate_log_cosh_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const size_t N_total = get_number_neurons();
 
-  for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
+  for (const auto& neuron : neurons)
   {
+    const unsigned neuron_index = neuron.get_index();
     const double x = given_outputs[neuron_index] - target_outputs[neuron_index];
     // d/dx log(cosh(x)) = tanh(x)
     deltas[neuron_index] = std::tanh(x) * _inv_num_neurons;

@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <memory>
+#include <span>
 #include <vector>
 
 class Layer
@@ -446,7 +447,9 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type,
-    const ErrorCalculation::EvaluationConfig& evaluation_config) const;
+    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    unsigned int start_neuron,
+    unsigned int end_neuron) const;
 
   [[nodiscard]] inline const activation& get_activation() const noexcept
   {
@@ -1048,38 +1051,45 @@ private:
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const ErrorCalculation::EvaluationConfig& evaluation_config) const;
+    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    std::span<Neuron> neurons) const;
 
   void calculate_huber_direction_loss_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const ErrorCalculation::EvaluationConfig& evaluation_config) const;
+    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    std::span<Neuron> neurons) const;
 
   void calculate_mse_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    std::span<Neuron> neurons) const;
 
   void calculate_rmse_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    std::span<Neuron> neurons) const;
 
   void calculate_bce_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    std::span<Neuron> neurons) const;
 
   void calculate_cross_entropy_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    std::span<Neuron> neurons) const;
 
   void calculate_log_cosh_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    std::span<Neuron> neurons) const;
 
 protected:
   /**
