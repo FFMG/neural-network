@@ -21,18 +21,17 @@ protected:
 public:
   FFOutputLayer(
     unsigned layer_index,
-    const OutputLayerDetails& output_layer_detail,
+    const std::vector<OutputLayerDetails>& output_layer_details,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
-    ResidualProjector* residual_projector,
     int number_of_threads);
 
   FFOutputLayer(
     unsigned layer_index,
-    const OutputLayerDetails& output_layer_detail,
+    const std::vector<OutputLayerDetails>& output_layer_details,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -52,7 +51,6 @@ public:
     const std::vector<double>& b_m2,
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector,
     int number_of_threads
   ) noexcept;
 
@@ -67,6 +65,13 @@ public:
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates> &batch_hidden_states) const override;
+
+  void calculate_hidden_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks) const override;
 
   bool has_bias() const noexcept override;
   
@@ -85,5 +90,5 @@ private:
     size_t num_neurons) const;
 
 private:
-  OutputLayerDetails _output_layer_detail;
+  std::vector<OutputLayerDetails> _output_layer_details;
 };

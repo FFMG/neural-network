@@ -300,7 +300,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const OutputLayerDetails& output_layer_details, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -312,7 +312,6 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     weight_decay, 
     optimiser_type, 
     residual_layer_number,
-    create_residual_projector(output_layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
     number_of_threads);
 }
 

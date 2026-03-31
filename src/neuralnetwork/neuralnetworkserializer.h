@@ -38,14 +38,14 @@ private:
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
   static Layers create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json);
   static std::unique_ptr<Layer> create_fflayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
-  static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const OutputLayerDetails& output_layer_details);
+  static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<OutputLayerDetails>& output_layer_details);
   static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
-  static OutputLayerDetails get_output_layer_details(unsigned output_size, const TinyJSON::TJValueObject& options_object);
+  static std::vector<OutputLayerDetails> get_output_layer_details(unsigned output_size, const TinyJSON::TJValueObject& options_object);
   static ErrorCalculation::EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
   static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const ErrorCalculation::EvaluationConfig& config);
 
@@ -65,5 +65,5 @@ private:
   static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);
   static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails>& hidden_layers);
-  static TinyJSON::TJValueObject* add_output_layer(const OutputLayerDetails& output_layer);
+  static TinyJSON::TJValueArray* add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details);
 };
