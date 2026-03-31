@@ -726,10 +726,11 @@ void GRURNNLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  ErrorCalculation::type error_calculation_type,
-  const ErrorCalculation::EvaluationConfig& evaluation_config) const
+  const OutputLayerDetails& output_layer_detail) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
+  const auto& evaluation_config = output_layer_detail.get_error_evaluation_config();
   const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
 

@@ -483,7 +483,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   return layer;
 }
 
-OutputLayerDetails NeuralNetworkSerializer::get_output_layer(unsigned output_size, const TinyJSON::TJValueObject& options_object)
+OutputLayerDetails NeuralNetworkSerializer::get_output_layer_details(unsigned output_size, const TinyJSON::TJValueObject& options_object)
 {
   const auto* output_layer_object = static_cast<const TinyJSON::TJValueObject*>(options_object.try_get_value("output-layer"));
   if (nullptr == output_layer_object)
@@ -501,7 +501,30 @@ OutputLayerDetails NeuralNetworkSerializer::get_output_layer(unsigned output_siz
   const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
   const auto output_activation_method = activation(output_method, output_alpha);
 
-  return OutputLayerDetails(output_size, output_activation_method, output_error_calculation_type);
+  const auto error_evaluation_config = get_error_evaluation_config(output_layer_object);
+  return OutputLayerDetails(output_size, output_activation_method, output_error_calculation_type, error_evaluation_config);
+}
+
+ErrorCalculation::EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const TinyJSON::TJValueObject* parent)
+{
+  if (nullptr == parent)
+  {
+    Logger::panic("Missing Rules `error-evaluation-config`.");
+  }
+
+  auto error_evaluation_config_object = static_cast<const TinyJSON::TJValueObject*>(parent->try_get_value("error-evaluation-config", true));
+  ErrorCalculation::EvaluationConfig error_evaluation_config;
+
+  if (nullptr != error_evaluation_config_object)
+  {
+    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get<double>("neutral-tolerance");
+    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get<double>("confidence-threshold");
+    error_evaluation_config.huber_delta = error_evaluation_config_object->get<double>("huber-delta");
+    error_evaluation_config.direction_lambda = error_evaluation_config_object->get<double>("direction-lambda");
+    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get<bool>("use-direction-penalty");
+  }
+
+  return error_evaluation_config;
 }
 
 std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
@@ -640,7 +663,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
-  auto output_layer = get_output_layer(topology.back(), *options_object);
+  auto output_layer_details = get_output_layer_details(topology.back(), *options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
   
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
@@ -667,19 +690,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     }
   }
 
-  auto error_evaluation_config_object = dynamic_cast<const TinyJSON::TJValueObject*>(options_object->try_get_value("error-evaluation-config"));
-  ErrorCalculation::EvaluationConfig error_evaluation_config;
-  if (nullptr != error_evaluation_config_object)
-  {
-    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral-tolerance");
-    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence-threshold");
-    error_evaluation_config.huber_delta = error_evaluation_config_object->get_float<double>("huber-delta");
-    error_evaluation_config.direction_lambda = error_evaluation_config_object->get_float<double>("direction-lambda");
-    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get_boolean("use-direction-penalty");
-  }
-
   return NeuralNetworkOptions::create(topology)
-    .with_output_layer(output_layer)
+    .with_output_layer_details(output_layer_details)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
     .with_batch_size(batch_size)
@@ -701,7 +713,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
-    .with_error_evaluation_config(error_evaluation_config)
     .build();
 }
 
@@ -919,7 +930,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto topology_list = new TinyJSON::TJValueArray();
   topology_list->add_numbers(options.topology());
 
-  auto output_layer_object = add_output_layer(options.output_layer());
+  auto output_layer_object = add_output_layer(options.output_layer_details());
   auto hidden_layer_list = add_hidden_layers(options.hidden_layers());
   
   options_object->set("topology", topology_list);
@@ -955,16 +966,6 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
-
-  auto error_evaluation_config_object = new TinyJSON::TJValueObject();
-  error_evaluation_config_object->set_float("neutral-tolerance", options.error_evaluation_config().neutral_tolerance);
-  error_evaluation_config_object->set_float("confidence-threshold", options.error_evaluation_config().confidence_threshold);
-  error_evaluation_config_object->set_float("huber-delta", options.error_evaluation_config().huber_delta);
-  error_evaluation_config_object->set_float("direction-lambda", options.error_evaluation_config().direction_lambda);
-  error_evaluation_config_object->set_boolean("use-direction-penalty", options.error_evaluation_config().use_direction_penalty);
-
-  options_object->set("error-evaluation-config", error_evaluation_config_object);
-  delete error_evaluation_config_object;
 
   json.set("options", options_object);
 
@@ -1215,7 +1216,23 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_output_layer(const OutputL
   output_layer_object->set_string("activation-method", activation::method_to_string(output_layer.get_activation().get_method()).c_str());
   output_layer_object->set_float("activation-alpha", output_layer.get_activation().get_alpha());
   output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer.get_output_error_calculation_type()).c_str());
+  add_error_evaluation_config(output_layer_object, output_layer.get_error_evaluation_config());
+
   return output_layer_object;
+}
+
+void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObject* parent, const ErrorCalculation::EvaluationConfig& config)
+{
+  auto error_evaluation_config_object = new TinyJSON::TJValueObject();
+  error_evaluation_config_object->set_float("neutral-tolerance", config.neutral_tolerance);
+  error_evaluation_config_object->set_float("confidence-threshold", config.confidence_threshold);
+  error_evaluation_config_object->set_float("huber-delta", config.huber_delta);
+  error_evaluation_config_object->set_float("direction-lambda", config.direction_lambda);
+  error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty);
+
+  parent->set("error-evaluation-config", error_evaluation_config_object);
+  delete error_evaluation_config_object;
+
 }
 
 TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails>& hidden_layers)
@@ -1229,7 +1246,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set_string("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
     hidden_layer_object->set_float("activation-alpha", hl.get_activation().get_alpha());
     hidden_layer_object->set_float("dropout", hl.get_dropout());
-
+    
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
   }

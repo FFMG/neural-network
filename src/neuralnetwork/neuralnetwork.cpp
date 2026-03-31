@@ -30,7 +30,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_output_layer(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse))
+    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, {0.01, 0.01}))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -367,10 +367,11 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     }
   }
 
+  const auto& evaluation_config = _options.output_layer_details().get_error_evaluation_config();
   for (const auto& error_type : error_types)
   {
     errors.emplace_back(
-      ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, _options.error_evaluation_config()),
+      ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, evaluation_config),
       error_type);
   }
   return errors;
@@ -947,10 +948,17 @@ void NeuralNetwork::log_training_info(
   }
 
   // Output
-  Logger::info(tab, "Output                     : ");
-  Logger::info(tab, "  Activation method        : ", activation::method_to_string(_options.output_layer().get_activation().get_method()));
-  Logger::info(tab, "  Activation alpha         : ", std::fixed, std::setprecision(5), _options.output_layer().get_activation().get_alpha());
-  Logger::info(tab, "  Error calculation type   : ", ErrorCalculation::type_to_string(_options.output_layer().get_output_error_calculation_type()));
+  const auto& output_layer_details = _options.output_layer_details();
+  Logger::info(tab, "Output                     : ", "\n",
+    tab, tab, "Activation method        : ", activation::method_to_string(output_layer_details.get_activation().get_method()), "\n",
+    tab, tab, "Activation alpha         : ", std::fixed, std::setprecision(5), output_layer_details.get_activation().get_alpha(), "\n",
+    tab, tab, "Error calculation type   : ", ErrorCalculation::type_to_string(output_layer_details.get_output_error_calculation_type()), "\n",
+    tab, tab, "Error evaluation config  : ", std::fixed, std::setprecision(5), "\n",
+    tab, tab, tab, "confidence-threshold   : ", output_layer_details.get_error_evaluation_config().confidence_threshold, "\n",
+    tab, tab, tab, "neutral-tolerance      : ", output_layer_details.get_error_evaluation_config().neutral_tolerance, "\n",
+    tab, tab, tab, "huber delta            : ", output_layer_details.get_error_evaluation_config().huber_delta, "\n",
+    tab, tab, tab, "direction lambda       : ", output_layer_details.get_error_evaluation_config().direction_lambda, "\n",
+    tab, tab, tab, "use direction penalty  : ", output_layer_details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
@@ -976,12 +984,6 @@ void NeuralNetwork::log_training_info(
     }
     Logger::info(message);
   }
-  Logger::info(tab, "Error evaluation config    :\n", std::fixed, std::setprecision(5),
-    tab, tab, "confidence-threshold     : ", _options.error_evaluation_config().confidence_threshold, "\n",
-    tab, tab, "neutral-tolerance        : ", _options.error_evaluation_config().neutral_tolerance, "\n",
-    tab, tab, "huber delta              : ", _options.error_evaluation_config().huber_delta, "\n",
-    tab, tab, "direction lambda         : ", _options.error_evaluation_config().direction_lambda, "\n",
-    tab, tab, "use direction penalty    : ", _options.error_evaluation_config().use_direction_penalty ? "true" : "false");
 
   if (_options.batch_size() > 1)
   {

@@ -8,6 +8,7 @@
 #include "hiddenstates.h"
 #include "neuron.h"
 #include "optimiser.h"
+#include "outputlayerdetails.h"
 #include "residualprojector.h"
 #include "taskqueue.h"
 #include "weightparam.h"
@@ -440,8 +441,7 @@ public:
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,
-    ErrorCalculation::type error_calculation_type,
-    const ErrorCalculation::EvaluationConfig& evaluation_config) const = 0;
+    const OutputLayerDetails& output_layer_detail) const = 0;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,
