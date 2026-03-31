@@ -729,68 +729,7 @@ void GRURNNLayer::calculate_output_gradients(
   const OutputLayerDetails& output_layer_detail) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
-  const auto& evaluation_config = output_layer_detail.get_error_evaluation_config();
-  const size_t batch_size = batch_gradients_and_outputs.size();
-  const size_t N_total = get_number_neurons();
-
-  auto run_output_gradients = [&](size_t start, size_t end)
-  {
-    std::vector<double> gradients(N_total, 0.0);
-    std::vector<double> deltas(N_total, 0.0);
-
-    for (size_t b = start; b < end; b++)
-    {
-      const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
-      const auto& target_outputs = *(target_outputs_begin + b);
-      
-      std::fill(gradients.begin(), gradients.end(), 0.0);
-
-      if (given_outputs.size() >= N_total && N_total > 0)
-      {
-        std::vector<double> target_slice(target_outputs.begin(), target_outputs.begin() + std::min(target_outputs.size(), (size_t)N_total));
-        if (target_slice.size() < N_total) target_slice.resize(N_total, 0.0);
-
-        if (given_outputs.size() == N_total)
-        {
-          calculate_error_deltas(deltas, target_slice, given_outputs, error_calculation_type, evaluation_config);
-        }
-        else
-        {
-          const size_t num_time_steps = given_outputs.size() / N_total;
-          const size_t output_offset = (num_time_steps - 1) * N_total;
-          std::vector<double> given_slice(given_outputs.begin() + output_offset, given_outputs.begin() + output_offset + N_total);
-          calculate_error_deltas(deltas, target_slice, given_slice, error_calculation_type, evaluation_config);
-        }
-        // Direct assignment of deltas (dL/dh) because GRU output is h_t, not activation(h_t)
-        for (unsigned j = 0; j < N_total; ++j) gradients[j] = deltas[j];
-      }
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
-    }
-  };
-
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
-  {
-    run_output_gradients(0, batch_size);
-  }
-  else
-  {
-    size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
-    {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([=]() {
-          run_output_gradients( start, end);
-        });
-      }
-      start = end;
-    }
-    _task_queue_pool->get();
-  }
+  Logger::panic("GRURNNLayer: Trying to calculate output gradient with a non output layer!");
 }
 
 void GRURNNLayer::calculate_bptt_batch_chunk(

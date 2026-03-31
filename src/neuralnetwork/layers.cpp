@@ -1,5 +1,6 @@
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
+#include "ffoutputlayer.h"
 #include "grurnnlayer.h"
 #include "layers.h"
 #include "logger.h"
@@ -303,12 +304,11 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  return std::make_unique<FFLayer>(
+  return std::make_unique<FFOutputLayer>(
     layer_index, 
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer, 
     weight_decay, 
-    Layer::LayerType::Output, 
     activation, 
     optimiser_type, 
     residual_layer_number,
@@ -350,14 +350,19 @@ void Layers::calculate_forward_feed(
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
 #if VALIDATE_DATA ==1
-  if (gradients_and_output.size() != batch_size)
+  if (gradients_and_output.size() < batch_size) /* can be less in case of mismatch total BPTTs */
   {
     Logger::panic("Layers trying calculate forward feed but output size does not match batch size!");
   }
-  if (hidden_states.size() != batch_size)
+  if (hidden_states.size() < batch_size)
   {
     Logger::panic("Layers trying calculate forward feed but hidden states size does not match batch size!");
   }
+  if (hidden_states.size() != gradients_and_output.size())
+  {
+    Logger::panic("Layers trying calculate forward feed but hidden states size does not match gradients and output!");
+  }
+
 #endif
 
   std::shared_lock<std::shared_mutex> read(_mutex);

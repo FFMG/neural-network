@@ -4,9 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "errorcalculation.h"
 #include "elmanrnnlayer.h"
+#include "errorcalculation.h"
 #include "fflayer.h"
+#include "ffoutputlayer.h"
 #include "grurnnlayer.h"
 #include "layer.h"
 #include "layerdetails.h"
@@ -37,6 +38,7 @@ private:
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
   static Layers create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json);
   static std::unique_ptr<Layer> create_fflayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
@@ -53,6 +55,7 @@ private:
   static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);

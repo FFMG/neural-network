@@ -316,68 +316,7 @@ void FFLayer::calculate_output_gradients(
   const OutputLayerDetails& output_layer_detail) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
-  const auto& evaluation_config = output_layer_detail.get_error_evaluation_config();
-  const size_t batch_size = batch_gradients_and_outputs.size();
-  const size_t N_total = get_number_neurons();
-
-  auto run_output_gradients = [&](size_t start, size_t end)
-  {
-    std::vector<double> gradients(N_total, 0.0);
-    std::vector<double> deltas(N_total, 0.0);
-
-    const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
-
-    for (size_t b = start; b < end; b++)
-    {
-      const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
-      const auto& target_outputs = *(target_outputs_begin + b);
-
-      calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config);
-
-      if (is_not_using_activation_derivative)
-      {
-        for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
-        {
-          gradients[neuron_index] = deltas[neuron_index];
-        }
-      }
-      else
-      {
-        const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-        for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
-        {
-          double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
-          gradients[neuron_index] = deltas[neuron_index] * deriv;
-        }
-      }
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
-    }
-  };
-
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
-  {
-    run_output_gradients(0, batch_size);
-  }
-  else
-  {
-    size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
-    {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end)
-      {
-      _task_queue_pool->enqueue([=]()
-        {
-          run_output_gradients(start, end);
-        });
-      }
-      start = end;
-    }
-    _task_queue_pool->get();
-  }
+  Logger::panic("FFLayer: Trying to calculate output gradient with a non output layer!");
 }
 
 void FFLayer::calculate_hidden_gradients(
