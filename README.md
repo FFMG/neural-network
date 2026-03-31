@@ -199,7 +199,7 @@ int main()
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
   auto options = NeuralNetworkOptions::create({ 3,4,1 })
     .with_batch_size(batch_size)
-    .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
+    .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -269,7 +269,7 @@ int main()
 
   auto options = NeuralNetworkOptions::create({ 3,8,1 })
   .with_batch_size(batch_size)
-  .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
+  .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
@@ -362,7 +362,7 @@ int main()
 
   auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
-    .with_output_layer(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
+    .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -427,6 +427,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * activation
     * Method: The actuation method, for example `sigmoid`.
     * alpha: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
+  * ErrorCalculation::EvaluationConfig: An `ErrorCalculation::EvaluationConfig` struct to fine-tune error calculations (see below).
   * Output error calculation: The error calculation, for example, `ErrorCalculation::type::mse`.
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
@@ -450,7 +451,6 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 * bptt_max_ticks[=0]: Limits the number of time steps (ticks) to propagate gradients backward during BPTT. 0 means unlimited (full BPTT). This is useful for long sequences to save memory and avoid vanishing gradients.
 * final_error_calculation_types[={}]: A list of error calculation types that will be displayed after training in a summary of error(s). If empty, no final calculation will be done.
 * update_training_monitor_percent[=0.0]: This value (between 0.0 and 1.0) is used to say how often, during training, we will be updating the training monitor value. 0.0 means no update.
-* error_evaluation_config: An `ErrorCalculation::EvaluationConfig` struct to fine-tune error calculations (see below).
 
 Remember to call `.build()` to create your option as it does error checking.
 
@@ -473,7 +473,7 @@ You can configure this via `NeuralNetworkOptions`:
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
-      .with_error_evaluation_config(eval_config)
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config)
       ...
       .build();
 ```
@@ -502,7 +502,7 @@ After training you can get the calculated error as well as the mean absolute per
 ...
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
-  .with_output_layer(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse))
+  .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, {0.001, 0.001, 1.0, 0.05}))
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
