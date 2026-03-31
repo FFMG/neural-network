@@ -821,7 +821,12 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   size_t batch_size = indices.size();
-  assert(gradients_and_output.size() == batch_size);
+#if VALIDATE_DATA == 1
+  if (gradients_and_output.size() != batch_size)
+  {
+    Logger::panic("The gradient vector size does not match the batch size!");
+  }
+#endif
 
   // --- 1. Store input layer outputs for the entire batch ---
   for (size_t b = 0; b < batch_size; ++b)
