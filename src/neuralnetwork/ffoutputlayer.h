@@ -9,7 +9,7 @@
 
 #include "errorcalculation.h"
 #include "fflayer.h"
-#include "layer.h"
+#include "outputlayerdetails.h"
 
 #include <vector>
 
@@ -19,20 +19,20 @@ protected:
   friend class Layers;
 
 public:
-  FFOutputLayer(unsigned layer_index,
+  FFOutputLayer(
+    unsigned layer_index,
+    const OutputLayerDetails& output_layer_detail,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
-    const activation& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
-    double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads);
 
   FFOutputLayer(
     unsigned layer_index,
-    const activation activation,
+    const OutputLayerDetails& output_layer_detail,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -66,10 +66,12 @@ public:
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states,
-    const OutputLayerDetails& output_layer_detail) const override;
+    const std::vector<HiddenStates> &batch_hidden_states) const override;
 
   bool has_bias() const noexcept override;
   
   Layer* clone() const override;
+
+private:
+  OutputLayerDetails _output_layer_detail;
 };

@@ -106,7 +106,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "ffoutputlayer")
     {
       layers.emplace_back(
-        std::move(create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads()))
+        std::move(create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.output_layer_details() ))
       );
       continue;
     }
@@ -494,7 +494,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  const OutputLayerDetails& output_layer_details
 )
 {
   // get the neurons
@@ -539,7 +540,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
 
   auto layer = std::make_unique<FFOutputLayer>(
     layer_index,
-    activation_method,
+    output_layer_details,
     optimiser_type,
     residual_layer_number,
     number_input_neurons,

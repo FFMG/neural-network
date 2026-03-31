@@ -8,7 +8,6 @@
 #include "hiddenstates.h"
 #include "neuron.h"
 #include "optimiser.h"
-#include "outputlayerdetails.h"
 #include "residualprojector.h"
 #include "taskqueue.h"
 #include "weightparam.h"
@@ -103,7 +102,7 @@ protected:
   Layer(
     unsigned layer_index,
     const LayerType layer_type,
-    const activation activation,
+    const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -128,7 +127,7 @@ protected:
   ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
-    _activation(activation),
+    _activation(activation_method),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
     _number_input_neurons(number_input_neurons),
@@ -440,8 +439,7 @@ public:
   virtual void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    const OutputLayerDetails& output_layer_detail) const = 0;
+    const std::vector<HiddenStates>& batch_hidden_states) const = 0;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,

@@ -50,9 +50,9 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   }
 
   // finally, the output layer
-  const auto& output_layer_detault = options.output_layer_details();
+  const auto& output_layer_details = options.output_layer_details();
   const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_detault.get_activation(), optimiser_type, residual_layer_number, number_of_threads);
+  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_details, optimiser_type, residual_layer_number, number_of_threads);
 
   _layers.emplace_back(std::move(layer));
 }
@@ -300,20 +300,19 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const activation& activation, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const OutputLayerDetails& output_layer_details, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
   return std::make_unique<FFOutputLayer>(
     layer_index, 
+    output_layer_details,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer, 
     weight_decay, 
-    activation, 
     optimiser_type, 
     residual_layer_number,
-    0.0, // no dropout for output layer
-    create_residual_projector(activation, residual_layer_number, num_neurons_in_this_layer, _weight_decay), 
+    create_residual_projector(output_layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
     number_of_threads);
 }
 
@@ -488,7 +487,7 @@ void Layers::calculate_back_propagation_output_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   const auto& output_layer_number = static_cast<unsigned>(size() - 1);
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, options.output_layer_details());
+  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states);
 }
 
 void Layers::calculate_back_propagation_hidden_layers(

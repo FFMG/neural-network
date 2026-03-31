@@ -65,7 +65,7 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
   const LayerType layer_type,
-  const activation activation,
+  const activation& activation_method,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   unsigned number_input_neurons,
@@ -98,7 +98,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   Layer(
     layer_index,
     layer_type,
-    activation,
+    activation_method,
     optimiser_type,
     residual_layer_number,
     number_input_neurons,
@@ -375,8 +375,7 @@ void ElmanRNNLayer::calculate_forward_feed(
 void ElmanRNNLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-  const std::vector<HiddenStates>& batch_hidden_states,
-  const OutputLayerDetails& output_layer_detail) const
+  const std::vector<HiddenStates>& batch_hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   Logger::panic("ElmanRNNLayer: Trying to calculate output gradient with a non output layer!");
