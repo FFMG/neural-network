@@ -172,10 +172,10 @@ public:
       return 0.0;
 
     case type::huber_loss:
-      return calculate_huber_loss_error(ground_truth, predictions);
+      return calculate_huber_loss_error(ground_truth, predictions, evaluation_config);
 
     case type::huber_direction_loss:
-      return calculate_huber_direction_loss(ground_truth, predictions);
+      return calculate_huber_direction_loss(ground_truth, predictions, evaluation_config);
 
     case type::mae:
       return calculate_mae_error(ground_truth, predictions);
@@ -199,7 +199,7 @@ public:
       return calculate_forecast_smape(ground_truth, predictions);
 
     case type::directional_accuracy:
-      return calculate_directional_accuracy(ground_truth, predictions);
+      return calculate_directional_accuracy(ground_truth, predictions, evaluation_config);
 
     case type::directional_confidence_score:
       return calculate_directional_confidence_score(ground_truth, predictions, evaluation_config);
@@ -220,7 +220,7 @@ public:
     Logger::panic("Unknown ErrorCalculation type!");
   }
 
-  static double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0)
+  static double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -229,6 +229,8 @@ public:
       Logger::panic("Mismatched number of samples");
     }
 #endif
+
+    const auto& delta = evaluation_config.huber_delta;
 
     double total_loss = 0.0;
     size_t count = 0;
@@ -259,7 +261,7 @@ public:
     return (count > 0) ? (total_loss / count) : 0.0;
   }
 
-  static double calculate_huber_direction_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta = 1.0, double lambda = 0.2)
+  static double calculate_huber_direction_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -269,16 +271,16 @@ public:
     }
 #endif
 
+    const auto& lambda = evaluation_config.direction_lambda;
+    const auto& delta = evaluation_config.huber_delta;
+
     double total_loss = 0.0;
     size_t count = 0;
 
+    const double scale = 100.0; // important
+
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
-      if (ground_truth[i].size() != predictions[i].size())
-      {
-        Logger::panic("Mismatched vector sizes at index ", i);
-      }
-
       for (size_t j = 0; j < ground_truth[i].size(); ++j)
       {
         const double target = ground_truth[i][j];
@@ -287,6 +289,7 @@ public:
         const double error = target - output;
         const double abs_error = std::abs(error);
 
+        // --- Huber loss ---
         double loss = 0.0;
         if (abs_error <= delta)
         {
@@ -297,21 +300,21 @@ public:
           loss = delta * (abs_error - 0.5 * delta);
         }
 
-        // Direction penalty
-        if (target != 0.0 && output != 0.0)
+        if (std::abs(target) > 1e-6) // ignore noise
         {
-          const bool sign_mismatch = (target > 0.0 && output < 0.0) ||
-                                     (target < 0.0 && output > 0.0);
+          const double x = -scale * target * output;
 
-          if (sign_mismatch)
-          {
-            loss += lambda * std::abs(output);
-          }
+          // log(1 + exp(x)) (numerically stable version optional)
+          const double direction_loss = std::log(1.0 + std::exp(x));
+
+          loss += lambda * direction_loss;
         }
+
         total_loss += loss;
         ++count;
       }
     }
+
     return (count > 0) ? (total_loss / count) : 0.0;
   }
 
@@ -672,7 +675,7 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance = 0.001)
+  static double calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -682,6 +685,7 @@ public:
     }
 #endif
 
+    const auto& neutral_tolerance = evaluation_config.neutral_tolerance;
     size_t correct = 0;
     size_t total = 0;
 
@@ -718,9 +722,7 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_bce_loss(
-    const std::vector<std::vector<double>>& ground_truths,
-    const std::vector<std::vector<double>>& predictions)
+  static double calculate_bce_loss( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -764,9 +766,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
   }
 
-  static double calculate_log_cosh(
-    const std::vector<std::vector<double>>& ground_truths,
-    const std::vector<std::vector<double>>& predictions)
+  static double calculate_log_cosh( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -803,9 +803,7 @@ public:
     return (count > 0) ? (total_log_cosh / count) : 0.0;
   }
 
-  static double calculate_cross_entropy(
-    const std::vector<std::vector<double>>& ground_truths,
-    const std::vector<std::vector<double>>& predictions)
+  static double calculate_cross_entropy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
