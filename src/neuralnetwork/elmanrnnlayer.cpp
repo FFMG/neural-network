@@ -274,18 +274,21 @@ void ElmanRNNLayer::calculate_forward_feed(
         constexpr size_t BLOCK_SIZE = 64;
         for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
         {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
+          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          {
+            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+            for (size_t i = i0; i < i_limit; ++i)
             {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    const double val = x_t[i];
-                    if (val == 0.0) continue;
-                    const double* w_row = &W[i * N_this];
-                    for (size_t j = j0; j < j_limit; ++j) pre_activation_sums[j] += val * w_row[j];
-                }
+              const double val = x_t[i];
+              if (val == 0.0) continue;
+              const double* w_row = &W[i * N_this];
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                pre_activation_sums[j] += val * w_row[j];
+              }
             }
+          }
         }
 
         // c. Hidden-to-Hidden (U * h_{t-1}) - Tiled
@@ -301,10 +304,16 @@ void ElmanRNNLayer::calculate_forward_feed(
                   size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
                   for (size_t i = i0; i < i_limit; ++i)
                   {
-                      const double val = h_prev[i];
-                      if (val == 0.0) continue;
-                      const double* u_row = &U[i * N_this];
-                      for (size_t j = j0; j < j_limit; ++j) pre_activation_sums[j] += val * u_row[j];
+                    const double val = h_prev[i];
+                    if (val == 0.0)
+                    {
+                      continue;
+                    }
+                    const double* u_row = &U[i * N_this];
+                    for (size_t j = j0; j < j_limit; ++j)
+                    {
+                      pre_activation_sums[j] += val * u_row[j];
+                    }
                   }
               }
           }
@@ -313,7 +322,10 @@ void ElmanRNNLayer::calculate_forward_feed(
         // d. Residuals
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-            for (size_t j = 0; j < N_this; ++j) pre_activation_sums[j] += batch_residual_output_values[b][j];
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            pre_activation_sums[j] += batch_residual_output_values[b][j];
+          }
         }
 
         // e. Activation and Store
