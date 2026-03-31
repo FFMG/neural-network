@@ -45,7 +45,7 @@ private:
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
-  static std::vector<OutputLayerDetails> get_output_layer_details(unsigned output_size, const TinyJSON::TJValueObject& options_object);
+  static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
   static ErrorCalculation::EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
   static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const ErrorCalculation::EvaluationConfig& config);
 
