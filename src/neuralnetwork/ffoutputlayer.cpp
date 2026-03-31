@@ -152,42 +152,19 @@ void FFOutputLayer::calculate_output_gradients(
   const size_t N_total = get_number_neurons();
   const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
-  auto run_output_gradients = [&](size_t start, size_t end)
-    {
-      std::vector<double> gradients(N_total, 0.0);
-      std::vector<double> deltas(N_total, 0.0);
-
-      for (size_t b = start; b < end; b++)
-      {
-        const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
-        const auto& target_outputs = *(target_outputs_begin + b);
-
-        calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, 0, N_total -1);
-
-        if (is_not_using_activation_derivative)
-        {
-          for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
-          {
-            gradients[neuron_index] = deltas[neuron_index];
-          }
-        }
-        else
-        {
-          const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-          for (unsigned neuron_index = 0; neuron_index < N_total; ++neuron_index)
-          {
-            double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
-            gradients[neuron_index] = deltas[neuron_index] * deriv;
-          }
-        }
-        batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
-      }
-    };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_output_gradients(0, batch_size);
+    run_output_gradients(
+      0, 
+      batch_size, 
+      batch_gradients_and_outputs, 
+      target_outputs_begin, 
+      batch_hidden_states, 
+      error_calculation_type, 
+      evaluation_config, 
+      is_not_using_activation_derivative, 
+      N_total);
   }
   else
   {
@@ -198,13 +175,63 @@ void FFOutputLayer::calculate_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]()
+        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs]()
           {
-            run_output_gradients(start, end);
+            run_output_gradients(
+              start, 
+              end, 
+              batch_gradients_and_outputs, 
+              target_outputs_begin, 
+              batch_hidden_states, 
+              error_calculation_type, 
+              evaluation_config, 
+              is_not_using_activation_derivative, 
+              N_total);
           });
       }
       start = end;
     }
     _task_queue_pool->get();
+  }
+}
+
+void FFOutputLayer::run_output_gradients(
+  size_t start,
+  size_t end,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  ErrorCalculation::type error_calculation_type,
+  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  bool is_not_using_activation_derivative,
+  size_t num_neurons) const
+{
+  std::vector<double> gradients(num_neurons, 0.0);
+  std::vector<double> deltas(num_neurons, 0.0);
+
+  for (size_t b = start; b < end; b++)
+  {
+    const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
+    const auto& target_outputs = *(target_outputs_begin + b);
+
+    calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, 0, (int)num_neurons - 1);
+
+    if (is_not_using_activation_derivative)
+    {
+      for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
+      {
+        gradients[neuron_index] = deltas[neuron_index];
+      }
+    }
+    else
+    {
+      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+      for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
+      {
+        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+        gradients[neuron_index] = deltas[neuron_index] * deriv;
+      }
+    }
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
   }
 }
