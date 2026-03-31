@@ -73,5 +73,17 @@ public:
   Layer* clone() const override;
 
 private:
+  void run_output_gradients(
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    ErrorCalculation::type error_calculation_type,
+    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    bool is_not_using_activation_derivative,
+    size_t num_neurons) const;
+
+private:
   OutputLayerDetails _output_layer_detail;
 };
