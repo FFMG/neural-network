@@ -73,9 +73,26 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks) const override;
 
+  void calculate_forward_feed(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& previous_layer,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training) const override;
+
   bool has_bias() const noexcept override;
   
   Layer* clone() const override;
+
+protected:
+  virtual void run_post_gemm(
+    size_t start,
+    size_t end,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training) const;
 
 private:
   void run_output_gradients(
@@ -89,6 +106,5 @@ private:
     bool is_not_using_activation_derivative,
     size_t num_neurons) const;
 
-private:
   std::vector<OutputLayerDetails> _output_layer_details;
 };
