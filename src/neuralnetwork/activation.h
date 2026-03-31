@@ -6,6 +6,9 @@
 
 class activation
 {
+private:
+  using activation_function = double (*)(double, double);
+
 public:
   enum class method
   {
@@ -23,8 +26,6 @@ public:
     softmax
   };
 
-  using activation_function = double (*)(double, double);
-
   activation(const method method, double alpha);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
@@ -32,10 +33,18 @@ public:
   activation& operator=(activation&& src) noexcept;
   ~activation() = default;
 
-  inline double activate(double x) const { return _activate_ptr(x, _alpha); }
+  [[nodiscard]] inline double activate(double x) const noexcept 
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    return _activate_ptr(x, _alpha); 
+  }
   void activate(double* begin, double* end) const;
 
-  inline double activate_derivative(double x) const { return _derivative_ptr(x, _alpha); }
+  [[nodiscard]] inline double activate_derivative(double x) const noexcept 
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    return _derivative_ptr(x, _alpha); 
+  }
 
   double momentum() const;
 
@@ -46,13 +55,13 @@ public:
   static std::string method_to_string(method m);
   static method string_to_method(const std::string& str);
   
-  inline method get_method() const noexcept 
+  [[nodiscard]] inline method get_method() const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("activation");
     return _method; 
   }
 
-  inline double get_alpha() const noexcept
+  [[nodiscard]] inline double get_alpha() const noexcept
   {
 	  MYODDWEB_PROFILE_FUNCTION("activation");
 	  return _alpha;
