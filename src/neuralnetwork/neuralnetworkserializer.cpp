@@ -103,6 +103,14 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
+    if (type == "ffoutputlayer")
+    {
+      layers.emplace_back(
+        std::move(create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads()))
+      );
+      continue;
+    }
+
     if (type == "elmanrnnlayer")
     {
       layers.emplace_back(
@@ -456,6 +464,81 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto layer = std::make_unique<FFLayer>(
     layer_index,
     layer_type,
+    activation_method,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    residual_projector.get(),
+    number_of_threads
+  );
+
+  return layer;
+}
+
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads
+)
+{
+  // get the neurons
+  auto neurons = get_neurons(layer_object, layer_index);
+
+  auto residual_layer_number = layer_object.get_number<int>("residual-layer-number");
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto activation_method_string = layer_object.try_get_string("activation-method");
+  if (activation_method_string == nullptr)
+  {
+    Logger::panic("Missing layer 'activation-method'.");
+  }
+  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
+
+  auto layer_type_number = layer_object.get_number<int>("layer-type");
+
+  auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get_number<unsigned>("number-output-neurons");
+  auto w_values = layer_object.get_floats<double>("w-values");
+  auto w_grads = layer_object.get_floats<double>("w-grads");
+  auto w_velocities = layer_object.get_floats<double>("w-velocities");
+  auto w_m1 = layer_object.get_floats<double>("w-m1");
+  auto w_m2 = layer_object.get_floats<double>("w-m2");
+  auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
+  auto w_decays = layer_object.get_floats<double>("w-decays");
+  auto b_values = layer_object.get_floats<double>("b-values");
+  auto b_grads = layer_object.get_floats<double>("b-grads");
+  auto b_velocities = layer_object.get_floats<double>("b-velocities");
+  auto b_m1 = layer_object.get_floats<double>("b-m1");
+  auto b_m2 = layer_object.get_floats<double>("b-m2");
+  auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
+  auto b_decays = layer_object.get_floats<double>("b-decays");
+
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
+
+  auto layer = std::make_unique<FFOutputLayer>(
+    layer_index,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -1166,13 +1249,60 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
 {
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
-  for(const auto& neuron : layer.get_neurons())
+  for (const auto& neuron : layer.get_neurons())
   {
     auto* neuron_object = add_neuron(neuron);
     layer_array->add(neuron_object);
     delete neuron_object;
   }
   layer_object->set_string("layer-name", "fflayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
+  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
+  
+  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
+  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
+  layer_object->set_floats("w-values", layer.get_w_values());
+  layer_object->set_floats("w-grads", layer.get_w_grads());
+  layer_object->set_floats("w-velocities", layer.get_w_velocities());
+  layer_object->set_floats("w-m1", layer.get_w_m1());
+  layer_object->set_floats("w-m2", layer.get_w_m2());
+  layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
+  layer_object->set_floats("w-decays", layer.get_w_decays());
+
+  layer_object->set_floats("b-values", layer.get_b_values());
+  layer_object->set_floats("b-grads", layer.get_b_grads());
+  layer_object->set_floats("b-velocities", layer.get_b_velocities());
+  layer_object->set_floats("b-m1", layer.get_b_m1());
+  layer_object->set_floats("b-m2", layer.get_b_m2());
+  layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
+  layer_object->set_floats("b-decays", layer.get_b_decays());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
+void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for(const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "ffoutputlayer");
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
@@ -1282,6 +1412,13 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
     if (nullptr != fflayer)
     {
       add_fflayer(*fflayer, *layers_array);
+      continue;
+    }
+
+    auto ffoutputlayer = dynamic_cast<FFOutputLayer*>(layer.get());
+    if (nullptr != ffoutputlayer)
+    {
+      add_ffoutputlayer(*ffoutputlayer, *layers_array);
       continue;
     }
 

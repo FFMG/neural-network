@@ -928,7 +928,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
 
   // Hidden
-  Logger::info(tab, "Hidden layers              : ");
+  Logger::info(tab, "Hidden layer(s)            : ");
   const auto& hl = _options.hidden_layers();
   
   // Log recurrent layers details
@@ -949,7 +949,7 @@ void NeuralNetwork::log_training_info(
 
   // Output
   const auto& output_layer_details = _options.output_layer_details();
-  Logger::info(tab, "Output                     : ", "\n",
+  Logger::info(tab, "Output layer(s)               : ", "\n",
     tab, tab, "Activation method        : ", activation::method_to_string(output_layer_details.get_activation().get_method()), "\n",
     tab, tab, "Activation alpha         : ", std::fixed, std::setprecision(5), output_layer_details.get_activation().get_alpha(), "\n",
     tab, tab, "Error calculation type   : ", ErrorCalculation::type_to_string(output_layer_details.get_output_error_calculation_type()), "\n",

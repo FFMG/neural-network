@@ -139,6 +139,7 @@
     <ClCompile Include="activation.cpp" />
     <ClCompile Include="elmanrnnlayer.cpp" />
     <ClCompile Include="fflayer.cpp" />
+    <ClCompile Include="ffoutputlayer.cpp" />
     <ClCompile Include="grurnnlayer.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
@@ -156,6 +157,7 @@
     <ClInclude Include="aligned_allocator.h" />
     <ClInclude Include="examples\addingproblem.h" />
     <ClInclude Include="examples\syntheticsentiment.h" />
+    <ClInclude Include="ffoutputlayer.h" />
     <ClInclude Include="grurnnlayer.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />

@@ -8,22 +8,21 @@
 #endif
 
 #include "errorcalculation.h"
-#include "hiddenstate.h"
+#include "fflayer.h"
 #include "layer.h"
 
 #include <vector>
 
-class FFLayer : public Layer
+class FFOutputLayer final : public FFLayer
 {
 protected:
   friend class Layers;
 
 public:
-  FFLayer(unsigned layer_index,
+  FFOutputLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
-    LayerType layer_type, 
     const activation& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
@@ -31,9 +30,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads);
 
-  FFLayer(
+  FFOutputLayer(
     unsigned layer_index,
-    const LayerType layer_type,
     const activation activation,
     const OptimiserType optimiser_type,
     int residual_layer_number,
@@ -58,52 +56,20 @@ public:
     int number_of_threads
   ) noexcept;
 
-  FFLayer(const FFLayer& src) noexcept;
-  FFLayer(FFLayer&& src) noexcept;
-  FFLayer& operator=(const FFLayer& src) noexcept;
-  FFLayer& operator=(FFLayer&& src) noexcept;
-  virtual ~FFLayer();
+  FFOutputLayer(const FFOutputLayer& src) noexcept;
+  FFOutputLayer(FFOutputLayer&& src) noexcept;
+  FFOutputLayer& operator=(const FFOutputLayer& src) noexcept;
+  FFOutputLayer& operator=(FFOutputLayer&& src) noexcept;
+  virtual ~FFOutputLayer();
 
 public:
-  void calculate_forward_feed(
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &previous_layer,
-    const std::vector<std::vector<double>> &batch_residual_output_values,
-    std::vector<HiddenStates> &batch_hidden_states,
-    bool is_training) const override;
-
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates> &batch_hidden_states,
     const OutputLayerDetails& output_layer_detail) const override;
 
-  void calculate_hidden_gradients(
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &next_layer,
-    const std::vector<std::vector<double>> &batch_next_grad_matrix,
-    const std::vector<HiddenStates> &batch_hidden_states,
-    int bptt_max_ticks) const override;
-
   bool has_bias() const noexcept override;
   
   Layer* clone() const override;
-
-  void calculate_and_store_gradients(
-    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& hidden_states,
-    const Layer& previous_layer,
-    int bptt_max_ticks) override;
-
-  double get_gradient_norm_sq() const override;
-
-  void apply_stored_gradients(double learning_rate, double clipping_scale) override;
-
-private:
-  // Hoisted buffers for performance
-  mutable std::vector<double> _batch_inputs_buffer;
-  mutable std::vector<double> _batch_pre_activation_sums_buffer;
-  mutable std::vector<double> _batch_grads_buffer;
-  mutable std::vector<double> _flattened_next_grads_buffer;
-  mutable std::vector<double> _flattened_this_grads_buffer;
 };
