@@ -508,15 +508,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
     Logger::panic("Missing layer 'optimiser-type'.");
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
-
-  auto activation_method_string = layer_object.try_get_string("activation-method");
-  if (activation_method_string == nullptr)
-  {
-    Logger::panic("Missing layer 'activation-method'.");
-  }
-  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
-  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
-
   auto layer_type_number = layer_object.get_number<int>("layer-type");
 
   auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
