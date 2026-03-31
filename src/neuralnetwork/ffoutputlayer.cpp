@@ -163,7 +163,7 @@ void FFOutputLayer::calculate_output_gradients(
         const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
         const auto& target_outputs = *(target_outputs_begin + b);
 
-        calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config);
+        calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, 0, N_total -1);
 
         if (is_not_using_activation_derivative)
         {
