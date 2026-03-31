@@ -150,13 +150,12 @@ void FFOutputLayer::calculate_output_gradients(
   const auto& evaluation_config = _output_layer_detail.get_error_evaluation_config();
   const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
+  const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
   auto run_output_gradients = [&](size_t start, size_t end)
     {
       std::vector<double> gradients(N_total, 0.0);
       std::vector<double> deltas(N_total, 0.0);
-
-      const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
       for (size_t b = start; b < end; b++)
       {
