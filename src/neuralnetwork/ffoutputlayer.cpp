@@ -7,13 +7,12 @@ constexpr bool _has_bias_neuron = true;
 
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
-  const OutputLayerDetails& output_layer_detail,
+  const std::vector<OutputLayerDetails>& output_layer_details,
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   double weight_decay,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
-  ResidualProjector* residual_projector,
   int number_of_threads
 ) :
   FFLayer(
@@ -22,27 +21,27 @@ FFOutputLayer::FFOutputLayer(
     num_neurons_in_this_layer,
     weight_decay,
     Layer::LayerType::Output,
-    output_layer_detail.get_activation(),
+    output_layer_details.front().get_activation(),
     optimiser_type,
     residual_layer_number,
     0.0, // no dropout for output layer
-    residual_projector,
+    nullptr,  //  no residual projector
     number_of_threads),
-  _output_layer_detail(output_layer_detail)
+  _output_layer_details(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
 FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :
   FFLayer(src),
-  _output_layer_detail( src._output_layer_detail)
+  _output_layer_details( src._output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
-  const OutputLayerDetails& output_layer_detail,
+  const std::vector<OutputLayerDetails>& output_layer_details,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   unsigned number_input_neurons,
@@ -62,13 +61,12 @@ FFOutputLayer::FFOutputLayer(
   const std::vector<double>& b_m2,
   const std::vector<long long>& b_timesteps,
   const std::vector<double>& b_decays,
-  const ResidualProjector* residual_projector,
   int number_of_threads
 ) noexcept : 
   FFLayer(
   layer_index,
   Layer::LayerType::Output,
-  output_layer_detail.get_activation(), 
+  output_layer_details.front().get_activation(),
   optimiser_type,
   residual_layer_number,
   number_input_neurons,
@@ -88,16 +86,16 @@ FFOutputLayer::FFOutputLayer(
   b_m2,
   b_timesteps,
   b_decays,
-  residual_projector,
+  nullptr,  //  no residual projector
   number_of_threads),
-  _output_layer_detail(output_layer_detail)
+  _output_layer_details(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
 FFOutputLayer::FFOutputLayer(FFOutputLayer&& src) noexcept :
   FFLayer(std::move(src)),
-  _output_layer_detail(std::move(src._output_layer_detail))
+  _output_layer_details(std::move(src._output_layer_details))
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -108,7 +106,7 @@ FFOutputLayer& FFOutputLayer::operator=(const FFOutputLayer& src) noexcept
   if(this != &src)
   {
     FFLayer::operator=(src);
-    _output_layer_detail = src._output_layer_detail;
+    _output_layer_details = src._output_layer_details;
   }
   return *this;
 }
@@ -119,7 +117,7 @@ FFOutputLayer& FFOutputLayer::operator=(FFOutputLayer&& src) noexcept
   if(this != &src)
   {
     FFLayer::operator=(std::move(src));
-    _output_layer_detail = std::move(src._output_layer_detail);
+    _output_layer_details = std::move(src._output_layer_details);
   }
   return *this;
 }
@@ -140,14 +138,25 @@ Layer* FFOutputLayer::clone() const
   return new FFOutputLayer(*this);
 }
 
+void FFOutputLayer::calculate_hidden_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const Layer& next_layer,
+  const std::vector<std::vector<double>>& batch_next_grad_matrix,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  int bptt_max_ticks) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  Logger::panic("The output layer cannot do hidden layer calculations!");
+}
+
 void FFOutputLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  const auto& error_calculation_type = _output_layer_detail.get_output_error_calculation_type();
-  const auto& evaluation_config = _output_layer_detail.get_error_evaluation_config();
+  const auto& error_calculation_type = _output_layer_details.front().get_output_error_calculation_type();
+  const auto& evaluation_config = _output_layer_details.front().get_error_evaluation_config();
   const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
   const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);

@@ -367,7 +367,8 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     }
   }
 
-  const auto& evaluation_config = _options.output_layer_details().get_error_evaluation_config();
+  // TODO we need to get the error evaluation from somewhere else!
+  const auto& evaluation_config = _options.output_layer_details().front().get_error_evaluation_config();
   for (const auto& error_type : error_types)
   {
     errors.emplace_back(
@@ -954,16 +955,17 @@ void NeuralNetwork::log_training_info(
 
   // Output
   const auto& output_layer_details = _options.output_layer_details();
+  const auto& details = output_layer_details.front();
   Logger::info(tab, "Output layer(s)               : ", "\n",
-    tab, tab, "Activation method        : ", activation::method_to_string(output_layer_details.get_activation().get_method()), "\n",
-    tab, tab, "Activation alpha         : ", std::fixed, std::setprecision(5), output_layer_details.get_activation().get_alpha(), "\n",
-    tab, tab, "Error calculation type   : ", ErrorCalculation::type_to_string(output_layer_details.get_output_error_calculation_type()), "\n",
+    tab, tab, "Activation method        : ", activation::method_to_string(details.get_activation().get_method()), "\n",
+    tab, tab, "Activation alpha         : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
+    tab, tab, "Error calculation type   : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
     tab, tab, "Error evaluation config  : ", std::fixed, std::setprecision(5), "\n",
-    tab, tab, tab, "confidence-threshold   : ", output_layer_details.get_error_evaluation_config().confidence_threshold, "\n",
-    tab, tab, tab, "neutral-tolerance      : ", output_layer_details.get_error_evaluation_config().neutral_tolerance, "\n",
-    tab, tab, tab, "huber delta            : ", output_layer_details.get_error_evaluation_config().huber_delta, "\n",
-    tab, tab, tab, "direction lambda       : ", output_layer_details.get_error_evaluation_config().direction_lambda, "\n",
-    tab, tab, tab, "use direction penalty  : ", output_layer_details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
+    tab, tab, tab, "confidence-threshold   : ", details.get_error_evaluation_config().confidence_threshold, "\n",
+    tab, tab, tab, "neutral-tolerance      : ", details.get_error_evaluation_config().neutral_tolerance, "\n",
+    tab, tab, tab, "huber delta            : ", details.get_error_evaluation_config().huber_delta, "\n",
+    tab, tab, tab, "direction lambda       : ", details.get_error_evaluation_config().direction_lambda, "\n",
+    tab, tab, tab, "use direction penalty  : ", details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
