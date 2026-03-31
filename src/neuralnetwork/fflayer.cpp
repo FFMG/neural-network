@@ -125,6 +125,7 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
 
 FFLayer::~FFLayer()
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
 
 bool FFLayer::has_bias() const noexcept
@@ -145,7 +146,10 @@ void FFLayer::calculate_forward_feed(
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
   _batch_inputs_buffer.resize(batch_size * N_prev);
@@ -224,6 +228,7 @@ void FFLayer::run_gemm(
   size_t N_prev,
   size_t N_this) const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
   constexpr size_t BLOCK_SIZE = 64;
   const double* W = get_w_values().data();
 
@@ -267,6 +272,7 @@ void FFLayer::run_post_gemm(
   std::vector<HiddenStates>& batch_hidden_states,
   bool is_training) const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
   std::vector<double> output_row(N_this);
   std::vector<double> temp_pre_activations;
   if (!batch_hidden_states.empty())
@@ -468,7 +474,7 @@ void FFLayer::calculate_and_store_gradients(
   const size_t batch_size = batch_gradients_and_outputs.size();
   if (batch_size == 0)
   {
-  return;
+    return;
   }
 
   const unsigned num_outputs = get_number_neurons();
@@ -544,10 +550,10 @@ void FFLayer::calculate_and_store_gradients(
   for (double& grad : this->_w_grads) grad *= inv_batch_size;
   if (has_bias())
   {
-  for (double& grad : this->_b_grads)
-  {
-    grad *= inv_batch_size;
-  }
+    for (double& grad : this->_b_grads)
+    {
+      grad *= inv_batch_size;
+    }
   }
 }
 
@@ -558,10 +564,10 @@ double FFLayer::get_gradient_norm_sq() const
   for (const double grad : this->_w_grads) norm_sq += grad * grad;
   if (has_bias())
   {
-  for (const double grad : this->_b_grads)
-  {
-    norm_sq += grad * grad;
-  }
+    for (const double grad : this->_b_grads)
+    {
+      norm_sq += grad * grad;
+    }
   }
   return norm_sq;
 }
@@ -574,15 +580,15 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
 
   for (unsigned j = 0; j < num_outputs; ++j)
   {
-  for (unsigned i = 0; i < num_inputs; ++i)
-  {
-    unsigned weight_index = i * num_outputs + j;
-    apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
-  }
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      unsigned weight_index = i * num_outputs + j;
+      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+    }
 
-  if (has_bias())
-  {
-    apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
-  }
+    if (has_bias())
+    {
+      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
+    }
   }
 }
