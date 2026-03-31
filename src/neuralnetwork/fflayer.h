@@ -99,6 +99,22 @@ public:
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
 private:
+  void run_gemm(
+    size_t b_start,
+    size_t b_end,
+    size_t N_prev,
+    size_t N_this) const;
+
+  void run_post_gemm(
+    size_t start,
+    size_t end,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training) const;
+
+private:
   // Hoisted buffers for performance
   mutable std::vector<double> _batch_inputs_buffer;
   mutable std::vector<double> _batch_pre_activation_sums_buffer;

@@ -160,58 +160,22 @@ void FFLayer::calculate_forward_feed(
   // 2. Initialize with bias values
   if (has_bias())
   {
-  for (size_t b = 0; b < batch_size; b++)
-  {
-    double* dest = &_batch_pre_activation_sums_buffer[b * N_this];
-    for (size_t j = 0; j < N_this; j++)
+    for (size_t b = 0; b < batch_size; b++)
     {
-    dest[j] = get_bias_value((unsigned)j);
+      double* dest = &_batch_pre_activation_sums_buffer[b * N_this];
+      for (size_t j = 0; j < N_this; j++)
+      {
+        dest[j] = get_bias_value((unsigned)j);
+      }
     }
-  }
   }
 
   // 3. Batched Matrix-Matrix multiplication (GEMM)
   // Y = X * W where X is [BatchSize x N_prev] and W is [N_prev x N_this]
-  auto run_gemm = [&](size_t b_start, size_t b_end)
-  {
-    constexpr size_t BLOCK_SIZE = 64;
-    const double* W = get_w_values().data();
-
-    for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
-    {
-      size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
-      for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
-      {
-        size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
-
-          for (size_t b = b0; b < b_limit; ++b)
-          {
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double x_val = _batch_inputs_buffer[b * N_prev + i];
-              if (x_val == 0.0) continue;
-
-              double* y_row = &_batch_pre_activation_sums_buffer[b * N_this];
-              const double* w_row = &W[i * N_this];
-
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                y_row[j] += x_val * w_row[j];
-              }
-            }
-          }
-        }
-      }
-    }
-  };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_gemm(0, batch_size);
+    run_gemm(0, batch_size, N_prev, N_this);
   }
   else
   {
@@ -222,7 +186,7 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-      _task_queue_pool->enqueue([=]() { run_gemm(start, end); });
+        _task_queue_pool->enqueue([=]() { run_gemm(start, end, N_prev, N_this); });
       }
       start = end;
     }
@@ -230,67 +194,9 @@ void FFLayer::calculate_forward_feed(
   }
 
   // 4. Residuals, Activation and Dropout
-  auto run_post_gemm = [&](size_t start, size_t end)
-  {
-    std::vector<double> output_row(N_this);
-    std::vector<double> temp_pre_activations;
-    if (!batch_hidden_states.empty())
-    {
-      temp_pre_activations.resize(N_this);
-    }
-
-    for (size_t b = start; b < end; b++)
-    {
-      double* current_pre_act = &_batch_pre_activation_sums_buffer[b * N_this];
-
-      // Residuals
-      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
-      {
-        for (size_t j = 0; j < N_this; j++)
-        {
-          current_pre_act[j] += batch_residual_output_values[b][j];
-        }
-      }
-
-      // Activation
-      get_activation().activate(current_pre_act, current_pre_act + N_this);
-
-      const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-      for (size_t j = 0; j < N_this; j++)
-      {
-        const auto& neuron = get_neuron((unsigned)j);
-        double output = current_pre_act[j];
-
-        if (is_training && neuron.is_dropout())
-        {
-          if (neuron.must_randomly_drop())
-          {
-            output = 0.0;
-          }
-          else
-          {
-            output /= (1.0 - neuron.get_dropout_rate());
-          }
-        }
-        output_row[j] = output;
-        output_ptr[j] = output;
-      }
-
-      if (!batch_hidden_states.empty())
-      {
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          temp_pre_activations[j] = _batch_pre_activation_sums_buffer[b * N_this + j];
-        }
-        batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
-        batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
-      }
-    }
-  };
-
   if (num_threads <= 1)
   {
-    run_post_gemm(0, batch_size);
+    run_post_gemm(0, batch_size, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training);
   }
   else
   {
@@ -301,11 +207,119 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]() { run_post_gemm(start, end); });
+        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]() 
+          { 
+            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training); 
+          });
       }
       start = end;
     }
     _task_queue_pool->get();
+  }
+}
+
+void FFLayer::run_gemm(
+  size_t b_start,
+  size_t b_end,
+  size_t N_prev,
+  size_t N_this) const
+{
+  constexpr size_t BLOCK_SIZE = 64;
+  const double* W = get_w_values().data();
+
+  for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+  {
+    size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
+    for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
+    {
+      size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
+      for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+      {
+        size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
+
+        for (size_t b = b0; b < b_limit; ++b)
+        {
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double x_val = _batch_inputs_buffer[b * N_prev + i];
+            if (x_val == 0.0) continue;
+
+            double* y_row = &_batch_pre_activation_sums_buffer[b * N_this];
+            const double* w_row = &W[i * N_this];
+
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              y_row[j] += x_val * w_row[j];
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void FFLayer::run_post_gemm(
+  size_t start,
+  size_t end,
+  size_t N_this,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<HiddenStates>& batch_hidden_states,
+  bool is_training) const
+{
+  std::vector<double> output_row(N_this);
+  std::vector<double> temp_pre_activations;
+  if (!batch_hidden_states.empty())
+  {
+    temp_pre_activations.resize(N_this);
+  }
+
+  for (size_t b = start; b < end; b++)
+  {
+    double* current_pre_act = &_batch_pre_activation_sums_buffer[b * N_this];
+
+    // Residuals
+    if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+    {
+      for (size_t j = 0; j < N_this; j++)
+      {
+        current_pre_act[j] += batch_residual_output_values[b][j];
+      }
+    }
+
+    // Activation
+    get_activation().activate(current_pre_act, current_pre_act + N_this);
+
+    const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+    for (size_t j = 0; j < N_this; j++)
+    {
+      const auto& neuron = get_neuron((unsigned)j);
+      double output = current_pre_act[j];
+
+      if (is_training && neuron.is_dropout())
+      {
+        if (neuron.must_randomly_drop())
+        {
+          output = 0.0;
+        }
+        else
+        {
+          output /= (1.0 - neuron.get_dropout_rate());
+        }
+      }
+      output_row[j] = output;
+      output_ptr[j] = output;
+    }
+
+    if (!batch_hidden_states.empty())
+    {
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        temp_pre_activations[j] = _batch_pre_activation_sums_buffer[b * N_this + j];
+      }
+      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
+      batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
+    }
   }
 }
 
