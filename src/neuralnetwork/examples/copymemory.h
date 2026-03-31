@@ -33,7 +33,7 @@ public:
       LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 });
 
     const int number_of_epoch = 2000;
     const double learning_rate = 0.01;
@@ -78,7 +78,7 @@ public:
 
       auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(64)
-        .with_output_layer(output_layer)
+        .with_output_layer_details(output_layer)
         .with_log_level(log_level)
         .with_learning_rate(learning_rate)
         .with_number_of_epoch(number_of_epoch)
@@ -109,18 +109,18 @@ public:
 
         auto output = nn->think(input);
         // output is a vector of size output_size (sequence_length)
-        Logger::info("Test sample ", test_i, ": target=");
         std::string targ;
         for (auto v : seq) { targ += (v > 0.5 ? '1' : '0'); }
-        Logger::info(targ);
-
+        
         std::string outstr;
         outstr.reserve(output.size());
         for (auto v : output)
         {
           outstr += (v > 0.5 ? '1' : '0');
         }
-        Logger::info(" prediction=", outstr);
+        Logger::info("Test sample ", test_i, ":\n",
+          "  target     = ", targ, "\n",
+          "  prediction = ", outstr);
 
         // simple accuracy metric: fraction of bits predicted correctly
         unsigned correct = 0;

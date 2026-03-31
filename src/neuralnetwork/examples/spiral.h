@@ -75,11 +75,11 @@ private:
       LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0),
       LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0)
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 });
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
-      .with_output_layer(output_layer)
+      .with_output_layer_details(output_layer)
       .with_log_level(log_level)
       .with_learning_rate(learning_rate)
       .with_clip_threshold(2)

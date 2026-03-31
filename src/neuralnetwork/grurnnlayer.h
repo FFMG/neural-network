@@ -7,10 +7,10 @@
   #endif
 #endif
 
+#include "aligned_allocator.h"
 #include "errorcalculation.h"
 #include "hiddenstate.h"
 #include "layer.h"
-#include "aligned_allocator.h"
 
 #include <vector>
 
@@ -133,8 +133,7 @@ public:
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       std::vector<std::vector<double>>::const_iterator target_outputs_begin,
       const std::vector<HiddenStates> &batch_hidden_states,
-      ErrorCalculation::type error_calculation_type,
-      const ErrorCalculation::EvaluationConfig& evaluation_config) const  override;
+      const OutputLayerDetails& output_layer_detail) const  override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
