@@ -955,17 +955,26 @@ void NeuralNetwork::log_training_info(
 
   // Output
   const auto& output_layer_details = _options.output_layer_details();
-  const auto& details = output_layer_details.front();
-  Logger::info(tab, "Output layer(s)               : ", "\n",
-    tab, tab, "Activation method        : ", activation::method_to_string(details.get_activation().get_method()), "\n",
-    tab, tab, "Activation alpha         : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
-    tab, tab, "Error calculation type   : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
-    tab, tab, "Error evaluation config  : ", std::fixed, std::setprecision(5), "\n",
-    tab, tab, tab, "confidence-threshold   : ", details.get_error_evaluation_config().confidence_threshold, "\n",
-    tab, tab, tab, "neutral-tolerance      : ", details.get_error_evaluation_config().neutral_tolerance, "\n",
-    tab, tab, tab, "huber delta            : ", details.get_error_evaluation_config().huber_delta, "\n",
-    tab, tab, tab, "direction lambda       : ", details.get_error_evaluation_config().direction_lambda, "\n",
-    tab, tab, tab, "use direction penalty  : ", details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
+  std::string output_layer_details_string;
+  
+  output_layer_details_string += Logger::factory(tab, "Output layer(s)            :", "\n");
+  auto output_layer_index = 0;
+  for (const auto& details : output_layer_details)
+  {
+    output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
+      tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+      tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
+      tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
+      tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
+      tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
+      tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold, "\n",
+      tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance, "\n",
+      tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta, "\n",
+      tab, tab, tab, tab, "direction lambda     : ", details.get_error_evaluation_config().direction_lambda, "\n",
+      tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
+    ++output_layer_index;
+  }
+  Logger::info(output_layer_details_string);
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
