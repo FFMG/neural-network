@@ -564,7 +564,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   return layer;
 }
 
-std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_details(unsigned output_size, const TinyJSON::TJValueObject& options_object)
+std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_details(const TinyJSON::TJValueObject& options_object)
 {
   const auto* output_layer_array = static_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("output-layer-details"));
   if (nullptr == output_layer_array)
@@ -580,6 +580,8 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
     {
       Logger::panic("One or more of the output layer details is not a valid object!");
     }
+
+    auto output_size = output_layer_object->get_number<unsigned>("size");
 
     auto output_error_calculation_typ_str = output_layer_object->try_get_string("error-calculation-type", true);
     if (nullptr == output_error_calculation_typ_str)
@@ -755,7 +757,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto clip_threshold = options_object->get_float<double>("clip-threshold");
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
-  auto output_layer_details = get_output_layer_details(topology.back(), *options_object);
+  auto output_layer_details = get_output_layer_details(*options_object);
   auto weight_decay = options_object->get_float<double>("weight-decay");
   
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
