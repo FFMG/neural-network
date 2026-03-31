@@ -421,7 +421,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Size 
   * Activation
   * Dropout
-* output_layer[1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse]
+* output_layer_details[1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse]
   NB: You can also pass a `OutputLayerDetails` object.
   * Layer size
   * activation
@@ -477,6 +477,29 @@ You can configure this via `NeuralNetworkOptions`:
       ...
       .build();
 ```
+
+#### Composite output layer details
+
+In some cases you might want different activation layers...
+
+In the example below, we will have neuron[0] as a tanh activation method and neuron[1] as sigmoid... 
+
+```cpp
+    ErrorCalculation::EvaluationConfig eval_config;
+    eval_config.huber_delta = 0.5;
+    eval_config.direction_lambda = 0.1;
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_output_layer_details(
+        {
+          OutputLayerDetails(1, activation(activation::method::tanh, 0.1), ErrorCalculation::type::mse, eval_config)
+          OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config)
+        }
+      ...
+      .build();
+```
+
 
 #### Usage in `Layer::calculate_error_deltas`
 
