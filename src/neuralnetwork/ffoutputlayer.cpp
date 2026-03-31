@@ -244,3 +244,156 @@ void FFOutputLayer::run_output_gradients(
     batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
   }
 }
+
+void FFOutputLayer::calculate_forward_feed(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const Layer& previous_layer,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<HiddenStates>& batch_hidden_states,
+  bool is_training) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t batch_size = batch_gradients_and_outputs.size();
+  const auto N_prev = get_number_input_neurons();
+  const auto N_this = get_number_neurons();
+
+  if (batch_size == 0) return;
+
+  // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
+  _batch_inputs_buffer.resize(batch_size * N_prev);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const double* src = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index() - 1);
+    std::copy(src, src + N_prev, _batch_inputs_buffer.begin() + b * N_prev);
+  }
+
+  _batch_pre_activation_sums_buffer.assign(batch_size * N_this, 0.0);
+
+  // 2. Initialize with bias values
+  if (has_bias())
+  {
+    for (size_t b = 0; b < batch_size; b++)
+    {
+      double* dest = &_batch_pre_activation_sums_buffer[b * N_this];
+      for (size_t j = 0; j < N_this; j++)
+      {
+        dest[j] = get_bias_value((unsigned)j);
+      }
+    }
+  }
+
+  // 3. Batched Matrix-Matrix multiplication (GEMM)
+  // Y = X * W where X is [BatchSize x N_prev] and W is [N_prev x N_this]
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (num_threads <= 1)
+  {
+    run_gemm(0, batch_size, N_prev, N_this);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]() { run_gemm(start, end, N_prev, N_this); });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+
+  // 4. Residuals, Activation and Dropout
+  if (num_threads <= 1)
+  {
+    run_post_gemm(0, batch_size, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]()
+          {
+            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training);
+          });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+}
+
+void FFOutputLayer::run_post_gemm(
+  size_t start,
+  size_t end,
+  size_t N_this,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<HiddenStates>& batch_hidden_states,
+  bool is_training) const
+{
+  std::vector<double> output_row(N_this);
+  std::vector<double> temp_pre_activations;
+  if (!batch_hidden_states.empty())
+  {
+    temp_pre_activations.resize(N_this);
+  }
+
+  for (size_t b = start; b < end; b++)
+  {
+    double* current_pre_act = &_batch_pre_activation_sums_buffer[b * N_this];
+
+    // Residuals
+    if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+    {
+      for (size_t j = 0; j < N_this; j++)
+      {
+        current_pre_act[j] += batch_residual_output_values[b][j];
+      }
+    }
+
+    // Activation and Dropout
+    const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+    for (size_t j = 0; j < N_this; j++)
+    {
+      const auto& neuron = get_neuron((unsigned)j);
+      
+      // Use scalar activation
+      double output = get_activation().activate(current_pre_act[j]);
+      
+      // Store the activated value back in the buffer if needed later for hidden states
+      current_pre_act[j] = output;
+
+      if (is_training && neuron.is_dropout())
+      {
+        if (neuron.must_randomly_drop())
+        {
+          output = 0.0;
+        }
+        else
+        {
+          output /= (1.0 - neuron.get_dropout_rate());
+        }
+      }
+      output_row[j] = output;
+      output_ptr[j] = output;
+    }
+
+    if (!batch_hidden_states.empty())
+    {
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        temp_pre_activations[j] = _batch_pre_activation_sums_buffer[b * N_this + j];
+      }
+      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
+      batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
+    }
+  }
+}
