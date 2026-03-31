@@ -34,7 +34,7 @@ public:
   FFLayer(
     unsigned layer_index,
     const LayerType layer_type,
-    const activation activation,
+    const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -75,8 +75,7 @@ public:
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states,
-    const OutputLayerDetails& output_layer_detail) const override;
+    const std::vector<HiddenStates> &batch_hidden_states) const override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
