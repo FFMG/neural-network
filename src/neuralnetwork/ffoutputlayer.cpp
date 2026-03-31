@@ -30,11 +30,15 @@ FFOutputLayer::FFOutputLayer(
   _output_layer_details(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  create_activation_per_neuron(output_layer_details);
+  create_using_activation_derivatives_per_neuron(output_layer_details);
 }
 
 FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :
   FFLayer(src),
-  _output_layer_details( src._output_layer_details)
+  _output_layer_details(src._output_layer_details),
+  _activations(src._activations),
+  _is_not_using_activation_derivatives(src._is_not_using_activation_derivatives)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -91,11 +95,15 @@ FFOutputLayer::FFOutputLayer(
   _output_layer_details(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  create_activation_per_neuron(output_layer_details);
+  create_using_activation_derivatives_per_neuron(output_layer_details);
 }
 
 FFOutputLayer::FFOutputLayer(FFOutputLayer&& src) noexcept :
   FFLayer(std::move(src)),
-  _output_layer_details(std::move(src._output_layer_details))
+  _output_layer_details(std::move(src._output_layer_details)),
+  _activations(std::move(src._activations)),
+  _is_not_using_activation_derivatives(std::move(src._is_not_using_activation_derivatives))
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -107,6 +115,8 @@ FFOutputLayer& FFOutputLayer::operator=(const FFOutputLayer& src) noexcept
   {
     FFLayer::operator=(src);
     _output_layer_details = src._output_layer_details;
+    _activations = src._activations;
+    _is_not_using_activation_derivatives = src._is_not_using_activation_derivatives;
   }
   return *this;
 }
@@ -118,12 +128,15 @@ FFOutputLayer& FFOutputLayer::operator=(FFOutputLayer&& src) noexcept
   {
     FFLayer::operator=(std::move(src));
     _output_layer_details = std::move(src._output_layer_details);
+    _activations = std::move(src._activations);
+    _is_not_using_activation_derivatives = std::move(src._is_not_using_activation_derivatives);
   }
   return *this;
 }
 
 FFOutputLayer::~FFOutputLayer()
 {
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
 bool FFOutputLayer::has_bias() const noexcept
@@ -155,11 +168,8 @@ void FFOutputLayer::calculate_output_gradients(
   const std::vector<HiddenStates>& batch_hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  const auto& error_calculation_type = _output_layer_details.front().get_output_error_calculation_type();
-  const auto& evaluation_config = _output_layer_details.front().get_error_evaluation_config();
   const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
-  const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(error_calculation_type);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
@@ -169,10 +179,7 @@ void FFOutputLayer::calculate_output_gradients(
       batch_size, 
       batch_gradients_and_outputs, 
       target_outputs_begin, 
-      batch_hidden_states, 
-      error_calculation_type, 
-      evaluation_config, 
-      is_not_using_activation_derivative, 
+      batch_hidden_states,
       N_total);
   }
   else
@@ -191,10 +198,7 @@ void FFOutputLayer::calculate_output_gradients(
               end, 
               batch_gradients_and_outputs, 
               target_outputs_begin, 
-              batch_hidden_states, 
-              error_calculation_type, 
-              evaluation_config, 
-              is_not_using_activation_derivative, 
+              batch_hidden_states,
               N_total);
           });
       }
@@ -210,11 +214,9 @@ void FFOutputLayer::run_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  ErrorCalculation::type error_calculation_type,
-  const ErrorCalculation::EvaluationConfig& evaluation_config,
-  bool is_not_using_activation_derivative,
   size_t num_neurons) const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   std::vector<double> gradients(num_neurons, 0.0);
   std::vector<double> deltas(num_neurons, 0.0);
 
@@ -223,21 +225,18 @@ void FFOutputLayer::run_output_gradients(
     const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
     const auto& target_outputs = *(target_outputs_begin + b);
 
-    calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, 0, (int)num_neurons - 1);
+    calculate_error_deltas(deltas, target_outputs, given_outputs);
 
-    if (is_not_using_activation_derivative)
+    for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
     {
-      for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
+      if (get_is_not_using_activation_derivatives(neuron_index))
       {
         gradients[neuron_index] = deltas[neuron_index];
       }
-    }
-    else
-    {
-      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-      for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
+      else
       {
-        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+        const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+        double deriv = get_activation(neuron_index).activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
         gradients[neuron_index] = deltas[neuron_index] * deriv;
       }
     }
@@ -252,12 +251,15 @@ void FFOutputLayer::calculate_forward_feed(
   std::vector<HiddenStates>& batch_hidden_states,
   bool is_training) const
 {
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
   _batch_inputs_buffer.resize(batch_size * N_prev);
@@ -339,6 +341,7 @@ void FFOutputLayer::run_post_gemm(
   std::vector<HiddenStates>& batch_hidden_states,
   bool is_training) const
 {
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   std::vector<double> output_row(N_this);
   std::vector<double> temp_pre_activations;
   if (!batch_hidden_states.empty())
@@ -366,7 +369,7 @@ void FFOutputLayer::run_post_gemm(
       const auto& neuron = get_neuron((unsigned)j);
       
       // Use scalar activation
-      double output = get_activation().activate(current_pre_act[j]);
+      double output = get_activation(static_cast<unsigned>(j)).activate(current_pre_act[j]);
       
       // Store the activated value back in the buffer if needed later for hidden states
       current_pre_act[j] = output;
@@ -395,5 +398,47 @@ void FFOutputLayer::run_post_gemm(
       batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
       batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
     }
+  }
+}
+
+void FFOutputLayer::create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
+{
+  for (const auto& output_layer_detail : output_layer_details)
+  {
+    for (size_t i = 0; i < output_layer_detail.get_size(); ++i)
+    {
+      _activations.push_back(output_layer_detail.get_activation());
+    }
+  }
+}
+
+void FFOutputLayer::create_using_activation_derivatives_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
+{
+  for (const auto& output_layer_detail : output_layer_details)
+  {
+    for (size_t i = 0; i < output_layer_detail.get_size(); ++i)
+    {
+      const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
+      const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(output_layer_detail.get_activation().get_method(), error_calculation_type);
+      _is_not_using_activation_derivatives.push_back(is_not_using_activation_derivative);
+    }
+  }
+}
+
+void FFOutputLayer::calculate_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  unsigned start_neuron = 0;
+  unsigned end_neuron = 0;
+  for (const auto& output_layer_detail : _output_layer_details)
+  {
+    const auto error_calculation_type = output_layer_detail.get_output_error_calculation_type();
+    const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
+    end_neuron = start_neuron + output_layer_detail.get_size() - 1;
+    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, start_neuron, end_neuron);
+    start_neuron = end_neuron + 1;
   }
 }

@@ -347,29 +347,6 @@ public:
     _residual_projector = nullptr;
   }
 
-
-  // --- Core Layer Properties ---
-  [[nodiscard]] inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    switch (error_calculation_type)
-    {
-    case ErrorCalculation::type::bce_loss:
-      return get_activation().get_method() == activation::method::sigmoid;
-
-    case ErrorCalculation::type::cross_entropy:
-      return get_activation().get_method() == activation::method::softmax;
-
-    case ErrorCalculation::type::mse:
-    case ErrorCalculation::type::huber_loss:
-    case ErrorCalculation::type::log_cosh:
-      return get_activation().get_method() == activation::method::linear;
-    }
-
-    // default
-    return false;
-  }
-
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -448,10 +425,10 @@ public:
     const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type,
     const ErrorCalculation::EvaluationConfig& evaluation_config,
-    unsigned int start_neuron,
-    unsigned int end_neuron) const;
+    unsigned start_neuron,
+    unsigned end_neuron) const;
 
-  [[nodiscard]] inline const activation& get_activation() const noexcept
+  [[nodiscard]] virtual inline const activation& get_activation() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _activation;
@@ -816,6 +793,34 @@ public:
   }
 
 protected:
+  // --- Core Layer Properties ---
+  [[nodiscard]] inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return is_not_using_activation_derivative(get_activation().get_method(), error_calculation_type);
+  }
+
+  [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (error_calculation_type)
+    {
+    case ErrorCalculation::type::bce_loss:
+      return method == activation::method::sigmoid;
+
+    case ErrorCalculation::type::cross_entropy:
+      return method == activation::method::softmax;
+
+    case ErrorCalculation::type::mse:
+    case ErrorCalculation::type::huber_loss:
+    case ErrorCalculation::type::log_cosh:
+      return method == activation::method::linear;
+    }
+
+    // default
+    return false;
+  }
+
   static std::vector<Neuron> create_neurons(
     double dropout_rate,
     unsigned number_output_neurons
