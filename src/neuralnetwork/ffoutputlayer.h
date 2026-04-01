@@ -64,13 +64,15 @@ public:
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states) const override;
+    const std::vector<HiddenStates> &batch_hidden_states,
+    size_t batch_size) const override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& next_layer,
     const std::vector<std::vector<double>>& batch_next_grad_matrix,
     const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
     int bptt_max_ticks) const override;
 
   void calculate_forward_feed(
@@ -78,6 +80,7 @@ public:
     const Layer& previous_layer,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
     bool is_training) const override;
 
   bool has_bias() const noexcept override;

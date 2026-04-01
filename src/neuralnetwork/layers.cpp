@@ -444,6 +444,7 @@ void Layers::calculate_forward_feed(
       previous_layer,
       batch_residual_values,
       hidden_states,
+      batch_size,
       is_training
     );
   }
@@ -459,19 +460,20 @@ void Layers::calculate_back_propagation(
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
   calculate_back_propagation_output_layer(options, gradients, outputs_begin, batch_size, hidden_states);
-  calculate_back_propagation_hidden_layers(options, gradients, hidden_states);
-  calculate_back_propagation_input_layer(options, gradients);
+  calculate_back_propagation_hidden_layers(options, gradients, batch_size, hidden_states);
+  calculate_back_propagation_input_layer(options, gradients, batch_size);
 }
 
 void Layers::calculate_back_propagation_input_layer(
   const NeuralNetworkOptions& options,
-  std::vector<GradientsAndOutputs>& gradients) const
+  std::vector<GradientsAndOutputs>& gradients,
+  size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
   // input layer is all 0, (bias is included)
   const auto& input_gradients = std::vector<double>(input_layer().get_number_neurons(), 0.0);
-  for (size_t i = 0; i < gradients.size(); ++i)
+  for (size_t i = 0; i < batch_size; ++i)
   {
     gradients[i].set_gradients(0, input_gradients);
   }
@@ -486,12 +488,13 @@ void Layers::calculate_back_propagation_output_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   const auto& output_layer_number = static_cast<unsigned>(size() - 1);
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states);
+  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
 }
 
 void Layers::calculate_back_propagation_hidden_layers(
   const NeuralNetworkOptions& options,
   std::vector<GradientsAndOutputs>& gradients,
+  size_t batch_size,
   const std::vector<HiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -502,9 +505,10 @@ void Layers::calculate_back_propagation_hidden_layers(
     const auto& hidden_1 = hidden_layer(static_cast<unsigned>(layer_number + 1));
 
     std::vector<std::vector<double>> batch_next_gradients;
-    batch_next_gradients.reserve(gradients.size());
-    for (const auto& g : gradients)
+    batch_next_gradients.reserve(batch_size);
+    for (size_t b = 0; b < batch_size; ++b)
     {
+      const auto& g = gradients[b];
       std::vector<double> grad;
       if (options.enable_bptt() && hidden_1.use_bptt())
       {
@@ -517,7 +521,7 @@ void Layers::calculate_back_propagation_hidden_layers(
       batch_next_gradients.emplace_back(std::move(grad));
     }
 
-    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, options.bptt_max_ticks());
+    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
   }
 }
 
@@ -525,11 +529,12 @@ void Layers::update_weights(
   const NeuralNetworkOptions& options,
   const std::vector<GradientsAndOutputs>& batch_gradients,
   double learning_rate,
+  size_t batch_size,
   const std::vector<HiddenStates>& hidden_states)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
-  if (batch_gradients.empty())
+  if (batch_size == 0)
   {
     return;
   }
@@ -538,11 +543,11 @@ void Layers::update_weights(
   for (unsigned i = 1; i < size(); ++i)
   {
     _update_weights_pool->enqueue(
-      [&, this, i]()
+      [&, this, i, batch_size]()
       {
         auto& layer_a = *_layers.at(i);
         auto& layer_b = *_layers.at(i -1);
-        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, options.bptt_max_ticks());
+        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
       });
   }
   _update_weights_pool->get();
@@ -638,5 +643,6 @@ void Layers::train(
   // Note: calculate_forward_feed and calculate_back_propagation now fully manage their buffers.
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
-  update_weights(options, _training_gradients_buffer, learning_rate, _training_hidden_states_buffer);
+  update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);
 }
+

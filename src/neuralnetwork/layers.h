@@ -100,15 +100,10 @@ private:
     size_t batch_size,
     const std::vector<HiddenStates>& hidden_states) const;
 
-  void update_weights(
-    const NeuralNetworkOptions& options,
-    const std::vector<GradientsAndOutputs>& batch_gradients,
-    double learning_rate,
-    const std::vector<HiddenStates>& hidden_states);
-
   void calculate_back_propagation_input_layer(
     const NeuralNetworkOptions& options,
-    std::vector<GradientsAndOutputs>& gradients) const;
+    std::vector<GradientsAndOutputs>& gradients,
+    size_t batch_size) const;
 
   void calculate_back_propagation_output_layer(
     const NeuralNetworkOptions& options,
@@ -120,7 +115,15 @@ private:
   void calculate_back_propagation_hidden_layers(
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients,
+    size_t batch_size,
     const std::vector<HiddenStates>& hidden_states) const;
+
+  void update_weights(
+    const NeuralNetworkOptions& options,
+    const std::vector<GradientsAndOutputs>& batch_gradients,
+    double learning_rate,
+    size_t batch_size,
+    const std::vector<HiddenStates>& hidden_states);
 
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, int number_of_threads);
