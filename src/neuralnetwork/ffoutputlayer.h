@@ -26,14 +26,12 @@ public:
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
     const OptimiserType& optimiser_type, 
-    int residual_layer_number,
     int number_of_threads);
 
   FFOutputLayer(
     unsigned layer_index,
     const std::vector<OutputLayerDetails>& output_layer_details,
     const OptimiserType optimiser_type,
-    int residual_layer_number,
     unsigned number_input_neurons,
     unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,

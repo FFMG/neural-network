@@ -51,8 +51,7 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
 
   // finally, the output layer
   const auto& output_layer_details = options.output_layer_details();
-  const auto residual_layer_number = compute_residual_layer(static_cast<int>(number_of_layers)-1, residual_layer_jump);
-  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_details, optimiser_type, residual_layer_number, number_of_threads);
+  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_details, optimiser_type, number_of_threads);
 
   _layers.emplace_back(std::move(layer));
 }
@@ -300,7 +299,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int residual_layer_number, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -311,7 +310,6 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     num_neurons_in_this_layer, 
     weight_decay, 
     optimiser_type, 
-    residual_layer_number,
     number_of_threads);
 }
 

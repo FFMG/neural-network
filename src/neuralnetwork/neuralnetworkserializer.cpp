@@ -501,7 +501,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
-  auto residual_layer_number = layer_object.get_number<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
   {
@@ -531,7 +530,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
     layer_index,
     output_layer_details,
     optimiser_type,
-    residual_layer_number,
     number_input_neurons,
     number_output_neurons,
     neurons,
@@ -1308,8 +1306,6 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
-  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1329,13 +1325,6 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
   layer_object->set_floats("b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
   layer_object->set_floats("b-decays", layer.get_b_decays());
-
-  auto residual_projector = add_residual_projector(layer.get_residual_projector());
-  if (residual_projector != nullptr)
-  {
-    layer_object->set("residual-projector", residual_projector);
-    delete residual_projector;
-  }
 
   layers.add(layer_object);
   delete layer_array;
@@ -1416,17 +1405,18 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   const auto& layers = nn.get_layers();
   for(const auto& layer : layers.get_layers())
   {
-    auto fflayer = dynamic_cast<FFLayer*>(layer.get());
-    if (nullptr != fflayer)
-    {
-      add_fflayer(*fflayer, *layers_array);
-      continue;
-    }
-
+    // FFOutputLayer has to be before FFLayer as it is derived ...
     auto ffoutputlayer = dynamic_cast<FFOutputLayer*>(layer.get());
     if (nullptr != ffoutputlayer)
     {
       add_ffoutputlayer(*ffoutputlayer, *layers_array);
+      continue;
+    }
+
+    auto fflayer = dynamic_cast<FFLayer*>(layer.get());
+    if (nullptr != fflayer)
+    {
+      add_fflayer(*fflayer, *layers_array);
       continue;
     }
 
