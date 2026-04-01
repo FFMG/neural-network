@@ -332,6 +332,8 @@ public:
     {
       Logger::panic("The topology is not value, you must have at least 2 layers.");
     }
+
+    // check the hidden layers.
     for (const auto& hl : hidden_layers())
     {
       if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
@@ -339,6 +341,22 @@ public:
         Logger::panic("The dropout rate must be between 0 and 1!");
       }
     }
+
+    // check the output layer
+    int total_output_layer_size = 0;
+    for (const auto& ol : output_layer_details())
+    {
+      if (ol.get_size() == 0)
+      {
+        Logger::panic("The output layer details cannot have a size of zero!");
+      }
+      total_output_layer_size += ol.get_size();
+    }
+    if (total_output_layer_size != topology().back())
+    {
+      Logger::panic("The output layer details total size does not match the topology size!");
+    }
+
     if (number_of_threads() > 0 && batch_size() <= 1)
     {
       Logger::warning("Because the batch size is 1, the number of threads is ignored.");
