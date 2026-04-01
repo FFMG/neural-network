@@ -127,21 +127,22 @@ public:
       const Layer &previous_layer,
       const std::vector<std::vector<double>> &batch_residual_output_values,
       std::vector<HiddenStates> &batch_hidden_states,
+      size_t batch_size,
       bool is_training) const override;
 
   void calculate_output_gradients(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-      const std::vector<HiddenStates> &batch_hidden_states) const  override;
+      const std::vector<HiddenStates> &batch_hidden_states,
+      size_t batch_size) const  override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& next_layer,
     const std::vector<std::vector<double>>& batch_next_grad_matrix,
     const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
     int bptt_max_ticks) const override;
-
-
 
   double get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const;
 
@@ -153,6 +154,7 @@ public:
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,
     const Layer& previous_layer,
+    size_t batch_size,
     int bptt_max_ticks) override;
 
   double get_gradient_norm_sq() const override;

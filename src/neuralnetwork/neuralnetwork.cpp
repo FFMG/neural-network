@@ -908,6 +908,7 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       previous_layer,
       batch_residual_values,
       hidden_states,
+      batch_size,
       is_training
     );
   }

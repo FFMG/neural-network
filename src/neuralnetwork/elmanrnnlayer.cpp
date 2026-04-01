@@ -203,10 +203,10 @@ void ElmanRNNLayer::calculate_forward_feed(
   const Layer& previous_layer,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   if (batch_size == 0) return;
 
   const size_t N_prev = previous_layer.get_number_neurons();
@@ -387,7 +387,8 @@ void ElmanRNNLayer::calculate_forward_feed(
 void ElmanRNNLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-  const std::vector<HiddenStates>& batch_hidden_states) const
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   Logger::panic("ElmanRNNLayer: Trying to calculate output gradient with a non output layer!");
@@ -398,10 +399,10 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& batch_next_grad_matrix,
   const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   if (batch_size == 0) return;
 
   const size_t N_this = get_number_neurons();
@@ -533,10 +534,10 @@ void ElmanRNNLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& hidden_states,
   const Layer& previous_layer,
+  size_t batch_size,
   int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   if (batch_size == 0) return;
 
   const unsigned num_outputs = get_number_neurons();

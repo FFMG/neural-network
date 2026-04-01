@@ -412,12 +412,14 @@ public:
     const Layer& previous_layer,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
     bool is_training) const = 0;
 
   virtual void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates>& batch_hidden_states) const = 0;
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size) const = 0;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,
@@ -449,12 +451,14 @@ public:
     const Layer& next_layer,
     const std::vector<std::vector<double>>& batch_next_grad_matrix,
     const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
     int bptt_max_ticks) const = 0;
 
   virtual void calculate_and_store_gradients(
       const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       const std::vector<HiddenStates>& hidden_states,
       const Layer& previous_layer,
+      size_t batch_size,
       int bptt_max_ticks) = 0;
 
   virtual double get_gradient_norm_sq() const = 0;

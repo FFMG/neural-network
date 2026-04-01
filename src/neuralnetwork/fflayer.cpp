@@ -139,10 +139,10 @@ void FFLayer::calculate_forward_feed(
   const Layer& previous_layer,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
@@ -332,7 +332,8 @@ void FFLayer::run_post_gemm(
 void FFLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-  const std::vector<HiddenStates>& batch_hidden_states) const
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   Logger::panic("FFLayer: Trying to calculate output gradient with a non output layer!");
@@ -343,10 +344,10 @@ void FFLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& batch_next_grad_matrix,
   const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
 
@@ -468,10 +469,10 @@ void FFLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& /*hidden_states*/,
   const Layer& previous_layer,
+  size_t batch_size,
   int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   if (batch_size == 0)
   {
     return;

@@ -156,6 +156,7 @@ void FFOutputLayer::calculate_hidden_gradients(
   const Layer& next_layer,
   const std::vector<std::vector<double>>& batch_next_grad_matrix,
   const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
@@ -165,10 +166,10 @@ void FFOutputLayer::calculate_hidden_gradients(
 void FFOutputLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-  const std::vector<HiddenStates>& batch_hidden_states) const
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   const size_t N_total = get_number_neurons();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
@@ -249,10 +250,10 @@ void FFOutputLayer::calculate_forward_feed(
   const Layer& previous_layer,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  const size_t batch_size = batch_gradients_and_outputs.size();
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
 
@@ -321,9 +322,9 @@ void FFOutputLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]()
-          {
-            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training);
+        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]() 
+          { 
+            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training); 
           });
       }
       start = end;
