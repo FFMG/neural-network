@@ -303,6 +303,16 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
+  if (output_layer_details.size() == 1)
+  {
+    Logger::trace("Creating simple output layer.");
+  }
+  else
+  {
+    Logger::info("Creating compound output layer with ", output_layer_details.size(), " output layer details.");
+  }
+  
+  // compound output
   return std::make_unique<FFOutputLayer>(
     layer_index, 
     output_layer_details,
