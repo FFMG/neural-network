@@ -12,7 +12,6 @@ FFOutputLayer::FFOutputLayer(
   unsigned num_neurons_in_this_layer,
   double weight_decay,
   const OptimiserType& optimiser_type,
-  int residual_layer_number,
   int number_of_threads
 ) :
   FFLayer(
@@ -23,8 +22,8 @@ FFOutputLayer::FFOutputLayer(
     Layer::LayerType::Output,
     output_layer_details.front().get_activation(),
     optimiser_type,
-    residual_layer_number,
-    0.0, // no dropout for output layer
+    -1,       //  no residual layer
+    0.0,      //  no dropout for output layer
     nullptr,  //  no residual projector
     number_of_threads),
   _output_layer_details(output_layer_details)
@@ -47,7 +46,6 @@ FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
   const std::vector<OutputLayerDetails>& output_layer_details,
   const OptimiserType optimiser_type,
-  int residual_layer_number,
   unsigned number_input_neurons,
   unsigned number_output_neurons,
   const std::vector<Neuron>& neurons,
@@ -68,31 +66,31 @@ FFOutputLayer::FFOutputLayer(
   int number_of_threads
 ) noexcept : 
   FFLayer(
-  layer_index,
-  Layer::LayerType::Output,
-  output_layer_details.front().get_activation(),
-  optimiser_type,
-  residual_layer_number,
-  number_input_neurons,
-  number_output_neurons,
-  neurons,
-  w_values,
-  w_grads,
-  w_velocities,
-  w_m1,
-  w_m2,
-  w_timesteps,
-  w_decays,
-  b_values,
-  b_grads,
-  b_velocities,
-  b_m1,
-  b_m2,
-  b_timesteps,
-  b_decays,
-  nullptr,  //  no residual projector
-  number_of_threads),
-  _output_layer_details(output_layer_details)
+    layer_index,
+    Layer::LayerType::Output,
+    output_layer_details.front().get_activation(),
+    optimiser_type,
+    -1,       //  no residual layer
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    nullptr,  //  no residual projector
+    number_of_threads),
+    _output_layer_details(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   create_activation_per_neuron(output_layer_details);
