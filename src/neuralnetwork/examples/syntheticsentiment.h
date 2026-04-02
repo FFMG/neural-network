@@ -83,33 +83,39 @@ public:
 
       if (template_id == 0)
       {
-          seq_indices.push_back(starts[std::uniform_int_distribution<size_t>(0, starts.size()-1)(gen)]);
-          seq_indices.push_back(nouns[std::uniform_int_distribution<size_t>(0, nouns.size()-1)(gen)]);
-          seq_indices.push_back(verbs[std::uniform_int_distribution<size_t>(0, verbs.size()-1)(gen)]);
-          if (use_not) seq_indices.push_back(9);
-          if (use_very) seq_indices.push_back(8);
-          seq_indices.push_back(sentiment_word);
+        seq_indices.push_back(starts[std::uniform_int_distribution<size_t>(0, starts.size()-1)(gen)]);
+        seq_indices.push_back(nouns[std::uniform_int_distribution<size_t>(0, nouns.size()-1)(gen)]);
+        seq_indices.push_back(verbs[std::uniform_int_distribution<size_t>(0, verbs.size()-1)(gen)]);
+        if (use_not) seq_indices.push_back(9);
+        if (use_very) seq_indices.push_back(8);
+        seq_indices.push_back(sentiment_word);
       }
       else
       {
-          seq_indices.push_back(2); // This
-          seq_indices.push_back(verbs[std::uniform_int_distribution<size_t>(0, verbs.size()-1)(gen)]);
-          seq_indices.push_back(3); // a
-          if (use_not) seq_indices.push_back(9);
-          if (use_very) seq_indices.push_back(8);
-          seq_indices.push_back(sentiment_word);
-          seq_indices.push_back(nouns[std::uniform_int_distribution<size_t>(0, nouns.size()-1)(gen)]);
+        seq_indices.push_back(2); // This
+        seq_indices.push_back(verbs[std::uniform_int_distribution<size_t>(0, verbs.size()-1)(gen)]);
+        seq_indices.push_back(3); // a
+        if (use_not)
+        {
+          seq_indices.push_back(9);
+        }
+        if (use_very)
+        {
+          seq_indices.push_back(8);
+        }
+        seq_indices.push_back(sentiment_word);
+        seq_indices.push_back(nouns[std::uniform_int_distribution<size_t>(0, nouns.size()-1)(gen)]);
       }
 
       // Pad with 0
       while (seq_indices.size() < sequence_length)
       {
-          seq_indices.push_back(0);
+        seq_indices.push_back(0);
       }
       // Truncate if too long (shouldn't happen with these templates and len=10)
       if (seq_indices.size() > sequence_length)
       {
-          seq_indices.resize(sequence_length);
+        seq_indices.resize(sequence_length);
       }
 
       // One-hot encode
@@ -117,12 +123,11 @@ public:
       input_vec.reserve(sequence_length * VOCAB_SIZE);
       for (int idx : seq_indices)
       {
-          for (int v = 0; v < VOCAB_SIZE; ++v)
-          {
-              input_vec.push_back(v == idx ? 1.0 : 0.0);
-          }
+        for (int v = 0; v < VOCAB_SIZE; ++v)
+        {
+          input_vec.push_back(v == idx ? 1.0 : 0.0);
+        }
       }
-
       inputs.push_back(input_vec);
       outputs.push_back({ label });
     }
