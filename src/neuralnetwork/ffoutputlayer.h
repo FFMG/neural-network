@@ -81,8 +81,6 @@ public:
     std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     bool is_training) const override;
-
-  bool has_bias() const noexcept override;
   
   Layer* clone() const override;
 
