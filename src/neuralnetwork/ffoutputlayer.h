@@ -92,9 +92,9 @@ public:
 
 protected:
   virtual void run_post_gemm(
-    size_t start,
-    size_t end,
-    size_t N_this,
+    const size_t start,
+    const size_t end,
+    const size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
@@ -102,8 +102,8 @@ protected:
 
 private:
   void run_output_gradients(
-    size_t start,
-    size_t end,
+    const size_t start,
+    const size_t end,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,

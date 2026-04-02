@@ -163,7 +163,6 @@ void FFOutputLayer::calculate_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const size_t N_total = get_number_neurons();
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
@@ -184,7 +183,7 @@ void FFOutputLayer::calculate_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs]()
+        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, this]()
           {
             run_output_gradients(
               start, 
@@ -202,8 +201,8 @@ void FFOutputLayer::calculate_output_gradients(
 }
 
 void FFOutputLayer::run_output_gradients(
-  size_t start,
-  size_t end,
+  const size_t start,
+  const size_t end,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
@@ -293,7 +292,10 @@ void FFOutputLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]() { run_gemm(start, end, N_prev, N_this); });
+        _task_queue_pool->enqueue([start, end, N_prev, N_this, this]()
+          { 
+            run_gemm(start, end, N_prev, N_this); 
+          });
       }
       start = end;
     }
@@ -314,7 +316,7 @@ void FFOutputLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]() 
+        _task_queue_pool->enqueue([start,end, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, is_training, this]()
           { 
             run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training); 
           });
@@ -326,9 +328,9 @@ void FFOutputLayer::calculate_forward_feed(
 }
 
 void FFOutputLayer::run_post_gemm(
-  size_t start,
-  size_t end,
-  size_t N_this,
+  const size_t start,
+  const size_t end,
+  const size_t N_this,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
