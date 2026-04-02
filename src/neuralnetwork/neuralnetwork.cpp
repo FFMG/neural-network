@@ -974,6 +974,10 @@ void NeuralNetwork::log_training_info(
       tab, tab, tab, tab, "direction lambda     : ", details.get_error_evaluation_config().direction_lambda, "\n",
       tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
     ++output_layer_index;
+    if (output_layer_index < output_layer_details.size())
+    {
+      output_layer_details_string += "\n";
+    }
   }
   Logger::info(output_layer_details_string);
 
