@@ -12,6 +12,7 @@
 #include "outputlayerdetails.h"
 
 #include <vector>
+#include <cstdint>
 
 class FFOutputLayer final : public FFLayer
 {
@@ -80,8 +81,6 @@ public:
     std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     bool is_training) const override;
-
-  bool has_bias() const noexcept override;
   
   Layer* clone() const override;
 
@@ -133,7 +132,7 @@ private:
       Logger::panic("Trying to get if using an activation derivative outside of the index!");
     }
 #endif
-    return _is_not_using_activation_derivatives[neuron_index];
+    return _is_not_using_activation_derivatives[neuron_index] != 0;
   }
 
   void create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details);
@@ -145,5 +144,5 @@ private:
     const std::vector<double>& given_outputs) const;
 
   std::vector<activation> _activations;
-  std::vector<bool> _is_not_using_activation_derivatives;
+  std::vector<uint8_t> _is_not_using_activation_derivatives;
 };

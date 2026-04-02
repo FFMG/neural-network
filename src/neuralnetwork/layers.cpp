@@ -561,11 +561,21 @@ void Layers::update_weights(
   _update_weights_pool->get();
 
   // 2. Calculate global gradient norm for clipping
-  double total_norm_sq = 0.0;
+  std::vector<double> layer_norms(size(), 0.0);
   for (unsigned i = 1; i < size(); ++i)
   {
-    auto& layer_a = *_layers.at(i);
-    total_norm_sq += layer_a.get_gradient_norm_sq();
+    _update_weights_pool->enqueue(
+      [&, this, i]()
+      {
+        layer_norms[i] = _layers[i]->get_gradient_norm_sq();
+      });
+  }
+  _update_weights_pool->get();
+
+  double total_norm_sq = 0.0;
+  for (double norm : layer_norms)
+  {
+    total_norm_sq += norm;
   }
 
   double clipping_scale = 1.0;
@@ -580,13 +590,12 @@ void Layers::update_weights(
   }
 
   // 3. Apply the stored (and now clipped) gradients
-  // TODO: This can be parallelized.
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < size(); ++i)
   {
-    _update_weights_pool->enqueue([&, this, i]() 
+    _update_weights_pool->enqueue([&, this, i, learning_rate, clipping_scale]() 
       {
-        auto& layer_a = *_layers.at(i);
+        auto& layer_a = *_layers[i];
         layer_a.apply_stored_gradients(learning_rate, clipping_scale);
       });
   }
