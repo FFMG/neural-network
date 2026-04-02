@@ -137,12 +137,6 @@ FFOutputLayer::~FFOutputLayer()
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
-bool FFOutputLayer::has_bias() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  return _has_bias_neuron;
-}
-
 Layer* FFOutputLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
