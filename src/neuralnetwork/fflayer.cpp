@@ -211,7 +211,7 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states]() 
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, is_training, this]()
           { 
             run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training); 
           });
@@ -414,7 +414,10 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]() { run_gemm_backward(start, end); });
+        _task_queue_pool->enqueue([start, end, &run_gemm_backward]() {
+          run_gemm_backward(start, end); 
+          }
+        );
       }
       start = end;
     }
@@ -451,7 +454,10 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]() { run_post_gemm_backward(start, end); });
+        _task_queue_pool->enqueue([start, end, &run_post_gemm_backward]()
+          { 
+            run_post_gemm_backward(start, end); 
+          });
       }
       start = end;
     }
