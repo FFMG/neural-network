@@ -3,6 +3,7 @@
 #include "./libraries/instrumentor.h"
 
 #include "layer.h"
+#include "logger.h"
 #include "outputlayerdetails.h"
 
 class OutputLayer
@@ -14,12 +15,14 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
     create_activation_per_neuron(output_layer_details);
     create_using_activation_derivatives_per_neuron(output_layer_details);
+    create_bounds(output_layer_details);
   }
 
   OutputLayer(const OutputLayer& src) noexcept :
     _output_layer_details(src._output_layer_details),
     _activations(src._activations),
-    _is_not_using_activation_derivatives(src._is_not_using_activation_derivatives)
+    _is_not_using_activation_derivatives(src._is_not_using_activation_derivatives),
+    _bounds(src._bounds)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
   }
@@ -27,7 +30,8 @@ public:
   OutputLayer(OutputLayer&& src) noexcept :
     _output_layer_details(std::move(src._output_layer_details)),
     _activations(std::move(src._activations)),
-    _is_not_using_activation_derivatives(std::move(src._is_not_using_activation_derivatives))
+    _is_not_using_activation_derivatives(std::move(src._is_not_using_activation_derivatives)),
+    _bounds(std::move(src._bounds))
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
   }
@@ -40,6 +44,7 @@ public:
       _output_layer_details = src._output_layer_details;
       _activations = src._activations;
       _is_not_using_activation_derivatives = src._is_not_using_activation_derivatives;
+      _bounds = src._bounds;
     }
     return *this;
   }
@@ -52,6 +57,7 @@ public:
       _output_layer_details = std::move(src._output_layer_details);
       _activations = std::move(src._activations);
       _is_not_using_activation_derivatives = std::move(src._is_not_using_activation_derivatives);
+      _bounds = std::move(src._bounds);
     }
     return *this;
   }
@@ -62,6 +68,22 @@ public:
   }
 
 protected:
+  struct bounds {
+    unsigned start;
+    unsigned end;
+  };
+  
+  [[nodiscard]] inline const bounds& layer_bounds(unsigned layer_number) const
+  {
+#if VALIDATE_DATA ==1
+    if (layer_number >= _bounds.size())
+    {
+      Logger::panic("Trying to get bounds #", layer_number, " outsize the output layer size!");
+    }
+#endif
+    return _bounds[layer_number];
+  }
+
   [[nodiscard]] inline const std::vector<OutputLayerDetails>& output_layer_details() const
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
@@ -92,7 +114,6 @@ protected:
     return _is_not_using_activation_derivatives[neuron_index] != 0;
   }
 
-protected:
   [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -119,6 +140,7 @@ private:
       }
     }
   }
+
   void create_using_activation_derivatives_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
@@ -133,7 +155,24 @@ private:
     }
   }
 
+  void create_bounds(const std::vector<OutputLayerDetails>& output_layer_details)
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
+    _bounds.clear();
+    _bounds.reserve(output_layer_details.size());
+
+    unsigned start_neuron = 0;
+    unsigned end_neuron = 0;
+    for (const auto& output_layer_detail : output_layer_details)
+    {
+      end_neuron = start_neuron + output_layer_detail.get_size() - 1;
+      _bounds.push_back({ start_neuron, end_neuron });
+      start_neuron = end_neuron + 1;
+    }
+  }
+
   std::vector<OutputLayerDetails> _output_layer_details;
   std::vector<activation> _activations;
   std::vector<uint8_t> _is_not_using_activation_derivatives;
+  std::vector<bounds> _bounds;
 };
