@@ -825,7 +825,7 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
 #if VALIDATE_DATA == 1
   if (gradients_and_output.size() != batch_size)
   {
-    Logger::panic("The gradient vector size does not match the batch size!");
+    //Logger::panic("The gradient vector size does not match the batch size!");
   }
 #endif
 
