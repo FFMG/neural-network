@@ -26,18 +26,14 @@ FFOutputLayer::FFOutputLayer(
     0.0,      //  no dropout for output layer
     nullptr,  //  no residual projector
     number_of_threads),
-  _output_layer_details(output_layer_details)
+  OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  create_activation_per_neuron(output_layer_details);
-  create_using_activation_derivatives_per_neuron(output_layer_details);
 }
 
 FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :
   FFLayer(src),
-  _output_layer_details(src._output_layer_details),
-  _activations(src._activations),
-  _is_not_using_activation_derivatives(src._is_not_using_activation_derivatives)
+  OutputLayer(src)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -90,18 +86,14 @@ FFOutputLayer::FFOutputLayer(
     b_decays,
     nullptr,  //  no residual projector
     number_of_threads),
-    _output_layer_details(output_layer_details)
+    OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  create_activation_per_neuron(output_layer_details);
-  create_using_activation_derivatives_per_neuron(output_layer_details);
 }
 
 FFOutputLayer::FFOutputLayer(FFOutputLayer&& src) noexcept :
   FFLayer(std::move(src)),
-  _output_layer_details(std::move(src._output_layer_details)),
-  _activations(std::move(src._activations)),
-  _is_not_using_activation_derivatives(std::move(src._is_not_using_activation_derivatives))
+  OutputLayer(std::move(src))
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -112,9 +104,7 @@ FFOutputLayer& FFOutputLayer::operator=(const FFOutputLayer& src) noexcept
   if(this != &src)
   {
     FFLayer::operator=(src);
-    _output_layer_details = src._output_layer_details;
-    _activations = src._activations;
-    _is_not_using_activation_derivatives = src._is_not_using_activation_derivatives;
+    OutputLayer::operator=(src);
   }
   return *this;
 }
@@ -125,9 +115,7 @@ FFOutputLayer& FFOutputLayer::operator=(FFOutputLayer&& src) noexcept
   if(this != &src)
   {
     FFLayer::operator=(std::move(src));
-    _output_layer_details = std::move(src._output_layer_details);
-    _activations = std::move(src._activations);
-    _is_not_using_activation_derivatives = std::move(src._is_not_using_activation_derivatives);
+    OutputLayer::operator=(std::move(src));
   }
   return *this;
 }
@@ -228,7 +216,7 @@ void FFOutputLayer::run_output_gradients(
       else
       {
         const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-        double deriv = get_activation(neuron_index).activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+        double deriv = OutputLayer::get_activation(neuron_index).activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
         gradients[neuron_index] = deltas[neuron_index] * deriv;
       }
     }
@@ -364,7 +352,7 @@ void FFOutputLayer::run_post_gemm(
       const auto& neuron = get_neuron((unsigned)j);
       
       // Use scalar activation
-      double output = get_activation(static_cast<unsigned>(j)).activate(current_pre_act[j]);
+      double output = OutputLayer::get_activation(static_cast<unsigned>(j)).activate(current_pre_act[j]);
       
       // Store the activated value back in the buffer if needed later for hidden states
       current_pre_act[j] = output;
@@ -396,30 +384,6 @@ void FFOutputLayer::run_post_gemm(
   }
 }
 
-void FFOutputLayer::create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
-{
-  for (const auto& output_layer_detail : output_layer_details)
-  {
-    for (size_t i = 0; i < output_layer_detail.get_size(); ++i)
-    {
-      _activations.push_back(output_layer_detail.get_activation());
-    }
-  }
-}
-
-void FFOutputLayer::create_using_activation_derivatives_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
-{
-  for (const auto& output_layer_detail : output_layer_details)
-  {
-    for (size_t i = 0; i < output_layer_detail.get_size(); ++i)
-    {
-      const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
-      const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(output_layer_detail.get_activation().get_method(), error_calculation_type);
-      _is_not_using_activation_derivatives.push_back(is_not_using_activation_derivative);
-    }
-  }
-}
-
 void FFOutputLayer::calculate_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
@@ -428,7 +392,7 @@ void FFOutputLayer::calculate_error_deltas(
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   unsigned start_neuron = 0;
   unsigned end_neuron = 0;
-  for (const auto& output_layer_detail : _output_layer_details)
+  for (const auto& output_layer_detail : output_layer_details())
   {
     const auto error_calculation_type = output_layer_detail.get_output_error_calculation_type();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();

@@ -9,16 +9,13 @@
 
 #include "errorcalculation.h"
 #include "fflayer.h"
-#include "outputlayerdetails.h"
+#include "outputlayer.h"
 
 #include <vector>
 #include <cstdint>
 
-class FFOutputLayer final : public FFLayer
+class FFOutputLayer final : public FFLayer, OutputLayer
 {
-protected:
-  friend class Layers;
-
 public:
   FFOutputLayer(
     unsigned layer_index,
@@ -109,40 +106,8 @@ private:
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t num_neurons) const;
 
-  std::vector<OutputLayerDetails> _output_layer_details;
-
-  [[nodiscard]] inline const activation& get_activation(unsigned neuron_index) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-#if VALIDATE_DATA == 1
-    if (neuron_index >= _activations.size())
-    {
-      Logger::panic("Trying to get an activation layer outside of the index!");
-    }
-#endif
-    return _activations[neuron_index];
-  }
-
-  [[nodiscard]] inline bool get_is_not_using_activation_derivatives(unsigned neuron_index) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-#if VALIDATE_DATA == 1
-    if (neuron_index >= _is_not_using_activation_derivatives.size())
-    {
-      Logger::panic("Trying to get if using an activation derivative outside of the index!");
-    }
-#endif
-    return _is_not_using_activation_derivatives[neuron_index] != 0;
-  }
-
-  void create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details);
-  void create_using_activation_derivatives_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details);
-
   void calculate_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
-
-  std::vector<activation> _activations;
-  std::vector<uint8_t> _is_not_using_activation_derivatives;
 };

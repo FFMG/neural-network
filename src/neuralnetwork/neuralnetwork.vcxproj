@@ -185,6 +185,7 @@
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
     <ClInclude Include="optimiser.h" />
+    <ClInclude Include="outputlayer.h" />
     <ClInclude Include="outputlayerdetails.h" />
     <ClInclude Include="residualprojector.h" />
     <ClInclude Include="rng.h" />
