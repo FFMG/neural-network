@@ -994,6 +994,7 @@ private:
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
+    const ErrorCalculation::EvaluationConfig& evaluation_config,
     std::span<Neuron> neurons) const;
 
   void calculate_cross_entropy_error_deltas(

@@ -36,7 +36,7 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::rmse:
     return calculate_rmse_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::bce_loss:
-    return calculate_bce_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
+    return calculate_bce_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, neurons_span);
   case ErrorCalculation::type::cross_entropy:
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   case ErrorCalculation::type::log_cosh:
@@ -159,14 +159,57 @@ void Layer::calculate_bce_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
+  const ErrorCalculation::EvaluationConfig& evaluation_config,
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
+  // Retrieve config values
+  const double conf_thresh = evaluation_config.confidence_threshold; // e.g., 0.001
+  const double neutral_tol = evaluation_config.neutral_tolerance;    // e.g., 0.0005
+  const double dir_lambda = evaluation_config.direction_lambda;     // e.g., 0.2
+  const bool   use_dir = evaluation_config.use_direction_penalty;
+
   for (const auto& neuron : neurons)
   {
-    const unsigned neuron_index = neuron.get_index();
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
+    const unsigned idx = neuron.get_index();
+    double target = target_outputs[idx];
+    double output = given_outputs[idx];
+
+    // Ignore neutral targets
+    if (std::abs(target - 0.5) < neutral_tol)  // adjust if your "flat" logic differs
+    {
+      deltas[idx] = 0.0;
+      continue;
+    }
+
+    // Clamp output to confidence thresholds
+    if (output < conf_thresh)
+    {
+      output = conf_thresh;
+    }
+    if (output > 1.0 - conf_thresh)
+    {
+      output = 1.0 - conf_thresh;
+    }
+
+    // Standard BCE delta
+    double delta = (output - target);
+
+    // Optional directional penalty boost
+    if (use_dir)
+    {
+      int direction = (target > 0.5) ? 1 : -1;  // up/down
+      int predicted_dir = (output > 0.5) ? 1 : -1;
+
+      if (direction != predicted_dir)
+      {
+        delta *= (1.0 + dir_lambda);  // boost wrong directions
+      }
+    }
+
+    // Normalize by number of neurons
+    deltas[idx] = delta * _inv_num_neurons;
   }
 }
 
