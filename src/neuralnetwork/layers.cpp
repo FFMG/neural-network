@@ -3,7 +3,6 @@
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
 #include "layers.h"
-#include "logger.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   _weight_decay(options.weight_decay()),
@@ -411,8 +410,8 @@ void Layers::calculate_forward_feed(
   // --- 2. Forward propagate layer by layer for the entire batch ---
   for (size_t layer_number = 1; layer_number < size(); ++layer_number)
   {
-    const auto& previous_layer = hidden_layer(static_cast<unsigned>(layer_number - 1));
-    const auto& current_layer = hidden_layer(static_cast<unsigned>(layer_number));
+    const auto& previous_layer = layer(static_cast<unsigned>(layer_number - 1));
+    const auto& current_layer = layer(static_cast<unsigned>(layer_number));
 
     // Prepare batched residual outputs if needed
     std::vector<std::vector<double>> batch_residual_values;
@@ -509,8 +508,8 @@ void Layers::calculate_back_propagation_hidden_layers(
   // we are going backward from output to input
   for (auto layer_number = (int)size() - 2; layer_number > 0; --layer_number)
   {
-    auto& hidden_0 = hidden_layer(static_cast<unsigned>(layer_number));
-    const auto& hidden_1 = hidden_layer(static_cast<unsigned>(layer_number + 1));
+    auto& hidden_0 = layer(static_cast<unsigned>(layer_number));
+    const auto& hidden_1 = layer(static_cast<unsigned>(layer_number + 1));
 
     std::vector<std::vector<double>> batch_next_gradients;
     batch_next_gradients.reserve(batch_size);
