@@ -705,7 +705,13 @@ void GRURNNLayer::calculate_forward_feed(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([=]() { run_forward_pass(start, end); });
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([&run_forward_pass, start, end, this]()
+          {
+            run_forward_pass(start, end);
+          });
+      }
       start = end;
     }
     _task_queue_pool->get();

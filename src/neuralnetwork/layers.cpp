@@ -551,7 +551,7 @@ void Layers::update_weights(
   for (unsigned i = 1; i < size(); ++i)
   {
     _update_weights_pool->enqueue(
-      [&, this, i, batch_size]()
+      [i, &batch_gradients, &hidden_states, batch_size, &options, this]()
       {
         auto& layer_a = *_layers.at(i);
         auto& layer_b = *_layers.at(i -1);
@@ -565,7 +565,7 @@ void Layers::update_weights(
   for (unsigned i = 1; i < size(); ++i)
   {
     _update_weights_pool->enqueue(
-      [&, this, i]()
+      [i, &layer_norms, this]()
       {
         layer_norms[i] = _layers[i]->get_gradient_norm_sq();
       });
@@ -593,7 +593,7 @@ void Layers::update_weights(
   std::unique_lock<std::shared_mutex> write(_mutex);
   for (unsigned i = 1; i < size(); ++i)
   {
-    _update_weights_pool->enqueue([&, this, i, learning_rate, clipping_scale]() 
+    _update_weights_pool->enqueue([i, learning_rate, clipping_scale, this]()
       {
         auto& layer_a = *_layers[i];
         layer_a.apply_stored_gradients(learning_rate, clipping_scale);
