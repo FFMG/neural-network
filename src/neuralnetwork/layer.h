@@ -792,19 +792,6 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_timesteps; }
   [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_decays; }
 
-  [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    switch (error_calculation_type)
-    {
-    case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
-    case ErrorCalculation::type::cross_entropy: return method == activation::method::softmax;
-    case ErrorCalculation::type::mse:
-    case ErrorCalculation::type::huber_loss:
-    case ErrorCalculation::type::log_cosh: return method == activation::method::linear;
-    }
-    return false;
-  }
 protected:
   Layer(
     unsigned layer_index,
@@ -921,13 +908,6 @@ protected:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (residual_projector != nullptr) { _residual_projector = new ResidualProjector(*residual_projector); }
   }
-
-  [[nodiscard]] inline bool is_not_using_activation_derivative(const ErrorCalculation::type& error_calculation_type) const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    return is_not_using_activation_derivative(get_activation().get_method(), error_calculation_type);
-  }
-
 
   static std::vector<Neuron> create_neurons(double dropout_rate, unsigned number_output_neurons)
   {

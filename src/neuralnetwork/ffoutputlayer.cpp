@@ -390,14 +390,13 @@ void FFOutputLayer::calculate_error_deltas(
   const std::vector<double>& given_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  unsigned start_neuron = 0;
-  unsigned end_neuron = 0;
+  unsigned layer_number = 0;
   for (const auto& output_layer_detail : output_layer_details())
   {
     const auto error_calculation_type = output_layer_detail.get_output_error_calculation_type();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
-    end_neuron = start_neuron + output_layer_detail.get_size() - 1;
-    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, start_neuron, end_neuron);
-    start_neuron = end_neuron + 1;
+    const auto& bounds = layer_bounds(layer_number);
+    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, bounds.start, bounds.end);
+    ++layer_number;
   }
 }
