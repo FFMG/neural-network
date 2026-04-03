@@ -2,6 +2,7 @@
 
 #include "./libraries/instrumentor.h"
 
+#include "layer.h"
 #include "outputlayerdetails.h"
 
 class OutputLayer
@@ -91,6 +92,21 @@ protected:
     return _is_not_using_activation_derivatives[neuron_index] != 0;
   }
 
+protected:
+  [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (error_calculation_type)
+    {
+    case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
+    case ErrorCalculation::type::cross_entropy: return method == activation::method::softmax;
+    case ErrorCalculation::type::mse:
+    case ErrorCalculation::type::huber_loss:
+    case ErrorCalculation::type::log_cosh: return method == activation::method::linear;
+    }
+    return false;
+  }
+
 private:
   void create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
   {
@@ -111,8 +127,8 @@ private:
       for (size_t i = 0; i < output_layer_detail.get_size(); ++i)
       {
         const auto& error_calculation_type = output_layer_detail.get_output_error_calculation_type();
-        const auto is_not_using_activation_derivative = Layer::is_not_using_activation_derivative(output_layer_detail.get_activation().get_method(), error_calculation_type);
-        _is_not_using_activation_derivatives.push_back(is_not_using_activation_derivative);
+        const auto is_not = is_not_using_activation_derivative(output_layer_detail.get_activation().get_method(), error_calculation_type);
+        _is_not_using_activation_derivatives.push_back(is_not);
       }
     }
   }
