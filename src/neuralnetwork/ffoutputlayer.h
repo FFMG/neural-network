@@ -14,7 +14,7 @@
 #include <vector>
 #include <cstdint>
 
-class FFOutputLayer final : public FFLayer, OutputLayer
+class FFOutputLayer final : public FFLayer, protected OutputLayer
 {
 public:
   FFOutputLayer(
