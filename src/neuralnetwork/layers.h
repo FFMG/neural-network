@@ -13,6 +13,7 @@
 #include "gradientsandoutputs.h"
 #include "layer.h"
 #include "layerdetails.h"
+#include "logger.h"
 #include "neuralnetworkoptions.h"
 #include "optimiser.h"
 #include "residualprojector.h"
@@ -45,31 +46,41 @@ public:
   int get_residual_layer_number(unsigned index) const noexcept;
   const ResidualProjector* get_residual_layer_projector(unsigned index) const noexcept;
 
-  inline size_t size() const noexcept
+  [[nodiscard]] inline size_t size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return _layers.size();
   }
 
-  inline const Layer& input_layer() const
+  [[nodiscard]] inline const Layer& input_layer() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return *_layers.front();
   }
 
-  inline const Layer& hidden_layer(unsigned index) const
+  [[nodiscard]] inline const Layer& hidden_layer(unsigned index) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
+#if VALIDATE_DATA == 1
+    if (index == 0)
+    {
+      Logger::panic("Trying to get hidden layer information that is actually the input layer!");
+    }
+    if (index >= static_cast<unsigned>(_layers.size() -1))
+    {
+      Logger::panic("Trying to get hidden layer information past the number of hidden layers!");
+    }
+#endif
     return *_layers.at(index);
   }
 
-  inline const Layer& output_layer() const
+  [[nodiscard]] inline const Layer& output_layer() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return *_layers.back();
   }
 
-  inline double get_weight_decay() const noexcept
+  [[nodiscard]] inline double get_weight_decay() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layers");
     return _weight_decay;
@@ -85,6 +96,18 @@ public:
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
 
 private:
+  [[nodiscard]] inline const Layer& layer(unsigned index) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layers");
+#if VALIDATE_DATA == 1
+    if (index >= static_cast<unsigned>(_layers.size()))
+    {
+      Logger::panic("Trying to get layer information past the number of layers!");
+    }
+#endif
+    return *_layers.at(index);
+  }
+
   void calculate_forward_feed(
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients_and_output,

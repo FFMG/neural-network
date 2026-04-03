@@ -777,21 +777,34 @@ public:
   virtual bool has_bias() const noexcept = 0;
   virtual Layer* clone() const = 0;
 
-  [[nodiscard]] inline const std::vector<double>& get_w_values() const noexcept { return _w_values; }
-  [[nodiscard]] inline const std::vector<double>& get_w_grads() const noexcept { return _w_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_w_velocities() const noexcept { return _w_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_w_m1() const noexcept { return _w_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_w_m2() const noexcept { return _w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_w_timesteps() const noexcept { return _w_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_w_decays() const noexcept { return _w_decays; }
-  [[nodiscard]] inline const std::vector<double>& get_b_values() const noexcept { return _b_values; }
-  [[nodiscard]] inline const std::vector<double>& get_b_grads() const noexcept { return _b_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_b_velocities() const noexcept { return _b_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_b_m1() const noexcept { return _b_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_b_m2() const noexcept { return _b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { return _b_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { return _b_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_w_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_values; }
+  [[nodiscard]] inline const std::vector<double>& get_w_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_values; }
+  [[nodiscard]] inline const std::vector<double>& get_b_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_decays; }
 
+  [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (error_calculation_type)
+    {
+    case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
+    case ErrorCalculation::type::cross_entropy: return method == activation::method::softmax;
+    case ErrorCalculation::type::mse:
+    case ErrorCalculation::type::huber_loss:
+    case ErrorCalculation::type::log_cosh: return method == activation::method::linear;
+    }
+    return false;
+  }
 protected:
   Layer(
     unsigned layer_index,
@@ -915,19 +928,6 @@ protected:
     return is_not_using_activation_derivative(get_activation().get_method(), error_calculation_type);
   }
 
-  [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    switch (error_calculation_type)
-    {
-    case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
-    case ErrorCalculation::type::cross_entropy: return method == activation::method::softmax;
-    case ErrorCalculation::type::mse:
-    case ErrorCalculation::type::huber_loss:
-    case ErrorCalculation::type::log_cosh: return method == activation::method::linear;
-    }
-    return false;
-  }
 
   static std::vector<Neuron> create_neurons(double dropout_rate, unsigned number_output_neurons)
   {
