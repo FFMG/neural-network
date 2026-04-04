@@ -3,79 +3,13 @@
 
 #include "./libraries/instrumentor.h"
 #include "errorcalculation.h"
-#include "neuralnetworkoptions.h"
+#include "neuralnetworkhelpermetrics.h"
 #include "trainingmonitor.h"
 
 class NeuralNetwork;
 class NeuralNetworkHelper
 {
 public:
-  class NeuralNetworkHelperMetrics
-  {
-  public:
-    [[nodiscard]] inline long double error() const noexcept 
-    { 
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      return _error; 
-    }
-    
-    [[nodiscard]] inline ErrorCalculation::type error_type() const noexcept 
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      return _error_type; 
-    }
-
-    virtual ~NeuralNetworkHelperMetrics() = default;
-
-    NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src) noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      *this = src;
-    }
-    NeuralNetworkHelperMetrics& operator=(const NeuralNetworkHelperMetrics& src) noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      if (this != &src)
-      {
-        _error = src._error;
-        _error_type = src._error_type;
-      }
-      return *this;
-    }
-
-    NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      *this = src;
-    }
-    NeuralNetworkHelperMetrics& operator=(NeuralNetworkHelperMetrics&& src) noexcept
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-      if (this != &src)
-      {
-        _error = src._error;
-        _error_type = src._error_type;
-        src._error = 0.0;
-        src._error_type = ErrorCalculation::type::none;
-      }
-      return *this;
-    }
-
-    NeuralNetworkHelperMetrics(long double error, ErrorCalculation::type error_type) noexcept :
-      _error(error),
-      _error_type(error_type)
-    {
-      MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-    }
-
-  protected:
-    friend class NeuralNetworkHelper;
-    friend class NeuralNetwork;
-
-    long double _error;
-    ErrorCalculation::type _error_type;
-  };
-
   NeuralNetworkHelper() = delete;
   NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept
   {
@@ -170,31 +104,17 @@ public:
   }
   [[nodiscard]] inline size_t sample_size() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_inputs.size();
   }
   [[nodiscard]] inline const TrainingMonitor& training_monitor() const noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_monitor;
   }
 
-  void add_training_monitor_metrics()
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    const auto& metrics = calculate_forecast_metrics({
-      ErrorCalculation::type::directional_accuracy,
-      ErrorCalculation::type::rmse
-      });
-
-    for (const auto& metric : metrics)
-    {
-      _training_monitor.add_metric(metric.error_type(), metric.error());
-    }
-  }
-
-  NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
-  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const;
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types) const;
 
   NeuralNetworkHelper(
     NeuralNetwork& neural_network,

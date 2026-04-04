@@ -799,42 +799,32 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .build();
 }
 
-std::map<ErrorCalculation::type, double> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
+std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
 {
-  std::map<ErrorCalculation::type, double> errors;
+  std::vector<std::map<ErrorCalculation::type, double>> errors;
   auto tj_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if (nullptr == tj_object)
   {
     Logger::info("Could not load any errors.");
     return errors;
   }
-  auto tj_errors = dynamic_cast<const TinyJSON::TJValueObject*>(tj_object->try_get_value("errors"));
-  if (nullptr == tj_errors)
+  auto tj_errors_array = dynamic_cast<const TinyJSON::TJValueArray*>(tj_object->try_get_value("errors"));
+  if (nullptr == tj_errors_array)
   {
     Logger::info("Could not load any errors.");
     return errors;
   }
 
-  std::vector<ErrorCalculation::type> error_types = {
-    ErrorCalculation::type::huber_loss,
-    ErrorCalculation::type::mae,
-    ErrorCalculation::type::mse,
-    ErrorCalculation::type::rmse,
-    ErrorCalculation::type::nrmse,
-    ErrorCalculation::type::mape,
-    ErrorCalculation::type::smape,
-    ErrorCalculation::type::wape,
-    ErrorCalculation::type::directional_accuracy,
-    ErrorCalculation::type::bce_loss,
-    ErrorCalculation::type::cross_entropy,
-    ErrorCalculation::type::log_cosh,
-    ErrorCalculation::type::directional_confidence_score,
-    ErrorCalculation::type::prediction_coverage
-  };
-
-  for (const auto& error_type : error_types)
+  const auto& error_types = all_error_types();
+  unsigned output_layer = 0;
+  for (const auto& tj_errors_value : *tj_errors_array)
   {
-    errors[error_type] = tj_errors->get_float<double>(ErrorCalculation::type_to_string(error_type).c_str(), true, false);
+    auto tj_errors_object = dynamic_cast<const TinyJSON::TJValueObject*>(&tj_errors_value);
+    errors.push_back({});
+    for (const auto& error_type : error_types)
+    {
+      errors[output_layer][error_type] = tj_errors_object->get_float<double>(ErrorCalculation::type_to_string(error_type).c_str(), true, false);
+    }
   }
   return errors;
 }
@@ -1441,10 +1431,11 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   delete layers_array;
 }
 
-void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+const std::vector<ErrorCalculation::type> NeuralNetworkSerializer::all_error_types()
 {
-  auto error_types = {
+  return {
     ErrorCalculation::type::huber_loss,
+    ErrorCalculation::type::huber_direction_loss,
     ErrorCalculation::type::mae,
     ErrorCalculation::type::mse,
     ErrorCalculation::type::rmse,
@@ -1459,16 +1450,25 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
     ErrorCalculation::type::directional_confidence_score,
     ErrorCalculation::type::prediction_coverage
   };
+}
+
+void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
+{
+  const auto& error_types = all_error_types();
+  const unsigned output_layer = 0;
+  auto tj_errors_array = new TinyJSON::TJValueArray();
+
   auto metrics = nn.calculate_forecast_metrics(error_types);
 
-  auto tj_errors = new TinyJSON::TJValueObject();
+  auto tj_errors_object = new TinyJSON::TJValueObject();
   for (const auto& metric : metrics)
   {
-    tj_errors->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
+    tj_errors_object->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
   }
+  tj_errors_array->add(tj_errors_object);
 
-  json.set("errors", tj_errors);
-  delete tj_errors;
+  json.set("errors", tj_errors_array);
+  delete tj_errors_array;
 }
 
 void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

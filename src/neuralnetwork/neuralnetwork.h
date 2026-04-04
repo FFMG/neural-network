@@ -21,6 +21,7 @@
 #include "hiddenstates.h"
 #include "layers.h"
 #include "neuralnetworkhelper.h"
+#include "neuralnetworkhelpermetrics.h"
 #include "neuralnetworkoptions.h"
 #include "rng.h"
 #include "taskqueue.h"
@@ -30,7 +31,7 @@ class NeuralNetwork
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
-  NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::map<ErrorCalculation::type, double>& errors);
+  NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::vector<std::map<ErrorCalculation::type, double>>& errors);
 
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork& operator=(const NeuralNetwork&);
@@ -44,8 +45,14 @@ public:
   const std::vector<unsigned>& get_topology() const;
   const Layers& get_layers() const;
 
-  NeuralNetworkHelper::NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false, size_t limit = 0) const;
+  // Output layer 0 only (common use case)
+  NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false) const;
+
+  // Multiple Output layers
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric_all_layers(ErrorCalculation::type error_type) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false) const;
+
   double get_learning_rate() const noexcept;
   double get_percent_complete() const noexcept;
 
@@ -102,12 +109,12 @@ private:
   Layers _layers;
   NeuralNetworkOptions _options;
   NeuralNetworkHelper* _neural_network_helper;
-  std::map<ErrorCalculation::type, double> _saved_errors;
+  std::vector<std::map<ErrorCalculation::type, double>> _saved_errors;
   
   Rng _rng;
 
-  mutable SingleTaskQueue<std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics>> _adaptive_lr_task;
-  mutable std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> _last_metrics;
+  mutable SingleTaskQueue<std::vector<NeuralNetworkHelperMetrics>> _adaptive_lr_task;
+  mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
   mutable std::vector<GradientsAndOutputs> _gradients_pool;
   mutable std::vector<HiddenStates> _hidden_states_pool;
 };

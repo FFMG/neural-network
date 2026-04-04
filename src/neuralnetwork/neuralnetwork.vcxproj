@@ -181,6 +181,7 @@
     <ClInclude Include="logger.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
+    <ClInclude Include="neuralnetworkhelpermetrics.h" />
     <ClInclude Include="neuralnetworkoptions.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />

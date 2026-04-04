@@ -39,7 +39,7 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const Layers& layers,
   const NeuralNetworkOptions& options,
-  const std::map<ErrorCalculation::type, double>& errors
+  const std::vector<std::map<ErrorCalculation::type, double>>& errors
 ) :
   _learning_rate(options.learning_rate()),
   _layers(layers),
@@ -255,13 +255,6 @@ double NeuralNetwork::get_percent_complete() const noexcept
   return _neural_network_helper->percent_complete();
 }
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto results = calculate_forecast_metrics({ error_type }, false);
-  return results.front();
-}
-
 bool NeuralNetwork::has_training_data() const
 {
   std::shared_lock<std::shared_mutex> read(_mutex);
@@ -274,28 +267,58 @@ bool NeuralNetwork::has_training_data() const
   return !_saved_errors.empty();
 }
 
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check, size_t limit) const
+NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors;
-  errors.reserve(error_types.size());
+  auto results = calculate_forecast_metrics({ error_type }, false);
+  return results.front();
+}
+
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric_all_layers(ErrorCalculation::type error_type) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto results = calculate_forecast_metrics_all_layers({ error_type }, false);
+  return results.front();
+}
+
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto results = calculate_forecast_metrics_all_layers(error_types, false);
+  return results.front();
+}
+
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   {
     std::shared_lock read(_mutex);
     if (nullptr == _neural_network_helper)
     {
-      for (const auto& error_type : error_types)
+      std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
+      errors.reserve(_saved_errors.size());
+
+      std::vector<NeuralNetworkHelperMetrics> layer_errors;
+      layer_errors.reserve(error_types.size());
+
+      for (const auto& layer_saved_errors : _saved_errors)
       {
-        const auto& saved_error = _saved_errors.find(error_type);
-        if (saved_error == _saved_errors.end())
+        for (const auto& error_type : error_types)
         {
-          errors.emplace_back(0.0, error_type);
-          Logger::warning("Trying to get training metrics:", (int)error_type, " when no training was done!");
+          const auto& saved_error = layer_saved_errors.find(error_type);
+          if (saved_error == layer_saved_errors.end())
+          {
+            layer_errors.emplace_back(0.0, error_type);
+            Logger::warning("Trying to get training metrics:", (int)error_type, " when no training was done!");
+          }
+          else
+          {
+            layer_errors.emplace_back(saved_error->second, error_type);
+          }
         }
-        else
-        {
-          errors.emplace_back(saved_error->second, error_type);
-        }
+        errors.emplace_back(layer_errors);
+        layer_errors.clear();
       }
       return errors;
     }
@@ -308,18 +331,9 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   const std::vector<size_t>* checks_indexes = final_check ? &helper.final_check_indexes() : &helper.checking_indexes();
   size_t prediction_size = checks_indexes->size();
 
-  if (limit > 0 && limit < prediction_size)
-  {
-    prediction_size = limit;
-  }
-
   if (prediction_size == 0)
   {
-    for (const auto& error_type : error_types)
-    {
-      errors.emplace_back(0.0, error_type);
-    }
-    return errors;
+    return {};
   }
 
   std::vector<std::vector<double>> predictions;
@@ -366,15 +380,7 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
     }
   }
 
-  // TODO we need to get the error evaluation from somewhere else!
-  const auto& evaluation_config = _options.output_layer_details().front().get_error_evaluation_config();
-  for (const auto& error_type : error_types)
-  {
-    errors.emplace_back(
-      ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, evaluation_config),
-      error_type);
-  }
-  return errors;
+  return _layers.output_layer().calculate_output_metrics(error_types, checking_outputs, predictions);
 }
 
 void NeuralNetwork::train_single_batch(
@@ -581,7 +587,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       Logger::trace([=] {
         return Logger::factory("Updating training monitor at epoch #", epoch, " of ", number_of_epoch);
         });
-      _neural_network_helper->add_training_monitor_metrics();
     }
 
     // callback
@@ -597,15 +602,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   if (Logger::can_info() && options().final_error_calculation_types().size() > 0)
   {
-    const auto& metrics = calculate_forecast_metrics(options().final_error_calculation_types(), true);
+    const auto& metrics = calculate_forecast_metrics_all_layers(options().final_error_calculation_types(), true);
     std::string message = "";
+    unsigned output_layer_number = 0;
     for (const auto metric : metrics)
     {
-      if (!message.empty())
+      for (const auto metric_error : metric)
       {
-        message += "\n";
+        if (!message.empty())
+        {
+          message += "\n";
+        }
+        message += Logger::factory("Final: Layer = ", output_layer_number, ", ", ErrorCalculation::type_to_string(metric_error.error_type()), " error: ", std::fixed, std::setprecision(15), metric_error.error());
       }
-      message += Logger::factory("Final ", ErrorCalculation::type_to_string(metric.error_type()), " error: ", std::fixed, std::setprecision(15), metric.error());
+      ++output_layer_number;
     }
     Logger::info(message);
   }
@@ -767,7 +777,7 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
 
       // start a new task
       _adaptive_lr_task.call([this]() {
-        return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false, 100 /*limit*/);
+        return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
         });
     }
 

@@ -6,6 +6,7 @@
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstates.h"
+#include "neuralnetworkhelpermetrics.h"
 #include "neuron.h"
 #include "optimiser.h"
 #include "residualprojector.h"
@@ -211,6 +212,16 @@ public:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     delete _residual_projector;
     _residual_projector = nullptr;
+  }
+
+  [[nodiscard]] virtual std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
+    const std::vector<ErrorCalculation::type>& error_types, 
+    const std::vector<std::vector<double>>& predictions,
+    const std::vector<std::vector<double>>& checking_outputs
+    ) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    Logger::panic("Only output layers can calculate output metrics!");
   }
 
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
