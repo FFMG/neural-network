@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 #include <string>
 #include <vector>
 #include "logger.h"
@@ -163,7 +164,7 @@ public:
 
   }
 
-  static double calculate_error(type error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config )
+  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     switch (error_type)
@@ -220,7 +221,7 @@ public:
     Logger::panic("Unknown ErrorCalculation type!");
   }
 
-  static double calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -261,7 +262,7 @@ public:
     return (count > 0) ? (total_loss / count) : 0.0;
   }
 
-  static double calculate_huber_direction_loss(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_huber_direction_loss(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -318,7 +319,7 @@ public:
     return (count > 0) ? (total_loss / count) : 0.0;
   }
 
-  static double calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+  static double calculate_mae_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -345,7 +346,7 @@ public:
     return (count > 0) ? (total_abs_error / count) : 0.0;
   }
 
-  static double calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions)
+  static double calculate_mse_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -395,7 +396,7 @@ public:
     return mean_squared_error;
   }
 
-  static double calculate_rmse_error(const std::vector<std::vector<double>>& ground_truths,const std::vector<std::vector<double>>& predictions)
+  static double calculate_rmse_error(std::span<const std::vector<double>> ground_truths,std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -431,7 +432,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
   }
 
-  static double calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
+  static double calculate_nrmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -483,7 +484,7 @@ public:
   }
 
   // TODO epsilon should be a common const rather than a param, it is never passed.
-  static double calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8)
+  static double calculate_forecast_mape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -534,7 +535,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
   }
 
-  static double calculate_forecast_wape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
+  static double calculate_forecast_wape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -581,7 +582,7 @@ public:
   }
 
   // TODO epsilon should be a common const rather than a param, it is never passed.
-  static double calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon = 1e-8)
+  static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -623,7 +624,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
   }
 
-  static double calculate_directional_confidence_score( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_directional_confidence_score( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -675,7 +676,7 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_directional_accuracy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -722,7 +723,7 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_bce_loss( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
+  static double calculate_bce_loss( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -766,7 +767,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
   }
 
-  static double calculate_log_cosh( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
+  static double calculate_log_cosh( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -803,7 +804,7 @@ public:
     return (count > 0) ? (total_log_cosh / count) : 0.0;
   }
 
-  static double calculate_cross_entropy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions)
+  static double calculate_cross_entropy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -843,7 +844,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count);
   }
 
-  static double calculate_prediction_coverage( const std::vector<std::vector<double>>& predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_prediction_coverage( std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
 #if VALIDATE_DATA == 1
     if (predictions.empty())
