@@ -1,10 +1,6 @@
 #include "neuron.h"
 
-#include <algorithm>
 #include <cassert>
-#include <cmath>
-#include <iostream>
-#include "logger.h"
 #include <random>
 
 Neuron::Neuron(
