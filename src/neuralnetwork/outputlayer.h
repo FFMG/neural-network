@@ -10,7 +10,8 @@ class OutputLayer
 {
 public:
   OutputLayer(const std::vector<OutputLayerDetails>& output_layer_details) noexcept :
-    _output_layer_details(output_layer_details)
+    _output_layer_details(output_layer_details),
+    _number_output_layers(static_cast<unsigned>(output_layer_details.size()))
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
     create_activation_per_neuron(output_layer_details);
@@ -22,7 +23,8 @@ public:
     _output_layer_details(src._output_layer_details),
     _activations(src._activations),
     _is_not_using_activation_derivatives(src._is_not_using_activation_derivatives),
-    _bounds(src._bounds)
+    _bounds(src._bounds),
+    _number_output_layers(src._number_output_layers)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
   }
@@ -31,7 +33,8 @@ public:
     _output_layer_details(std::move(src._output_layer_details)),
     _activations(std::move(src._activations)),
     _is_not_using_activation_derivatives(std::move(src._is_not_using_activation_derivatives)),
-    _bounds(std::move(src._bounds))
+    _bounds(std::move(src._bounds)),
+    _number_output_layers(src._number_output_layers)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
   }
@@ -45,6 +48,7 @@ public:
       _activations = src._activations;
       _is_not_using_activation_derivatives = src._is_not_using_activation_derivatives;
       _bounds = src._bounds;
+      _number_output_layers = src._number_output_layers;
     }
     return *this;
   }
@@ -58,6 +62,7 @@ public:
       _activations = std::move(src._activations);
       _is_not_using_activation_derivatives = std::move(src._is_not_using_activation_derivatives);
       _bounds = std::move(src._bounds);
+      _number_output_layers = src._number_output_layers;
     }
     return *this;
   }
@@ -128,6 +133,23 @@ protected:
     return false;
   }
 
+  [[nodiscard]] inline unsigned number_output_layers() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
+    return _number_output_layers;
+  }
+  [[nodiscard]] inline const ErrorCalculation::EvaluationConfig& evaluation_config(unsigned output_layer_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
+#if VALIDATE_DATA == 1
+    if (output_layer_index >= _output_layer_details.size())
+    {
+      Logger::panic("Trying to get EvaluationConfig past the number of output layers(#", output_layer_index,")!");
+    }
+#endif
+    return _output_layer_details[output_layer_index].get_error_evaluation_config();
+  }
+
 private:
   void create_activation_per_neuron(const std::vector<OutputLayerDetails>& output_layer_details)
   {
@@ -175,4 +197,5 @@ private:
   std::vector<activation> _activations;
   std::vector<uint8_t> _is_not_using_activation_derivatives;
   std::vector<bounds> _bounds;
+  unsigned _number_output_layers;
 };

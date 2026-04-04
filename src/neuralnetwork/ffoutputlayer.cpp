@@ -1,7 +1,7 @@
 #include "./libraries/instrumentor.h"
 #include "ffoutputlayer.h"
 #include "logger.h"
-#include <numeric>
+#include "neuralnetworkhelpermetrics.h"
 
 constexpr bool _has_bias_neuron = true;
 
@@ -399,4 +399,68 @@ void FFOutputLayer::calculate_error_deltas(
     Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, bounds.start, bounds.end);
     ++layer_number;
   }
+}
+
+std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_output_metrics(
+  const std::vector<ErrorCalculation::type>& error_types,
+  const std::vector<std::vector<double>>& predictions,
+  const std::vector<std::vector<double>>& checking_outputs
+) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
+  errors.reserve(number_output_layers());
+
+  const size_t batch_size = predictions.size();
+#if VALIDATE_DATA == 1
+  if (batch_size != checking_outputs.size())
+  {
+    Logger::panic("The number of predictions is not the same as the number of given outputs!");
+  }
+#endif
+  if (number_output_layers() == 1)
+  {
+    // only one output, fast path
+    std::vector<NeuralNetworkHelperMetrics> layer_errors;
+    layer_errors.reserve(error_types.size());
+
+    const auto& configs = evaluation_config(0); //  layer zero
+    for (const auto& error_type : error_types)
+    {
+      layer_errors.emplace_back(
+        ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, configs),
+        error_type);
+    }
+    errors.emplace_back(std::move(layer_errors));
+    return errors;
+  }
+
+  // Multi-output path
+  std::vector<std::vector<double>> sliced_predictions(batch_size);
+  std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+  std::vector<NeuralNetworkHelperMetrics> layer_errors;
+  layer_errors.reserve(error_types.size());
+
+  for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
+  {
+    const auto& bounds = layer_bounds(output_layer_index);
+    const auto& configs = evaluation_config(output_layer_index);
+    const size_t num_neurons = bounds.end - bounds.start + 1;
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
+      sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+    }
+
+    layer_errors.clear();
+    for (const auto& error_type : error_types)
+    {
+      layer_errors.emplace_back(
+        ErrorCalculation::calculate_error(error_type, sliced_checking_outputs, sliced_predictions, configs),
+        error_type);
+    }
+    errors.emplace_back(layer_errors);
+  }
+  return errors;
 }

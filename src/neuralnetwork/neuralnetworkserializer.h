@@ -31,8 +31,9 @@ private:
   NeuralNetworkSerializer& operator=(const NeuralNetworkSerializer& src) = delete;
   virtual ~NeuralNetworkSerializer() = default;
 
+  static const std::vector<ErrorCalculation::type> all_error_types();
   static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
-  static std::map<ErrorCalculation::type, double> get_errors(const TinyJSON::TJValue& json);
+  static std::vector<std::map<ErrorCalculation::type, double>> get_errors(const TinyJSON::TJValue& json);
   static std::vector<WeightParam> get_weight_params(const TinyJSON::TJValueObject& parent);
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number);
   static std::vector<Neuron> get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);

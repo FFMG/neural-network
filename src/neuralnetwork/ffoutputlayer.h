@@ -12,7 +12,6 @@
 #include "outputlayer.h"
 
 #include <vector>
-#include <cstdint>
 
 class FFOutputLayer final : public FFLayer, protected OutputLayer
 {
@@ -86,6 +85,12 @@ public:
     MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
     Logger::panic("Trying to get an activation layer without passing an neuron index!");
   }
+
+  [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
+    const std::vector<ErrorCalculation::type>& error_types,
+    const std::vector<std::vector<double>>& predictions,
+    const std::vector<std::vector<double>>& checking_outputs
+  ) const  override;
 
 protected:
   virtual void run_post_gemm(
