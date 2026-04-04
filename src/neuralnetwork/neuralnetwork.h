@@ -7,7 +7,6 @@
   #endif
 #endif
 
-#include <cassert>
 #include <functional>
 #include <map>
 #include <shared_mutex>
@@ -20,13 +19,9 @@
 #include "errorcalculation.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstates.h"
-#include "layer.h"
-#include "layergradients.h"
 #include "layers.h"
 #include "neuralnetworkhelper.h"
 #include "neuralnetworkoptions.h"
-#include "neuron.h"
-#include "optimiser.h"
 #include "rng.h"
 #include "taskqueue.h"
 

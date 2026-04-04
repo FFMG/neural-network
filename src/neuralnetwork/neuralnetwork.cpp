@@ -175,16 +175,15 @@ void NeuralNetwork::break_indexes(const std::vector<size_t>& indexes, bool data_
   assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
-    Logger::error("Logic error, unable to do a final batch error check.");
-    throw std::invalid_argument("Logic error, unable to do a final batch error check.");
+    Logger::panic("Logic error, unable to do a final batch error check.");
   }
 
   // then build the various indexes that will be used during testing.
   if(data_is_unique)
   {
-    // because the data is uniqe we must use all of it for training
+    // because the data is unique we must use all of it for training
     // this is important in some cases where the NN needs all the data to train
-    // otherwise we will ony train on some of the data.
+    // otherwise we will only train on some of the data.
     // the classic XOR example is a good use case ... 
     training_indexes = indexes;
   }
@@ -486,13 +485,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
-    Logger::error("The batch size if either -ve or too large for the training sample.");
-    throw std::invalid_argument("The batch size if either -ve or too large for the training sample.");
+    Logger::panic("The batch size if either -ve or too large for the training sample.");
   }
   if(training_outputs.size() != training_inputs.size())
   {
-    Logger::error("The number of training samples does not match the number of expected outputs.");
-    throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
+    Logger::panic("The number of training samples does not match the number of expected outputs.");
   }
 
   Logger::info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
@@ -613,7 +610,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     Logger::info(message);
   }
 
-  // finaly learning rate
+  // finally learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
   // final callback to show 100% done.
@@ -638,7 +635,7 @@ void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const st
   delete _neural_network_helper;
   _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
 
-  // set all the indexes in the helper, either shiffled or not.
+  // set all the indexes in the helper, either shuffled or not.
   if (options().shuffle_training_data())
   {
     create_shuffled_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
