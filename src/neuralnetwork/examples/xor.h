@@ -109,16 +109,16 @@ public:
 
     auto metrics = nn->calculate_forecast_metric( ErrorCalculation::type::rmse);
 
-    Logger::info("Error: ", metrics.error());
+    Logger::info("Error (rmse): ", metrics.error());
 
     Logger::info("Output After Training:", std::fixed, std::setprecision(10));
 
-    // or we can train with a single inut
+    // or we can train with a single input
     // we know that the output only has one value.
     auto t1 = nn->think({ 0, 0, 1 });
     Logger::info("  ", t1.front(), " (should be close to 0)");
 
-    // or we can train with a single inut
+    // or we can train with a single input
     // we know that the output only has one value.
     auto t2 = nn->think({ 1, 1, 1 });
     Logger::info("  ", t2.front(), " (should be close to 1)");
