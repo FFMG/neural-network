@@ -13,11 +13,14 @@ public:
   class NeuralNetworkHelperMetrics
   {
   public:
-    inline long double error() const noexcept { 
+    [[nodiscard]] inline long double error() const noexcept 
+    { 
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error; 
     }
-    inline ErrorCalculation::type error_type() const noexcept { 
+    
+    [[nodiscard]] inline ErrorCalculation::type error_type() const noexcept 
+    {
       MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
       return _error_type; 
     }
@@ -237,24 +240,23 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _training_indexes = std::move(training_indexes);
   }
-
-  const std::vector<size_t>& training_indexes() const noexcept { 
+  [[nodiscard]] const std::vector<size_t>& training_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_indexes; 
   }
-  const std::vector<size_t>& checking_indexes() const noexcept { 
+  [[nodiscard]] const std::vector<size_t>& checking_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _checking_indexes; 
   }
-  const std::vector<size_t>& final_check_indexes() const noexcept {
+  [[nodiscard]] const std::vector<size_t>& final_check_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _final_check_indexes; 
   }
-  const std::vector<std::vector<double>>& training_inputs() const noexcept {
+  [[nodiscard]] const std::vector<std::vector<double>>& training_inputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_inputs; 
   }
-  const std::vector<std::vector<double>>& training_outputs() const noexcept {
+  [[nodiscard]] const std::vector<std::vector<double>>& training_outputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_outputs; 
   }
