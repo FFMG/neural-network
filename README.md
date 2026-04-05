@@ -74,8 +74,25 @@ The hidden layer information helps you to refine the hidden layer information
       .build();
 ```
 
-Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
+### Output Layers
 
+By default, the output layer uses a single activation function. However, you can define multiple logical output segments (Composite Outputs), each with its own activation and error calculation. This is ideal for tasks requiring simultaneous classification and regression.
+
+```cpp
+    // Topology: 1 input, 8 hidden, 2 outputs
+    std::vector<unsigned> topology = { 1, 8, 2 };
+
+    auto output_layers = {
+      // First output: Sigmoid (Classification: Is positive?)
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse),
+      // Second output: Tanh (Regression: Mapping value to [-1, 1])
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse)
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_output_layer_details(output_layers)
+      .build();
+```
 
 ### Residual layer
 
@@ -117,8 +134,6 @@ For very deep networks it might be best to set a value of ~5.0
       ...
       .build();
 ```
-
-Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
 
 ### Learning rate warm-up
 
@@ -474,28 +489,6 @@ You can configure this via `NeuralNetworkOptions`:
     auto options = NeuralNetworkOptions::create(topology)
       ...
       .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config)
-      ...
-      .build();
-```
-
-#### Composite output layer details
-
-In some cases you might want different activation layers...
-
-In the example below, we will have neuron[0] as a tanh activation method and neuron[1] as sigmoid... 
-
-```cpp
-    ErrorCalculation::EvaluationConfig eval_config;
-    eval_config.huber_delta = 0.5;
-    eval_config.direction_lambda = 0.1;
-
-    auto options = NeuralNetworkOptions::create(topology)
-      ...
-      .with_output_layer_details(
-        {
-          OutputLayerDetails(1, activation(activation::method::tanh, 0.1), ErrorCalculation::type::mse, eval_config)
-          OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config)
-        }
       ...
       .build();
 ```
