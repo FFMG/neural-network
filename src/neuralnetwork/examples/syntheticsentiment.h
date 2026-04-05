@@ -164,7 +164,7 @@ public:
     auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(batch_size)
         .with_output_layer_details(output_layer)
-        .with_log_level(Logger::LogLevel::Trace)
+        .with_log_level(log_level)
         .with_learning_rate(learning_rate)
         .with_optimiser_type(OptimiserType::Adam)
         .with_hidden_layers(hidden_layers)
