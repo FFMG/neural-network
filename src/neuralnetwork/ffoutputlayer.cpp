@@ -219,6 +219,18 @@ void FFOutputLayer::run_output_gradients(
         double deriv = OutputLayer::get_activation(neuron_index).activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
         gradients[neuron_index] = deltas[neuron_index] * deriv;
       }
+
+      Logger::trace([&]()
+      {
+        std::ostringstream ss;
+        ss << "[FFOutputLayer::run_output_gradients] b=" << b
+           << ", neuron=" << neuron_index
+           << ", target=" << target_outputs[neuron_index]
+           << ", given=" << given_outputs[neuron_index]
+           << ", delta=" << deltas[neuron_index]
+           << ", grad=" << gradients[neuron_index];
+        return ss.str();
+      });
     }
     batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
   }
@@ -354,9 +366,6 @@ void FFOutputLayer::run_post_gemm(
       // Use scalar activation
       double output = OutputLayer::get_activation(static_cast<unsigned>(j)).activate(current_pre_act[j]);
       
-      // Store the activated value back in the buffer if needed later for hidden states
-      current_pre_act[j] = output;
-
       if (is_training && neuron.is_dropout())
       {
         if (neuron.must_randomly_drop())
@@ -457,7 +466,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, sliced_checking_outputs, sliced_predictions, configs),
+        ErrorCalculation::calculate_error(error_type, std::span(sliced_checking_outputs), std::span(sliced_predictions), configs),
         error_type);
     }
     errors.emplace_back(layer_errors);

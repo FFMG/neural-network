@@ -294,13 +294,11 @@ void FFLayer::run_post_gemm(
     }
 
     // Activation
-    get_activation().activate(current_pre_act, current_pre_act + N_this);
-
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     for (size_t j = 0; j < N_this; j++)
     {
       const auto& neuron = get_neuron((unsigned)j);
-      double output = current_pre_act[j];
+      double output = get_activation().activate(current_pre_act[j]);
 
       if (is_training && neuron.is_dropout())
       {
