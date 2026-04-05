@@ -164,55 +164,61 @@ public:
 
   }
 
-  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
+  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+#if VALIDATE_DATA == 1
+    if (predictions.size() != ground_truths.size() || predictions.empty())
+    {
+      Logger::panic("Input vectors must have the same, non-zero size.");
+    }
+#endif
     switch (error_type)
     {
     case type::none:
       return 0.0;
 
     case type::huber_loss:
-      return calculate_huber_loss_error(ground_truth, predictions, evaluation_config);
+      return calculate_huber_loss_error(ground_truths, predictions, evaluation_config);
 
     case type::huber_direction_loss:
-      return calculate_huber_direction_loss(ground_truth, predictions, evaluation_config);
+      return calculate_huber_direction_loss(ground_truths, predictions, evaluation_config);
 
     case type::mae:
-      return calculate_mae_error(ground_truth, predictions);
+      return calculate_mae_error(ground_truths, predictions);
 
     case type::mse:
-      return calculate_mse_error(ground_truth, predictions);
+      return calculate_mse_error(ground_truths, predictions);
 
     case type::rmse:
-      return calculate_rmse_error(ground_truth, predictions);
+      return calculate_rmse_error(ground_truths, predictions);
 
     case type::nrmse:
-      return calculate_nrmse_error(ground_truth, predictions);
+      return calculate_nrmse_error(ground_truths, predictions);
 
     case type::mape:
-      return calculate_forecast_mape(ground_truth, predictions);
+      return calculate_forecast_mape(ground_truths, predictions);
 
     case type::wape:
-      return calculate_forecast_wape(ground_truth, predictions);
+      return calculate_forecast_wape(ground_truths, predictions);
 
     case type::smape:
-      return calculate_forecast_smape(ground_truth, predictions);
+      return calculate_forecast_smape(ground_truths, predictions);
 
     case type::directional_accuracy:
-      return calculate_directional_accuracy(ground_truth, predictions, evaluation_config);
+      return calculate_directional_accuracy(ground_truths, predictions, evaluation_config);
 
     case type::directional_confidence_score:
-      return calculate_directional_confidence_score(ground_truth, predictions, evaluation_config);
+      return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config);
 
     case type::bce_loss:
-      return calculate_bce_loss(ground_truth, predictions);
+      return calculate_bce_loss(ground_truths, predictions);
 
     case type::cross_entropy:
-      return calculate_cross_entropy(ground_truth, predictions);
+      return calculate_cross_entropy(ground_truths, predictions);
 
     case type::log_cosh:
-      return calculate_log_cosh(ground_truth, predictions);
+      return calculate_log_cosh(ground_truths, predictions);
 
     case type::prediction_coverage:
       return calculate_prediction_coverage(predictions, evaluation_config);
@@ -224,13 +230,6 @@ public:
   static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (ground_truth.size() != predictions.size())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     const auto& delta = evaluation_config.huber_delta;
 
     double total_loss = 0.0;
@@ -265,13 +264,6 @@ public:
   static double calculate_huber_direction_loss(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (ground_truth.size() != predictions.size())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     const auto& lambda = evaluation_config.direction_lambda;
     const auto& delta = evaluation_config.huber_delta;
 
@@ -322,13 +314,6 @@ public:
   static double calculate_mae_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (ground_truth.size() != predictions.size())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     double total_abs_error = 0.0;
     size_t count = 0;
     for (size_t i = 0; i < ground_truth.size(); ++i)
@@ -349,13 +334,6 @@ public:
   static double calculate_mse_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (ground_truth.size() != predictions.size())
-    {
-      Logger::panic("Mismatch in batch sizes.");
-    }
-#endif
-
     double mean_squared_error = 0.0;
     size_t valid_count = 0;
 
@@ -399,13 +377,6 @@ public:
   static double calculate_rmse_error(std::span<const std::vector<double>> ground_truths,std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     double total_rmse = 0.0;
     size_t sequence_count = 0;
 
@@ -435,13 +406,6 @@ public:
   static double calculate_nrmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     double total_nrmse = 0.0;
     size_t sequence_count = 0;
     const double eps = 1e-12; // small value to avoid division by zero
@@ -487,13 +451,6 @@ public:
   static double calculate_forecast_mape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     double total_mape = 0.0;
     size_t sequence_count = 0;
 
@@ -538,13 +495,6 @@ public:
   static double calculate_forecast_wape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     double total_absolute_error = 0.0;
     double total_absolute_actuals = 0.0;
 
@@ -585,13 +535,6 @@ public:
   static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     double total_smape = 0.0;
     size_t sequence_count = 0;
 
@@ -627,13 +570,6 @@ public:
   static double calculate_directional_confidence_score( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     size_t correct = 0;
     size_t total = 0;
 
@@ -679,13 +615,6 @@ public:
   static double calculate_directional_accuracy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Input vectors must have the same, non-zero size.");
-    }
-#endif
-
     const auto& neutral_tolerance = evaluation_config.neutral_tolerance;
     size_t correct = 0;
     size_t total = 0;
@@ -726,13 +655,6 @@ public:
   static double calculate_bce_loss( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     double total_bce = 0.0;
     size_t sequence_count = 0;
 
@@ -770,13 +692,6 @@ public:
   static double calculate_log_cosh( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     double total_log_cosh = 0.0;
     size_t count = 0;
 
@@ -807,13 +722,6 @@ public:
   static double calculate_cross_entropy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-#if VALIDATE_DATA == 1
-    if (predictions.size() != ground_truths.size() || predictions.empty())
-    {
-      Logger::panic("Mismatched number of samples");
-    }
-#endif
-
     double total_loss = 0.0;
     size_t sequence_count = 0;
     const double eps = 1e-12;
@@ -846,13 +754,6 @@ public:
 
   static double calculate_prediction_coverage( std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
-#if VALIDATE_DATA == 1
-    if (predictions.empty())
-    {
-      Logger::panic("Prediction vector cannot be empty.");
-    }
-#endif
-
     size_t confident = 0;
     size_t total = 0;
 
