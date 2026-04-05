@@ -157,6 +157,7 @@
     <ClInclude Include="aligned_allocator.h" />
     <ClInclude Include="examples\addingproblem.h" />
     <ClInclude Include="examples\multi_output.h" />
+    <ClInclude Include="examples\multi_output_gru.h" />
     <ClInclude Include="examples\syntheticsentiment.h" />
     <ClInclude Include="ffoutputlayer.h" />
     <ClInclude Include="grurnnlayer.h" />
