@@ -165,8 +165,6 @@ void Layer::calculate_bce_error_deltas(
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   // Retrieve config values
-  const double conf_thresh = evaluation_config.confidence_threshold; // e.g., 0.001
-  const double neutral_tol = evaluation_config.neutral_tolerance;    // e.g., 0.0005
   const double dir_lambda = evaluation_config.direction_lambda;     // e.g., 0.2
   const bool   use_dir = evaluation_config.use_direction_penalty;
 
@@ -176,24 +174,8 @@ void Layer::calculate_bce_error_deltas(
     double target = target_outputs[idx];
     double output = given_outputs[idx];
 
-    // Ignore neutral targets
-    if (std::abs(target - 0.5) < neutral_tol)  // adjust if your "flat" logic differs
-    {
-      deltas[idx] = 0.0;
-      continue;
-    }
-
-    // Clamp output to confidence thresholds
-    if (output < conf_thresh)
-    {
-      output = conf_thresh;
-    }
-    if (output > 1.0 - conf_thresh)
-    {
-      output = 1.0 - conf_thresh;
-    }
-
     // Standard BCE delta
+    // Note: We don't use neutral_tol or conf_thresh here as it's non-standard for BCE.
     double delta = (output - target);
 
     // Optional directional penalty boost
