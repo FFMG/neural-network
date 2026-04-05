@@ -656,7 +656,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_bce = 0.0;
-    size_t sequence_count = 0;
+    size_t count = 0;
 
     // small epsilon to avoid log(0)
     const double eps = 1e-12;
@@ -671,22 +671,18 @@ public:
         continue;
       }
 
-      double bce = 0.0;
       for (size_t i = 0; i < gt.size(); ++i)
       {
         // clip predictions to [eps, 1 - eps]
         double p = std::max(eps, std::min(1.0 - eps, pred[i]));
         double y = gt[i];
 
-        bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
+        total_bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
+        ++count;
       }
-
-      bce /= gt.size();    // average over outputs in sequence
-      total_bce += bce;
-      ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
+    return (count == 0) ? 0.0 : (total_bce / count);
   }
 
   static double calculate_log_cosh( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
