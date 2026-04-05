@@ -569,6 +569,22 @@ public:
 
     double final_gradient = gradient * clipping_scale;
 
+    // Log trace for some updates to avoid flooding
+    if (idx == 0 && (timesteps.empty() || timesteps[idx] % 100 == 0))
+    {
+      Logger::trace([&]()
+      {
+        std::ostringstream ss;
+        ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
+          << ", idx=" << idx
+          << ", grad=" << gradient
+          << ", final_grad=" << final_gradient
+          << ", lr=" << learning_rate
+          << ", val_before=" << values[idx];
+        return ss.str();
+      });
+    }
+
     switch (_optimiser_type)
     {
     case OptimiserType::None:

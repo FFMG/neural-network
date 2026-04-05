@@ -8,6 +8,7 @@
 // examples
 #include "./examples/addingproblem.h"
 #include "./examples/copymemory.h"
+#include "./examples/multi_output.h"
 #include "./examples/residualxor.h"
 #include "./examples/spiral.h"
 #include "./examples/syntheticsentiment.h"
@@ -46,6 +47,9 @@ int main()
 
   // Synthetic Sentiment
   ExampleSyntheticSentiment::SyntheticSentiment(log_level);
+
+  // Multi-Output
+  ExampleMultiOutput::MultiOutput(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 
