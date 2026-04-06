@@ -369,7 +369,7 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-double activation::momentum() const
+[[nodiscard]] double activation::momentum() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)

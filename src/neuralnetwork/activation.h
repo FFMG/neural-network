@@ -46,7 +46,7 @@ public:
     return _derivative_ptr(x, _alpha); 
   }
 
-  double momentum() const;
+  [[nodiscard]] double momentum() const noexcept;
 
   std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
   double weight_initialization() const;
