@@ -6,7 +6,7 @@ void Layer::calculate_error_deltas(
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
   ErrorCalculation::type error_calculation_type,
-  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  const EvaluationConfig& evaluation_config,
   unsigned start_neuron,
   unsigned end_neuron) const
 {
@@ -50,15 +50,15 @@ void Layer::calculate_huber_direction_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  const EvaluationConfig& evaluation_config,
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
-  const double& delta = evaluation_config.huber_delta;                   // Huber threshold
-  const double& lambda = evaluation_config.direction_lambda;             // Direction penalty strength
-  const double& neutral_tolerance = evaluation_config.neutral_tolerance; // Ignore tiny targets
-  const bool use_direction_penalty = evaluation_config.use_direction_penalty;
+  const double& delta = evaluation_config.huber_delta();                   // Huber threshold
+  const double& lambda = evaluation_config.direction_lambda();             // Direction penalty strength
+  const double& neutral_tolerance = evaluation_config.neutral_tolerance(); // Ignore tiny targets
+  const bool use_direction_penalty = evaluation_config.use_direction_penalty();
 
   for (const auto& neuron : neurons)
   {
@@ -111,12 +111,12 @@ void Layer::calculate_huber_loss_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  const EvaluationConfig& evaluation_config,
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
-  const double& delta = evaluation_config.huber_delta;
+  const double& delta = evaluation_config.huber_delta();
 
   for (const auto& neuron : neurons)
   {
@@ -159,39 +159,42 @@ void Layer::calculate_bce_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const ErrorCalculation::EvaluationConfig& evaluation_config,
+  const EvaluationConfig& evaluation_config,
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
-  // Retrieve config values
-  const double dir_lambda = evaluation_config.direction_lambda;     // e.g., 0.2
-  const bool   use_dir = evaluation_config.use_direction_penalty;
+  const double dir_lambda = evaluation_config.direction_lambda();
+  const bool   use_dir = evaluation_config.use_direction_penalty();
+  const double bce_lambda = evaluation_config.bce_lambda();
 
   for (const auto& neuron : neurons)
   {
     const unsigned idx = neuron.get_index();
-    double target = target_outputs[idx];
-    double output = given_outputs[idx];
 
-    // Standard BCE delta
-    // Note: We don't use neutral_tol or conf_thresh here as it's non-standard for BCE.
-    double delta = (output - target);
+    const double target = target_outputs[idx];
+    const double output = given_outputs[idx];
 
-    // Optional directional penalty boost
+    // --- Standard BCE gradient (correct for sigmoid output) ---
+    double grad = (output - target);
+
+    // --- Optional directional boost ---
     if (use_dir)
     {
-      int direction = (target > 0.5) ? 1 : -1;  // up/down
-      int predicted_dir = (output > 0.5) ? 1 : -1;
+      const int direction = (target > 0.5) ? 1 : -1;
+      const int predicted_dir = (output > 0.5) ? 1 : -1;
 
       if (direction != predicted_dir)
       {
-        delta *= (1.0 + dir_lambda);  // boost wrong directions
+        grad *= (1.0 + dir_lambda);
       }
     }
 
-    // Normalize by number of neurons
-    deltas[idx] = delta * _inv_num_neurons;
+    // --- Apply BCE scaling ---
+    grad *= bce_lambda;
+
+    // --- Normalize ---
+    deltas[idx] = grad * _inv_num_neurons;
   }
 }
 

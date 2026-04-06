@@ -1,12 +1,4 @@
 #pragma once
-#ifndef VALIDATE_DATA
-  #if !defined(NDEBUG)
-    #define VALIDATE_DATA 1
-  #else
-    #define VALIDATE_DATA 0
-  #endif
-#endif
-
 #include "./libraries/instrumentor.h"
 
 #include <algorithm>
@@ -14,20 +6,12 @@
 #include <span>
 #include <string>
 #include <vector>
+#include "evaluationconfig.h"
 #include "logger.h"
 
 class ErrorCalculation
 {
 public:
-  struct EvaluationConfig
-  {
-    double neutral_tolerance = 0.001;
-    double confidence_threshold = 0.01;
-    double huber_delta = 1.0;
-    double direction_lambda = 0.05;
-    bool   use_direction_penalty = true;
-  };
-
   enum class type
   {
     none,
@@ -230,7 +214,7 @@ public:
   static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& delta = evaluation_config.huber_delta;
+    const auto& delta = evaluation_config.huber_delta();
 
     double total_loss = 0.0;
     size_t count = 0;
@@ -264,8 +248,8 @@ public:
   static double calculate_huber_direction_loss(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& lambda = evaluation_config.direction_lambda;
-    const auto& delta = evaluation_config.huber_delta;
+    const auto& lambda = evaluation_config.direction_lambda();
+    const auto& delta = evaluation_config.huber_delta();
 
     double total_loss = 0.0;
     size_t count = 0;
@@ -589,13 +573,13 @@ public:
         double pred_val = pred[i];
 
         // Ignore tiny real moves
-        if (std::abs(gt_val) < evaluation_config.neutral_tolerance)
+        if (std::abs(gt_val) < evaluation_config.neutral_tolerance())
         {
           continue;
         }
 
         // Ignore weak predictions (confidence filter)
-        if (std::abs(pred_val) < evaluation_config.confidence_threshold)
+        if (std::abs(pred_val) < evaluation_config.confidence_threshold())
         {
           continue;
         }
@@ -615,7 +599,7 @@ public:
   static double calculate_directional_accuracy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& neutral_tolerance = evaluation_config.neutral_tolerance;
+    const auto& neutral_tolerance = evaluation_config.neutral_tolerance();
     size_t correct = 0;
     size_t total = 0;
 
@@ -762,7 +746,7 @@ public:
 
       for (double v : seq)
       {
-        if (std::abs(v) > evaluation_config.confidence_threshold)
+        if (std::abs(v) > evaluation_config.confidence_threshold())
         {
           ++confident;
         }

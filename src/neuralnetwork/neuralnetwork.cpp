@@ -30,7 +30,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, {0.01, 0.01}))
+    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -975,11 +975,13 @@ void NeuralNetwork::log_training_info(
       tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
       tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
       tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
-      tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold, "\n",
-      tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance, "\n",
-      tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta, "\n",
-      tab, tab, tab, tab, "direction lambda     : ", details.get_error_evaluation_config().direction_lambda, "\n",
-      tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty ? "true" : "false");
+      tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold(), "\n",
+      tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
+      tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
+      tab, tab, tab, tab, "lambda\n",
+      tab, tab, tab, tab, tab, "direction           : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+      tab, tab, tab, tab, tab, "bce                 : ", details.get_error_evaluation_config().bce_lambda(), "\n",
+      tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false"); 
     ++output_layer_index;
     if (output_layer_index < output_layer_details.size())
     {

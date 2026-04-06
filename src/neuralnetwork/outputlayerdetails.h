@@ -4,11 +4,12 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
+#include "evaluationconfig.h"
 
 class OutputLayerDetails
 {
 public:
-  OutputLayerDetails(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, const ErrorCalculation::EvaluationConfig& error_evaluation_config) noexcept :
+  OutputLayerDetails(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, const EvaluationConfig& error_evaluation_config) noexcept :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),
@@ -86,7 +87,7 @@ public:
     return _output_error_calculation_type; 
   }
 
-  [[nodiscard]] inline const ErrorCalculation::EvaluationConfig& get_error_evaluation_config() const  noexcept
+  [[nodiscard]] inline const EvaluationConfig& get_error_evaluation_config() const  noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _error_evaluation_config;
@@ -95,5 +96,5 @@ private:
   unsigned _layer_size;
   activation _activation;
   ErrorCalculation::type _output_error_calculation_type;
-  ErrorCalculation::EvaluationConfig _error_evaluation_config;
+  EvaluationConfig _error_evaluation_config;
 };

@@ -2,8 +2,7 @@
 
 #include "./libraries/instrumentor.h"
 
-#include "layer.h"
-#include "logger.h"
+#include "evaluationconfig.h"
 #include "outputlayerdetails.h"
 
 class OutputLayer
@@ -138,7 +137,7 @@ protected:
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
     return _number_output_layers;
   }
-  [[nodiscard]] inline const ErrorCalculation::EvaluationConfig& evaluation_config(unsigned output_layer_index) const noexcept
+  [[nodiscard]] inline const EvaluationConfig& evaluation_config(unsigned output_layer_index) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
 #if VALIDATE_DATA == 1
