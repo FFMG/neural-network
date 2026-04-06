@@ -73,7 +73,7 @@ private:
       LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01), 0.0)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 });
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 });
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
