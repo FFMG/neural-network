@@ -6,6 +6,8 @@
 #include <span>
 #include <string>
 #include <vector>
+
+#include "activation.h"
 #include "evaluationconfig.h"
 #include "logger.h"
 
@@ -148,7 +150,7 @@ public:
 
   }
 
-  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
+  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method& activation_method )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -190,9 +192,17 @@ public:
       return calculate_forecast_smape(ground_truths, predictions);
 
     case type::directional_accuracy:
+      if (activation_method == activation::method::softmax)
+      {
+        return calculate_softmax_directional_accuracy(ground_truths, predictions, evaluation_config);
+      }
       return calculate_directional_accuracy(ground_truths, predictions, evaluation_config);
 
     case type::directional_confidence_score:
+      if (activation_method == activation::method::softmax)
+      {
+        return calculate_softmax_directional_confidence_score(ground_truths, predictions, evaluation_config);
+      }
       return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config);
 
     case type::bce_loss:
@@ -551,6 +561,51 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
   }
 
+  static double calculate_softmax_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    size_t correct = 0;
+    size_t total = 0;
+
+    for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+    {
+      const auto& gt = ground_truths[seq_idx];
+      const auto& pred = predictions[seq_idx];
+
+      // 1. Get Predicted Winning Index (ArgMax)
+      auto max_pred_it = std::max_element(pred.begin(), pred.end());
+      size_t pred_idx = std::distance(pred.begin(), max_pred_it);
+      double confidence = *max_pred_it;
+
+      // 2. Ignore "Neutral" (Index 2) and Weak Confidence
+      // We only want to evaluate directional accuracy for actual trade signals
+      if (pred_idx == 2 || confidence < evaluation_config.confidence_threshold())
+      {
+        continue;
+      }
+
+      // 3. Get Truth Winning Index
+      auto max_gt_it = std::max_element(gt.begin(), gt.end());
+      size_t gt_idx = std::distance(gt.begin(), max_gt_it);
+
+      // 4. Directional Logic for 5 Buckets:
+      // Indices 0, 1 = DOWN | Index 2 = NEUTRAL | Indices 3, 4 = UP
+      bool predicted_up = (pred_idx > 2);
+      bool actual_up = (gt_idx > 2);
+      bool predicted_down = (pred_idx < 2);
+      bool actual_down = (gt_idx < 2);
+
+      if ((predicted_up && actual_up) || (predicted_down && actual_down))
+      {
+        ++correct;
+      }
+
+      ++total;
+    }
+
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+  }
+
   static double calculate_directional_confidence_score( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -591,6 +646,43 @@ public:
 
         ++total;
       }
+    }
+
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+  }
+
+  static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions,const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    size_t correct = 0;
+    size_t total = 0;
+
+    for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
+    {
+      const auto& gt = ground_truths[seq_idx];
+      const auto& pred = predictions[seq_idx];
+
+      if (gt.size() != pred.size() || gt.empty())
+      {
+        Logger::panic("Dimension mismatch or empty vectors in accuracy calculation.");
+      }
+
+      // 1. Find the index of the highest predicted probability (The Model's Choice)
+      auto max_pred_it = std::max_element(pred.begin(), pred.end());
+      size_t pred_idx = std::distance(pred.begin(), max_pred_it);
+
+      // 2. Find the index of the actual target (The Ground Truth)
+      // This assumes One-Hot encoding where the correct category is the max value.
+      auto max_gt_it = std::max_element(gt.begin(), gt.end());
+      size_t gt_idx = std::distance(gt.begin(), max_gt_it);
+
+      // 3. Generic Match: Did the model pick the correct bucket?
+      if (pred_idx == gt_idx)
+      {
+        ++correct;
+      }
+
+      ++total;
     }
 
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
