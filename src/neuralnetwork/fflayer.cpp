@@ -190,7 +190,10 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]() { run_gemm(start, end, N_prev, N_this); });
+        _task_queue_pool->enqueue([start, end, N_prev, N_this, this]()
+          { 
+            run_gemm(start, end, N_prev, N_this); 
+          });
       }
       start = end;
     }

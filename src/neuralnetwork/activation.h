@@ -33,6 +33,17 @@ public:
   activation& operator=(activation&& src) noexcept;
   ~activation() = default;
 
+  [[nodiscard]] inline void activate(std::vector<double>& values, const std::vector<double>& xs) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    values.clear();
+    values.reserve(xs.size());
+    for (const auto& x : xs)
+    {
+      values.emplace_back(_activate_ptr(x, _alpha));
+    }
+  }
+
   [[nodiscard]] inline double activate(double x) const noexcept 
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
