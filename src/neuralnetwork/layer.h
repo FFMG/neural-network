@@ -4,6 +4,7 @@
 
 #include "activation.h"
 #include "errorcalculation.h"
+#include "evaluationconfig.h"
 #include "gradientsandoutputs.h"
 #include "hiddenstates.h"
 #include "neuralnetworkhelpermetrics.h"
@@ -303,7 +304,7 @@ public:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type,
-    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    const EvaluationConfig& evaluation_config,
     unsigned start_neuron,
     unsigned end_neuron) const;
 
@@ -975,14 +976,14 @@ private:
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    const EvaluationConfig& evaluation_config,
     std::span<Neuron> neurons) const;
 
   void calculate_huber_direction_loss_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    const EvaluationConfig& evaluation_config,
     std::span<Neuron> neurons) const;
 
   void calculate_mse_error_deltas(
@@ -1001,7 +1002,7 @@ private:
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const ErrorCalculation::EvaluationConfig& evaluation_config,
+    const EvaluationConfig& evaluation_config,
     std::span<Neuron> neurons) const;
 
   void calculate_cross_entropy_error_deltas(

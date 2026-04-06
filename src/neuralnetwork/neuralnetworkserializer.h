@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "elmanrnnlayer.h"
+#include "evaluationconfig.h"
 #include "errorcalculation.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
@@ -47,8 +48,8 @@ private:
   static int get_number_of_layers(const TinyJSON::TJValue& json);
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
   static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
-  static ErrorCalculation::EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
-  static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const ErrorCalculation::EvaluationConfig& config);
+  static EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
+  static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config);
 
   static ResidualProjector* get_residual_projector(const TinyJSON::TJValueObject& layer_object);
 

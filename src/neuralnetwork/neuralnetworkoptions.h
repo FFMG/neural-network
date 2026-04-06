@@ -54,7 +54,7 @@ private:
       _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0));
     }
 
-    _output_layer_details.push_back(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, {0.001 , 0.01}));
+    _output_layer_details.push_back(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }));
   }
 
 public:
@@ -174,7 +174,7 @@ public:
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.001 , 0.01 }));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -440,7 +440,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 }))
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)

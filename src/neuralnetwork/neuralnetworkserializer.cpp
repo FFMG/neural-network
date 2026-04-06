@@ -588,7 +588,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
   return details;
 }
 
-ErrorCalculation::EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const TinyJSON::TJValueObject* parent)
+EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const TinyJSON::TJValueObject* parent)
 {
   if (nullptr == parent)
   {
@@ -596,18 +596,20 @@ ErrorCalculation::EvaluationConfig NeuralNetworkSerializer::get_error_evaluation
   }
 
   auto error_evaluation_config_object = static_cast<const TinyJSON::TJValueObject*>(parent->try_get_value("error-evaluation-config", true));
-  ErrorCalculation::EvaluationConfig error_evaluation_config;
-
-  if (nullptr != error_evaluation_config_object)
+  
+  if (nullptr == error_evaluation_config_object)
   {
-    error_evaluation_config.neutral_tolerance = error_evaluation_config_object->get_float<double>("neutral-tolerance");
-    error_evaluation_config.confidence_threshold = error_evaluation_config_object->get_float<double>("confidence-threshold");
-    error_evaluation_config.huber_delta = error_evaluation_config_object->get_float<double>("huber-delta");
-    error_evaluation_config.direction_lambda = error_evaluation_config_object->get_float<double>("direction-lambda");
-    error_evaluation_config.use_direction_penalty = error_evaluation_config_object->get_boolean("use-direction-penalty");
+    Logger::panic("Could not locate the error-evaluation-config section!");
   }
 
-  return error_evaluation_config;
+  return EvaluationConfig(
+    error_evaluation_config_object->get_float<double>("neutral-tolerance"),
+    error_evaluation_config_object->get_float<double>("confidence-threshold"),
+    error_evaluation_config_object->get_float<double>("huber-delta"),
+    error_evaluation_config_object->get_float<double>("direction-lambda"),
+    error_evaluation_config_object->get_boolean("use-direction-penalty"),
+    error_evaluation_config_object->get_float<double>("bce-lambda")
+        );
 }
 
 std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
@@ -1338,14 +1340,15 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
   return output_layer_array;
 }
 
-void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObject* parent, const ErrorCalculation::EvaluationConfig& config)
+void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config)
 {
   auto error_evaluation_config_object = new TinyJSON::TJValueObject();
-  error_evaluation_config_object->set_float("neutral-tolerance", config.neutral_tolerance);
-  error_evaluation_config_object->set_float("confidence-threshold", config.confidence_threshold);
-  error_evaluation_config_object->set_float("huber-delta", config.huber_delta);
-  error_evaluation_config_object->set_float("direction-lambda", config.direction_lambda);
-  error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty);
+  error_evaluation_config_object->set_float("neutral-tolerance", config.neutral_tolerance());
+  error_evaluation_config_object->set_float("confidence-threshold", config.confidence_threshold());
+  error_evaluation_config_object->set_float("huber-delta", config.huber_delta());
+  error_evaluation_config_object->set_float("direction-lambda", config.direction_lambda());
+  error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty());
+  error_evaluation_config_object->set_boolean("bce-lambda", config.bce_lambda());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
