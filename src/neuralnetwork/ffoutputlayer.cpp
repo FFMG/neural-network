@@ -357,15 +357,21 @@ void FFOutputLayer::run_post_gemm(
       }
     }
 
-    // Activation and Dropout
+    // Activation
+    std::copy(current_pre_act, current_pre_act + N_this, output_row.begin());
+    for (unsigned int i = 0; i < OutputLayer::number_output_layers(); ++i)
+    {
+      const auto& b_range = OutputLayer::layer_bounds(i);
+      OutputLayer::get_activation(b_range.start).activate(output_row.data() + b_range.start, output_row.data() + b_range.end + 1);
+    }
+
+    // Dropout and Output
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     for (size_t j = 0; j < N_this; j++)
     {
       const auto& neuron = get_neuron((unsigned)j);
-      
-      // Use scalar activation
-      double output = OutputLayer::get_activation(static_cast<unsigned>(j)).activate(current_pre_act[j]);
-      
+      double output = output_row[j];
+
       if (is_training && neuron.is_dropout())
       {
         if (neuron.must_randomly_drop())
