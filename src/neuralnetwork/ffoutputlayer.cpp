@@ -439,11 +439,15 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     std::vector<NeuralNetworkHelperMetrics> layer_errors;
     layer_errors.reserve(error_types.size());
 
-    const auto& configs = evaluation_config(0); //  layer zero
+    constexpr unsigned output_layer_index = 0; // layer zero, fast track only one layer...
+    const auto& configs = evaluation_config(output_layer_index);
+    const auto& activation = OutputLayer::get_activation(output_layer_index);
+    const auto& activation_method = activation.get_method();
+
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, configs),
+        ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, configs, activation_method),
         error_type);
     }
     errors.emplace_back(std::move(layer_errors));
@@ -458,6 +462,9 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
 
   for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
   {
+    const auto& activation = OutputLayer::get_activation(output_layer_index);
+    const auto& activation_method = activation.get_method();
+
     const auto& bounds = layer_bounds(output_layer_index);
     const auto& configs = evaluation_config(output_layer_index);
     const size_t num_neurons = bounds.end - bounds.start + 1;
@@ -472,7 +479,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, std::span(sliced_checking_outputs), std::span(sliced_predictions), configs),
+        ErrorCalculation::calculate_error(error_type, std::span(sliced_checking_outputs), std::span(sliced_predictions), configs, activation_method),
         error_type);
     }
     errors.emplace_back(layer_errors);
