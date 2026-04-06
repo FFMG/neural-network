@@ -37,9 +37,9 @@ private:
     // Define multiple output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is last value positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 }),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }),
       // Second output: Tanh (Regression: Average value)
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.001 , 0.01 })
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 })
     };
 
     auto options = NeuralNetworkOptions::create(topology)
