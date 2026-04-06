@@ -215,6 +215,10 @@ public:
       return calculate_log_cosh(ground_truths, predictions);
 
     case type::prediction_coverage:
+      if (activation_method == activation::method::softmax)
+      {
+        return calculate_softmax_prediction_coverage(predictions, evaluation_config);
+      }
       return calculate_prediction_coverage(predictions, evaluation_config);
     }
 
@@ -561,6 +565,31 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
   }
 
+  static double calculate_softmax_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    size_t confident = 0;
+    size_t total = 0;
+
+    for (const auto& seq : predictions)
+    {
+      if (seq.empty())
+      {
+        continue;
+      }
+
+      // In Softmax, coverage is based on the confidence of the winning class.
+      auto max_it = std::max_element(seq.begin(), seq.end());
+      if (*max_it > evaluation_config.confidence_threshold())
+      {
+        ++confident;
+      }
+
+      ++total;
+    }
+    return (total == 0) ? 0.0 : static_cast<double>(confident) / total;
+  }
+
   static double calculate_softmax_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -572,30 +601,41 @@ public:
       const auto& gt = ground_truths[seq_idx];
       const auto& pred = predictions[seq_idx];
 
-      // 1. Get Predicted Winning Index (ArgMax)
+      if (gt.empty() || pred.empty()) continue;
+
+      // 1. Determine Midpoint for generic "Directional" logic
+      // For N classes: indices < mid are DOWN, indices > mid are UP, index == mid is NEUTRAL.
+      const size_t num_classes = pred.size();
+      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+      // 2. Get Predicted Winning Index (ArgMax)
       auto max_pred_it = std::max_element(pred.begin(), pred.end());
       size_t pred_idx = std::distance(pred.begin(), max_pred_it);
       double confidence = *max_pred_it;
-
-      // 2. Ignore "Neutral" (Index 2) and Weak Confidence
-      // We only want to evaluate directional accuracy for actual trade signals
-      if (pred_idx == 2 || confidence < evaluation_config.confidence_threshold())
-      {
-        continue;
-      }
 
       // 3. Get Truth Winning Index
       auto max_gt_it = std::max_element(gt.begin(), gt.end());
       size_t gt_idx = std::distance(gt.begin(), max_gt_it);
 
-      // 4. Directional Logic for 5 Buckets:
-      // Indices 0, 1 = DOWN | Index 2 = NEUTRAL | Indices 3, 4 = UP
-      bool predicted_up = (pred_idx > 2);
-      bool actual_up = (gt_idx > 2);
-      bool predicted_down = (pred_idx < 2);
-      bool actual_down = (gt_idx < 2);
+      // 4. Filter by confidence and neutral predictions
+      const bool is_pred_neutral = std::abs(static_cast<double>(pred_idx) - mid) < 0.1;
+      if (is_pred_neutral || confidence < evaluation_config.confidence_threshold())
+      {
+        continue;
+      }
 
-      if ((predicted_up && actual_up) || (predicted_down && actual_down))
+      // 5. Filter by neutral truth
+      const bool is_gt_neutral = std::abs(static_cast<double>(gt_idx) - mid) < 0.1;
+      if (is_gt_neutral)
+      {
+        continue;
+      }
+
+      // 6. Directional Logic:
+      bool predicted_up = (static_cast<double>(pred_idx) > mid);
+      bool actual_up = (static_cast<double>(gt_idx) > mid);
+
+      if (predicted_up == actual_up)
       {
         ++correct;
       }
@@ -667,17 +707,29 @@ public:
         Logger::panic("Dimension mismatch or empty vectors in accuracy calculation.");
       }
 
-      // 1. Find the index of the highest predicted probability (The Model's Choice)
+      const size_t num_classes = pred.size();
+      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+      // 1. Find the index of the highest predicted probability
       auto max_pred_it = std::max_element(pred.begin(), pred.end());
       size_t pred_idx = std::distance(pred.begin(), max_pred_it);
 
-      // 2. Find the index of the actual target (The Ground Truth)
-      // This assumes One-Hot encoding where the correct category is the max value.
+      // 2. Find the index of the actual target
       auto max_gt_it = std::max_element(gt.begin(), gt.end());
       size_t gt_idx = std::distance(gt.begin(), max_gt_it);
 
-      // 3. Generic Match: Did the model pick the correct bucket?
-      if (pred_idx == gt_idx)
+      // 3. Skip samples where the ground truth is neutral
+      const bool is_gt_neutral = std::abs(static_cast<double>(gt_idx) - mid) < 0.1;
+      if (is_gt_neutral)
+      {
+        continue;
+      }
+
+      // 4. Directional Match: Are they in the same directional group?
+      bool predicted_up = (static_cast<double>(pred_idx) > mid);
+      bool actual_up = (static_cast<double>(gt_idx) > mid);
+
+      if (predicted_up == actual_up)
       {
         ++correct;
       }
