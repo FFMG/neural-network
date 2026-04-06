@@ -194,22 +194,62 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
   double max_val = *begin;
   for (const double* it = begin + 1; it != end; ++it)
   {
-    if (*it > max_val) max_val = *it;
+    if (std::isnan(*it))
+    {
+      // If any input is NaN produce NaN outputs (propagate NaN)
+      for (double* jt = begin; jt != end; ++jt)
+      {
+        *jt = std::numeric_limits<double>::quiet_NaN();
+      }
+      return;
+    }
+    if (*it > max_val)
+    {
+      max_val = *it;
+    }
   }
 
-  double sum = 0.0;
+  // Exponentiate and accumulate in higher precision
+  long double sum = 0.0L;
   for (double* it = begin; it != end; ++it)
   {
-    *it = std::exp(*it - max_val);
-    sum += *it;
+    long double v = std::exp(static_cast<long double>(*it) - static_cast<long double>(max_val));
+    *it = static_cast<double>(v);
+    sum += v;
   }
 
-  if (sum != 0.0)
+  // If sum is zero or not finite (extremely rare), fall back:
+  if (sum == 0.0L || !std::isfinite(static_cast<double>(sum)))
   {
-    for (double* it = begin; it != end; ++it)
+    // After exp(* - max) the max entries are 1.0 (or very close). Distribute mass
+    // evenly among entries that equal 1.0, set others to 0.
+    int count_max = 0;
+    for (const double* it = begin; it != end; ++it)
     {
-      *it /= sum;
+      if (*it == 1.0) ++count_max;
     }
+
+    if (count_max == 0)
+    {
+      // Defensive: set first element to 1
+      for (double* it = begin; it != end; ++it) *it = 0.0;
+      *begin = 1.0;
+    }
+    else
+    {
+      double inv = 1.0 / static_cast<double>(count_max);
+      for (double* it = begin; it != end; ++it)
+      {
+        *it = (*it == 1.0) ? inv : 0.0;
+      }
+    }
+    return;
+  }
+
+  const long double inv_sum = 1.0L / sum;
+  for (double* it = begin; it != end; ++it)
+  {
+    *it = static_cast<double>(static_cast<long double>(*it) * inv_sum);
   }
 }
 
