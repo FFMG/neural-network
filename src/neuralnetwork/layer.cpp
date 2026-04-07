@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "layer.h"
 #include "logger.h"
 
@@ -38,7 +39,7 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::bce_loss:
     return calculate_bce_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, neurons_span);
   case ErrorCalculation::type::cross_entropy:
-    return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
+    return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, neurons_span);
   case ErrorCalculation::type::log_cosh:
     return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs, neurons_span);
   default:
@@ -142,16 +143,55 @@ void Layer::calculate_cross_entropy_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   
+  const double dir_lambda = evaluation_config.direction_lambda();
+  const bool   use_dir = evaluation_config.use_direction_penalty();
+  const double ce_lambda = evaluation_config.cross_entropy_lambda();
+
   // This delta calculation assumes Softmax activation is used at the output layer.
   // dL/dz = y_pred - y_true
   for (const auto& neuron : neurons)
   {
     const unsigned neuron_index = neuron.get_index();
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
+    const double target = target_outputs[neuron_index];
+    const double output = given_outputs[neuron_index];
+
+    double grad = (output - target);
+
+    // --- Optional directional boost ---
+    if (use_dir)
+    {
+      // For multiclass (Softmax), we use a midpoint to define direction.
+      const size_t num_classes = get_number_output_neurons();
+      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+      // Determine predicted winning index (ArgMax)
+      // This is slightly inefficient as it finds max every neuron loop, 
+      // but stays within the per-neuron structure.
+      auto max_pred_it = std::max_element(given_outputs.begin(), given_outputs.end());
+      const size_t pred_idx = std::distance(given_outputs.begin(), max_pred_it);
+
+      // Determine ground truth index
+      auto max_gt_it = std::max_element(target_outputs.begin(), target_outputs.end());
+      const size_t gt_idx = std::distance(target_outputs.begin(), max_gt_it);
+
+      const int pred_dir = (static_cast<double>(pred_idx) > mid) ? 1 : (static_cast<double>(pred_idx) < mid ? -1 : 0);
+      const int gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
+
+      if (gt_dir != 0 && pred_dir != gt_dir)
+      {
+        grad *= (1.0 + dir_lambda);
+      }
+    }
+
+    // --- Apply Cross Entropy scaling ---
+    grad *= ce_lambda;
+
+    deltas[neuron_index] = grad * _inv_num_neurons;
   }
 }
 
@@ -166,7 +206,7 @@ void Layer::calculate_bce_error_deltas(
 
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
-  const double bce_lambda = evaluation_config.bce_lambda();
+  const double ce_lambda = evaluation_config.cross_entropy_lambda();
 
   for (const auto& neuron : neurons)
   {
@@ -190,8 +230,8 @@ void Layer::calculate_bce_error_deltas(
       }
     }
 
-    // --- Apply BCE scaling ---
-    grad *= bce_lambda;
+    // --- Apply Cross Entropy scaling ---
+    grad *= ce_lambda;
 
     // --- Normalize ---
     deltas[idx] = grad * _inv_num_neurons;

@@ -980,7 +980,7 @@ void NeuralNetwork::log_training_info(
       tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
       tab, tab, tab, tab, "lambda\n",
       tab, tab, tab, tab, tab, "direction           : ", details.get_error_evaluation_config().direction_lambda(), "\n",
-      tab, tab, tab, tab, tab, "bce                 : ", details.get_error_evaluation_config().bce_lambda(), "\n",
+      tab, tab, tab, tab, tab, "cross-entropy       : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
       tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false"); 
     ++output_layer_index;
     if (output_layer_index < output_layer_details.size())

@@ -11,13 +11,13 @@ public:
     double huber_delta,
     double direction_lambda,
     bool   use_direction_penalty,
-    double bce_lambda) noexcept :
+    double cross_entropy_lambda) noexcept :
     _neutral_tolerance(neutral_tolerance),
     _confidence_threshold(confidence_threshold),
     _huber_delta(huber_delta),
     _direction_lambda(direction_lambda),
     _use_direction_penalty(use_direction_penalty),
-    _bce_lambda(bce_lambda)
+    _cross_entropy_lambda(cross_entropy_lambda)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -28,7 +28,7 @@ public:
     _huber_delta(src._huber_delta),
     _direction_lambda(src._direction_lambda),
     _use_direction_penalty(src._use_direction_penalty),
-    _bce_lambda(src._bce_lambda)
+    _cross_entropy_lambda(src._cross_entropy_lambda)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -42,7 +42,7 @@ public:
       _huber_delta = src._huber_delta;
       _direction_lambda = src._direction_lambda;
       _use_direction_penalty = src._use_direction_penalty;
-      _bce_lambda = src._bce_lambda;
+      _cross_entropy_lambda = src._cross_entropy_lambda;
     }
     return *this;
   }
@@ -72,10 +72,10 @@ public:
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     return _use_direction_penalty;
   }
-  [[nodiscard]] inline double bce_lambda() const noexcept
+  [[nodiscard]] inline double cross_entropy_lambda() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
-    return _bce_lambda;
+    return _cross_entropy_lambda;
   }
 private:
   double _neutral_tolerance;
@@ -83,5 +83,5 @@ private:
   double _huber_delta;
   double _direction_lambda;
   bool _use_direction_penalty;
-  double _bce_lambda;
+  double _cross_entropy_lambda;
 };
