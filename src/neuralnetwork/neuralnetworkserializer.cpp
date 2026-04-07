@@ -608,7 +608,7 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
     error_evaluation_config_object->get_float<double>("huber-delta"),
     error_evaluation_config_object->get_float<double>("direction-lambda"),
     error_evaluation_config_object->get_boolean("use-direction-penalty"),
-    error_evaluation_config_object->get_float<double>("bce-lambda")
+    error_evaluation_config_object->get_float<double>("cross-entropy-lambda")
         );
 }
 
@@ -1348,7 +1348,7 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
   error_evaluation_config_object->set_float("huber-delta", config.huber_delta());
   error_evaluation_config_object->set_float("direction-lambda", config.direction_lambda());
   error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty());
-  error_evaluation_config_object->set_boolean("bce-lambda", config.bce_lambda());
+  error_evaluation_config_object->set_float("cross-entropy-lambda", config.cross_entropy_lambda());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
