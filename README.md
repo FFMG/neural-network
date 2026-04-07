@@ -84,9 +84,9 @@ By default, the output layer uses a single activation function. However, you can
 
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }),
       // Second output: Tanh (Regression: Mapping value to [-1, 1])
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse)
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 })
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -436,14 +436,13 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Size 
   * Activation
   * Dropout
-* output_layer_details[1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse]
-  NB: You can also pass a `OutputLayerDetails` object.
-  * Layer size
-  * activation
-    * Method: The actuation method, for example `sigmoid`.
-    * alpha: The alpha value for the output layer activation function (e.g., for Leaky ReLU).
-  * ErrorCalculation::EvaluationConfig: An `ErrorCalculation::EvaluationConfig` struct to fine-tune error calculations (see below).
-  * Output error calculation: The error calculation, for example, `ErrorCalculation::type::mse`.
+* output_layer_details: One or more `OutputLayerDetails` objects. (You can also pass individual parameters for a single output layer).
+  * Layer size: The number of neurons in the output layer segment.
+  * activation: The activation function for the output layer.
+    * Method: The activation method, for example `sigmoid`.
+    * alpha: The alpha value for the activation function (e.g., for Leaky ReLU).
+  * Output error calculation: The error calculation type, for example, `ErrorCalculation::type::mse`.
+  * EvaluationConfig: An `EvaluationConfig` class to fine-tune error calculations (see below).
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
@@ -471,24 +470,24 @@ Remember to call `.build()` to create your option as it does error checking.
 
 ### Evaluation Configuration
 
-The `EvaluationConfig` struct allows you to fine-tune how errors and performance metrics are calculated, particularly for Huber-based losses and directional metrics.
+The `EvaluationConfig` class allows you to fine-tune how errors and performance metrics are calculated, particularly for Huber-based losses and directional metrics.
 
-* `neutral_tolerance` [=0.001]: Used to ignore very small target values (noise) when calculating directional penalties or accuracy.
-* `confidence_threshold` [=0.01]: Used in `directional_confidence_score` and `prediction_coverage` to ignore predictions with low absolute magnitude (low confidence).
+* `neutral_tolerance` [=0.0]: Used to ignore very small target values (noise) when calculating directional penalties or accuracy.
+* `confidence_threshold` [=0.0]: Used in `directional_confidence_score` and `prediction_coverage` to ignore predictions with low absolute magnitude (low confidence).
 * `huber_delta` [=1.0]: The threshold for Huber loss, defining where it transitions from quadratic (MSE-like) to linear (MAE-like) behavior.
-* `direction_lambda` [=0.05]: Scales the penalty for predicting the wrong direction (sign mismatch) when using `huber_direction_loss`.
-* `use_direction_penalty` [=true]: Enables or disables the additional directional penalty in `huber_direction_loss`.
+* `direction_lambda` [=0.0]: Scales the penalty for predicting the wrong direction (sign mismatch) when using `huber_direction_loss`.
+* `use_direction_penalty` [=false]: Enables or disables the additional directional penalty in `huber_direction_loss`.
+* `cross_entropy_lambda` [=1.0]: Scaling factor applied to gradients when using `cross_entropy` or `bce_loss`.
 
 You can configure this via `NeuralNetworkOptions`:
 
 ```cpp
-    ErrorCalculation::EvaluationConfig eval_config;
-    eval_config.huber_delta = 0.5;
-    eval_config.direction_lambda = 0.1;
+    // Constructor: neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda
+    EvaluationConfig eval_config(0.0, 0.0, 0.5, 0.1, true, 1.0);
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config)
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config))
       ...
       .build();
 ```
@@ -518,7 +517,7 @@ After training you can get the calculated error as well as the mean absolute per
 ...
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
-  .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, {0.001, 0.001, 1.0, 0.05}))
+  .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, {0.001, 0.001, 1.0, 0.05, true, 1.0}))
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
