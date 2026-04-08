@@ -152,6 +152,31 @@ void Layer::calculate_cross_entropy_error_deltas(
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
 
+  // --- Optional directional boost ---
+  int pred_dir = 0;
+  int gt_dir = 0;
+  if (use_dir && !neurons.empty())
+  {
+    // For multiclass (Softmax), we use a midpoint to define direction.
+    // In composite layers, we must only consider the current span of neurons.
+    const size_t num_classes = neurons.size();
+    const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+    const unsigned start_idx = neurons.front().get_index();
+    const unsigned end_idx = start_idx + static_cast<unsigned>(num_classes);
+
+    // Determine predicted winning index (ArgMax) for this slice
+    auto max_pred_it = std::max_element(given_outputs.begin() + start_idx, given_outputs.begin() + end_idx);
+    const size_t pred_idx = std::distance(given_outputs.begin() + start_idx, max_pred_it);
+
+    // Determine ground truth index for this slice
+    auto max_gt_it = std::max_element(target_outputs.begin() + start_idx, target_outputs.begin() + end_idx);
+    const size_t gt_idx = std::distance(target_outputs.begin() + start_idx, max_gt_it);
+
+    pred_dir = (static_cast<double>(pred_idx) > mid) ? 1 : (static_cast<double>(pred_idx) < mid ? -1 : 0);
+    gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
+  }
+
   // This delta calculation assumes Softmax activation is used at the output layer.
   // dL/dz = y_pred - y_true
   for (const auto& neuron : neurons)
@@ -162,30 +187,9 @@ void Layer::calculate_cross_entropy_error_deltas(
 
     double grad = (output - target);
 
-    // --- Optional directional boost ---
-    if (use_dir)
+    if (use_dir && gt_dir != 0 && pred_dir != gt_dir)
     {
-      // For multiclass (Softmax), we use a midpoint to define direction.
-      const size_t num_classes = get_number_output_neurons();
-      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
-
-      // Determine predicted winning index (ArgMax)
-      // This is slightly inefficient as it finds max every neuron loop, 
-      // but stays within the per-neuron structure.
-      auto max_pred_it = std::max_element(given_outputs.begin(), given_outputs.end());
-      const size_t pred_idx = std::distance(given_outputs.begin(), max_pred_it);
-
-      // Determine ground truth index
-      auto max_gt_it = std::max_element(target_outputs.begin(), target_outputs.end());
-      const size_t gt_idx = std::distance(target_outputs.begin(), max_gt_it);
-
-      const int pred_dir = (static_cast<double>(pred_idx) > mid) ? 1 : (static_cast<double>(pred_idx) < mid ? -1 : 0);
-      const int gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
-
-      if (gt_dir != 0 && pred_dir != gt_dir)
-      {
-        grad *= (1.0 + dir_lambda);
-      }
+      grad *= (1.0 + dir_lambda);
     }
 
     // --- Apply Cross Entropy scaling ---
