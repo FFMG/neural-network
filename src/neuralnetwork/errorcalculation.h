@@ -196,14 +196,14 @@ public:
       {
         return calculate_softmax_directional_accuracy(ground_truths, predictions, evaluation_config);
       }
-      return calculate_directional_accuracy(ground_truths, predictions, evaluation_config);
+      return calculate_directional_accuracy(ground_truths, predictions, evaluation_config, activation_method);
 
     case type::directional_confidence_score:
       if (activation_method == activation::method::softmax)
       {
         return calculate_softmax_directional_confidence_score(ground_truths, predictions, evaluation_config);
       }
-      return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config);
+      return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config, activation_method);
 
     case type::bce_loss:
       return calculate_bce_loss(ground_truths, predictions);
@@ -634,23 +634,38 @@ public:
       // 6. Directional Logic:
       bool predicted_up = (static_cast<double>(pred_idx) > mid);
       bool actual_up = (static_cast<double>(gt_idx) > mid);
+      bool match = (predicted_up == actual_up);
 
-      if (predicted_up == actual_up)
+      if (match)
       {
         ++correct;
       }
 
       ++total;
+
+      Logger::trace([&]()
+      {
+        std::ostringstream ss;
+        ss << "[ErrorCalculation::calculate_softmax_directional_confidence_score] "
+           << "seq=" << seq_idx << ", pred_idx=" << pred_idx << ", gt_idx=" << gt_idx
+           << ", mid=" << mid << ", match=" << (match ? "OK" : "FAIL");
+        return ss.str();
+      });
     }
 
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_directional_confidence_score( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;
     size_t total = 0;
+
+    // Use 0.5 baseline for Sigmoid, 0.0 for others (Tanh, RELU, etc.)
+    const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
+    const double neutral_tolerance = evaluation_config.neutral_tolerance();
+    const double confidence_threshold = evaluation_config.confidence_threshold();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -667,24 +682,38 @@ public:
         double gt_val = gt[i];
         double pred_val = pred[i];
 
-        // Ignore tiny real moves
-        if (std::abs(gt_val) < evaluation_config.neutral_tolerance())
+        // Ignore tiny real moves relative to baseline
+        if (std::abs(gt_val - baseline) < neutral_tolerance)
         {
           continue;
         }
 
-        // Ignore weak predictions (confidence filter)
-        if (std::abs(pred_val) < evaluation_config.confidence_threshold())
+        // Ignore weak predictions relative to baseline
+        if (std::abs(pred_val - baseline) < confidence_threshold)
         {
           continue;
         }
 
-        if ((gt_val * pred_val) > 0.0)
+        const bool actual_up = (gt_val > baseline);
+        const bool predicted_up = (pred_val > baseline);
+        const bool match = (actual_up == predicted_up);
+
+        if (match)
         {
           ++correct;
         }
 
         ++total;
+
+        Logger::trace([&]()
+        {
+          std::ostringstream ss;
+          ss << "[ErrorCalculation::calculate_directional_confidence_score] "
+             << "gt=" << gt_val << ", pred=" << pred_val << ", baseline=" << baseline
+             << ", actual_up=" << (actual_up ? "Y" : "N") << ", pred_up=" << (predicted_up ? "Y" : "N")
+             << ", match=" << (match ? "OK" : "FAIL");
+          return ss.str();
+        });
       }
     }
 
@@ -726,26 +755,43 @@ public:
       }
 
       // 4. Directional Match: Are they in the same directional group?
+      // A match only occurs if BOTH are in the same directional group (UP or DOWN)
+      // and NEITHER is NEUTRAL.
+      const bool is_pred_neutral = std::abs(static_cast<double>(pred_idx) - mid) < 0.1;
       bool predicted_up = (static_cast<double>(pred_idx) > mid);
       bool actual_up = (static_cast<double>(gt_idx) > mid);
 
-      if (predicted_up == actual_up)
+      bool match = !is_pred_neutral && (predicted_up == actual_up);
+
+      if (match)
       {
         ++correct;
       }
 
       ++total;
+
+      Logger::trace([&]()
+      {
+        std::ostringstream ss;
+        ss << "[ErrorCalculation::calculate_softmax_directional_accuracy] "
+           << "seq=" << seq_idx << ", pred_idx=" << pred_idx << ", gt_idx=" << gt_idx
+           << ", mid=" << mid << ", match=" << (match ? "OK" : "FAIL");
+        return ss.str();
+      });
     }
 
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_directional_accuracy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& neutral_tolerance = evaluation_config.neutral_tolerance();
     size_t correct = 0;
     size_t total = 0;
+
+    // Use 0.5 baseline for Sigmoid, 0.0 for others (Tanh, RELU, etc.)
+    const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
+    const double neutral_tolerance = evaluation_config.neutral_tolerance();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -763,17 +809,31 @@ public:
         double pred_val = pred[i];
 
         // Ignore small ground truth moves
-        if (std::abs(gt_val) < neutral_tolerance)
+        if (std::abs(gt_val - baseline) < neutral_tolerance)
         {
           continue;
         }
 
-        if ((gt_val * pred_val) > 0.0)
+        const bool actual_up = (gt_val > baseline);
+        const bool predicted_up = (pred_val > baseline);
+        const bool match = (actual_up == predicted_up);
+
+        if (match)
         {
           ++correct;
         }
 
         ++total;
+
+        Logger::trace([&]()
+        {
+          std::ostringstream ss;
+          ss << "[ErrorCalculation::calculate_directional_accuracy] "
+             << "gt=" << gt_val << ", pred=" << pred_val << ", baseline=" << baseline
+             << ", actual_up=" << (actual_up ? "Y" : "N") << ", pred_up=" << (predicted_up ? "Y" : "N")
+             << ", match=" << (match ? "OK" : "FAIL");
+          return ss.str();
+        });
       }
     }
 
