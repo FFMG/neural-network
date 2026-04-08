@@ -7,6 +7,7 @@
 
 // examples
 #include "./examples/addingproblem.h"
+#include "./examples/compound_softmax.h"
 #include "./examples/copymemory.h"
 #include "./examples/multi_output.h"
 #include "./examples/multi_output_gru.h"
@@ -48,6 +49,8 @@ int main()
 
   // Synthetic Sentiment
   ExampleSyntheticSentiment::SyntheticSentiment(log_level);
+  // Compound Softmax (Sigmoid + 5-bucket Softmax)
+  ExampleCompoundSoftmax::CompoundSoftmax(log_level);
 
   // Multi-Output
   ExampleMultiOutput::MultiOutput(log_level);
