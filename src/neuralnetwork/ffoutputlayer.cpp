@@ -409,9 +409,10 @@ void FFOutputLayer::calculate_error_deltas(
   for (const auto& output_layer_detail : output_layer_details())
   {
     const auto error_calculation_type = output_layer_detail.get_output_error_calculation_type();
+    const auto activation_method = output_layer_detail.get_activation().get_method();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
     const auto& bounds = layer_bounds(layer_number);
-    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, bounds.start, bounds.end);
+    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end);
     ++layer_number;
   }
 }

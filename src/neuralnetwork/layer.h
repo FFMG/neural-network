@@ -305,6 +305,7 @@ public:
     const std::vector<double>& given_outputs,
     ErrorCalculation::type error_calculation_type,
     const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
     unsigned start_neuron,
     unsigned end_neuron) const;
 
@@ -977,6 +978,7 @@ private:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_huber_direction_loss_error_deltas(
@@ -984,18 +986,21 @@ private:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_mse_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_rmse_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_bce_error_deltas(
@@ -1003,6 +1008,7 @@ private:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_cross_entropy_error_deltas(
@@ -1010,12 +1016,14 @@ private:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   void calculate_log_cosh_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
+    const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
   mutable std::vector<std::vector<WeightParam>> _cached_weights;
