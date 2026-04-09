@@ -199,7 +199,7 @@ void Layer::calculate_cross_entropy_error_deltas(
     // --- Apply Cross Entropy scaling ---
     grad *= ce_lambda;
 
-    deltas[neuron_index] = grad * _inv_num_neurons;
+    deltas[neuron_index] = grad;
   }
 }
 
