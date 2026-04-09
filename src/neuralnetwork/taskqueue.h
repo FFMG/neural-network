@@ -764,7 +764,7 @@ public:
     {
       task_queue->stop();
     }
-    Logger::debug([=]
+    Logger::trace([]
       {
         return "ThreadPool stop.";
       });
@@ -854,7 +854,7 @@ private:
     {
       _task_queues.emplace_back(std::make_unique<TaskQueue<R>>());
     }
-    Logger::info([&] {
+    Logger::trace([&_number_of_threads] {
       return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
@@ -903,7 +903,7 @@ public:
     {
       task_queue->stop();
     }
-    Logger::debug([=]
+    Logger::trace([]
       {
         return "ThreadPool stop.";
       });
@@ -973,7 +973,7 @@ private:
     {
       _task_queues.emplace_back(std::make_unique<TaskQueue<void>>());
     }
-    Logger::info([&] {
+    Logger::trace([&] {
       return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
