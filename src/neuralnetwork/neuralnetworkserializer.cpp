@@ -39,7 +39,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   auto json_object = dynamic_cast<const TinyJSON::TJValueObject*>(tj);
   if (nullptr != json_object)
   {
-    auto final_learning_rate = json_object->get_float<double>("final-learning-rate", true, false);
+    auto final_learning_rate = json_object->get<double>("final-learning-rate");
     if (final_learning_rate != 0.0)
     {
       options.with_learning_rate(final_learning_rate);
@@ -131,7 +131,7 @@ Layers NeuralNetworkSerializer::create_layers(
   }
 
   const auto* json_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
-  auto weight_decay = json_object != nullptr ? json_object->get_float<double>("layers-weight-decay", true, false) : 0.0;
+  auto weight_decay = json_object != nullptr ? json_object->get<double>("layers-weight-decay") : 0.0;
 
   return Layers(options, layers, weight_decay);
 }
@@ -145,7 +145,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
-  auto residual_layer_number = layer_object.get_number<int>("residual-layer-number");
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
   {
@@ -161,34 +161,34 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
-  auto layer_type_number = layer_object.get_number<int>("layer-type");
+  auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
-  auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get_number<unsigned>("number-output-neurons");
-  auto w_values = layer_object.get_floats<double>("w-values");
-  auto w_grads = layer_object.get_floats<double>("w-grads");
-  auto w_velocities = layer_object.get_floats<double>("w-velocities");
-  auto w_m1 = layer_object.get_floats<double>("w-m1");
-  auto w_m2 = layer_object.get_floats<double>("w-m2");
-  auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
-  auto w_decays = layer_object.get_floats<double>("w-decays");
+  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
 
-  auto b_values = layer_object.get_floats<double>("b-values");
-  auto b_grads = layer_object.get_floats<double>("b-grads");
-  auto b_velocities = layer_object.get_floats<double>("b-velocities");
-  auto b_m1 = layer_object.get_floats<double>("b-m1");
-  auto b_m2 = layer_object.get_floats<double>("b-m2");
-  auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
-  auto b_decays = layer_object.get_floats<double>("b-decays");
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
 
-  auto rw_values = layer_object.get_floats<double>("rw-values");
-  auto rw_grads = layer_object.get_floats<double>("rw-grads");
-  auto rw_velocities = layer_object.get_floats<double>("rw-velocities");
-  auto rw_m1 = layer_object.get_floats<double>("rw-m1");
-  auto rw_m2 = layer_object.get_floats<double>("rw-m2");
-  auto rw_timesteps = layer_object.get_numbers<long long>("rw-timesteps");
-  auto rw_decays = layer_object.get_floats<double>("rw-decays");
+  auto rw_values = layer_object.get<std::vector<double>>("rw-values");
+  auto rw_grads = layer_object.get<std::vector<double>>("rw-grads");
+  auto rw_velocities = layer_object.get<std::vector<double>>("rw-velocities");
+  auto rw_m1 = layer_object.get<std::vector<double>>("rw-m1");
+  auto rw_m2 = layer_object.get<std::vector<double>>("rw-m2");
+  auto rw_timesteps = layer_object.get<std::vector<long long>>("rw-timesteps");
+  auto rw_decays = layer_object.get<std::vector<double>>("rw-decays");
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -238,7 +238,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
-  auto residual_layer_number = layer_object.get_number<int>("residual-layer-number");
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
   {
@@ -254,82 +254,82 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
-  auto layer_type_number = layer_object.get_number<int>("layer-type");
+  auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
-  auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get_number<unsigned>("number-output-neurons");
-  auto w_values = layer_object.get_floats<double>("w-values");
-  auto w_grads = layer_object.get_floats<double>("w-grads");
-  auto w_velocities = layer_object.get_floats<double>("w-velocities");
-  auto w_m1 = layer_object.get_floats<double>("w-m1");
-  auto w_m2 = layer_object.get_floats<double>("w-m2");
-  auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
-  auto w_decays = layer_object.get_floats<double>("w-decays");
+  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
 
-  auto b_values = layer_object.get_floats<double>("b-values");
-  auto b_grads = layer_object.get_floats<double>("b-grads");
-  auto b_velocities = layer_object.get_floats<double>("b-velocities");
-  auto b_m1 = layer_object.get_floats<double>("b-m1");
-  auto b_m2 = layer_object.get_floats<double>("b-m2");
-  auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
-  auto b_decays = layer_object.get_floats<double>("b-decays");
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
 
-  auto rw_values = layer_object.get_floats<double>("rw-values");
-  auto rw_grads = layer_object.get_floats<double>("rw-grads");
-  auto rw_velocities = layer_object.get_floats<double>("rw-velocities");
-  auto rw_m1 = layer_object.get_floats<double>("rw-m1");
-  auto rw_m2 = layer_object.get_floats<double>("rw-m2");
-  auto rw_timesteps = layer_object.get_numbers<long long>("rw-timesteps");
-  auto rw_decays = layer_object.get_floats<double>("rw-decays");
+  auto rw_values = layer_object.get<std::vector<double>>("rw-values");
+  auto rw_grads = layer_object.get<std::vector<double>>("rw-grads");
+  auto rw_velocities = layer_object.get<std::vector<double>>("rw-velocities");
+  auto rw_m1 = layer_object.get<std::vector<double>>("rw-m1");
+  auto rw_m2 = layer_object.get<std::vector<double>>("rw-m2");
+  auto rw_timesteps = layer_object.get<std::vector<long long>>("rw-timesteps");
+  auto rw_decays = layer_object.get<std::vector<double>>("rw-decays");
 
-  auto z_w_values = layer_object.get_floats<double>("z-w-values");
-  auto z_w_grads = layer_object.get_floats<double>("z-w-grads");
-  auto z_w_velocities = layer_object.get_floats<double>("z-w-velocities");
-  auto z_w_m1 = layer_object.get_floats<double>("z-w-m1");
-  auto z_w_m2 = layer_object.get_floats<double>("z-w-m2");
-  auto z_w_timesteps = layer_object.get_numbers<long long>("z-w-timesteps");
-  auto z_w_decays = layer_object.get_floats<double>("z-w-decays");
+  auto z_w_values = layer_object.get<std::vector<double>>("z-w-values");
+  auto z_w_grads = layer_object.get<std::vector<double>>("z-w-grads");
+  auto z_w_velocities = layer_object.get<std::vector<double>>("z-w-velocities");
+  auto z_w_m1 = layer_object.get<std::vector<double>>("z-w-m1");
+  auto z_w_m2 = layer_object.get<std::vector<double>>("z-w-m2");
+  auto z_w_timesteps = layer_object.get<std::vector<long long>>("z-w-timesteps");
+  auto z_w_decays = layer_object.get<std::vector<double>>("z-w-decays");
 
-  auto z_rw_values = layer_object.get_floats<double>("z-rw-values");
-  auto z_rw_grads = layer_object.get_floats<double>("z-rw-grads");
-  auto z_rw_velocities = layer_object.get_floats<double>("z-rw-velocities");
-  auto z_rw_m1 = layer_object.get_floats<double>("z-rw-m1");
-  auto z_rw_m2 = layer_object.get_floats<double>("z-rw-m2");
-  auto z_rw_timesteps = layer_object.get_numbers<long long>("z-rw-timesteps");
-  auto z_rw_decays = layer_object.get_floats<double>("z-rw-decays");
+  auto z_rw_values = layer_object.get<std::vector<double>>("z-rw-values");
+  auto z_rw_grads = layer_object.get<std::vector<double>>("z-rw-grads");
+  auto z_rw_velocities = layer_object.get<std::vector<double>>("z-rw-velocities");
+  auto z_rw_m1 = layer_object.get<std::vector<double>>("z-rw-m1");
+  auto z_rw_m2 = layer_object.get<std::vector<double>>("z-rw-m2");
+  auto z_rw_timesteps = layer_object.get<std::vector<long long>>("z-rw-timesteps");
+  auto z_rw_decays = layer_object.get<std::vector<double>>("z-rw-decays");
 
-  auto z_b_values = layer_object.get_floats<double>("z-b-values");
-  auto z_b_grads = layer_object.get_floats<double>("z-b-grads");
-  auto z_b_velocities = layer_object.get_floats<double>("z-b-velocities");
-  auto z_b_m1 = layer_object.get_floats<double>("z-b-m1");
-  auto z_b_m2 = layer_object.get_floats<double>("z-b-m2");
-  auto z_b_timesteps = layer_object.get_numbers<long long>("z-b-timesteps");
-  auto z_b_decays = layer_object.get_floats<double>("z-b-decays");
+  auto z_b_values = layer_object.get<std::vector<double>>("z-b-values");
+  auto z_b_grads = layer_object.get<std::vector<double>>("z-b-grads");
+  auto z_b_velocities = layer_object.get<std::vector<double>>("z-b-velocities");
+  auto z_b_m1 = layer_object.get<std::vector<double>>("z-b-m1");
+  auto z_b_m2 = layer_object.get<std::vector<double>>("z-b-m2");
+  auto z_b_timesteps = layer_object.get<std::vector<long long>>("z-b-timesteps");
+  auto z_b_decays = layer_object.get<std::vector<double>>("z-b-decays");
 
-  auto r_w_values = layer_object.get_floats<double>("r-w-values");
-  auto r_w_grads = layer_object.get_floats<double>("r-w-grads");
-  auto r_w_velocities = layer_object.get_floats<double>("r-w-velocities");
-  auto r_w_m1 = layer_object.get_floats<double>("r-w-m1");
-  auto r_w_m2 = layer_object.get_floats<double>("r-w-m2");
-  auto r_w_timesteps = layer_object.get_numbers<long long>("r-w-timesteps");
-  auto r_w_decays = layer_object.get_floats<double>("r-w-decays");
+  auto r_w_values = layer_object.get<std::vector<double>>("r-w-values");
+  auto r_w_grads = layer_object.get<std::vector<double>>("r-w-grads");
+  auto r_w_velocities = layer_object.get<std::vector<double>>("r-w-velocities");
+  auto r_w_m1 = layer_object.get<std::vector<double>>("r-w-m1");
+  auto r_w_m2 = layer_object.get<std::vector<double>>("r-w-m2");
+  auto r_w_timesteps = layer_object.get<std::vector<long long>>("r-w-timesteps");
+  auto r_w_decays = layer_object.get<std::vector<double>>("r-w-decays");
 
-  auto r_rw_values = layer_object.get_floats<double>("r-rw-values");
-  auto r_rw_grads = layer_object.get_floats<double>("r-rw-grads");
-  auto r_rw_velocities = layer_object.get_floats<double>("r-rw-velocities");
-  auto r_rw_m1 = layer_object.get_floats<double>("r-rw-m1");
-  auto r_rw_m2 = layer_object.get_floats<double>("r-rw-m2");
-  auto r_rw_timesteps = layer_object.get_numbers<long long>("r-rw-timesteps");
-  auto r_rw_decays = layer_object.get_floats<double>("r-rw-decays");
+  auto r_rw_values = layer_object.get<std::vector<double>>("r-rw-values");
+  auto r_rw_grads = layer_object.get<std::vector<double>>("r-rw-grads");
+  auto r_rw_velocities = layer_object.get<std::vector<double>>("r-rw-velocities");
+  auto r_rw_m1 = layer_object.get<std::vector<double>>("r-rw-m1");
+  auto r_rw_m2 = layer_object.get<std::vector<double>>("r-rw-m2");
+  auto r_rw_timesteps = layer_object.get<std::vector<long long>>("r-rw-timesteps");
+  auto r_rw_decays = layer_object.get<std::vector<double>>("r-rw-decays");
 
-  auto r_b_values = layer_object.get_floats<double>("r-b-values");
-  auto r_b_grads = layer_object.get_floats<double>("r-b-grads");
-  auto r_b_velocities = layer_object.get_floats<double>("r-b-velocities");
-  auto r_b_m1 = layer_object.get_floats<double>("r-b-m1");
-  auto r_b_m2 = layer_object.get_floats<double>("r-b-m2");
-  auto r_b_timesteps = layer_object.get_numbers<long long>("r-b-timesteps");
-  auto r_b_decays = layer_object.get_floats<double>("r-b-decays");
+  auto r_b_values = layer_object.get<std::vector<double>>("r-b-values");
+  auto r_b_grads = layer_object.get<std::vector<double>>("r-b-grads");
+  auto r_b_velocities = layer_object.get<std::vector<double>>("r-b-velocities");
+  auto r_b_m1 = layer_object.get<std::vector<double>>("r-b-m1");
+  auto r_b_m2 = layer_object.get<std::vector<double>>("r-b-m2");
+  auto r_b_timesteps = layer_object.get<std::vector<long long>>("r-b-timesteps");
+  auto r_b_decays = layer_object.get<std::vector<double>>("r-b-decays");
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -423,7 +423,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
-  auto residual_layer_number = layer_object.get_number<int>("residual-layer-number");
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
   {
@@ -439,25 +439,25 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
   auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
 
-  auto layer_type_number = layer_object.get_number<int>("layer-type");
+  auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
-  auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get_number<unsigned>("number-output-neurons");
-  auto w_values = layer_object.get_floats<double>("w-values");
-  auto w_grads = layer_object.get_floats<double>("w-grads");
-  auto w_velocities = layer_object.get_floats<double>("w-velocities");
-  auto w_m1 = layer_object.get_floats<double>("w-m1");
-  auto w_m2 = layer_object.get_floats<double>("w-m2");
-  auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
-  auto w_decays = layer_object.get_floats<double>("w-decays");
-  auto b_values = layer_object.get_floats<double>("b-values");
-  auto b_grads = layer_object.get_floats<double>("b-grads");
-  auto b_velocities = layer_object.get_floats<double>("b-velocities");
-  auto b_m1 = layer_object.get_floats<double>("b-m1");
-  auto b_m2 = layer_object.get_floats<double>("b-m2");
-  auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
-  auto b_decays = layer_object.get_floats<double>("b-decays");
+  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -507,24 +507,24 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
     Logger::panic("Missing layer 'optimiser-type'.");
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
-  auto layer_type_number = layer_object.get_number<int>("layer-type");
+  auto layer_type_number = layer_object.get<int>("layer-type");
 
-  auto number_input_neurons = layer_object.get_number<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get_number<unsigned>("number-output-neurons");
-  auto w_values = layer_object.get_floats<double>("w-values");
-  auto w_grads = layer_object.get_floats<double>("w-grads");
-  auto w_velocities = layer_object.get_floats<double>("w-velocities");
-  auto w_m1 = layer_object.get_floats<double>("w-m1");
-  auto w_m2 = layer_object.get_floats<double>("w-m2");
-  auto w_timesteps = layer_object.get_numbers<long long>("w-timesteps");
-  auto w_decays = layer_object.get_floats<double>("w-decays");
-  auto b_values = layer_object.get_floats<double>("b-values");
-  auto b_grads = layer_object.get_floats<double>("b-grads");
-  auto b_velocities = layer_object.get_floats<double>("b-velocities");
-  auto b_m1 = layer_object.get_floats<double>("b-m1");
-  auto b_m2 = layer_object.get_floats<double>("b-m2");
-  auto b_timesteps = layer_object.get_numbers<long long>("b-timesteps");
-  auto b_decays = layer_object.get_floats<double>("b-decays");
+  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
 
   auto layer = std::make_unique<FFOutputLayer>(
     layer_index,
@@ -570,7 +570,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
       Logger::panic("One or more of the output layer details is not a valid object!");
     }
 
-    auto output_size = output_layer_object->get_number<unsigned>("size");
+    auto output_size = output_layer_object->get<unsigned>("size");
 
     auto output_error_calculation_typ_str = output_layer_object->try_get_string("error-calculation-type", true);
     if (nullptr == output_error_calculation_typ_str)
@@ -603,12 +603,12 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
   }
 
   return EvaluationConfig(
-    error_evaluation_config_object->get_float<double>("neutral-tolerance"),
-    error_evaluation_config_object->get_float<double>("confidence-threshold"),
-    error_evaluation_config_object->get_float<double>("huber-delta"),
-    error_evaluation_config_object->get_float<double>("direction-lambda"),
+    error_evaluation_config_object->get<double>("neutral-tolerance"),
+    error_evaluation_config_object->get<double>("confidence-threshold"),
+    error_evaluation_config_object->get<double>("huber-delta"),
+    error_evaluation_config_object->get<double>("direction-lambda"),
     error_evaluation_config_object->get_boolean("use-direction-penalty"),
-    error_evaluation_config_object->get_float<double>("cross-entropy-lambda")
+    error_evaluation_config_object->get<double>("cross-entropy-lambda")
         );
 }
 
@@ -635,9 +635,9 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     const auto layer_type_string = phlo->try_get_string("type");
     hidden_layer.emplace_back(LayerDetails(
       LayerDetails::type_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
-      phlo->get_number<unsigned>("size"),
+      phlo->get<unsigned>("size"),
       activation(hidden_method, hidden_alpha),
-      phlo->get_float<double>("dropout")
+      phlo->get<double>("dropout")
     ));
   }
   return hidden_layer;
@@ -651,15 +651,15 @@ ResidualProjector* NeuralNetworkSerializer::get_residual_projector(const TinyJSO
     return nullptr;
   }
 
-  auto input_size = residual_projector_object->get_number<unsigned>("input-size", false, false);
-  auto output_size = residual_projector_object->get_number<unsigned>("output-size", false, false);
-  auto w_values = residual_projector_object->get_floats<double>("w-values");
-  auto w_grads = residual_projector_object->get_floats<double>("w-grads");
-  auto w_velocities = residual_projector_object->get_floats<double>("w-velocities");
-  auto w_m1 = residual_projector_object->get_floats<double>("w-m1");
-  auto w_m2 = residual_projector_object->get_floats<double>("w-m2");
-  auto w_timesteps = residual_projector_object->get_numbers<long long>("w-timesteps");
-  auto w_decays = residual_projector_object->get_floats<double>("w-decays");
+  auto input_size = residual_projector_object->get<unsigned>("input-size");
+  auto output_size = residual_projector_object->get<unsigned>("output-size");
+  auto w_values = residual_projector_object->get<std::vector<double>>("w-values");
+  auto w_grads = residual_projector_object->get<std::vector<double>>("w-grads");
+  auto w_velocities = residual_projector_object->get<std::vector<double>>("w-velocities");
+  auto w_m1 = residual_projector_object->get<std::vector<double>>("w-m1");
+  auto w_m2 = residual_projector_object->get<std::vector<double>>("w-m2");
+  auto w_timesteps = residual_projector_object->get<std::vector<long long>>("w-timesteps");
+  auto w_decays = residual_projector_object->get<std::vector<double>>("w-decays");
 
   return new ResidualProjector(
     input_size,
@@ -729,35 +729,35 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto log_level_string = options_object->try_get_string("log-level", false);
   auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
   
-  auto learning_rate = options_object->get_float<double>("learning-rate");
-  auto learning_rate_warmup_start = options_object->get_float<double>("learning-rate-warmup-start");
-  auto learning_rate_warmup_target = options_object->get_float<double>("learning-rate-warmup-target");
+  auto learning_rate = options_object->get<double>("learning-rate");
+  auto learning_rate_warmup_start = options_object->get<double>("learning-rate-warmup-start");
+  auto learning_rate_warmup_target = options_object->get<double>("learning-rate-warmup-target");
 
   auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
   auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
   auto data_is_unique = options_object->get_boolean("data-is-unique");
-  auto number_of_threads = options_object->get_number<int>("number-of-threads");
-  auto learning_rate_decay_rate = options_object->get_float<double>("learning-rate-decay-rate");
+  auto number_of_threads = options_object->get<int>("number-of-threads");
+  auto learning_rate_decay_rate = options_object->get<double>("learning-rate-decay-rate");
   auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
   auto optimiser_type_string = options_object->try_get_string("optimiser-type");
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
 
-  auto learning_rate_restart_rate = options_object->get_float<double>("learning-rate-restart-rate");
-  auto learning_rate_restart_boost = options_object->get_float<double>("learning-rate-restart-boost");
+  auto learning_rate_restart_rate = options_object->get<double>("learning-rate-restart-rate");
+  auto learning_rate_restart_boost = options_object->get<double>("learning-rate-restart-boost");
   auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
-  auto clip_threshold = options_object->get_float<double>("clip-threshold");
+  auto clip_threshold = options_object->get<double>("clip-threshold");
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
   auto output_layer_details = get_output_layer_details(*options_object);
-  auto weight_decay = options_object->get_float<double>("weight-decay");
+  auto weight_decay = options_object->get<double>("weight-decay");
   
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
-  int bptt_max_ticks = options_object->get_number<int>("bptt-max-ticks");
+  int bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
   auto shuffle_bptt_batches = options_object->get_boolean("shuffle-bptt-batches", false, false);
 
   auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
-  auto update_training_monitor_percent = options_object->get_float<double>("update-training-monitor-percent");
+  auto update_training_monitor_percent = options_object->get<double>("update-training-monitor-percent");
 
   auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
@@ -825,7 +825,7 @@ std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::g
     errors.push_back({});
     for (const auto& error_type : error_types)
     {
-      errors[output_layer][error_type] = tj_errors_object->get_float<double>(ErrorCalculation::type_to_string(error_type).c_str(), true, false);
+      errors[output_layer][error_type] = tj_errors_object->get<double>(ErrorCalculation::type_to_string(error_type).c_str());
     }
   }
   return errors;
@@ -907,7 +907,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
     auto index = static_cast<unsigned>(index_object->get_number());
 
     auto neuron_type = static_cast<Neuron::Type>(neuron_object->get_number("neuron-type", true, true));
-    auto dropout_rate = neuron_object->get_float<double>("dropout-rate", true, true);
+    auto dropout_rate = neuron_object->get<double>("dropout-rate");
     
     auto neuron = Neuron(
       index,

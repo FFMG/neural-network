@@ -4184,7 +4184,7 @@ namespace TinyJSON
     return object;
   }
 
-  long double TJValueObject::get_raw_float(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
+  Optional<long double> TJValueObject::get_raw_float(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
@@ -4193,12 +4193,12 @@ namespace TinyJSON
       { 
         throw TJParseException("The key was not found!");
       }
-      return 0.0;
+      return Optional<long double>();
     }
-    return value->get_raw_float(false);
+    return Optional<long double>(value->get_raw_float(false));
   }
 
-  long long TJValueObject::get_raw_number(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
+  Optional<long long> TJValueObject::get_raw_number(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
@@ -4207,12 +4207,12 @@ namespace TinyJSON
       {
         throw TJParseException("The key was not found!");
       }
-      return 0;
+      return Optional<long long>();
     }
-    return value->get_raw_number(false);
+    return Optional<long long>(value->get_raw_number(false));
   }
 
-  std::vector<long double> TJValueObject::get_raw_floats(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
+  Optional<std::vector<long double>> TJValueObject::get_raw_floats(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
@@ -4221,12 +4221,12 @@ namespace TinyJSON
       {
         throw TJParseException("The key was not found!");
       }
-      return {};
+      return Optional<std::vector<long double>>();
     }
-    return value->get_raw_floats(false);
+    return Optional<std::vector<long double>>(value->get_raw_floats(false));
   }
 
-  std::vector<long long> TJValueObject::get_raw_numbers(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
+  Optional<std::vector<long long>> TJValueObject::get_raw_numbers(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
@@ -4235,9 +4235,9 @@ namespace TinyJSON
       {
         throw TJParseException("The key was not found!");
       }
-      return {};
+      return Optional<std::vector<long long>>();
     }
-    return value->get_raw_numbers(false);
+    return Optional<std::vector<long long>>(value->get_raw_numbers(false));
   }
 
   const TJCHAR* TJValueObject::get_string(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const
@@ -4480,6 +4480,11 @@ namespace TinyJSON
     }
     return member->value();
 #endif
+  }
+
+  bool TJValueObject::has_key(const TJCHAR* key, bool case_sensitive) const
+  {
+    return try_get_value(key, case_sensitive) != nullptr;
   }
 
   /// <summary>
