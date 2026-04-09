@@ -62,6 +62,7 @@ void Layer::calculate_huber_direction_loss_error_deltas(
   const double& lambda = evaluation_config.direction_lambda();             // Direction penalty strength
   const double& neutral_tolerance = evaluation_config.neutral_tolerance(); // Ignore tiny targets
   const bool use_direction_penalty = evaluation_config.use_direction_penalty();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   for (const auto& neuron : neurons)
   {
@@ -106,7 +107,7 @@ void Layer::calculate_huber_direction_loss_error_deltas(
       }
     }
 
-    deltas[neuron_index] = grad * _inv_num_neurons;
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
 }
 
@@ -121,6 +122,7 @@ void Layer::calculate_huber_loss_error_deltas(
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   const double& delta = evaluation_config.huber_delta();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   for (const auto& neuron : neurons)
   {
@@ -138,7 +140,7 @@ void Layer::calculate_huber_loss_error_deltas(
       grad = (error > 0.0 ? delta : -delta);
     }
 
-    deltas[neuron_index] = grad * _inv_num_neurons;
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
 }
 
@@ -216,6 +218,7 @@ void Layer::calculate_bce_error_deltas(
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   // --- Optional directional boost ---
   int pred_dir = 0;
@@ -278,7 +281,7 @@ void Layer::calculate_bce_error_deltas(
     grad *= ce_lambda;
 
     // --- Normalize ---
-    deltas[idx] = grad * _inv_num_neurons;
+    deltas[idx] = grad * inv_num_neurons;
   }
 }
 
@@ -290,11 +293,12 @@ void Layer::calculate_mse_error_deltas(
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   for (const auto& neuron : neurons)
   {
     const unsigned neuron_index = neuron.get_index();
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * _inv_num_neurons;
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * inv_num_neurons;
   }
 }
 
@@ -306,6 +310,7 @@ void Layer::calculate_rmse_error_deltas(
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   // 1. Calculate MSE sum
   double sum_squared_error = 0.0;
@@ -318,14 +323,14 @@ void Layer::calculate_rmse_error_deltas(
 
   // 2. Calculate RMSE
   // Avoid division by zero if RMSE is 0 (perfect prediction)
-  const double mse = sum_squared_error * _inv_num_neurons;
+  const double mse = sum_squared_error * inv_num_neurons;
   const double rmse = std::sqrt(mse);
   const double epsilon = 1e-12;
   const double divisor = (rmse < epsilon) ? epsilon : rmse;
 
   // 3. Calculate deltas
   // dE/dy = (1 / (N * RMSE)) * (y - t)
-  const double factor = _inv_num_neurons / divisor;
+  const double factor = inv_num_neurons / divisor;
 
   for (const auto& neuron : neurons)
   {
@@ -342,12 +347,13 @@ void Layer::calculate_log_cosh_error_deltas(
   std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   for (const auto& neuron : neurons)
   {
     const unsigned neuron_index = neuron.get_index();
     const double x = given_outputs[neuron_index] - target_outputs[neuron_index];
     // d/dx log(cosh(x)) = tanh(x)
-    deltas[neuron_index] = std::tanh(x) * _inv_num_neurons;
+    deltas[neuron_index] = std::tanh(x) * inv_num_neurons;
   }
 }
