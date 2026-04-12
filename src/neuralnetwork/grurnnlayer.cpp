@@ -3,8 +3,6 @@
 #include "logger.h"
 #include <immintrin.h>
 
-constexpr bool _has_bias_neuron = true;
-
 GRURNNLayer::GRURNNLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer, 
@@ -16,7 +14,8 @@ GRURNNLayer::GRURNNLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
   ) :
   GRURNNLayer(
     layer_index,
@@ -29,7 +28,8 @@ GRURNNLayer::GRURNNLayer(
     residual_layer_number,
     dropout_rate,
     residual_projector,
-    number_of_threads
+    number_of_threads,
+    has_bias
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -46,7 +46,8 @@ GRURNNLayer::GRURNNLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
 ) :
   Layer(
     layer_index,
@@ -57,7 +58,7 @@ GRURNNLayer::GRURNNLayer(
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     create_neurons(dropout_rate, num_neurons_in_this_layer),
-    _has_bias_neuron,
+    has_bias,
     weight_decays,
     residual_projector,
     number_of_threads
@@ -538,12 +539,6 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
   if (has_bias()) {
       init_bias(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays);
   }
-}
-
-bool GRURNNLayer::has_bias() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  return _has_bias_neuron;
 }
 
 void GRURNNLayer::calculate_forward_feed(

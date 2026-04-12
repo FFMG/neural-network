@@ -3,15 +3,14 @@
 #include "logger.h"
 #include "neuralnetworkhelpermetrics.h"
 
-constexpr bool _has_bias_neuron = true;
-
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
   const std::vector<OutputLayerDetails>& output_layer_details,
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   const OptimiserType& optimiser_type,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
 ) :
   FFLayer(
     layer_index,
@@ -24,7 +23,8 @@ FFOutputLayer::FFOutputLayer(
     -1,       //  no residual layer
     0.0,      //  no dropout for output layer
     nullptr,  //  no residual projector
-    number_of_threads),
+    number_of_threads,
+    has_bias),
   OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");

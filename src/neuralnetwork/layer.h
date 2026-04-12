@@ -126,7 +126,7 @@ public:
       _w_m2 = src._w_m2;
       _w_timesteps = src._w_timesteps;
       _w_decays = src._w_decays;
-      
+
       _b_values = src._b_values;
       _b_grads = src._b_grads;
       _b_velocities = src._b_velocities;
@@ -169,7 +169,7 @@ public:
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
       _neurons = std::move(src._neurons);
-      
+
       _w_values = std::move(src._w_values);
       _w_grads = std::move(src._w_grads);
       _w_velocities = std::move(src._w_velocities);
@@ -177,7 +177,7 @@ public:
       _w_m2 = std::move(src._w_m2);
       _w_timesteps = std::move(src._w_timesteps);
       _w_decays = std::move(src._w_decays);
-      
+
       _b_values = std::move(src._b_values);
       _b_grads = std::move(src._b_grads);
       _b_velocities = std::move(src._b_velocities);
@@ -190,7 +190,7 @@ public:
       _residual_projector = src._residual_projector;
       _weights_cache_dirty = true;
       _bias_weights_cache_dirty = true;
-      
+
       _task_queue_pool = std::move(src._task_queue_pool);
 
       src._layer_index = 0;
@@ -210,10 +210,10 @@ public:
   }
 
   [[nodiscard]] virtual std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
-    const std::vector<ErrorCalculation::type>& error_types, 
+    const std::vector<ErrorCalculation::type>& error_types,
     const std::vector<std::vector<double>>& predictions,
     const std::vector<std::vector<double>>& checking_outputs
-    ) const
+  ) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     Logger::panic("Only output layers can calculate output metrics!");
@@ -317,7 +317,7 @@ public:
       return 0.0;
     }
     return get_neuron(0).get_dropout_rate();
-  }  
+  }
 
   virtual void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -328,11 +328,11 @@ public:
     int bptt_max_ticks) const = 0;
 
   virtual void calculate_and_store_gradients(
-      const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-      const std::vector<HiddenStates>& hidden_states,
-      const Layer& previous_layer,
-      size_t batch_size,
-      int bptt_max_ticks) = 0;
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    const Layer& previous_layer,
+    size_t batch_size,
+    int bptt_max_ticks) = 0;
 
   virtual double get_gradient_norm_sq() const = 0;
 
@@ -556,7 +556,7 @@ public:
     {
       Logger::panic("Error while calculating input weigh gradient it invalid.");
     }
-    
+
     if (clipping_scale < 0.0)
     {
       // If clipping scale is negative, we clip the gradient to a fixed range
@@ -569,16 +569,16 @@ public:
     if (idx == 0 && (timesteps.empty() || timesteps[idx] % 100 == 0))
     {
       Logger::trace([&]()
-      {
-        std::ostringstream ss;
-        ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
-          << ", idx=" << idx
-          << ", grad=" << gradient
-          << ", final_grad=" << final_gradient
-          << ", lr=" << learning_rate
-          << ", val_before=" << values[idx];
-        return ss.str();
-      });
+        {
+          std::ostringstream ss;
+          ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
+            << ", idx=" << idx
+            << ", grad=" << gradient
+            << ", final_grad=" << final_gradient
+            << ", lr=" << learning_rate
+            << ", val_before=" << values[idx];
+          return ss.str();
+        });
     }
 
     switch (_optimiser_type)
@@ -740,9 +740,9 @@ public:
   [[nodiscard]] const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (_weights_cache_dirty) 
+    if (_weights_cache_dirty)
     {
-      _cached_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0,0,0,0)));
+      _cached_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0, 0, 0, 0)));
       for (unsigned i = 0; i < _number_input_neurons; ++i) {
         for (unsigned j = 0; j < _number_output_neurons; ++j) {
           const auto idx = i * _number_output_neurons + j;
@@ -760,10 +760,10 @@ public:
   [[nodiscard]] const std::vector<WeightParam>& get_bias_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (_bias_weights_cache_dirty) 
+    if (_bias_weights_cache_dirty)
     {
-      _cached_bias_weights.resize(_number_output_neurons, WeightParam(0,0,0,0));
-      for (unsigned j = 0; j < _number_output_neurons; ++j) 
+      _cached_bias_weights.resize(_number_output_neurons, WeightParam(0, 0, 0, 0));
+      for (unsigned j = 0; j < _number_output_neurons; ++j)
       {
         _cached_bias_weights[j] = WeightParam(
           _b_values[j], _b_grads[j], _b_velocities[j],
@@ -774,7 +774,7 @@ public:
     }
     return _cached_bias_weights;
   }
-  
+
   [[nodiscard]] virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -797,7 +797,12 @@ public:
     return empty_vec_2d;
   }
 
-  virtual bool has_bias() const noexcept = 0;
+  [[nodiscard]] inline virtual bool has_bias() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return !_b_values.empty();
+  }
+
   virtual Layer* clone() const = 0;
 
   [[nodiscard]] inline const std::vector<double>& get_w_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_values; }

@@ -3,8 +3,6 @@
 #include "logger.h"
 #include <numeric>
 
-constexpr bool _has_bias_neuron = true;
-
 FFLayer::FFLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer,
@@ -16,7 +14,8 @@ FFLayer::FFLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
 ) :
   FFLayer(
   layer_index,
@@ -29,7 +28,8 @@ FFLayer::FFLayer(
   residual_layer_number,
   dropout_rate,
   residual_projector,
-  number_of_threads
+  number_of_threads,
+  has_bias
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -46,7 +46,8 @@ FFLayer::FFLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
 ) :
   Layer(
   layer_index,
@@ -57,7 +58,7 @@ FFLayer::FFLayer(
   num_neurons_in_previous_layer,
   num_neurons_in_this_layer,
   create_neurons(dropout_rate, num_neurons_in_this_layer),
-  _has_bias_neuron,
+  has_bias,
   weight_decays,
   residual_projector,
   number_of_threads
@@ -156,12 +157,6 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
 FFLayer::~FFLayer()
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-}
-
-bool FFLayer::has_bias() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  return _has_bias_neuron;
 }
 
 void FFLayer::calculate_forward_feed(
