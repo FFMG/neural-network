@@ -56,14 +56,15 @@ The hidden layer information helps you to refine the hidden layer information
   * Gru: Gated recurrent unit layer designed to handle the vanishing gradient problem in long sequences.
 * Layer size: number of neuron in the hidden layer.
 * the activation object, (activation methods and alpha)
+* Weight Decay: The regularization strength for the layer's weights.
 
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2, 0.05),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -76,17 +77,17 @@ The hidden layer information helps you to refine the hidden layer information
 
 ### Output Layers
 
-By default, the output layer uses a single activation function. However, you can define multiple logical output segments (Composite Outputs), each with its own activation and error calculation. This is ideal for tasks requiring simultaneous classification and regression.
+By default, the output layer uses a single activation function and weight decay. However, you can define multiple logical output segments (Composite Outputs), each with its own activation, error calculation, and weight decay strength. This is ideal for tasks requiring simultaneous classification and regression with different regularization needs.
 
 ```cpp
     // Topology: 1 input, 8 hidden, 2 outputs
     std::vector<unsigned> topology = { 1, 8, 2 };
 
     auto output_layers = {
-      // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }),
-      // Second output: Tanh (Regression: Mapping value to [-1, 1])
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 })
+      // First output: Sigmoid (Classification: Is positive?) with 0.01 weight decay
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.01),
+      // Second output: Tanh (Regression: Mapping value to [-1, 1]) with 0.05 weight decay
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -436,6 +437,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Size 
   * Activation
   * Dropout
+  * Weight Decay: regularization strength for the hidden layer.
 * output_layer_details: One or more `OutputLayerDetails` objects. (You can also pass individual parameters for a single output layer).
   * Layer size: The number of neurons in the output layer segment.
   * activation: The activation function for the output layer.
@@ -443,6 +445,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
     * alpha: The alpha value for the activation function (e.g., for Leaky ReLU).
   * Output error calculation: The error calculation type, for example, `ErrorCalculation::type::mse`.
   * EvaluationConfig: An `EvaluationConfig` class to fine-tune error calculations (see below).
+  * Weight Decay: regularization strength for the output layer segment. Allows for different regularization strengths in compound output layers.
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
