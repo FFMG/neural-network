@@ -5,7 +5,6 @@
 #include "layers.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
-  _weight_decay(options.weight_decay()),
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -26,7 +25,7 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
 
   // add the input layer
   const auto& number_of_threads = options.number_of_threads();
-  auto layer = create_input_layer(topology[0], _weight_decay, -1, number_of_threads);
+  auto layer = create_input_layer(topology[0], -1, number_of_threads);
   _layers.emplace_back(std::move(layer));
 
   const auto& optimiser_type = options.optimiser_type();
@@ -43,14 +42,14 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     
-    layer = create_hidden_layer(_weight_decay, previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
+    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
 
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
   const auto& output_layer_details = options.output_layer_details();
-  layer = create_output_layer(topology.back(), _weight_decay, *_layers.back(), output_layer_details, optimiser_type, number_of_threads);
+  layer = create_output_layer(topology.back(), *_layers.back(), output_layer_details, optimiser_type, number_of_threads);
 
   _layers.emplace_back(std::move(layer));
 }
@@ -62,7 +61,6 @@ Layers::~Layers()
 }
 
 Layers::Layers(const Layers& src) noexcept :
-  _weight_decay(src._weight_decay),
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -76,9 +74,7 @@ Layers::Layers(const Layers& src) noexcept :
 
 Layers::Layers(
   const NeuralNetworkOptions& options,
-  const std::vector<std::unique_ptr<Layer>>& layers, 
-  double weight_decay) noexcept :
-  _weight_decay(weight_decay),
+  const std::vector<std::unique_ptr<Layer>>& layers) noexcept :
   _update_weights_pool(nullptr)
 {
   _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
@@ -96,7 +92,6 @@ Layers::Layers(Layers&& src) noexcept :
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  _weight_decay = src._weight_decay;
 
   _update_weights_pool = src._update_weights_pool;
   src._update_weights_pool = nullptr;
@@ -116,7 +111,6 @@ Layers& Layers::operator=(const Layers& src) noexcept
     {
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
-    _weight_decay = src._weight_decay;
   }
   return *this;
 }
@@ -127,7 +121,6 @@ Layers& Layers::operator=(Layers&& src) noexcept
   if (this != &src)
   {
     _layers = std::move(src._layers);
-    _weight_decay = src._weight_decay;
 
     _training_gradients_buffer = std::move(src._training_gradients_buffer);
     _training_hidden_states_buffer = std::move(src._training_hidden_states_buffer);
@@ -136,7 +129,6 @@ Layers& Layers::operator=(Layers&& src) noexcept
     _update_weights_pool = src._update_weights_pool;
 
     src._update_weights_pool = nullptr;
-    src._weight_decay = 0.0;
   }
   return *this;
 }
@@ -217,20 +209,20 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
   return residual_layer_index;
 }
 
-std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, double weight_decay, int residual_layer_number, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return std::make_unique<FFLayer>(
     0, 
     0, 
     num_neurons_in_this_layer, 
-    weight_decay, 
+    0.0,      // no weight decay
     Layer::LayerType::Input, 
     activation(activation::method::linear, 0.00),   //  Linear has no activation apha
     OptimiserType::None, 
     residual_layer_number, 
-    0.0,    // no dropout for input layer
-    nullptr, // no residual projector for input
+    0.0,      // no dropout for input layer
+    nullptr,  // no residual projector for input
     number_of_threads
   );
 }
@@ -262,7 +254,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type, 
       residual_layer_number, 
       dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads);
 
   case LayerDetails::LayerType::Gru:
@@ -276,7 +268,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type,
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads);
 
   case LayerDetails::LayerType::FF:
@@ -290,7 +282,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       optimiser_type, 
       residual_layer_number,
       dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, _weight_decay),
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads);
 
   default:
@@ -298,7 +290,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, double weight_decay, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -317,7 +309,6 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     output_layer_details,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer, 
-    weight_decay, 
     optimiser_type, 
     number_of_threads);
 }

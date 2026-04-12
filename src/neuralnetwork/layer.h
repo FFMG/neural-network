@@ -826,10 +826,10 @@ protected:
     unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
     bool has_bias,
-    double weight_decay,
+    const std::vector<double>& weight_decays,
     ResidualProjector* residual_projector,
     int number_of_threads
-  ) noexcept :
+  ) :
     _layer_index(layer_index),
     _layer_type(layer_type),
     _activation(activation_method),
@@ -838,6 +838,7 @@ protected:
     _number_input_neurons(number_input_neurons),
     _number_output_neurons(number_output_neurons),
     _neurons(neurons),
+    _w_decays(weight_decays),
     _residual_projector(residual_projector),
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _weights_cache_dirty(true),
@@ -845,9 +846,14 @@ protected:
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (number_input_neurons > 0) 
+    const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
+    if (_w_decays.size() != num_weights)
     {
-      const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
+      Logger::panic("The number of weight decays does not match the number of weights.");
+    }
+
+    if (number_input_neurons > 0)
+    {
       _w_values.resize(num_weights);
       auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
       for (size_t i = 0; i < number_input_neurons; ++i) {
@@ -860,9 +866,8 @@ protected:
       _w_m1.assign(num_weights, 0.0);
       _w_m2.assign(num_weights, 0.0);
       _w_timesteps.assign(num_weights, 0);
-      _w_decays.assign(num_weights, weight_decay);
     }
-    if (has_bias) 
+    if (has_bias)
     {
       _b_values = _activation.weight_initialization(number_output_neurons, 1);
       _b_grads.assign(number_output_neurons, 0.0);
@@ -872,6 +877,37 @@ protected:
       _b_timesteps.assign(number_output_neurons, 0);
       _b_decays.assign(number_output_neurons, 0.0);
     }
+  }
+
+  Layer(
+    unsigned layer_index,
+    LayerType layer_type,
+    const activation& activation_method,
+    OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    bool has_bias,
+    double weight_decay,
+    ResidualProjector* residual_projector,
+    int number_of_threads
+  ) : Layer(
+    layer_index,
+    layer_type,
+    activation_method,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    has_bias,
+    std::vector<double>(static_cast<size_t>(number_input_neurons) * number_output_neurons, weight_decay),
+    residual_projector,
+    number_of_threads
+  )
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   }
 
   Layer(

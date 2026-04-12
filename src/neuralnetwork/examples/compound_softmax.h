@@ -34,16 +34,16 @@ private:
     std::vector<unsigned> topology = { 1, 16, 16, 6 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0),
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0)
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5),
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5)
     };
 
     // Define compound output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5),
       // Second output: Softmax (5-bucket classification)
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 })
+      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
     };
 
     auto options = NeuralNetworkOptions::create(topology)

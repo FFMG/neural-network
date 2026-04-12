@@ -10,7 +10,6 @@ FFOutputLayer::FFOutputLayer(
   const std::vector<OutputLayerDetails>& output_layer_details,
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
-  double weight_decay,
   const OptimiserType& optimiser_type,
   int number_of_threads
 ) :
@@ -18,7 +17,7 @@ FFOutputLayer::FFOutputLayer(
     layer_index,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
-    weight_decay,
+    create_weight_decays(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
     Layer::LayerType::Output,
     output_layer_details.front().get_activation(),
     optimiser_type,
@@ -29,6 +28,45 @@ FFOutputLayer::FFOutputLayer(
   OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+}
+
+std::vector<double> FFOutputLayer::create_weight_decays(
+  unsigned num_inputs,
+  unsigned num_neurons_in_this_layer,
+  const std::vector<OutputLayerDetails>& output_layer_details)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  unsigned total_neurons = 0;
+  for (const auto& detail : output_layer_details)
+  {
+    total_neurons += detail.get_size();
+  }
+
+  if (total_neurons != num_neurons_in_this_layer)
+  {
+    Logger::panic("The total number of neurons in output_layer_details does not match num_neurons_in_this_layer.");
+  }
+
+  const size_t num_weights = static_cast<size_t>(num_inputs) * num_neurons_in_this_layer;
+  std::vector<double> weight_decays(num_weights);
+
+  unsigned current_output_neuron = 0;
+  for (const auto& detail : output_layer_details)
+  {
+    const double decay = detail.get_weight_decay();
+    const unsigned section_size = detail.get_size();
+    for (unsigned s = 0; s < section_size; ++s)
+    {
+      const unsigned j = current_output_neuron + s;
+      for (unsigned i = 0; i < num_inputs; ++i)
+      {
+        weight_decays[i * num_neurons_in_this_layer + j] = decay;
+      }
+    }
+    current_output_neuron += section_size;
+  }
+
+  return weight_decays;
 }
 
 FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :

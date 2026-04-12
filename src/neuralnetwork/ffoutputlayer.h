@@ -21,7 +21,6 @@ public:
     const std::vector<OutputLayerDetails>& output_layer_details,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
-    double weight_decay,
     const OptimiserType& optimiser_type, 
     int number_of_threads);
 
@@ -101,6 +100,11 @@ protected:
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
     bool is_training) const;
+
+  static std::vector<double> create_weight_decays(
+    unsigned num_inputs,
+    unsigned num_neurons_in_this_layer,
+    const std::vector<OutputLayerDetails>& output_layer_details);
 
 private:
   void run_output_gradients(

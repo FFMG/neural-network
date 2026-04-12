@@ -32,16 +32,16 @@ private:
     std::vector<unsigned> topology = { 1, 8, 8, 2 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0),
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0)
+      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5),
+      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5)
     };
 
     // Define multiple output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5),
       // Second output: Tanh (Regression: Scaled value)
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 })
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
