@@ -967,6 +967,7 @@ void NeuralNetwork::log_training_info(
   {
     output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
       tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+      tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
       tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
       tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
       tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
@@ -975,8 +976,8 @@ void NeuralNetwork::log_training_info(
       tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
       tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
       tab, tab, tab, tab, "lambda\n",
-      tab, tab, tab, tab, tab, "direction           : ", details.get_error_evaluation_config().direction_lambda(), "\n",
-      tab, tab, tab, tab, tab, "cross-entropy       : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+      tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+      tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
       tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false"); 
     ++output_layer_index;
     if (output_layer_index < output_layer_details.size())
