@@ -3,6 +3,7 @@
 #include <cmath>
 #include <random>
 #include <utility>
+#include <atomic>
 
 #include "logger.h"
 
@@ -192,6 +193,8 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // Find max for numerical stability
   double max_val = *begin;
+  // Also find min_val to detect extreme range for warning
+  double min_val = *begin; 
   for (const double* it = begin + 1; it != end; ++it)
   {
     if (std::isnan(*it))
@@ -207,7 +210,26 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
     {
       max_val = *it;
     }
+    if (*it < min_val) 
+    {
+      min_val = *it;
+    }
   }
+
+  // --- Add warning for extreme logit range ---
+  const double logit_range = max_val - min_val;
+  const double EXTREME_LOGIT_THRESHOLD = 30.0; // Define a threshold for "extreme" range
+  if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  {
+    static std::atomic<size_t> warning_counter{ 0 };
+    if (warning_counter.fetch_add(1) % 1000 == 0)
+    {
+      Logger::warning("Softmax logits in output layer exhibit extreme range (max-min diff: ", logit_range,
+        "). This indicates potential 'logit explosion' which can lead to overconfident predictions and training instability. "
+        "Consider increasing 'weight_decay', reducing 'learning_rate', or adjusting 'clip_threshold' in NeuralNetworkOptions to stabilize training. (Warning suppressed for next 1000 occurrences)");
+    }
+  }
+  // --- End warning addition ---
 
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;

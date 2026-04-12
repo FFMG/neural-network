@@ -586,17 +586,24 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
 
+  double update_sum = 0.0;
   for (unsigned j = 0; j < num_outputs; ++j)
   {
     for (unsigned i = 0; i < num_inputs; ++i)
     {
       unsigned weight_index = i * num_outputs + j;
+      double w_before = this->_w_values[weight_index];
       apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+      double w_after = this->_w_values[weight_index];
+      update_sum += std::abs(w_after - w_before);
     }
 
     if (has_bias())
     {
+      double b_before = this->_b_values[j];
       apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
+      double b_after = this->_b_values[j];
+      update_sum += std::abs(b_after - b_before);
     }
   }
 }
