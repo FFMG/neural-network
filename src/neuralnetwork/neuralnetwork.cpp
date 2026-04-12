@@ -30,7 +30,7 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }))
+    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -949,16 +949,12 @@ void NeuralNetwork::log_training_info(
   for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
   {
     const auto& this_hl = hl[hl_index];
-    Logger::info(tab,
-      "  [", hl_index, "] Type    : ", this_hl.get_type_string());
-    Logger::info(tab,
-      "    Size                   : ", this_hl.get_size());
-    Logger::info(tab,
-      "    Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()));
-    Logger::info(tab,
-      "    Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha());
-    Logger::info(tab,
-      "    Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout());
+    Logger::info(tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
+                 tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
+                 tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
+                 tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
+                 tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
+                 tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
   }
 
   // Output
@@ -991,7 +987,6 @@ void NeuralNetwork::log_training_info(
   Logger::info(output_layer_details_string);
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
-  Logger::info(tab, "Weight Decay               : ", std::fixed, std::setprecision(5), _options.weight_decay());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
   Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));

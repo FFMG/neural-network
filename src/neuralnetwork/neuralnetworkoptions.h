@@ -37,7 +37,6 @@ private:
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
     _shuffle_bptt_batches(true),
-    _weight_decay(0.0),
     _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
@@ -51,10 +50,10 @@ private:
 
     for (int i = 1; i < topology.size() - 1; ++i)
     {
-      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0));
+      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0, 0.05));
     }
 
-    _output_layer_details.push_back(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }));
+    _output_layer_details.push_back(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05));
   }
 
 public:
@@ -98,7 +97,6 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
-      _weight_decay = nno._weight_decay;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
@@ -133,7 +131,6 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
-      _weight_decay = nno._weight_decay;
       _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
@@ -151,7 +148,6 @@ public:
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
       nno._shuffle_bptt_batches = true;
-      nno._weight_decay = 0.0;
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
@@ -174,7 +170,7 @@ public:
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -277,12 +273,6 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_warmup_start = learning_rate_warmup_start;
     _learning_rate_warmup_target = learning_rate_warmup_target;
-    return *this;
-  }
-  NeuralNetworkOptions& with_weight_decay(double weight_decay)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _weight_decay = weight_decay;
     return *this;
   }
   NeuralNetworkOptions& with_final_error_calculation_types(const std::vector<ErrorCalculation::type>& final_error_calculation_types)
@@ -398,10 +388,6 @@ public:
     {
       Logger::panic("The learning rate warm up target must range between 0.0 and 1.0.");
     }
-    if (_weight_decay < 0)
-    {
-      Logger::panic("The weight decay cannot be -ve!");
-    }
     if (update_training_monitor_percent() < 0.0 || update_training_monitor_percent() > 1.0)
     {
       Logger::panic("The update training monitor percent must be between 0.0 and 1.0!");
@@ -440,7 +426,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }))
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
@@ -453,7 +439,6 @@ public:
       .with_clip_threshold(clip_threshold)
       .with_shuffle_training_data(true)
       .with_shuffle_bptt_batches(true)
-      .with_weight_decay(0.0)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(0)
       .with_update_training_monitor_percent(0.0);
@@ -480,7 +465,6 @@ public:
   [[nodiscard]] inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
   [[nodiscard]] inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
   [[nodiscard]] inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
-  [[nodiscard]] inline double weight_decay() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _weight_decay; }
   [[nodiscard]] inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
@@ -508,7 +492,6 @@ private:
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
   bool _shuffle_bptt_batches;
-  double _weight_decay;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;
   int _bptt_max_ticks;

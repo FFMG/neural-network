@@ -19,11 +19,12 @@ public:
   };
 
 public:
-  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation, double dropout) noexcept :
+  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation, double dropout, double weight_decay) noexcept :
     _layer_type(layer_type),
     _layer_size(layer_size),
     _activation(activation),
-    _dropout(dropout)
+    _dropout(dropout),
+    _weight_decay(weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -32,7 +33,8 @@ public:
     _layer_type(src._layer_type),
     _layer_size(src._layer_size),
     _activation(src._activation),
-    _dropout(src._dropout)
+    _dropout(src._dropout),
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -41,7 +43,8 @@ public:
     _layer_type(src._layer_type),
     _layer_size(src._layer_size),
     _activation(std::move(src._activation)),
-    _dropout(src._dropout)
+    _dropout(src._dropout),
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_size = 0;
@@ -56,6 +59,7 @@ public:
       _layer_size = src._layer_size;
       _activation = src._activation;
       _dropout = src._dropout;
+      _weight_decay = src._weight_decay;
     }
     return *this;
   }
@@ -69,10 +73,12 @@ public:
       _layer_size = src._layer_size;
       _activation = std::move(src._activation);
       _dropout = src._dropout;
+      _weight_decay = src._weight_decay;
 
       src._layer_type = LayerType::None;
       src._layer_size = 0;
       src._dropout = 0.0;
+      src._weight_decay = 0;
     }
     return *this;
   }
@@ -81,17 +87,17 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
-  inline const LayerType& get_type() const noexcept
+  [[nodiscard]] inline const LayerType& get_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _layer_type;
   }
-  inline unsigned get_size() const noexcept
+  [[nodiscard]] inline unsigned get_size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _layer_size;
   }
-  inline std::string get_type_string() const 
+  [[nodiscard]] inline std::string get_type_string() const
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     switch (_layer_type)
@@ -113,7 +119,7 @@ public:
     }
   }
 
-  inline static LayerType type_from_string(const std::string& str)
+  [[nodiscard]] inline static LayerType type_from_string(const std::string& str)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     std::string lower_str = str;
@@ -139,19 +145,25 @@ public:
     }
     Logger::panic("Unknown Layer type: ", str);
   }
-  inline const activation& get_activation() const noexcept
+  [[nodiscard]] inline const activation& get_activation() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _activation;
   }
-  inline double get_dropout() const noexcept
+  [[nodiscard]] inline double get_dropout() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _dropout;
+  }
+  [[nodiscard]] inline double get_weight_decay() const  noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _weight_decay;
   }
 private:
   LayerType _layer_type;
   unsigned _layer_size;
   activation _activation;
   double _dropout;
+  double _weight_decay;
 };

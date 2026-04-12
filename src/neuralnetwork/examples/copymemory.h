@@ -29,11 +29,11 @@ public:
     };
 
     std::vector<LayerDetails> hidden_layers = { 
-      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0),
-      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0)
+      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5),
+      LayerDetails(LayerDetails::LayerType::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 });
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5);
 
     const int number_of_epoch = 2000;
     const double learning_rate = 0.01;

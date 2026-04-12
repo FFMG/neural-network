@@ -18,6 +18,36 @@ FFLayer::FFLayer(
   ResidualProjector* residual_projector,
   int number_of_threads
 ) :
+  FFLayer(
+  layer_index,
+  num_neurons_in_previous_layer,
+  num_neurons_in_this_layer,
+  std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer) * num_neurons_in_this_layer, weight_decay),
+  layer_type,
+  activation_method,
+  optimiser_type,
+  residual_layer_number,
+  dropout_rate,
+  residual_projector,
+  number_of_threads
+  )
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+}
+
+FFLayer::FFLayer(
+  unsigned layer_index,
+  unsigned num_neurons_in_previous_layer,
+  unsigned num_neurons_in_this_layer,
+  const std::vector<double>& weight_decays,
+  LayerType layer_type,
+  const activation& activation_method,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
+  ResidualProjector* residual_projector,
+  int number_of_threads
+) :
   Layer(
   layer_index,
   layer_type,
@@ -28,7 +58,7 @@ FFLayer::FFLayer(
   num_neurons_in_this_layer,
   create_neurons(dropout_rate, num_neurons_in_this_layer),
   _has_bias_neuron,
-  weight_decay,
+  weight_decays,
   residual_projector,
   number_of_threads
   )

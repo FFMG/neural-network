@@ -30,8 +30,19 @@ public:
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
-    int number_of_threads
-  ) noexcept;
+    int number_of_threads);
+
+  GRURNNLayer(unsigned layer_index,
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
+    const std::vector<double>& weight_decays,
+    LayerType layer_type,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads);
 
   GRURNNLayer(
     unsigned layer_index,

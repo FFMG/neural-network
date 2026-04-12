@@ -9,20 +9,31 @@
 class OutputLayerDetails
 {
 public:
-  OutputLayerDetails(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, const EvaluationConfig& error_evaluation_config) noexcept :
+  OutputLayerDetails(
+    unsigned layer_size, 
+    const activation& activation, 
+    const ErrorCalculation::type& output_error_calculation_type, 
+    const EvaluationConfig& error_evaluation_config,
+    double weight_decay) noexcept :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),
-    _error_evaluation_config(error_evaluation_config)
+    _error_evaluation_config(error_evaluation_config),
+    _weight_decay(weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    if (weight_decay < 0)
+    {
+      Logger::panic("The weight decay cannot be -ve!");
+    }
   }
 
   OutputLayerDetails(const OutputLayerDetails& src) noexcept :
     _layer_size(src._layer_size),
     _activation(src._activation),
     _output_error_calculation_type(src._output_error_calculation_type),
-    _error_evaluation_config(src._error_evaluation_config)
+    _error_evaluation_config(src._error_evaluation_config),
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
   }
@@ -31,7 +42,8 @@ public:
     _layer_size(src._layer_size),
     _activation(std::move(src._activation)),
     _output_error_calculation_type(src._output_error_calculation_type),
-    _error_evaluation_config(std::move(src._error_evaluation_config))
+    _error_evaluation_config(std::move(src._error_evaluation_config)),
+    _weight_decay(src._weight_decay)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     src._layer_size = 0;
@@ -46,6 +58,7 @@ public:
       _activation = src._activation;
       _output_error_calculation_type = src._output_error_calculation_type;
       _error_evaluation_config = src._error_evaluation_config;
+      _weight_decay = src._weight_decay;
     }
     return *this;
   }
@@ -59,6 +72,8 @@ public:
       _activation = std::move(src._activation);
       _output_error_calculation_type = src._output_error_calculation_type;
       _error_evaluation_config = std::move(src._error_evaluation_config);
+      _weight_decay = src._weight_decay;
+      src._weight_decay = 0;
       src._layer_size = 0;
     }
     return *this;
@@ -67,8 +82,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
   }
-
-  
+    
   [[nodiscard]] inline unsigned get_size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
@@ -92,9 +106,15 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _error_evaluation_config;
   }
+  [[nodiscard]] inline double get_weight_decay() const  noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    return _weight_decay;
+  }
 private:
   unsigned _layer_size;
   activation _activation;
   ErrorCalculation::type _output_error_calculation_type;
   EvaluationConfig _error_evaluation_config;
+  double _weight_decay;
 };
