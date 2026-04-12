@@ -869,7 +869,7 @@ protected:
     }
     if (has_bias)
     {
-      _b_values = _activation.weight_initialization(number_output_neurons, 1);
+      _b_values.assign(number_output_neurons, 0.0);
       _b_grads.assign(number_output_neurons, 0.0);
       _b_velocities.assign(number_output_neurons, 0.0);
       _b_m1.assign(number_output_neurons, 0.0);
