@@ -2,8 +2,6 @@
 #include "elmanrnnlayer.h"
 #include "logger.h"
 
-constexpr bool _has_bias_neuron = true;
-
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer, 
@@ -15,7 +13,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
   ) :
   ElmanRNNLayer(
     layer_index,
@@ -28,7 +27,8 @@ ElmanRNNLayer::ElmanRNNLayer(
     residual_layer_number,
     dropout_rate,
     residual_projector,
-    number_of_threads
+    number_of_threads,
+    has_bias
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -45,7 +45,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  bool has_bias
 ) :
   Layer(
     layer_index,
@@ -56,7 +57,7 @@ ElmanRNNLayer::ElmanRNNLayer(
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     create_neurons(dropout_rate, num_neurons_in_this_layer),
-    _has_bias_neuron,
+    has_bias,
     weight_decays,
     residual_projector,
     number_of_threads
@@ -223,12 +224,6 @@ void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
   _rw_m2.assign(num_weights, 0.0);
   _rw_timesteps.assign(num_weights, 0);
   _rw_decays.assign(num_weights, weight_decay);
-}
-
-bool ElmanRNNLayer::has_bias() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _has_bias_neuron;
 }
 
 void ElmanRNNLayer::calculate_forward_feed(

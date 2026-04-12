@@ -755,6 +755,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
   int bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
   auto shuffle_bptt_batches = options_object->get_boolean("shuffle-bptt-batches", false, false);
+  auto has_bias = options_object->get_boolean("has-bias", true, true);
 
   auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
@@ -798,6 +799,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
+    .with_has_bias(has_bias)
     .build();
 }
 
@@ -1040,6 +1042,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
+  options_object->set_boolean("has-bias", options.has_bias());
 
   json.set("options", options_object);
 

@@ -25,7 +25,7 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
 
   // add the input layer
   const auto& number_of_threads = options.number_of_threads();
-  auto layer = create_input_layer(topology[0], -1, number_of_threads);
+  auto layer = create_input_layer(topology[0], -1, number_of_threads, options.has_bias());
   _layers.emplace_back(std::move(layer));
 
   const auto& optimiser_type = options.optimiser_type();
@@ -42,14 +42,14 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
     
-    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads);
+    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads, options.has_bias());
 
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
   const auto& output_layer_details = options.output_layer_details();
-  layer = create_output_layer(topology.back(), *_layers.back(), output_layer_details, optimiser_type, number_of_threads);
+  layer = create_output_layer(topology.back(), *_layers.back(), output_layer_details, optimiser_type, number_of_threads, options.has_bias());
 
   _layers.emplace_back(std::move(layer));
 }
@@ -209,7 +209,7 @@ int Layers::compute_residual_layer(int current_layer_index, int residual_layer_j
   return residual_layer_index;
 }
 
-std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return std::make_unique<FFLayer>(
@@ -223,7 +223,8 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     residual_layer_number, 
     0.0,      // no dropout for input layer
     nullptr,  // no residual projector for input
-    number_of_threads
+    number_of_threads,
+    has_bias
   );
 }
 
@@ -234,7 +235,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   int residual_layer_number, 
   double dropout_rate, 
   const LayerDetails& layer_details,
-  int number_of_threads)
+  int number_of_threads,
+  bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -255,7 +257,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       residual_layer_number, 
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads);
+      number_of_threads,
+      has_bias);
 
   case LayerDetails::LayerType::Gru:
     return std::make_unique<GRURNNLayer>(
@@ -269,7 +272,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       residual_layer_number,
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads);
+      number_of_threads,
+      has_bias);
 
   case LayerDetails::LayerType::FF:
     return std::make_unique<FFLayer>(
@@ -283,14 +287,15 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       residual_layer_number,
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads);
+      number_of_threads,
+      has_bias);
 
   default:
     Logger::panic("Unknown or unsupported layer type!");
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -310,7 +315,8 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer, 
     optimiser_type, 
-    number_of_threads);
+    number_of_threads,
+    has_bias);
 }
 
 ResidualProjector* Layers::create_residual_projector(

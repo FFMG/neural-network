@@ -22,7 +22,8 @@ public:
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     const OptimiserType& optimiser_type, 
-    int number_of_threads);
+    int number_of_threads,
+    bool has_bias);
 
   FFOutputLayer(
     unsigned layer_index,

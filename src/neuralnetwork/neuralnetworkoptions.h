@@ -40,7 +40,8 @@ private:
     _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
-    _update_training_monitor_percent(0.0)
+    _update_training_monitor_percent(0.0),
+    _has_bias(true)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -101,6 +102,7 @@ public:
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
       _final_error_calculation_types = nno._final_error_calculation_types;
+      _has_bias = nno._has_bias;
     }
     return *this;
   }
@@ -135,6 +137,7 @@ public:
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
+      _has_bias = nno._has_bias;
       
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -151,7 +154,14 @@ public:
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
+      nno._has_bias = true;
     }
+    return *this;
+  }
+  NeuralNetworkOptions& with_has_bias(bool has_bias)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _has_bias = has_bias;
     return *this;
   }
   NeuralNetworkOptions& with_output_layer_details(const OutputLayerDetails& output_layer_details)
@@ -469,6 +479,7 @@ public:
   [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
   [[nodiscard]] inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
+  [[nodiscard]] inline bool has_bias() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _has_bias; }
 
 private:
   std::vector<unsigned> _topology;
@@ -496,4 +507,5 @@ private:
   bool _enable_bptt;
   int _bptt_max_ticks;
   double _update_training_monitor_percent;
+  bool _has_bias;
 };

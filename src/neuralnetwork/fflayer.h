@@ -29,7 +29,8 @@ public:
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
-    int number_of_threads);
+    int number_of_threads,
+    bool has_bias);
 
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -41,7 +42,8 @@ public:
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
-    int number_of_threads);
+    int number_of_threads,
+    bool has_bias);
 
   FFLayer(
     unsigned layer_index,
@@ -98,8 +100,6 @@ public:
     const std::vector<HiddenStates> &batch_hidden_states,
     size_t batch_size,
     int bptt_max_ticks) const override;
-
-  bool has_bias() const noexcept override;
   
   Layer* clone() const override;
 

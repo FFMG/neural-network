@@ -29,7 +29,8 @@ public:
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
-    int number_of_threads);
+    int number_of_threads,
+    bool has_bias);
 
   ElmanRNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -41,7 +42,8 @@ public:
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
-    int number_of_threads);
+    int number_of_threads,
+    bool has_bias);
 
   ElmanRNNLayer(
     unsigned layer_index,
@@ -111,8 +113,6 @@ public:
     int bptt_max_ticks) const override;
 
   double get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const;
-
-  bool has_bias() const noexcept override;
 
   Layer* clone() const override;
 
