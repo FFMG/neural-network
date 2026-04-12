@@ -11,6 +11,7 @@
 #include "./examples/copymemory.h"
 #include "./examples/multi_output.h"
 #include "./examples/multi_output_gru.h"
+#include "./examples/repro_issue.h"
 #include "./examples/residualxor.h"
 #include "./examples/spiral.h"
 #include "./examples/syntheticsentiment.h"
@@ -49,13 +50,18 @@ int main()
 
   // Synthetic Sentiment
   ExampleSyntheticSentiment::SyntheticSentiment(log_level);
+
   // Compound Softmax (Sigmoid + 5-bucket Softmax)
   ExampleCompoundSoftmax::CompoundSoftmax(log_level);
 
   // Multi-Output
   ExampleMultiOutput::MultiOutput(log_level);
+
   // Multi-Output GRU
   ExampleMultiOutputGru::MultiOutputGru(log_level);
+
+  // Repro Issue (TANH x2 + SOFTMAX x5)
+  ExampleReproIssue::ReproIssue(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 
