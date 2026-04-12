@@ -36,7 +36,7 @@ private:
       // First output: Regression (2 Tanh neurons, MSE)
       OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0001),
       // Second output: Softmax (5 classes, Cross-Entropy)
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05)
+      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
