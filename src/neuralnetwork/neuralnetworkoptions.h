@@ -251,22 +251,6 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _optimiser_type = optimiser_type;
-    // Update any output layer details that don't have a specific optimizer set
-    for (auto& detail : _output_layer_details)
-    {
-      if (detail.get_optimiser_type() == OptimiserType::None)
-      {
-        // Since OutputLayerDetails is immutable-ish (it has no setter), we need to replace it.
-        detail = OutputLayerDetails(
-          detail.get_size(),
-          detail.get_activation(),
-          detail.get_output_error_calculation_type(),
-          detail.get_error_evaluation_config(),
-          detail.get_weight_decay(),
-          _optimiser_type
-        );
-      }
-    }
     return *this;
   }
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
@@ -355,6 +339,23 @@ public:
       if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
+      }
+    }
+
+    // Update any output layer details that don't have a specific optimizer set
+    for (auto& detail : _output_layer_details)
+    {
+      if (detail.get_optimiser_type() == OptimiserType::None)
+      {
+        // Since OutputLayerDetails is immutable-ish (it has no setter), we need to replace it.
+        detail = OutputLayerDetails(
+          detail.get_size(),
+          detail.get_activation(),
+          detail.get_output_error_calculation_type(),
+          detail.get_error_evaluation_config(),
+          detail.get_weight_decay(),
+          _optimiser_type
+        );
       }
     }
 
