@@ -233,8 +233,12 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
 
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
-  // TODO validate the input size matches out topology
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (inputs.size() != get_topology().front())
+  {
+    Logger::error("The input size, '", inputs.size(),"' does not match the topology!");
+    return {};
+  }
   return _layers.think(_options, inputs);
 }
 
