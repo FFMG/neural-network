@@ -1255,7 +1255,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
   layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
-  
+  layer_object->set_number("layer-type", (int)layer.get_layer_type());
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_floats("w-values", layer.get_w_values());
@@ -1336,8 +1336,8 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
     output_layer_object->set_float("activation-alpha", output_layer_detail.get_activation().get_alpha());
     output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer_detail.get_output_error_calculation_type()).c_str());
     add_error_evaluation_config(output_layer_object, output_layer_detail.get_error_evaluation_config());
-    output_layer_array->add(output_layer_object);
     output_layer_object->set("weight-decay", output_layer_detail.get_weight_decay());
+    output_layer_array->add(output_layer_object);
     delete output_layer_object;
   }
   return output_layer_array;
