@@ -576,6 +576,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
     auto output_alpha = output_layer_object->get_float("activation-alpha");
     const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
     const auto output_activation_method = activation(output_method, output_alpha);
+    const auto optimiser_type = string_to_optimiser_type(output_layer_object->try_get_string("optimiser-type", false));
 
     const auto error_evaluation_config = get_error_evaluation_config(output_layer_object);
     details.push_back(OutputLayerDetails(
@@ -583,7 +584,8 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
       output_activation_method, 
       output_error_calculation_type, 
       error_evaluation_config,
-      output_layer_object->get<double>("weight-decay")
+      output_layer_object->get<double>("weight-decay"),
+      optimiser_type
     ));
   }
   return details;
@@ -1337,6 +1339,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
     output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer_detail.get_output_error_calculation_type()).c_str());
     add_error_evaluation_config(output_layer_object, output_layer_detail.get_error_evaluation_config());
     output_layer_object->set("weight-decay", output_layer_detail.get_weight_decay());
+    output_layer_object->set("optimiser-type", optimiser_type_to_string(output_layer_detail.get_optimiser_type()).c_str());
     output_layer_array->add(output_layer_object);
     delete output_layer_object;
   }
