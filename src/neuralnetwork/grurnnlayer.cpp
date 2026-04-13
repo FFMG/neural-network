@@ -1430,13 +1430,13 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
       unsigned idx = i * num_outputs + j;
 
       // A. Candidate State (Uses Base Layer storage)
-      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale);
+      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale, _optimiser_type);
 
       // B. Update Gate (z)
-      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale);
+      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale, _optimiser_type);
 
       // C. Reset Gate (r)
-      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale);
+      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale, _optimiser_type);
     }
 
     // 2. Recurrent Weights (Hidden-to-Hidden)
@@ -1446,26 +1446,26 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
        unsigned rec_idx = k * num_outputs + j;
 
        // A. Candidate State
-       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale);
+       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
 
        // B. Update Gate (z)
-       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale);
+       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
 
        // C. Reset Gate (r)
-       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale);
+       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
     }
 
     // 3. Bias Weights
     if (has_bias())
     {
        // A. Candidate State
-       apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale);
+       apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale, _optimiser_type);
 
        // B. Update Gate (z)
-       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j], learning_rate, clipping_scale);
+       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j], learning_rate, clipping_scale, _optimiser_type);
 
        // C. Reset Gate (r)
-       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j], learning_rate, clipping_scale);
+       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j], learning_rate, clipping_scale, _optimiser_type);
     }
   }
 }

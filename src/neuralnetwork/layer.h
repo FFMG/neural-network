@@ -348,13 +348,14 @@ public:
     const std::vector<double>& decays,
     double learning_rate,
     double clipping_scale,
-    bool is_bias)
+    bool is_bias,
+    OptimiserType optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     const size_t n = values.size();
     if (n == 0) return;
 
-    switch (_optimiser_type)
+    switch (optimiser_type)
     {
     case OptimiserType::None:
       for (size_t i = 0; i < n; ++i)
@@ -419,7 +420,7 @@ public:
           double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
 
           double current_weight = values[i];
-          if (_optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
+          if (optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
           {
             current_weight *= (1.0 - learning_rate * decays[i]);
           }
@@ -442,7 +443,7 @@ public:
           double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
 
           double current_weight = values[i];
-          if (_optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
+          if (optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
           {
             current_weight *= (1.0 - learning_rate * decays[i]);
           }
@@ -492,7 +493,7 @@ public:
           double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
 
           double current_weight = values[i];
-          if (_optimiser_type == OptimiserType::NadamW && !is_bias && i < decays.size())
+          if (optimiser_type == OptimiserType::NadamW && !is_bias && i < decays.size())
           {
             current_weight *= (1.0 - learning_rate * decays[i]);
           }
@@ -517,7 +518,7 @@ public:
           double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
 
           double current_weight = values[i];
-          if (_optimiser_type == OptimiserType::NadamW && !is_bias && i < decays.size())
+          if (optimiser_type == OptimiserType::NadamW && !is_bias && i < decays.size())
           {
             current_weight *= (1.0 - learning_rate * decays[i]);
           }
@@ -529,7 +530,7 @@ public:
     break;
 
     default:
-      Logger::panic("Unknown optimizer type:", (int)_optimiser_type);
+      Logger::panic("Unknown optimizer type:", (int)optimiser_type);
     }
 
     _weights_cache_dirty = true;
@@ -547,7 +548,8 @@ public:
     unsigned idx,
     double gradient,
     double learning_rate,
-    double clipping_scale)
+    double clipping_scale,
+    OptimiserType optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 
@@ -581,7 +583,7 @@ public:
         });
     }
 
-    switch (_optimiser_type)
+    switch (optimiser_type)
     {
     case OptimiserType::None:
       values[idx] -= learning_rate * final_gradient;
@@ -622,7 +624,7 @@ public:
       double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
 
       double current_weight = values[idx];
-      if (_optimiser_type == OptimiserType::AdamW && !is_bias_index(values) && decays.size() > idx)
+      if (optimiser_type == OptimiserType::AdamW && !is_bias_index(values) && decays.size() > idx)
       {
         current_weight *= (1.0 - learning_rate * decays[idx]);
       }
@@ -652,7 +654,7 @@ public:
       double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
 
       double current_weight = values[idx];
-      if (_optimiser_type == OptimiserType::NadamW && !is_bias_index(values) && decays.size() > idx)
+      if (optimiser_type == OptimiserType::NadamW && !is_bias_index(values) && decays.size() > idx)
       {
         current_weight *= (1.0 - learning_rate * decays[idx]);
       }
@@ -663,23 +665,23 @@ public:
     break;
 
     default:
-      Logger::panic("Unknown optimizer type:", (int)_optimiser_type);
+      Logger::panic("Unknown optimizer type:", (int)optimiser_type);
     }
 
     _weights_cache_dirty = true;
     _bias_weights_cache_dirty = true;
   }
 
-  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale)
+  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale, OptimiserType optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (is_bias)
     {
-      apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, weight_index, gradient, learning_rate, clipping_scale);
+      apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, weight_index, gradient, learning_rate, clipping_scale, optimiser_type);
     }
     else
     {
-      apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, gradient, learning_rate, clipping_scale);
+      apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, gradient, learning_rate, clipping_scale, optimiser_type);
     }
   }
 

@@ -525,3 +525,52 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
   }
   return errors;
 }
+
+void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+
+  // If we have no output layer details, we can't do much.
+  if (output_layer_details().empty())
+  {
+    FFLayer::apply_stored_gradients(learning_rate, clipping_scale);
+    return;
+  }
+
+  // We need to apply the gradients for each head separately.
+  // This is because each head can have its own optimizer.
+  unsigned current_output_neuron = 0;
+  const unsigned num_inputs = get_number_input_neurons();
+  const unsigned num_outputs = get_number_output_neurons();
+
+  for (const auto& detail : output_layer_details())
+  {
+    const unsigned section_size = detail.get_size();
+    const OptimiserType optimiser_type = detail.get_optimiser_type();
+
+    // 1. Update weights for this head
+    for (unsigned i = 0; i < num_inputs; ++i)
+    {
+      for (unsigned s = 0; s < section_size; ++s)
+      {
+        const unsigned j = current_output_neuron + s;
+        const unsigned weight_index = i * num_outputs + j;
+        
+        // Use the Layer base class method, passing the head-specific optimizer
+        Layer::apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, optimiser_type);
+      }
+    }
+
+    // 2. Update biases for this head (if they exist)
+    if (has_bias())
+    {
+      for (unsigned s = 0; s < section_size; ++s)
+      {
+        const unsigned j = current_output_neuron + s;
+        Layer::apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale, optimiser_type);
+      }
+    }
+
+    current_output_neuron += section_size;
+  }
+}

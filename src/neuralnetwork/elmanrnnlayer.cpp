@@ -724,20 +724,20 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
     for (unsigned i = 0; i < num_inputs; ++i)
     {
       unsigned weight_index = i * num_outputs + j;
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type);
     }
 
     // Apply bias weights
     if (has_bias())
     {
-      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
+      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale, _optimiser_type);
     }
         
     // Apply recurrent weights
     for (unsigned k = 0; k < num_outputs; ++k)
     {
       const unsigned idx = k * num_outputs + j;
-      apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, idx, _rw_grads[idx], learning_rate, clipping_scale);
+      apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, idx, _rw_grads[idx], learning_rate, clipping_scale, _optimiser_type);
     }
   }
 }
