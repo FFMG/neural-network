@@ -5,6 +5,7 @@
 #include "activation.h"
 #include "errorcalculation.h"
 #include "evaluationconfig.h"
+#include "optimiser.h"
 
 class OutputLayerDetails
 {
@@ -14,12 +15,14 @@ public:
     const activation& activation, 
     const ErrorCalculation::type& output_error_calculation_type, 
     const EvaluationConfig& error_evaluation_config,
-    double weight_decay) noexcept :
+    double weight_decay,
+    OptimiserType optimiser_type = OptimiserType::None) noexcept :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),
     _error_evaluation_config(error_evaluation_config),
-    _weight_decay(weight_decay)
+    _weight_decay(weight_decay),
+    _optimiser_type(optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     if (weight_decay < 0)
@@ -33,7 +36,8 @@ public:
     _activation(src._activation),
     _output_error_calculation_type(src._output_error_calculation_type),
     _error_evaluation_config(src._error_evaluation_config),
-    _weight_decay(src._weight_decay)
+    _weight_decay(src._weight_decay),
+    _optimiser_type(src._optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
   }
@@ -43,7 +47,8 @@ public:
     _activation(std::move(src._activation)),
     _output_error_calculation_type(src._output_error_calculation_type),
     _error_evaluation_config(std::move(src._error_evaluation_config)),
-    _weight_decay(src._weight_decay)
+    _weight_decay(src._weight_decay),
+    _optimiser_type(src._optimiser_type)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     src._layer_size = 0;
@@ -59,6 +64,7 @@ public:
       _output_error_calculation_type = src._output_error_calculation_type;
       _error_evaluation_config = src._error_evaluation_config;
       _weight_decay = src._weight_decay;
+      _optimiser_type = src._optimiser_type;
     }
     return *this;
   }
@@ -73,6 +79,7 @@ public:
       _output_error_calculation_type = src._output_error_calculation_type;
       _error_evaluation_config = std::move(src._error_evaluation_config);
       _weight_decay = src._weight_decay;
+      _optimiser_type = src._optimiser_type;
       src._weight_decay = 0;
       src._layer_size = 0;
     }
@@ -111,10 +118,16 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _weight_decay;
   }
+  [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    return _optimiser_type;
+  }
 private:
   unsigned _layer_size;
   activation _activation;
   ErrorCalculation::type _output_error_calculation_type;
   EvaluationConfig _error_evaluation_config;
   double _weight_decay;
+  OptimiserType _optimiser_type;
 };

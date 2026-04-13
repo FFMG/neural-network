@@ -618,7 +618,7 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
     {
       unsigned weight_index = i * num_outputs + j;
       double w_before = this->_w_values[weight_index];
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale);
+      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type);
       double w_after = this->_w_values[weight_index];
       update_sum += std::abs(w_after - w_before);
     }
@@ -626,7 +626,7 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
     if (has_bias())
     {
       double b_before = this->_b_values[j];
-      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale);
+      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale, _optimiser_type);
       double b_after = this->_b_values[j];
       update_sum += std::abs(b_after - b_before);
     }

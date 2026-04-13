@@ -180,7 +180,7 @@ public:
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, _optimiser_type));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -251,6 +251,22 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _optimiser_type = optimiser_type;
+    // Update any output layer details that don't have a specific optimizer set
+    for (auto& detail : _output_layer_details)
+    {
+      if (detail.get_optimiser_type() == OptimiserType::None)
+      {
+        // Since OutputLayerDetails is immutable-ish (it has no setter), we need to replace it.
+        detail = OutputLayerDetails(
+          detail.get_size(),
+          detail.get_activation(),
+          detail.get_output_error_calculation_type(),
+          detail.get_error_evaluation_config(),
+          detail.get_weight_decay(),
+          _optimiser_type
+        );
+      }
+    }
     return *this;
   }
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
