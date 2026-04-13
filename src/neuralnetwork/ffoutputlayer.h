@@ -1,12 +1,4 @@
 #pragma once
-#ifndef VALIDATE_DATA
-  #if !defined(NDEBUG)
-    #define VALIDATE_DATA 1
-  #else
-    #define VALIDATE_DATA 0
-  #endif
-#endif
-
 #include "errorcalculation.h"
 #include "fflayer.h"
 #include "outputlayer.h"
