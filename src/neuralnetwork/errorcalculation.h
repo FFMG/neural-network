@@ -34,7 +34,7 @@ public:
     prediction_coverage
   };
 public:
-  inline static std::string type_to_string(const ErrorCalculation::type& type)
+  [[nodiscard]] inline static std::string type_to_string(const ErrorCalculation::type& type)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     switch (type)
@@ -75,7 +75,7 @@ public:
     Logger::panic("Unknown activation type!");
   }
 
-  inline static type string_to_type(const std::string& str)
+  [[nodiscard]] inline static type string_to_type(const std::string& str)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     std::string lower_str = str;
@@ -150,7 +150,7 @@ public:
 
   }
 
-  static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method& activation_method )
+  [[nodiscard]] static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method& activation_method )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
