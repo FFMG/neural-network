@@ -1,11 +1,4 @@
 #pragma once
-#ifndef VALIDATE_DATA
-  #if !defined(NDEBUG)
-    #define VALIDATE_DATA 1
-  #else
-    #define VALIDATE_DATA 0
-  #endif
-#endif
 #include "hiddenstate.h"
 #include "weightparam.h"
 #include "./libraries/instrumentor.h"
