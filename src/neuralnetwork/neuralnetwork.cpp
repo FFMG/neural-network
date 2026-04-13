@@ -967,6 +967,7 @@ void NeuralNetwork::log_training_info(
   {
     output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
       tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+      tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
       tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
       tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
       tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
