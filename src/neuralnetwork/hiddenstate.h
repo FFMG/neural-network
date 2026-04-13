@@ -2,7 +2,6 @@
 #include "./libraries/instrumentor.h"
 
 #include <vector>
-#include <cassert>
 
 class HiddenState
 {
@@ -68,7 +67,10 @@ public:
     {
       MYODDWEB_PROFILE_FUNCTION("HiddenState");
 #if VALIDATE_DATA == 1
-      assert(neuron_index < _pre_activation_sums.size());
+      if (neuron_index >= _pre_activation_sums.size())
+      {
+        Logger::panic("The neuron index is out of bound for activation sum value!");
+      }
 #endif
       return _pre_activation_sums[neuron_index];
     }
@@ -83,7 +85,10 @@ public:
     {
       MYODDWEB_PROFILE_FUNCTION("HiddenState");
 #if VALIDATE_DATA == 1
-      assert(neuron_index < _hidden_state_values.size());
+      if (neuron_index >= _hidden_state_values.size())
+      {
+        Logger::panic("The neuron index is out of bound for hidden state value!");
+      }
 #endif
       return _hidden_state_values[neuron_index];
     }
