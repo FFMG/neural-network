@@ -92,6 +92,8 @@ public:
     const std::vector<std::vector<double>>& checking_outputs
   ) const  override;
 
+  void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
 protected:
   virtual void run_post_gemm(
     const size_t start,
