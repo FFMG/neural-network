@@ -579,6 +579,7 @@ activation::method activation::string_to_method(const std::string& str)
 
 std::string activation::method_to_string(method m)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (m)
   {
   case method::linear:
