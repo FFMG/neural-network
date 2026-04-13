@@ -1,16 +1,19 @@
 #include <chrono>
 #include <memory>
 
+#include "./libraries/instrumentor.h"
 #include "logger.h"
 #include "neuralnetworkserializer.h"
 #include "optimiser.h"
 
 NeuralNetworkSerializer::NeuralNetworkSerializer()
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
 }
 
 NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   //  any errors will not throw, just return null
   TinyJSON::parse_options options_parse = {};
   options_parse.throw_exception = false;
@@ -72,6 +75,7 @@ Layers NeuralNetworkSerializer::create_layers(
   const TinyJSON::TJValue& json
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   std::vector<std::unique_ptr<Layer>> layers = {};
   auto number_of_layers = get_number_of_layers(json);
   if(number_of_layers <= 2)
@@ -139,6 +143,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   int number_of_threads
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
@@ -232,6 +237,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   int number_of_threads
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
@@ -417,6 +423,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   int number_of_threads
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
@@ -495,6 +502,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   const std::vector<OutputLayerDetails>& output_layer_details
 )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
@@ -552,6 +560,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
 
 std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_details(const TinyJSON::TJValueObject& options_object)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto* output_layer_array = static_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("output-layer-details"));
   if (nullptr == output_layer_array)
   {
@@ -593,6 +602,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
 
 EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const TinyJSON::TJValueObject* parent)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   if (nullptr == parent)
   {
     Logger::panic("Missing Rules `error-evaluation-config`.");
@@ -617,6 +627,7 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
 
 std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto* hidden_layers_array = static_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("hidden-layers"));
   if (nullptr == hidden_layers_array)
   {
@@ -649,6 +660,7 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
 
 ResidualProjector* NeuralNetworkSerializer::get_residual_projector(const TinyJSON::TJValueObject& layer_object)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto* residual_projector_object = static_cast<const TinyJSON::TJValueObject*>(layer_object.try_get_value("residual-projector"));
   if (nullptr == residual_projector_object)
   {
@@ -680,6 +692,7 @@ ResidualProjector* NeuralNetworkSerializer::get_residual_projector(const TinyJSO
 
 void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& path)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
   add_basic(*tj);
@@ -697,6 +710,7 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
 
 NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJSON::TJValue& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto default_option = NeuralNetworkOptions::create({ 1,1 }).build();
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if (nullptr == object)
@@ -807,6 +821,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
 std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   std::vector<std::map<ErrorCalculation::type, double>> errors;
   auto tj_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if (nullptr == tj_object)
@@ -837,6 +852,7 @@ std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::g
 
 const TinyJSON::TJValueArray* NeuralNetworkSerializer::get_layers_array(const TinyJSON::TJValue& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
   if(nullptr == object)
   {
@@ -854,6 +870,7 @@ const TinyJSON::TJValueArray* NeuralNetworkSerializer::get_layers_array(const Ti
 
 const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number )
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto* array = get_layers_array(json);
   if(nullptr == array)
   {
@@ -875,6 +892,7 @@ const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(const T
 
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto* layer_object = get_layer_object(json, layer_number);
   if (nullptr == layer_object)
   {
@@ -885,6 +903,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
 std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("neurons"));
   if (nullptr == layer_array)
   {
@@ -925,6 +944,7 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
 int NeuralNetworkSerializer::get_number_of_layers(const TinyJSON::TJValue& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto* array = get_layers_array(json);
   if(nullptr == array)
   {
@@ -935,6 +955,7 @@ int NeuralNetworkSerializer::get_number_of_layers(const TinyJSON::TJValue& json)
 
 std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJSON::TJValueObject& parent)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // the array of weight
   auto weights_array = dynamic_cast<const TinyJSON::TJValueArray*>(parent.try_get_value("weight-params"));
   if(nullptr == weights_array)
@@ -978,6 +999,7 @@ void NeuralNetworkSerializer::add_weight_params(
   const std::vector<WeightParam>& weight_params,
   TinyJSON::TJValueObject& parent)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto weights_array = new TinyJSON::TJValueArray();
   for( auto weight_param : weight_params)
   {
@@ -991,6 +1013,7 @@ void NeuralNetworkSerializer::add_weight_params(
 
 TinyJSON::TJValue* NeuralNetworkSerializer::add_weight_param(const WeightParam& weight_param)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto weight_param_object = new TinyJSON::TJValueObject();
   weight_param_object->set_float("value", weight_param.get_value());
   weight_param_object->set_float("raw-gradient", weight_param.get_raw_gradient());
@@ -1004,6 +1027,7 @@ TinyJSON::TJValue* NeuralNetworkSerializer::add_weight_param(const WeightParam& 
 
 void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto options_object = new TinyJSON::TJValueObject();
   
   auto topology_list = new TinyJSON::TJValueArray();
@@ -1056,6 +1080,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
 void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto now = std::chrono::system_clock::now();
   auto now_seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
   long long current_timestamp = now_seconds.time_since_epoch().count();
@@ -1065,6 +1090,7 @@ void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
 
 TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuron)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto neuron_object = new TinyJSON::TJValueObject();
   neuron_object->set_number("index", neuron.get_index());
 
@@ -1082,6 +1108,7 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
 
 void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for (const auto& neuron : layer.get_neurons())
@@ -1138,6 +1165,7 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
 
 void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for (const auto& neuron : layer.get_neurons())
@@ -1243,6 +1271,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
 
 void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for (const auto& neuron : layer.get_neurons())
@@ -1290,6 +1319,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
 
 void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
   auto layer_array = new TinyJSON::TJValueArray();
   for(const auto& neuron : layer.get_neurons())
@@ -1329,6 +1359,7 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
 
 TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto output_layer_array = new TinyJSON::TJValueArray();
   for (const auto output_layer_detail : output_layer_details)
   {
@@ -1348,6 +1379,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
 
 void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto error_evaluation_config_object = new TinyJSON::TJValueObject();
   error_evaluation_config_object->set_float("neutral-tolerance", config.neutral_tolerance());
   error_evaluation_config_object->set_float("confidence-threshold", config.confidence_threshold());
@@ -1363,6 +1395,7 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
 
 TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails>& hidden_layers)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto hidden_layers_array = new TinyJSON::TJValueArray();
   for (const auto& hl : hidden_layers)
   {
@@ -1382,6 +1415,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
 
 TinyJSON::TJValueObject* NeuralNetworkSerializer::add_residual_projector(const ResidualProjector* residual_projector)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   if (nullptr == residual_projector)
   {
     return nullptr;
@@ -1401,6 +1435,7 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_residual_projector(const R
 
 void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layers_array = new TinyJSON::TJValueArray();
   const auto& layers = nn.get_layers();
   for(const auto& layer : layers.get_layers())
@@ -1442,6 +1477,7 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
 
 const std::vector<ErrorCalculation::type> NeuralNetworkSerializer::all_error_types()
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   return {
     ErrorCalculation::type::huber_loss,
     ErrorCalculation::type::huber_direction_loss,
@@ -1463,6 +1499,7 @@ const std::vector<ErrorCalculation::type> NeuralNetworkSerializer::all_error_typ
 
 void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto& error_types = all_error_types();
   const unsigned output_layer = 0;
   auto tj_errors_array = new TinyJSON::TJValueArray();
@@ -1482,5 +1519,6 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
 
 void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   json.set_float("final-learning-rate", nn.get_learning_rate());
 }
