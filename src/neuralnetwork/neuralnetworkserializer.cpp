@@ -1504,14 +1504,18 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   const unsigned output_layer = 0;
   auto tj_errors_array = new TinyJSON::TJValueArray();
 
-  auto metrics = nn.calculate_forecast_metrics(error_types);
+  const auto all_metrics = nn.calculate_forecast_metrics_all_layers(error_types);
 
-  auto tj_errors_object = new TinyJSON::TJValueObject();
-  for (const auto& metric : metrics)
+  for (const auto& metrics : all_metrics)
   {
-    tj_errors_object->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
+    auto tj_errors_object = new TinyJSON::TJValueObject();
+    for (const auto& metric : metrics)
+    {
+      tj_errors_object->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
+    }
+    tj_errors_array->add(tj_errors_object);
+    delete tj_errors_object;
   }
-  tj_errors_array->add(tj_errors_object);
 
   json.set("errors", tj_errors_array);
   delete tj_errors_array;
