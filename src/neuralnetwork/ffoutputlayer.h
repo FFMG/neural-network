@@ -94,6 +94,8 @@ protected:
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
+    const std::vector<double>& batch_inputs_buffer,
+    std::vector<double>& batch_pre_activation_sums_buffer,
     bool is_training) const;
 
   static std::vector<double> create_weight_decays(

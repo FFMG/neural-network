@@ -264,11 +264,6 @@ private:
     AlignedVector h_hat_vals;
     AlignedVector temp_Uh_T_dh_hat;
   };
-  mutable std::vector<BPTTWorkspace> _workspaces;
-  mutable BPTTWorkspace::AlignedVector _rw_values_T;
-  mutable BPTTWorkspace::AlignedVector _z_rw_values_T;
-  mutable BPTTWorkspace::AlignedVector _r_rw_values_T;
-
   void calculate_bptt_batch_chunk(
     size_t start,
     size_t end,
@@ -277,7 +272,10 @@ private:
     const std::vector<std::vector<double>>& batch_next_grad_matrix,
     const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks,
-    BPTTWorkspace& workspace) const;
+    BPTTWorkspace& workspace,
+    const BPTTWorkspace::AlignedVector& rw_values_T,
+    const BPTTWorkspace::AlignedVector& z_rw_values_T,
+    const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
   
