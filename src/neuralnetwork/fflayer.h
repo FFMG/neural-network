@@ -111,7 +111,9 @@ protected:
     size_t b_start,
     size_t b_end,
     size_t N_prev,
-    size_t N_this) const;
+    size_t N_this,
+    const std::vector<double>& batch_inputs_buffer,
+    std::vector<double>& batch_pre_activation_sums_buffer) const;
 
   virtual void run_post_gemm(
     size_t start,
@@ -120,12 +122,7 @@ protected:
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
+    const std::vector<double>& batch_inputs_buffer,
+    std::vector<double>& batch_pre_activation_sums_buffer,
     bool is_training) const;
-
-  // Hoisted buffers for performance
-  mutable std::vector<double> _batch_inputs_buffer;
-  mutable std::vector<double> _batch_pre_activation_sums_buffer;
-  mutable std::vector<double> _batch_grads_buffer;
-  mutable std::vector<double> _flattened_next_grads_buffer;
-  mutable std::vector<double> _flattened_this_grads_buffer;
 };

@@ -62,8 +62,7 @@ GRURNNLayer::GRURNNLayer(
     weight_decays,
     residual_projector,
     number_of_threads
-  ),
-  _workspaces(std::max(1, number_of_threads))
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   //  Note: we use the same weight decay for all GRU gates.
@@ -122,8 +121,7 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_m1(src._r_b_m1),
   _r_b_m2(src._r_b_m2),
   _r_b_timesteps(src._r_b_timesteps),
-  _r_b_decays(src._r_b_decays),
-  _workspaces(src._workspaces.size())
+  _r_b_decays(src._r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
@@ -180,8 +178,7 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m1(std::move(src._r_b_m1)),
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
-  _r_b_decays(std::move(src._r_b_decays)),
-  _workspaces(std::move(src._workspaces))
+  _r_b_decays(std::move(src._r_b_decays))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
@@ -288,7 +285,6 @@ GRURNNLayer::GRURNNLayer(
     b_decays,
     residual_projector,
     number_of_threads),
-    _workspaces(std::max(1, number_of_threads)),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
@@ -403,7 +399,6 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
-    _workspaces = src._workspaces;
   }
   return *this;
 }
@@ -466,7 +461,6 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
-    _workspaces = std::move(src._workspaces);
   }
   return *this;
 }
@@ -772,7 +766,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const std::vector<std::vector<double>>& batch_next_grad_matrix,
   const std::vector<HiddenStates>& batch_hidden_states,
   int bptt_max_ticks,
-  BPTTWorkspace& workspace) const
+  BPTTWorkspace& workspace,
+  const BPTTWorkspace::AlignedVector& rw_values_T,
+  const BPTTWorkspace::AlignedVector& z_rw_values_T,
+  const BPTTWorkspace::AlignedVector& r_rw_values_T) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t N_this = get_number_neurons();
@@ -858,10 +855,6 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   double* d_next_h_ptr_base = workspace.d_next_h.data();
   double* rnn_grad_ptr_all = workspace.rnn_grad_matrix.data();
 
-  const double* rw_values_ptr = _rw_values.data();
-  const double* z_rw_values_ptr = _z_rw_values.data();
-  const double* r_rw_values_ptr = _r_rw_values.data();
-
   // BPTT Loop
   for (int t = t_start; t >= t_end; --t)
   {
@@ -933,10 +926,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     }
 
     // Step 2: temp_Uh (dL/dr part) hoisted from the time loop (Vectorized Dot Product)
-    // Using transposed candidate recurrent weights _rw_values_T
+    // Using transposed candidate recurrent weights rw_values_T
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
-    const double* rw_values_T_ptr = _rw_values_T.data();
+    const double* rw_values_T_ptr = rw_values_T.data();
 
     for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
     {
@@ -1018,8 +1011,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
       // 3b. Propagate U_z and U_r using tiling (Vectorized Dot Product)
       // Using transposed gate recurrent weights
-      const double* z_rw_values_T_ptr = _z_rw_values_T.data();
-      const double* r_rw_values_T_ptr = _r_rw_values_T.data();
+      const double* z_rw_values_T_ptr = z_rw_values_T.data();
+      const double* r_rw_values_T_ptr = r_rw_values_T.data();
 
       for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
       {
@@ -1123,31 +1116,27 @@ void GRURNNLayer::calculate_hidden_gradients(
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
 
-  // Ensure workspaces are properly sized for the current number of threads
-  if (_workspaces.size() < num_threads)
-  {
-    _workspaces.resize(std::max(1u, (unsigned int)num_threads));
-  }
-
   // Transpose recurrent weights once per batch for Step 2 and 3b cache-friendly access
-  _rw_values_T.resize(N_this * N_this);
-  _z_rw_values_T.resize(N_this * N_this);
-  _r_rw_values_T.resize(N_this * N_this);
+  // These are now local to avoid thread contention.
+  BPTTWorkspace::AlignedVector rw_values_T(N_this * N_this);
+  BPTTWorkspace::AlignedVector z_rw_values_T(N_this * N_this);
+  BPTTWorkspace::AlignedVector r_rw_values_T(N_this * N_this);
 
   for (size_t i = 0; i < N_this; ++i)
   {
     for (size_t j = 0; j < N_this; ++j)
     {
-      _rw_values_T[j * N_this + i] = _rw_values[i * N_this + j];
-      _z_rw_values_T[j * N_this + i] = _z_rw_values[i * N_this + j];
-      _r_rw_values_T[j * N_this + i] = _r_rw_values[i * N_this + j];
+      rw_values_T[j * N_this + i] = _rw_values[i * N_this + j];
+      z_rw_values_T[j * N_this + i] = _z_rw_values[i * N_this + j];
+      r_rw_values_T[j * N_this + i] = _r_rw_values[i * N_this + j];
     }
   }
 
   // Launch threads for each batch chunk
   if (num_threads <= 1)
   {
-    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, _workspaces[0]);
+    BPTTWorkspace local_workspace;
+    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, local_workspace, rw_values_T, z_rw_values_T, r_rw_values_T);
   }
   else
   {
@@ -1158,10 +1147,11 @@ void GRURNNLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([this, start, end, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, t]()
-        {
-          calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, _workspaces[t]);
-        });
+        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, &rw_values_T, &z_rw_values_T, &r_rw_values_T, this]()
+          {
+            BPTTWorkspace thread_local_workspace;
+            calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, thread_local_workspace, rw_values_T, z_rw_values_T, r_rw_values_T);
+          });
       }
       start = end;
     }

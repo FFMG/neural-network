@@ -292,21 +292,22 @@ void FFOutputLayer::calculate_forward_feed(
   }
 
   // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
-  _batch_inputs_buffer.resize(batch_size * N_prev);
+  std::vector<double> batch_inputs_buffer(batch_size * N_prev);
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* src = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index() - 1);
-    std::copy(src, src + N_prev, _batch_inputs_buffer.begin() + b * N_prev);
+    const double* src = batch_gradients_and_outputs[b].get_outputs_raw(prev_layer_index);
+    std::copy(src, src + N_prev, batch_inputs_buffer.begin() + b * N_prev);
   }
 
-  _batch_pre_activation_sums_buffer.assign(batch_size * N_this, 0.0);
+  std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
 
   // 2. Initialize with bias values
   if (has_bias())
   {
     for (size_t b = 0; b < batch_size; b++)
     {
-      double* dest = &_batch_pre_activation_sums_buffer[b * N_this];
+      double* dest = &batch_pre_activation_sums_buffer[b * N_this];
       for (size_t j = 0; j < N_this; j++)
       {
         dest[j] = get_bias_value((unsigned)j);
@@ -319,7 +320,7 @@ void FFOutputLayer::calculate_forward_feed(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_gemm(0, batch_size, N_prev, N_this);
+    run_gemm(0, batch_size, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
   }
   else
   {
@@ -330,9 +331,9 @@ void FFOutputLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_prev, N_this, this]()
+        _task_queue_pool->enqueue([start, end, N_prev, N_this, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, this]()
           { 
-            run_gemm(start, end, N_prev, N_this); 
+            run_gemm(start, end, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer); 
           });
       }
       start = end;
@@ -343,7 +344,7 @@ void FFOutputLayer::calculate_forward_feed(
   // 4. Residuals, Activation and Dropout
   if (num_threads <= 1)
   {
-    run_post_gemm(0, batch_size, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training);
+    run_post_gemm(0, batch_size, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
   }
   else
   {
@@ -354,9 +355,9 @@ void FFOutputLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start,end, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, is_training, this]()
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, is_training, this]()
           { 
-            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, is_training); 
+            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training); 
           });
       }
       start = end;
@@ -372,6 +373,8 @@ void FFOutputLayer::run_post_gemm(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
+  const std::vector<double>& /*batch_inputs_buffer*/,
+  std::vector<double>& batch_pre_activation_sums_buffer,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
@@ -384,7 +387,7 @@ void FFOutputLayer::run_post_gemm(
 
   for (size_t b = start; b < end; b++)
   {
-    double* current_pre_act = &_batch_pre_activation_sums_buffer[b * N_this];
+    double* current_pre_act = &batch_pre_activation_sums_buffer[b * N_this];
 
     // Residuals
     if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -429,7 +432,7 @@ void FFOutputLayer::run_post_gemm(
     {
       for (size_t j = 0; j < N_this; ++j)
       {
-        temp_pre_activations[j] = _batch_pre_activation_sums_buffer[b * N_this + j];
+        temp_pre_activations[j] = batch_pre_activation_sums_buffer[b * N_this + j];
       }
       batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
       batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
