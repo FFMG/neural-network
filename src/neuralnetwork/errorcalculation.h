@@ -209,7 +209,7 @@ public:
       return calculate_bce_loss(ground_truths, predictions);
 
     case type::cross_entropy:
-      return calculate_cross_entropy(ground_truths, predictions);
+      return calculate_cross_entropy(ground_truths, predictions, evaluation_config);
 
     case type::log_cosh:
       return calculate_log_cosh(ground_truths, predictions);
@@ -219,7 +219,7 @@ public:
       {
         return calculate_softmax_prediction_coverage(predictions, evaluation_config);
       }
-      return calculate_prediction_coverage(predictions, evaluation_config);
+      return calculate_prediction_coverage(predictions, evaluation_config, activation_method);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -659,8 +659,16 @@ public:
   static double calculate_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    size_t correct = 0;
+    if (predictions.empty()) return 0.0;
+
+    size_t confident = 0;
     size_t total = 0;
+
+    if (activation_method == activation::method::softmax)
+    {
+      // Re-use the existing Softmax specific logic for consistency
+      return calculate_softmax_directional_confidence_score(ground_truths, predictions, evaluation_config);
+    }
 
     // Use 0.5 baseline for Sigmoid, 0.0 for others (Tanh, RELU, etc.)
     const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
@@ -700,7 +708,7 @@ public:
 
         if (match)
         {
-          ++correct;
+          ++confident;
         }
 
         ++total;
@@ -717,7 +725,7 @@ public:
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+    return (total == 0) ? 0.0 : (static_cast<double>(confident) / total);
   }
 
   static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions,const EvaluationConfig& evaluation_config)
@@ -903,12 +911,13 @@ public:
     return (count > 0) ? (total_log_cosh / count) : 0.0;
   }
 
-  static double calculate_cross_entropy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
+  static double calculate_cross_entropy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_loss = 0.0;
     size_t sequence_count = 0;
     const double eps = 1e-12;
+    const double cross_entropy_lambda = evaluation_config.cross_entropy_lambda();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -933,12 +942,15 @@ public:
       ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count);
+    return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count) * cross_entropy_lambda;
   }
 
-  static double calculate_prediction_coverage( std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
-    size_t confident = 0;
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (predictions.empty()) return 0.0;
+
+    size_t predicted = 0;
     size_t total = 0;
 
     for (const auto& seq : predictions)
@@ -948,16 +960,34 @@ public:
         Logger::panic("Prediction sequence cannot be empty.");
       }
 
-      for (double v : seq)
+      if (activation_method == activation::method::softmax)
       {
-        if (std::abs(v) > evaluation_config.confidence_threshold())
+        // For softmax, coverage is based on the confidence of the winning class.
+        auto max_it = std::max_element(seq.begin(), seq.end());
+        if (*max_it > evaluation_config.confidence_threshold())
         {
-          ++confident;
+          ++predicted;
         }
-
-        ++total;
       }
+      else
+      {
+        // For regression, we count the sample as covered if ANY neuron is confident
+        bool any_confident = false;
+        for (double v : seq)
+        {
+          if (std::abs(v) > evaluation_config.confidence_threshold())
+          {
+            any_confident = true;
+            break;
+          }
+        }
+        if (any_confident)
+        {
+          ++predicted;
+        }
+      }
+      ++total;
     }
-    return (total == 0) ? 0.0 : static_cast<double>(confident) / total;
+    return (total == 0) ? 0.0 : static_cast<double>(predicted) / total;
   }
 };
