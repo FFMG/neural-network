@@ -2,7 +2,7 @@
 
 #include "./libraries/instrumentor.h"
 
-class NeuralNetworkHelperMetrics
+class NeuralNetworkHelperMetrics final
 {
 public:
   [[nodiscard]] inline long double error() const noexcept
