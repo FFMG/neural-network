@@ -177,7 +177,7 @@ public:
     return this->_outputs.get(layer, neuron);
   }
 
-  unsigned num_outputs(unsigned layer) const
+  [[nodiscard]] unsigned num_outputs(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     return static_cast<unsigned>(this->_outputs.number_neurons(layer));
@@ -201,20 +201,15 @@ public:
     return this->_outputs.get_neurons(static_cast<unsigned>(size -1));
   }
 
-private:
-  LayersAndNeuronsContainer _outputs;
-  LayersAndNeuronsContainer _gradients;
-  std::map<unsigned, std::vector<double>> _rnn_outputs;
-  std::map<unsigned, std::vector<double>> _rnn_gradients;
-
-public:
   void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _rnn_outputs[layer] = outputs;
   }
 
-  const std::vector<double>& get_rnn_outputs(unsigned layer) const
+  [[nodiscard]] const std::vector<double>& get_rnn_outputs(unsigned layer) const
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     const auto it = _rnn_outputs.find(layer);
     if(it == _rnn_outputs.end())
     {
@@ -226,16 +221,19 @@ public:
 
   void set_rnn_gradients(unsigned layer, const std::vector<double>& gradients)
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _rnn_gradients[layer] = gradients;
   }
 
   void set_rnn_gradients(unsigned layer, std::vector<double>&& gradients)
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _rnn_gradients[layer] = std::move(gradients);
   }
 
-  const std::vector<double>& get_rnn_gradients(unsigned layer) const
+  [[nodiscard]] const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     const auto it = _rnn_gradients.find(layer);
     if(it == _rnn_gradients.end())
     {
@@ -245,8 +243,9 @@ public:
     return it->second;
   }
 
-  double* get_rnn_gradients_raw(unsigned layer, size_t size)
+  [[nodiscard]] double* get_rnn_gradients_raw(unsigned layer, size_t size)
   {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     auto& vec = _rnn_gradients[layer];
     if (vec.size() != size)
     {
@@ -254,4 +253,10 @@ public:
     }
     return vec.data();
   }
+
+private:
+  LayersAndNeuronsContainer _outputs;
+  LayersAndNeuronsContainer _gradients;
+  std::map<unsigned, std::vector<double>> _rnn_outputs;
+  std::map<unsigned, std::vector<double>> _rnn_gradients;
 };
