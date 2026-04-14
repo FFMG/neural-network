@@ -543,30 +543,54 @@ void Layers::update_weights(
     return;
   }
 
-  // 1. Have each layer calculate and store its own gradients
-  for (unsigned i = 1; i < size(); ++i)
+  const auto& num_threads = _update_weights_pool->get_number_of_threads();
+  if (num_threads <= 1)
   {
-    _update_weights_pool->enqueue(
-      [i, &batch_gradients, &hidden_states, batch_size, &options, this]()
-      {
-        auto& layer_a = *_layers.at(i);
-        auto& layer_b = *_layers.at(i -1);
-        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-      });
+    // 1. Have each layer calculate and store its own gradients
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      auto& layer_a = *_layers.at(i);
+      auto& layer_b = *_layers.at(i - 1);
+      layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
+    }
   }
-  _update_weights_pool->get();
+  else
+  {
+    // 1. Have each layer calculate and store its own gradients
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      _update_weights_pool->enqueue(
+        [i, &batch_gradients, &hidden_states, batch_size, &options, this]()
+        {
+          auto& layer_a = *_layers.at(i);
+          auto& layer_b = *_layers.at(i - 1);
+          layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
+        });
+    }
+    _update_weights_pool->get();
+  }
 
   // 2. Calculate global gradient norm for clipping
   std::vector<double> layer_norms(size(), 0.0);
-  for (unsigned i = 1; i < size(); ++i)
+  if (num_threads <= 1)
   {
-    _update_weights_pool->enqueue(
-      [i, &layer_norms, this]()
-      {
-        layer_norms[i] = _layers[i]->get_gradient_norm_sq();
-      });
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      layer_norms[i] = _layers[i]->get_gradient_norm_sq();
+    }
   }
-  _update_weights_pool->get();
+  else
+  {
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      _update_weights_pool->enqueue(
+        [i, &layer_norms, this]()
+        {
+          layer_norms[i] = _layers[i]->get_gradient_norm_sq();
+        });
+    }
+    _update_weights_pool->get();
+  }
 
   double total_norm_sq = 0.0;
   for (double norm : layer_norms)
@@ -587,15 +611,26 @@ void Layers::update_weights(
 
   // 3. Apply the stored (and now clipped) gradients
   std::unique_lock<std::shared_mutex> write(_mutex);
-  for (unsigned i = 1; i < size(); ++i)
+  if (num_threads <= 1)
   {
-    _update_weights_pool->enqueue([i, learning_rate, clipping_scale, this]()
-      {
-        auto& layer_a = *_layers[i];
-        layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-      });
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      auto& layer_a = *_layers[i];
+      layer_a.apply_stored_gradients(learning_rate, clipping_scale);
+    }
   }
-  _update_weights_pool->get();
+  else
+  {
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      _update_weights_pool->enqueue([i, learning_rate, clipping_scale, this]()
+        {
+          auto& layer_a = *_layers[i];
+          layer_a.apply_stored_gradients(learning_rate, clipping_scale);
+        });
+    }
+    _update_weights_pool->get();
+  }
 }
 
 std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const
