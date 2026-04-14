@@ -914,7 +914,7 @@ protected:
     number_of_threads
   )
   {
-    MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("Layer");
   }
 
   Layer(
