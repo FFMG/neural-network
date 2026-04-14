@@ -330,7 +330,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 
   const NeuralNetworkHelper& helper = *_neural_network_helper;
   const auto& training_inputs = helper.training_inputs();
-  const auto& taining_outputs = helper.training_outputs();
+  const auto& training_outputs = helper.training_outputs();
 
   const std::vector<size_t>* checks_indexes = final_check ? &helper.final_check_indexes() : &helper.checking_indexes();
   size_t prediction_size = checks_indexes->size();
@@ -380,7 +380,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     for (size_t i = 0; i < prediction_size; ++i)
     {
       predictions.push_back(_gradients_pool[i].output_back());
-      checking_outputs.push_back(taining_outputs[sub_indices[i]]);
+      checking_outputs.push_back(training_outputs[sub_indices[i]]);
     }
   }
 
@@ -836,7 +836,7 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
 #if VALIDATE_DATA == 1
   if (gradients_and_output.size() != batch_size)
   {
-    //Logger::panic("The gradient vector size does not match the batch size!");
+    Logger::panic("The gradient vector size does not match the batch size!");
   }
 #endif
 
