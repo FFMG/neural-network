@@ -38,8 +38,9 @@ public:
   NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-    *this = src;
+    *this = std::move(src);
   }
+
   NeuralNetworkHelperMetrics& operator=(NeuralNetworkHelperMetrics&& src) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
