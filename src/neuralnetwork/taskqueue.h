@@ -2,14 +2,13 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <queue>
 #include <thread>
 #include <vector>
 
-#include "logger.h"
 #include "./libraries/instrumentor.h"
+#include "logger.h"
 
 template <typename R>
 class TaskQueue
