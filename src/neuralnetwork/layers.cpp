@@ -377,7 +377,7 @@ void Layers::calculate_forward_feed(
     {
       Logger::trace([=]
         {
-          return Logger::trace("DEBUG: [b=", b, "] Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
+          return Logger::factory("DEBUG: [b=", b, "] Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
         });
     }
     const size_t input_size = input_layer().get_number_neurons();

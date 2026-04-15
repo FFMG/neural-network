@@ -290,7 +290,7 @@ void FFLayer::run_gemm(
             }
             Logger::trace([=]
               {
-                return Logger::factory("DEBUG: [GEMM] Weight Range: [", min_w, ", ", max_w, "]"));
+                return Logger::factory("DEBUG: [GEMM] Weight Range: [", min_w, ", ", max_w, "]");
               });
           }
 
@@ -311,7 +311,7 @@ void FFLayer::run_gemm(
           {
             Logger::trace([=]
               {
-                return Logger::factory("DEBUG: [GEMM] b=", b, " pre_act[0]=", batch_pre_activation_sums_buffer[b * N_this]));
+                return Logger::factory("DEBUG: [GEMM] b=", b, " pre_act[0]=", batch_pre_activation_sums_buffer[b * N_this]);
               });
           }
         }
