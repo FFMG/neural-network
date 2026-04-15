@@ -176,17 +176,21 @@ void FFLayer::calculate_forward_feed(
     return;
   }
 
-  // 1. Flatten inputs for the whole batch into a contiguous matrix [BatchSize x N_prev]
+  // 1. Flatten inputs for the whole batch
   std::vector<double> batch_inputs_buffer(batch_size * N_prev);
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* src = batch_gradients_and_outputs[b].get_outputs_raw(prev_layer_index);
-    std::copy(src, src + N_prev, batch_inputs_buffer.begin() + b * N_prev);
+    const std::vector<double> src_vec = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    if (src_vec.size() != N_prev)
+    {
+      Logger::panic("FFLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_vec.size(), " from layer #", prev_layer_index, " at batch sample ", b);
+    }
+    std::copy(src_vec.begin(), src_vec.end(), batch_inputs_buffer.begin() + b * N_prev);
   }
 
   std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
-
+  
   // 2. Initialize with bias values
   if (has_bias())
   {
@@ -275,6 +279,21 @@ void FFLayer::run_gemm(
 
         for (size_t b = b0; b < b_limit; ++b)
         {
+          // Weight range debug (only for first batch and first thread)
+          if (b == 0 && i0 == 0 && b_start == 0) 
+          {
+            double min_w = W[0], max_w = W[0];
+            for (size_t k = 0; k < N_prev * N_this; ++k) 
+            {
+              min_w = std::min(min_w, W[k]);
+              max_w = std::max(max_w, W[k]);
+            }
+            Logger::trace([=]
+              {
+                return Logger::factory("DEBUG: [GEMM] Weight Range: [", min_w, ", ", max_w, "]"));
+              });
+          }
+
           for (size_t i = i0; i < i_limit; ++i)
           {
             const double x_val = batch_inputs_buffer[b * N_prev + i];
@@ -287,6 +306,13 @@ void FFLayer::run_gemm(
             {
               y_row[j] += x_val * w_row[j];
             }
+          }
+          if (b < 2 && i0 == 0) // Log first two batch samples' state
+          {
+            Logger::trace([=]
+              {
+                return Logger::factory("DEBUG: [GEMM] b=", b, " pre_act[0]=", batch_pre_activation_sums_buffer[b * N_this]));
+              });
           }
         }
       }
@@ -524,18 +550,18 @@ void FFLayer::calculate_and_store_gradients(
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* src_in = batch_gradients_and_outputs[b].get_outputs_raw(previous_layer.get_layer_index());
-    std::copy(src_in, src_in + num_inputs, batch_inputs_buffer.begin() + b * num_inputs);
+    const std::vector<double> src_in_vec = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+    std::copy(src_in_vec.begin(), src_in_vec.end(), batch_inputs_buffer.begin() + b * num_inputs);
 
-    const double* src_grad = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::copy(src_grad, src_grad + num_outputs, batch_grads_buffer.begin() + b * num_outputs);
+    const std::vector<double> src_grad_vec = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+    std::copy(src_grad_vec.begin(), src_grad_vec.end(), batch_grads_buffer.begin() + b * num_outputs);
   }
 
   // 2. Reset gradients
   std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
   if(has_bias())
   {
-  std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+    std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
   }
 
   // 3. Batched Weight Gradient Calculation (W_grad = X^T * G)

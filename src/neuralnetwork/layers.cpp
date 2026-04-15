@@ -373,6 +373,13 @@ void Layers::calculate_forward_feed(
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& current_input = *(inputs_begin + b);
+    if (b < 2) 
+    {
+      Logger::trace([=]
+        {
+          return Logger::trace("DEBUG: [b=", b, "] Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
+        });
+    }
     const size_t input_size = input_layer().get_number_neurons();
 
     if (current_input.size() == input_size)
@@ -597,16 +604,22 @@ void Layers::update_weights(
   {
     total_norm_sq += norm;
   }
+  const double total_norm = std::sqrt(total_norm_sq);
 
   double clipping_scale = 1.0;
   const double gradient_clip_threshold = options.clip_threshold();
-  if (gradient_clip_threshold > 0.0 && total_norm_sq > 0.0)
+  if (gradient_clip_threshold > 0.0 && total_norm > 0.0)
   {
-    const double norm = std::sqrt(total_norm_sq);
-    if (norm > gradient_clip_threshold)
+    if (total_norm > gradient_clip_threshold)
     {
-      clipping_scale = gradient_clip_threshold / norm;
+      clipping_scale = gradient_clip_threshold / total_norm;
+      Logger::trace("DEBUG: [UPDATE] Gradient clipping active. Total norm: ", total_norm, ", Scale: ", clipping_scale);
     }
+  }
+
+  if (!std::isfinite(total_norm)) 
+  {
+      Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
   }
 
   // 3. Apply the stored (and now clipped) gradients
@@ -680,15 +693,35 @@ void Layers::train(
 
   if (_training_gradients_buffer.size() < batch_size)
   {
-    _training_gradients_buffer.resize(batch_size, GradientsAndOutputs(options.topology()));
+    _training_gradients_buffer.reserve(batch_size);
+    while (_training_gradients_buffer.size() < batch_size)
+    {
+      _training_gradients_buffer.emplace_back(options.topology());
+    }
   }
   if (_training_hidden_states_buffer.size() < batch_size)
   {
-    _training_hidden_states_buffer.resize(batch_size, HiddenStates(options.topology()));
+    _training_hidden_states_buffer.reserve(batch_size);
+    while (_training_hidden_states_buffer.size() < batch_size)
+    {
+      _training_hidden_states_buffer.emplace_back(options.topology());
+    }
+  }
+
+  // Zero out the items we are about to use
+  for (size_t i = 0; i < batch_size; ++i)
+  {
+    _training_gradients_buffer[i].zero();
+    _training_hidden_states_buffer[i].zero();
+  }
+
+  // Debug: Verify memory addresses for the first two samples
+  if (batch_size >= 2)
+  {
+    Logger::trace("DEBUG: Sample Pool Addresses: b=0:", &_training_gradients_buffer[0], " b=1:", &_training_gradients_buffer[1]);
   }
 
   // 2. Calculate gradients via back-propagation
-  // Note: calculate_forward_feed and calculate_back_propagation now fully manage their buffers.
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
   update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);

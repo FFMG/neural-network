@@ -71,6 +71,12 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
   }
 
+  [[nodiscard]] inline const std::vector<OutputLayerDetails>& output_layer_details() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
+    return _output_layer_details;
+  }
+
 protected:
   struct bounds {
     unsigned start;
@@ -86,12 +92,6 @@ protected:
     }
 #endif
     return _bounds[layer_number];
-  }
-
-  [[nodiscard]] inline const std::vector<OutputLayerDetails>& output_layer_details() const
-  {
-    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
-    return _output_layer_details;
   }
 
   [[nodiscard]] inline const activation& get_activation(unsigned neuron_index) const noexcept

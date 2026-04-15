@@ -25,12 +25,12 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     const size_t num_weights = static_cast<size_t>(input_size) * output_size;
     _w_values.resize(num_weights);
-    auto initial_weights = activation_method.weight_initialization(output_size, input_size);
+    //auto initial_weights = activation_method.weight_initialization(output_size, input_size);
     for (size_t i = 0; i < input_size; ++i) 
     {
       for (size_t j = 0; j < output_size; ++j) 
       {
-        _w_values[i * output_size + j] = initial_weights[j];
+        _w_values[i * output_size + j] = activation_method.weight_initialization();
       }
     }
 
