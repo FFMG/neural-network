@@ -472,7 +472,7 @@ GRURNNLayer::~GRURNNLayer()
 void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  const auto num_neurons = get_number_output_neurons();
+  const auto num_neurons = get_number_neurons();
   const auto num_inputs = get_number_input_neurons();
 
   const size_t num_rec_weights = static_cast<size_t>(num_neurons) * num_neurons;
@@ -486,9 +486,9 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
   {
     values.resize(size);
     // Use the same initialization as the base layer
-    auto initial_weights = get_activation().weight_initialization(num_neurons, is_input ? num_inputs : num_neurons);
+    // auto initial_weights = get_activation().weight_initialization((int)num_neurons, (int)(is_input ? num_inputs : num_neurons));
     for (size_t i = 0; i < size; ++i) {
-        values[i] = initial_weights[i % initial_weights.size()]; // Safety mod, though size should match
+      values[i] = get_activation().weight_initialization();// initial_weights[i % initial_weights.size()]; // Safety mod, though size should match
     }
     grads.assign(size, 0.0);
     velocities.assign(size, 0.0);
@@ -504,7 +504,7 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
                        std::vector<double>& m2, std::vector<long long>& timesteps, 
                        std::vector<double>& decays)
   {
-      values = get_activation().weight_initialization(num_neurons, 1);
+      values = get_activation().weight_initialization((int)num_neurons, 1);
       grads.assign(num_neurons, 0.0);
       velocities.assign(num_neurons, 0.0);
       m1.assign(num_neurons, 0.0);
@@ -550,32 +550,38 @@ void GRURNNLayer::calculate_forward_feed(
   const size_t N_this = get_number_neurons();
 
   // 1. Flatten inputs [BatchSize x T x N_prev]
-  std::vector<double> sample_inputs = batch_gradients_and_outputs[0].get_rnn_outputs(previous_layer.get_layer_index());
-  if (sample_inputs.empty())
-  {
-      sample_inputs = batch_gradients_and_outputs[0].get_outputs(previous_layer.get_layer_index());
-  }
-  const size_t num_time_steps = N_prev > 0 ? sample_inputs.size() / N_prev : 0;
-  if (num_time_steps == 0) return;
+  std::vector<double> flattened_batch_inputs;
+  size_t num_time_steps = 0;
 
-  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-      const double* src = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-      const size_t src_size = !rnn_in.empty() ? rnn_in.size() : std_in.size();
-
-      if (src_size == num_time_steps * N_prev)
+      const std::vector<double> rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      if (!rnn_in.empty())
       {
-          std::copy(src, src + src_size, flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+          const size_t t = rnn_in.size() / N_prev;
+          if (num_time_steps == 0) {
+              num_time_steps = t;
+              flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+          }
+          std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
       }
-      else if (src_size == N_prev)
+      else
       {
-          for (size_t t = 0; t < num_time_steps; ++t)
-              std::copy(src, src + N_prev, flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+          const std::vector<double> std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+          if (std_in.size() == N_prev)
+          {
+              if (num_time_steps == 0) {
+                  num_time_steps = 1;
+                  flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+              }
+              for (size_t t = 0; t < num_time_steps; ++t)
+                  std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+          }
       }
   }
+
+  if (num_time_steps == 0) return;
 
   // 2. Output sequence buffer
   std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
@@ -584,7 +590,6 @@ void GRURNNLayer::calculate_forward_feed(
   {
     std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
     std::vector<double> packed_bptt_states(3 * N_this);
-    std::vector<double> prev_h(N_this, 0.0), current_h(N_this, 0.0);
 
     const double* W_z = _z_w_values.data();
     const double* W_r = _r_w_values.data();
@@ -595,7 +600,9 @@ void GRURNNLayer::calculate_forward_feed(
 
     for (size_t b = start; b < end; ++b)
     {
-      std::fill(prev_h.begin(), prev_h.end(), 0.0);
+      // Reset hidden state for each sample in the batch!
+      std::vector<double> prev_h(N_this, 0.0);
+      std::vector<double> current_h(N_this, 0.0);
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
@@ -727,7 +734,7 @@ void GRURNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([&run_forward_pass, start, end, this]()
+        _task_queue_pool->enqueue([run_forward_pass, start, end, this]()
           {
             run_forward_pass(start, end);
           });
@@ -773,7 +780,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t N_this = get_number_neurons();
-  const size_t N_next = next_layer.get_number_output_neurons();
+  const size_t N_next = next_layer.get_number_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
@@ -816,7 +823,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
             double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
             for (size_t i = i0; i < i_limit; ++i)
             {
-              const double* next_w_row = next_layer.get_weights_raw((unsigned)i);
+              const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
               
               // Vectorized Dot Product for Step 0
               __m256d sum_vec = _mm256_setzero_pd();

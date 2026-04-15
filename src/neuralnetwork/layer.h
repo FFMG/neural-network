@@ -53,8 +53,6 @@ public:
     _b_timesteps(src._b_timesteps),
     _b_decays(src._b_decays),
     _residual_projector(nullptr),
-    _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true),
     _task_queue_pool(nullptr)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -92,8 +90,6 @@ public:
     _b_decays(std::move(src._b_decays)),
     _residual_layer_number(src._residual_layer_number),
     _residual_projector(src._residual_projector),
-    _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true),
     _task_queue_pool(std::move(src._task_queue_pool))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -142,8 +138,6 @@ public:
       {
         _residual_projector = new ResidualProjector(*src._residual_projector);
       }
-      _weights_cache_dirty = true;
-      _bias_weights_cache_dirty = true;
 
       if (src._task_queue_pool)
       {
@@ -188,8 +182,6 @@ public:
 
       delete _residual_projector;
       _residual_projector = src._residual_projector;
-      _weights_cache_dirty = true;
-      _bias_weights_cache_dirty = true;
 
       _task_queue_pool = std::move(src._task_queue_pool);
 
@@ -532,9 +524,6 @@ public:
     default:
       Logger::panic("Unknown optimizer type:", (int)optimiser_type);
     }
-
-    _weights_cache_dirty = true;
-    _bias_weights_cache_dirty = true;
   }
 
   void apply_update_to_weight(
@@ -568,7 +557,7 @@ public:
     double final_gradient = gradient * clipping_scale;
 
     // Log trace for some updates to avoid flooding
-    if (idx == 0 && (timesteps.empty() || timesteps[idx] % 100 == 0))
+    if (idx == 0 && (timesteps.empty() || timesteps[idx] % 50 == 0))
     {
       Logger::trace([&]()
         {
@@ -667,9 +656,6 @@ public:
     default:
       Logger::panic("Unknown optimizer type:", (int)optimiser_type);
     }
-
-    _weights_cache_dirty = true;
-    _bias_weights_cache_dirty = true;
   }
 
   void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale, OptimiserType optimiser_type)
@@ -742,39 +728,33 @@ public:
   [[nodiscard]] const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (_weights_cache_dirty)
-    {
-      _cached_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0, 0, 0, 0)));
-      for (unsigned i = 0; i < _number_input_neurons; ++i) {
+    static thread_local std::vector<std::vector<WeightParam>> thread_local_weights;
+    thread_local_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0, 0, 0, 0)));
+    for (unsigned i = 0; i < _number_input_neurons; ++i) {
         for (unsigned j = 0; j < _number_output_neurons; ++j) {
-          const auto idx = i * _number_output_neurons + j;
-          _cached_weights[i][j] = WeightParam(
-            _w_values[idx], _w_grads[idx], _w_velocities[idx],
-            _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
-          );
+            const auto idx = i * _number_output_neurons + j;
+            thread_local_weights[i][j] = WeightParam(
+                _w_values[idx], _w_grads[idx], _w_velocities[idx],
+                _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
+            );
         }
-      }
-      _weights_cache_dirty = false;
     }
-    return _cached_weights;
+    return thread_local_weights;
   }
 
   [[nodiscard]] const std::vector<WeightParam>& get_bias_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (_bias_weights_cache_dirty)
+    static thread_local std::vector<WeightParam> thread_local_bias_weights;
+    thread_local_bias_weights.resize(_number_output_neurons, WeightParam(0, 0, 0, 0));
+    for (unsigned j = 0; j < _number_output_neurons; ++j)
     {
-      _cached_bias_weights.resize(_number_output_neurons, WeightParam(0, 0, 0, 0));
-      for (unsigned j = 0; j < _number_output_neurons; ++j)
-      {
-        _cached_bias_weights[j] = WeightParam(
-          _b_values[j], _b_grads[j], _b_velocities[j],
-          _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
+        thread_local_bias_weights[j] = WeightParam(
+            _b_values[j], _b_grads[j], _b_velocities[j],
+            _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
         );
-      }
-      _bias_weights_cache_dirty = false;
     }
-    return _cached_bias_weights;
+    return thread_local_bias_weights;
   }
 
   [[nodiscard]] virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
@@ -848,8 +828,6 @@ protected:
     _w_decays(weight_decays),
     _residual_projector(residual_projector),
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
-    _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true),
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -862,10 +840,10 @@ protected:
     if (number_input_neurons > 0)
     {
       _w_values.resize(num_weights);
-      auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
+      const auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
       for (size_t i = 0; i < number_input_neurons; ++i) {
         for (size_t j = 0; j < number_output_neurons; ++j) {
-          _w_values[i * number_output_neurons + j] = initial_weights[j];
+          _w_values[i * number_output_neurons + j] = _activation.weight_initialization();
         }
       }
       _w_grads.assign(num_weights, 0.0);
@@ -967,12 +945,13 @@ protected:
     _b_decays(b_decays),
     _residual_projector(nullptr),
     _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
-    _weights_cache_dirty(true),
-    _bias_weights_cache_dirty(true),
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (residual_projector != nullptr) { _residual_projector = new ResidualProjector(*residual_projector); }
+    if (residual_projector != nullptr) 
+    { 
+      _residual_projector = new ResidualProjector(*residual_projector); 
+    }
   }
 
   static std::vector<Neuron> create_neurons(double dropout_rate, unsigned number_output_neurons)
@@ -1063,8 +1042,4 @@ private:
     const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
-  mutable std::vector<std::vector<WeightParam>> _cached_weights;
-  mutable bool _weights_cache_dirty;
-  mutable std::vector<WeightParam> _cached_bias_weights;
-  mutable bool _bias_weights_cache_dirty;
 };

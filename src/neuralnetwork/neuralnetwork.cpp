@@ -348,38 +348,24 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   {
     std::shared_lock read(_mutex);
 
-    // resize the pool if needed
-    if (_gradients_pool.size() < prediction_size)
+    // Use fresh, local vectors instead of the pool to ensure isolation.
+    std::vector<GradientsAndOutputs> temp_gradients;
+    std::vector<HiddenStates> temp_hidden_states;
+    temp_gradients.reserve(prediction_size);
+    temp_hidden_states.reserve(prediction_size);
+    while (temp_gradients.size() < prediction_size)
     {
-      _gradients_pool.reserve(prediction_size);
-      while (_gradients_pool.size() < prediction_size)
-      {
-        _gradients_pool.emplace_back(get_topology());
-      }
-    }
-    if (_hidden_states_pool.size() < prediction_size)
-    {
-      _hidden_states_pool.reserve(prediction_size);
-      while (_hidden_states_pool.size() < prediction_size)
-      {
-        _hidden_states_pool.emplace_back(get_topology());
-      }
-    }
-
-    // zero out the pool items we are about to use
-    for (size_t i = 0; i < prediction_size; ++i)
-    {
-      _gradients_pool[i].zero();
-      _hidden_states_pool[i].zero();
+      temp_gradients.emplace_back(get_topology());
+      temp_hidden_states.emplace_back(get_topology());
     }
 
     std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
 
-    calculate_forward_feed_for_forecast_metrics(_gradients_pool, training_inputs, sub_indices, _layers, _hidden_states_pool, false);
+    calculate_forward_feed_for_forecast_metrics(temp_gradients, training_inputs, sub_indices, _layers, temp_hidden_states, false);
 
     for (size_t i = 0; i < prediction_size; ++i)
     {
-      predictions.push_back(_gradients_pool[i].output_back());
+      predictions.push_back(temp_gradients[i].output_back());
       checking_outputs.push_back(training_outputs[sub_indices[i]]);
     }
   }
@@ -833,6 +819,11 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   size_t batch_size = indices.size();
+  if (batch_size == 0)
+  {
+    return;
+  }
+
 #if VALIDATE_DATA == 1
   if (gradients_and_output.size() != batch_size)
   {
@@ -844,6 +835,13 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& current_input = all_inputs[indices[b]];
+    if (b < 2)
+    {
+      Logger::trace([=]
+        {
+          return Logger::factory("DEBUG: [b=", b, "] Forecast Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
+        });
+    }
     const size_t input_size = layers_container[0].get_number_neurons();
 
     if (current_input.size() == input_size)
@@ -851,26 +849,25 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       gradients_and_output[b].set_outputs(0, current_input);
       if (options().enable_bptt() && options().bptt_max_ticks() > 1)
       {
-        std::vector<double> expanded;
         const int ticks = options().bptt_max_ticks();
+        std::vector<double> expanded;
         expanded.reserve(input_size * ticks);
-        for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+        for (int t = 0; t < ticks; ++t)
+        {
+        expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+        }
         gradients_and_output[b].set_rnn_outputs(0, expanded);
       }
     }
     else if (options().enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
     {
        // Sequence input provided!
-       // Set the standard output to the LAST time step (so strict topology checks pass)
        std::vector<double> last_step(current_input.end() - input_size, current_input.end());
        gradients_and_output[b].set_outputs(0, last_step);
-       
-       // Set the full sequence for RNN layers to consume
        gradients_and_output[b].set_rnn_outputs(0, current_input);
     }
     else
     {
-       // Fallback (will likely assert if size mismatch)
        gradients_and_output[b].set_outputs(0, current_input);
     }
   }
@@ -881,14 +878,14 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
     const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
     const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
-    // Prepare batched residual outputs if needed
+    // Prepare batched residual outputs
     std::vector<std::vector<double>> batch_residual_values;
     const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
     if (residual_projector != nullptr)
     {
       auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
       std::vector<std::vector<double>> batch_residual_inputs;
-      batch_residual_values.reserve(batch_size);
+      batch_residual_inputs.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
         batch_residual_inputs.emplace_back(gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number)));
@@ -901,10 +898,12 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
     {
         if (current_layer.use_bptt())
         {
-            std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-            if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+            const std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+            const std::vector<double> prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+            
             const size_t n_prev = previous_layer.get_number_neurons();
-            const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
+            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
             hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
         }
         else

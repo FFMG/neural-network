@@ -218,24 +218,26 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // --- Add warning for extreme logit range ---
   const double logit_range = max_val - min_val;
-  const double EXTREME_LOGIT_THRESHOLD = 30.0; // Define a threshold for "extreme" range
-  if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  const double EXTREME_LOGIT_THRESHOLD = 50.0; // Stricter threshold
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 100.0;
+
+  if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
-    static std::atomic<size_t> warning_counter{ 0 };
-    if (warning_counter.fetch_add(1) % 1000 == 0)
-    {
-      Logger::warning("Softmax logits in output layer exhibit extreme range (max-min diff: ", logit_range,
-        "). This indicates potential 'logit explosion' which can lead to overconfident predictions and training instability. "
-        "Consider increasing 'weight_decay', reducing 'learning_rate', or adjusting 'clip_threshold' in NeuralNetworkOptions to stabilize training. (Warning suppressed for next 1000 occurrences)");
-    }
+      Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
+  }
+  else if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  {
+    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range,"). Consider increasing weight decay or reducing learning rate.");
   }
   // --- End warning addition ---
 
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;
+  constexpr double temperature = 2.5;
   for (double* it = begin; it != end; ++it)
   {
-    long double v = std::exp(static_cast<long double>(*it) - static_cast<long double>(max_val));
+    // Apply temperature scaling
+    long double v = std::exp((static_cast<long double>(*it) - static_cast<long double>(max_val)) / temperature);
     *it = static_cast<double>(v);
     sum += v;
   }

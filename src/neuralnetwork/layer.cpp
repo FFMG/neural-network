@@ -193,6 +193,13 @@ void Layer::calculate_cross_entropy_error_deltas(
 
     double grad = (output - target);
 
+    // If softmax is used, temperature scaling applies to the gradient
+    if (activation_method == activation::method::softmax)
+    {
+        constexpr double temperature = 2.0;
+        grad /= temperature;
+    }
+
     if (use_dir && activation_method == activation::method::softmax && gt_dir != 0 && pred_dir != gt_dir)
     {
       grad *= (1.0 + dir_lambda);
@@ -200,6 +207,11 @@ void Layer::calculate_cross_entropy_error_deltas(
 
     // --- Apply Cross Entropy scaling ---
     grad *= ce_lambda;
+
+    if (!std::isfinite(grad))
+    {
+        Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
+    }
 
     deltas[neuron_index] = grad;
   }
