@@ -2,8 +2,6 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <utility>
-#include <atomic>
 
 #include "logger.h"
 
@@ -223,7 +221,7 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
-      Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
+    Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
   }
   else if (logit_range > EXTREME_LOGIT_THRESHOLD) 
   {
@@ -234,10 +232,15 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;
   constexpr double temperature = 2.5;
+  constexpr double LOGIT_CLAMP = 30.0;
+
   for (double* it = begin; it != end; ++it)
   {
-    // Apply temperature scaling
-    long double v = std::exp((static_cast<long double>(*it) - static_cast<long double>(max_val)) / temperature);
+    // Apply temperature scaling and clamp the exponent to prevent explosion
+    double val = (static_cast<double>(*it) - static_cast<double>(max_val)) / temperature;
+    if (val < -LOGIT_CLAMP) val = -LOGIT_CLAMP;
+    
+    long double v = std::exp(static_cast<long double>(val));
     *it = static_cast<double>(v);
     sum += v;
   }
@@ -424,21 +427,15 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
 double activation::weight_initialization() const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return weight_initialization(1, 1).front();
-}
-
-std::vector<double> activation::weight_initialization(int num_neurons_next_layer, int num_neurons_current_layer) const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
   case activation::method::sigmoid:
   case activation::method::tanh:
   case activation::method::softmax:
-    return xavier_initialization(num_neurons_current_layer, num_neurons_next_layer);
+    return xavier_initialization();
 
   case activation::method::selu:
-    return selu_initialization(num_neurons_current_layer, num_neurons_next_layer);
+    return selu_initialization();
 
   case activation::method::linear:
   case activation::method::relu:
@@ -448,70 +445,53 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization(num_neurons_current_layer, num_neurons_next_layer);
+    return he_initialization();
 
   default:
     throw std::invalid_argument("Unknown activation type!");
   }
 }
 
-std::vector<double> activation::xavier_initialization(int fan_in, int fan_out) noexcept
+double activation::xavier_initialization() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  double limit = std::sqrt(6.0 / (fan_in + fan_out));
+  // Further reduce initialization limit to 0.01
+  double limit = 0.01; 
   std::uniform_real_distribution<double> dist(-limit, limit);
 
-  std::vector<double> weights(fan_out);
-  for (double& w : weights) 
-  {
-    w = dist(gen);
-  }
-
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::he_initialization(int fan_in, int fan_out) noexcept
+double activation::he_initialization() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / fan_in));
+  std::normal_distribution<double> dist(0.0, std::sqrt(2.0));
 
-  std::vector<double> weights(fan_out);
-  for (double& w : weights) {
-    w = dist(gen);
-  }
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::selu_initialization(int fan_in, int fan_out) noexcept
+double activation::selu_initialization() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
+  std::normal_distribution<double> dist(0.0, std::sqrt(1.0));
 
-  std::vector<double> weights(fan_out);
-  for (double& w : weights) {
-    w = dist(gen);
-  }
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::lecun_initialization(int fan_in, int fan_out) noexcept
+double activation::lecun_initialization() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / fan_in));
+  std::normal_distribution<double> dist(0.0, std::sqrt(1.0));
 
-  std::vector<double> weights(fan_out);
-  for (double& w : weights) {
-    w = dist(gen);
-  }
-  return weights;
+  return dist(gen);
 }
 
 std::string activation::method_to_string() const
