@@ -207,6 +207,5 @@ public:
 
     delete nn;
     TEST_END
-    std::cout << std::endl;
   }
 };

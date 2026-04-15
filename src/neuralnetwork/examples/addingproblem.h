@@ -6,7 +6,6 @@
 #include "../neuralnetworkserializer.h"
 #include <vector>
 #include <random>
-#include <iostream>
 #include <iomanip>
 
 class ExampleAddingProblem
@@ -139,6 +138,5 @@ public:
     }
 
     TEST_END
-    std::cout << std::endl;
   }
 };
