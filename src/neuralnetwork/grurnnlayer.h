@@ -278,6 +278,12 @@ private:
     const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
+
+  void init_bias(
+    std::vector<double>& values, std::vector<double>& grads,
+    std::vector<double>& velocities, std::vector<double>& m1,
+    std::vector<double>& m2, std::vector<long long>& timesteps,
+    std::vector<double>& decays) const;
   
   // SoA for recurrent weights (Candidate State)
   std::vector<double> _rw_values;
