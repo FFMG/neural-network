@@ -2,7 +2,6 @@
 #include "./libraries/instrumentor.h"
 
 #include <string>
-#include <vector>
 
 class activation
 {
@@ -48,7 +47,6 @@ public:
 
   [[nodiscard]] double momentum() const noexcept;
 
-  [[nodiscard]] std::vector<double> weight_initialization(int num_neurons_prev_layer, int num_neurons_current_layer) const;
   [[nodiscard]] double weight_initialization() const;
 
   [[nodiscard]] std::string method_to_string() const;
@@ -68,10 +66,10 @@ public:
   }
 
 private:
-  [[nodiscard]] static std::vector<double> he_initialization(int fan_in, int fan_out) noexcept;
-  [[nodiscard]] static std::vector<double> xavier_initialization(int fan_in, int fan_out) noexcept;
-  [[nodiscard]] static std::vector<double> lecun_initialization(int fan_in, int fan_out) noexcept;
-  [[nodiscard]] static std::vector<double> selu_initialization(int fan_in, int fan_out) noexcept;
+  [[nodiscard]] double he_initialization() const noexcept;
+  [[nodiscard]] double xavier_initialization() const noexcept;
+  [[nodiscard]] double lecun_initialization() const noexcept;
+  [[nodiscard]] double selu_initialization() const noexcept;
 
   [[nodiscard]] static double calculate_selu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_selu_derivative(double x, double alpha) noexcept;
