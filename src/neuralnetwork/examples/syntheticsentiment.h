@@ -6,7 +6,6 @@
 #include "../neuralnetworkserializer.h"
 #include <vector>
 #include <random>
-#include <iostream>
 #include <iomanip>
 #include <string>
 #include <algorithm>
@@ -221,6 +220,5 @@ public:
     }
 
     TEST_END
-    std::cout << std::endl;
   }
 };
