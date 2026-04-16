@@ -203,8 +203,8 @@ public:
 
   [[nodiscard]] virtual std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
     const std::vector<ErrorCalculation::type>& error_types,
-    const std::vector<std::vector<double>>& predictions,
-    const std::vector<std::vector<double>>& checking_outputs
+    const std::vector<std::vector<double>>& checking_outputs,
+    const std::vector<std::vector<double>>& predictions
   ) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

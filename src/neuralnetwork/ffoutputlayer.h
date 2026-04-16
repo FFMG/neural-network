@@ -87,8 +87,8 @@ public:
 
   [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
     const std::vector<ErrorCalculation::type>& error_types,
-    const std::vector<std::vector<double>>& predictions,
-    const std::vector<std::vector<double>>& checking_outputs
+    const std::vector<std::vector<double>>& checking_outputs,
+    const std::vector<std::vector<double>>& predictions
   ) const  override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
