@@ -840,10 +840,11 @@ protected:
     if (number_input_neurons > 0)
     {
       _w_values.resize(num_weights);
-      const auto initial_weights = _activation.weight_initialization(number_output_neurons, number_input_neurons);
-      for (size_t i = 0; i < number_input_neurons; ++i) {
-        for (size_t j = 0; j < number_output_neurons; ++j) {
-          _w_values[i * number_output_neurons + j] = _activation.weight_initialization();
+      for (size_t i = 0; i < number_input_neurons; ++i) 
+      {
+        for (size_t j = 0; j < number_output_neurons; ++j) 
+        {
+          _w_values[i * number_output_neurons + j] = _activation.weight_initialization(number_input_neurons, number_output_neurons);
         }
       }
       _w_grads.assign(num_weights, 0.0);
