@@ -467,6 +467,7 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
 
 GRURNNLayer::~GRURNNLayer()
 {
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
 
 void GRURNNLayer::init_bias(
@@ -554,7 +555,10 @@ void GRURNNLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t N_this = get_number_neurons();
@@ -566,32 +570,39 @@ void GRURNNLayer::calculate_forward_feed(
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-      const std::vector<double> rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      if (!rnn_in.empty())
+    const std::vector<double> rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    if (!rnn_in.empty())
+    {
+      const size_t t = rnn_in.size() / N_prev;
+      if (num_time_steps == 0) 
       {
-          const size_t t = rnn_in.size() / N_prev;
-          if (num_time_steps == 0) {
-              num_time_steps = t;
-              flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
-          }
-          std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+        num_time_steps = t;
+        flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
       }
-      else
+      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+    }
+    else
+    {
+      const std::vector<double> std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      if (std_in.size() == N_prev)
       {
-          const std::vector<double> std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-          if (std_in.size() == N_prev)
-          {
-              if (num_time_steps == 0) {
-                  num_time_steps = 1;
-                  flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
-              }
-              for (size_t t = 0; t < num_time_steps; ++t)
-                  std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
-          }
+        if (num_time_steps == 0) 
+        {
+          num_time_steps = 1;
+          flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+        }
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+          std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+        }
       }
+    }
   }
 
-  if (num_time_steps == 0) return;
+  if (num_time_steps == 0)
+  {
+    return;
+  }
 
   // 2. Output sequence buffer
   std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
@@ -635,43 +646,43 @@ void GRURNNLayer::calculate_forward_feed(
         constexpr size_t BLOCK_SIZE = 64;
         for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
         {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
+          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          {
+            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+            for (size_t i = i0; i < i_limit; ++i)
             {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    const double x_val = x_t[i];
-                    if (x_val == 0.0) continue;
-                    for (size_t j = j0; j < j_limit; ++j)
-                    {
-                        z_pre[j] += x_val * W_z[i * N_this + j];
-                        r_pre[j] += x_val * W_r[i * N_this + j];
-                        h_hat_pre[j] += x_val * W_h[i * N_this + j];
-                    }
-                }
+              const double x_val = x_t[i];
+              if (x_val == 0.0) continue;
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                z_pre[j] += x_val * W_z[i * N_this + j];
+                r_pre[j] += x_val * W_r[i * N_this + j];
+                h_hat_pre[j] += x_val * W_h[i * N_this + j];
+              }
             }
+          }
         }
 
         // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
         const double* h_prev_ptr = prev_h.data();
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          {
+            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+            for (size_t i = i0; i < i_limit; ++i)
             {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    const double h_val = h_prev_ptr[i];
-                    if (h_val == 0.0) continue;
-                    for (size_t j = j0; j < j_limit; ++j)
-                    {
-                        z_pre[j] += h_val * U_z[i * N_this + j];
-                        r_pre[j] += h_val * U_r[i * N_this + j];
-                    }
-                }
+              const double h_val = h_prev_ptr[i];
+              if (h_val == 0.0) continue;
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                z_pre[j] += h_val * U_z[i * N_this + j];
+                r_pre[j] += h_val * U_r[i * N_this + j];
+              }
             }
+          }
         }
 
         // d. Calculate Gates
@@ -686,23 +697,32 @@ void GRURNNLayer::calculate_forward_feed(
         // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
         {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          {
+            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+            for (size_t i = i0; i < i_limit; ++i)
             {
-                size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-                for (size_t i = i0; i < i_limit; ++i)
-                {
-                    const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
-                    if (gated_h == 0.0) continue;
-                    for (size_t j = j0; j < j_limit; ++j) h_hat_pre[j] += gated_h * U_h[i * N_this + j];
-                }
+              const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
+              if (gated_h == 0.0)
+              {
+                continue;
+              }
+              for (size_t j = j0; j < j_limit; ++j)
+              {
+                h_hat_pre[j] += gated_h * U_h[i * N_this + j];
+              }
             }
+          }
         }
 
         // f. Residuals and Candidate Activation
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-            for (size_t j = 0; j < N_this; ++j) h_hat_pre[j] += batch_residual_output_values[b][j];
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            h_hat_pre[j] += batch_residual_output_values[b][j];
+          }
         }
 
         std::vector<double> h_hat_vec = h_hat_pre;
@@ -715,9 +735,15 @@ void GRURNNLayer::calculate_forward_feed(
           double h_hat = h_hat_vec[j];
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
-              const auto& neuron = get_neuron((unsigned)j);
-              if (neuron.must_randomly_drop()) h_hat = 0.0;
-              else h_hat /= (1.0 - neuron.get_dropout_rate());
+            const auto& neuron = get_neuron((unsigned)j);
+            if (neuron.must_randomly_drop())
+            {
+              h_hat = 0.0;
+            }
+            else
+            {
+              h_hat /= (1.0 - neuron.get_dropout_rate());
+            }
           }
           current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
@@ -1124,12 +1150,18 @@ void GRURNNLayer::calculate_hidden_gradients(
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   const size_t N_this = get_number_neurons();
 
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0 || N_this == 0) return;
+  if (num_time_steps == 0 || N_this == 0)
+  {
+    return;
+  }
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
 
@@ -1281,9 +1313,9 @@ void GRURNNLayer::calculate_and_store_gradients(
       {
         for (unsigned j = 0; j < num_outputs; ++j)
         {
-          double dh = d_h_hat_ptr[j];
-          double dz = d_z_ptr[j];
-          double dr = d_r_ptr[j];
+          const auto& dh = d_h_hat_ptr[j];
+          const auto& dz = d_z_ptr[j];
+          const auto& dr = d_r_ptr[j];
 
           for (unsigned i = 0; i < num_inputs; ++i)
           {
@@ -1300,9 +1332,9 @@ void GRURNNLayer::calculate_and_store_gradients(
       {
         for (unsigned j = 0; j < num_outputs; ++j)
         {
-          double dh = d_h_hat_ptr[j];
-          double dz = d_z_ptr[j];
-          double dr = d_r_ptr[j];
+          const auto& dh = d_h_hat_ptr[j];
+          const auto& dz = d_z_ptr[j];
+          const auto& dr = d_r_ptr[j];
                
           // For h_hat, the recurrent input is actually (r_t * h_{t-1})
           // We need r_t for this sample/time.
@@ -1375,7 +1407,7 @@ void GRURNNLayer::calculate_and_store_gradients(
   const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
   const double denom_rec = static_cast<double>(batch_size) * time_denom_rec;
   
-  auto normalize_rec = [&](std::vector<double>& grads)
+  auto normalize_rec = [&denom_rec](std::vector<double>& grads)
     {
       for (double& g : grads)
       {
