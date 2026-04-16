@@ -157,6 +157,7 @@ void Layer::calculate_cross_entropy_error_deltas(
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   // --- Optional directional boost ---
   int pred_dir = 0;
@@ -206,12 +207,15 @@ void Layer::calculate_cross_entropy_error_deltas(
       grad *= (1.0 + dir_lambda);
     }
 
+    // Apply Cross Entropy scaling
+    grad *= ce_lambda;
+
     if (!std::isfinite(grad))
     {
         Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
     }
 
-    deltas[neuron_index] = grad;
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
 }
 
