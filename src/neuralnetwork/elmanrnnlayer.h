@@ -78,7 +78,9 @@ public:
   virtual ~ElmanRNNLayer();
 
 public:
-  bool use_bptt() const noexcept override {
+  bool use_bptt() const noexcept override 
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return true;
   }
 
