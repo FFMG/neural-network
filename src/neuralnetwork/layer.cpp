@@ -191,12 +191,13 @@ void Layer::calculate_cross_entropy_error_deltas(
     const double target = target_outputs[neuron_index];
     const double output = given_outputs[neuron_index];
 
+    // Standard Cross-Entropy + Softmax gradient: (given - target)
     double grad = (output - target);
 
     // If softmax is used, temperature scaling applies to the gradient
     if (activation_method == activation::method::softmax)
     {
-        constexpr double temperature = 2.0;
+        constexpr double temperature = 1.0;
         grad /= temperature;
     }
 
