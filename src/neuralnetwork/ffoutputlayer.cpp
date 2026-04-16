@@ -276,6 +276,47 @@ void FFOutputLayer::run_output_gradients(
   }
 }
 
+void FFOutputLayer::calculate_and_store_gradients(
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  const Layer& previous_layer,
+  size_t batch_size,
+  int /*bptt_max_ticks*/)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  const unsigned num_neurons = get_number_neurons();
+  
+  // Clear gradients
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+    const auto& inputs = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+      
+    for (unsigned j = 0; j < num_neurons; ++j)
+    {
+      _b_grads[j] += grads[j];
+      for (unsigned i = 0; i < previous_layer.get_number_neurons(); ++i)
+      {
+        // Correct indexing: i * num_neurons + j matches apply_stored_gradients
+        _w_grads[i * num_neurons + j] += inputs[i] * grads[j];
+      }
+    }
+  }
+
+  const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
+  for (auto& g : _w_grads)
+  {
+    g *= inv_batch_size;
+  }
+  for (auto& g : _b_grads)
+  {
+    g *= inv_batch_size;
+  }
+}
+
 void FFOutputLayer::calculate_forward_feed(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& previous_layer,
@@ -329,9 +370,9 @@ void FFOutputLayer::calculate_forward_feed(
 }
 
 void FFOutputLayer::run_post_gemm(
-  const size_t start,
-  const size_t end,
-  const size_t N_this,
+  size_t start,
+  size_t end,
+  size_t N_this,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
@@ -516,8 +557,8 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
         const unsigned j = current_output_neuron + s;
         const unsigned weight_index = i * num_outputs + j;
 
-        // Use the Layer base class method, passing the head-specific optimizer
-        Layer::apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, optimiser_type);
+        // Use the Layer base class method, passing the head-specific optimizer and state vectors
+        apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, _w_grads[weight_index], learning_rate, clipping_scale, optimiser_type);
       }
     }
 
@@ -527,10 +568,14 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
       for (unsigned s = 0; s < section_size; ++s)
       {
         const unsigned j = current_output_neuron + s;
-        Layer::apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale, optimiser_type);
+        apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, j, _b_grads[j], learning_rate, clipping_scale, optimiser_type);
       }
     }
 
     current_output_neuron += section_size;
   }
+
+  // Clear gradients
+  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
+  std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
 }
