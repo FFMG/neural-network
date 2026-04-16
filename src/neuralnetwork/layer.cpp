@@ -206,9 +206,6 @@ void Layer::calculate_cross_entropy_error_deltas(
       grad *= (1.0 + dir_lambda);
     }
 
-    // --- Apply Cross Entropy scaling ---
-    grad *= ce_lambda;
-
     if (!std::isfinite(grad))
     {
         Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
