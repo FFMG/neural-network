@@ -235,14 +235,22 @@ public:
 
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
-      if (ground_truth[i].size() != predictions[i].size())
+      const auto& gt_vec = ground_truth[i];
+      const auto& pred_vec = predictions[i];
+
+      if (gt_vec.size() != pred_vec.size())
       {
         Logger::panic("Mismatched vector sizes at index ", i);
       }
 
-      for (size_t j = 0; j < ground_truth[i].size(); ++j)
+      for (size_t j = 0; j < gt_vec.size(); ++j)
       {
-        double error = ground_truth[i][j] - predictions[i][j];
+        const double target = gt_vec[j];
+        const double output = pred_vec[j];
+
+        // For classification (Softmax/BCE), we often only care about the target class
+        // but here we calculate the loss for all neurons.
+        double error = target - output;
         double abs_error = std::abs(error);
 
         if (abs_error <= delta)
@@ -272,10 +280,13 @@ public:
 
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
-      for (size_t j = 0; j < ground_truth[i].size(); ++j)
+      const auto& gt_vec = ground_truth[i];
+      const auto& pred_vec = predictions[i];
+
+      for (size_t j = 0; j < gt_vec.size(); ++j)
       {
-        const double target = ground_truth[i][j];
-        const double output = predictions[i][j];
+        const double target = gt_vec[j];
+        const double output = pred_vec[j];
 
         const double error = target - output;
         const double abs_error = std::abs(error);
@@ -295,8 +306,9 @@ public:
         {
           const double x = -scale * target * output;
 
-          // log(1 + exp(x)) (numerically stable version optional)
-          const double direction_loss = std::log(1.0 + std::exp(x));
+          // ln(1 + exp(x))
+          // For numerical stability: ln(1 + exp(x)) = max(0, x) + ln(1 + exp(-abs(x)))
+          const double direction_loss = (x > 0.0) ? (x + std::log1p(std::exp(-x))) : std::log1p(std::exp(x));
 
           loss += lambda * direction_loss;
         }
