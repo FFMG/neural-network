@@ -1,8 +1,7 @@
 #include "./libraries/instrumentor.h"
 #include "aligned_allocator.h"
-#include <cassert>
-#include <vector>
 #include <algorithm>
+#include <vector>
 
 class LayersAndNeuronsContainer
 {
@@ -79,46 +78,88 @@ public:
   inline void set(unsigned layer, unsigned neuron, const double& data)
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (layer >= _offsets.size())
+    {
+      Logger::panic("trying to set value past the layer size: ", layer);
+    }
+    if (_offsets[layer] + neuron >= _data.size())
+    {
+      Logger::panic("trying to set value past the neuron size: ", _offsets[layer] + neuron);
+    }
+#endif
     _data[_offsets[layer] + neuron] = data;
   }
   
-  void set(unsigned layer, const std::vector<double>& data)
+  [[nodiscard]] void set(unsigned layer, const std::vector<double>& data)
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
-    assert(number_neurons(layer) == data.size());
+#if VALIDATE_DATA == 1
+    if (number_neurons(layer) >= data.size())
+    {
+      Logger::panic("trying to set values past the layer size: ", layer);
+    }
+#endif
     std::copy(data.begin(), data.end(), _data.begin() + _offsets[layer]);
   }
   
-  inline const double& get(unsigned layer, unsigned neuron) const noexcept
+  [[nodiscard]] inline const double& get(unsigned layer, unsigned neuron) const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
     return _data[_offsets[layer] + neuron];
   }
 
-  const double* get_raw_ptr(unsigned layer) const
-  {
-    return _data.data() + _offsets[layer];
-  }
-
-  double* get_raw_ptr(unsigned layer)
-  {
-    return _data.data() + _offsets[layer];
-  }
-
-  std::vector<double> get_neurons(unsigned layer) const
+  [[nodiscard]] inline const double* get_raw_ptr(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (layer >= _offsets.size())
+    {
+      Logger::panic("trying to get raw value past the layer size: ", layer);
+    }
+#endif
+    return _data.data() + _offsets[layer];
+  }
+
+  [[nodiscard]] inline double* get_raw_ptr(unsigned layer)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (layer >= _offsets.size())
+    {
+      Logger::panic("trying to get raw value past the layer size: ", layer);
+    }
+#endif
+    return _data.data() + _offsets[layer];
+  }
+
+  [[nodiscard]] inline std::vector<double> get_neurons(unsigned layer) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (layer >= _offsets.size())
+    {
+      Logger::panic("trying to neurons past the layer size: ", layer);
+    }
+#endif
     const auto start = _data.begin() + _offsets[layer];
     return std::vector<double>(start, start + _topology[layer]);
   }
 
-  size_t number_layers() const noexcept
+  [[nodiscard]] inline size_t number_layers() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
     return _topology.size();
   }
 
-  size_t number_neurons(size_t layer) const noexcept
+  [[nodiscard]] inline size_t number_neurons(size_t layer) const noexcept
   {
-    if(layer >= _topology.size()) return 0;
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+    if (layer >= _topology.size())
+    {
+      Logger::warning("Trying to get the number of neurons past the number of layers: ", layer);
+      return 0;
+    }
     return _topology[layer];
   }
 
