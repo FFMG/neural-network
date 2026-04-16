@@ -1,11 +1,4 @@
 #pragma once
-#include "hiddenstate.h"
-#include "weightparam.h"
-#include "./libraries/instrumentor.h"
-
-#include <vector>
-
-class Layer;
 class Neuron
 {
 public:
@@ -29,19 +22,18 @@ public:
 
   virtual ~Neuron();
 
-  unsigned get_index() const;
+  [[nodiscard]] unsigned get_index() const;
+  [[nodiscard]] const Type& get_type() const noexcept;
+  [[nodiscard]] bool is_dropout() const noexcept;
+  [[nodiscard]] double get_dropout_rate() const noexcept;
 
-  const Type& get_type() const noexcept;
-  bool is_dropout() const noexcept;
-  double get_dropout_rate() const noexcept;
-
-  bool must_randomly_drop() const;
+  [[nodiscard]] bool must_randomly_drop() const;
 
 private:
 
   void Clean();
+
   unsigned _index;
-  
   Type _type;
   double _dropout_rate;
 };
