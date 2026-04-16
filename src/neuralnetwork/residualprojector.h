@@ -30,7 +30,7 @@ public:
     {
       for (size_t j = 0; j < output_size; ++j) 
       {
-        _w_values[i * output_size + j] = activation_method.weight_initialization();
+        _w_values[i * output_size + j] = activation_method.weight_initialization(input_size, output_size);
       }
     }
 
