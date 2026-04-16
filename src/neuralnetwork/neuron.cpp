@@ -1,7 +1,7 @@
 #include "neuron.h"
-
-#include <cassert>
 #include <random>
+#include "logger.h"
+#include "./libraries/instrumentor.h"
 
 Neuron::Neuron(
   unsigned index,
@@ -86,14 +86,24 @@ unsigned Neuron::get_index() const
 double Neuron::get_dropout_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  assert(_type == Neuron::Type::Dropout);
+#if VALIDATE_DATA == 1
+  if (_type != Neuron::Type::Dropout)
+  {
+    Logger::panic("Only dropout layers have a dropout rate.");
+  }
+#endif
   return _dropout_rate;
 }
 
 bool Neuron::must_randomly_drop() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
-  assert(_type == Neuron::Type::Dropout);
+#if VALIDATE_DATA == 1
+  if (_type != Neuron::Type::Dropout)
+  {
+    Logger::panic("Only dropout layers choose if we must dropout.");
+  }
+#endif
   static thread_local std::mt19937 rng(std::random_device{}());
   std::bernoulli_distribution drop(1.0 - get_dropout_rate());
   return !drop(rng);  // true means keep, false means drop
