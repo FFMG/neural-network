@@ -216,8 +216,8 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // --- Add warning for extreme logit range ---
   const double logit_range = max_val - min_val;
-  const double EXTREME_LOGIT_THRESHOLD = 50.0; // Stricter threshold
-  const double CATASTROPHIC_LOGIT_THRESHOLD = 100.0;
+  const double EXTREME_LOGIT_THRESHOLD = 80.0; // Increased to reduce noise for highly confident models
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 150.0;
 
   if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
