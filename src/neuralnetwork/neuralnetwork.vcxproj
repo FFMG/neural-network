@@ -158,10 +158,12 @@
     <ClInclude Include="evaluationconfig.h" />
     <ClInclude Include="examples\addingproblem.h" />
     <ClInclude Include="examples\compound_softmax.h" />
+    <ClInclude Include="examples\compound_trivial_softmax.h" />
     <ClInclude Include="examples\multi_output.h" />
     <ClInclude Include="examples\multi_output_gru.h" />
     <ClInclude Include="examples\repro_issue.h" />
     <ClInclude Include="examples\syntheticsentiment.h" />
+    <ClInclude Include="examples\trivial_softmax.h" />
     <ClInclude Include="ffoutputlayer.h" />
     <ClInclude Include="grurnnlayer.h" />
     <ClInclude Include="layer.h" />
