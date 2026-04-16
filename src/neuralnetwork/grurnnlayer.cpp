@@ -480,12 +480,7 @@ void GRURNNLayer::init_bias(
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const auto num_neurons = get_number_neurons();
-  values.clear();
-  values.reserve(num_neurons);
-  for (unsigned i = 0; i < num_neurons; ++i)
-  {
-    values.emplace_back(get_activation().weight_initialization());
-  }
+  values.assign(num_neurons, 0.0);
   grads.assign(num_neurons, 0.0);
   velocities.assign(num_neurons, 0.0);
   m1.assign(num_neurons, 0.0);
@@ -511,9 +506,10 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
   {
     values.resize(size);
     // Use the same initialization as the base layer
-    // auto initial_weights = get_activation().weight_initialization((int)num_neurons, (int)(is_input ? num_inputs : num_neurons));
+    const unsigned f_in = is_input ? num_inputs : num_neurons;
+    const unsigned f_out = num_neurons;
     for (size_t i = 0; i < size; ++i) {
-      values[i] = get_activation().weight_initialization();// initial_weights[i % initial_weights.size()]; // Safety mod, though size should match
+      values[i] = get_activation().weight_initialization(f_in, f_out);
     }
     grads.assign(size, 0.0);
     velocities.assign(size, 0.0);
@@ -1325,12 +1321,11 @@ void GRURNNLayer::calculate_and_store_gradients(
           // packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
                
           const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-          double r_val = packed[num_outputs + j]; 
-          // Note: packed stores ACTIVATED z and r values (0..1), but PRE-ACTIVATED h_hat.
                
           for (unsigned k = 0; k < num_outputs; ++k)
           {
             double h_prev = prev_hidden_ptr[k];
+            double r_val = packed[num_outputs + k]; 
                    
             // Candidate State Recurrent: U_h * (r * h_prev)
             _rw_grads[k * num_outputs + j] += dh * (r_val * h_prev);
