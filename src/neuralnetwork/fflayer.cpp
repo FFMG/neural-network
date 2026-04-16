@@ -662,4 +662,8 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
       update_sum += std::abs(b_after - b_before);
     }
   }
+
+  // Clear gradients
+  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
+  std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
 }
