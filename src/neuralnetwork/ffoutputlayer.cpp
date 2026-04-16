@@ -250,14 +250,12 @@ void FFOutputLayer::run_output_gradients(
       if (get_is_not_using_activation_derivatives(neuron_index))
       {
         gradients[neuron_index] = deltas[neuron_index];
-        if (b < 2) Logger::debug("DEBUG: [b=", b, ", n=", neuron_index, "] Skip Activation Deriv");
       }
       else
       {
         const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-        double deriv = OutputLayer::get_activation(neuron_index).activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
+        double deriv = activation.activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
         gradients[neuron_index] = deltas[neuron_index] * deriv;
-        if (b < 2) Logger::debug("DEBUG: [b=", b, ", n=", neuron_index, "] Applied Deriv: ", deriv);
       }
 
       if (b < 2) // Log first 2 samples
