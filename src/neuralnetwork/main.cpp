@@ -8,6 +8,7 @@
 // examples
 #include "./examples/addingproblem.h"
 #include "./examples/compound_softmax.h"
+#include "./examples/compound_trivial_softmax.h"
 #include "./examples/copymemory.h"
 #include "./examples/multi_output.h"
 #include "./examples/multi_output_gru.h"
@@ -16,6 +17,7 @@
 #include "./examples/spiral.h"
 #include "./examples/syntheticsentiment.h"
 #include "./examples/threebitparity.h"
+#include "./examples/trivial_softmax.h"
 #include "./examples/twomoon.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
@@ -58,9 +60,18 @@ int main()
   ExampleMultiOutput::MultiOutput(log_level);
 
   // Multi-Output GRU
-  ExampleMultiOutputGru::MultiOutputGru(log_level);
+  // ExampleMultiOutputGru::MultiOutputGru(log_level);
 
   // Repro Issue (TANH x2 + SOFTMAX x5)
+  ExampleReproIssue::ReproIssue(log_level);
+
+  // Trivial softmax
+  ExampleTrivialSoftmax::Run(log_level);
+
+  // Trivial Compound softmax
+  ExampleCompoundTrivialSoftmax::Run(log_level);
+
+  
   ExampleReproIssue::ReproIssue(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
