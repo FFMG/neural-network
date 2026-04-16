@@ -168,13 +168,13 @@ void FFLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const auto N_prev = get_number_input_neurons();
-  const auto N_this = get_number_neurons();
-
   if (batch_size == 0)
   {
     return;
   }
+
+  const auto N_prev = get_number_input_neurons();
+  const auto N_this = get_number_neurons();
 
   // 1. Flatten inputs for the whole batch
   std::vector<double> batch_inputs_buffer(batch_size * N_prev);
@@ -408,7 +408,10 @@ void FFLayer::calculate_hidden_gradients(
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
 
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   // 1. Flatten next-layer gradients for the whole batch [BatchSize x N_next]
   std::vector<double> flattened_next_grads_buffer(batch_size * N_next);
@@ -434,10 +437,10 @@ void FFLayer::calculate_hidden_gradients(
       {
         size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
         for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-      {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
-        for (size_t b = b0; b < b_limit; ++b)
         {
+          size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
+          for (size_t b = b0; b < b_limit; ++b)
+          {
             const double* g_next_row = &flattened_next_grads_buffer[b * N_next];
             double* g_this_row = &flattened_this_grads_buffer[b * N_this];
 
