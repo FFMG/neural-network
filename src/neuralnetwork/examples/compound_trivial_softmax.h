@@ -83,10 +83,8 @@ public:
       Logger::info(s1);
     }
 
-    // Calculate metrics for both layers - request only appropriate metrics for each
-    std::vector<ErrorCalculation::type> all_layer_metrics = { ErrorCalculation::type::huber_direction_loss, ErrorCalculation::type::cross_entropy, ErrorCalculation::type::directional_confidence_score, ErrorCalculation::type::prediction_coverage };
-
-    auto all_layer_metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics, true);
+    // Calculate metrics for both layers
+    auto all_layer_metrics_results = nn->calculate_forecast_metrics_all_layers({ ErrorCalculation::type::huber_direction_loss, ErrorCalculation::type::mse, ErrorCalculation::type::directional_confidence_score, ErrorCalculation::type::prediction_coverage }, true);
 
     Logger::info("Layer 0 Metrics (Regression):");
     for (const auto& m : all_layer_metrics_results[0])
@@ -94,8 +92,10 @@ public:
       Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
     }
 
+    auto softmax_metrics = nn->calculate_forecast_metrics_all_layers({ ErrorCalculation::type::cross_entropy, ErrorCalculation::type::directional_accuracy, ErrorCalculation::type::directional_confidence_score, ErrorCalculation::type::prediction_coverage }, true);
+
     Logger::info("Layer 1 Metrics (Softmax):");
-    for (const auto& m : all_layer_metrics_results[1])
+    for (const auto& m : softmax_metrics[1])
     {
       Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
     }
