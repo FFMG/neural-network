@@ -827,7 +827,6 @@ protected:
     _neurons(neurons),
     _w_decays(weight_decays),
     _residual_projector(residual_projector),
-    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -945,7 +944,6 @@ protected:
     _b_timesteps(b_timesteps),
     _b_decays(b_decays),
     _residual_projector(nullptr),
-    _inv_num_neurons(number_output_neurons > 0 ? 1.0 / number_output_neurons : 0.0),
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -981,7 +979,6 @@ protected:
   std::vector<long long> _b_timesteps;
   ResidualProjector* _residual_projector;
   std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
-  double _inv_num_neurons;
 
 private:
   bool is_bias_index(const std::vector<double>& values) const noexcept 
