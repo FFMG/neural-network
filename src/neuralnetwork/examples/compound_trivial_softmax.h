@@ -13,16 +13,16 @@ private:
   {
     std::vector<unsigned> topology = { 1, 32, 64, 6 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.5),
-      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.5, 0.0001),
+      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.5, 0.0001)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_output_layer_details(
         {
-          OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.001, 0.001, 1.0, 0.1, true, 1.0 }, 0.001, OptimiserType::NadamW),
-          OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.30, 1.0, 5.0, false, 1.0 }, 0.001, OptimiserType::NadamW)
+          OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.01, 0.1, 0.1, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW),
+          OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 5.0 }, 0.0, OptimiserType::NadamW)
         }
       )
       .with_log_level(log_level)
@@ -30,6 +30,7 @@ private:
       .with_number_of_epoch(epoch)
       .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
+      .with_data_is_unique(true)
       .build();
 
     return new NeuralNetwork(options);
@@ -42,11 +43,11 @@ private:
         {-1.0}, {-0.5}, {0.0}, {0.5}, {1.0}
     };
     std::vector<std::vector<double>> training_outputs = {
-        {-0.10, 1.0, 0.0, 0.0, 0.0, 0.0},
-        {-0.05, 0.0, 1.0, 0.0, 0.0, 0.0},
+        {-0.50, 1.0, 0.0, 0.0, 0.0, 0.0},
+        {-0.25, 0.0, 1.0, 0.0, 0.0, 0.0},
         { 0.00, 0.0, 0.0, 1.0, 0.0, 0.0},
-        { 0.10, 0.0, 0.0, 0.0, 1.0, 0.0},
-        { 0.05, 0.0, 0.0, 0.0, 0.0, 1.0}
+        { 0.25, 0.0, 0.0, 0.0, 1.0, 0.0},
+        { 0.50, 0.0, 0.0, 0.0, 0.0, 1.0}
     };
 
     nn.train(training_inputs, training_outputs);
@@ -55,9 +56,9 @@ private:
 public:
   static void Run(Logger::LogLevel log_level)
   {
-    TEST_START("Trivial Softmax test.")
+    TEST_START("Compound Trivial Softmax test.")
 
-    const unsigned epoch = 15000;
+    const unsigned epoch = 2000;
     const unsigned batch_size = 5;
 
     NeuralNetwork* nn = create_neural_network(log_level, epoch, batch_size);
@@ -74,11 +75,12 @@ public:
     {
       // Denormalize input for logging: val * 20 + 30
       double denorm_input = inputs[i][0] * 20.0 + 30.0;
-      Logger::info("Input ", denorm_input, " -> ");
+      std::string s1 = Logger::factory("Input ", denorm_input, " -> ");
       for (double val : outputs[i])
       {
-        Logger::info("  ", val);
+        s1 += Logger::factory(val, " | ");
       }
+      Logger::info(s1);
     }
 
     // Calculate metrics for both layers - request only appropriate metrics for each
