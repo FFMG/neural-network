@@ -72,6 +72,13 @@ public:
   
   Layer* clone() const override;
 
+  void calculate_and_store_gradients(
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const Layer& previous_layer,
+    size_t batch_size,
+    int bptt_max_ticks) override;
+
   inline const activation& get_activation() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
@@ -87,16 +94,16 @@ public:
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
 protected:
-  virtual void run_post_gemm(
-    const size_t start,
-    const size_t end,
-    const size_t N_this,
+  void run_post_gemm(
+    size_t start,
+    size_t end,
+    size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
     const std::vector<double>& batch_inputs_buffer,
     std::vector<double>& batch_pre_activation_sums_buffer,
-    bool is_training) const;
+    bool is_training) const override;
 
   static std::vector<double> create_weight_decays(
     unsigned num_inputs,
