@@ -212,8 +212,9 @@ void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
 
   _rw_values.resize(num_weights);
   for (size_t i = 0; i < num_neurons; ++i) {
-    for (size_t o = 0; o < num_neurons; ++o) {
-        _rw_values[i * num_neurons + o] = get_activation().weight_initialization();
+    for (unsigned int o = 0; o < num_neurons; ++o)
+    {
+      _rw_values[i * num_neurons + o] = get_activation().weight_initialization(num_neurons, num_neurons);
     }
   }
 
