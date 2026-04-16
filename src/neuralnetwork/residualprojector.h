@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <vector>
 
 #include "libraries/instrumentor.h"
@@ -135,10 +134,15 @@ public:
   virtual ~ResidualProjector() = default;
 
   // Projects residual_layer_outputs (size = input_size) to a vector of size = output_size
-  std::vector<double> project(const std::vector<double>& residual_layer_outputs) const
+  [[nodiscard]] std::vector<double> project(const std::vector<double>& residual_layer_outputs) const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    assert(residual_layer_outputs.size() == _input_size);
+#if VALIDATE_DATA == 1
+    if (residual_layer_outputs.size() != _input_size)
+    {
+      Logger::panic("The residual layer output size does not match the input size!");
+    }
+#endif
     std::vector<double> projected(_output_size, 0.0);
     for (size_t in = 0; in < _input_size; ++in)
     {
@@ -189,7 +193,7 @@ public:
     _weights_cache_dirty = true;
   }
 
-  inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
+  [[nodiscard]] inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     if (_weights_cache_dirty) 
@@ -211,10 +215,15 @@ public:
     return _cached_weights;
   }
 
-  void update_weight(size_t out, size_t in, double delta)
+  inline void update_weight(size_t out, size_t in, double delta)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    assert(out < _output_size && in < _input_size);
+#if VALIDATE_DATA == 1
+    if (out >= _output_size || in >= _input_size)
+    {
+      Logger::panic("Trying to update a weight outsize of the bounds!");
+    }
+#endif
     _w_values[in * _output_size + out] += delta;
     _weights_cache_dirty = true;
   }
