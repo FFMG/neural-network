@@ -231,7 +231,7 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;
-  constexpr double temperature = 2.5;
+  constexpr double temperature = 1.0;
   constexpr double LOGIT_CLAMP = 30.0;
 
   for (double* it = begin; it != end; ++it)
@@ -293,10 +293,10 @@ double activation::calculate_softmax(double x, double) noexcept
 double activation::calculate_softmax_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  Logger::warning("Calling the softmax activation derivative indicate that the wrong error type/activation pair was used!");
-  // This is also not strictly correct as it depends on all other outputs.
-  // However, often we use S(1-S) as a placeholder if we don't have the full Jacobian.
-  const double s = calculate_softmax(x, 0.0);
+  // This is a simplified scalar derivative (S(1-S)). 
+  // Note: Softmax derivative is actually a Jacobian matrix.
+  // Standard practice is to skip this derivative when combined with Cross-Entropy.
+  double s = 1.0 / (1.0 + std::exp(-x)); 
   return s * (1.0 - s);
 }
 
@@ -424,7 +424,7 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
   }
 }
 
-double activation::weight_initialization() const
+double activation::weight_initialization(unsigned fan_in, unsigned fan_out) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -432,10 +432,10 @@ double activation::weight_initialization() const
   case activation::method::sigmoid:
   case activation::method::tanh:
   case activation::method::softmax:
-    return xavier_initialization();
+    return xavier_initialization(fan_in, fan_out);
 
   case activation::method::selu:
-    return selu_initialization();
+    return selu_initialization(fan_in);
 
   case activation::method::linear:
   case activation::method::relu:
@@ -445,51 +445,60 @@ double activation::weight_initialization() const
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization();
+    return he_initialization(fan_in);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
   }
 }
 
-double activation::xavier_initialization() const noexcept
+double activation::xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  // Further reduce initialization limit to 0.01
-  double limit = 0.01; 
+  
+  // Standard Xavier initialization: Uniform(-sqrt(6/(fan_in+fan_out)), sqrt(6/(fan_in+fan_out)))
+  double limit = std::sqrt(6.0 / (static_cast<double>(fan_in) + static_cast<double>(fan_out))); 
   std::uniform_real_distribution<double> dist(-limit, limit);
 
   return dist(gen);
 }
 
-double activation::he_initialization() const noexcept
+double activation::he_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(2.0));
+  
+  // Standard He initialization: Normal(0, sqrt(2/fan_in))
+  double stddev = std::sqrt(2.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
   return dist(gen);
 }
 
-double activation::selu_initialization() const noexcept
+double activation::selu_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0));
+  
+  // SELU initialization (LeCun): Normal(0, sqrt(1/fan_in))
+  double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
   return dist(gen);
 }
 
-double activation::lecun_initialization() const noexcept
+double activation::lecun_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0));
+  
+  double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
   return dist(gen);
 }

@@ -47,7 +47,7 @@ public:
 
   [[nodiscard]] double momentum() const noexcept;
 
-  [[nodiscard]] double weight_initialization() const;
+  [[nodiscard]] double weight_initialization(unsigned fan_in, unsigned fan_out) const;
 
   [[nodiscard]] std::string method_to_string() const;
   [[nodiscard]] static std::string method_to_string(method m);
@@ -66,10 +66,10 @@ public:
   }
 
 private:
-  [[nodiscard]] double he_initialization() const noexcept;
-  [[nodiscard]] double xavier_initialization() const noexcept;
-  [[nodiscard]] double lecun_initialization() const noexcept;
-  [[nodiscard]] double selu_initialization() const noexcept;
+  [[nodiscard]] double he_initialization(unsigned fan_in) const noexcept;
+  [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept;
+  [[nodiscard]] double lecun_initialization(unsigned fan_in) const noexcept;
+  [[nodiscard]] double selu_initialization(unsigned fan_in) const noexcept;
 
   [[nodiscard]] static double calculate_selu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_selu_derivative(double x, double alpha) noexcept;
