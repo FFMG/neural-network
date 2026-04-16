@@ -247,7 +247,16 @@ void FFOutputLayer::run_output_gradients(
 
     for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
     {
-      if (get_is_not_using_activation_derivatives(neuron_index))
+      const auto& activation = OutputLayer::get_activation(neuron_index);
+
+      // Softmax + Cross-Entropy gradient is (given - target), which already incorporates the derivative.
+      // Therefore, we must not apply any additional activation derivative for Softmax.
+      // We also must ensure that the derivative application logic is not skipped for Softmax neurons.
+      if (activation.get_method() == activation::method::softmax)
+      {
+        gradients[neuron_index] = deltas[neuron_index];
+      }
+      else if (get_is_not_using_activation_derivatives(neuron_index))
       {
         gradients[neuron_index] = deltas[neuron_index];
       }
@@ -495,11 +504,12 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
   // Multi-output path
   std::vector<std::vector<double>> sliced_predictions(batch_size);
   std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
-  std::vector<NeuralNetworkHelperMetrics> layer_errors;
-  layer_errors.reserve(error_types.size());
 
   for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
   {
+    std::vector<NeuralNetworkHelperMetrics> layer_errors;
+    layer_errors.reserve(error_types.size());
+
     const auto& activation = OutputLayer::get_activation(output_layer_index);
     const auto& activation_method = activation.get_method();
 
@@ -513,14 +523,13 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
       sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
     }
 
-    layer_errors.clear();
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
         ErrorCalculation::calculate_error(error_type, std::span(sliced_checking_outputs), std::span(sliced_predictions), configs, activation_method),
         error_type);
     }
-    errors.emplace_back(layer_errors);
+    errors.emplace_back(std::move(layer_errors));
   }
   return errors;
 }
