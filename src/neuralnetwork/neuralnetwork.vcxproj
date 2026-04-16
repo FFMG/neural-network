@@ -182,6 +182,7 @@
     <ClInclude Include="hiddenstates.h" />
     <ClInclude Include="layerdetails.h" />
     <ClInclude Include="layers.h" />
+    <ClInclude Include="layersandneuronscontainer.h" />
     <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
