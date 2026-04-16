@@ -7,9 +7,6 @@
 
 class FFLayer : public Layer
 {
-protected:
-  friend class Layers;
-
 public:
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer, 
