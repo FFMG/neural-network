@@ -465,8 +465,8 @@ void FFOutputLayer::calculate_error_deltas(
 
 std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_output_metrics(
   const std::vector<ErrorCalculation::type>& error_types,
-  const std::vector<std::vector<double>>& predictions,
-  const std::vector<std::vector<double>>& checking_outputs
+  const std::vector<std::vector<double>>& checking_outputs,
+  const std::vector<std::vector<double>>& predictions
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
