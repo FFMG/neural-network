@@ -79,12 +79,6 @@ public:
     size_t batch_size,
     int bptt_max_ticks) override;
 
-  [[nodiscard]] inline const activation& get_activation() const noexcept override
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-    Logger::panic("Trying to get an activation layer without passing an neuron index!");
-  }
-
   [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
     const std::vector<ErrorCalculation::type>& error_types,
     const std::vector<std::vector<double>>& checking_outputs,
@@ -107,6 +101,10 @@ protected:
 
   [[nodiscard]] static std::vector<double> create_weight_decays(
     unsigned num_inputs,
+    unsigned num_neurons_in_this_layer,
+    const std::vector<OutputLayerDetails>& output_layer_details);
+
+  [[nodiscard]] static layer_activation_helper create_layer_activation_helper(unsigned num_inputs,
     unsigned num_neurons_in_this_layer,
     const std::vector<OutputLayerDetails>& output_layer_details);
 

@@ -95,7 +95,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
 #if VALIDATE_DATA == 1
-    if (number_neurons(layer) >= data.size())
+    if (number_neurons(layer) > data.size())
     {
       Logger::panic("trying to set values past the layer size: ", layer);
     }
