@@ -69,8 +69,7 @@ int main()
   ExampleTrivialSoftmax::Run(log_level);
 
   // Trivial Compound softmax
-  ExampleCompoundTrivialSoftmax::Run(log_level);
-
+  ExampleCompoundTrivialSoftmax::Run(log_level, true, true);
   
   ExampleReproIssue::ReproIssue(log_level);
 
