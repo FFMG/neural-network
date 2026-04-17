@@ -345,7 +345,10 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     const size_t n = values.size();
-    if (n == 0) return;
+    if (n == 0)
+    {
+      return;
+    }
 
     switch (optimiser_type)
     {
@@ -396,7 +399,10 @@ public:
       {
         timesteps[0]++;
         const long long t = timesteps[0];
-        for (size_t i = 1; i < n; ++i) timesteps[i] = t;
+        for (size_t i = 1; i < n; ++i)
+        {
+          timesteps[i] = t;
+        }
 
         const double p1 = 1.0 - std::pow(beta1, t);
         const double p2 = 1.0 - std::pow(beta2, t);
@@ -467,7 +473,10 @@ public:
       {
         timesteps[0]++;
         const long long t = timesteps[0];
-        for (size_t i = 1; i < n; ++i) timesteps[i] = t;
+        for (size_t i = 1; i < n; ++i)
+        {
+          timesteps[i] = t;
+        }
 
         const double p1 = 1.0 - std::pow(beta1, t);
         const double p2 = 1.0 - std::pow(beta2, t);

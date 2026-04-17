@@ -491,6 +491,33 @@ void GRURNNLayer::init_bias(
   decays.assign(num_neurons, 0.0); // No decay for biases
 }
 
+void GRURNNLayer::init_weights(
+  std::vector<double>& values, std::vector<double>& grads,
+  std::vector<double>& velocities, std::vector<double>& m1,
+  std::vector<double>& m2, std::vector<long long>& timesteps,
+  std::vector<double>& decays, size_t size, bool is_input,
+  double weight_decay) const
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const auto num_neurons = get_number_output_neurons();
+  const auto num_inputs = get_number_input_neurons();
+
+  values.resize(size);
+  // Use the same initialization as the base layer
+  const unsigned f_in = is_input ? num_inputs : num_neurons;
+  const unsigned f_out = num_neurons;
+  for (size_t i = 0; i < size; ++i)
+  {
+    values[i] = get_activation().weight_initialization(f_in, f_out);
+  }
+  grads.assign(size, 0.0);
+  velocities.assign(size, 0.0);
+  m1.assign(size, 0.0);
+  m2.assign(size, 0.0);
+  timesteps.assign(size, 0);
+  decays.assign(size, weight_decay);
+}
+
 void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -500,48 +527,27 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
   const size_t num_rec_weights = static_cast<size_t>(num_neurons) * num_neurons;
   const size_t num_inp_weights = static_cast<size_t>(num_inputs) * num_neurons;
 
-  // --- Helper Lambda for Weight Initialization ---
-  auto init_weights = [&](std::vector<double>& values, std::vector<double>& grads, 
-                          std::vector<double>& velocities, std::vector<double>& m1, 
-                          std::vector<double>& m2, std::vector<long long>& timesteps, 
-                          std::vector<double>& decays, size_t size, bool is_input)
-  {
-    values.resize(size);
-    // Use the same initialization as the base layer
-    const unsigned f_in = is_input ? num_inputs : num_neurons;
-    const unsigned f_out = num_neurons;
-    for (size_t i = 0; i < size; ++i) {
-      values[i] = get_activation().weight_initialization(f_in, f_out);
-    }
-    grads.assign(size, 0.0);
-    velocities.assign(size, 0.0);
-    m1.assign(size, 0.0);
-    m2.assign(size, 0.0);
-    timesteps.assign(size, 0);
-    decays.assign(size, weight_decay);
-  };
-
   // 1. Candidate State Recurrent Weights (using existing member)
-  init_weights(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, num_rec_weights, false);
+  init_weights(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, num_rec_weights, false, weight_decay);
 
   // 2. Update Gate (z)
-  if (num_inputs > 0) 
+  if (num_inputs > 0)
   {
-    init_weights(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, num_inp_weights, true);
+    init_weights(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, num_inp_weights, true, weight_decay);
   }
-  init_weights(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, num_rec_weights, false);
-  if (has_bias()) 
+  init_weights(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, num_rec_weights, false, weight_decay);
+  if (has_bias())
   {
     init_bias(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays);
   }
 
   // 3. Reset Gate (r)
-  if (num_inputs > 0) 
+  if (num_inputs > 0)
   {
-    init_weights(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, num_inp_weights, true);
+    init_weights(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, num_inp_weights, true, weight_decay);
   }
-  init_weights(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, num_rec_weights, false);
-  if (has_bias()) 
+  init_weights(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, num_rec_weights, false, weight_decay);
+  if (has_bias())
   {
     init_bias(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays);
   }
