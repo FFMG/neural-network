@@ -846,6 +846,7 @@ std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::g
     {
       errors[output_layer][error_type] = tj_errors_object->get<double>(ErrorCalculation::type_to_string(error_type).c_str());
     }
+    ++output_layer;
   }
   return errors;
 }
