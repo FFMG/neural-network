@@ -532,7 +532,10 @@ void ElmanRNNLayer::calculate_hidden_gradients(
       std::vector<double> grad_sum(N_this, 0.0);
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        for (size_t i = 0; i < N_this; ++i) grad_sum[i] += rnn_grad_vec[t * N_this + i];
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          grad_sum[i] += rnn_grad_vec[t * N_this + i];
+        }
       }
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_sum);
     }
@@ -550,7 +553,13 @@ void ElmanRNNLayer::calculate_hidden_gradients(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([=]() { run_hidden_gradients(start, end); });
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([=]()
+          {
+            run_hidden_gradients(start, end);
+          });
+      }
       start = end;
     }
     _task_queue_pool->get();

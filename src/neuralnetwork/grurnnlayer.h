@@ -281,6 +281,13 @@ private:
 
   void initialize_recurrent_weights(double weight_decay);
 
+  void init_weights(
+    std::vector<double>& values, std::vector<double>& grads,
+    std::vector<double>& velocities, std::vector<double>& m1,
+    std::vector<double>& m2, std::vector<long long>& timesteps,
+    std::vector<double>& decays, size_t size, bool is_input,
+    double weight_decay) const;
+
   void init_bias(
     std::vector<double>& values, std::vector<double>& grads,
     std::vector<double>& velocities, std::vector<double>& m1,
