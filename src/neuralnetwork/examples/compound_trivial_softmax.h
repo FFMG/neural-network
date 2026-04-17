@@ -54,15 +54,44 @@ private:
   }
 
 public:
-  static void Run(Logger::LogLevel log_level)
+  static void Run(Logger::LogLevel log_level, bool use_file, bool continue_train)
   {
     TEST_START("Compound Trivial Softmax test.")
 
+    const char* file_name = "./cts.nn";
     const unsigned epoch = 2000;
     const unsigned batch_size = 5;
 
-    NeuralNetwork* nn = create_neural_network(log_level, epoch, batch_size);
-    train_neural_network(*nn);
+    NeuralNetwork* nn = nullptr;
+    if (use_file)
+    {
+      nn = NeuralNetworkSerializer::load(file_name);
+      if (nullptr == nn)
+      {
+        // we need to create it
+        nn = create_neural_network(log_level, epoch, batch_size);
+
+        // train it
+        train_neural_network(*nn);
+
+        // save it
+        NeuralNetworkSerializer::save(*nn, file_name);
+      }
+
+      if (continue_train)
+      {
+        // train it again
+        train_neural_network(*nn);
+      }
+    }
+    else
+    {
+      // we need to create it
+      nn = create_neural_network(log_level, epoch, batch_size);
+
+      // train it
+      train_neural_network(*nn);
+    }
 
     // Normalized inputs for inference
     std::vector<std::vector<double>> inputs = {
