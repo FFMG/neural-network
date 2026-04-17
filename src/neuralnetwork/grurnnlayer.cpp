@@ -2,6 +2,7 @@
 #include "grurnnlayer.h"
 #include "logger.h"
 #include <immintrin.h>
+#include <numeric>
 
 GRURNNLayer::GRURNNLayer(
   unsigned layer_index,
@@ -1385,7 +1386,7 @@ void GRURNNLayer::calculate_and_store_gradients(
   }
 
   // Final Normalization
-  auto normalize = [&](std::vector<double>& grads)
+  const auto normalize = [&denom](std::vector<double>& grads)
   {
     for (double& g : grads)
     {
@@ -1431,23 +1432,15 @@ double GRURNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   double norm_sq = 0.0;
-  auto sum_sq = [&](const std::vector<double>& grads) 
-  {
-    for (const double grad : grads)
-    {
-      norm_sq += grad * grad;
-    }
-  };
-    
-  sum_sq(_w_grads);
-  sum_sq(_b_grads);
-  sum_sq(_rw_grads);
-  sum_sq(_z_w_grads);
-  sum_sq(_z_rw_grads);
-  sum_sq(_z_b_grads);
-  sum_sq(_r_w_grads);
-  sum_sq(_r_rw_grads);
-  sum_sq(_r_b_grads);
+  norm_sq += std::inner_product(_w_grads.begin(), _w_grads.end(), _w_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_b_grads.begin(), _b_grads.end(), _b_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_rw_grads.begin(), _rw_grads.end(), _rw_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_z_w_grads.begin(), _z_w_grads.end(), _z_w_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_z_rw_grads.begin(), _z_rw_grads.end(), _z_rw_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_z_b_grads.begin(), _z_b_grads.end(), _z_b_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_r_w_grads.begin(), _r_w_grads.end(), _r_w_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_r_rw_grads.begin(), _r_rw_grads.end(), _r_rw_grads.begin(), 0.0);
+  norm_sq += std::inner_product(_r_b_grads.begin(), _r_b_grads.end(), _r_b_grads.begin(), 0.0);
 
   return norm_sq;
 }
