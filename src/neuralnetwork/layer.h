@@ -19,6 +19,148 @@
 #include <span>
 #include <vector>
 
+class layer_activation_helper
+{
+private:
+  class layer_activation_information
+  {
+  public:
+    layer_activation_information(const activation& activation_method, unsigned number_output_neurons) :
+      _activation_method(activation_method),
+      _number_output_neurons(number_output_neurons)
+    {
+    }
+
+    layer_activation_information(const layer_activation_information& src) :
+      _activation_method(src._activation_method),
+      _number_output_neurons(src._number_output_neurons)
+    {
+    }
+    activation _activation_method;
+    unsigned _number_output_neurons;
+  };
+
+public:
+  layer_activation_helper(const activation& activation_method, unsigned number_input_neurons, unsigned number_output_neurons) noexcept :
+    _number_input_neurons(number_input_neurons),
+    _number_output_neurons(number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    for (unsigned i = 0; i < number_output_neurons; ++i)
+    {
+      _information.push_back(layer_activation_information(activation_method, number_output_neurons));
+    }
+  }
+
+  ~layer_activation_helper()
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+  }
+
+  layer_activation_helper(const layer_activation_helper& src) : 
+    _information(src._information),
+    _number_input_neurons(src._number_input_neurons),
+    _number_output_neurons(src._number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+  }
+
+  layer_activation_helper(layer_activation_helper&& src) :
+    _information(std::move(src._information)),
+    _number_input_neurons(src._number_input_neurons),
+    _number_output_neurons(src._number_output_neurons)
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+  }
+
+  layer_activation_helper& operator=(const layer_activation_helper& src)
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    if (this != &src)
+    {
+      _information = src._information;
+      _number_input_neurons = src._number_input_neurons;
+      _number_output_neurons = src._number_output_neurons;
+    }
+    return *this;
+  }
+
+  layer_activation_helper& operator=(layer_activation_helper&& src)
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    if (this != &src)
+    {
+      _information = std::move(src._information);
+      _number_input_neurons = src._number_input_neurons;
+      _number_output_neurons = src._number_output_neurons;
+    }
+    return *this;
+  }
+
+  void set_bounds(const activation& activation_method, unsigned start, unsigned end)
+  {
+#if VALIDATE_DATA == 1
+    if (end <= start)
+    {
+      Logger::panic("Trying to set a range of neurons ... but the start is past the end!");
+    }
+    if (end > _information.size())
+    {
+      Logger::panic("Trying to set a neuron:, ", end, " past the number of available neurons!");
+    }
+#endif
+
+    for (unsigned i = start; i < end; ++i)
+    {
+      const auto& info = _information[i];
+      _information[i] = layer_activation_information(activation_method, end - start);
+    }
+  }
+
+  [[nodiscard]] inline const activation& get_activation(unsigned output_neuron_number) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (output_neuron_number >= _information.size())
+    {
+      Logger::panic("Trying to get a activation method for beuron, ", output_neuron_number, " past the number of available neurons!");
+    }
+#endif
+    const auto& info = _information[output_neuron_number];
+    return info._activation_method;
+  }
+
+  [[nodiscard]] inline unsigned get_number_input_neurons() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    return _number_input_neurons;
+  }
+
+  [[nodiscard]] inline unsigned get_number_output_neurons() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    return _number_output_neurons;
+  }
+
+  [[nodiscard]] inline double weight_initialization(unsigned output_neuron_number) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (output_neuron_number >= _information.size())
+    {
+      Logger::panic("Trying to get a neuron:, ",output_neuron_number, " past the number of available neurons!");
+    }
+#endif
+    const auto& info = _information[output_neuron_number];
+    return info._activation_method.weight_initialization(get_number_input_neurons(), info._number_output_neurons);
+  }
+
+private:
+  std::vector<layer_activation_information> _information;
+  unsigned _number_input_neurons;
+  unsigned _number_output_neurons;
+};
+
 class Layer
 {
 public:
@@ -32,11 +174,8 @@ public:
   Layer(const Layer& src) noexcept :
     _layer_index(src._layer_index),
     _layer_type(src._layer_type),
-    _activation(src._activation),
     _optimiser_type(src._optimiser_type),
     _residual_layer_number(src._residual_layer_number),
-    _number_input_neurons(src._number_input_neurons),
-    _number_output_neurons(src._number_output_neurons),
     _neurons(src._neurons),
     _w_values(src._w_values),
     _w_grads(src._w_grads),
@@ -53,7 +192,8 @@ public:
     _b_timesteps(src._b_timesteps),
     _b_decays(src._b_decays),
     _residual_projector(nullptr),
-    _task_queue_pool(nullptr)
+    _task_queue_pool(nullptr),
+    _layer_activation_helper(src._layer_activation_helper)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (src._residual_projector != nullptr)
@@ -69,10 +209,7 @@ public:
   Layer(Layer&& src) noexcept :
     _layer_index(src._layer_index),
     _layer_type(src._layer_type),
-    _activation(std::move(src._activation)),
     _optimiser_type(std::move(src._optimiser_type)),
-    _number_input_neurons(src._number_input_neurons),
-    _number_output_neurons(src._number_output_neurons),
     _neurons(std::move(src._neurons)),
     _w_values(std::move(src._w_values)),
     _w_grads(std::move(src._w_grads)),
@@ -90,14 +227,13 @@ public:
     _b_decays(std::move(src._b_decays)),
     _residual_layer_number(src._residual_layer_number),
     _residual_projector(src._residual_projector),
-    _task_queue_pool(std::move(src._task_queue_pool))
+    _task_queue_pool(std::move(src._task_queue_pool)),
+    _layer_activation_helper(std::move(src._layer_activation_helper))
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     src._layer_type = LayerType::Input;
     src._layer_index = 0;
     src._optimiser_type = OptimiserType::None;
-    src._number_input_neurons = 0;
-    src._number_output_neurons = 0;
     src._residual_layer_number = 0;
     src._residual_projector = nullptr;
   }
@@ -109,10 +245,7 @@ public:
     {
       _layer_index = src._layer_index;
       _layer_type = src._layer_type;
-      _activation = src._activation;
       _optimiser_type = src._optimiser_type;
-      _number_input_neurons = src._number_input_neurons;
-      _number_output_neurons = src._number_output_neurons;
       _neurons = src._neurons;
 
       _w_values = src._w_values;
@@ -147,6 +280,7 @@ public:
       {
         _task_queue_pool.reset();
       }
+      _layer_activation_helper = src._layer_activation_helper;
     }
     return *this;
   }
@@ -158,10 +292,7 @@ public:
     {
       _layer_index = src._layer_index;
       _layer_type = src._layer_type;
-      _activation = std::move(src._activation);
       _optimiser_type = std::move(src._optimiser_type);
-      _number_input_neurons = src._number_input_neurons;
-      _number_output_neurons = src._number_output_neurons;
       _neurons = std::move(src._neurons);
 
       _w_values = std::move(src._w_values);
@@ -185,10 +316,10 @@ public:
 
       _task_queue_pool = std::move(src._task_queue_pool);
 
+      _layer_activation_helper = std::move(src._layer_activation_helper);
+
       src._layer_index = 0;
       src._optimiser_type = OptimiserType::None;
-      src._number_input_neurons = 0;
-      src._number_output_neurons = 0;
       src._residual_projector = nullptr;
     }
     return *this;
@@ -256,13 +387,13 @@ public:
   [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _number_input_neurons;
+    return _layer_activation_helper.get_number_input_neurons();
   }
 
   [[nodiscard]] inline unsigned get_number_output_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _number_output_neurons;
+    return _layer_activation_helper.get_number_output_neurons();
   }
 
   [[nodiscard]] virtual bool use_bptt() const noexcept
@@ -295,10 +426,22 @@ public:
     unsigned start_neuron,
     unsigned end_neuron) const;
 
-  [[nodiscard]] virtual inline const activation& get_activation() const noexcept
+  [[nodiscard]] inline const activation& get_activation() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _activation;
+#if VALIDATE_DATA == 1
+    if (_layer_type == LayerType::Output)
+    {
+      Logger::panic("The output layer MUST pass the neuron number!");
+    }
+#endif
+    return get_activation(0);
+  }
+
+  [[nodiscard]] inline const activation& get_activation(unsigned neuron_number ) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper.get_activation(neuron_number);
   }
 
   [[nodiscard]] inline double get_dropout() const noexcept
@@ -363,7 +506,7 @@ public:
 
     case OptimiserType::SGD:
     {
-      double momentum = _activation.momentum();
+      const auto&  momentum = get_activation().momentum();
       for (size_t i = 0; i < n; ++i)
       {
         double grad = grads[i] * clipping_scale;
@@ -565,18 +708,28 @@ public:
 
     double final_gradient = gradient * clipping_scale;
 
+    // Detect gradient explosions before they impact weights
+    if (std::abs(final_gradient) > 1e6)
+    {
+      Logger::panic("CRITICAL: Gradient too large! Grad: ", final_gradient, " lr: ", learning_rate);
+    }
+    else if (!std::isfinite(final_gradient))
+    {
+      Logger::panic("CRITICAL: Non-finite gradient detected! Grad: ", final_gradient);
+    }
+
     // Log trace for some updates to avoid flooding
     if (idx == 0 && (timesteps.empty() || timesteps[idx] % 50 == 0))
     {
       Logger::trace([&]()
         {
-          std::ostringstream ss;
-          ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
-            << ", idx=" << idx
-            << ", grad=" << gradient
-            << ", final_grad=" << final_gradient
-            << ", lr=" << learning_rate
-            << ", val_before=" << values[idx];
+      std::ostringstream ss;
+      ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
+        << ", idx=" << idx
+        << ", grad=" << gradient
+        << ", final_grad=" << final_gradient
+        << ", lr=" << learning_rate
+        << ", val_before=" << values[idx];
           return ss.str();
         });
     }
@@ -596,7 +749,7 @@ public:
         grad += decays[idx] * values[idx];
       }
       double previous_velocity = velocities[idx];
-      double velocity = _activation.momentum() * previous_velocity + grad;
+      double velocity = get_activation().momentum() * previous_velocity + grad;
       values[idx] -= learning_rate * velocity;
       velocities[idx] = velocity;
       grads[idx] = final_gradient;
@@ -702,24 +855,24 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if ((input_idx * _number_output_neurons + output_idx) >= _w_values.size())
+    if ((input_idx * get_number_output_neurons() + output_idx) >= _w_values.size())
     {
       Logger::panic("Index out of bounds in Layer::get_weight_value.");
     }
 #endif
-    return _w_values[input_idx * _number_output_neurons + output_idx];
+    return _w_values[input_idx * get_number_output_neurons() + output_idx];
   }
 
   [[nodiscard]] inline const double* get_weights_raw(unsigned input_idx) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if ((input_idx * _number_output_neurons) >= _w_values.size())
+    if ((input_idx * get_number_output_neurons()) >= _w_values.size())
     {
       Logger::panic("Index out of bounds in Layer::get_weights_raw.");
     }
 #endif
-    return &_w_values[input_idx * _number_output_neurons];
+    return &_w_values[input_idx * get_number_output_neurons()];
   }
 
   [[nodiscard]] inline double get_bias_value(unsigned output_idx) const
@@ -738,17 +891,17 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     static thread_local std::vector<std::vector<WeightParam>> thread_local_weights;
-    thread_local_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0, 0, 0, 0)));
-    for (unsigned i = 0; i < _number_input_neurons; ++i) 
+    thread_local_weights.assign(get_number_input_neurons(), std::vector<WeightParam>(get_number_output_neurons(), WeightParam(0, 0, 0, 0)));
+    for (unsigned i = 0; i < get_number_input_neurons(); ++i) 
     {
-      for (unsigned j = 0; j < _number_output_neurons; ++j) 
+      for (unsigned j = 0; j < get_number_output_neurons(); ++j) 
       {
-            const auto idx = i * _number_output_neurons + j;
-            thread_local_weights[i][j] = WeightParam(
-                _w_values[idx], _w_grads[idx], _w_velocities[idx],
-                _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
-            );
-        }
+        const auto idx = i * get_number_output_neurons() + j;
+        thread_local_weights[i][j] = WeightParam(
+            _w_values[idx], _w_grads[idx], _w_velocities[idx],
+            _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
+        );
+      }
     }
     return thread_local_weights;
   }
@@ -757,13 +910,13 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     static thread_local std::vector<WeightParam> thread_local_bias_weights;
-    thread_local_bias_weights.resize(_number_output_neurons, WeightParam(0, 0, 0, 0));
-    for (unsigned j = 0; j < _number_output_neurons; ++j)
+    thread_local_bias_weights.resize(get_number_output_neurons(), WeightParam(0, 0, 0, 0));
+    for (unsigned j = 0; j < get_number_output_neurons(); ++j)
     {
-        thread_local_bias_weights[j] = WeightParam(
-            _b_values[j], _b_grads[j], _b_velocities[j],
-            _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
-        );
+      thread_local_bias_weights[j] = WeightParam(
+          _b_values[j], _b_grads[j], _b_velocities[j],
+          _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
+      );
     }
     return thread_local_bias_weights;
   }
@@ -827,18 +980,49 @@ protected:
     const std::vector<double>& weight_decays,
     ResidualProjector* residual_projector,
     int number_of_threads
+  ) : Layer(
+    layer_index,
+    layer_type,
+    activation_method,
+    layer_activation_helper(activation_method, number_input_neurons, number_output_neurons),
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    has_bias,
+    weight_decays,
+    residual_projector,
+    number_of_threads
+  )
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+  }
+
+  Layer(
+    unsigned layer_index,
+    LayerType layer_type,
+    const activation& activation_method,
+    const layer_activation_helper& lah,
+    OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    bool has_bias,
+    const std::vector<double>& weight_decays,
+    ResidualProjector* residual_projector,
+    int number_of_threads
   ) :
     _layer_index(layer_index),
     _layer_type(layer_type),
-    _activation(activation_method),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
-    _number_input_neurons(number_input_neurons),
-    _number_output_neurons(number_output_neurons),
     _neurons(neurons),
     _w_decays(weight_decays),
     _residual_projector(residual_projector),
-    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads)),
+    _layer_activation_helper(activation_method, number_input_neurons, number_output_neurons)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
@@ -854,7 +1038,7 @@ protected:
       {
         for (size_t j = 0; j < number_output_neurons; ++j) 
         {
-          _w_values[i * number_output_neurons + j] = _activation.weight_initialization(number_input_neurons, number_output_neurons);
+          _w_values[i * number_output_neurons + j] = lah.weight_initialization(static_cast<unsigned>(j));
         }
       }
       _w_grads.assign(num_weights, 0.0);
@@ -932,13 +1116,62 @@ protected:
     const ResidualProjector* residual_projector,
     int number_of_threads
   ) noexcept :
+    Layer(
+      layer_index,
+      layer_type,
+      optimiser_type,
+      residual_layer_number,
+      neurons,
+      w_values,
+      w_grads,
+      w_velocities,
+      w_m1,
+      w_m2,
+      w_timesteps,
+      w_decays,
+      b_values,
+      b_grads,
+      b_velocities,
+      b_m1,
+      b_m2,
+      b_timesteps,
+      b_decays,
+      residual_projector,
+      number_of_threads,
+      layer_activation_helper(activation_method, number_input_neurons, number_output_neurons)
+    )
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+  }
+
+  Layer(
+    unsigned layer_index,
+    const LayerType layer_type,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    const ResidualProjector* residual_projector,
+    int number_of_threads,
+    const layer_activation_helper& lah
+  ) noexcept :
     _layer_index(layer_index),
     _layer_type(layer_type),
-    _activation(activation_method),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
-    _number_input_neurons(number_input_neurons),
-    _number_output_neurons(number_output_neurons),
     _neurons(neurons),
     _w_values(w_values),
     _w_grads(w_grads),
@@ -955,12 +1188,13 @@ protected:
     _b_timesteps(b_timesteps),
     _b_decays(b_decays),
     _residual_projector(nullptr),
-    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads))
+    _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads)),
+    _layer_activation_helper(lah)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (residual_projector != nullptr) 
-    { 
-      _residual_projector = new ResidualProjector(*residual_projector); 
+    if (residual_projector != nullptr)
+    {
+      _residual_projector = new ResidualProjector(*residual_projector);
     }
   }
 
@@ -978,11 +1212,8 @@ protected:
 
   unsigned _layer_index;
   LayerType _layer_type;
-  activation _activation;
   OptimiserType _optimiser_type;
   int _residual_layer_number;
-  unsigned _number_input_neurons;
-  unsigned _number_output_neurons;
   std::vector<Neuron> _neurons;
   std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_decays;
   std::vector<long long> _w_timesteps;
@@ -990,6 +1221,7 @@ protected:
   std::vector<long long> _b_timesteps;
   ResidualProjector* _residual_projector;
   std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
+  layer_activation_helper _layer_activation_helper;
 
 private:
   bool is_bias_index(const std::vector<double>& values) const noexcept 

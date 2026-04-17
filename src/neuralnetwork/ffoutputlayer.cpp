@@ -19,6 +19,7 @@ FFOutputLayer::FFOutputLayer(
     create_weight_decays(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
     Layer::LayerType::Output,
     output_layer_details.front().get_activation(),
+    create_layer_activation_helper(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
     optimiser_type,
     -1,       //  no residual layer
     0.0,      //  no dropout for output layer
@@ -29,6 +30,24 @@ FFOutputLayer::FFOutputLayer(
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
+
+layer_activation_helper FFOutputLayer::create_layer_activation_helper(unsigned num_inputs,
+  unsigned num_neurons_in_this_layer,
+  const std::vector<OutputLayerDetails>& output_layer_details)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  layer_activation_helper lah(output_layer_details.front().get_activation(), num_inputs, num_neurons_in_this_layer);
+  unsigned start = 0;
+  unsigned end = 0;
+  for (const auto& detail : output_layer_details)
+  {
+    end = start + detail.get_size();
+    lah.set_bounds(detail.get_activation(), start, end);
+    start = end;
+  }
+  return lah;
+}
+
 
 std::vector<double> FFOutputLayer::create_weight_decays(
   unsigned num_inputs,
@@ -102,11 +121,8 @@ FFOutputLayer::FFOutputLayer(
   FFLayer(
     layer_index,
     Layer::LayerType::Output,
-    output_layer_details.front().get_activation(),
     optimiser_type,
     -1,       //  no residual layer
-    number_input_neurons,
-    number_output_neurons,
     neurons,
     w_values,
     w_grads,
@@ -123,7 +139,9 @@ FFOutputLayer::FFOutputLayer(
     b_timesteps,
     b_decays,
     nullptr,  //  no residual projector
-    number_of_threads),
+    number_of_threads,
+    create_layer_activation_helper(number_input_neurons, number_output_neurons, output_layer_details)
+    ),
     OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
