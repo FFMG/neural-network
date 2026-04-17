@@ -423,47 +423,12 @@ void FFLayer::calculate_hidden_gradients(
   // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
   // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
   std::vector<double> flattened_this_grads_buffer(batch_size * N_this, 0.0);
-
-  auto run_gemm_backward = [&](size_t b_start, size_t b_end)
-  {
-    constexpr size_t BLOCK_SIZE = 64;
-    // W_next is stored as [N_this x N_next]
-    const double* W_next = next_layer.get_w_values().data();
-
-    for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
-    {
-      size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_next);
-      for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
-      {
-        size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
-        for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-        {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_this);
-          for (size_t b = b0; b < b_limit; ++b)
-          {
-            const double* g_next_row = &flattened_next_grads_buffer[b * N_next];
-            double* g_this_row = &flattened_this_grads_buffer[b * N_this];
-
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double* w_next_row = &W_next[i * N_next];
-              double sum = 0.0;
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                sum += g_next_row[j] * w_next_row[j];
-              }
-              g_this_row[i] += sum;
-            }
-          }
-        }
-      }
-    }
-  };
+  const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_gemm_backward(0, batch_size);
+    run_gemm_backward(0, batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
   }
   else
   {
@@ -474,8 +439,8 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &run_gemm_backward]() {
-          run_gemm_backward(start, end); 
+        _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() {
+          run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer); 
           }
         );
       }
@@ -485,25 +450,9 @@ void FFLayer::calculate_hidden_gradients(
   }
 
   // 3. Apply activation derivative and store results
-  auto run_post_gemm_backward = [&](size_t start, size_t end)
-  {
-    for (size_t b = start; b < end; b++)
-    {
-      const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-      double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-      const double* g_this_row = &flattened_this_grads_buffer[b * N_this];
-
-      for (size_t i = 0; i < N_this; i++)
-      {
-        double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-        grad_ptr[i] = g_this_row[i] * deriv;
-      }
-    }
-  };
-
   if (num_threads <= 1)
   {
-    run_post_gemm_backward(0, batch_size);
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
   }
   else
   {
@@ -514,9 +463,9 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &run_post_gemm_backward]()
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]()
           { 
-            run_post_gemm_backward(start, end); 
+            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); 
           });
       }
       start = end;
@@ -669,4 +618,68 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   // Clear gradients
   std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
   std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+}
+
+void FFLayer::run_gemm_backward(
+  size_t b_start,
+  size_t b_end,
+  size_t N_next,
+  size_t N_this,
+  const double* W_next,
+  const std::vector<double>& flattened_next_grads_buffer,
+  std::vector<double>& flattened_this_grads_buffer) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  constexpr size_t BLOCK_SIZE = 64;
+  for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
+  {
+    size_t j_limit = std::min(j0 + BLOCK_SIZE, N_next);
+    for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
+    {
+      size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      {
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t b = b0; b < b_limit; ++b)
+        {
+          const double* g_next_row = &flattened_next_grads_buffer[b * N_next];
+          double* g_this_row = &flattened_this_grads_buffer[b * N_this];
+
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double* w_next_row = &W_next[i * N_next];
+            double sum = 0.0;
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              sum += g_next_row[j] * w_next_row[j];
+            }
+            g_this_row[i] += sum;
+          }
+        }
+      }
+    }
+  }
+}
+
+void FFLayer::run_post_gemm_backward(
+  size_t start,
+  size_t end,
+  size_t N_this,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  const std::vector<double>& flattened_this_grads_buffer) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  for (size_t b = start; b < end; b++)
+  {
+    const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
+    double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+    const double* g_this_row = &flattened_this_grads_buffer[b * N_this];
+
+    for (size_t i = 0; i < N_this; i++)
+    {
+      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+      grad_ptr[i] = g_this_row[i] * deriv;
+    }
+  }
 }

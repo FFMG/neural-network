@@ -122,4 +122,22 @@ protected:
     const std::vector<double>& batch_inputs_buffer,
     std::vector<double>& batch_pre_activation_sums_buffer,
     bool is_training) const;
+
+private:
+  void run_gemm_backward(
+    size_t b_start,
+    size_t b_end,
+    size_t N_next,
+    size_t N_this,
+    const double* W_next,
+    const std::vector<double>& flattened_next_grads_buffer,
+    std::vector<double>& flattened_this_grads_buffer) const;
+
+  void run_post_gemm_backward(
+    size_t start,
+    size_t end,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const std::vector<double>& flattened_this_grads_buffer) const;
 };
