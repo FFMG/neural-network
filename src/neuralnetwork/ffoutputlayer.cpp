@@ -506,7 +506,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
 
     constexpr unsigned output_layer_index = 0; // layer zero, fast track only one layer...
     const auto& configs = evaluation_config(output_layer_index);
-    const auto& activation = OutputLayer::get_activation(output_layer_index);
+    const auto& activation = output_layer_details()[output_layer_index].get_activation();
     const auto& activation_method = activation.get_method();
 
     for (const auto& error_type : error_types)
@@ -528,7 +528,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     std::vector<NeuralNetworkHelperMetrics> layer_errors;
     layer_errors.reserve(error_types.size());
 
-    const auto& activation = OutputLayer::get_activation(output_layer_index);
+    const auto& activation = output_layer_details()[output_layer_index].get_activation();
     const auto& activation_method = activation.get_method();
 
     const auto& bounds = layer_bounds(output_layer_index);

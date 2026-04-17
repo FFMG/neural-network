@@ -157,6 +157,7 @@
     <ClInclude Include="aligned_allocator.h" />
     <ClInclude Include="evaluationconfig.h" />
     <ClInclude Include="examples\addingproblem.h" />
+    <ClInclude Include="examples\compound_output_sandwich.h" />
     <ClInclude Include="examples\compound_softmax.h" />
     <ClInclude Include="examples\compound_trivial_softmax.h" />
     <ClInclude Include="examples\multi_output.h" />
