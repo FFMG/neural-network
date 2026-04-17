@@ -730,8 +730,10 @@ public:
     MYODDWEB_PROFILE_FUNCTION("Layer");
     static thread_local std::vector<std::vector<WeightParam>> thread_local_weights;
     thread_local_weights.assign(_number_input_neurons, std::vector<WeightParam>(_number_output_neurons, WeightParam(0, 0, 0, 0)));
-    for (unsigned i = 0; i < _number_input_neurons; ++i) {
-        for (unsigned j = 0; j < _number_output_neurons; ++j) {
+    for (unsigned i = 0; i < _number_input_neurons; ++i) 
+    {
+      for (unsigned j = 0; j < _number_output_neurons; ++j) 
+      {
             const auto idx = i * _number_output_neurons + j;
             thread_local_weights[i][j] = WeightParam(
                 _w_values[idx], _w_grads[idx], _w_velocities[idx],
