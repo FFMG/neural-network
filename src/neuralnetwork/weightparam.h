@@ -78,6 +78,7 @@ public:
     }
     return *this;
   }
+
   WeightParam& operator=(WeightParam&& src)  noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -102,43 +103,42 @@ public:
   }
   virtual ~WeightParam() = default;
 
-  inline double get_value() const noexcept
+  [[nodiscard]] inline double get_value() const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _value; 
   };
-  inline double get_raw_gradient() const noexcept
+  [[nodiscard]] inline double get_raw_gradient() const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _raw_gradient;
   }
-
-  inline double get_velocity() const noexcept
+  [[nodiscard]] inline double get_velocity() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _velocity;
   }
-  inline long long get_timestep() const noexcept
+  [[nodiscard]] inline long long get_timestep() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _time_step;
   }
-  inline double get_first_moment_estimate() const noexcept
+  [[nodiscard]] inline double get_first_moment_estimate() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _first_moment_estimate;
   }
-  inline double get_second_moment_estimate() const noexcept
+  [[nodiscard]] inline double get_second_moment_estimate() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _second_moment_estimate;
   }
-  inline double get_weight_decay() const noexcept
+  [[nodiscard]] inline double get_weight_decay() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     return _weight_decay;
   }
-  inline void set_value( double value) 
+  inline void set_value( double value)
   { 
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
     if (!std::isfinite(value))
@@ -158,7 +158,6 @@ public:
     }
     _raw_gradient = raw_gradient;
   };
-
   inline void set_velocity(double velocity)
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
@@ -189,7 +188,6 @@ public:
     }
     _second_moment_estimate = second_moment_estimate;
   }
-
   inline void increment_timestep() noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("WeightParam");
