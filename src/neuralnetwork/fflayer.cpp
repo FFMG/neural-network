@@ -111,7 +111,6 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
 FFLayer::FFLayer(
   unsigned layer_index,
   const LayerType layer_type,
-  const activation& activation_method,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   unsigned number_input_neurons,
@@ -132,16 +131,14 @@ FFLayer::FFLayer(
   const std::vector<long long>& b_timesteps,
   const std::vector<double>& b_decays,
   const ResidualProjector* residual_projector,
-  int number_of_threads
-) noexcept : 
+  int number_of_threads,
+  const layer_activation_helper& lah
+) noexcept :
   Layer(
   layer_index,
   layer_type,
-  activation_method,
   optimiser_type,
   residual_layer_number,
-  number_input_neurons,
-  number_output_neurons,
   neurons,
   w_values,
   w_grads,
@@ -158,7 +155,9 @@ FFLayer::FFLayer(
   b_timesteps,
   b_decays,
   residual_projector,
-  number_of_threads)
+  number_of_threads,
+  lah
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -389,24 +388,31 @@ void FFLayer::run_post_gemm(
 
     // Activation
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    for (size_t j = 0; j < N_this; j++)
+    for (const auto& r : _layer_activation_helper.ranges())
     {
-      const auto& neuron = get_neuron((unsigned)j);
-      double output = get_activation().activate(current_pre_act[j]);
+      // 1. Batch activation for the range
+      r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end);
 
-      if (is_training && neuron.is_dropout())
+      // 2. Apply dropout and store
+      for (size_t j = r.start; j < r.end; j++)
       {
-        if (neuron.must_randomly_drop())
+        const auto& neuron = get_neuron((unsigned)j);
+        double output = current_pre_act[j];
+
+        if (is_training && neuron.is_dropout())
         {
-          output = 0.0;
+          if (neuron.must_randomly_drop())
+          {
+            output = 0.0;
+          }
+          else
+          {
+            output /= (1.0 - neuron.get_dropout_rate());
+          }
         }
-        else
-        {
-          output /= (1.0 - neuron.get_dropout_rate());
-        }
+        output_row[j] = output;
+        output_ptr[j] = output;
       }
-      output_row[j] = output;
-      output_ptr[j] = output;
     }
 
     if (!batch_hidden_states.empty())
@@ -711,10 +717,13 @@ void FFLayer::run_post_gemm_backward(
     double* grad_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
     const double* g_this_row = &flattened_this_grads_buffer[b * N_this];
 
-    for (size_t i = 0; i < N_this; i++)
+    for (const auto& r : _layer_activation_helper.ranges())
     {
-      double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-      grad_ptr[i] = g_this_row[i] * deriv;
+      for (size_t i = r.start; i < r.end; i++)
+      {
+        double deriv = r.activation_method.activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+        grad_ptr[i] = g_this_row[i] * deriv;
+      }
     }
   }
 }

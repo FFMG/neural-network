@@ -96,7 +96,13 @@ NeuralNetwork::~NeuralNetwork()
   _neural_network_helper = nullptr;
 }
 
-const Layers& NeuralNetwork::get_layers() const
+[[nodiscard]] const Layer& NeuralNetwork::get_layer(unsigned index) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _layers[index];
+}
+
+[[nodiscard]] const Layers& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _layers;

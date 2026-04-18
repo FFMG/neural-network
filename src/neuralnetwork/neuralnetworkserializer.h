@@ -49,6 +49,7 @@ private:
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
   static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
   static EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
+  static layer_activation_helper get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs);
   static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config);
 
   static ResidualProjector* get_residual_projector(const TinyJSON::TJValueObject& layer_object);
@@ -56,6 +57,7 @@ private:
   static void add_basic(TinyJSON::TJValueObject& json);
   static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_activation_helper(const layer_activation_helper& lah, TinyJSON::TJValueObject& json);
   static void add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers);

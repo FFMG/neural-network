@@ -37,7 +37,6 @@ public:
   FFLayer(
     unsigned layer_index,
     const LayerType layer_type,
-    const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -58,7 +57,8 @@ public:
     const std::vector<long long>& b_timesteps,
     const std::vector<double>& b_decays,
     const ResidualProjector* residual_projector,
-    int number_of_threads
+    int number_of_threads,
+    const layer_activation_helper& lah
   ) noexcept;
 
   FFLayer(const FFLayer& src) noexcept;
@@ -117,58 +117,6 @@ protected:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias);
-
-  FFLayer(
-    unsigned layer_index,
-    const LayerType layer_type,
-    const OptimiserType optimiser_type,
-    int residual_layer_number,
-    const std::vector<Neuron>& neurons,
-    const std::vector<double>& w_values,
-    const std::vector<double>& w_grads,
-    const std::vector<double>& w_velocities,
-    const std::vector<double>& w_m1,
-    const std::vector<double>& w_m2,
-    const std::vector<long long>& w_timesteps,
-    const std::vector<double>& w_decays,
-    const std::vector<double>& b_values,
-    const std::vector<double>& b_grads,
-    const std::vector<double>& b_velocities,
-    const std::vector<double>& b_m1,
-    const std::vector<double>& b_m2,
-    const std::vector<long long>& b_timesteps,
-    const std::vector<double>& b_decays,
-    const ResidualProjector* residual_projector,
-    int number_of_threads,
-    const layer_activation_helper& lah
-  ) noexcept : 
-    Layer(
-      layer_index,
-      layer_type,
-      optimiser_type,
-      residual_layer_number,
-      neurons,
-      w_values,
-      w_grads,
-      w_velocities,
-      w_m1,
-      w_m2,
-      w_timesteps,
-      w_decays,
-      b_values,
-      b_grads,
-      b_velocities,
-      b_m1,
-      b_m2,
-      b_timesteps,
-      b_decays,
-      residual_projector,
-      number_of_threads,
-      lah
-    )
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  }
 
   void run_gemm(
     size_t b_start,
