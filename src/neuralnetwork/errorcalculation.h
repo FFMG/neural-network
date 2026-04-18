@@ -183,13 +183,13 @@ public:
       return calculate_nrmse_error(ground_truths, predictions);
 
     case type::mape:
-      return calculate_forecast_mape(ground_truths, predictions);
+      return calculate_forecast_mape(ground_truths, predictions, evaluation_config);
 
     case type::wape:
       return calculate_forecast_wape(ground_truths, predictions);
 
     case type::smape:
-      return calculate_forecast_smape(ground_truths, predictions);
+      return calculate_forecast_smape(ground_truths, predictions, evaluation_config);
 
     case type::directional_accuracy:
       if (activation_method == activation::method::softmax)
@@ -206,7 +206,7 @@ public:
       return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config, activation_method);
 
     case type::bce_loss:
-      return calculate_bce_loss(ground_truths, predictions);
+      return calculate_bce_loss(ground_truths, predictions, evaluation_config);
 
     case type::cross_entropy:
       return calculate_cross_entropy(ground_truths, predictions, evaluation_config);
@@ -426,7 +426,9 @@ public:
       const auto& pred = predictions[seq_idx];
 
       if (gt.size() != pred.size() || gt.empty())
+      {
         continue;
+      }
 
       double mse = 0.0;
       double min_val = gt[0], max_val = gt[0], mean_abs = 0.0;
@@ -457,8 +459,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_nrmse / sequence_count);
   }
 
-  // TODO epsilon should be a common const rather than a param, it is never passed.
-  static double calculate_forecast_mape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
+  static double calculate_forecast_mape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_mape = 0.0;
@@ -480,7 +481,10 @@ public:
       for (size_t i = 0; i < gt.size(); ++i)
       {
         double denom = std::abs(gt[i]);
-        if (denom < epsilon) continue; // skip tiny values
+        if (denom < evaluation_config.epsilon())
+        {
+          continue; // skip tiny values
+        }
         seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
         ++count;
       }
@@ -541,8 +545,7 @@ public:
     return total_absolute_error / total_absolute_actuals;
   }
 
-  // TODO epsilon should be a common const rather than a param, it is never passed.
-  static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double epsilon = 1e-8)
+  static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_smape = 0.0;
@@ -563,7 +566,10 @@ public:
       for (size_t i = 0; i < gt.size(); ++i)
       {
         double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
-        if (denom < epsilon) continue; // skip both near-zero
+        if (denom < evaluation_config.epsilon())
+        {
+          continue; // skip both near-zero
+        }
         seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
         ++count;
       }
@@ -860,14 +866,13 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
   }
 
-  static double calculate_bce_loss( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
+  static double calculate_bce_loss( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_bce = 0.0;
     size_t count = 0;
 
-    // small epsilon to avoid log(0)
-    const double eps = 1e-12;
+    const auto& eps = evaluation_config.epsilon();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -882,8 +887,8 @@ public:
       for (size_t i = 0; i < gt.size(); ++i)
       {
         // clip predictions to [eps, 1 - eps]
-        double p = std::max(eps, std::min(1.0 - eps, pred[i]));
-        double y = gt[i];
+        const auto& p = std::max(eps, std::min(1.0 - eps, pred[i]));
+        const auto& y = gt[i];
 
         total_bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
         ++count;

@@ -154,6 +154,7 @@ public:
 
   [[nodiscard]] inline const std::vector<range>& ranges() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
     return _ranges;
   }
 
@@ -180,7 +181,6 @@ public:
       }
     }
     Logger::panic("Trying to initialize weight for neuron ", output_neuron_number, " which is not covered by any range!");
-    return 0.0;
   }
 
 private:

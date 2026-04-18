@@ -11,13 +11,15 @@ public:
     double huber_delta,
     double direction_lambda,
     bool   use_direction_penalty,
-    double cross_entropy_lambda) noexcept :
+    double cross_entropy_lambda,
+    double epsilon = 1e-12) noexcept :
     _neutral_tolerance(neutral_tolerance),
     _confidence_threshold(confidence_threshold),
     _huber_delta(huber_delta),
     _direction_lambda(direction_lambda),
     _use_direction_penalty(use_direction_penalty),
-    _cross_entropy_lambda(cross_entropy_lambda)
+    _cross_entropy_lambda(cross_entropy_lambda),
+    _epsilon(epsilon)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -28,10 +30,12 @@ public:
     _huber_delta(src._huber_delta),
     _direction_lambda(src._direction_lambda),
     _use_direction_penalty(src._use_direction_penalty),
-    _cross_entropy_lambda(src._cross_entropy_lambda)
+    _cross_entropy_lambda(src._cross_entropy_lambda),
+    _epsilon(src._epsilon)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
+
   EvaluationConfig& operator=(const EvaluationConfig& src) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
@@ -43,6 +47,7 @@ public:
       _direction_lambda = src._direction_lambda;
       _use_direction_penalty = src._use_direction_penalty;
       _cross_entropy_lambda = src._cross_entropy_lambda;
+      _epsilon = src._epsilon;
     }
     return *this;
   }
@@ -77,6 +82,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     return _cross_entropy_lambda;
   }
+  [[nodiscard]] inline double epsilon() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    return _epsilon;
+  }
 private:
   double _neutral_tolerance;
   double _confidence_threshold;
@@ -84,4 +94,5 @@ private:
   double _direction_lambda;
   bool _use_direction_penalty;
   double _cross_entropy_lambda;
+  double _epsilon = 1e-8;
 };
