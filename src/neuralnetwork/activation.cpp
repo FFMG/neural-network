@@ -144,17 +144,29 @@ void activation::activate(double* begin, double* end) const
   }
 }
 
-double activation::calculate_sigmoid(double x, double) noexcept
+double activation::calculate_sigmoid(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return 1 / (1 + std::exp(-x));
+  // Compute z = alpha * x in a numerically stable way for the sigmoid.
+  const double z = alpha * x;
+  if (z >= 0.0)
+  {
+    const double exp_neg = std::exp(-z);
+    return 1.0 / (1.0 + exp_neg);
+  }
+  else
+  {
+    const double exp_pos = std::exp(z);
+    return exp_pos / (1.0 + exp_pos);
+  }
 }
 
-double activation::calculate_sigmoid_derivative(double x, double) noexcept
+double activation::calculate_sigmoid_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  const auto sigmoid_output = calculate_sigmoid(x, 0.0);
-  return sigmoid_output * (1.0 - sigmoid_output);
+  // d/dx sigmoid(alpha*x) = alpha * sigmoid(alpha*x) * (1 - sigmoid(alpha*x))
+  const double s = calculate_sigmoid(x, alpha);
+  return alpha * s * (1.0 - s);
 }
 
 double activation::calculate_selu(double x, double) noexcept
