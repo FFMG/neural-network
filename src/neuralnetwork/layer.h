@@ -1004,44 +1004,9 @@ protected:
   Layer(
     unsigned layer_index,
     LayerType layer_type,
-    const activation& activation_method,
-    OptimiserType optimiser_type,
-    int residual_layer_number,
-    unsigned number_input_neurons,
-    unsigned number_output_neurons,
-    const std::vector<Neuron>& neurons,
-    bool has_bias,
-    const std::vector<double>& weight_decays,
-    ResidualProjector* residual_projector,
-    int number_of_threads
-  ) : Layer(
-    layer_index,
-    layer_type,
-    activation_method,
-    layer_activation_helper(activation_method, number_input_neurons, number_output_neurons),
-    optimiser_type,
-    residual_layer_number,
-    number_input_neurons,
-    number_output_neurons,
-    neurons,
-    has_bias,
-    weight_decays,
-    residual_projector,
-    number_of_threads
-  )
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-  }
-
-  Layer(
-    unsigned layer_index,
-    LayerType layer_type,
-    const activation& activation_method,
     const layer_activation_helper& lah,
     OptimiserType optimiser_type,
     int residual_layer_number,
-    unsigned number_input_neurons,
-    unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
     bool has_bias,
     const std::vector<double>& weight_decays,
@@ -1059,6 +1024,8 @@ protected:
     _layer_activation_helper(lah)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    const auto& number_input_neurons = lah.get_number_input_neurons();
+    const auto& number_output_neurons = lah.get_number_output_neurons();
     const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;
     if (_w_decays.size() != num_weights)
     {
@@ -1091,6 +1058,37 @@ protected:
       _b_timesteps.assign(number_output_neurons, 0);
       _b_decays.assign(number_output_neurons, 0.0);
     }
+  }
+
+  Layer(
+    unsigned layer_index,
+    LayerType layer_type,
+    const activation& activation_method,
+    OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    bool has_bias,
+    const std::vector<double>& weight_decays,
+    ResidualProjector* residual_projector,
+    int number_of_threads
+  ) :
+    Layer
+    (
+      layer_index,
+      layer_type,
+      layer_activation_helper(activation_method, number_input_neurons, number_output_neurons),
+      optimiser_type,
+      residual_layer_number,
+      neurons,
+      has_bias,
+      weight_decays,
+      residual_projector,
+      number_of_threads
+    )
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
   }
 
   Layer(

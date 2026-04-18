@@ -105,11 +105,8 @@ public:
 
 protected:
   FFLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer,
-    unsigned num_neurons_in_this_layer,
     const std::vector<double>& weight_decays,
     LayerType layer_type,
-    const activation& activation_method,
     const layer_activation_helper& lah,
     const OptimiserType& optimiser_type,
     int residual_layer_number,
