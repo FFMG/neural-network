@@ -118,11 +118,13 @@ FFOutputLayer::FFOutputLayer(
   const std::vector<double>& b_decays,
   int number_of_threads
 ) noexcept : 
-  FFLayer(
+FFLayer(
     layer_index,
     Layer::LayerType::Output,
     optimiser_type,
     -1,       //  no residual layer
+    number_input_neurons,
+    number_output_neurons,
     neurons,
     w_values,
     w_grads,
@@ -256,6 +258,9 @@ void FFOutputLayer::run_output_gradients(
   std::vector<double> gradients(num_neurons, 0.0);
   std::vector<double> deltas(num_neurons, 0.0);
 
+  const auto& details = output_layer_details();
+  const auto& ranges = _layer_activation_helper.ranges();
+
   for (size_t b = start; b < end; b++)
   {
     const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
@@ -263,39 +268,43 @@ void FFOutputLayer::run_output_gradients(
 
     calculate_error_deltas(deltas, target_outputs, given_outputs);
 
-    for (unsigned neuron_index = 0; neuron_index < num_neurons; ++neuron_index)
+    for (size_t h = 0; h < ranges.size(); ++h)
     {
-      const auto& activation = OutputLayer::get_activation(neuron_index);
+      const auto& r = ranges[h];
+      const auto& detail = details[h];
+      const auto& activation = r.activation_method;
+      
+      const bool skip_derivative = (activation.get_method() == activation::method::softmax) ||
+                                   is_not_using_activation_derivative(activation.get_method(), detail.get_output_error_calculation_type());
 
-      // Softmax + Cross-Entropy gradient is (given - target), which already incorporates the derivative.
-      // Therefore, we must not apply any additional activation derivative for Softmax.
-      // We also must ensure that the derivative application logic is not skipped for Softmax neurons.
-      if (activation.get_method() == activation::method::softmax)
+      if (skip_derivative)
       {
-        gradients[neuron_index] = deltas[neuron_index];
-      }
-      else if (get_is_not_using_activation_derivatives(neuron_index))
-      {
-        gradients[neuron_index] = deltas[neuron_index];
+        for (unsigned i = r.start; i < r.end; ++i)
+        {
+          gradients[i] = deltas[i];
+        }
       }
       else
       {
         const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[0];
-        double deriv = activation.activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(neuron_index));
-        gradients[neuron_index] = deltas[neuron_index] * deriv;
+        for (unsigned i = r.start; i < r.end; ++i)
+        {
+          double deriv = activation.activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron(i));
+          gradients[i] = deltas[i] * deriv;
+        }
       }
+    }
 
-      if (b < 2) // Log first 2 samples
-      {
-        Logger::trace([=] {
-          std::ostringstream ss;
-          ss << "DEBUG: [b=" << b << ", n=" << neuron_index << "] "
-            << "Target: " << target_outputs[neuron_index]
-            << ", Given: " << given_outputs[neuron_index]
-            << ", Grad: " << gradients[neuron_index];
-          return ss.str();
-          });
-      }
+    if (b < 2) // Log first 2 samples
+    {
+      Logger::trace([=] {
+        std::ostringstream ss;
+        ss << "DEBUG: [b=" << b << "] "
+          << "Target[0]: " << target_outputs[0]
+          << ", Given[0]: " << given_outputs[0]
+          << ", Grad[0]: " << gradients[0];
+        return ss.str();
+        });
     }
     batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
   }
@@ -425,34 +434,33 @@ void FFOutputLayer::run_post_gemm(
       }
     }
 
-    // Activation
-    std::copy(current_pre_act.begin(), current_pre_act.end(), output_row.begin());
-    for (unsigned int i = 0; i < OutputLayer::number_output_layers(); ++i)
-    {
-      const auto& b_range = OutputLayer::layer_bounds(i);
-      OutputLayer::get_activation(b_range.start).activate(output_row.data() + b_range.start, output_row.data() + b_range.end + 1);
-    }
-
-    // Dropout and Output
+    // Activation, Dropout and Output
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    for (size_t j = 0; j < N_this; j++)
+    for (const auto& r : _layer_activation_helper.ranges())
     {
-      const auto& neuron = get_neuron((unsigned)j);
-      double output = output_row[j];
+      // 1. Batch activation for the range
+      r.activation_method.activate(current_pre_act.data() + r.start, current_pre_act.data() + r.end);
 
-      if (is_training && neuron.is_dropout())
+      // 2. Apply dropout and store
+      for (size_t j = r.start; j < r.end; j++)
       {
-        if (neuron.must_randomly_drop())
+        const auto& neuron = get_neuron((unsigned)j);
+        double output = current_pre_act[j];
+
+        if (is_training && neuron.is_dropout())
         {
-          output = 0.0;
+          if (neuron.must_randomly_drop())
+          {
+            output = 0.0;
+          }
+          else
+          {
+            output /= (1.0 - neuron.get_dropout_rate());
+          }
         }
-        else
-        {
-          output /= (1.0 - neuron.get_dropout_rate());
-        }
+        output_row[j] = output;
+        output_ptr[j] = output;
       }
-      output_row[j] = output;
-      output_ptr[j] = output;
     }
 
     if (!batch_hidden_states.empty())

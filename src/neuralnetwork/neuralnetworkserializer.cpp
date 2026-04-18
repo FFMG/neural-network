@@ -155,19 +155,14 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto activation_method_string = layer_object.try_get_string("activation-method");
-  if (activation_method_string == nullptr)
-  {
-    Logger::panic("Missing layer 'activation-method'.");
-  }
-  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
-  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
-
   auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+
+  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
   auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
@@ -197,11 +192,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto layer = std::make_unique<ElmanRNNLayer>(
     layer_index,
     layer_type,
-    activation_method,
     optimiser_type,
     residual_layer_number,
-    number_input_neurons,
-    number_output_neurons,
     neurons,
     w_values,
     w_grads,
@@ -225,7 +217,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
     rw_timesteps,
     rw_decays,
     residual_projector.get(),
-    number_of_threads
+    number_of_threads,
+    lah
   );
 
   return layer;
@@ -249,19 +242,14 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto activation_method_string = layer_object.try_get_string("activation-method");
-  if (activation_method_string == nullptr)
-  {
-    Logger::panic("Missing layer 'activation-method'.");
-  }
-  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
-  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
-
   auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+
+  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
   auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
@@ -339,11 +327,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto layer = std::make_unique<GRURNNLayer>(
     layer_index,
     layer_type,
-    activation_method,
     optimiser_type,
     residual_layer_number,
-    number_input_neurons,
-    number_output_neurons,
     neurons,
     w_values,
     w_grads,
@@ -411,7 +396,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     r_b_timesteps,
     r_b_decays,
     residual_projector.get(),
-    number_of_threads
+    number_of_threads,
+    lah
   );
 
   return layer;
@@ -435,19 +421,14 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto activation_method_string = layer_object.try_get_string("activation-method");
-  if (activation_method_string == nullptr)
-  {
-    Logger::panic("Missing layer 'activation-method'.");
-  }
-  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
-  auto activation_method = activation(activation::string_to_method(activation_method_string), activation_alpha);
-
   auto layer_type_number = layer_object.get<int>("layer-type");
   auto layer_type = (Layer::LayerType)layer_type_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+
+  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
   auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
@@ -468,7 +449,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto layer = std::make_unique<FFLayer>(
     layer_index,
     layer_type,
-    activation_method,
     optimiser_type,
     residual_layer_number,
     number_input_neurons,
@@ -489,7 +469,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_timesteps,
     b_decays,
     residual_projector.get(),
-    number_of_threads
+    number_of_threads,
+    lah
   );
 
   return layer;
@@ -954,6 +935,35 @@ int NeuralNetworkSerializer::get_number_of_layers(const TinyJSON::TJValue& json)
   return array->get_number_of_items();
 }
 
+layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  
+  auto activation_method_string = layer_object.try_get_string("activation-method");
+  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  activation default_activation(activation::string_to_method(activation_method_string == nullptr ? "sigmoid" : activation_method_string), activation_alpha);
+
+  layer_activation_helper lah(default_activation, num_inputs, num_outputs);
+
+  auto* ranges_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("activation-ranges"));
+  if (ranges_array != nullptr)
+  {
+    for (const auto& r_val : *ranges_array)
+    {
+      auto* r_obj = dynamic_cast<const TinyJSON::TJValueObject*>(&r_val);
+      if (r_obj != nullptr)
+      {
+        auto start = r_obj->get<unsigned>("start");
+        auto end = r_obj->get<unsigned>("end");
+        auto method_str = r_obj->get_string("activation-method");
+        auto alpha = r_obj->get_float("activation-alpha");
+        lah.set_bounds(activation(activation::string_to_method(method_str), alpha), start, end);
+      }
+    }
+  }
+  return lah;
+}
+
 std::vector<WeightParam> NeuralNetworkSerializer::get_weight_params(const TinyJSON::TJValueObject& parent)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -1122,8 +1132,7 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
-  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
+  add_activation_helper(layer.get_activation_helper(), *layer_object);
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1179,8 +1188,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
-  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
+  add_activation_helper(layer.get_activation_helper(), *layer_object);
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1285,8 +1293,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  layer_object->set_string("activation-method", layer.get_activation().method_to_string().c_str());
-  layer_object->set_float("activation-alpha", layer.get_activation().get_alpha());
+  add_activation_helper(layer.get_activation_helper(), *layer_object);
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -1520,6 +1527,24 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
 
   json.set("errors", tj_errors_array);
   delete tj_errors_array;
+}
+
+void NeuralNetworkSerializer::add_activation_helper(const layer_activation_helper& lah, TinyJSON::TJValueObject& json)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto* ranges_array = new TinyJSON::TJValueArray();
+  for (const auto& r : lah.ranges())
+  {
+    auto* range_object = new TinyJSON::TJValueObject();
+    range_object->set_number("start", r.start);
+    range_object->set_number("end", r.end);
+    range_object->set_string("activation-method", r.activation_method.method_to_string().c_str());
+    range_object->set_float("activation-alpha", r.activation_method.get_alpha());
+    ranges_array->add(range_object);
+    delete range_object;
+  }
+  json.set("activation-ranges", ranges_array);
+  delete ranges_array;
 }
 
 void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)

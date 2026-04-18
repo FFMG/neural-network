@@ -21,23 +21,14 @@
 
 class layer_activation_helper
 {
-private:
-  class layer_activation_information
+public:
+  struct range
   {
-  public:
-    layer_activation_information(const activation& activation_method, unsigned number_output_neurons) :
-      _activation_method(activation_method),
-      _number_output_neurons(number_output_neurons)
-    {
-    }
+    unsigned start;
+    unsigned end; // Exclusive
+    activation activation_method;
 
-    layer_activation_information(const layer_activation_information& src) :
-      _activation_method(src._activation_method),
-      _number_output_neurons(src._number_output_neurons)
-    {
-    }
-    activation _activation_method;
-    unsigned _number_output_neurons;
+    range(unsigned s, unsigned e, const activation& m) : start(s), end(e), activation_method(m) {}
   };
 
 public:
@@ -46,10 +37,7 @@ public:
     _number_output_neurons(number_output_neurons)
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
-    for (unsigned i = 0; i < number_output_neurons; ++i)
-    {
-      _information.push_back(layer_activation_information(activation_method, number_output_neurons));
-    }
+    _ranges.emplace_back(0, number_output_neurons, activation_method);
   }
 
   ~layer_activation_helper()
@@ -58,15 +46,15 @@ public:
   }
 
   layer_activation_helper(const layer_activation_helper& src) : 
-    _information(src._information),
+    _ranges(src._ranges),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons)
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
   }
 
-  layer_activation_helper(layer_activation_helper&& src) :
-    _information(std::move(src._information)),
+  layer_activation_helper(layer_activation_helper&& src) noexcept :
+    _ranges(std::move(src._ranges)),
     _number_input_neurons(src._number_input_neurons),
     _number_output_neurons(src._number_output_neurons)
   {
@@ -78,19 +66,19 @@ public:
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
     if (this != &src)
     {
-      _information = src._information;
+      _ranges = src._ranges;
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
     }
     return *this;
   }
 
-  layer_activation_helper& operator=(layer_activation_helper&& src)
+  layer_activation_helper& operator=(layer_activation_helper&& src) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
     if (this != &src)
     {
-      _information = std::move(src._information);
+      _ranges = std::move(src._ranges);
       _number_input_neurons = src._number_input_neurons;
       _number_output_neurons = src._number_output_neurons;
     }
@@ -99,35 +87,68 @@ public:
 
   void set_bounds(const activation& activation_method, unsigned start, unsigned end)
   {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
 #if VALIDATE_DATA == 1
     if (end <= start)
     {
       Logger::panic("Trying to set a range of neurons ... but the start is past the end!");
     }
-    if (end > _information.size())
+    if (end > _number_output_neurons)
     {
       Logger::panic("Trying to set a neuron:, ", end, " past the number of available neurons!");
     }
 #endif
 
-    for (unsigned i = start; i < end; ++i)
+    // Remove or split existing ranges that overlap with [start, end)
+    std::vector<range> new_ranges;
+    for (const auto& r : _ranges)
     {
-      const auto& info = _information[i];
-      _information[i] = layer_activation_information(activation_method, end - start);
+      if (r.end <= start || r.start >= end)
+      {
+        // No overlap
+        new_ranges.push_back(r);
+      }
+      else
+      {
+        // Overlap - add parts outside [start, end)
+        if (r.start < start)
+        {
+          new_ranges.emplace_back(r.start, start, r.activation_method);
+        }
+        if (r.end > end)
+        {
+          new_ranges.emplace_back(end, r.end, r.activation_method);
+        }
+      }
     }
+    new_ranges.emplace_back(start, end, activation_method);
+    
+    // Keep it sorted
+    std::sort(new_ranges.begin(), new_ranges.end(), [](const range& a, const range& b) {
+      return a.start < b.start;
+    });
+    _ranges = std::move(new_ranges);
   }
 
   [[nodiscard]] inline const activation& get_activation(unsigned output_neuron_number) const
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
-#if VALIDATE_DATA == 1
-    if (output_neuron_number >= _information.size())
+    // Usually only 1 range, so linear search is fine.
+    for (const auto& r : _ranges)
     {
-      Logger::panic("Trying to get a activation method for beuron, ", output_neuron_number, " past the number of available neurons!");
+      if (output_neuron_number >= r.start && output_neuron_number < r.end)
+      {
+        return r.activation_method;
+      }
     }
-#endif
-    const auto& info = _information[output_neuron_number];
-    return info._activation_method;
+    Logger::panic("Trying to get an activation method for neuron ", output_neuron_number, " which is not covered by any range!");
+    static activation dummy(activation::method::linear, 0.0);
+    return dummy;
+  }
+
+  [[nodiscard]] inline const std::vector<range>& ranges() const noexcept
+  {
+    return _ranges;
   }
 
   [[nodiscard]] inline unsigned get_number_input_neurons() const
@@ -145,18 +166,19 @@ public:
   [[nodiscard]] inline double weight_initialization(unsigned output_neuron_number) const
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
-#if VALIDATE_DATA == 1
-    if (output_neuron_number >= _information.size())
+    for (const auto& r : _ranges)
     {
-      Logger::panic("Trying to get a neuron:, ",output_neuron_number, " past the number of available neurons!");
+      if (output_neuron_number >= r.start && output_neuron_number < r.end)
+      {
+        return r.activation_method.weight_initialization(get_number_input_neurons(), r.end - r.start);
+      }
     }
-#endif
-    const auto& info = _information[output_neuron_number];
-    return info._activation_method.weight_initialization(get_number_input_neurons(), info._number_output_neurons);
+    Logger::panic("Trying to initialize weight for neuron ", output_neuron_number, " which is not covered by any range!");
+    return 0.0;
   }
 
 private:
-  std::vector<layer_activation_information> _information;
+  std::vector<range> _ranges;
   unsigned _number_input_neurons;
   unsigned _number_output_neurons;
 };
@@ -382,6 +404,18 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return get_number_output_neurons();
+  }
+
+  [[nodiscard]] inline const layer_activation_helper& get_activation_helper() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper;
+  }
+
+  [[nodiscard]] inline layer_activation_helper& get_activation_helper()
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper;
   }
 
   [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept
@@ -1022,7 +1056,7 @@ protected:
     _w_decays(weight_decays),
     _residual_projector(residual_projector),
     _task_queue_pool(std::make_unique<TaskQueuePool<void>>(number_of_threads)),
-    _layer_activation_helper(activation_method, number_input_neurons, number_output_neurons)
+    _layer_activation_helper(lah)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     const size_t num_weights = static_cast<size_t>(number_input_neurons) * number_output_neurons;

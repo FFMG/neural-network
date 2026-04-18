@@ -43,7 +43,8 @@ public:
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
-  const Layers& get_layers() const;
+  [[nodiscard]] const Layers& get_layers() const;
+  [[nodiscard]] const Layer& get_layer(unsigned index) const;
 
   // Output layer 0 only (common use case)
   NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;

@@ -13,12 +13,13 @@
  * THE PARANOID TEST: A "torture test" for the Neural Network library.
  * 
  * Complexity Level:
- * - Architecture: GRU -> FF -> FF (with Residual Jump)
+ * - Architecture: GRU -> FF (Multi-Head!) -> FF (with Residual Jump)
+ * - Multi-Head Hidden: Layer 2 has 16 Mish neurons and 16 ReLU neurons.
  * - Output Heads: Softmax(3) -> Tanh(2) -> Softmax(4) -> Sigmoid(1) -> Linear(2)
  * - Validation: Overfitting -> Serialization (Save/Load) -> Re-Validation
  * 
- * This confirms that Softmax, compound slicing, recurrent states, residual
- * jumps, and persistence all work in perfect harmony.
+ * This confirms that Softmax, compound slicing, multi-head hidden layers,
+ * recurrent states, residual jumps, and persistence all work in perfect harmony.
  */
 class ExampleCompoundOutputSandwich
 {
@@ -31,7 +32,7 @@ private:
     std::vector<LayerDetails> hidden_layers = {
       // Layer 1: GRU
       LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.0001),
-      // Layer 2: FF
+      // Layer 2: FF (We will manually make this multi-head below)
       LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::mish, 0.01), 0.0, 0.0001),
       // Layer 3: FF
       LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.0001)
@@ -62,7 +63,14 @@ private:
       .with_data_is_unique(true)
       .build();
 
-    return new NeuralNetwork(options);
+    auto nn = new NeuralNetwork(options);
+
+    // --- MANUALLY SETUP MULTI-HEAD HIDDEN LAYER ---
+    // Layer 2 (index 2): neurons 0-15 = Mish, 16-31 = ReLU
+    auto& layer2 = const_cast<Layer&>(nn->get_layer(2));
+    layer2.get_activation_helper().set_bounds(activation(activation::method::relu, 0.01), 16, 32);
+
+    return nn;
   }
 
   static void verify_network(NeuralNetwork& nn, const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, const std::string& label)
@@ -82,7 +90,12 @@ private:
       if (std::abs(sum2 - 1.0) > 1e-4) s2_sum_ok = false;
     }
 
-    // Surgical verification per head to avoid noisy warnings
+    // Verify Multi-Head Hidden Layer Persistence (Layer 2)
+    const auto& lah2 = nn.get_layer(2).get_activation_helper();
+    bool hidden_multi_head_ok = (lah2.ranges().size() == 2) &&
+                                (lah2.ranges()[0].activation_method.get_method() == activation::method::mish) &&
+                                (lah2.ranges()[1].activation_method.get_method() == activation::method::relu);
+
     auto metrics = nn.calculate_forecast_metrics_all_layers({ 
       ErrorCalculation::type::directional_accuracy 
     }, true);
@@ -90,15 +103,16 @@ private:
     Logger::info("--- Verification: ", label, " ---");
     Logger::info("Softmax Head 0 Sum-to-one: ", (s0_sum_ok ? "PASS" : "FAIL"));
     Logger::info("Softmax Head 2 Sum-to-one: ", (s2_sum_ok ? "PASS" : "FAIL"));
+    Logger::info("Hidden Multi-Head Config : ", (hidden_multi_head_ok ? "PASS" : "FAIL"));
     
     if (metrics.size() >= 3) {
-      double acc0 = metrics[0][0].error(); // Head 0, first (and only) metric
-      double acc2 = metrics[2][0].error(); // Head 2, first (and only) metric
+      double acc0 = metrics[0][0].error();
+      double acc2 = metrics[2][0].error();
       
       Logger::info("Head 0 Acc: ", acc0 * 100.0, "%");
       Logger::info("Head 2 Acc: ", acc2 * 100.0, "%");
       
-      if (s0_sum_ok && s2_sum_ok && acc0 > 0.9 && acc2 > 0.9) {
+      if (s0_sum_ok && s2_sum_ok && hidden_multi_head_ok && acc0 > 0.9 && acc2 > 0.9) {
         Logger::info("RESULT: PASS");
       } else {
         Logger::error("RESULT: FAIL");

@@ -41,11 +41,8 @@ public:
   GRURNNLayer(
     unsigned layer_index,
     const LayerType layer_type,
-    const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
-    unsigned number_input_neurons,
-    unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
     const std::vector<double>& w_values,
     const std::vector<double>& w_grads,
@@ -113,7 +110,8 @@ public:
     const std::vector<long long>& r_b_timesteps,
     const std::vector<double>& r_b_decays,
     const ResidualProjector* residual_projector,
-    int number_of_threads
+    int number_of_threads,
+    const layer_activation_helper& lah
   ) noexcept;
 
   GRURNNLayer(const GRURNNLayer& src) noexcept;

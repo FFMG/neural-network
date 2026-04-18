@@ -54,6 +54,7 @@ GRURNNLayer::GRURNNLayer(
     layer_index,
     layer_type,
     activation_method,
+    layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
     optimiser_type,
     residual_layer_number,
     num_neurons_in_previous_layer,
@@ -187,11 +188,8 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
 GRURNNLayer::GRURNNLayer(
   unsigned layer_index,
   const LayerType layer_type,
-  const activation& activation_method,
   const OptimiserType optimiser_type,
   int residual_layer_number,
-  unsigned number_input_neurons,
-  unsigned number_output_neurons,
   const std::vector<Neuron>& neurons,
   const std::vector<double>& w_values,
   const std::vector<double>& w_grads,
@@ -259,16 +257,14 @@ GRURNNLayer::GRURNNLayer(
   const std::vector<long long>& r_b_timesteps,
   const std::vector<double>& r_b_decays,
   const ResidualProjector* residual_projector,
-  int number_of_threads
+  int number_of_threads,
+  const layer_activation_helper& lah
 ) noexcept :
   Layer(
     layer_index,
     layer_type,
-    activation_method,
     optimiser_type,
     residual_layer_number,
-    number_input_neurons,
-    number_output_neurons,
     neurons,
     w_values,
     w_grads,
@@ -285,7 +281,8 @@ GRURNNLayer::GRURNNLayer(
     b_timesteps,
     b_decays,
     residual_projector,
-    number_of_threads),
+    number_of_threads,
+    lah),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
