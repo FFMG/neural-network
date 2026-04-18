@@ -28,7 +28,13 @@ public:
     unsigned end; // Exclusive
     activation activation_method;
 
-    range(unsigned s, unsigned e, const activation& m) : start(s), end(e), activation_method(m) {}
+    range(unsigned s, unsigned e, const activation& m) : 
+      start(s), 
+      end(e), 
+      activation_method(m) 
+    {
+      MYODDWEB_PROFILE_FUNCTION("layer_activation_helper::range");
+    }
   };
 
 public:
@@ -1256,7 +1262,7 @@ protected:
   layer_activation_helper _layer_activation_helper;
 
 private:
-  bool is_bias_index(const std::vector<double>& values) const noexcept 
+  [[nodiscard]] inline bool is_bias_index(const std::vector<double>& values) const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return &values == &_b_values; 
@@ -1314,5 +1320,4 @@ private:
     const std::vector<double>& given_outputs,
     const activation::method activation_method,
     std::span<Neuron> neurons) const;
-
 };
