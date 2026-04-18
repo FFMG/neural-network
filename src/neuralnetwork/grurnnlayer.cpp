@@ -54,7 +54,6 @@ GRURNNLayer::GRURNNLayer(
     layer_index,
     layer_type,
     activation_method,
-    layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
     optimiser_type,
     residual_layer_number,
     num_neurons_in_previous_layer,
