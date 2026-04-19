@@ -72,10 +72,10 @@ private:
     std::vector<unsigned> topology = {2, 32, 32, 2};
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05),
-      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05)
+      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.9),
+      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.9)
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::NadamW, 0.99);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
@@ -87,7 +87,6 @@ private:
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
       .build();
 

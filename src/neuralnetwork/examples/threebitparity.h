@@ -11,9 +11,9 @@ public:
   {
     std::vector<unsigned> topology = { 3, 8, 1 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01), 0.0, 0.05),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.9),
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::NadamW, 0.99);
     
     const int number_of_epoch = 5000;
     const double learning_rate = 0.01;
@@ -49,7 +49,6 @@ public:
         .with_learning_rate(learning_rate)
         .with_number_of_epoch(number_of_epoch)
         .with_adaptive_learning_rates(false)
-        .with_optimiser_type(OptimiserType::NadamW)
         .with_clip_threshold(1.0)
         .with_data_is_unique(true)
         .with_hidden_layers(hidden_layers)

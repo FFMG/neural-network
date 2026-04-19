@@ -31,11 +31,11 @@ private:
     
     std::vector<LayerDetails> hidden_layers = {
       // Layer 1: GRU
-      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.0001),
+      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9),
       // Layer 2: FF (We will manually make this multi-head below)
-      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::mish, 0.01), 0.0, 0.0001),
+      LayerDetails(LayerDetails::LayerType::FF, 32, activation(activation::method::mish, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.95),
       // Layer 3: FF
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.0001)
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -43,21 +43,20 @@ private:
       .with_output_layer_details(
         {
           // Head 0: Softmax(3)
-          OutputLayerDetails(3, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW),
+          OutputLayerDetails(3, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 1: Tanh(2)
-          OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW),
+          OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9),
           // Head 2: Softmax(4)
-          OutputLayerDetails(4, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW),
+          OutputLayerDetails(4, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 3: Sigmoid(1)
-          OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW),
+          OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 4: Linear(2)
-          OutputLayerDetails(2, activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW)
+          OutputLayerDetails(2, activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9)
         }
       )
       .with_log_level(log_level)
       .with_learning_rate(0.005)
       .with_number_of_epoch(5000)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
       .with_residual_layer_jump(1) 
       .with_data_is_unique(true)

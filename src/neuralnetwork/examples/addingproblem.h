@@ -83,16 +83,15 @@ public:
     // Output: 1 neuron (Linear)
     std::vector<unsigned> topology = { 2, 100, 1 };
     std::vector<LayerDetails> hidden_layers = {
-        LayerDetails(LayerDetails::LayerType::Gru, 100, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+        LayerDetails(LayerDetails::LayerType::Gru, 100, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::Adam, 0.9)
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::Adam, 0.9);
     
     auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(batch_size)
         .with_output_layer_details(output_layer) // Regression output
         .with_log_level(log_level)
         .with_learning_rate(learning_rate)
-        .with_optimiser_type(OptimiserType::Adam)
         .with_hidden_layers(hidden_layers)
         .with_number_of_epoch(epochs)
         .with_enable_bptt(true)

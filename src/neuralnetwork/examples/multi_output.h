@@ -32,16 +32,16 @@ private:
     std::vector<unsigned> topology = { 1, 8, 8, 2 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5),
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9),
+      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9)
     };
 
     // Define multiple output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.99),
       // Second output: Tanh (Regression: Scaled value)
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.9)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -50,7 +50,6 @@ private:
       .with_log_level(log_level)
       .with_learning_rate(0.01)
       .with_number_of_epoch(1000)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
       .build();
 

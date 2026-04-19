@@ -28,15 +28,15 @@ private:
     std::vector<unsigned> topology = { 1, 16, 7 }; // 1 input, 16 hidden, 2 reg + 5 softmax = 7 outputs
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::AdamW, 0.9)
     };
 
     // Define compound output layers
     auto output_layers = {
       // First output: Regression (2 Tanh neurons, MSE)
-      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0001),
+      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0001, OptimiserType::AdamW, 0.9),
       // Second output: Softmax (5 classes, Cross-Entropy)
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
+      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::AdamW, 0.99)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -46,7 +46,6 @@ private:
       .with_learning_rate(0.0005)     // Further reduced LR
       .with_clip_threshold(1.0)      // Normal clipping
       .with_number_of_epoch(500)
-      .with_optimiser_type(OptimiserType::AdamW)
       .with_hidden_layers(hidden_layers)
       .build();
 
