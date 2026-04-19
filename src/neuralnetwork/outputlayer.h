@@ -92,8 +92,9 @@ protected:
     case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
     case ErrorCalculation::type::cross_entropy: return method == activation::method::softmax;
     case ErrorCalculation::type::mse:
+    case ErrorCalculation::type::rmse:
     case ErrorCalculation::type::huber_loss:
-    case ErrorCalculation::type::log_cosh: return method == activation::method::linear;
+    case ErrorCalculation::type::log_cosh: return false; // Always use derivative for MSE-like losses unless it's linear (where deriv=1 anyway)
     }
     return false;
   }
