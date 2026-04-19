@@ -12,18 +12,17 @@ private:
   {
     std::vector<unsigned> topology = { 1, 32, 64, 5 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.5),
-      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9),
+      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_output_layer_details(
-        OutputLayerDetails(5, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, { 0.001, 0.001, 1.0, 0.1, true, 1.0 }, 0.001))
+        OutputLayerDetails(5, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, { 0.001, 0.001, 1.0, 0.1, true, 1.0 }, 0.001, OptimiserType::NadamW, 0.99))
       .with_log_level(log_level)
       .with_learning_rate(0.001)
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
       .build();
 

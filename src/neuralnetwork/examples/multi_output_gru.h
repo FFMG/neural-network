@@ -31,15 +31,15 @@ private:
     std::vector<unsigned> topology = { 1, 16, 2 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Gru, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::Gru, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9)
     };
 
     // Define multiple output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is last value positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.99),
       // Second output: Tanh (Regression: Average value)
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.9)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -48,7 +48,6 @@ private:
       .with_log_level(log_level)
       .with_learning_rate(0.01)
       .with_number_of_epoch(500)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_hidden_layers(hidden_layers)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(5) // We will use sequences of 5

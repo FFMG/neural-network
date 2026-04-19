@@ -34,16 +34,16 @@ private:
     std::vector<unsigned> topology = { 1, 16, 16, 6 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5),
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5)
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95),
+      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95)
     };
 
     // Define compound output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.95),
       // Second output: Softmax (5-bucket classification)
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5)
+      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.95)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -52,8 +52,7 @@ private:
       .with_log_level(log_level)
       .with_learning_rate(0.005)
       .with_number_of_epoch(2000)
-      .with_optimiser_type(OptimiserType::NadamW)
-      .with_hidden_layers(hidden_layers)
+.with_hidden_layers(hidden_layers)
       .with_final_error_calculation_types({ 
           ErrorCalculation::type::rmse,
           ErrorCalculation::type::mape,

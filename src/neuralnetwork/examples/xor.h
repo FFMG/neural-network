@@ -10,10 +10,10 @@ private:
   {
     std::vector<unsigned> topology = {3,2,1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 0.01), 0.2, 0.05)
+      LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 0.01), 0.2, 0.05, OptimiserType::SGD, 0.99)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
@@ -24,7 +24,6 @@ private:
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.25, 0.05) // 5% total, boost 5% of the training
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::SGD)
       .with_hidden_layers(hidden_layers)
       .build();
 

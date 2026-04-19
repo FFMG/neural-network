@@ -33,13 +33,13 @@ public:
     std::vector<unsigned> topology = { 2, 8, 8, 8, 8, 1 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2, 0.05),
-      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.95),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.95),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2, 0.05, OptimiserType::NadamW, 0.95),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.95),
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::NadamW, 0.99);
     
     // std::vector<unsigned> topology = {2, 3, 1};
     // std::vector<double> dropout = { 0.0 };
@@ -52,7 +52,6 @@ public:
       .with_learning_rate_decay_rate(0.0)
       .with_learning_rate_boost_rate(0.00, 1.0)
       .with_number_of_epoch(epoch)
-      .with_optimiser_type(OptimiserType::NadamW)
       .with_residual_layer_jump(3)
       .with_hidden_layers(hidden_layers)
       .build();
