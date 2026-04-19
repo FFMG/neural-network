@@ -30,7 +30,11 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_output_layer_details(OutputLayerDetails(topology.back(), activation(output_layer_activation, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05))
+    .with_output_layer_details(OutputLayerDetails(
+      topology.back(), 
+      activation(output_layer_activation, 0.01), 
+      ErrorCalculation::type::mse, 
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -530,6 +534,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // add a log message.
   log_training_info(training_inputs, training_outputs);
 
+  // Reset optimizer state for all layers
+  for (unsigned int i = 0; i < _layers.size(); ++i)
+  {
+    _layers[i].reset_optimizer_state();
+  }
+
   // build the training output batch so we can use it for error calculations
   const auto training_indexes_size = _neural_network_helper->training_indexes().size();
   std::vector<std::vector<double>> training_outputs_batch = {};
@@ -557,6 +567,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   std::vector<std::vector<std::vector<double>>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
+    // Learning rate
+    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
+    _neural_network_helper->set_learning_rate(learning_rate);
+
     // set the values
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
@@ -571,11 +585,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       train_single_batch( bptt_in[bptt_index].begin(), bptt_out[bptt_index].begin(), total_size);
     }
     MYODDWEB_PROFILE_MARK();
-
-    // Learning rate
-    //
-    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
-    _neural_network_helper->set_learning_rate(learning_rate);
 
     // update the training monitor metrics
     if (_neural_network_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
@@ -961,6 +970,8 @@ void NeuralNetwork::log_training_info(
     const auto& this_hl = hl[hl_index];
     Logger::info(tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
                  tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
+                 tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
+                 tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
                  tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
                  tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
                  tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
@@ -978,6 +989,7 @@ void NeuralNetwork::log_training_info(
     output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
       tab, tab, tab, "Size                   : ", details.get_size(), "\n",
       tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
+      tab, tab, tab, "Momentum               : ", details.get_momentum(), "\n",
       tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
       tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
       tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
@@ -1001,7 +1013,6 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
-  Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
