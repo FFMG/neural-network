@@ -511,6 +511,8 @@ public:
 
   virtual double get_gradient_norm_sq() const = 0;
 
+  virtual void zero_gradients() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
+
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
 
   void apply_update_to_vector(

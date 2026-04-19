@@ -760,6 +760,13 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+void ElmanRNNLayer::zero_gradients()
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  Layer::zero_gradients();
+  std::fill(this->_rw_grads.begin(), this->_rw_grads.end(), 0.0);
+}
+
 void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");

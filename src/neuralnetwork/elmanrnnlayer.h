@@ -115,7 +115,9 @@ public:
     size_t batch_size,
     int bptt_max_ticks) override;
 
-  double get_gradient_norm_sq() const override;
+  virtual double get_gradient_norm_sq() const override;
+
+  virtual void zero_gradients() override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 

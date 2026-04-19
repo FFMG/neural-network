@@ -162,6 +162,8 @@ public:
 
   [[nodiscard]] double get_gradient_norm_sq() const override;
 
+  void zero_gradients() override;
+
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept

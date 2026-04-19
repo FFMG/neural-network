@@ -894,7 +894,8 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       batch_residual_inputs.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        batch_residual_inputs.emplace_back(gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number)));
+        const auto src_span = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+        batch_residual_inputs.emplace_back(src_span.begin(), src_span.end());
       }
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
@@ -904,8 +905,8 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
     {
         if (current_layer.use_bptt())
         {
-            const std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-            const std::vector<double> prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+            const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+            const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
             const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
             
             const size_t n_prev = previous_layer.get_number_neurons();

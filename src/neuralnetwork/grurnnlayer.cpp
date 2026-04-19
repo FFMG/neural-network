@@ -573,7 +573,7 @@ void GRURNNLayer::calculate_forward_feed(
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const std::vector<double> rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     if (!rnn_in.empty())
     {
       const size_t t = rnn_in.size() / N_prev;
@@ -586,7 +586,7 @@ void GRURNNLayer::calculate_forward_feed(
     }
     else
     {
-      const std::vector<double> std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
       if (std_in.size() == N_prev)
       {
         if (num_time_steps == 0) 
@@ -735,6 +735,11 @@ void GRURNNLayer::calculate_forward_feed(
         for (size_t j = 0; j < N_this; ++j)
         {
           packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+        }
+        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
+
+        for (size_t j = 0; j < N_this; ++j)
+        {
           double h_hat = h_hat_vec[j];
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
@@ -752,7 +757,6 @@ void GRURNNLayer::calculate_forward_feed(
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
 
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
         batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
         prev_h = current_h;
       }
@@ -1445,6 +1449,18 @@ double GRURNNLayer::get_gradient_norm_sq() const
   norm_sq += std::inner_product(_r_b_grads.begin(), _r_b_grads.end(), _r_b_grads.begin(), 0.0);
 
   return norm_sq;
+}
+
+void GRURNNLayer::zero_gradients()
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  Layer::zero_gradients();
+  std::fill(this->_z_w_grads.begin(), this->_z_w_grads.end(), 0.0);
+  std::fill(this->_z_rw_grads.begin(), this->_z_rw_grads.end(), 0.0);
+  std::fill(this->_z_b_grads.begin(), this->_z_b_grads.end(), 0.0);
+  std::fill(this->_r_w_grads.begin(), this->_r_w_grads.begin(), 0.0);
+  std::fill(this->_r_rw_grads.begin(), this->_r_rw_grads.end(), 0.0);
+  std::fill(this->_r_b_grads.begin(), this->_r_b_grads.end(), 0.0);
 }
 
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
