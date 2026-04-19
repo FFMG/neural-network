@@ -16,13 +16,15 @@ public:
     const ErrorCalculation::type& output_error_calculation_type, 
     const EvaluationConfig& error_evaluation_config,
     double weight_decay,
-    OptimiserType optimiser_type = OptimiserType::None) noexcept :
+    OptimiserType optimiser_type,
+    double momentum) noexcept :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),
     _error_evaluation_config(error_evaluation_config),
     _weight_decay(weight_decay),
-    _optimiser_type(optimiser_type)
+    _optimiser_type(optimiser_type),
+    _momentum(momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     if (weight_decay < 0)
@@ -37,7 +39,8 @@ public:
     _output_error_calculation_type(src._output_error_calculation_type),
     _error_evaluation_config(src._error_evaluation_config),
     _weight_decay(src._weight_decay),
-    _optimiser_type(src._optimiser_type)
+    _optimiser_type(src._optimiser_type),
+    _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
   }
@@ -48,7 +51,8 @@ public:
     _output_error_calculation_type(src._output_error_calculation_type),
     _error_evaluation_config(std::move(src._error_evaluation_config)),
     _weight_decay(src._weight_decay),
-    _optimiser_type(src._optimiser_type)
+    _optimiser_type(src._optimiser_type),
+    _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     src._layer_size = 0;
@@ -65,6 +69,7 @@ public:
       _error_evaluation_config = src._error_evaluation_config;
       _weight_decay = src._weight_decay;
       _optimiser_type = src._optimiser_type;
+      _momentum = src._momentum;
     }
     return *this;
   }
@@ -123,6 +128,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _optimiser_type;
   }
+  [[nodiscard]] inline double get_momentum() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    return _momentum;
+  }
 private:
   unsigned _layer_size;
   activation _activation;
@@ -130,4 +140,5 @@ private:
   EvaluationConfig _error_evaluation_config;
   double _weight_decay;
   OptimiserType _optimiser_type;
+  double _momentum;
 };
