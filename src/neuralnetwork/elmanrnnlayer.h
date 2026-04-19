@@ -22,7 +22,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   ElmanRNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -35,7 +36,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   ElmanRNNLayer(
     unsigned layer_index,
@@ -66,7 +68,8 @@ public:
     const std::vector<double>& rw_decays,
     const ResidualProjector* residual_projector,
     int number_of_threads,
-    const layer_activation_helper& lah
+    const layer_activation_helper& lah,
+    double momentum
   ) noexcept;
 
   ElmanRNNLayer(const ElmanRNNLayer& src) noexcept;
@@ -119,7 +122,7 @@ public:
 
   virtual void zero_gradients() override;
 
-  void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+  virtual void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
   inline const std::vector<double>& get_rw_values() const noexcept
   {

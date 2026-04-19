@@ -16,7 +16,8 @@ GRURNNLayer::GRURNNLayer(
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  double momentum
   ) :
   GRURNNLayer(
     layer_index,
@@ -30,7 +31,8 @@ GRURNNLayer::GRURNNLayer(
     dropout_rate,
     residual_projector,
     number_of_threads,
-    has_bias
+    has_bias,
+    momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -48,7 +50,8 @@ GRURNNLayer::GRURNNLayer(
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  double momentum
 ) :
   Layer(
     layer_index,
@@ -62,7 +65,8 @@ GRURNNLayer::GRURNNLayer(
     has_bias,
     weight_decays,
     residual_projector,
-    number_of_threads
+    number_of_threads,
+    momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -257,7 +261,8 @@ GRURNNLayer::GRURNNLayer(
   const std::vector<double>& r_b_decays,
   const ResidualProjector* residual_projector,
   int number_of_threads,
-  const layer_activation_helper& lah
+  const layer_activation_helper& lah,
+  double momentum
 ) noexcept :
   Layer(
     layer_index,
@@ -281,7 +286,8 @@ GRURNNLayer::GRURNNLayer(
     b_decays,
     residual_projector,
     number_of_threads,
-    lah),
+    lah, 
+    momentum),
     _rw_values(rw_values),
     _rw_grads(rw_grads),
     _rw_velocities(rw_velocities),
@@ -1471,50 +1477,50 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
   const unsigned num_inputs = get_number_input_neurons();
 
   // Iterate over all neurons
-  for (unsigned j = 0; j < num_outputs; ++j)
+  for (unsigned neuron_number = 0; neuron_number < num_outputs; ++neuron_number)
   {
     // 1. Input-to-Hidden Weights
     for (unsigned i = 0; i < num_inputs; ++i)
     {
-      unsigned idx = i * num_outputs + j;
+      unsigned idx = i * num_outputs + neuron_number;
 
       // A. Candidate State (Uses Base Layer storage)
-      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale, _optimiser_type);
+      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale, _optimiser_type, neuron_number);
 
       // B. Update Gate (z)
-      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale, _optimiser_type);
+      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
 
       // C. Reset Gate (r)
-      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale, _optimiser_type);
+      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
     }
 
     // 2. Recurrent Weights (Hidden-to-Hidden)
     for (unsigned k = 0; k < num_outputs; ++k)
     {
        // Indexing for recurrent weights: k (from) * num_outputs + j (to)
-       unsigned rec_idx = k * num_outputs + j;
+       unsigned rec_idx = k * num_outputs + neuron_number;
 
        // A. Candidate State
-       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
+       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
 
        // B. Update Gate (z)
-       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
+       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
 
        // C. Reset Gate (r)
-       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type);
+       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
     }
 
     // 3. Bias Weights
     if (has_bias())
     {
        // A. Candidate State
-       apply_weight_gradient(_b_grads[j], learning_rate, true, j, clipping_scale, _optimiser_type);
+       apply_weight_gradient(_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
 
        // B. Update Gate (z)
-       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, j, _z_b_grads[j], learning_rate, clipping_scale, _optimiser_type);
+       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, neuron_number, _z_b_grads[neuron_number], learning_rate, clipping_scale, _optimiser_type, neuron_number);
 
        // C. Reset Gate (r)
-       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, j, _r_b_grads[j], learning_rate, clipping_scale, _optimiser_type);
+       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, neuron_number, _r_b_grads[neuron_number], learning_rate, clipping_scale, _optimiser_type, neuron_number);
     }
   }
 }

@@ -19,7 +19,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -32,7 +33,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   FFLayer(
     unsigned layer_index,
@@ -58,7 +60,8 @@ public:
     const std::vector<double>& b_decays,
     const ResidualProjector* residual_projector,
     int number_of_threads,
-    const layer_activation_helper& lah
+    const layer_activation_helper& lah,
+    double momentum
   ) noexcept;
 
   FFLayer(const FFLayer& src) noexcept;
@@ -99,9 +102,9 @@ public:
     size_t batch_size,
     int bptt_max_ticks) override;
 
-  double get_gradient_norm_sq() const override;
+  virtual double get_gradient_norm_sq() const override;
 
-  void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+  virtual void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
 protected:
   FFLayer(unsigned layer_index,
@@ -113,7 +116,8 @@ protected:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   void run_gemm(
     size_t b_start,

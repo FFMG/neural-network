@@ -13,14 +13,12 @@ public:
     const std::vector<OutputLayerDetails>& output_layer_details,
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
-    const OptimiserType& optimiser_type, 
     int number_of_threads,
     bool has_bias);
 
   FFOutputLayer(
     unsigned layer_index,
     const std::vector<OutputLayerDetails>& output_layer_details,
-    const OptimiserType optimiser_type,
     unsigned number_input_neurons,
     unsigned number_output_neurons,
     const std::vector<Neuron>& neurons,
@@ -72,13 +70,6 @@ public:
   
   Layer* clone() const override;
 
-  void calculate_and_store_gradients(
-    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    const Layer& previous_layer,
-    size_t batch_size,
-    int bptt_max_ticks) override;
-
   [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
     const std::vector<ErrorCalculation::type>& error_types,
     const std::vector<std::vector<double>>& checking_outputs,
@@ -86,6 +77,8 @@ public:
   ) const  override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
+  [[nodiscard]] double get_momentum(unsigned neuron_number) const noexcept override;
 
 protected:
   void run_post_gemm(

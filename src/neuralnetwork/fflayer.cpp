@@ -15,7 +15,8 @@ FFLayer::FFLayer(
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  double momentum
 ) :
   FFLayer(
   layer_index,
@@ -29,7 +30,8 @@ FFLayer::FFLayer(
   dropout_rate,
   residual_projector,
   number_of_threads,
-  has_bias
+  has_bias,
+  momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -47,7 +49,8 @@ FFLayer::FFLayer(
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  double momentum
 ) :
   FFLayer(
     layer_index,
@@ -59,7 +62,8 @@ FFLayer::FFLayer(
     dropout_rate,
     residual_projector,
     number_of_threads,
-    has_bias
+    has_bias,
+    momentum
     )
   {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -75,7 +79,8 @@ FFLayer::FFLayer(
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  double momentum
 ) :
   Layer(
     layer_index,
@@ -87,7 +92,8 @@ FFLayer::FFLayer(
     has_bias,
     weight_decays,
     residual_projector,
-    number_of_threads
+    number_of_threads,
+    momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -123,7 +129,8 @@ FFLayer::FFLayer(
   const std::vector<double>& b_decays,
   const ResidualProjector* residual_projector,
   int number_of_threads,
-  const layer_activation_helper& lah
+  const layer_activation_helper& lah,
+  double momentum
 ) noexcept :
   Layer(
   layer_index,
@@ -147,7 +154,8 @@ FFLayer::FFLayer(
   b_decays,
   residual_projector,
   number_of_threads,
-  lah
+  lah,
+  momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -206,12 +214,12 @@ void FFLayer::calculate_forward_feed(
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const std::vector<double> src_vec = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    if (src_vec.size() != N_prev)
+    const auto src_span = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    if (src_span.size() != N_prev)
     {
-      Logger::panic("FFLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_vec.size(), " from layer #", prev_layer_index, " at batch sample ", b);
+      Logger::panic("FFLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_span.size(), " from layer #", prev_layer_index, " at batch sample ", b);
     }
-    std::copy(src_vec.begin(), src_vec.end(), batch_inputs_buffer.begin() + b * N_prev);
+    std::copy(src_span.begin(), src_span.end(), batch_inputs_buffer.begin() + b * N_prev);
   }
 
   std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
@@ -289,57 +297,22 @@ void FFLayer::run_gemm(
   std::vector<double>& batch_pre_activation_sums_buffer) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  constexpr size_t BLOCK_SIZE = 64;
   const double* W = get_w_values().data();
 
-  for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+  for (size_t b = b_start; b < b_end; ++b)
   {
-    size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)N_prev);
-    for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
+    const double* x_row = &batch_inputs_buffer[b * N_prev];
+    double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
     {
-      size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
-      for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+      const double x_val = x_row[i];
+      if (x_val == 0.0) continue;
+
+      const double* w_row = &W[i * N_this];
+      for (size_t j = 0; j < N_this; ++j)
       {
-        size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)N_this);
-
-        for (size_t b = b0; b < b_limit; ++b)
-        {
-          // Weight range debug (only for first batch and first thread)
-          if (b == 0 && i0 == 0 && b_start == 0) 
-          {
-            double min_w = W[0], max_w = W[0];
-            for (size_t k = 0; k < N_prev * N_this; ++k) 
-            {
-              min_w = std::min(min_w, W[k]);
-              max_w = std::max(max_w, W[k]);
-            }
-            Logger::trace([=]
-              {
-                return Logger::factory("DEBUG: [GEMM] Weight Range: [", min_w, ", ", max_w, "]");
-              });
-          }
-
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double x_val = batch_inputs_buffer[b * N_prev + i];
-            if (x_val == 0.0) continue;
-
-            double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
-            const double* w_row = &W[i * N_this];
-
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              y_row[j] += x_val * w_row[j];
-            }
-          }
-          if (b < 2 && i0 == 0) // Log first two batch samples' state
-          {
-            Logger::trace([=]
-              {
-                return Logger::factory("DEBUG: [GEMM] b=", b, " pre_act[0]=", batch_pre_activation_sums_buffer[b * N_this]);
-              });
-          }
-        }
+        y_row[j] += x_val * w_row[j];
       }
     }
   }
@@ -377,11 +350,18 @@ void FFLayer::run_post_gemm(
       }
     }
 
-    // Activation
+    // 1. Store pre-activation sums BEFORE activation (as activation is in-place)
+    if (!batch_hidden_states.empty())
+    {
+      std::copy(current_pre_act, current_pre_act + N_this, temp_pre_activations.begin());
+      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
+    }
+
+    // 2. Activation and Dropout
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     for (const auto& r : _layer_activation_helper.ranges())
     {
-      // 1. Batch activation for the range
+      // 1. Batch activation for the range (modifies current_pre_act in-place)
       r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end);
 
       // 2. Apply dropout and store
@@ -408,11 +388,6 @@ void FFLayer::run_post_gemm(
 
     if (!batch_hidden_states.empty())
     {
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        temp_pre_activations[j] = batch_pre_activation_sums_buffer[b * N_this + j];
-      }
-      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
       batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
     }
   }
@@ -447,10 +422,6 @@ void FFLayer::calculate_hidden_gradients(
 
   // 1. Flatten next-layer gradients for the whole batch [BatchSize x N_next]
   std::vector<double> flattened_next_grads_buffer(batch_size * N_next);
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    std::copy(batch_next_grad_matrix[b].begin(), batch_next_grad_matrix[b].end(), flattened_next_grads_buffer.begin() + b * N_next);
-  }
 
   // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
   // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
@@ -532,13 +503,16 @@ void FFLayer::calculate_and_store_gradients(
   std::vector<double> batch_inputs_buffer(batch_size * num_inputs);
   std::vector<double> batch_grads_buffer(batch_size * num_outputs);
 
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
+  const unsigned this_layer_index = get_layer_index();
+
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const std::vector<double> src_in_vec = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-    std::copy(src_in_vec.begin(), src_in_vec.end(), batch_inputs_buffer.begin() + b * num_inputs);
+    const double* src_in = batch_gradients_and_outputs[b].get_outputs_raw(prev_layer_index);
+    std::copy(src_in, src_in + num_inputs, batch_inputs_buffer.begin() + b * num_inputs);
 
-    const std::vector<double> src_grad_vec = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
-    std::copy(src_grad_vec.begin(), src_grad_vec.end(), batch_grads_buffer.begin() + b * num_outputs);
+    const double* src_grad = batch_gradients_and_outputs[b].get_gradients_raw(this_layer_index);
+    std::copy(src_grad, src_grad + num_outputs, batch_grads_buffer.begin() + b * num_outputs);
   }
 
   // 2. Reset gradients
@@ -549,33 +523,20 @@ void FFLayer::calculate_and_store_gradients(
   }
 
   // 3. Batched Weight Gradient Calculation (W_grad = X^T * G)
-  constexpr size_t BLOCK_SIZE = 64;
-  for (size_t i0 = 0; i0 < num_inputs; i0 += BLOCK_SIZE)
+  for (size_t b = 0; b < batch_size; ++b)
   {
-    size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)num_inputs);
-    for (size_t j0 = 0; j0 < num_outputs; j0 += BLOCK_SIZE)
+    const double* x_row = &batch_inputs_buffer[b * num_inputs];
+    const double* g_row = &batch_grads_buffer[b * num_outputs];
+
+    for (size_t i = 0; i < num_inputs; ++i)
     {
-      size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)num_outputs);
-      for (size_t b0 = 0; b0 < batch_size; b0 += BLOCK_SIZE)
+      const double x_val = x_row[i];
+      if (x_val == 0.0) continue;
+
+      double* w_grad_row = &this->_w_grads[i * num_outputs];
+      for (size_t j = 0; j < num_outputs; ++j)
       {
-        size_t b_limit = std::min(b0 + BLOCK_SIZE, batch_size);
-
-        for (size_t i = i0; i < i_limit; ++i)
-        {
-          for (size_t b = b0; b < b_limit; ++b)
-          {
-            const double x_val = batch_inputs_buffer[b * num_inputs + i];
-            if (x_val == 0.0) continue;
-
-            const double* g_row = &batch_grads_buffer[b * num_outputs];
-            double* w_grad_row = &this->_w_grads[i * num_outputs];
-
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              w_grad_row[j] += x_val * g_row[j];
-            }
-          }
-        }
+        w_grad_row[j] += x_val * g_row[j];
       }
     }
   }
@@ -595,7 +556,10 @@ void FFLayer::calculate_and_store_gradients(
 
   // 5. Average gradients over batch
   const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
-  for (double& grad : this->_w_grads) grad *= inv_batch_size;
+  for (double& grad : this->_w_grads) 
+  {
+    grad *= inv_batch_size;
+  }
   if (has_bias())
   {
     for (double& grad : this->_b_grads)
@@ -627,22 +591,22 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   const unsigned num_inputs = get_number_input_neurons();
 
   double update_sum = 0.0;
-  for (unsigned j = 0; j < num_outputs; ++j)
+  for (unsigned neuron_number = 0; neuron_number < num_outputs; ++neuron_number)
   {
     for (unsigned i = 0; i < num_inputs; ++i)
     {
-      unsigned weight_index = i * num_outputs + j;
+      unsigned weight_index = i * num_outputs + neuron_number;
       double w_before = this->_w_values[weight_index];
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type);
+      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type, neuron_number);
       double w_after = this->_w_values[weight_index];
       update_sum += std::abs(w_after - w_before);
     }
 
     if (has_bias())
     {
-      double b_before = this->_b_values[j];
-      apply_weight_gradient(this->_b_grads[j], learning_rate, true, j, clipping_scale, _optimiser_type);
-      double b_after = this->_b_values[j];
+      double b_before = this->_b_values[neuron_number];
+      apply_weight_gradient(this->_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
+      double b_after = this->_b_values[neuron_number];
       update_sum += std::abs(b_after - b_before);
     }
   }

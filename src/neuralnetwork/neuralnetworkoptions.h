@@ -28,7 +28,6 @@ private:
     _number_of_threads(0),
     _learning_rate_decay_rate(0.0),
     _adaptive_learning_rate(false),
-    _optimiser_type(OptimiserType::SGD),
     _learning_rate_restart_rate(0),
     _learning_rate_restart_boost(0),
     _residual_layer_jump(-1),
@@ -51,10 +50,27 @@ private:
 
     for (int i = 1; i < topology.size() - 1; ++i)
     {
-      _hidden_layers.push_back(LayerDetails(LayerDetails::LayerType::FF, topology[i], activation(activation::method::sigmoid, 0.01), 0.0, 0.05));
+      _hidden_layers.push_back(
+        LayerDetails(
+          LayerDetails::LayerType::FF, 
+          topology[i], 
+          activation(activation::method::sigmoid, 0.01), 
+          0.0, 
+          0.05, 
+          OptimiserType::SGD, 
+          0.99)
+      );
     }
 
-    _output_layer_details.push_back(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05));
+    _output_layer_details.push_back(
+      OutputLayerDetails(
+        topology.back(), 
+        activation(activation::method::sigmoid, 0.01), 
+        ErrorCalculation::type::mse, 
+        { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 
+        0.05,
+        OptimiserType::SGD, 
+        0.99));
   }
 
 public:
@@ -89,7 +105,6 @@ public:
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
-      _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
@@ -124,7 +139,6 @@ public:
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
-      _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
@@ -144,7 +158,6 @@ public:
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
       nno._data_is_unique = false;
-      nno._optimiser_type = OptimiserType::None;
       nno._residual_layer_jump = -1;
       nno._clip_threshold = 1.0;
       nno._learning_rate_warmup_start = 0.0;
@@ -177,10 +190,10 @@ public:
     _output_layer_details = output_layer_details;
     return *this;
   }
-  NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type)
+  NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, OptimiserType optimiser_type, double momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, _optimiser_type));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, optimiser_type, momentum));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -245,12 +258,6 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _adaptive_learning_rate = adaptive_learning_rate;
-    return *this;
-  }
-  NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    _optimiser_type = optimiser_type;
     return *this;
   }
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
@@ -339,23 +346,6 @@ public:
       if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
-      }
-    }
-
-    // Update any output layer details that don't have a specific optimizer set
-    for (auto& detail : _output_layer_details)
-    {
-      if (detail.get_optimiser_type() == OptimiserType::None)
-      {
-        // Since OutputLayerDetails is immutable-ish (it has no setter), we need to replace it.
-        detail = OutputLayerDetails(
-          detail.get_size(),
-          detail.get_activation(),
-          detail.get_output_error_calculation_type(),
-          detail.get_error_evaluation_config(),
-          detail.get_weight_decay(),
-          _optimiser_type
-        );
       }
     }
 
@@ -453,14 +443,13 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05))
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
       .with_progress_callback(nullptr)
       .with_learning_rate_decay_rate(0.0)
       .with_adaptive_learning_rates(false)
-      .with_optimiser_type(OptimiserType::SGD)
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold)
@@ -483,7 +472,6 @@ public:
   [[nodiscard]] inline int number_of_threads() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_threads; }
   [[nodiscard]] inline double learning_rate_decay_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_decay_rate; }
   [[nodiscard]] inline bool adaptive_learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
-  [[nodiscard]] inline OptimiserType optimiser_type() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _optimiser_type; }
   [[nodiscard]] inline double learning_rate_restart_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_rate; }
   [[nodiscard]] inline double learning_rate_restart_boost() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_boost; }
   [[nodiscard]] inline int residual_layer_jump() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _residual_layer_jump; }
@@ -511,7 +499,6 @@ private:
   int _number_of_threads;
   double _learning_rate_decay_rate;
   bool _adaptive_learning_rate;
-  OptimiserType _optimiser_type;
   double _learning_rate_restart_rate;
   double _learning_rate_restart_boost;
   int _residual_layer_jump;
