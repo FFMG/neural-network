@@ -1,6 +1,7 @@
 #include "./libraries/instrumentor.h"
 #include "aligned_allocator.h"
 #include <algorithm>
+#include <span>
 #include <vector>
 
 class LayersAndNeuronsContainer
@@ -133,7 +134,7 @@ public:
     return _data.data() + _offsets[layer];
   }
 
-  [[nodiscard]] inline std::vector<double> get_neurons(unsigned layer) const
+  [[nodiscard]] inline std::span<const double> get_span(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
 #if VALIDATE_DATA == 1
@@ -142,8 +143,14 @@ public:
       Logger::panic("trying to neurons past the layer size: ", layer);
     }
 #endif
-    const auto start = _data.begin() + _offsets[layer];
-    return std::vector<double>(start, start + _topology[layer]);
+    return std::span<const double>(_data.data() + _offsets[layer], _topology[layer]);
+  }
+
+  [[nodiscard]] inline std::vector<double> get_neurons(unsigned layer) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+    auto s = get_span(layer);
+    return std::vector<double>(s.begin(), s.end());
   }
 
   [[nodiscard]] inline size_t number_layers() const noexcept
