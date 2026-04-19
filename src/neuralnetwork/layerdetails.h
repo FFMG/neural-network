@@ -6,6 +6,7 @@
 
 #include <string>
 #include "activation.h"
+#include "optimiser.h"
 
 class LayerDetails
 {
@@ -19,12 +20,21 @@ public:
   };
 
 public:
-  LayerDetails( LayerType layer_type, unsigned layer_size, const activation& activation, double dropout, double weight_decay) noexcept :
+  LayerDetails( 
+    LayerType layer_type, 
+    unsigned layer_size, 
+    const activation& activation, 
+    double dropout, 
+    double weight_decay, 
+    OptimiserType optimiser_type, 
+    double momentum) noexcept :
     _layer_type(layer_type),
     _layer_size(layer_size),
     _activation(activation),
     _dropout(dropout),
-    _weight_decay(weight_decay)
+    _weight_decay(weight_decay),
+    _optimiser_type(optimiser_type),
+    _momentum(momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -34,7 +44,9 @@ public:
     _layer_size(src._layer_size),
     _activation(src._activation),
     _dropout(src._dropout),
-    _weight_decay(src._weight_decay)
+    _weight_decay(src._weight_decay),
+    _optimiser_type(src._optimiser_type),
+    _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -44,7 +56,9 @@ public:
     _layer_size(src._layer_size),
     _activation(std::move(src._activation)),
     _dropout(src._dropout),
-    _weight_decay(src._weight_decay)
+    _weight_decay(src._weight_decay),
+    _optimiser_type( src._optimiser_type),
+    _momentum( src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_size = 0;
@@ -60,6 +74,8 @@ public:
       _activation = src._activation;
       _dropout = src._dropout;
       _weight_decay = src._weight_decay;
+      _optimiser_type = src._optimiser_type;
+      _momentum = src._momentum;
     }
     return *this;
   }
@@ -74,6 +90,8 @@ public:
       _activation = std::move(src._activation);
       _dropout = src._dropout;
       _weight_decay = src._weight_decay;
+      _optimiser_type = src._optimiser_type;
+      _momentum = src._momentum;
 
       src._layer_type = LayerType::None;
       src._layer_size = 0;
@@ -160,10 +178,22 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _weight_decay;
   }
+  [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _optimiser_type;
+  }
+  [[nodiscard]] inline double get_momentum() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _momentum;
+  }
 private:
   LayerType _layer_type;
   unsigned _layer_size;
   activation _activation;
   double _dropout;
   double _weight_decay;
+  OptimiserType _optimiser_type;
+  double _momentum;
 };
