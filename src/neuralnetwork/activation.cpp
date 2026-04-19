@@ -408,34 +408,6 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-[[nodiscard]] double activation::momentum() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  switch (_method)
-  {
-  case activation::method::linear:
-  case activation::method::relu:
-  case activation::method::leakyRelu:
-  case activation::method::tanh:
-  case activation::method::PRelu:
-  case activation::method::selu:
-  case activation::method::elu:
-    return 0.9;
-
-  case activation::method::gelu:
-  case activation::method::swish:
-  case activation::method::mish:
-    return 0.95;
-
-  case activation::method::sigmoid:
-  case activation::method::softmax:
-    return 0.99;
-
-  default:
-    Logger::panic("Unknown activation type!");
-  }
-}
-
 double activation::weight_initialization(unsigned fan_in, unsigned fan_out) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
