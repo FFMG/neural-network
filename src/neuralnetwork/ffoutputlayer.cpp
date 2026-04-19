@@ -8,7 +8,6 @@ FFOutputLayer::FFOutputLayer(
   const std::vector<OutputLayerDetails>& output_layer_details,
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
-  const OptimiserType& optimiser_type,
   int number_of_threads,
   bool has_bias
 ) :
@@ -17,12 +16,13 @@ FFOutputLayer::FFOutputLayer(
     create_weight_decays(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
     Layer::LayerType::Output,
     create_layer_activation_helper(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
-    optimiser_type,
+    OptimiserType::None,
     -1,       //  no residual layer
     0.0,      //  no dropout for output layer
     nullptr,  //  no residual projector
     number_of_threads,
-    has_bias),
+    has_bias, 
+    0.0),
   OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
@@ -44,7 +44,6 @@ layer_activation_helper FFOutputLayer::create_layer_activation_helper(unsigned n
   }
   return lah;
 }
-
 
 std::vector<double> FFOutputLayer::create_weight_decays(
   unsigned num_inputs,
@@ -95,7 +94,6 @@ FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
   const std::vector<OutputLayerDetails>& output_layer_details,
-  const OptimiserType optimiser_type,
   unsigned number_input_neurons,
   unsigned number_output_neurons,
   const std::vector<Neuron>& neurons,
@@ -118,7 +116,7 @@ FFOutputLayer::FFOutputLayer(
 FFLayer(
     layer_index,
     Layer::LayerType::Output,
-    optimiser_type,
+    OptimiserType::None,
     -1,       //  no residual layer
     number_input_neurons,
     number_output_neurons,
@@ -139,7 +137,8 @@ FFLayer(
     b_decays,
     nullptr,  //  no residual projector
     number_of_threads,
-    create_layer_activation_helper(number_input_neurons, number_output_neurons, output_layer_details)
+    create_layer_activation_helper(number_input_neurons, number_output_neurons, output_layer_details),
+    0.0
     ),
     OutputLayer(output_layer_details)
 {
@@ -260,10 +259,12 @@ void FFOutputLayer::run_output_gradients(
 
   for (size_t b = start; b < end; b++)
   {
-    const auto& given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
+    const auto given_outputs = batch_gradients_and_outputs[b].get_outputs(get_layer_index());
     const auto& target_outputs = *(target_outputs_begin + b);
 
-    calculate_error_deltas(deltas, target_outputs, given_outputs);
+    // convert span to vector for calculate_error_deltas
+    std::vector<double> given_outputs_vec(given_outputs.begin(), given_outputs.end());
+    calculate_error_deltas(deltas, target_outputs, given_outputs_vec);
 
     for (size_t h = 0; h < ranges.size(); ++h)
     {
@@ -307,47 +308,6 @@ void FFOutputLayer::run_output_gradients(
   }
 }
 
-void FFOutputLayer::calculate_and_store_gradients(
-  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const std::vector<HiddenStates>& batch_hidden_states,
-  const Layer& previous_layer,
-  size_t batch_size,
-  int /*bptt_max_ticks*/)
-{
-  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  const unsigned num_neurons = get_number_neurons();
-  
-  // Clear gradients
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
-
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    const auto& grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
-    const auto& inputs = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-      
-    for (unsigned j = 0; j < num_neurons; ++j)
-    {
-      _b_grads[j] += grads[j];
-      for (unsigned i = 0; i < previous_layer.get_number_neurons(); ++i)
-      {
-        // Correct indexing: i * num_neurons + j matches apply_stored_gradients
-        _w_grads[i * num_neurons + j] += inputs[i] * grads[j];
-      }
-    }
-  }
-
-  const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
-  for (auto& g : _w_grads)
-  {
-    g *= inv_batch_size;
-  }
-  for (auto& g : _b_grads)
-  {
-    g *= inv_batch_size;
-  }
-}
-
 void FFOutputLayer::calculate_forward_feed(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& previous_layer,
@@ -370,12 +330,12 @@ void FFOutputLayer::calculate_forward_feed(
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const std::vector<double> src_vec = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    if (src_vec.size() != N_prev)
+    const auto src_span = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    if (src_span.size() != N_prev)
     {
-      Logger::panic("FFOutputLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_vec.size(), " from layer #", prev_layer_index, " at batch sample ", b);
+      Logger::panic("FFOutputLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_span.size(), " from layer #", prev_layer_index, " at batch sample ", b);
     }
-    std::copy(src_vec.begin(), src_vec.end(), batch_inputs_buffer.begin() + b * N_prev);
+    std::copy(src_span.begin(), src_span.end(), batch_inputs_buffer.begin() + b * N_prev);
   }
 
   std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
@@ -412,15 +372,16 @@ void FFOutputLayer::run_post_gemm(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  std::vector<double> output_row(N_this);
+  std::vector<double> temp_pre_activations;
+  if (!batch_hidden_states.empty())
+  {
+    temp_pre_activations.resize(N_this);
+  }
 
   for (size_t b = start; b < end; b++)
   {
-    // ISOLATION: Allocate local buffers per-sample
-    std::vector<double> current_pre_act(N_this);
-    const double* start_ptr = batch_pre_activation_sums_buffer.data() + (b * N_this);
-    std::copy(start_ptr, start_ptr + N_this, current_pre_act.begin());
-    
-    std::vector<double> output_row(N_this);
+    double* current_pre_act = &batch_pre_activation_sums_buffer[b * N_this];
 
     // Residuals
     if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -431,12 +392,18 @@ void FFOutputLayer::run_post_gemm(
       }
     }
 
+    if (!batch_hidden_states.empty())
+    {
+      std::copy(current_pre_act, current_pre_act + N_this, temp_pre_activations.begin());
+      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
+    }
+
     // Activation, Dropout and Output
     const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     for (const auto& r : _layer_activation_helper.ranges())
     {
-      // 1. Batch activation for the range
-      r.activation_method.activate(current_pre_act.data() + r.start, current_pre_act.data() + r.end);
+      // 1. Batch activation for the range (modifies current_pre_act in-place)
+      r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end);
 
       // 2. Apply dropout and store
       for (size_t j = r.start; j < r.end; j++)
@@ -462,10 +429,32 @@ void FFOutputLayer::run_post_gemm(
 
     if (!batch_hidden_states.empty())
     {
-      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(current_pre_act);
       batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
     }
   }
+}
+
+double FFOutputLayer::get_momentum(unsigned neuron_number) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  const auto& details = OutputLayer::output_layer_details();
+  if (number_output_layers() == 1)
+  {
+    return details[0].get_momentum();
+  }
+
+  unsigned output_layer_index = 0;
+  unsigned number_neurons = 0;
+  for (const auto& detail : details)
+  {
+    if (number_neurons <= neuron_number)
+    {
+      return details[output_layer_index].get_momentum();
+    }
+    ++output_layer_index;
+    number_neurons += detail.get_size();
+  }
+  Logger::panic("Trying to get a neuron detail past the number of neurons");
 }
 
 void FFOutputLayer::calculate_error_deltas(
@@ -584,11 +573,11 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
     {
       for (unsigned s = 0; s < section_size; ++s)
       {
-        const unsigned j = current_output_neuron + s;
-        const unsigned weight_index = i * num_outputs + j;
+        const unsigned neuron_number = current_output_neuron + s;
+        const unsigned weight_index = i * num_outputs + neuron_number;
 
         // Use the Layer base class method, passing the head-specific optimizer and state vectors
-        apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, _w_grads[weight_index], learning_rate, clipping_scale, optimiser_type);
+        apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, _w_grads[weight_index], learning_rate, clipping_scale, optimiser_type, neuron_number);
       }
     }
 
@@ -597,8 +586,8 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
     {
       for (unsigned s = 0; s < section_size; ++s)
       {
-        const unsigned j = current_output_neuron + s;
-        apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, j, _b_grads[j], learning_rate, clipping_scale, optimiser_type);
+        const unsigned neuron_number = current_output_neuron + s;
+        apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, neuron_number, _b_grads[neuron_number], learning_rate, clipping_scale, optimiser_type, neuron_number);
       }
     }
 

@@ -23,7 +23,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   GRURNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -36,7 +37,8 @@ public:
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    double momentum);
 
   GRURNNLayer(
     unsigned layer_index,
@@ -111,7 +113,8 @@ public:
     const std::vector<double>& r_b_decays,
     const ResidualProjector* residual_projector,
     int number_of_threads,
-    const layer_activation_helper& lah
+    const layer_activation_helper& lah,
+    double momentum
   ) noexcept;
 
   GRURNNLayer(const GRURNNLayer& src) noexcept;

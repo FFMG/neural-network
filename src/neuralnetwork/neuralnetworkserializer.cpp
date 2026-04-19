@@ -187,6 +187,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto rw_timesteps = layer_object.get<std::vector<long long>>("rw-timesteps");
   auto rw_decays = layer_object.get<std::vector<double>>("rw-decays");
 
+  double momentum = layer_object.get<double>("momentum");
+
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<ElmanRNNLayer>(
@@ -218,7 +220,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
     rw_decays,
     residual_projector.get(),
     number_of_threads,
-    lah
+    lah,
+    momentum
   );
 
   return layer;
@@ -322,6 +325,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto r_b_timesteps = layer_object.get<std::vector<long long>>("r-b-timesteps");
   auto r_b_decays = layer_object.get<std::vector<double>>("r-b-decays");
 
+  double momentum = layer_object.get<double>("momentum");
+
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<GRURNNLayer>(
@@ -397,7 +402,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     r_b_decays,
     residual_projector.get(),
     number_of_threads,
-    lah
+    lah,
+    momentum
   );
 
   return layer;
@@ -443,6 +449,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
   auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
   auto b_decays = layer_object.get<std::vector<double>>("b-decays");
+  double momentum = layer_object.get<double>("momentum");
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -470,7 +477,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_decays,
     residual_projector.get(),
     number_of_threads,
-    lah
+    lah,
+    momentum
   );
 
   return layer;
@@ -487,12 +495,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
 
-  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
-  if (optimiser_type_string == nullptr)
-  {
-    Logger::panic("Missing layer 'optimiser-type'.");
-  }
-  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
   auto layer_type_number = layer_object.get<int>("layer-type");
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
@@ -515,7 +517,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   auto layer = std::make_unique<FFOutputLayer>(
     layer_index,
     output_layer_details,
-    optimiser_type,
     number_input_neurons,
     number_output_neurons,
     neurons,
@@ -567,6 +568,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
     const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
     const auto output_activation_method = activation(output_method, output_alpha);
     const auto optimiser_type = string_to_optimiser_type(output_layer_object->try_get_string("optimiser-type", false));
+    const auto momentum = output_layer_object->get<double>("momentum");
 
     const auto error_evaluation_config = get_error_evaluation_config(output_layer_object);
     details.push_back(OutputLayerDetails(
@@ -575,7 +577,8 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
       output_error_calculation_type, 
       error_evaluation_config,
       output_layer_object->get<double>("weight-decay"),
-      optimiser_type
+      optimiser_type,
+      momentum
     ));
   }
   return details;
@@ -627,13 +630,19 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     const auto hidden_method = activation::string_to_method(hidden_method_string == nullptr ? "sigmoid" : hidden_method_string);
     const auto hidden_alpha = phlo->get<double>("activation-alpha");
 
+    const auto optimiser_type = string_to_optimiser_type(phlo->try_get_string("optimiser-type", false));
+    const auto momentum = phlo->get<double>("momentum");
+
+
     const auto layer_type_string = phlo->try_get_string("type");
     hidden_layer.emplace_back(LayerDetails(
       LayerDetails::type_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
       phlo->get<unsigned>("size"),
       activation(hidden_method, hidden_alpha),
       phlo->get<double>("dropout"),
-      phlo->get<double>("weight-decay")
+      phlo->get<double>("weight-decay"),
+      optimiser_type,
+      momentum
     ));
   }
   return hidden_layer;
@@ -783,7 +792,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_number_of_threads(number_of_threads)
     .with_learning_rate_decay_rate(learning_rate_decay_rate)
     .with_adaptive_learning_rates(adaptive_learning_rate)
-    .with_optimiser_type(optimiser_type)
     .with_learning_rate_boost_rate(learning_rate_restart_rate, learning_rate_restart_boost)
     .with_residual_layer_jump(residual_layer_jump)
     .with_clip_threshold(clip_threshold)
@@ -1060,7 +1068,6 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_number("number-of-threads", options.number_of_threads());
   options_object->set_float("learning-rate-decay-rate", options.learning_rate_decay_rate());
   options_object->set_boolean("adaptive-learning-rate", options.adaptive_learning_rate());
-  options_object->set_string("optimiser-type", optimiser_type_to_string(options.optimiser_type()).c_str());
   options_object->set_float("learning-rate-restart-rate", options.learning_rate_restart_rate());
   options_object->set_float("learning-rate-restart-boost", options.learning_rate_restart_boost());
   options_object->set_number("residual-layer-jump", options.residual_layer_jump());
@@ -1160,6 +1167,8 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_floats("rw-m2", layer.get_rw_m2());
   layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
   layer_object->set_floats("rw-decays", layer.get_rw_decays());
+
+  layer_object->set_float("momentum", layer.get_momentum());
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -1266,6 +1275,8 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_numbers("r-b-timesteps", layer.get_r_b_timesteps());
   layer_object->set_floats("r-b-decays", layer.get_r_b_decays());
 
+  layer_object->set_float("momentum", layer.get_momentum());
+
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
   {
@@ -1313,6 +1324,8 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
   layer_object->set_floats("b-decays", layer.get_b_decays());
 
+  layer_object->set_float("momentum", layer.get_momentum());
+
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
   {
@@ -1339,7 +1352,6 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
   layer_object->set_string("layer-name", "ffoutputlayer");
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
-  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
@@ -1379,6 +1391,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
     add_error_evaluation_config(output_layer_object, output_layer_detail.get_error_evaluation_config());
     output_layer_object->set("weight-decay", output_layer_detail.get_weight_decay());
     output_layer_object->set("optimiser-type", optimiser_type_to_string(output_layer_detail.get_optimiser_type()).c_str());
+    output_layer_object->set("momentum", output_layer_detail.get_momentum());
     output_layer_array->add(output_layer_object);
     delete output_layer_object;
   }
@@ -1414,7 +1427,9 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set("activation-alpha", hl.get_activation().get_alpha());
     hidden_layer_object->set("dropout", hl.get_dropout());
     hidden_layer_object->set("weight-decay", hl.get_weight_decay());
-    
+    hidden_layer_object->set("optimiser-type", optimiser_type_to_string(hl.get_optimiser_type()).c_str());
+    hidden_layer_object->set("momentum", hl.get_momentum());
+        
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
   }

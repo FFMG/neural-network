@@ -28,7 +28,6 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   auto layer = create_input_layer(topology[0], -1, number_of_threads, options.has_bias());
   _layers.emplace_back(std::move(layer));
 
-  const auto& optimiser_type = options.optimiser_type();
   const auto& residual_layer_jump = options.residual_layer_jump();
 
   // then the hidden layers
@@ -41,15 +40,17 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
     auto dropout_rate = layer_details.get_dropout();
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
+    const auto& optimiser_type = layer_details.get_optimiser_type();
+    const auto& momentum = layer_details.get_momentum();
     
-    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads, options.has_bias());
+    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads, options.has_bias(), momentum);
 
     _layers.emplace_back(std::move(layer));
   }
 
   // finally, the output layer
   const auto& output_layer_details = options.output_layer_details();
-  layer = create_output_layer(topology.back(), *_layers.back(), output_layer_details, optimiser_type, number_of_threads, options.has_bias());
+  layer = create_output_layer(topology.back(), *_layers.back(), output_layer_details, number_of_threads, options.has_bias());
 
   _layers.emplace_back(std::move(layer));
 }
@@ -224,7 +225,8 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     0.0,      // no dropout for input layer
     nullptr,  // no residual projector for input
     number_of_threads,
-    has_bias
+    has_bias,
+    0.0
   );
 }
 
@@ -236,7 +238,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   double dropout_rate, 
   const LayerDetails& layer_details,
   int number_of_threads,
-  bool has_bias)
+  bool has_bias,
+  double momentum)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -258,7 +261,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads,
-      has_bias);
+      has_bias, 
+      momentum);
 
   case LayerDetails::LayerType::Gru:
     return std::make_unique<GRURNNLayer>(
@@ -273,7 +277,8 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads,
-      has_bias);
+      has_bias,
+      momentum);
 
   case LayerDetails::LayerType::FF:
     return std::make_unique<FFLayer>(
@@ -288,14 +293,15 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       dropout_rate,
       create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
       number_of_threads,
-      has_bias);
+      has_bias, 
+      momentum);
 
   default:
     Logger::panic("Unknown or unsupported layer type!");
   }
 }
 
-std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, const OptimiserType& optimiser_type, int number_of_threads, bool has_bias)
+std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -314,7 +320,6 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     output_layer_details,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer, 
-    optimiser_type, 
     number_of_threads,
     has_bias);
 }
@@ -424,23 +429,25 @@ void Layers::calculate_forward_feed(
     {
       auto residual_layer_number = get_residual_layer_number(static_cast<unsigned>(layer_number));
       std::vector<std::vector<double>> batch_residual_inputs;
-      batch_residual_values.reserve(batch_size);
+      batch_residual_inputs.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        batch_residual_inputs.emplace_back(gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number)));
+        const auto src_span = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+        batch_residual_inputs.emplace_back(src_span.begin(), src_span.end());
       }
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
 
-    // Ensure hidden state vectors are sized correctly
     for (size_t b = 0; b < batch_size; ++b)
     {
       if (current_layer.use_bptt())
       {
-        std::vector<double> prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-        if (prev_rnn_out.empty()) prev_rnn_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+        const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+        
+        const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
         const size_t n_prev = previous_layer.get_number_neurons();
-        const size_t num_time_steps = n_prev > 0 ? prev_rnn_out.size() / n_prev : 0;
+        const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
         hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
       }
       else
@@ -523,11 +530,16 @@ void Layers::calculate_back_propagation_hidden_layers(
       std::vector<double> grad;
       if (options.enable_bptt() && hidden_1.use_bptt())
       {
-        grad = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+        const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+        if (!rnn_span.empty())
+        {
+          grad.assign(rnn_span.begin(), rnn_span.end());
+        }
       }
       if (grad.empty())
       {
-        grad = g.get_gradients(static_cast<unsigned>(layer_number + 1));
+        const auto std_span = g.get_gradients(static_cast<unsigned>(layer_number + 1));
+        grad.assign(std_span.begin(), std_span.end());
       }
       batch_next_gradients.emplace_back(std::move(grad));
     }
