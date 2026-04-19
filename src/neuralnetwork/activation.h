@@ -45,8 +45,6 @@ public:
     return _derivative_ptr(x, _alpha); 
   }
 
-  [[nodiscard]] double momentum() const noexcept;
-
   [[nodiscard]] double weight_initialization(unsigned fan_in, unsigned fan_out) const;
 
   [[nodiscard]] std::string method_to_string() const;
