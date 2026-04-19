@@ -1,6 +1,7 @@
 #pragma once
 #include <map>
 #include <vector>
+#include <span>
 #include "./libraries/instrumentor.h"
 #include "layersandneuronscontainer.h"
 
@@ -70,9 +71,9 @@ public:
     _rnn_gradients.clear();
   }
 
-  [[nodiscard]] inline std::vector<double> get_gradients(unsigned layer) const
+  [[nodiscard]] inline std::span<const double> get_gradients(unsigned layer) const
   {
-    return this->_gradients.get_neurons(layer);
+    return this->_gradients.get_span(layer);
   }
 
   [[nodiscard]] inline double* get_gradients_raw(unsigned layer)
@@ -90,9 +91,9 @@ public:
     this->_gradients.set(layer, gradients);
   }
 
-  [[nodiscard]] inline std::vector<double> get_outputs(unsigned layer) const noexcept
+  [[nodiscard]] inline std::span<const double> get_outputs(unsigned layer) const noexcept
   {
-    return this->_outputs.get_neurons(layer);
+    return this->_outputs.get_span(layer);
   }
 
   [[nodiscard]] inline double* get_outputs_raw(unsigned layer)
@@ -120,7 +121,8 @@ public:
   {
     const size_t size = this->_outputs.number_layers();
     if(size == 0) throw std::invalid_argument("No layers in container");
-    return this->_outputs.get_neurons(static_cast<unsigned>(size - 1));
+    const auto s = this->_outputs.get_span(static_cast<unsigned>(size - 1));
+    return std::vector<double>(s.begin(), s.end());
   }
 
   inline void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
