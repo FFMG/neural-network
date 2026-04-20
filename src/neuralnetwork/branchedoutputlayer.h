@@ -360,6 +360,57 @@ public:
     return sum;
   }
 
+  [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
+    const std::vector<ErrorCalculation::type>& error_types,
+    const std::vector<std::vector<double>>& checking_outputs,
+    const std::vector<std::vector<double>>& predictions
+  ) const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
+    errors.reserve(number_output_layers());
+
+    const size_t batch_size = predictions.size();
+#if VALIDATE_DATA == 1
+    if (batch_size != checking_outputs.size())
+    {
+      Logger::panic("The number of predictions is not the same as the number of given outputs!");
+    }
+#endif
+
+    // Multi-output path logic works for 1 or more outputs
+    std::vector<std::vector<double>> sliced_predictions(batch_size);
+    std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+
+    for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
+    {
+      std::vector<NeuralNetworkHelperMetrics> layer_errors;
+      layer_errors.reserve(error_types.size());
+
+      const auto& activation = output_layer_details()[output_layer_index].get_activation();
+      const auto& activation_method = activation.get_method();
+
+      const auto& bounds = layer_bounds(output_layer_index);
+      const auto& configs = evaluation_config(output_layer_index);
+      const size_t num_neurons = bounds.end - bounds.start + 1;
+
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
+        sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+      }
+
+      for (const auto& error_type : error_types)
+      {
+        layer_errors.emplace_back(
+          ErrorCalculation::calculate_error(error_type, sliced_checking_outputs, sliced_predictions, configs, activation_method),
+          error_type);
+      }
+      errors.emplace_back(std::move(layer_errors));
+    }
+    return errors;
+  }
+
 private:
   static std::vector<OutputLayerDetails> extract_output_details(const std::vector<LayerDetails::BranchDetails>& branched_details) {
     std::vector<OutputLayerDetails> details;

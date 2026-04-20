@@ -18,11 +18,11 @@ public:
     // Topology: 3 inputs -> GRU(4) -> BranchedOutput
     // Branch 1: FF(2) -> Output(2) [Regression, MSE]
     // Branch 2: FF(4) -> FF(3) -> Output(3) [Classification, Softmax] - deeper!
-    
-    std::vector<unsigned> topology = { 3 };
-    
+
+    std::vector<unsigned> topology = { 3, 4, 5 }; // 5 = 2 (Reg) + 3 (Softmax)
+
     std::vector<LayerDetails::BranchDetails> branches;
-    
+
     // Branch 1: Shallow Regression
     LayerDetails::BranchDetails b1;
     b1.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
@@ -71,6 +71,31 @@ public:
     NeuralNetworkSerializer::save(nn, model_path);
     Logger::info("Model saved to ", model_path);
 
+    Logger::info("Verifying outputs from loaded network...");
+
+    // from original
+    {
+      bool pass = true;
+      for (size_t i = 0; i < inputs.size(); ++i)
+      {
+        auto output = nn.think(inputs[i]);
+
+        // Log outputs
+        std::string out_str = "";
+        for (auto d : output) out_str += std::to_string(d) + ", ";
+        Logger::info("Sample ", i, " Output: ", out_str);
+
+        // Simple checks
+        if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
+        if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
+      }
+
+      if (pass)
+        Logger::info("RESULT: PASS");
+      else
+        Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
+    }
+
     // Load the network
     auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(model_path));
     if (!loaded_nn)
@@ -79,27 +104,28 @@ public:
     }
     Logger::info("Model loaded successfully.");
 
-    Logger::info("Verifying outputs from loaded network...");
-    bool pass = true;
-    for (size_t i = 0; i < inputs.size(); ++i)
+    // from saved
     {
-      auto output = loaded_nn->think(inputs[i]);
-      
-      // Log outputs
-      std::string out_str = "";
-      for(auto d : output) out_str += std::to_string(d) + ", ";
-      Logger::info("Sample ", i, " Output: ", out_str);
+      bool pass = true;
+      for (size_t i = 0; i < inputs.size(); ++i)
+      {
+        auto output = loaded_nn->think(inputs[i]);
 
-      // Simple checks
-      if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
-      if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
+        // Log outputs
+        std::string out_str = "";
+        for (auto d : output) out_str += std::to_string(d) + ", ";
+        Logger::info("Sample ", i, " Output: ", out_str);
+
+        // Simple checks
+        if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
+        if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
+      }
+
+      if (pass)
+        Logger::info("RESULT: PASS");
+      else
+        Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
     }
-
-    if (pass)
-      Logger::info("RESULT: PASS");
-    else
-      Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
-
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     Logger::info("Branched Complexity Test took ", (int)elapsed.count() / 60, " min ", (int)elapsed.count() % 60, " sec");

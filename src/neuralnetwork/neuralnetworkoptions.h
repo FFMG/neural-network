@@ -345,33 +345,57 @@ public:
     // set the log level first
     Logger::set_level(log_level());
 
-    if (topology().size() < 2 + hidden_layers().size())
+    if (topology().size() != 2 + hidden_layers().size())
     {
-      Logger::panic("The topology is not value, you must have at least 2 layers.");
+      Logger::panic("The topology size does not match the number of hidden layers!");
     }
 
     // check the hidden layers.
-    for (const auto& hl : hidden_layers())
+    for (size_t i = 0; i < hidden_layers().size(); ++i)
     {
-      if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
+      const auto& hl = hidden_layers()[i];
+      if (hl.get_size() != topology()[i + 1])
+      {
+        Logger::panic("The hidden layer size at index ", i, " does not match the topology size!");
+      }
+      if (hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
       }
     }
 
     // check the output layer
-    int total_output_layer_size = 0;
-    for (const auto& ol : output_layer_details())
+    if (has_branched_output())
     {
-      if (ol.get_size() == 0)
+      int total_branched_output_size = 0;
+      for (const auto& branch : branched_outputs())
       {
-        Logger::panic("The output layer details cannot have a size of zero!");
+        if (branch.output_details.get_size() == 0)
+        {
+          Logger::panic("A branched output layer cannot have a size of zero!");
+        }
+        total_branched_output_size += branch.output_details.get_size();
       }
-      total_output_layer_size += ol.get_size();
+      if (total_branched_output_size != topology().back())
+      {
+        Logger::panic("The branched output layers total size (", total_branched_output_size, ") does not match the topology size (", topology().back(), ")!");
+      }
     }
-    if (total_output_layer_size != topology().back())
+    else
     {
-      Logger::panic("The output layer details total size does not match the topology size!");
+      int total_output_layer_size = 0;
+      for (const auto& ol : output_layer_details())
+      {
+        if (ol.get_size() == 0)
+        {
+          Logger::panic("The output layer details cannot have a size of zero!");
+        }
+        total_output_layer_size += ol.get_size();
+      }
+      if (total_output_layer_size != topology().back())
+      {
+        Logger::panic("The output layer details total size (", total_output_layer_size, ") does not match the topology size (", topology().back(), ")!");
+      }
     }
 
     if (number_of_threads() > 0 && batch_size() <= 1)
