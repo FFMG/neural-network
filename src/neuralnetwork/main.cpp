@@ -7,6 +7,8 @@
 
 // examples
 #include "./examples/addingproblem.h"
+#include "./examples/branched_output.h"
+#include "./examples/compound_output_sandwich.h"
 #include "./examples/compound_softmax.h"
 #include "./examples/compound_trivial_softmax.h"
 #include "./examples/copymemory.h"
@@ -14,7 +16,6 @@
 #include "./examples/multi_output_gru.h"
 #include "./examples/repro_issue.h"
 #include "./examples/residualxor.h"
-#include "./examples/compound_output_sandwich.h"
 #include "./examples/spiral.h"
 #include "./examples/syntheticsentiment.h"
 #include "./examples/threebitparity.h"
@@ -30,8 +31,8 @@ int main()
   auto log_level = Logger::LogLevel::Debug;
   Logger::set_level(log_level);
 
-  // Compound Output Sandwich Test
-  ExampleCompoundOutputSandwich::Run(log_level);
+  // Branched Output
+  ExampleBranchedOutput::Run(log_level);
 
   // Copy Memory
   ExampleCopyMemory::MemoryCopy(log_level);
