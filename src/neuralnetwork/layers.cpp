@@ -1,8 +1,8 @@
+#include "branchedoutputlayer.h"
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
-#include "branchedoutputlayer.h"
 #include "layers.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
@@ -485,7 +485,7 @@ void Layers::calculate_forward_feed(
 void Layers::calculate_back_propagation(
   const NeuralNetworkOptions& options,
   std::vector<GradientsAndOutputs>& gradients,
-  std::vector<std::vector<double>>::const_iterator& outputs_begin,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
   size_t batch_size,
   const std::vector<HiddenStates>& hidden_states) const
 {
@@ -514,7 +514,7 @@ void Layers::calculate_back_propagation_input_layer(
 void Layers::calculate_back_propagation_output_layer(
   const NeuralNetworkOptions& options,
   std::vector<GradientsAndOutputs>& gradients,
-  std::vector<std::vector<double>>::const_iterator& outputs_begin,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
   size_t batch_size,
   const std::vector<HiddenStates>& hidden_states) const
 {

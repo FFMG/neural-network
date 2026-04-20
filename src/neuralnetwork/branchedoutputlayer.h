@@ -1,14 +1,15 @@
 #pragma once
 
-#include "layer.h"
-#include "outputlayer.h"
+#include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
-#include "elmanrnnlayer.h"
 #include "grurnnlayer.h"
-#include <vector>
+#include "layer.h"
+#include "layerdetails.h"
+#include "outputlayer.h"
 #include <memory>
 #include <numeric>
+#include <vector>
 
 class BranchedOutputLayer final : public Layer, public OutputLayer
 {
