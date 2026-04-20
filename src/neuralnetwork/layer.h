@@ -200,6 +200,12 @@ public:
     Branched
   };
 
+  [[nodiscard]] static std::vector<double> create_w_decays(unsigned number_input_neurons, unsigned number_output_neurons, double decay)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return std::vector<double>(static_cast<size_t>(number_input_neurons) * number_output_neurons, decay);
+  }
+
   Layer(const Layer& src) noexcept :
     _layer_index(src._layer_index),
     _layer_type(src._layer_type),

@@ -11,6 +11,27 @@
 #include <numeric>
 #include <vector>
 
+/**
+ * A minimal layer implementation to act as a source for branch layers.
+ * Branch layers expect their input from index 0 of the branch's internal buffers.
+ */
+class BranchInputProxyLayer final : public Layer
+{
+public:
+  BranchInputProxyLayer(unsigned num_neurons) :
+    Layer(0, Layer::LayerType::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
+  {}
+
+  Layer* clone() const override { return new BranchInputProxyLayer(*this); }
+
+  void calculate_forward_feed(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, std::vector<HiddenStates>&, size_t, bool) const override {}
+  void calculate_output_gradients(std::vector<GradientsAndOutputs>&, std::vector<std::vector<double>>::const_iterator, const std::vector<HiddenStates>&, size_t) const override {}
+  void calculate_hidden_gradients(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, const std::vector<HiddenStates>&, size_t, int) const override {}
+  void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override {}
+  void apply_stored_gradients(double, double) override {}
+  double get_gradient_norm_sq() const override { return 0.0; }
+};
+
 class BranchedOutputLayer final : public Layer, public OutputLayer
 {
 public:
@@ -70,7 +91,7 @@ public:
     int number_of_threads,
     bool has_bias
   ) :
-    Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, {}, nullptr, number_of_threads, 0.0),
+    Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
     OutputLayer(extract_output_details(branched_details))
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
@@ -149,48 +170,61 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
     
-    const unsigned trunk_layer_index = previous_layer.get_layer_index();
-    const unsigned this_layer_index = get_layer_index();
-
+    // 1. Initialize branch buffers
     for (auto& branch : const_cast<std::vector<Branch>&>(_branches)) {
       branch.init_buffers(batch_size);
     }
 
+    // 2. Set branch inputs from the trunk output
+    const unsigned trunk_layer_index = previous_layer.get_layer_index();
+    for (size_t b = 0; b < batch_size; ++b) {
+       const auto trunk_output_span = batch_gradients_and_outputs[b].get_outputs(trunk_layer_index);
+       std::vector<double> trunk_output(trunk_output_span.begin(), trunk_output_span.end());
+       for (size_t i = 0; i < _branches.size(); ++i) {
+         const_cast<Branch&>(_branches[i]).gradients_and_outputs[b].set_outputs(0, trunk_output);
+       }
+    }
+
+    // 3. Forward through each branch (using a proxy for the trunk to match internal indices)
+    BranchInputProxyLayer proxy(get_number_input_neurons());
+    for (size_t i = 0; i < _branches.size(); ++i) {
+      auto& branch = const_cast<Branch&>(_branches[i]);
+      for (size_t l_idx = 0; l_idx < branch.layers.size(); ++l_idx) {
+        const auto& current_l = *branch.layers[l_idx];
+        const Layer& prev_l = (l_idx == 0) ? static_cast<const Layer&>(proxy) : *branch.layers[l_idx-1];
+
+        // Ensure hidden state vectors are sized correctly for branch layers
+        for (size_t b = 0; b < batch_size; ++b) {
+          if (current_l.use_bptt()) {
+            const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(prev_l.get_layer_index());
+            const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(prev_l.get_layer_index());
+            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+            const size_t n_prev = prev_l.get_number_neurons();
+            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
+            branch.hidden_states[b].at(current_l.get_layer_index()).assign(num_time_steps, HiddenState(current_l.get_number_neurons()));
+          } else {
+            branch.hidden_states[b].at(current_l.get_layer_index()).assign(1, HiddenState(current_l.get_number_neurons()));
+          }
+        }
+
+        current_l.calculate_forward_feed(
+          branch.gradients_and_outputs,
+          prev_l,
+          {}, // No residuals in branches for now
+          branch.hidden_states,
+          batch_size,
+          is_training
+        );
+      }
+    }
+
+    // 4. Concatenate branch outputs back to the main batch
+    const unsigned this_layer_index = get_layer_index();
     for (size_t b = 0; b < batch_size; ++b) {
        std::vector<double> concatenated_output;
        concatenated_output.reserve(get_number_neurons());
-
-       const auto trunk_output_span = batch_gradients_and_outputs[b].get_outputs(trunk_layer_index);
-       std::vector<double> trunk_output(trunk_output_span.begin(), trunk_output_span.end());
-
        for (size_t i = 0; i < _branches.size(); ++i) {
-         auto& branch = const_cast<Branch&>(_branches[i]);
-         
-         // The input to the branch is the trunk output
-         branch.gradients_and_outputs[b].set_outputs(0, trunk_output);
-
-         // Forward through branch layers
-         for (size_t l_idx = 0; l_idx < branch.layers.size(); ++l_idx) {
-           const auto& current_l = *branch.layers[l_idx];
-           const Layer& prev_l = (l_idx == 0) ? 
-             static_cast<const Layer&>(*this) : // We act as a proxy for input size
-             *branch.layers[l_idx-1];
-
-           // Note: BranchedOutputLayer needs to pass its own info as previous layer 
-           // for the first layer of each branch to satisfy topology checks.
-           
-           // We'll use a slightly more direct approach since they are internal
-           current_l.calculate_forward_feed(
-             branch.gradients_and_outputs,
-             prev_l,
-             {}, // No residuals in branches for now
-             branch.hidden_states,
-             batch_size,
-             is_training
-           );
-         }
-         
-         const auto b_out_span = branch.gradients_and_outputs[b].output_back();
+         const auto b_out_span = _branches[i].gradients_and_outputs[b].output_back();
          concatenated_output.insert(concatenated_output.end(), b_out_span.begin(), b_out_span.end());
        }
        batch_gradients_and_outputs[b].set_outputs(this_layer_index, concatenated_output);
@@ -258,10 +292,6 @@ public:
     std::vector<std::vector<double>> trunk_grads(batch_size, std::vector<double>(get_number_input_neurons(), 0.0));
     
     for (const auto& branch : _branches) {
-      const auto& first_layer = *branch.layers.front();
-      // To get gradients flowing back to trunk, we need: delta_first * W_first^T
-      // This is exactly what calculate_hidden_gradients does for its input.
-      
       // Since first_layer.calculate_hidden_gradients was called, 
       // the gradients at index 0 of branch.gradients_and_outputs[b] 
       // contain the gradients for the branch input (the trunk).
@@ -295,10 +325,11 @@ public:
     int bptt_max_ticks) override
   {
      MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     BranchInputProxyLayer proxy(get_number_input_neurons());
      for(auto& branch : _branches) {
        for(size_t l_idx = 0; l_idx < branch.layers.size(); ++l_idx) {
          auto& current_l = *branch.layers[l_idx];
-         const Layer& prev_l = (l_idx == 0) ? previous_layer : *branch.layers[l_idx-1];
+         const Layer& prev_l = (l_idx == 0) ? static_cast<const Layer&>(proxy) : *branch.layers[l_idx-1];
          
          current_l.calculate_and_store_gradients(
            branch.gradients_and_outputs,
