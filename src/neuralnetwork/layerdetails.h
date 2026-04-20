@@ -4,10 +4,10 @@
 
 #include "logger.h"
 
-#include <string>
 #include "activation.h"
 #include "optimiser.h"
 #include "outputlayerdetails.h"
+#include <string>
 
 class LayerDetails
 {
