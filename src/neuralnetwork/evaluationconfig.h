@@ -5,6 +5,12 @@
 class EvaluationConfig final
 {
 public:
+  EvaluationConfig() noexcept :
+    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12)
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+  }
+
   EvaluationConfig(
     double neutral_tolerance,
     double confidence_threshold,
