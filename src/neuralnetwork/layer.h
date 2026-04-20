@@ -196,7 +196,8 @@ public:
   {
     Input,
     Hidden,
-    Output
+    Output,
+    Branched
   };
 
   Layer(const Layer& src) noexcept :

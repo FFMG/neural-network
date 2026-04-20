@@ -43,15 +43,15 @@ private:
       .with_output_layer_details(
         {
           // Head 0: Softmax(3)
-          OutputLayerDetails(3, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
+          OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 1: Tanh(2)
-          OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9),
+          OutputLayerDetails(2, activation(activation::method::tanh, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9),
           // Head 2: Softmax(4)
-          OutputLayerDetails(4, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
+          OutputLayerDetails(4, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 3: Sigmoid(1)
-          OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
+          OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.99),
           // Head 4: Linear(2)
-          OutputLayerDetails(2, activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9)
+          OutputLayerDetails(2, activation(activation::method::linear, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9)
         }
       )
       .with_log_level(log_level)
