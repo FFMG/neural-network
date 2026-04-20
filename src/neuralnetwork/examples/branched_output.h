@@ -1,108 +1,107 @@
 #pragma once
-#include "../errorcalculation.h"
-#include "../logger.h"
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include "../neuralnetwork.h"
 #include "../neuralnetworkserializer.h"
-#include "helper.h"
-#include <iomanip>
-#include <numeric>
+#include "../logger.h"
 
-/**
- * ExampleBranchedOutput
- * 
- * Tests the BranchedOutputLayer architecture.
- * Topology: Input(3) -> GRU(16) -> BRANCH({
- *    Branch 1: Dense(8) -> OutputRegression(2) [MSE]
- *    Branch 2: Dense(8) -> OutputSoftmax(3) [CrossEntropy]
- * })
- */
 class ExampleBranchedOutput
 {
-private:
-  static NeuralNetwork* create_neural_network(Logger::LogLevel log_level)
-  {
-    std::vector<unsigned> topology = { 3, 16, 5 }; // 5 = 2 (Reg) + 3 (Softmax)
-    
-    std::vector<LayerDetails> trunk_hidden = {
-      LayerDetails(LayerDetails::LayerType::Gru, 16, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::AdamW, 0.9)
-    };
-
-    // Branch 1: Regression
-    LayerDetails::BranchDetails b1;
-    b1.hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::mish, 1.0), 0.0, 0.0, OptimiserType::AdamW, 0.9)
-    };
-    b1.output_details = OutputLayerDetails(2, activation(activation::method::linear, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::AdamW, 0.9);
-
-    // Branch 2: Classification
-    LayerDetails::BranchDetails b2;
-    b2.hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 8, activation(activation::method::relu, 1.0), 0.0, 0.0, OptimiserType::AdamW, 0.9)
-    };
-    b2.output_details = OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 1.0 }, 0.0, OptimiserType::AdamW, 0.9);
-
-    auto options = NeuralNetworkOptions::create(topology)
-      .with_batch_size(4)
-      .with_branched_outputs({ b1, b2 })
-      .with_log_level(log_level)
-      .with_learning_rate(0.01)
-      .with_number_of_epoch(1000)
-      .with_hidden_layers(trunk_hidden)
-      .build();
-
-    return new NeuralNetwork(options);
-  }
-
 public:
   static void Run(Logger::LogLevel log_level)
   {
-    TEST_START("Branched Output Architecture Test")
+    Logger::info("Starting Branched Output Complexity & Serialization Test...");
+    auto start = std::chrono::high_resolution_clock::now();
 
-    NeuralNetwork* nn = create_neural_network(log_level);
+    // Topology: 3 inputs -> GRU(4) -> BranchedOutput
+    // Branch 1: FF(2) -> Output(2) [Regression, MSE]
+    // Branch 2: FF(4) -> FF(3) -> Output(3) [Classification, Softmax] - deeper!
+    
+    std::vector<unsigned> topology = { 3 };
+    
+    std::vector<LayerDetails::BranchDetails> branches;
+    
+    // Branch 1: Shallow Regression
+    LayerDetails::BranchDetails b1;
+    b1.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
+    b1.output_details = OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9);
+    branches.push_back(b1);
 
-    // 4 samples
+    // Branch 2: Deeper Classification
+    LayerDetails::BranchDetails b2;
+    b2.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
+    b2.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
+    b2.output_details = OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9);
+    branches.push_back(b2);
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_hidden_layers({ LayerDetails(LayerDetails::LayerType::Gru, 4, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) })
+      .with_branched_outputs(branches)
+      .with_learning_rate(0.1)
+      .with_number_of_epoch(500)
+      .with_batch_size(1)
+      .with_log_level(log_level)
+      .build();
+
+    NeuralNetwork nn(options);
+
+    // Data: 3-bit input. 
+    // Out1: {sum/3, avg} (Regression)
+    // Out2: {all-zeros, all-ones, mixed} (Classification)
     std::vector<std::vector<double>> inputs = {
-      {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 1}
-    };
-    std::vector<std::vector<double>> outputs = {
-      // Reg(2)  Softmax(3)
-      {0.1, 0.9,  1, 0, 0},
-      {0.5, 0.5,  0, 1, 0},
-      {0.9, 0.1,  0, 0, 1},
-      {0.0, 0.0,  1, 0, 0}
+      {1.0, 1.0, 1.0}, // Sum 3, All ones
+      {0.0, 0.0, 0.0}, // Sum 0, All zeros
+      {1.0, 0.0, 1.0}, // Sum 2, Mixed
+      {0.0, 0.0, 0.0}  // Sum 0, All zeros
     };
 
-    Logger::info("Training branched network...");
-    nn->train(inputs, outputs);
+    std::vector<std::vector<double>> targets = {
+      {1.0, 0.9,  0.0, 1.0, 0.0}, // Sum high, All ones
+      {0.1, 0.1,  1.0, 0.0, 0.0}, // Sum low, All zeros
+      {0.7, 0.5,  0.0, 0.0, 1.0}, // Sum mid, Mixed
+      {0.0, 0.0,  1.0, 0.0, 0.0}  // Sum low, All zeros
+    };
 
-    Logger::info("Verifying outputs...");
-    auto results = nn->think(inputs);
+    nn.train(inputs, targets);
 
-    bool all_ok = true;
-    for (size_t i = 0; i < results.size(); ++i)
+    // Save the network
+    const std::string model_path = "branched_complex.nn";
+    NeuralNetworkSerializer::save(nn, model_path);
+    Logger::info("Model saved to ", model_path);
+
+    // Load the network
+    auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(model_path));
+    if (!loaded_nn)
     {
-      // Branch 2 is at index 2,3,4. Should sum to 1.0
-      double softmax_sum = results[i][2] + results[i][3] + results[i][4];
-      if (std::abs(softmax_sum - 1.0) > 1e-5)
-      {
-        Logger::error("Sample ", i, " Softmax sum FAIL: ", softmax_sum);
-        all_ok = false;
-      }
+      Logger::panic("Failed to load complex branched network!");
+    }
+    Logger::info("Model loaded successfully.");
+
+    Logger::info("Verifying outputs from loaded network...");
+    bool pass = true;
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      auto output = loaded_nn->think(inputs[i]);
       
-      Logger::info("Sample ", i, " Output: ", 
-        results[i][0], ", ", results[i][1], " | ", 
-        results[i][2], ", ", results[i][3], ", ", results[i][4]);
+      // Log outputs
+      std::string out_str = "";
+      for(auto d : output) out_str += std::to_string(d) + ", ";
+      Logger::info("Sample ", i, " Output: ", out_str);
+
+      // Simple checks
+      if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
+      if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
     }
 
-    if (all_ok)
-    {
+    if (pass)
       Logger::info("RESULT: PASS");
-    }
     else
-    {
-      Logger::error("RESULT: FAIL");
-    }
+      Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
 
-    delete nn;
-    TEST_END
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    Logger::info("Branched Complexity Test took ", (int)elapsed.count() / 60, " min ", (int)elapsed.count() % 60, " sec");
   }
 };

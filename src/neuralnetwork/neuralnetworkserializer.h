@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "elmanrnnlayer.h"
+#include "branchedoutputlayer.h"
 #include "evaluationconfig.h"
 #include "errorcalculation.h"
 #include "fflayer.h"
@@ -43,11 +44,13 @@ private:
   static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<OutputLayerDetails>& output_layer_details);
   static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_branchedoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<LayerDetails::BranchDetails>& branched_details);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
   static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
+  static std::vector<LayerDetails::BranchDetails> get_branched_details(const TinyJSON::TJValueObject& options_object);
   static EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
   static layer_activation_helper get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs);
   static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config);
@@ -62,6 +65,7 @@ private:
   static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_branchedoutputlayer(const BranchedOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
   static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
   static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);
