@@ -7,6 +7,7 @@
 #include <string>
 #include "activation.h"
 #include "optimiser.h"
+#include "outputlayerdetails.h"
 
 class LayerDetails
 {
@@ -16,7 +17,15 @@ public:
     None,
     FF,
     Elman,
-    Gru
+    Gru,
+    Branched
+  };
+
+public:
+  struct BranchDetails
+  {
+    std::vector<LayerDetails> hidden_layers;
+    OutputLayerDetails output_details;
   };
 
 public:

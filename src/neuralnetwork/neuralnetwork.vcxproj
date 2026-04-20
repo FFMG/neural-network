@@ -155,6 +155,7 @@
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="aligned_allocator.h" />
+    <ClInclude Include="branchedoutputlayer.h" />
     <ClInclude Include="evaluationconfig.h" />
     <ClInclude Include="examples\addingproblem.h" />
     <ClInclude Include="examples\compound_output_sandwich.h" />
