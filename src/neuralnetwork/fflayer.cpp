@@ -422,6 +422,15 @@ void FFLayer::calculate_hidden_gradients(
 
   // 1. Flatten next-layer gradients for the whole batch [BatchSize x N_next]
   std::vector<double> flattened_next_grads_buffer(batch_size * N_next);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& next_grads = batch_next_grad_matrix[b];
+    if (next_grads.size() != N_next)
+    {
+      Logger::panic("FFLayer #", get_layer_index(), " next gradient size mismatch! Expected ", N_next, " but got ", next_grads.size(), " at batch sample ", b);
+    }
+    std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + b * N_next);
+  }
 
   // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
   // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
