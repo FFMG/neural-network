@@ -132,7 +132,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "branchedoutputlayer")
     {
       layers.emplace_back(
-        std::move(create_branchedoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.branched_outputs()))
+        std::move(create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details()))
       );
       continue;
     }
@@ -765,7 +765,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
   auto hidden_layers = get_hidden_layers(*options_object);
   auto output_layer_details = get_output_layer_details(*options_object);
-  auto branched_outputs = get_branched_details(*options_object);
+  auto multi_output_layer_details = get_multi_output_layer_details(*options_object);
   
   auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
   int bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
@@ -794,7 +794,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
   return NeuralNetworkOptions::create(topology)
     .with_output_layer_details(output_layer_details)
-    .with_branched_outputs(branched_outputs)
+    .with_multi_output_layer_details(multi_output_layer_details)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
     .with_batch_size(batch_size)
@@ -1065,21 +1065,22 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   auto output_layer_array = add_output_layer_details(options.output_layer_details());
   auto hidden_layer_list = add_hidden_layers(options.hidden_layers());
   
-  auto branched_outputs_array = new TinyJSON::TJValueArray();
-  for (const auto& bd : options.branched_outputs()) {
-    auto* bd_obj = new TinyJSON::TJValueObject();
-    bd_obj->set("hidden-layers", add_hidden_layers(bd.hidden_layers));
+  auto multi_output_layer_details_array = new TinyJSON::TJValueArray();
+  for (const auto& multi_output_layer_detail : options.multi_output_layer_details())
+  {
+    auto* multi_output_layer_details_obj = new TinyJSON::TJValueObject();
+    multi_output_layer_details_obj->set("hidden-layers", add_hidden_layers(multi_output_layer_detail.get_hidden_layers()));
     
-    std::vector<OutputLayerDetails> olds = { bd.output_details };
+    std::vector<OutputLayerDetails> olds = { multi_output_layer_detail.get_output_details() };
     auto* olds_arr = add_output_layer_details(olds);
-    bd_obj->set("output-detail", olds_arr->at(0)->clone());
+    multi_output_layer_details_obj->set("output-detail", olds_arr->at(0)->clone());
     delete olds_arr;
     
-    branched_outputs_array->add(bd_obj);
-    delete bd_obj;
+    multi_output_layer_details_array->add(multi_output_layer_details_obj);
+    delete multi_output_layer_details_obj;
   }
-  options_object->set("branched-outputs", branched_outputs_array);
-  delete branched_outputs_array;
+  options_object->set("multi-output-layers", multi_output_layer_details_array);
+  delete multi_output_layer_details_array;
 
   options_object->set("topology", topology_list);
   options_object->set("output-layer-details", output_layer_array);
@@ -1607,60 +1608,72 @@ void NeuralNetworkSerializer::add_final_learning_rate(const NeuralNetwork& nn, T
   json.set_float("final-learning-rate", nn.get_learning_rate());
 }
 
-std::vector<LayerDetails::BranchDetails> NeuralNetworkSerializer::get_branched_details(const TinyJSON::TJValueObject& options_object)
+std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_layer_details(const TinyJSON::TJValueObject& options_object)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
-  const auto* branched_outputs_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("branched-outputs"));
-  if (nullptr == branched_outputs_array)
+  const auto* multi_outputs_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object.try_get_value("multi-output-layers"));
+  if (nullptr == multi_outputs_array)
   {
     return {};
   }
 
-  std::vector<LayerDetails::BranchDetails> details;
-  for (const auto& branch_value : *branched_outputs_array)
+  std::vector<MultiOutputLayerDetails> multi_output_layer_details;
+  for (const auto& multi_output : *multi_outputs_array)
   {
-    const auto* branch_object = dynamic_cast<const TinyJSON::TJValueObject*>(&branch_value);
-    if (nullptr == branch_object) continue;
+    const auto* multi_output_object = dynamic_cast<const TinyJSON::TJValueObject*>(&multi_output);
+    if (nullptr == multi_output_object)
+    {
+      Logger::panic("Missing hidden layer(s) details and output layer details for MultiOutputLayerDetails!");
+    }
 
-    LayerDetails::BranchDetails bd;
-    
     // Hidden layers
-    const auto* hidden_array = dynamic_cast<const TinyJSON::TJValueArray*>(branch_object->try_get_value("hidden-layers"));
-    if (hidden_array) {
-      for (const auto& hl_val : *hidden_array) {
-        const auto* phlo = dynamic_cast<const TinyJSON::TJValueObject*>(&hl_val);
-        if (!phlo) continue;
-        
-        const auto method = activation::string_to_method(phlo->try_get_string("activation-method", false));
-        bd.hidden_layers.emplace_back(LayerDetails(
-          LayerDetails::type_from_string(phlo->try_get_string("type", false)),
-          phlo->get<unsigned>("size"),
-          activation(method, phlo->get<double>("activation-alpha")),
-          phlo->get<double>("dropout"),
-          phlo->get<double>("weight-decay"),
-          string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
-          phlo->get<double>("momentum")
-        ));
+    const auto* hidden_array = dynamic_cast<const TinyJSON::TJValueArray*>(multi_output_object->try_get_value("hidden-layers"));
+    if (nullptr == hidden_array)
+    {
+      Logger::panic("Missing hidden layer(s) details for MultiOutputLayerDetails");
+    }
+
+    std::vector<LayerDetails> hidden_layers;
+    for (const auto& hl_val : *hidden_array) 
+    {
+      const auto* phlo = dynamic_cast<const TinyJSON::TJValueObject*>(&hl_val);
+      if (!phlo)
+      {
+        continue;
       }
+        
+      const auto method = activation::string_to_method(phlo->try_get_string("activation-method", false));
+      hidden_layers.emplace_back(LayerDetails(
+        LayerDetails::type_from_string(phlo->try_get_string("type", false)),
+        phlo->get<unsigned>("size"),
+        activation(method, phlo->get<double>("activation-alpha")),
+        phlo->get<double>("dropout"),
+        phlo->get<double>("weight-decay"),
+        string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
+        phlo->get<double>("momentum")
+      ));
     }
 
     // Output detail
-    const auto* od_obj = dynamic_cast<const TinyJSON::TJValueObject*>(branch_object->try_get_value("output-detail"));
-    if (od_obj) {
-      auto method = activation::string_to_method(od_obj->try_get_string("activation-method", false));
-      bd.output_details = OutputLayerDetails(
-        od_obj->get<unsigned>("size"),
-        activation(method, od_obj->get_float("activation-alpha")),
-        ErrorCalculation::string_to_type(od_obj->get_string("error-calculation-type")),
-        get_error_evaluation_config(od_obj),
-        od_obj->get<double>("weight-decay"),
-        string_to_optimiser_type(od_obj->try_get_string("optimiser-type", false)),
-        od_obj->get<double>("momentum")
-      );
+    const auto* od_obj = dynamic_cast<const TinyJSON::TJValueObject*>(multi_output_object->try_get_value("output-detail"));
+    if (nullptr == od_obj)
+    {
+      Logger::panic("Missing output layer details for MultiOutputLayerDetails");
     }
-    details.push_back(bd);
+
+    auto method = activation::string_to_method(od_obj->try_get_string("activation-method", false));
+    const auto output_details = OutputLayerDetails(
+      od_obj->get<unsigned>("size"),
+      activation(method, od_obj->get_float("activation-alpha")),
+      ErrorCalculation::string_to_type(od_obj->get_string("error-calculation-type")),
+      get_error_evaluation_config(od_obj),
+      od_obj->get<double>("weight-decay"),
+      string_to_optimiser_type(od_obj->try_get_string("optimiser-type", false)),
+      od_obj->get<double>("momentum"));
+
+    multi_output_layer_details.push_back(MultiOutputLayerDetails(hidden_layers, output_details));
   }
-  return details;
+  return multi_output_layer_details;
 }
 
 void NeuralNetworkSerializer::add_branchedoutputlayer(const BranchedOutputLayer& layer, TinyJSON::TJValueArray& layers)
@@ -1690,11 +1703,11 @@ void NeuralNetworkSerializer::add_branchedoutputlayer(const BranchedOutputLayer&
   delete layer_object;
 }
 
-std::unique_ptr<Layer> NeuralNetworkSerializer::create_branchedoutputlayer(
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_multioutputlayer(
   unsigned layer_index, 
   const TinyJSON::TJValueObject& layer_object, 
   int number_of_threads,
-  const std::vector<LayerDetails::BranchDetails>& branched_details
+  const std::vector<MultiOutputLayerDetails>& multi_output_layer_details
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -1707,7 +1720,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_branchedoutputlayer(
     layer_index,
     number_input_neurons,
     number_output_neurons,
-    branched_details,
+    multi_output_layer_details,
     number_of_threads,
     has_bias
   );

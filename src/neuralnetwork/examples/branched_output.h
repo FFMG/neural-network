@@ -21,24 +21,30 @@ public:
 
     std::vector<unsigned> topology = { 3, 4, 5 }; // 5 = 2 (Reg) + 3 (Softmax)
 
-    std::vector<LayerDetails::BranchDetails> branches;
+    std::vector<MultiOutputLayerDetails> multi_output_layer_details;
 
     // Branch 1: Shallow Regression
-    LayerDetails::BranchDetails b1;
-    b1.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
-    b1.output_details = OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9);
-    branches.push_back(b1);
+    MultiOutputLayerDetails b1
+    (
+      { LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) },
+      OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+    multi_output_layer_details.push_back(b1);
 
     // Branch 2: Deeper Classification
-    LayerDetails::BranchDetails b2;
-    b2.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
-    b2.hidden_layers.emplace_back(LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9));
-    b2.output_details = OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9);
-    branches.push_back(b2);
+    MultiOutputLayerDetails b2
+    (
+      {
+        LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9),
+        LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
+      },
+      OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+    multi_output_layer_details.push_back(b2);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_hidden_layers({ LayerDetails(LayerDetails::LayerType::Gru, 4, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) })
-      .with_branched_outputs(branches)
+      .with_multi_output_layer_details(multi_output_layer_details)
       .with_learning_rate(0.1)
       .with_number_of_epoch(500)
       .with_batch_size(1)

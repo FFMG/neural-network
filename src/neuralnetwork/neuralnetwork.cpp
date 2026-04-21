@@ -979,19 +979,19 @@ void NeuralNetwork::log_training_info(
   }
 
   // Output
-  if (_options.branched_outputs().size() > 0)
+  if (_options.has_multi_output() > 0)
   {
     std::string output_layer_head_details_string;
-    output_layer_head_details_string += Logger::factory(tab, "Multi-head Output layers   : Size = ", _options.branched_outputs().size(), "\n");
+    output_layer_head_details_string += Logger::factory(tab, "Multi Output layers   : Size = ", _options.multi_output_layer_details().size(), "\n");
     auto output_layer_head_index = 0;
       
-    const auto& heads = _options.branched_outputs();
+    const auto& heads = _options.multi_output_layer_details();
     for (const auto& head : heads)
     {
       output_layer_head_details_string += Logger::factory(tab, tab, "Hidden layers [", output_layer_head_index, "]\n");
-      for (size_t hl_index = 0; hl_index < head.hidden_layers.size(); ++hl_index)
+      for (size_t hl_index = 0; hl_index < head.get_hidden_layers().size(); ++hl_index)
       {
-        const auto& this_hl = head.hidden_layers[hl_index];
+        const auto& this_hl = head.get_hidden_layer(hl_index);
         output_layer_head_details_string += Logger::factory(
           tab, tab, tab, "[", hl_index, "] Type    : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
           tab, tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
@@ -1002,13 +1002,13 @@ void NeuralNetwork::log_training_info(
           tab, tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
           tab, tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
 
-        if (hl_index < head.hidden_layers.size())
+        if (hl_index < head.get_hidden_layers().size())
         {
           output_layer_head_details_string += "\n";
         }
       }
 
-      const auto& details = head.output_details;
+      const auto& details = head.get_output_details();
       output_layer_head_details_string += Logger::factory(tab, tab, "Output layer [", output_layer_head_index, "]\n",
         tab, tab, tab, tab, "Size                   : ", details.get_size(), "\n",
         tab, tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",

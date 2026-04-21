@@ -6,6 +6,7 @@
 #include "grurnnlayer.h"
 #include "layer.h"
 #include "layerdetails.h"
+#include "multioutputlayerdetails.h"
 #include "outputlayer.h"
 #include <memory>
 #include <numeric>
@@ -140,25 +141,25 @@ public:
     unsigned layer_index,
     unsigned num_inputs,
     unsigned num_outputs,
-    const std::vector<LayerDetails::BranchDetails>& branched_details,
+    const std::vector<MultiOutputLayerDetails>& multi_output_layer_details,
     int number_of_threads,
     bool has_bias
   ) :
     Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
-    OutputLayer(extract_output_details(branched_details))
+    OutputLayer(extract_output_details(multi_output_layer_details))
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
     
-    for (const auto& bd : branched_details)
+    for (const auto& multi_output_layer_detail : multi_output_layer_details)
     {
       Branch branch;
       unsigned prev_n = num_inputs;
       branch.topology.push_back(num_inputs); // index 0 is input to branch
       
       // Hidden layers in branch
-      for (size_t i = 0; i < bd.hidden_layers.size(); ++i)
+      for (size_t i = 0; i < multi_output_layer_detail.get_hidden_layers().size(); ++i)
       {
-        const auto& ld = bd.hidden_layers[i];
+        const auto& ld = multi_output_layer_detail.get_hidden_layer(static_cast<unsigned>(i));
         auto l = std::make_unique<FFLayer>(
           (unsigned)branch.layers.size() + 1, // index in branch starts at 1
           prev_n,
@@ -180,17 +181,17 @@ public:
       }
       
       // Output layer in branch
-      std::vector<OutputLayerDetails> olds = { bd.output_details };
+      std::vector<OutputLayerDetails> olds = { multi_output_layer_detail.get_output_details()};
       auto ol = std::make_unique<FFOutputLayer>(
         (unsigned)branch.layers.size() + 1,
         olds,
         prev_n,
-        bd.output_details.get_size(),
+        multi_output_layer_detail.get_output_details().get_size(),
         number_of_threads,
         has_bias
       );
       branch.layers.emplace_back(std::move(ol));
-      branch.topology.push_back(bd.output_details.get_size());
+      branch.topology.push_back(multi_output_layer_detail.get_output_details().get_size());
       _branches.emplace_back(std::move(branch));
     }
   }
@@ -517,13 +518,13 @@ public:
   }
 
 private:
-  static std::vector<OutputLayerDetails> extract_output_details(const std::vector<LayerDetails::BranchDetails>& branched_details)
+  static std::vector<OutputLayerDetails> extract_output_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
     std::vector<OutputLayerDetails> details;
-    for (const auto& bd : branched_details)
+    for (const auto& multi_output_layer_detail : multi_output_layer_details)
     {
-      details.push_back(bd.output_details);
+      details.push_back(multi_output_layer_detail.get_output_details());
     }
     return details;
   }

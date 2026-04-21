@@ -50,9 +50,9 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   }
 
   // finally, the output layer
-  if (options.has_branched_output())
+  if (options.has_multi_output())
   {
-    layer = create_branched_output_layer(topology.back(), *_layers.back(), options.branched_outputs(), number_of_threads, options.has_bias());
+    layer = create_multi_output_layer(topology.back(), *_layers.back(), options.multi_output_layer_details(), number_of_threads, options.has_bias());
   }
   else
   {
@@ -332,7 +332,7 @@ std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_
     has_bias);
 }
 
-std::unique_ptr<Layer> Layers::create_branched_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<LayerDetails::BranchDetails>& branched_outputs, int number_of_threads, bool has_bias)
+std::unique_ptr<Layer> Layers::create_multi_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
@@ -340,7 +340,7 @@ std::unique_ptr<Layer> Layers::create_branched_output_layer(unsigned num_neurons
     layer_index,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer,
-    branched_outputs,
+    multi_output_layer_details,
     number_of_threads,
     has_bias);
 }

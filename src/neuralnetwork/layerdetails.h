@@ -22,13 +22,6 @@ public:
   };
 
 public:
-  struct BranchDetails
-  {
-    std::vector<LayerDetails> hidden_layers;
-    OutputLayerDetails output_details;
-  };
-
-public:
   LayerDetails() noexcept :
     LayerDetails(LayerType::None, 0, activation(), 0.0, 0.0, OptimiserType::None, 0.0)
   {
