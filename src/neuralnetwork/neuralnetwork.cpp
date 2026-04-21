@@ -979,7 +979,7 @@ void NeuralNetwork::log_training_info(
   }
 
   // Output
-  if (_options.has_multi_output() > 0)
+  if (_options.has_multi_output())
   {
     std::string output_layer_head_details_string;
     output_layer_head_details_string += Logger::factory(tab, "Multi Output layers   : Size = ", _options.multi_output_layer_details().size(), "\n");
