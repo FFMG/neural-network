@@ -86,14 +86,27 @@ public:
         Logger::info("Sample ", i, " Output: ", out_str);
 
         // Simple checks
-        if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
-        if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
+        // Out2: {all-zeros, all-ones, mixed} (Classification)
+        // Sample 0: all-ones -> expects output[3] to be high
+        if (i == 0 && output[3] < 0.8)
+        {
+          pass = false;
+        }
+        // Sample 1: all-zeros -> expects output[2] to be high
+        if (i == 1 && output[2] < 0.8)
+        {
+          pass = false;
+        }
       }
 
       if (pass)
+      {
         Logger::info("RESULT: PASS");
+      }
       else
+      {
         Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
+      }
     }
 
     // Load the network
@@ -113,12 +126,23 @@ public:
 
         // Log outputs
         std::string out_str = "";
-        for (auto d : output) out_str += std::to_string(d) + ", ";
+        for (auto d : output)
+        {
+          out_str += std::to_string(d) + ", ";
+        }
         Logger::info("Sample ", i, " Output: ", out_str);
 
         // Simple checks
-        if (i == 0 && output[2] < 0.8) pass = false; // Should be 'all ones'
-        if (i == 1 && output[2] > 0.2) pass = false; // Should be 'all zeros'
+        // Sample 0: all-ones -> expects output[3] to be high
+        if (i == 0 && output[3] < 0.8)
+        {
+          pass = false;
+        }
+        // Sample 1: all-zeros -> expects output[2] to be high
+        if (i == 1 && output[2] < 0.8)
+        {
+          pass = false;
+        }
       }
 
       if (pass)
