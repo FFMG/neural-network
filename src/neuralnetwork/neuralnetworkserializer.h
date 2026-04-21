@@ -4,16 +4,17 @@
 #include <string>
 #include <vector>
 
-#include "elmanrnnlayer.h"
 #include "branchedoutputlayer.h"
-#include "evaluationconfig.h"
+#include "elmanrnnlayer.h"
 #include "errorcalculation.h"
+#include "evaluationconfig.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
 #include "layer.h"
 #include "layerdetails.h"
 #include "layers.h"
+#include "multioutputlayerdetails.h"
 #include "neuralnetwork.h"
 #include "neuron.h"
 #include "outputlayerdetails.h"
@@ -44,13 +45,13 @@ private:
   static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<OutputLayerDetails>& output_layer_details);
   static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
-  static std::unique_ptr<Layer> create_branchedoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<LayerDetails::BranchDetails>& branched_details);
+  static std::unique_ptr<Layer> create_multioutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
   static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
   static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
-  static std::vector<LayerDetails::BranchDetails> get_branched_details(const TinyJSON::TJValueObject& options_object);
+  static std::vector<MultiOutputLayerDetails> get_multi_output_layer_details(const TinyJSON::TJValueObject& options_object);
   static EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
   static layer_activation_helper get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs);
   static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config);

@@ -190,6 +190,7 @@
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
+    <ClInclude Include="multioutputlayerdetails.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
     <ClInclude Include="neuralnetworkhelpermetrics.h" />
