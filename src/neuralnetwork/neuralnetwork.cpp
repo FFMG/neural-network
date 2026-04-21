@@ -991,7 +991,7 @@ void NeuralNetwork::log_training_info(
       output_layer_head_details_string += Logger::factory(tab, tab, "Hidden layers [", output_layer_head_index, "]\n");
       for (size_t hl_index = 0; hl_index < head.get_hidden_layers().size(); ++hl_index)
       {
-        const auto& this_hl = head.get_hidden_layer(hl_index);
+        const auto& this_hl = head.get_hidden_layer(static_cast<unsigned>(hl_index));
         output_layer_head_details_string += Logger::factory(
           tab, tab, tab, "[", hl_index, "] Type    : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
           tab, tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
