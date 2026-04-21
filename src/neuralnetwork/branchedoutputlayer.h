@@ -9,6 +9,7 @@
 #include "multioutputlayerdetails.h"
 #include "outputlayer.h"
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -212,6 +213,8 @@ public:
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
   }
 
+  BranchedOutputLayer& operator=(const BranchedOutputLayer&) = delete;
+
   virtual ~BranchedOutputLayer()
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
@@ -232,6 +235,7 @@ public:
     bool is_training) const override
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    std::lock_guard<std::mutex> lock(_mutex);
     
     // 1. Initialize branch buffers
     for (auto& branch : const_cast<std::vector<Branch>&>(_branches))
@@ -312,6 +316,7 @@ public:
     size_t batch_size) const override
   {
      MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     std::lock_guard<std::mutex> lock(_mutex);
      unsigned offset = 0;
      for (size_t i = 0; i < _branches.size(); ++i)
      {
@@ -340,6 +345,7 @@ public:
   void backprop_branches(size_t batch_size, int bptt_max_ticks) const
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    std::lock_guard<std::mutex> lock(_mutex);
     for (auto& branch : const_cast<std::vector<Branch>&>(_branches))
     {
       for (int l_idx = (int)branch.layers.size() - 2; l_idx >= 0; --l_idx)
@@ -370,6 +376,7 @@ public:
   std::vector<std::vector<double>> get_trunk_gradients(size_t batch_size) const
   {
     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    std::lock_guard<std::mutex> lock(_mutex);
     std::vector<std::vector<double>> trunk_grads(batch_size, std::vector<double>(get_number_input_neurons(), 0.0));
     
     for (const auto& branch : _branches)
@@ -410,6 +417,7 @@ public:
     int bptt_max_ticks) override
   {
      MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     std::lock_guard<std::mutex> lock(_mutex);
      BranchInputProxyLayer proxy(get_number_input_neurons());
      for(auto& branch : _branches)
      {
@@ -432,6 +440,7 @@ public:
   void apply_stored_gradients(double learning_rate, double clipping_scale) override
   {
      MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     std::lock_guard<std::mutex> lock(_mutex);
      for(auto& branch : _branches)
      {
        for(auto& layer : branch.layers)
@@ -530,4 +539,5 @@ private:
   }
 
   std::vector<Branch> _branches;
+  mutable std::mutex _mutex;
 };
