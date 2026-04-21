@@ -95,6 +95,43 @@ By default, the output layer uses a single activation function and weight decay.
       .build();
 ```
 
+### Multi Output Layers
+
+Multi Output Layers allow the network to split from a central trunk into multiple independent paths (branches), each with its own hidden layers and output configuration. This is powerful for multi-task learning where branches might need different depths or architectures.
+
+```cpp
+    // Trunk topology: 3 inputs, 0 hidden and 5 outputs, (2x + 3x)
+    std::vector<unsigned> topology = { 3, 1, 5 };
+    
+    // Branch 1: Shallow Regression 2x output
+    MultiOutputLayerDetails b1
+    (
+      // 1 hidden
+      { 
+        LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) 
+      },
+      OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+    multi_output_layer_details.push_back(b1);
+
+    // Branch 2: Deeper Classification 3x output
+    MultiOutputLayerDetails b2
+    (
+      // 2 hidden
+      {
+        LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9),
+        LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
+      },
+      OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+    multi_output_layer_details.push_back(b2);
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_hidden_layers({ LayerDetails(LayerDetails::type::gru, 4, activation(activation::method::tanh, 1.0)) }) // Trunk hidden layer
+      .with_output_layer_details(multi_output_layer_details)
+      .build();
+```
+
 ### Residual layer
 
 You can use [residual layers](https://en.wikipedia.org/wiki/Residual_neural_network) during training, for that you simply need to define a jump
@@ -263,6 +300,64 @@ See the example in the `./example/threebitparity.h` file.
 
 Similar example to the xor sample, but it uses batches.
 
+#### Multi output architecture
+
+See the example in the `./example/branched_output.h` file.
+
+This example demonstrates how to create a network that splits into two independent paths: one for regression (MSE) and one for classification (Softmax/Cross-Entropy).
+
+```c++
+#include <iostream>
+#include "neuralnetwork.h"
+
+int main()
+{
+  // Trunk topology: 3 inputs -> GRU(4)
+  std::vector<unsigned> topology = { 3, 1, 5 };
+  
+  std::vector<MultiOutputLayerDetails> multi_outputs;
+  
+  // Branch 1: FF(2) -> Output(2) [Regression]
+  MultiOutputLayerDetails b1
+  (
+    { LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) },
+    OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+  );
+  multi_outputs.push_back(b1);
+
+  // Branch 2: FF(4) -> FF(3) -> Output(3) [Classification]
+  MultiOutputLayerDetails b2
+  (
+    {
+      LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9),
+      LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
+    },
+    OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+  );
+  multi_outputs.push_back(b2);
+
+  auto options = NeuralNetworkOptions::create(topology)
+    .with_hidden_layers({ LayerDetails(LayerDetails::type::gru, 4, activation(activation::method::tanh, 1.0)) })
+    .with_output_layer_details(multi_outputs)
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(500)
+    .build();
+
+  NeuralNetwork nn(options);
+  
+  // Training data must match the combined output size (2 + 3 = 5)
+  std::vector<std::vector<double>> inputs = { {1,0,1}, {0,1,0} };
+  std::vector<std::vector<double>> targets = { {1,0, 0,1,0}, {0,1, 1,0,0} };
+  
+  nn.train(inputs, targets);
+  
+  auto output = nn.think({1,0,1});
+  // output[0..1] is from output 1
+  // output[2..4] is from output 2
+  
+  return 0;
+}
+```
 
 ### Save/Load the Neural Network
 
@@ -438,7 +533,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Activation
   * Dropout
   * Weight Decay: regularization strength for the hidden layer.
-* output_layer_details: One or more `OutputLayerDetails` objects. (You can also pass individual parameters for a single output layer).
+* output_layer_details (Multi-output not branched): One or more `OutputLayerDetails` objects. (You can also pass individual parameters for a single output layer).
   * Layer size: The number of neurons in the output layer segment.
   * activation: The activation function for the output layer.
     * Method: The activation method, for example `sigmoid`.
@@ -446,6 +541,7 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
   * Output error calculation: The error calculation type, for example, `ErrorCalculation::type::mse`.
   * EvaluationConfig: An `EvaluationConfig` class to fine-tune error calculations (see below).
   * Weight Decay: regularization strength for the output layer segment. Allows for different regularization strengths in compound output layers.
+* output_layer_details (Multi-output/Branched): A `std::vector<MultiOutputLayerDetails>` defining parallel output paths. Each branch can have its own hidden layers and specific `OutputLayerDetails`.
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
