@@ -793,9 +793,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     }
   }
 
-  return NeuralNetworkOptions::create(topology)
-    .with_output_layer_details(output_layer_details)
-    .with_multi_output_layer_details(multi_output_layer_details)
+  auto option = NeuralNetworkOptions::create(topology)
     .with_learning_rate(learning_rate)
     .with_number_of_epoch(number_of_epoch)
     .with_batch_size(batch_size)
@@ -815,8 +813,17 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
-    .with_has_bias(has_bias)
-    .build();
+    .with_has_bias(has_bias);
+
+  if (multi_output_layer_details.size())
+  {
+    option.with_output_layer_details(multi_output_layer_details);
+  }
+  else
+  {
+    option.with_output_layer_details(output_layer_details);
+  }
+  return option.build();
 }
 
 std::vector<std::map<ErrorCalculation::type, double>> NeuralNetworkSerializer::get_errors(const TinyJSON::TJValue& json)

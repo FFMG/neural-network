@@ -45,7 +45,7 @@ public:
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_hidden_layers({ LayerDetails(LayerDetails::LayerType::Gru, 4, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) })
-      .with_multi_output_layer_details(multi_output_layer_details)
+      .with_output_layer_details(multi_output_layer_details)
       .with_learning_rate(0.1)
       .with_number_of_epoch(500)
       .with_batch_size(1)

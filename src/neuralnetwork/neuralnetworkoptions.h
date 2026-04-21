@@ -180,12 +180,15 @@ public:
     _has_bias = has_bias;
     return *this;
   }
-  NeuralNetworkOptions& with_multi_output_layer_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
+  NeuralNetworkOptions& with_output_layer_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_layer_details.clear();
     _multi_output_layer_details = multi_output_layer_details;
     return *this;
   }
+
+  // single output layer
   NeuralNetworkOptions& with_output_layer_details(const OutputLayerDetails& output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
