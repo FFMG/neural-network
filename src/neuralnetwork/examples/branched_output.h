@@ -12,6 +12,7 @@ class ExampleBranchedOutput
 public:
   static void Run(Logger::LogLevel log_level)
   {
+    MYODDWEB_PROFILE_FUNCTION("ExampleBranchedOutput");
     Logger::info("Starting Branched Output Complexity & Serialization Test...");
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -88,7 +89,10 @@ public:
 
         // Log outputs
         std::string out_str = "";
-        for (auto d : output) out_str += std::to_string(d) + ", ";
+        for (auto d : output)
+        {
+          out_str += std::to_string(d) + ", ";
+        }
         Logger::info("Sample ", i, " Output: ", out_str);
 
         // Simple checks
@@ -152,9 +156,13 @@ public:
       }
 
       if (pass)
+      {
         Logger::info("RESULT: PASS");
+      }
       else
+      {
         Logger::error("RESULT: FAIL (Convergence or Serialization issue)");
+      }
     }
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
