@@ -968,7 +968,7 @@ void NeuralNetwork::log_training_info(
   for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
   {
     const auto& this_hl = hl[hl_index];
-    Logger::info(tab, tab, "[", hl_index, "] Type    : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
+    Logger::info(tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
                  tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
                  tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
                  tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
@@ -993,7 +993,7 @@ void NeuralNetwork::log_training_info(
       {
         const auto& this_hl = head.get_hidden_layer(static_cast<unsigned>(hl_index));
         output_layer_head_details_string += Logger::factory(
-          tab, tab, tab, "[", hl_index, "] Type    : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
+          tab, tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
           tab, tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
           tab, tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
           tab, tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
