@@ -60,6 +60,7 @@ private:
   static void add_basic(TinyJSON::TJValueObject& json);
   static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_layer(const Layer* layer, TinyJSON::TJValueArray& layers);
   static void add_activation_helper(const layer_activation_helper& lah, TinyJSON::TJValueObject& json);
   static void add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
@@ -69,6 +70,7 @@ private:
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
   static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
   static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);
+  static void load_weights(Layer& layer, const TinyJSON::TJValueObject& layer_object);
   static void add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json);
   static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);

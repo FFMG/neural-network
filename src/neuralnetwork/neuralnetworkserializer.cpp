@@ -1489,46 +1489,52 @@ void NeuralNetworkSerializer::add_layers(const NeuralNetwork& nn, TinyJSON::TJVa
   const auto& layers = nn.get_layers();
   for(const auto& layer : layers.get_layers())
   {
-    // FFOutputLayer has to be before FFLayer as it is derived ...
-    auto ffoutputlayer = dynamic_cast<FFOutputLayer*>(layer.get());
-    if (nullptr != ffoutputlayer)
-    {
-      add_ffoutputlayer(*ffoutputlayer, *layers_array);
-      continue;
-    }
-
-    auto fflayer = dynamic_cast<FFLayer*>(layer.get());
-    if (nullptr != fflayer)
-    {
-      add_fflayer(*fflayer, *layers_array);
-      continue;
-    }
-
-    auto elmanrnnlayer = dynamic_cast<ElmanRNNLayer*>(layer.get());
-    if (nullptr != elmanrnnlayer)
-    {
-      add_elmanrnnlayer(*elmanrnnlayer, *layers_array);
-      continue;
-    }
-
-    auto grulayer = dynamic_cast<GRURNNLayer*>(layer.get());
-    if (nullptr != grulayer)
-    {
-      add_grurnnlayer(*grulayer, *layers_array);
-      continue;
-    }
-
-    auto branchedlayer = dynamic_cast<BranchedOutputLayer*>(layer.get());
-    if (nullptr != branchedlayer)
-    {
-      add_branchedoutputlayer(*branchedlayer, *layers_array);
-      continue;
-    }
-
-    Logger::panic("Unknown layer type!");
+    add_layer(layer.get(), *layers_array);
   }
   json.set("layers", layers_array);
   delete layers_array;
+}
+
+void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  // FFOutputLayer has to be before FFLayer as it is derived ...
+  auto ffoutputlayer = dynamic_cast<const FFOutputLayer*>(layer);
+  if (nullptr != ffoutputlayer)
+  {
+    add_ffoutputlayer(*ffoutputlayer, layers);
+    return;
+  }
+
+  auto fflayer = dynamic_cast<const FFLayer*>(layer);
+  if (nullptr != fflayer)
+  {
+    add_fflayer(*fflayer, layers);
+    return;
+  }
+
+  auto elmanrnnlayer = dynamic_cast<const ElmanRNNLayer*>(layer);
+  if (nullptr != elmanrnnlayer)
+  {
+    add_elmanrnnlayer(*elmanrnnlayer, layers);
+    return;
+  }
+
+  auto grulayer = dynamic_cast<const GRURNNLayer*>(layer);
+  if (nullptr != grulayer)
+  {
+    add_grurnnlayer(*grulayer, layers);
+    return;
+  }
+
+  auto branchedlayer = dynamic_cast<const BranchedOutputLayer*>(layer);
+  if (nullptr != branchedlayer)
+  {
+    add_branchedoutputlayer(*branchedlayer, layers);
+    return;
+  }
+
+  Logger::panic("Unknown layer type!");
 }
 
 const std::vector<ErrorCalculation::type> NeuralNetworkSerializer::all_error_types()
@@ -1666,10 +1672,19 @@ void NeuralNetworkSerializer::add_branchedoutputlayer(const BranchedOutputLayer&
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   
-  // We don't save internal branch weights here because the BranchedOutputLayer 
-  // currently re-creates layers from options during construction. 
-  // In a full implementation, we'd iterate branches and save their internal layers.
-  // For now, this satisfies the pass-through architecture.
+  auto branches_array = new TinyJSON::TJValueArray();
+  for (const auto& branch : layer.get_branches())
+  {
+    auto branch_layers_array = new TinyJSON::TJValueArray();
+    for (const auto& branch_layer : branch.layers)
+    {
+      add_layer(branch_layer.get(), *branch_layers_array);
+    }
+    branches_array->add(branch_layers_array);
+    delete branch_layers_array;
+  }
+  layer_object->set("branches", branches_array);
+  delete branches_array;
 
   layers.add(layer_object);
   delete layer_object;
@@ -1688,7 +1703,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_branchedoutputlayer(
   // has-bias would ideally be in the layer_object, defaulting to true
   bool has_bias = true; 
 
-  return std::make_unique<BranchedOutputLayer>(
+  auto layer = std::make_unique<BranchedOutputLayer>(
     layer_index,
     number_input_neurons,
     number_output_neurons,
@@ -1696,4 +1711,313 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_branchedoutputlayer(
     number_of_threads,
     has_bias
   );
+
+  auto* branches_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("branches"));
+  if (branches_array != nullptr)
+  {
+    auto& branches = layer->get_mutable_branches();
+    for (size_t b_idx = 0; b_idx < branches_array->get_number_of_items() && b_idx < branches.size(); ++b_idx)
+    {
+      auto* branch_layers_array = dynamic_cast<const TinyJSON::TJValueArray*>(branches_array->at(static_cast<unsigned>(b_idx)));
+      if (branch_layers_array != nullptr)
+      {
+        auto& branch = branches[b_idx];
+        for (size_t l_idx = 0; l_idx < branch_layers_array->get_number_of_items() && l_idx < branch.layers.size(); ++l_idx)
+        {
+          auto* b_layer_obj = dynamic_cast<const TinyJSON::TJValueObject*>(branch_layers_array->at(static_cast<unsigned>(l_idx)));
+          if (b_layer_obj != nullptr)
+          {
+            load_weights(*branch.layers[l_idx], *b_layer_obj);
+          }
+        }
+      }
+    }
+  }
+
+  return layer;
+}
+
+void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValueObject& layer_object)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  
+  // Basic weights and biases
+  if (layer_object.has_key("w-values"))
+  {
+    layer.set_w_values(layer_object.get<std::vector<double>>("w-values"));
+  }
+  if (layer_object.has_key("w-grads"))
+  {
+    layer.set_w_grads(layer_object.get<std::vector<double>>("w-grads"));
+  }
+  if (layer_object.has_key("w-velocities"))
+  {
+    layer.set_w_velocities(layer_object.get<std::vector<double>>("w-velocities"));
+  }
+  if (layer_object.has_key("w-m1"))
+  {
+    layer.set_w_m1(layer_object.get<std::vector<double>>("w-m1"));
+  }
+  if (layer_object.has_key("w-m2"))
+  {
+    layer.set_w_m2(layer_object.get<std::vector<double>>("w-m2"));
+  }
+  if (layer_object.has_key("w-timesteps"))
+  {
+    layer.set_w_timesteps(layer_object.get<std::vector<long long>>("w-timesteps"));
+  }
+  if (layer_object.has_key("w-decays"))
+  {
+    layer.set_w_decays(layer_object.get<std::vector<double>>("w-decays"));
+  }
+
+  if (layer_object.has_key("b-values"))
+  {
+    layer.set_b_values(layer_object.get<std::vector<double>>("b-values"));
+  }
+  if (layer_object.has_key("b-grads"))
+  {
+    layer.set_b_grads(layer_object.get<std::vector<double>>("b-grads"));
+  }
+  if (layer_object.has_key("b-velocities"))
+  {
+    layer.set_b_velocities(layer_object.get<std::vector<double>>("b-velocities"));
+  }
+  if (layer_object.has_key("b-m1"))
+  {
+    layer.set_b_m1(layer_object.get<std::vector<double>>("b-m1"));
+  }
+  if (layer_object.has_key("b-m2"))
+  {
+    layer.set_b_m2(layer_object.get<std::vector<double>>("b-m2"));
+  }
+  if (layer_object.has_key("b-timesteps"))
+  {
+    layer.set_b_timesteps(layer_object.get<std::vector<long long>>("b-timesteps"));
+  }
+  if (layer_object.has_key("b-decays"))
+  {
+    layer.set_b_decays(layer_object.get<std::vector<double>>("b-decays"));
+  }
+
+  // Recurrent weights (if applicable)
+  auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&layer);
+  auto* gru_layer = dynamic_cast<GRURNNLayer*>(&layer);
+
+  if (rnn_layer || gru_layer)
+  {
+    if (layer_object.has_key("rw-values"))
+    {
+      layer.set_rw_values(layer_object.get<std::vector<double>>("rw-values"));
+    }
+    if (layer_object.has_key("rw-grads"))
+    {
+      layer.set_rw_grads(layer_object.get<std::vector<double>>("rw-grads"));
+    }
+    if (layer_object.has_key("rw-velocities"))
+    {
+      layer.set_rw_velocities(layer_object.get<std::vector<double>>("rw-velocities"));
+    }
+    if (layer_object.has_key("rw-m1"))
+    {
+      layer.set_rw_m1(layer_object.get<std::vector<double>>("rw-m1"));
+    }
+    if (layer_object.has_key("rw-m2"))
+    {
+      layer.set_rw_m2(layer_object.get<std::vector<double>>("rw-m2"));
+    }
+    if (layer_object.has_key("rw-timesteps"))
+    {
+      layer.set_rw_timesteps(layer_object.get<std::vector<long long>>("rw-timesteps"));
+    }
+    if (layer_object.has_key("rw-decays"))
+    {
+      layer.set_rw_decays(layer_object.get<std::vector<double>>("rw-decays"));
+    }
+  }
+
+  // GRU specific gates
+  if (gru_layer)
+  {
+    if (layer_object.has_key("z-w-values"))
+    {
+      gru_layer->set_z_w_values(layer_object.get<std::vector<double>>("z-w-values"));
+    }
+    if (layer_object.has_key("z-w-grads"))
+    {
+      gru_layer->set_z_w_grads(layer_object.get<std::vector<double>>("z-w-grads"));
+    }
+    if (layer_object.has_key("z-w-velocities"))
+    {
+      gru_layer->set_z_w_velocities(layer_object.get<std::vector<double>>("z-w-velocities"));
+    }
+    if (layer_object.has_key("z-w-m1"))
+    {
+      gru_layer->set_z_w_m1(layer_object.get<std::vector<double>>("z-w-m1"));
+    }
+    if (layer_object.has_key("z-w-m2"))
+    {
+      gru_layer->set_z_w_m2(layer_object.get<std::vector<double>>("z-w-m2"));
+    }
+    if (layer_object.has_key("z-w-timesteps"))
+    {
+      gru_layer->set_z_w_timesteps(layer_object.get<std::vector<long long>>("z-w-timesteps"));
+    }
+    if (layer_object.has_key("z-w-decays"))
+    {
+      gru_layer->set_z_w_decays(layer_object.get<std::vector<double>>("z-w-decays"));
+    }
+
+    if (layer_object.has_key("z-rw-values"))
+    {
+      gru_layer->set_z_rw_values(layer_object.get<std::vector<double>>("z-rw-values"));
+    }
+    if (layer_object.has_key("z-rw-grads"))
+    {
+      gru_layer->set_z_rw_grads(layer_object.get<std::vector<double>>("z-rw-grads"));
+    }
+    if (layer_object.has_key("z-rw-velocities"))
+    {
+      gru_layer->set_z_rw_velocities(layer_object.get<std::vector<double>>("z-rw-velocities"));
+    }
+    if (layer_object.has_key("z-rw-m1"))
+    {
+      gru_layer->set_z_rw_m1(layer_object.get<std::vector<double>>("z-rw-m1"));
+    }
+    if (layer_object.has_key("z-rw-m2"))
+    {
+      gru_layer->set_z_rw_m2(layer_object.get<std::vector<double>>("z-rw-m2"));
+    }
+    if (layer_object.has_key("z-rw-timesteps"))
+    {
+      gru_layer->set_z_rw_timesteps(layer_object.get<std::vector<long long>>("z-rw-timesteps"));
+    }
+    if (layer_object.has_key("z-rw-decays"))
+    {
+      gru_layer->set_z_rw_decays(layer_object.get<std::vector<double>>("z-rw-decays"));
+    }
+
+    if (layer_object.has_key("z-b-values"))
+    {
+      gru_layer->set_z_b_values(layer_object.get<std::vector<double>>("z-b-values"));
+    }
+    if (layer_object.has_key("z-b-grads"))
+    {
+      gru_layer->set_z_b_grads(layer_object.get<std::vector<double>>("z-b-grads"));
+    }
+    if (layer_object.has_key("z-b-velocities"))
+    {
+      gru_layer->set_z_b_velocities(layer_object.get<std::vector<double>>("z-b-velocities"));
+    }
+    if (layer_object.has_key("z-b-m1"))
+    {
+      gru_layer->set_z_b_m1(layer_object.get<std::vector<double>>("z-b-m1"));
+    }
+    if (layer_object.has_key("z-b-m2"))
+    {
+      gru_layer->set_z_b_m2(layer_object.get<std::vector<double>>("z-b-m2"));
+    }
+    if (layer_object.has_key("z-b-timesteps"))
+    {
+      gru_layer->set_z_b_timesteps(layer_object.get<std::vector<long long>>("z-b-timesteps"));
+    }
+    if (layer_object.has_key("z-b-decays"))
+    {
+      gru_layer->set_z_b_decays(layer_object.get<std::vector<double>>("z-b-decays"));
+    }
+
+    if (layer_object.has_key("r-w-values"))
+    {
+      gru_layer->set_r_w_values(layer_object.get<std::vector<double>>("r-w-values"));
+    }
+    if (layer_object.has_key("r-w-grads"))
+    {
+      gru_layer->set_r_w_grads(layer_object.get<std::vector<double>>("r-w-grads"));
+    }
+    if (layer_object.has_key("r-w-velocities"))
+    {
+      gru_layer->set_r_w_velocities(layer_object.get<std::vector<double>>("r-w-velocities"));
+    }
+    if (layer_object.has_key("r-w-m1"))
+    {
+      gru_layer->set_r_w_m1(layer_object.get<std::vector<double>>("r-w-m1"));
+    }
+    if (layer_object.has_key("r-w-m2"))
+    {
+      gru_layer->set_r_w_m2(layer_object.get<std::vector<double>>("r-w-m2"));
+    }
+    if (layer_object.has_key("r-w-timesteps"))
+    {
+      gru_layer->set_r_w_timesteps(layer_object.get<std::vector<long long>>("r-w-timesteps"));
+    }
+    if (layer_object.has_key("r-w-decays"))
+    {
+      gru_layer->set_r_w_decays(layer_object.get<std::vector<double>>("r-w-decays"));
+    }
+
+    if (layer_object.has_key("r-rw-values"))
+    {
+      gru_layer->set_r_rw_values(layer_object.get<std::vector<double>>("r-rw-values"));
+    }
+    if (layer_object.has_key("r-rw-grads"))
+    {
+      gru_layer->set_r_rw_grads(layer_object.get<std::vector<double>>("r-rw-grads"));
+    }
+    if (layer_object.has_key("r-rw-velocities"))
+    {
+      gru_layer->set_r_rw_velocities(layer_object.get<std::vector<double>>("r-rw-velocities"));
+    }
+    if (layer_object.has_key("r-rw-m1"))
+    {
+      gru_layer->set_r_rw_m1(layer_object.get<std::vector<double>>("r-rw-m1"));
+    }
+    if (layer_object.has_key("r-rw-m2"))
+    {
+      gru_layer->set_r_rw_m2(layer_object.get<std::vector<double>>("r-rw-m2"));
+    }
+    if (layer_object.has_key("r-rw-timesteps"))
+    {
+      gru_layer->set_r_rw_timesteps(layer_object.get<std::vector<long long>>("r-rw-timesteps"));
+    }
+    if (layer_object.has_key("r-rw-decays"))
+    {
+      gru_layer->set_r_rw_decays(layer_object.get<std::vector<double>>("r-rw-decays"));
+    }
+
+    if (layer_object.has_key("r-b-values"))
+    {
+      gru_layer->set_r_b_values(layer_object.get<std::vector<double>>("r-b-values"));
+    }
+    if (layer_object.has_key("r-b-grads"))
+    {
+      gru_layer->set_r_b_grads(layer_object.get<std::vector<double>>("r-b-grads"));
+    }
+    if (layer_object.has_key("r-b-velocities"))
+    {
+      gru_layer->set_r_b_velocities(layer_object.get<std::vector<double>>("r-b-velocities"));
+    }
+    if (layer_object.has_key("r-b-m1"))
+    {
+      gru_layer->set_r_b_m1(layer_object.get<std::vector<double>>("r-b-m1"));
+    }
+    if (layer_object.has_key("r-b-m2"))
+    {
+      gru_layer->set_r_b_m2(layer_object.get<std::vector<double>>("r-b-m2"));
+    }
+    if (layer_object.has_key("r-b-timesteps"))
+    {
+      gru_layer->set_r_b_timesteps(layer_object.get<std::vector<long long>>("r-b-timesteps"));
+    }
+    if (layer_object.has_key("r-b-decays"))
+    {
+      gru_layer->set_r_b_decays(layer_object.get<std::vector<double>>("r-b-decays"));
+    }
+  }
+
+  // Residual projector
+  if (layer_object.has_key("residual-projector"))
+  {
+    auto projector = get_residual_projector(layer_object);
+    layer.set_residual_projector(projector);
+  }
 }

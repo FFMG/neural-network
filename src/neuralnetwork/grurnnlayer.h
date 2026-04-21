@@ -255,6 +255,258 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_r_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_timesteps; }
   [[nodiscard]] inline const std::vector<double>& get_r_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_decays; }
 
+  void set_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_values = v;
+  }
+  void set_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_grads = v;
+  }
+  void set_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_velocities = v;
+  }
+  void set_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_m1 = v;
+  }
+  void set_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_m2 = v;
+  }
+  void set_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_timesteps = v;
+  }
+  void set_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _rw_decays = v;
+  }
+
+  void set_z_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_values = v;
+  }
+  void set_z_w_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_grads = v;
+  }
+  void set_z_w_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_velocities = v;
+  }
+  void set_z_w_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_m1 = v;
+  }
+  void set_z_w_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_m2 = v;
+  }
+  void set_z_w_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_timesteps = v;
+  }
+  void set_z_w_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_w_decays = v;
+  }
+
+  void set_z_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_values = v;
+  }
+  void set_z_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_grads = v;
+  }
+  void set_z_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_velocities = v;
+  }
+  void set_z_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_m1 = v;
+  }
+  void set_z_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_m2 = v;
+  }
+  void set_z_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_timesteps = v;
+  }
+  void set_z_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_rw_decays = v;
+  }
+
+  void set_z_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_values = v;
+  }
+  void set_z_b_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_grads = v;
+  }
+  void set_z_b_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_velocities = v;
+  }
+  void set_z_b_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_m1 = v;
+  }
+  void set_z_b_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_m2 = v;
+  }
+  void set_z_b_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_timesteps = v;
+  }
+  void set_z_b_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _z_b_decays = v;
+  }
+
+  void set_r_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_values = v;
+  }
+  void set_r_w_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_grads = v;
+  }
+  void set_r_w_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_velocities = v;
+  }
+  void set_r_w_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_m1 = v;
+  }
+  void set_r_w_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_m2 = v;
+  }
+  void set_r_w_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_timesteps = v;
+  }
+  void set_r_w_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_w_decays = v;
+  }
+
+  void set_r_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_values = v;
+  }
+  void set_r_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_grads = v;
+  }
+  void set_r_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_velocities = v;
+  }
+  void set_r_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_m1 = v;
+  }
+  void set_r_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_m2 = v;
+  }
+  void set_r_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_timesteps = v;
+  }
+  void set_r_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_rw_decays = v;
+  }
+
+  void set_r_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_values = v;
+  }
+  void set_r_b_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_grads = v;
+  }
+  void set_r_b_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_velocities = v;
+  }
+  void set_r_b_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_m1 = v;
+  }
+  void set_r_b_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_m2 = v;
+  }
+  void set_r_b_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_timesteps = v;
+  }
+  void set_r_b_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    _r_b_decays = v;
+  }
+
 private:
   struct BPTTWorkspace 
   {
