@@ -32,7 +32,10 @@ private:
   NeuralNetworkSerializer();
   NeuralNetworkSerializer( const NeuralNetworkSerializer& src) = delete;
   NeuralNetworkSerializer& operator=(const NeuralNetworkSerializer& src) = delete;
-  virtual ~NeuralNetworkSerializer() = default;
+  virtual ~NeuralNetworkSerializer()
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  }
 
   static const std::vector<ErrorCalculation::type> all_error_types();
   static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
