@@ -6,6 +6,7 @@
 #include "layer.h"
 #include "layerdetails.h"
 #include "logger.h"
+#include "multioutputlayerdetails.h"
 #include "neuralnetworkoptions.h"
 #include "optimiser.h"
 #include "residualprojector.h"
@@ -137,6 +138,7 @@ private:
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias);
   std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details, int number_of_threads, bool has_bias, double momentum);
   std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias);
+  std::unique_ptr<Layer> create_multi_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details, int number_of_threads, bool has_bias);
 
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
 

@@ -10,6 +10,7 @@
 #include "layerdetails.h"
 #include "logger.h"
 #include "neuralnetworkhelper.h"
+#include "multioutputlayerdetails.h"
 #include "optimiser.h"
 #include "outputlayerdetails.h"
 
@@ -118,6 +119,7 @@ public:
       _update_training_monitor_percent = nno._update_training_monitor_percent;
       _final_error_calculation_types = nno._final_error_calculation_types;
       _has_bias = nno._has_bias;
+      _multi_output_layer_details = nno._multi_output_layer_details;
     }
     return *this;
   }
@@ -152,6 +154,7 @@ public:
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
       _has_bias = nno._has_bias;
+      _multi_output_layer_details = std::move(nno._multi_output_layer_details);
       
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -177,17 +180,28 @@ public:
     _has_bias = has_bias;
     return *this;
   }
+  NeuralNetworkOptions& with_output_layer_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_layer_details.clear();
+    _multi_output_layer_details = multi_output_layer_details;
+    return *this;
+  }
+
+  // single output layer
   NeuralNetworkOptions& with_output_layer_details(const OutputLayerDetails& output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _output_layer_details.clear();
     _output_layer_details.push_back(output_layer_details);
+    _multi_output_layer_details.clear();
     return *this;
   }
   NeuralNetworkOptions& with_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _output_layer_details = output_layer_details;
+    _multi_output_layer_details.clear();
     return *this;
   }
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, OptimiserType optimiser_type, double momentum)
@@ -335,33 +349,57 @@ public:
     // set the log level first
     Logger::set_level(log_level());
 
-    if (topology().size() < 2 + hidden_layers().size())
+    if (topology().size() != 2 + hidden_layers().size())
     {
-      Logger::panic("The topology is not value, you must have at least 2 layers.");
+      Logger::panic("The topology size does not match the number of hidden layers!");
     }
 
     // check the hidden layers.
-    for (const auto& hl : hidden_layers())
+    for (size_t i = 0; i < hidden_layers().size(); ++i)
     {
-      if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
+      const auto& hl = hidden_layers()[i];
+      if (hl.get_size() != topology()[i + 1])
+      {
+        Logger::panic("The hidden layer size at index ", i, " does not match the topology size!");
+      }
+      if (hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
       }
     }
 
     // check the output layer
-    int total_output_layer_size = 0;
-    for (const auto& ol : output_layer_details())
+    if (has_multi_output())
     {
-      if (ol.get_size() == 0)
+      int total_branched_output_size = 0;
+      for (const auto& branch : multi_output_layer_details())
       {
-        Logger::panic("The output layer details cannot have a size of zero!");
+        if (branch.get_output_details().get_size() == 0)
+        {
+          Logger::panic("A branched output layer cannot have a size of zero!");
+        }
+        total_branched_output_size += branch.get_output_details().get_size();
       }
-      total_output_layer_size += ol.get_size();
+      if (total_branched_output_size != topology().back())
+      {
+        Logger::panic("The branched output layers total size (", total_branched_output_size, ") does not match the topology size (", topology().back(), ")!");
+      }
     }
-    if (total_output_layer_size != topology().back())
+    else
     {
-      Logger::panic("The output layer details total size does not match the topology size!");
+      int total_output_layer_size = 0;
+      for (const auto& ol : output_layer_details())
+      {
+        if (ol.get_size() == 0)
+        {
+          Logger::panic("The output layer details cannot have a size of zero!");
+        }
+        total_output_layer_size += ol.get_size();
+      }
+      if (total_output_layer_size != topology().back())
+      {
+        Logger::panic("The output layer details total size (", total_output_layer_size, ") does not match the topology size (", topology().back(), ")!");
+      }
     }
 
     if (number_of_threads() > 0 && batch_size() <= 1)
@@ -485,11 +523,14 @@ public:
   [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
   [[nodiscard]] inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
   [[nodiscard]] inline bool has_bias() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _has_bias; }
+  [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
+  [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
 
 private:
   std::vector<unsigned> _topology;
   std::vector<LayerDetails> _hidden_layers;
   std::vector<OutputLayerDetails> _output_layer_details;
+  std::vector<MultiOutputLayerDetails> _multi_output_layer_details;
   double _learning_rate;
   int _number_of_epoch;
   int _batch_size;

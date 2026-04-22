@@ -25,6 +25,7 @@ public:
     softmax
   };
 
+  activation() noexcept;
   activation(const method method, double alpha);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;

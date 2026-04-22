@@ -5,7 +5,7 @@
 
 #include <vector>
 
-class FFOutputLayer final : public FFLayer, protected OutputLayer
+class FFOutputLayer final : public FFLayer, public OutputLayer
 {
 public:
   FFOutputLayer(

@@ -160,6 +160,42 @@ public:
     return _rw_decays;
   }
 
+  void set_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_values = v;
+  }
+  void set_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_grads = v;
+  }
+  void set_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_velocities = v;
+  }
+  void set_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_m1 = v;
+  }
+  void set_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_m2 = v;
+  }
+  void set_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_timesteps = v;
+  }
+  void set_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    _rw_decays = v;
+  }
+
 private:
   // Hoisted buffers for performance
   mutable std::vector<double> _flattened_batch_inputs_buffer;

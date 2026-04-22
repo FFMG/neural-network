@@ -979,36 +979,93 @@ void NeuralNetwork::log_training_info(
   }
 
   // Output
-  const auto& output_layer_details = _options.output_layer_details();
-  std::string output_layer_details_string;
-  
-  output_layer_details_string += Logger::factory(tab, "Output layer(s)            :", "\n");
-  auto output_layer_index = 0;
-  for (const auto& details : output_layer_details)
+  if (_options.has_multi_output())
   {
-    output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
-      tab, tab, tab, "Size                   : ", details.get_size(), "\n",
-      tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
-      tab, tab, tab, "Momentum               : ", details.get_momentum(), "\n",
-      tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
-      tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
-      tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
-      tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
-      tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
-      tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold(), "\n",
-      tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
-      tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
-      tab, tab, tab, tab, "lambda\n",
-      tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
-      tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
-      tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false"); 
-    ++output_layer_index;
-    if (output_layer_index < output_layer_details.size())
+    std::string output_layer_head_details_string;
+    output_layer_head_details_string += Logger::factory(tab, "Multi Output layers   : Size = ", _options.multi_output_layer_details().size(), "\n");
+    auto output_layer_head_index = 0;
+      
+    const auto& heads = _options.multi_output_layer_details();
+    for (const auto& head : heads)
     {
-      output_layer_details_string += "\n";
+      output_layer_head_details_string += Logger::factory(tab, tab, "Hidden layers [", output_layer_head_index, "]\n");
+      for (size_t hl_index = 0; hl_index < head.get_hidden_layers().size(); ++hl_index)
+      {
+        const auto& this_hl = head.get_hidden_layer(static_cast<unsigned>(hl_index));
+        output_layer_head_details_string += Logger::factory(
+          tab, tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
+          tab, tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
+          tab, tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
+          tab, tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
+          tab, tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
+          tab, tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
+          tab, tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
+          tab, tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
+
+        if (hl_index < head.get_hidden_layers().size())
+        {
+          output_layer_head_details_string += "\n";
+        }
+      }
+
+      const auto& details = head.get_output_details();
+      output_layer_head_details_string += Logger::factory(tab, tab, "Output layer [", output_layer_head_index, "]\n",
+        tab, tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+        tab, tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
+        tab, tab, tab, tab, "Momentum               : ", details.get_momentum(), "\n",
+        tab, tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
+        tab, tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
+        tab, tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
+        tab, tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
+        tab, tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
+        tab, tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold(), "\n",
+        tab, tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
+        tab, tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
+        tab, tab, tab, tab, tab, "lambda\n",
+        tab, tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+        tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+        tab, tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
+
+      if (output_layer_head_index < heads.size())
+      {
+        output_layer_head_details_string += "\n";
+      }
+      ++output_layer_head_index;
     }
+    Logger::info(output_layer_head_details_string);
   }
-  Logger::info(output_layer_details_string);
+  else
+  {
+    const auto& output_layer_details = _options.output_layer_details();
+    std::string output_layer_details_string;
+    output_layer_details_string += Logger::factory(tab, "Output layer(s)            :\n");
+    auto output_layer_index = 0;
+    for (const auto& details : output_layer_details)
+    {
+      output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
+        tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+        tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
+        tab, tab, tab, "Momentum               : ", details.get_momentum(), "\n",
+        tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
+        tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
+        tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
+        tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
+        tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
+        tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold(), "\n",
+        tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
+        tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
+        tab, tab, tab, tab, "lambda\n",
+        tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+        tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+        tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
+      if (output_layer_index < output_layer_details.size())
+      {
+        output_layer_details_string += "\n";
+      }
+      ++output_layer_index;
+    }
+    Logger::info(output_layer_details_string);
+  }
 
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
