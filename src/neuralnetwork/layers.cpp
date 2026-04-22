@@ -2,7 +2,9 @@
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
+#include "layer.h"
 #include "layers.h"
+#include "lstmlayer.h"
 #include "multioutputlayer.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
@@ -274,6 +276,22 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
 
   case LayerDetails::LayerType::Gru:
     return std::make_unique<GRURNNLayer>(
+      layer_index,
+      previous_layer.get_number_neurons(),
+      num_neurons_in_this_layer,
+      weight_decay,
+      Layer::LayerType::Hidden,
+      layer_details.get_activation(),
+      optimiser_type,
+      residual_layer_number,
+      dropout_rate,
+      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
+      number_of_threads,
+      has_bias,
+      momentum);
+
+  case LayerDetails::LayerType::Lstm:
+    return std::make_unique<LSTMLayer>(
       layer_index,
       previous_layer.get_number_neurons(),
       num_neurons_in_this_layer,

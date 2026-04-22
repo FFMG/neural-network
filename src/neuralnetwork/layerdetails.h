@@ -18,6 +18,7 @@ public:
     FF,
     Elman,
     Gru,
+    Lstm,
     Branched
   };
 
@@ -134,6 +135,9 @@ public:
     case LayerType::Gru:
       return "Gru";
 
+    case LayerType::Lstm:
+      return "Lstm";
+
     default:
       Logger::panic("Unknown Layer type: ", (int)_layer_type);
     }
@@ -162,6 +166,10 @@ public:
     if (lower_str == "gru")
     {
       return LayerType::Gru;
+    }
+    if (lower_str == "lstm")
+    {
+      return LayerType::Lstm;
     }
     Logger::panic("Unknown Layer type: ", str);
   }

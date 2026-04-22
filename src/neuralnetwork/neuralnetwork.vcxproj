@@ -141,6 +141,7 @@
     <ClCompile Include="fflayer.cpp" />
     <ClCompile Include="ffoutputlayer.cpp" />
     <ClCompile Include="grurnnlayer.cpp" />
+    <ClCompile Include="lstmlayer.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
@@ -169,6 +170,7 @@
     <ClInclude Include="examples\trivial_softmax.h" />
     <ClInclude Include="ffoutputlayer.h" />
     <ClInclude Include="grurnnlayer.h" />
+    <ClInclude Include="lstmlayer.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
