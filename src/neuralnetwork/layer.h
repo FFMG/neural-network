@@ -197,7 +197,7 @@ public:
     Input,
     Hidden,
     Output,
-    Branched
+    MultiOutput
   };
 
   [[nodiscard]] static std::vector<double> create_w_decays(unsigned number_input_neurons, unsigned number_output_neurons, double decay)

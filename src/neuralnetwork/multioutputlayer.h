@@ -146,7 +146,7 @@ public:
     int number_of_threads,
     bool has_bias
   ) :
-    Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
+    Layer(layer_index, Layer::LayerType::MultiOutput, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
     OutputLayer(extract_output_details(multi_output_layer_details))
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
