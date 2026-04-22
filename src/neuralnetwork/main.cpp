@@ -2,8 +2,23 @@
 //
 #include "logger.h"
 
+// neural network
+#include "neuralnetwork.h"
+
+// examples
+#include "./examples/addingproblem.h"
+#include "./examples/compound_softmax.h"
+#include "./examples/compound_trivial_softmax.h"
+#include "./examples/copymemory.h"
+#include "./examples/multi_output.h"
+#include "./examples/multi_output_gru.h"
+#include "./examples/repro_issue.h"
 #include "./examples/residualxor.h"
+#include "./examples/compound_output_sandwich.h"
+#include "./examples/spiral.h"
+#include "./examples/syntheticsentiment.h"
 #include "./examples/threebitparity.h"
+#include "./examples/trivial_softmax.h"
 #include "./examples/twomoon.h"
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
@@ -15,8 +30,20 @@ int main()
   auto log_level = Logger::LogLevel::Debug;
   Logger::set_level(log_level);
 
+  // Compound Output Sandwich Test
+  ExampleCompoundOutputSandwich::Run(log_level);
+
+  // Copy Memory
+  ExampleCopyMemory::MemoryCopy(log_level);
+
+  // Spiral
+  ExampleSpiral::Spiral(log_level, true);
+
   // Two Moon
   ExampleTwoMoon::TwoMoon(log_level, true);
+
+  // Adding Problem
+  ExampleAddingProblem::AddingProblem(log_level);
 
   // XOR
   ExampleXor::Xor(log_level, true);
@@ -26,6 +53,29 @@ int main()
 
   // 3-bit Parity
   ExampleThreebitParity::ThreebitParity(log_level);
+
+  // Synthetic Sentiment
+  ExampleSyntheticSentiment::SyntheticSentiment(log_level);
+
+  // Compound Softmax (Sigmoid + 5-bucket Softmax)
+  ExampleCompoundSoftmax::CompoundSoftmax(log_level);
+
+  // Multi-Output
+  ExampleMultiOutput::MultiOutput(log_level);
+
+  // Multi-Output GRU
+  // ExampleMultiOutputGru::MultiOutputGru(log_level);
+
+  // Repro Issue (TANH x2 + SOFTMAX x5)
+  ExampleReproIssue::ReproIssue(log_level);
+
+  // Trivial softmax
+  ExampleTrivialSoftmax::Run(log_level);
+
+  // Trivial Compound softmax
+  ExampleCompoundTrivialSoftmax::Run(log_level, true, true);
+  
+  ExampleReproIssue::ReproIssue(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 

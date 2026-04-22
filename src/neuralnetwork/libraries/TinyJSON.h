@@ -18,6 +18,7 @@
 #endif
 
 #include <algorithm>
+#include <functional>
 #include <exception>
 #include <iterator>
 #include <type_traits>
@@ -98,6 +99,216 @@ class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
+ 
+  // optional class
+  template<typename T>
+  class Optional
+  {
+  public:
+    Optional() noexcept : _has_value(false) {}
+
+    Optional(const T& value) noexcept(std::is_nothrow_copy_constructible<T>::value) :
+      _has_value(true)
+    {
+      new(&_storage.value) T(value);
+    }
+
+    Optional(T&& value) noexcept(std::is_nothrow_move_constructible<T>::value) :
+      _has_value(true)
+    {
+      new(&_storage.value) T(std::move(value));
+    }
+
+    Optional(const Optional& other) noexcept(std::is_nothrow_copy_constructible<T>::value) :
+      _has_value(other._has_value)
+    {
+      if (_has_value)
+      {
+        new(&_storage.value) T(other._storage.value);
+      }
+    }
+
+    Optional(Optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value) :
+      _has_value(other._has_value)
+    {
+      if (_has_value)
+      {
+        new(&_storage.value) T(std::move(other._storage.value));
+      }
+    }
+
+    ~Optional()
+    {
+      reset();
+    }
+
+    [[nodiscard]] inline bool operator!() const noexcept
+    {
+      if (!has_value())
+      {
+        return true;
+      }
+      return !(value());
+    }
+
+    [[nodiscard]] inline bool operator==(const Optional& other) const noexcept
+    {
+      if (!other.has_value() && !has_value())
+      {
+        return true;
+      }
+      if (!has_value() || !other.has_value())
+      {
+        return false;
+      }
+      return other.value() == value();
+    }
+
+    [[nodiscard]] inline bool operator!=(const Optional& other) const noexcept
+    {
+      return !(other == *this);
+    }
+
+    [[nodiscard]] inline bool operator==(const T& other) const noexcept
+    {
+      if (!has_value())
+      {
+        return false;
+      }
+      return value() == other;
+    }
+
+    [[nodiscard]] inline bool operator!=(const T& other) const noexcept
+    {
+      return !(*this == other);
+    }
+
+    Optional& operator=(const Optional& other) noexcept(std::is_nothrow_copy_constructible<T>::value)
+    {
+      if (this != &other)
+      {
+        if (other._has_value)
+        {
+          if (_has_value)
+          {
+            _storage.value = other._storage.value;
+          }
+          else
+          {
+            new(&_storage.value) T(other._storage.value);
+            _has_value = true;
+          }
+        }
+        else
+        {
+          reset();
+        }
+      }
+      return *this;
+    }
+
+    Optional& operator=(Optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value)
+    {
+      if (this != &other)
+      {
+        if (other._has_value)
+        {
+          if (_has_value)
+          {
+            _storage.value = std::move(other._storage.value);
+          }
+          else
+          {
+            new(&_storage.value) T(std::move(other._storage.value));
+            _has_value = true;
+          }
+        }
+        else
+        {
+          reset();
+        }
+      }
+      return *this;
+    }
+
+    void reset() noexcept
+    {
+      if (_has_value)
+      {
+        _storage.value.~T();
+        _has_value = false;
+      }
+    }
+
+    [[nodiscard]] inline T& value() &
+    {
+      if (!_has_value) throw std::logic_error("Optional has no value");
+      return _storage.value;
+    }
+
+    [[nodiscard]] inline const T& value() const &
+    {
+      if (!_has_value) throw std::logic_error("Optional has no value");
+      return _storage.value;
+    }
+
+    [[nodiscard]] inline const T& value_or(const T& if_has_no_value) const noexcept
+    {
+      return _has_value ? _storage.value : if_has_no_value;
+    }
+
+    [[nodiscard]] inline bool has_value() const noexcept
+    {
+      return _has_value;
+    }
+
+    [[nodiscard]] inline explicit operator bool() const noexcept
+    {
+      return _has_value;
+    }
+
+    [[nodiscard]] inline T& operator*() & noexcept
+    {
+      return _storage.value;
+    }
+
+    [[nodiscard]] inline const T& operator*() const & noexcept
+    {
+      return _storage.value;
+    }
+
+    [[nodiscard]] inline T* operator->() noexcept
+    {
+      return &_storage.value;
+    }
+
+    [[nodiscard]] inline const T* operator->() const noexcept
+    {
+      return &_storage.value;
+    }
+
+  private:
+    union Storage
+    {
+      T value;
+      char dummy;
+      Storage() : dummy(0) {}
+      ~Storage() {}
+    } _storage;
+    bool _has_value;
+  };
+
+  template<typename T>
+  inline bool operator==(const T& lhs, const Optional<T>& rhs)
+  {
+    return rhs == lhs;
+  }
+
+  template<typename T>
+  inline bool operator!=(const T& lhs, const Optional<T>& rhs)
+  {
+    return rhs != lhs;
+  }
 
   // the various types of formating.
   enum class formating
@@ -105,6 +316,9 @@ class TJDictionary;
     minify,
     indented
   };
+
+  template<typename T> struct is_vector : std::false_type {};
+  template<typename T, typename A> struct is_vector<std::vector<T, A>> : std::true_type {};
 
   /// <summary>
   /// The parsing options.
@@ -116,6 +330,16 @@ class TJDictionary;
       rfc4627,
       rfc7159,
       rfc8259
+    };
+
+    enum message_type
+    {
+      trace,
+      debug,
+      info,
+      warning,
+      error,
+      fatal
     };
 
     /// <summary>
@@ -131,7 +355,20 @@ class TJDictionary;
     /// <summary>
     /// How deep we want to allow the array/objects to recurse.
     /// </summary>
-    unsigned int max_depth = 64;  
+    unsigned int max_depth = 64;
+
+    /// <summary>
+    /// The callback function that will be called on errors/warnings/etc.
+    //  0 = trace
+    //  1 = debug
+    //  2 = info
+    //  3 = warning
+    //  4 = error
+    //  5 = fatal/panic/exception
+    /// <summary>
+    std::function<void(message_type, const TJCHAR*)> callback_function = [] (message_type, const TJCHAR*) {
+      // do nothing
+    };
   };
 
   /// <summary>
@@ -364,7 +601,72 @@ class TJDictionary;
       return static_cast<T>(get_raw_float(strict));
     }
 
+    // For integral types (excluding bool)
+    template<typename T>
+    typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
+    get(bool strict = false) const
+    {
+      return get_number<T>(strict);
+    }
 
+    // For floating point types
+    template<typename T>
+    typename std::enable_if<std::is_floating_point<T>::value, T>::type
+    get(bool strict = false) const
+    {
+      return get_float<T>(strict);
+    }
+
+    // For boolean
+    template<typename T>
+    typename std::enable_if<std::is_same<T, bool>::value, bool>::type
+    get(bool strict = false) const
+    {
+      return get_boolean(strict);
+    }
+
+    // For strings (const TJCHAR*)
+    template<typename T>
+    typename std::enable_if<std::is_same<T, const TJCHAR*>::value, const TJCHAR*>::type
+    get(bool strict = false) const
+    {
+      return get_string(strict);
+    }
+
+#if TJ_INCLUDE_STD_STRING == 1
+    // For std::string
+    template<typename T>
+    typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
+    get(bool strict = false) const
+    {
+      const TJCHAR* str = get_string(strict);
+      return str ? std::string(str) : std::string();
+    }
+#endif
+
+    // For vectors
+    template<typename T>
+    typename std::enable_if<is_vector<T>::value, T>::type
+    get(bool strict = false) const
+    {
+      typedef typename T::value_type V;
+      return get_vector_internal<V>(strict, std::is_integral<V>());
+    }
+
+  private:
+    template<typename V>
+    std::vector<V> get_vector_internal(bool strict, std::true_type) const
+    {
+      return get_numbers<V>(strict);
+    }
+
+    template<typename V>
+    std::vector<V> get_vector_internal(bool strict, std::false_type) const
+    {
+      return get_floats<V>(strict);
+    }
+
+  public:
     using iterator = base_iterator<false>;
     using const_iterator = base_iterator<true>;
 
@@ -559,46 +861,74 @@ class TJDictionary;
     /// <returns></returns>
     virtual const TJValue* try_get_value(const TJCHAR* key, bool case_sensitive = true) const;
 
+    /// <summary>
+    /// Check if a key exists in this object.
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    bool has_key(const TJCHAR* key, bool case_sensitive = true) const;
+
+#if TJ_INCLUDE_STD_STRING == 1
+    /// <summary>
+    /// Check if a key exists in this object.
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    inline bool has_key(const std::string& key, bool case_sensitive = true) const
+    {
+      return has_key(key.c_str(), case_sensitive);
+    }
+#endif
+
     bool get_boolean(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
     const TJCHAR* get_string(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const;
 
     // Non-template overload for ambiguous case - default to long long
     inline long long get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_number(key, case_sensitive, throw_if_not_found);
+      auto value = get_raw_number(key, case_sensitive, throw_if_not_found);
+      return static_cast<long long>(value.has_value() ? value.value() : 0.0);
     }
     inline std::vector<long long> get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_numbers(key, case_sensitive, throw_if_not_found);
+      auto value = get_raw_numbers(key, case_sensitive, throw_if_not_found);
+      return value.has_value() ? value.value() : std::vector<long long>();
     }
 
     // Non-template overload for ambiguous case - default to long double
     inline long double get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_float(key, case_sensitive, throw_if_not_found);
+      auto value = get_raw_float(key, case_sensitive, throw_if_not_found);
+      return static_cast<long double>(value.has_value() ? value.value() : 0.0);
     }
     inline std::vector<long double> get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_floats(key, case_sensitive, throw_if_not_found);
+      auto value = get_raw_floats(key, case_sensitive, throw_if_not_found);
+      return value.has_value() ? value.value() : std::vector<long double>();
     }
 
     template<typename T>
     TJ_TEMPLATE_NUMBER::type
     get_number(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return static_cast<T>(get_raw_number(key, case_sensitive, throw_if_not_found));
+      auto value = get_raw_number(key, case_sensitive, throw_if_not_found);
+      return static_cast<T>(value.has_value() ? value.value() : 0.0);
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_NUMBER::type>
     get_numbers(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       auto llVector = get_raw_numbers(key, case_sensitive, throw_if_not_found);
+      if (!llVector.has_value())
+      {
+        return {};
+      }
       std::vector<T> tVector;
-      tVector.reserve(llVector.size());
+      tVector.reserve(llVector.value().size());
 
       // Transform and move the values
-      std::transform(std::make_move_iterator(llVector.begin()),
-        std::make_move_iterator(llVector.end()),
+      std::transform(std::make_move_iterator(llVector.value().begin()),
+        std::make_move_iterator(llVector.value().end()),
         std::back_inserter(tVector),
         [](long long value) { return static_cast<T>(value); });
       return tVector;
@@ -608,24 +938,116 @@ class TJDictionary;
     TJ_TEMPLATE_FLOAT::type
     get_float(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return static_cast<T>(get_raw_float(key, case_sensitive, throw_if_not_found));
+      auto value = get_raw_float(key, case_sensitive, throw_if_not_found);
+      return static_cast<T>(value.has_value() ? value.value() : 0.0);
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_FLOAT::type>
     get_floats(const TJCHAR* key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
       auto ldVector = get_raw_floats(key, case_sensitive, throw_if_not_found);
+      if (!ldVector.has_value())
+      {
+        return {};
+      }
       std::vector<T> tVector;
-      tVector.reserve(ldVector.size());
+      tVector.reserve(ldVector.value().size());
 
       // Transform and move the values
-      std::transform(std::make_move_iterator(ldVector.begin()),
-        std::make_move_iterator(ldVector.end()),
+      std::transform(std::make_move_iterator(ldVector.value().begin()),
+        std::make_move_iterator(ldVector.value().end()),
         std::back_inserter(tVector),
         [](long double value) { return static_cast<T>(value); });
       return tVector;
     }
 
+    // For integral types (excluding bool)
+    template<typename T>
+    typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
+    get(const TJCHAR* key) const
+    {
+      return get_number<T>(key, true, true);
+    }
+
+    // For floating point types
+    template<typename T>
+    typename std::enable_if<std::is_floating_point<T>::value, T>::type
+    get(const TJCHAR* key) const
+    {
+      return get_float<T>(key, true, true);
+    }
+
+    // For boolean
+    template<typename T>
+    typename std::enable_if<std::is_same<T, bool>::value, bool>::type
+    get(const TJCHAR* key) const
+    {
+      return get_boolean(key, true, true);
+    }
+
+    // For strings (const TJCHAR*)
+    template<typename T>
+    typename std::enable_if<std::is_same<T, const TJCHAR*>::value, const TJCHAR*>::type
+    get(const TJCHAR* key) const
+    {
+      return get_string(key, true, true);
+    }
+
+#if TJ_INCLUDE_STD_STRING == 1
+    // For std::string
+    template<typename T>
+    typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
+    get(const TJCHAR* key) const
+    {
+      const TJCHAR* str = get_string(key, true, true);
+      return str ? std::string(str) : std::string();
+    }
+
+    // Overloads for std::string key
+    template<typename T>
+    T get(const std::string& key) const
+    {
+      return get<T>(key.c_str());
+    }
+#endif
+
+    // For vectors
+    template<typename T>
+    typename std::enable_if<is_vector<T>::value, T>::type
+    get(const TJCHAR* key) const
+    {
+      typedef typename T::value_type V;
+      return get_vector_internal<V>(key, true, true, std::is_integral<V>());
+    }
+
+    template<typename T>
+    T get_or(const TJCHAR* key, const T& if_has_no_value) const noexcept
+    {
+      try
+      {
+        auto value = get<T>(key);
+        return value;
+      }
+      catch (...)
+      {
+        return if_has_no_value;
+      }
+    }
+
+  private:
+    template<typename V>
+    std::vector<V> get_vector_internal(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found, std::true_type) const
+    {
+      return get_numbers<V>(key, case_sensitive, throw_if_not_found);
+    }
+
+    template<typename V>
+    std::vector<V> get_vector_internal(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found, std::false_type) const
+    {
+      return get_floats<V>(key, case_sensitive, throw_if_not_found);
+    }
+
+  public:
     template<typename T>
     void set_floats(const TJCHAR* key, const std::vector<T>& values)
     {
@@ -683,11 +1105,11 @@ class TJDictionary;
     }
     inline std::vector<long double> get_floats(const std::string& key,bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_floats(key.c_str(), case_sensitive, throw_if_not_found);
+      return get_floats(key.c_str(), case_sensitive, throw_if_not_found);
     }
     inline std::vector<long long> get_numbers(const std::string& key, bool case_sensitive = true, bool throw_if_not_found = false) const
     {
-      return get_raw_numbers(key.c_str(), case_sensitive, throw_if_not_found);
+      return get_numbers(key.c_str(), case_sensitive, throw_if_not_found);
     }
 
     template<typename T>
@@ -737,7 +1159,6 @@ class TJDictionary;
     /// </summary>
     /// <param name="key"></param>
     /// <param name="value"></param>
-    /// <returns></returns>
     void set(const TJCHAR* key, const TJValue* value);
 
     /// <summary>
@@ -745,10 +1166,101 @@ class TJDictionary;
     /// </summary>
     /// <param name="key"></param>
     /// <param name="value"></param>
-    /// <returns></returns>
     inline void set(const TJCHAR* key, const TJValue& value)
     {
       set(key, &value);
+    }
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    template<typename T>
+    typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, void>::type
+    set(const TJCHAR* key, T value)
+    {
+      set_number(key, static_cast<long long>(value));
+    }
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    typename std::enable_if<std::is_floating_point<T>::value, void>::type
+    set(const TJCHAR* key, T value)
+    {
+      set_float(key, static_cast<long double>(value));
+    }
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    typename std::enable_if<std::is_same<T, bool>::value, void>::type
+    set(const TJCHAR* key, T value)
+    {
+      set_boolean(key, value);
+    }
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    typename std::enable_if<std::is_same<T, const TJCHAR*>::value, void>::type
+    set(const TJCHAR* key, T value)
+    {
+      set_string(key, value);
+    }
+
+#if TJ_INCLUDE_STD_STRING == 1
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    typename std::enable_if<std::is_same<T, std::string>::value, void>::type
+    set(const TJCHAR* key, const T& value)
+    {
+      set_string(key, value.c_str());
+    }
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    void set(const std::string& key, const T& value)
+    {
+      set<T>(key.c_str(), value);
+    }
+#endif
+
+    /// <summary>
+    /// Set the value of a ... value
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    template<typename T>
+    typename std::enable_if<is_vector<T>::value, void>::type
+    set(const TJCHAR* key, const T& value)
+    {
+      typedef typename T::value_type V;
+      set_vector_internal<V>(key, value, std::is_integral<V>());
     }
 
     /// <summary>
@@ -781,7 +1293,7 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    void set_string(const TJCHAR* key, const char* value);
+    void set_string(const TJCHAR* key, const TJCHAR* value);
 
     /// <summary>
     /// Set the value to null.
@@ -797,9 +1309,9 @@ class TJDictionary;
     /// <param name="key"></param>
     /// <param name="value"></param>
     /// <returns></returns>
-    inline void set_string(const std::string& key, const std::string& value) const
+    inline void set_string(const std::string& key, const std::string& value)
     {
-      return set_string(key.c_str(), value.c_str());
+      set_string(key.c_str(), value.c_str());
     }
 #endif
 
@@ -820,10 +1332,10 @@ class TJDictionary;
     }
 #endif
   protected:
-    long double get_raw_float(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
-    long long get_raw_number(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
-    std::vector<long double> get_raw_floats(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
-    std::vector<long long> get_raw_numbers(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
+    Optional<long double> get_raw_float(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
+    Optional<long long> get_raw_number(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
+    Optional<std::vector<long double>> get_raw_floats(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
+    Optional<std::vector<long long>> get_raw_numbers(const TJCHAR* key, bool case_sensitive, bool throw_if_not_found) const;
 
     void set_raw_numbers(const TJCHAR* key, const std::vector<long long>& values);
     void set_raw_floats(const TJCHAR* key, const std::vector<long double>& values);
@@ -848,6 +1360,18 @@ class TJDictionary;
     virtual TJValue& internal_at(int index) override;
 
   private:
+    template<typename V>
+    void set_vector_internal(const TJCHAR* key, const std::vector<V>& values, std::true_type)
+    {
+      set_numbers<V>(key, values);
+    }
+
+    template<typename V>
+    void set_vector_internal(const TJCHAR* key, const std::vector<V>& values, std::false_type)
+    {
+      set_floats<V>(key, values);
+    }
+
     // All the key value pairs in this object.
     TJDICTIONARY* _members;
 

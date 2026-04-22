@@ -2,8 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <stdexcept>
-#include <utility>
+
+#include "logger.h"
 
 #ifndef M_PI
 # define M_PI   3.141592653589793238462643383279502884
@@ -12,23 +12,80 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation(const method method, double alpha)  noexcept :
+activation::activation(const method method, double alpha) :
   _method(method),
   _alpha(alpha)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
+  switch (_method)
+  {
+  case activation::method::linear:
+    _activate_ptr = &calculate_linear;
+    _derivative_ptr = &calculate_linear_derivative;
+    break;
+  case activation::method::relu:
+    _activate_ptr = &calculate_relu;
+    _derivative_ptr = &calculate_relu_derivative;
+    break;
+  case activation::method::leakyRelu:
+    _activate_ptr = &calculate_leakyRelu;
+    _derivative_ptr = &calculate_leakyRelu_derivative;
+    break;
+  case activation::method::tanh:
+    _activate_ptr = &calculate_tanh;
+    _derivative_ptr = &calculate_tanh_derivative;
+    break;
+  case activation::method::PRelu:
+    _activate_ptr = &calculate_PReLU;
+    _derivative_ptr = &calculate_PReLU_derivative;
+    break;
+  case activation::method::selu:
+    _activate_ptr = &calculate_selu;
+    _derivative_ptr = &calculate_selu_derivative;
+    break;
+  case activation::method::elu:
+    _activate_ptr = &calculate_elu;
+    _derivative_ptr = &calculate_elu_derivative;
+    break;
+  case activation::method::gelu:
+    _activate_ptr = &calculate_gelu;
+    _derivative_ptr = &calculate_gelu_derivative;
+    break;
+  case activation::method::swish:
+    _activate_ptr = &calculate_swish;
+    _derivative_ptr = &calculate_swish_derivative;
+    break;
+  case activation::method::mish:
+    _activate_ptr = &calculate_mish;
+    _derivative_ptr = &calculate_mish_derivative;
+    break;
+  case activation::method::sigmoid:
+    _activate_ptr = &calculate_sigmoid;
+    _derivative_ptr = &calculate_sigmoid_derivative;
+    break;
+  case activation::method::softmax:
+    _activate_ptr = &calculate_softmax;
+    _derivative_ptr = &calculate_softmax_derivative;
+    break;
+  default:
+    Logger::panic("Unknown activation type!");
+  }
 }
 
 activation::activation(const activation& src) noexcept :
   _method(src._method),
-  _alpha(src._alpha)
+  _alpha(src._alpha),
+  _activate_ptr(src._activate_ptr),
+  _derivative_ptr(src._derivative_ptr)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
 
 activation::activation(activation&& src) noexcept :
   _method(src._method),
-  _alpha(src._alpha)
+  _alpha(src._alpha),
+  _activate_ptr(src._activate_ptr),
+  _derivative_ptr(src._derivative_ptr)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
@@ -40,6 +97,8 @@ activation& activation::operator=(const activation& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _activate_ptr = src._activate_ptr;
+    _derivative_ptr = src._derivative_ptr;
   }
   return *this;
 }
@@ -51,294 +110,316 @@ activation& activation::operator=(activation&& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _activate_ptr = src._activate_ptr;
+    _derivative_ptr = src._derivative_ptr;
   }
   return *this;
 }
 
-void activation::set_alpha(double alpha)
-{
-  _alpha = alpha;
-}
-
-double activation::get_alpha() const
-{
-  return _alpha;
-}
-
-double activation::calculate_linear(double x)
+double activation::calculate_linear(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x;
 }
 
-double activation::calculate_linear_derivative(double /*x*/)
+double activation::calculate_linear_derivative(double, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return 1.0;
 }
 
-// Sigmoid function
-double activation::calculate_sigmoid(double x)
+void activation::activate(double* begin, double* end) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return 1 / (1 + std::exp(-x));
+  if (_method == method::softmax)
+  {
+    calculate_softmax(begin, end);
+  }
+  else
+  {
+    for (double* it = begin; it != end; ++it)
+    {
+      *it = activate(*it);
+    }
+  }
 }
 
-// Sigmoid derivative
-double activation::calculate_sigmoid_derivative(double x)
+double activation::calculate_sigmoid(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return x * (1 - x);
+  // Compute z = alpha * x in a numerically stable way for the sigmoid.
+  const double z = alpha * x;
+  if (z >= 0.0)
+  {
+    const double exp_neg = std::exp(-z);
+    return 1.0 / (1.0 + exp_neg);
+  }
+  else
+  {
+    const double exp_pos = std::exp(z);
+    return exp_pos / (1.0 + exp_pos);
+  }
 }
 
-double activation::calculate_selu(double x) 
+double activation::calculate_sigmoid_derivative(double x, double alpha) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  // d/dx sigmoid(alpha*x) = alpha * sigmoid(alpha*x) * (1 - sigmoid(alpha*x))
+  const double s = calculate_sigmoid(x, alpha);
+  return alpha * s * (1.0 - s);
+}
+
+double activation::calculate_selu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? x : SELU_ALPHA * (std::exp(x) - 1));
 }
 
-double activation::calculate_selu_derivative(double x) 
+double activation::calculate_selu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return SELU_LAMBDA * (x > 0 ? 1.0 : SELU_ALPHA * std::exp(x));
 }
 
-double activation::calculate_elu(double x, double alpha)
+double activation::calculate_elu(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x > 0.0 ? x : alpha * (std::exp(x) - 1.0);
 }
 
-double activation::calculate_elu_derivative(double x, double alpha)
+double activation::calculate_elu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-double activation::calculate_relu(double x)
+void activation::calculate_softmax(double* begin, double* end) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  if (begin == end)
+  {
+    return;
+  }
+
+  // Find max for numerical stability
+  double max_val = *begin;
+  // Also find min_val to detect extreme range for warning
+  double min_val = *begin; 
+  for (const double* it = begin + 1; it != end; ++it)
+  {
+    if (std::isnan(*it))
+    {
+      // If any input is NaN produce NaN outputs (propagate NaN)
+      for (double* jt = begin; jt != end; ++jt)
+      {
+        *jt = std::numeric_limits<double>::quiet_NaN();
+      }
+      return;
+    }
+    if (*it > max_val)
+    {
+      max_val = *it;
+    }
+    if (*it < min_val) 
+    {
+      min_val = *it;
+    }
+  }
+
+  // --- Add warning for extreme logit range ---
+  const double logit_range = max_val - min_val;
+  const double EXTREME_LOGIT_THRESHOLD = 80.0; // Increased to reduce noise for highly confident models
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 150.0;
+
+  if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
+  {
+    Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
+  }
+  else if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  {
+    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range,"). Consider increasing weight decay or reducing learning rate.");
+  }
+  // --- End warning addition ---
+
+  // Exponentiate and accumulate in higher precision
+  long double sum = 0.0L;
+  constexpr double temperature = 1.0;
+  constexpr double LOGIT_CLAMP = 30.0;
+
+  for (double* it = begin; it != end; ++it)
+  {
+    // Apply temperature scaling and clamp the exponent to prevent explosion
+    double val = (static_cast<double>(*it) - static_cast<double>(max_val)) / temperature;
+    if (val < -LOGIT_CLAMP) val = -LOGIT_CLAMP;
+    
+    long double v = std::exp(static_cast<long double>(val));
+    *it = static_cast<double>(v);
+    sum += v;
+  }
+
+  // If sum is zero or not finite (extremely rare), fall back:
+  if (sum == 0.0L || !std::isfinite(static_cast<double>(sum)))
+  {
+    // After exp(* - max) the max entries are 1.0 (or very close). Distribute mass
+    // evenly among entries that equal 1.0, set others to 0.
+    int count_max = 0;
+    for (const double* it = begin; it != end; ++it)
+    {
+      if (*it == 1.0) ++count_max;
+    }
+
+    if (count_max == 0)
+    {
+      // Defensive: set first element to 1
+      for (double* it = begin; it != end; ++it) *it = 0.0;
+      *begin = 1.0;
+    }
+    else
+    {
+      double inv = 1.0 / static_cast<double>(count_max);
+      for (double* it = begin; it != end; ++it)
+      {
+        *it = (*it == 1.0) ? inv : 0.0;
+      }
+    }
+    return;
+  }
+
+  const long double inv_sum = 1.0L / sum;
+  for (double* it = begin; it != end; ++it)
+  {
+    *it = static_cast<double>(static_cast<long double>(*it) * inv_sum);
+  }
+}
+
+double activation::calculate_softmax(double x, double) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  Logger::warning("Calling the softmax activation indicate that the wrong error type/activation pair was used!");
+  // This is not really correct for a single value, 
+  // but we need it for the function pointer.
+  // Softmax of a single value is always 1.0.
+  return 1.0;
+}
+
+double activation::calculate_softmax_derivative(double x, double) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  // This is a simplified scalar derivative (S(1-S)). 
+  // Note: Softmax derivative is actually a Jacobian matrix.
+  // Standard practice is to skip this derivative when combined with Cross-Entropy.
+  double s = 1.0 / (1.0 + std::exp(-x)); 
+  return s * (1.0 - s);
+}
+
+double activation::calculate_relu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::max(0.0, x);
 }
 
-double activation::calculate_relu_derivative(double x)
+double activation::calculate_relu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0.0) ? 1.0 : 0.0;
 }
 
-double activation::calculate_leakyRelu(double x, double alpha)
+double activation::calculate_leakyRelu(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
-double activation::calculate_leakyRelu_derivative(double x, double alpha)
+double activation::calculate_leakyRelu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_tanh(double x)
+double activation::calculate_tanh(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return std::tanh(x);
 }
 
-double activation::calculate_tanh_derivative(double x)
+double activation::calculate_tanh_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   const auto t = std::tanh(x);
   return 1.0 - t * t;
 }
 
-// PReLU Activation Function
-double activation::calculate_PReLU(double x, double alpha)
+double activation::calculate_PReLU(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? x : alpha * x;
 }
 
-// PReLU Derivative Function
-double activation::calculate_PReLU_derivative(double x, double alpha)
+double activation::calculate_PReLU_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   return (x > 0) ? 1.0 : alpha;
 }
 
-double activation::calculate_mish(double x)
+double activation::calculate_mish(double x, double) noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return x * std::tanh(std::log1p(std::exp(x)));
 }
 
-double activation::calculate_mish_derivative(double x)
+double activation::calculate_mish_derivative(double x, double) noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   double sp = std::log1p(std::exp(x)); // softplus
   double tanh_sp = std::tanh(sp);
   double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
   return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
 }
 
-double activation::calculate_swish(double x) 
+double activation::calculate_swish(double x, double) noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
   const double exp_term = std::exp(std::clamp(-x, -MAX_EXP_INPUT, MAX_EXP_INPUT));
   return x / (1.0 + exp_term);
 }
 
-double activation::calculate_swish_derivative(double x) 
+double activation::calculate_swish_derivative(double x, double) noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
   double clamped_x = std::clamp(x, -MAX_EXP_INPUT, MAX_EXP_INPUT);
   double sigmoid = 1.0 / (1.0 + std::exp(-clamped_x));
   return sigmoid + x * sigmoid * (1.0 - sigmoid);
 }
 
-// Approximate GELU (fast, used in transformers)
-double activation::calculate_gelu(double x) 
+double activation::calculate_gelu(double x, double) noexcept
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
 }
 
-double activation::calculate_gelu_derivative(double x)
+double activation::calculate_gelu_derivative(double x, double) noexcept
 {
-  // Optional: derivative is complex; can use numerical approximation or skip exact
+  MYODDWEB_PROFILE_FUNCTION("activation");
   const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
-  return 0.5 * tanh_term +
+  return 0.5 + 0.5 * tanh_term +
     (0.5 * x * (1 - tanh_term * tanh_term) *
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-double activation::momentum() const
-{
-  switch (_method)
-  {
-  case activation::method::linear:
-  case activation::method::relu:
-  case activation::method::leakyRelu:
-  case activation::method::tanh:
-  case activation::method::PRelu:
-  case activation::method::selu:
-  case activation::method::elu:
-    return 0.9;
-
-  case activation::method::gelu:
-  case activation::method::swish:
-  case activation::method::mish:
-    return 0.95;
-
-  case activation::method::sigmoid:
-    return 0.99;
-
-  default:
-    throw std::invalid_argument("Unknown activation type!");
-  }
-}
-
-double activation::activate(double x) const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  switch (_method)
-  {
-  case activation::method::linear:
-    return calculate_linear(x);
-
-  case activation::method::relu:
-    return calculate_relu(x);
-
-  case activation::method::leakyRelu:
-    return calculate_leakyRelu(x, _alpha);
-
-  case activation::method::tanh:
-    return calculate_tanh(x);
-
-  case activation::method::PRelu:
-    return calculate_PReLU(x, _alpha);
-
-  case activation::method::selu:
-    return calculate_selu(x);
-
-  case activation::method::elu:
-    return calculate_elu(x, _alpha);
-
-  case activation::method::gelu:
-    return calculate_gelu(x);
-
-  case activation::method::swish:
-    return calculate_swish(x);
-
-  case activation::method::mish:
-    return calculate_mish(x);
-
-  case activation::method::sigmoid:
-    return calculate_sigmoid(x);
-
-  default:
-    throw std::invalid_argument("Unknown activation type!");
-  }
-}
-
-double activation::activate_derivative(double x) const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  switch (_method)
-  {
-  case activation::method::linear:
-    return calculate_linear_derivative(x);
-
-  case activation::method::relu:
-    return calculate_relu_derivative(x);
-
-  case activation::method::leakyRelu:
-    return calculate_leakyRelu_derivative(x, _alpha);
-
-  case activation::method::tanh:
-    return calculate_tanh_derivative(x);
-
-  case activation::method::PRelu:
-    return calculate_PReLU_derivative(x, _alpha);
-
-  case activation::method::selu:
-    return calculate_selu_derivative(x);
-
-  case activation::method::elu:
-    return calculate_elu_derivative(x, _alpha);
-
-  case activation::method::gelu:
-    return calculate_gelu_derivative(x);
-
-  case activation::method::swish:
-    return calculate_swish_derivative(x);
-
-  case activation::method::mish:
-    return calculate_mish_derivative(x);
-
-  case activation::method::sigmoid:
-    return calculate_sigmoid_derivative(x);
-
-  default:
-    throw std::invalid_argument("Unknown activation type!");
-  }
-}
-
-double activation::weight_initialization() const
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  return weight_initialization(1, 1).front();
-}
-
-std::vector<double> activation::weight_initialization(int num_neurons_next_layer, int num_neurons_current_layer) const
+double activation::weight_initialization(unsigned fan_in, unsigned fan_out) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
   {
   case activation::method::sigmoid:
   case activation::method::tanh:
-    // return lecun_initialization(num_neurons_current_layer);
-    return xavier_initialization(num_neurons_next_layer, num_neurons_current_layer);
+  case activation::method::softmax:
+    return xavier_initialization(fan_in, fan_out);
 
   case activation::method::selu:
-    return selu_initialization(num_neurons_next_layer);
+    return selu_initialization(fan_in);
 
   case activation::method::linear:
   case activation::method::relu:
@@ -348,88 +429,74 @@ std::vector<double> activation::weight_initialization(int num_neurons_next_layer
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization(num_neurons_next_layer);
+    return he_initialization(fan_in);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
   }
 }
 
-std::vector<double> activation::xavier_initialization(int num_neurons_next_layer, int num_neurons_current_layer)
+double activation::xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
-
-  // Glorot/Xavier initialization uses a uniform distribution:
-  double limit = std::sqrt(6.0 / (num_neurons_next_layer + num_neurons_current_layer));
+  
+  // Standard Xavier initialization: Uniform(-sqrt(6/(fan_in+fan_out)), sqrt(6/(fan_in+fan_out)))
+  double limit = std::sqrt(6.0 / (static_cast<double>(fan_in) + static_cast<double>(fan_out))); 
   std::uniform_real_distribution<double> dist(-limit, limit);
 
-  std::vector<double> weights(num_neurons_next_layer);
-  for (double& w : weights) 
-  {
-    w = dist(gen);
-  }
-
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::he_initialization(int num_neurons_next_layer)
+double activation::he_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
+  
+  // Standard He initialization: Normal(0, sqrt(2/fan_in))
+  double stddev = std::sqrt(2.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
-  std::normal_distribution<double> dist(0.0, std::sqrt(2.0 / num_neurons_next_layer));
-
-  std::vector<double> weights(num_neurons_next_layer);
-  for (double& w : weights) {
-    w = dist(gen);  // Initialize weights
-  }
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::selu_initialization(int num_neurons_next_layer)
+double activation::selu_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
+  
+  // SELU initialization (LeCun): Normal(0, sqrt(1/fan_in))
+  double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
-  // Same as LeCun normal
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_next_layer));
-
-  std::vector<double> weights(num_neurons_next_layer);
-  for (double& w : weights) {
-    w = dist(gen);
-  }
-
-  return weights;
+  return dist(gen);
 }
 
-std::vector<double> activation::lecun_initialization(int num_neurons_next_layer)
+double activation::lecun_initialization(unsigned fan_in) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   static std::random_device rd;
   static std::mt19937 gen(rd());
+  
+  double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
+  std::normal_distribution<double> dist(0.0, stddev);
 
-  std::normal_distribution<double> dist(0.0, std::sqrt(1.0 / num_neurons_next_layer));
-
-  std::vector<double> weights(num_neurons_next_layer);
-  for (double& w : weights) {
-    w = dist(gen);
-  }
-  return weights;
+  return dist(gen);
 }
 
 std::string activation::method_to_string() const
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   return method_to_string(_method);
 }
 
 activation::method activation::string_to_method(const std::string& str)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   std::string lower_str = str;
-  // Convert the string to lowercase for case-insensitive comparison
   std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
     [](unsigned char c) { return std::tolower(c); });
 
@@ -477,29 +544,44 @@ activation::method activation::string_to_method(const std::string& str)
   {
     return method::elu;
   }
-
-  // If no match is found, throw an exception
-  throw std::invalid_argument("Unknown method: " + str);
+  if (lower_str == "softmax")
+  {
+    return method::softmax;
+  }
+  
+  Logger::panic("Unknown method: ", str);
 }
 
 std::string activation::method_to_string(method m)
 {
+  MYODDWEB_PROFILE_FUNCTION("activation");
   switch (m)
   {
-  case method::linear:    return "linear";
-  case method::sigmoid:   return "sigmoid";
-  case method::tanh:      return "tanh";
-  case method::relu:      return "relu";
-  case method::leakyRelu: return "leakyRelu";
-  case method::PRelu:     return "PRelu";
-  case method::selu:      return "selu";
-  case method::swish:     return "swish";
-  case method::mish:      return "mish";
-  case method::gelu:      return "gelu";
-  case method::elu:       return "elu";
+  case method::linear:
+    return "linear";
+  case method::sigmoid:
+    return "sigmoid";
+  case method::tanh:
+    return "tanh";
+  case method::relu:
+    return "relu";
+  case method::leakyRelu:
+    return "leakyRelu";
+  case method::PRelu:
+    return "PRelu";
+  case method::selu:
+    return "selu";
+  case method::swish:
+    return "swish";
+  case method::mish:
+    return "mish";
+  case method::gelu:
+    return "gelu";
+  case method::elu:
+    return "elu";
+  case method::softmax:
+    return "softmax";
   default:
-    // Handle unknown enum values by throwing an exception
-    throw std::invalid_argument("Unknown or unsupported 'method' enum value.");
+    Logger::panic("Unknown or unsupported 'method' enum value.");
   }
 }
-

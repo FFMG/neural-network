@@ -106,9 +106,9 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>TRACY_ENABLE;MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>VALIDATE_DATA=1;TRACY_ENABLE;MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
@@ -125,7 +125,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
@@ -137,6 +137,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="activation.cpp" />
+    <ClCompile Include="elmanrnnlayer.cpp" />
+    <ClCompile Include="fflayer.cpp" />
+    <ClCompile Include="ffoutputlayer.cpp" />
+    <ClCompile Include="grurnnlayer.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
@@ -150,23 +154,53 @@
   <ItemGroup>
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
+    <ClInclude Include="aligned_allocator.h" />
+    <ClInclude Include="evaluationconfig.h" />
+    <ClInclude Include="examples\addingproblem.h" />
+    <ClInclude Include="examples\compound_output_sandwich.h" />
+    <ClInclude Include="examples\compound_softmax.h" />
+    <ClInclude Include="examples\compound_trivial_softmax.h" />
+    <ClInclude Include="examples\multi_output.h" />
+    <ClInclude Include="examples\multi_output_gru.h" />
+    <ClInclude Include="examples\repro_issue.h" />
+    <ClInclude Include="examples\syntheticsentiment.h" />
+    <ClInclude Include="examples\trivial_softmax.h" />
+    <ClInclude Include="ffoutputlayer.h" />
+    <ClInclude Include="grurnnlayer.h" />
+    <ClInclude Include="layer.h" />
+    <ClInclude Include="elmanrnnlayer.h" />
+    <ClInclude Include="errorcalculation.h" />
+    <ClInclude Include="examples\copymemory.h" />
     <ClInclude Include="examples\helper.h" />
+    <ClInclude Include="examples\residualxor.h" />
+    <ClInclude Include="examples\spiral.h" />
     <ClInclude Include="examples\threebitparity.h" />
     <ClInclude Include="examples\twomoon.h" />
     <ClInclude Include="examples\xor.h" />
-    <ClInclude Include="layer.h" />
+    <ClInclude Include="fflayer.h" />
+    <ClInclude Include="gradientsandoutputs.h" />
+    <ClInclude Include="hiddenstate.h" />
+    <ClInclude Include="hiddenstates.h" />
+    <ClInclude Include="layerdetails.h" />
     <ClInclude Include="layers.h" />
+    <ClInclude Include="layersandneuronscontainer.h" />
     <ClInclude Include="libraries\instrumentor.h" />
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
+    <ClInclude Include="neuralnetworkhelpermetrics.h" />
     <ClInclude Include="neuralnetworkoptions.h" />
     <ClInclude Include="neuralnetworkserializer.h" />
     <ClInclude Include="neuron.h" />
     <ClInclude Include="optimiser.h" />
+    <ClInclude Include="outputlayer.h" />
+    <ClInclude Include="outputlayerdetails.h" />
+    <ClInclude Include="residualprojector.h" />
+    <ClInclude Include="rng.h" />
     <ClInclude Include="taskqueue.h" />
+    <ClInclude Include="trainingmonitor.h" />
     <ClInclude Include="weightparam.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -4,10 +4,20 @@
 #include <string>
 #include <vector>
 
+#include "elmanrnnlayer.h"
+#include "evaluationconfig.h"
+#include "errorcalculation.h"
+#include "fflayer.h"
+#include "ffoutputlayer.h"
+#include "grurnnlayer.h"
 #include "layer.h"
+#include "layerdetails.h"
+#include "layers.h"
 #include "neuralnetwork.h"
 #include "neuron.h"
+#include "outputlayerdetails.h"
 #include "weightparam.h"
+
 #include "libraries/TinyJSON.h"
 
 class NeuralNetworkSerializer
@@ -22,25 +32,42 @@ private:
   NeuralNetworkSerializer& operator=(const NeuralNetworkSerializer& src) = delete;
   virtual ~NeuralNetworkSerializer() = default;
 
+  static const std::vector<ErrorCalculation::type> all_error_types();
   static NeuralNetworkOptions get_and_build_options(const TinyJSON::TJValue& json);
-  static std::map<NeuralNetworkOptions::ErrorCalculation, double> get_errors(const TinyJSON::TJValue& json);
-  static double get_mean_absolute_percentage_error(const TinyJSON::TJValue& json);
+  static std::vector<std::map<ErrorCalculation::type, double>> get_errors(const TinyJSON::TJValue& json);
   static std::vector<WeightParam> get_weight_params(const TinyJSON::TJValueObject& parent);
-  static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number,const activation::method& activation_method);
-  static std::vector<std::vector<WeightParam>> get_residual_weight_params(const TinyJSON::TJValue& json, unsigned layer_number );
-  static std::vector<int> get_residual_layers(const TinyJSON::TJValue& json);
-  static std::vector<Layer> create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json, const std::vector<int>& residual_layers);
+  static std::vector<Neuron> get_neurons(const TinyJSON::TJValue& json, unsigned layer_number);
+  static std::vector<Neuron> get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number);
+  static Layers create_layers(const NeuralNetworkOptions& options, const TinyJSON::TJValue& json);
+  static std::unique_ptr<Layer> create_fflayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_ffoutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<OutputLayerDetails>& output_layer_details);
+  static std::unique_ptr<Layer> create_elmanrnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
+  static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
+  static std::vector<LayerDetails> get_hidden_layers(const TinyJSON::TJValueObject& options_object);
+  static std::vector<OutputLayerDetails> get_output_layer_details(const TinyJSON::TJValueObject& options_object);
+  static EvaluationConfig get_error_evaluation_config(const TinyJSON::TJValueObject* parent);
+  static layer_activation_helper get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs);
+  static void add_error_evaluation_config(TinyJSON::TJValueObject* parent, const EvaluationConfig& config);
+
+  static ResidualProjector* get_residual_projector(const TinyJSON::TJValueObject& layer_object);
 
   static void add_basic(TinyJSON::TJValueObject& json);
   static void add_errors(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static void add_layers(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
-  static void add_layer(const Layer& layer, TinyJSON::TJValueArray& layers);
-  static void add_residual_projector(const Layer& layer, TinyJSON::TJValueObject& layer_object);
+  static void add_activation_helper(const layer_activation_helper& lah, TinyJSON::TJValueObject& json);
+  static void add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
   static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
+  static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);
   static void add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json);
   static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);
+  static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails>& hidden_layers);
+  static TinyJSON::TJValueArray* add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details);
 };
