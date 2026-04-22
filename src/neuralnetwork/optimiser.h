@@ -1,6 +1,7 @@
 ﻿#pragma once
+#include "logger.h"
+
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 
 enum class OptimiserType
@@ -40,7 +41,7 @@ inline std::string optimiser_type_to_string(OptimiserType type)
   case OptimiserType::Lion:      return "Lion";
   case OptimiserType::None:      return "None";
   default:
-    throw std::out_of_range("Unknown OptimiserType value");
+    Logger::panic("Unknown OptimiserType value");
   }
 }
 
@@ -108,5 +109,5 @@ inline OptimiserType string_to_optimiser_type(const std::string& str)
     return OptimiserType::None;
   }
   // If no match is found after checking all possibilities, throw an exception
-  throw std::invalid_argument("Unknown optimiser type: " + str);
+  Logger::panic("Unknown optimiser type: ", str);
 }

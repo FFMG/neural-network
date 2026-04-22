@@ -1,13 +1,17 @@
 #pragma once
-#include <cassert>
 #include <functional>
 #include <vector>
 
+#include "libraries/instrumentor.h"
+
 #include "activation.h"
+#include "errorcalculation.h"
 #include "layer.h"
+#include "layerdetails.h"
 #include "logger.h"
-#include "optimiser.h"
 #include "neuralnetworkhelper.h"
+#include "optimiser.h"
+#include "outputlayerdetails.h"
 
 class NeuralNetworkHelper;
 class NeuralNetworkOptions
@@ -15,9 +19,6 @@ class NeuralNetworkOptions
 private:
   NeuralNetworkOptions(const std::vector<unsigned>& topology) :
     _topology(topology),
-    _dropout({}),
-    _hidden_activation(activation::method::sigmoid),
-    _output_activation(activation::method::sigmoid),
     _learning_rate(0.15),
     _number_of_epoch(1000),
     _batch_size(1),
@@ -27,51 +28,74 @@ private:
     _number_of_threads(0),
     _learning_rate_decay_rate(0.0),
     _adaptive_learning_rate(false),
-    _optimiser_type(OptimiserType::SGD),
     _learning_rate_restart_rate(0),
     _learning_rate_restart_boost(0),
     _residual_layer_jump(-1),
     _clip_threshold(1.0),
     _learning_rate_warmup_start(0.0),
     _learning_rate_warmup_target(0.0),
-    _shuffle_training_data(true)
+    _shuffle_training_data(true),
+    _shuffle_bptt_batches(true),
+    _final_error_calculation_types({}),
+    _enable_bptt(true),
+    _bptt_max_ticks(0),
+    _update_training_monitor_percent(0.0),
+    _has_bias(true)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    if (topology.size() < 2)
+    {
+      Logger::panic("The topology must contain at least an input and an output layer!");
+    }
+
+    for (int i = 1; i < topology.size() - 1; ++i)
+    {
+      _hidden_layers.push_back(
+        LayerDetails(
+          LayerDetails::LayerType::FF, 
+          topology[i], 
+          activation(activation::method::sigmoid, 0.01), 
+          0.0, 
+          0.05, 
+          OptimiserType::SGD, 
+          0.99)
+      );
+    }
+
+    _output_layer_details.push_back(
+      OutputLayerDetails(
+        topology.back(), 
+        activation(activation::method::sigmoid, 0.01), 
+        ErrorCalculation::type::mse, 
+        { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 
+        0.05,
+        OptimiserType::SGD, 
+        0.99));
   }
 
 public:
-  enum class ErrorCalculation
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept :
+    _output_layer_details(nno._output_layer_details)
   {
-    none,
-    huber_loss,
-    mae,
-    mse,
-    rmse,
-    nrmse,
-    mape,
-    smape,
-    wape,
-    directional_accuracy,
-    bce_loss
-  };
-
-  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
-  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = nno;
   }
 
-  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept :
+    _output_layer_details(std::move(nno._output_layer_details))
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = std::move(nno);
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (this != &nno)
     {
       _topology = nno._topology;
-      _dropout = nno._dropout;
-      _hidden_activation = nno._hidden_activation;
-      _output_activation = nno._output_activation;
+      _hidden_layers = nno._hidden_layers;
+      _output_layer_details = nno._output_layer_details;
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -81,7 +105,6 @@ public:
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
-      _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
@@ -89,18 +112,24 @@ public:
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
+      _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _enable_bptt = nno._enable_bptt;
+      _bptt_max_ticks = nno._bptt_max_ticks;
+      _update_training_monitor_percent = nno._update_training_monitor_percent;
+      _final_error_calculation_types = nno._final_error_calculation_types;
+      _has_bias = nno._has_bias;
     }
     return *this;
   }
 
   NeuralNetworkOptions& operator=(NeuralNetworkOptions&& nno) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (this != &nno)
     {
       _topology = std::move(nno._topology);
-      _dropout = std::move(nno._dropout);
-      _hidden_activation = nno._hidden_activation;
-      _output_activation = nno._output_activation;
+      _hidden_layers = std::move(nno._hidden_layers);
+      _output_layer_details = std::move(nno._output_layer_details);
       _learning_rate = nno._learning_rate;
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
@@ -110,50 +139,78 @@ public:
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
       _adaptive_learning_rate = nno._adaptive_learning_rate;
-      _optimiser_type = nno._optimiser_type;
       _learning_rate_restart_rate = nno._learning_rate_restart_rate;
       _learning_rate_restart_boost = nno._learning_rate_restart_boost;
       _residual_layer_jump = nno._residual_layer_jump;
       _clip_threshold = nno._clip_threshold;
       _learning_rate_warmup_start = nno._learning_rate_warmup_start;
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
-
+      _shuffle_training_data = nno._shuffle_training_data;
+      _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _final_error_calculation_types = std::move(nno._final_error_calculation_types);
+      _enable_bptt = nno._enable_bptt;
+      _bptt_max_ticks = nno._bptt_max_ticks;
+      _update_training_monitor_percent = nno._update_training_monitor_percent;
+      _has_bias = nno._has_bias;
+      
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
       nno._data_is_unique = false;
-      nno._optimiser_type = OptimiserType::None;
       nno._residual_layer_jump = -1;
       nno._clip_threshold = 1.0;
       nno._learning_rate_warmup_start = 0.0;
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
+      nno._shuffle_bptt_batches = true;
+      nno._final_error_calculation_types = {};
+      nno._bptt_max_ticks = 0;
+      nno._update_training_monitor_percent = 0.0;
+      nno._has_bias = true;
     }
     return *this;
   }
-  NeuralNetworkOptions& with_hidden_activation_method(const activation::method& activation)
+  NeuralNetworkOptions& with_has_bias(bool has_bias)
   {
-    _hidden_activation = activation;
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _has_bias = has_bias;
     return *this;
   }
-  NeuralNetworkOptions& with_output_activation_method(const activation::method& activation)
+  NeuralNetworkOptions& with_output_layer_details(const OutputLayerDetails& output_layer_details)
   {
-    _output_activation = activation;
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_layer_details.clear();
+    _output_layer_details.push_back(output_layer_details);
     return *this;
   }
+  NeuralNetworkOptions& with_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _output_layer_details = output_layer_details;
+    return *this;
+  }
+  NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, OptimiserType optimiser_type, double momentum)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, optimiser_type, momentum));
+  }
+
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _number_of_epoch = number_of_epoch;
     return *this;
   }
   NeuralNetworkOptions& with_batch_size(int batch_size)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _batch_size = batch_size;
     return *this;
   }
   NeuralNetworkOptions& with_data_is_unique(bool data_is_unique)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     // unique training data means that we cannot have
     // data split for epoch error checking and final error checking.
     _data_is_unique = data_is_unique;
@@ -162,169 +219,218 @@ public:
 
   NeuralNetworkOptions& with_progress_callback(const std::function<bool(NeuralNetworkHelper&)>& progress_callback)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _progress_callback = progress_callback;
     return *this;
   }
   NeuralNetworkOptions& with_log_level(const Logger::LogLevel& log_level)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _log_level = log_level;
     return *this;
   }
   NeuralNetworkOptions& with_number_of_threads(int number_of_threads)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _number_of_threads = number_of_threads <= 0 ? 0 : number_of_threads;
-    return *this;
-  }
-  NeuralNetworkOptions& with_dropout(const std::vector<double>& dropout)
-  {
-    _dropout = dropout;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate(double learning_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate = learning_rate;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate_decay_rate(double learning_rate_decay_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_decay_rate = learning_rate_decay_rate;
     return *this;
   }
   NeuralNetworkOptions& with_learning_rate_boost_rate(double every_percent, double restart_boost)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_restart_rate = every_percent;
     _learning_rate_restart_boost = restart_boost;
     return *this;
   }
   NeuralNetworkOptions& with_adaptive_learning_rates(bool adaptive_learning_rate)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _adaptive_learning_rate = adaptive_learning_rate;
-    return *this;
-  }
-  NeuralNetworkOptions& with_optimiser_type(OptimiserType optimiser_type)
-  {
-    _optimiser_type = optimiser_type;
     return *this;
   }
   NeuralNetworkOptions& with_residual_layer_jump(int residual_layer_jump)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _residual_layer_jump = residual_layer_jump;
     return *this;
   }
   NeuralNetworkOptions& with_clip_threshold(double clip_threshold)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _clip_threshold = clip_threshold;
     return *this;
   }
   NeuralNetworkOptions& with_shuffle_training_data(bool shuffle_training_data)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _shuffle_training_data = shuffle_training_data;
     return *this;
   }
+  NeuralNetworkOptions& with_shuffle_bptt_batches(bool shuffle_bptt_batches)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _shuffle_bptt_batches = shuffle_bptt_batches;
+    return *this;
+  }
+
   NeuralNetworkOptions& with_learning_rate_warmup(double learning_rate_warmup_start, double learning_rate_warmup_target)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _learning_rate_warmup_start = learning_rate_warmup_start;
     _learning_rate_warmup_target = learning_rate_warmup_target;
     return *this;
   }
+  NeuralNetworkOptions& with_final_error_calculation_types(const std::vector<ErrorCalculation::type>& final_error_calculation_types)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _final_error_calculation_types = final_error_calculation_types;
+    return *this;
+  }
 
+  NeuralNetworkOptions& with_enable_bptt(bool enable_bptt)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _enable_bptt = enable_bptt;
+    return *this;
+  }
+  NeuralNetworkOptions& with_bptt_max_ticks(int bptt_max_ticks)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _bptt_max_ticks = bptt_max_ticks;
+    return *this;
+  }
+  NeuralNetworkOptions& with_update_training_monitor_percent(double update_training_monitor_percent)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _update_training_monitor_percent = update_training_monitor_percent;
+    return *this;
+  }
+  NeuralNetworkOptions& with_hidden_layers(const std::vector<LayerDetails>& hidden_layers) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _hidden_layers = hidden_layers;
+    return *this;
+  }
+  
   NeuralNetworkOptions& build()
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+
+    // remove any duplicates from the final error calculation types.
+    std::sort(_final_error_calculation_types.begin(), _final_error_calculation_types.end());
+    _final_error_calculation_types.erase(std::unique(_final_error_calculation_types.begin(), _final_error_calculation_types.end()), _final_error_calculation_types.end());
+
     // set the log level first
     Logger::set_level(log_level());
 
-    if (topology().size() < 2)
+    if (topology().size() < 2 + hidden_layers().size())
     {
-      Logger::error("The topology is not value, you must have at least 2 layers.");
-      throw std::invalid_argument("The topology is not value, you must have at least 2 layers.");
+      Logger::panic("The topology is not value, you must have at least 2 layers.");
     }
-    if (dropout().size() == 0)
+
+    // check the hidden layers.
+    for (const auto& hl : hidden_layers())
     {
-      _dropout = std::vector<double>(topology().size() - 2, 0.0);
-    }
-    if (dropout().size() != topology().size() -2)
-    {
-      Logger::error("The dropout size must be exactly the topology size less the input and outpout layers.");
-      throw std::invalid_argument("The dropout size must be exactly the topology size less the input and outpout layers.");
-    }
-    for (auto& dropout : dropout())
-    {
-      if(dropout < 0.0 || dropout > 1.0)
+      if(hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
-        Logger::error("The dropout rate must be between 0 and 1!");
-        throw std::invalid_argument("The dropout rate must be between 0 and 1!");
+        Logger::panic("The dropout rate must be between 0 and 1!");
       }
     }
+
+    // check the output layer
+    int total_output_layer_size = 0;
+    for (const auto& ol : output_layer_details())
+    {
+      if (ol.get_size() == 0)
+      {
+        Logger::panic("The output layer details cannot have a size of zero!");
+      }
+      total_output_layer_size += ol.get_size();
+    }
+    if (total_output_layer_size != topology().back())
+    {
+      Logger::panic("The output layer details total size does not match the topology size!");
+    }
+
     if (number_of_threads() > 0 && batch_size() <= 1)
     {
       Logger::warning("Because the batch size is 1, the number of threads is ignored.");
     }
     if (learning_rate_decay_rate() < 0)
     {
-      Logger::error("The learning rate decay rate cannot be negative!");
-      throw std::invalid_argument("The learning rate decay rate cannot be negative!");
+      Logger::panic("The learning rate decay rate cannot be negative!");
     }
-    if (learning_rate_decay_rate() >= 1.0)
+    if (learning_rate_decay_rate() > 1.0)
     {
-      Logger::error("The learning rate decay rate cannot be more than 1!");
-      throw std::invalid_argument("The learning rate decay rate cannot be more than 1!");
+      Logger::panic("The learning rate decay rate cannot be more than 1!");
     }
     if (learning_rate_restart_rate() < 0.0 || learning_rate_restart_rate() > 1.0)
     {
-      Logger::error("The learning rate restart rate has to be between 0.0 and 1.0!");
-      throw std::invalid_argument("The learning rate restart rate has to be between 0.0 and 1.0!");
+      Logger::panic("The learning rate restart rate has to be between 0.0 and 1.0!");
     }
     if (learning_rate_restart_boost() < 0.0|| learning_rate_restart_boost() > 1.0)
     {
-      Logger::error("The learning rate restart boost has to be between 0.0 and 1.0!");
-      throw std::invalid_argument("The learning rate restart boost has to be between 0.0 and 1.0!");
+      Logger::panic("The learning rate restart boost has to be between 0.0 and 1.0!");
     }
     if(residual_layer_jump() < -1 || residual_layer_jump() == 0)
     {
-      Logger::warning("The residual_layer_jump must be positive or -1");
+      _residual_layer_jump = -1;
+      Logger::warning("The residual layer jump must be positive or -1, setting it to -1.");
     }
     if (clip_threshold() <= 0.0)
     {
-      Logger::error("A gradient clip threshold smaller or equal to zero does not make sense!");
-      throw std::invalid_argument("A gradient clip threshold smaller or equal to zero does not make sense!");
+      Logger::panic("A gradient clip threshold smaller or equal to zero does not make sense!");
     }
     if (learning_rate_warmup_start() < 0.0)
     {
-      Logger::error("The learning rate warm up start value cannot be less than zero.");
-      throw std::invalid_argument("The learning rate warm up start value cannot be less than zero.");
+      Logger::panic("The learning rate warm up start value cannot be less than zero.");
     }
     if (learning_rate_warmup_start() > learning_rate())
     {
-      Logger::error("The learning rate warm up start value cannot be greater than the target rate.");
-      throw std::invalid_argument("The learning rate warm up start value cannot be greater than the target rate.");
+      Logger::panic("The learning rate warm up start value cannot be greater than the target rate.");
     }
     if (learning_rate_warmup_target() < 0.0 || learning_rate_warmup_target() > 1.0)
     {
-      Logger::error("The learning rate warm up target must range between 0.0 and 1.0.");
-      throw std::invalid_argument("The learning rate warm up target must range between 0.0 and 1.0.");
+      Logger::panic("The learning rate warm up target must range between 0.0 and 1.0.");
+    }
+    if (update_training_monitor_percent() < 0.0 || update_training_monitor_percent() > 1.0)
+    {
+      Logger::panic("The update training monitor percent must be between 0.0 and 1.0!");
     }
     return *this;
   }
 
   static NeuralNetworkOptions create(const std::vector<Layer>& layers)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     auto topology = std::vector<unsigned>();
     topology.reserve(layers.size());
     for (const auto& layer : layers)
     {
       // remove the bias Neuron.
-      topology.emplace_back(layer.number_neurons() - 1);
+      topology.emplace_back(layer.get_number_neurons() - 1);
     }
     return create(topology);
   }
 
   static NeuralNetworkOptions create(const std::vector<unsigned>& topology)
   {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     auto clip_threshold = 1.0;
-    std::vector<double> dropout = {};
     if(topology.size() > 2)
     {
-      dropout.resize(topology.size() - 2, 0.0);
       if (topology.size() > 8)  //  6 hidden
       {
         clip_threshold = 2.0;
@@ -334,56 +440,56 @@ public:
         clip_threshold = 0.5;
       }
     }
-    else
-    {
-      dropout = {};
-    }
     return NeuralNetworkOptions(topology)
-      .with_dropout(dropout)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_hidden_activation_method(activation::method::sigmoid)
-      .with_output_activation_method(activation::method::sigmoid)
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
       .with_progress_callback(nullptr)
       .with_learning_rate_decay_rate(0.0)
       .with_adaptive_learning_rates(false)
-      .with_optimiser_type(OptimiserType::SGD)
       .with_learning_rate_boost_rate(0.0, 0.0)
       .with_residual_layer_jump(-1)
       .with_clip_threshold(clip_threshold)
-      .with_shuffle_training_data(true);
+      .with_shuffle_training_data(true)
+      .with_shuffle_bptt_batches(true)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(0)
+      .with_update_training_monitor_percent(0.0);
   }
 
-  inline const std::vector<unsigned>& topology() const noexcept { return _topology; }
-  inline const std::vector<double>& dropout() const noexcept { return _dropout; }
-  inline const activation::method& hidden_activation_method() const noexcept { return _hidden_activation; }
-  inline const activation::method& output_activation_method() const noexcept { return _output_activation; }
-  inline double learning_rate() const noexcept { return _learning_rate; }
-  inline int number_of_epoch() const noexcept { return _number_of_epoch; }
-  inline int batch_size() const noexcept { return _batch_size; }
-  inline bool data_is_unique() const noexcept { return _data_is_unique; }
-  inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { return _progress_callback; }
-  inline Logger::LogLevel log_level() const noexcept { return _log_level; }
-  inline int number_of_threads() const noexcept { return _number_of_threads; }
-  inline double learning_rate_decay_rate() const noexcept { return _learning_rate_decay_rate; }
-  inline bool adaptive_learning_rate() const noexcept { return _adaptive_learning_rate; }
-  inline OptimiserType optimiser_type() const noexcept { return _optimiser_type; }
-  inline double learning_rate_restart_rate() const noexcept { return _learning_rate_restart_rate; }
-  inline double learning_rate_restart_boost() const noexcept { return _learning_rate_restart_boost; }
-  inline int residual_layer_jump() const noexcept { return _residual_layer_jump; }
-  inline double clip_threshold() const noexcept { return _clip_threshold; }
-  inline double learning_rate_warmup_start() const noexcept { return _learning_rate_warmup_start; };
-  inline double learning_rate_warmup_target() const noexcept { return _learning_rate_warmup_target; };
-  inline bool shuffle_training_data() const noexcept {return _shuffle_training_data;}
+  [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
+  [[nodiscard]] inline const std::vector<LayerDetails>& hidden_layers() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _hidden_layers; }
+  [[nodiscard]] inline const std::vector<OutputLayerDetails>& output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _output_layer_details; }
+  [[nodiscard]] inline double learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate; }
+  [[nodiscard]] inline int number_of_epoch() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_epoch; }
+  [[nodiscard]] inline int batch_size() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _batch_size; }
+  [[nodiscard]] inline bool data_is_unique() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _data_is_unique; }
+  [[nodiscard]] inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _progress_callback; }
+  [[nodiscard]] inline Logger::LogLevel log_level() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_level; }
+  [[nodiscard]] inline int number_of_threads() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_threads; }
+  [[nodiscard]] inline double learning_rate_decay_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_decay_rate; }
+  [[nodiscard]] inline bool adaptive_learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
+  [[nodiscard]] inline double learning_rate_restart_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_rate; }
+  [[nodiscard]] inline double learning_rate_restart_boost() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_boost; }
+  [[nodiscard]] inline int residual_layer_jump() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _residual_layer_jump; }
+  [[nodiscard]] inline double clip_threshold() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _clip_threshold; }
+  [[nodiscard]] inline double learning_rate_warmup_start() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_start; }
+  [[nodiscard]] inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
+  [[nodiscard]] inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
+  [[nodiscard]] inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
+  [[nodiscard]] inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
+  [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
+  [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
+  [[nodiscard]] inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
+  [[nodiscard]] inline bool has_bias() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _has_bias; }
 
 private:
   std::vector<unsigned> _topology;
-  std::vector<double> _dropout;
-  activation::method _hidden_activation;
-  activation::method _output_activation;
+  std::vector<LayerDetails> _hidden_layers;
+  std::vector<OutputLayerDetails> _output_layer_details;
   double _learning_rate;
   int _number_of_epoch;
   int _batch_size;
@@ -393,7 +499,6 @@ private:
   int _number_of_threads;
   double _learning_rate_decay_rate;
   bool _adaptive_learning_rate;
-  OptimiserType _optimiser_type;
   double _learning_rate_restart_rate;
   double _learning_rate_restart_boost;
   int _residual_layer_jump;
@@ -401,4 +506,10 @@ private:
   double _learning_rate_warmup_start;  //  initial learning rate for warmup
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
+  bool _shuffle_bptt_batches;
+  std::vector<ErrorCalculation::type> _final_error_calculation_types;
+  bool _enable_bptt;
+  int _bptt_max_ticks;
+  double _update_training_monitor_percent;
+  bool _has_bias;
 };

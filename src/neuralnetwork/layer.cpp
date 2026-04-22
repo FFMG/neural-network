@@ -1,306 +1,373 @@
-#include "./libraries/instrumentor.h"
+#include <algorithm>
 #include "layer.h"
 #include "logger.h"
 
-#include <iostream>
-#include <numeric>
-
-constexpr bool _has_bias_neuron = true;
-
-Layer::Layer(LayerType layer_type) :
-  _number_input_neurons(0),
-  _number_output_neurons(0),
-  _residual_layer_number(-1),
-  _residual_projector(nullptr),
-  _layer_type(layer_type)
+void Layer::calculate_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  ErrorCalculation::type error_calculation_type,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  unsigned start_neuron,
+  unsigned end_neuron) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-}
 
-Layer::Layer(unsigned num_neurons_in_previous_layer, unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, int residual_layer_number, LayerType layer_type, const activation::method& activation, const OptimiserType& optimiser_type, double dropout_rate) :
-  _number_input_neurons(num_neurons_in_previous_layer),
-  _number_output_neurons(num_neurons_in_this_layer),
-  _residual_layer_number(residual_layer_number),
-  _residual_projector(nullptr),
-  _layer_type(layer_type)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (num_neurons_in_this_layer == 0) 
+#if VALIDATE_DATA == 1
+  if (end_neuron < start_neuron )
   {
-    Logger::warning("Warning: Creating a layer with 0 neurons.");
-    throw std::invalid_argument("Warning: Creating a layer with 0 neurons.");
+    Logger::panic("end neuron cannot be less than start neuron!");
   }
-  if (layer_type != LayerType::Input && num_neurons_in_previous_layer == 0) 
+  if (end_neuron > get_number_neurons() - 1)
   {
-    Logger::warning("Warning: Non-input layer created with 0 inputs.");
+    Logger::panic("end neuron Cannot be greater than ", get_number_neurons() -1, "!");
   }
+#endif
 
-  // We have a new layer, now fill it with neurons, and add a bias neuron in each layer.
-  _neurons.reserve(_number_output_neurons+1); // for bias
-  for (unsigned neuron_number = 0; neuron_number < _number_output_neurons; ++neuron_number)
-  {
-    // force the bias node's output to 1.0
-    auto neuron = Neuron(
-      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,  //  previous
-      _number_output_neurons,         //  current 
-      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer+1,      //  next
-      neuron_number, 
-      activation,
-      optimiser_type,
-      dropout_rate == 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout,
-      dropout_rate);
-    _neurons.emplace_back(neuron);
-  }
+  std::span<Neuron> neurons_span(const_cast<Neuron*>(&_neurons[start_neuron]), end_neuron - start_neuron + 1);
 
-  if(_has_bias_neuron)
+  switch (error_calculation_type)
   {
-    // +1 for bias neuron has no weights.
-    auto neuron = Neuron(
-      layer_type == LayerType::Input ? 0 : num_neurons_in_previous_layer,  //  previous
-      _number_output_neurons,       //  current
-      layer_type == LayerType::Output ? 0 : num_neurons_in_next_layer,    //  next
-      _number_output_neurons,
-      activation,
-      optimiser_type,
-      Neuron::Type::Bias,
-      0.0  // dropout rate is 0.0 for bias neurons
-      );
-    _neurons.emplace_back(neuron);
+  case ErrorCalculation::type::huber_loss:
+    return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+  case ErrorCalculation::type::huber_direction_loss:
+    return calculate_huber_direction_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+  case ErrorCalculation::type::mse:
+    return calculate_mse_error_deltas(deltas, target_outputs, given_outputs, activation_method, neurons_span);
+  case ErrorCalculation::type::rmse:
+    return calculate_rmse_error_deltas(deltas, target_outputs, given_outputs, activation_method, neurons_span);
+  case ErrorCalculation::type::bce_loss:
+    return calculate_bce_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+  case ErrorCalculation::type::cross_entropy:
+    return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+  case ErrorCalculation::type::log_cosh:
+    return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs, activation_method, neurons_span);
+  default:
+    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type), " is not supported for Layer!");
   }
 }
 
-Layer::Layer(const Layer& src) noexcept :
-  _neurons(src._neurons),
-  _number_input_neurons(src._number_input_neurons),
-  _number_output_neurons(src._number_output_neurons),
-  _residual_layer_number(src._residual_layer_number),
-  _residual_projector(nullptr),
-  _layer_type(src._layer_type)
+void Layer::calculate_huber_direction_loss_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(src._residual_projector != nullptr)
-  {
-    _residual_projector = new ResidualProjector(*src._residual_projector);
-  }
-}
 
-Layer::Layer(Layer&& src) noexcept :
-  _neurons(std::move(src._neurons)),
-  _number_input_neurons(src._number_input_neurons),
-  _number_output_neurons(src._number_output_neurons),
-  _residual_layer_number(src._residual_layer_number),
-  _residual_projector(src._residual_projector),
-  _layer_type(src._layer_type)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  src._number_output_neurons = 0;
-  src._number_input_neurons = 0;
-  src._residual_layer_number = -1;
-  src._residual_projector = nullptr;
-}
+  const double& delta = evaluation_config.huber_delta();                   // Huber threshold
+  const double& lambda = evaluation_config.direction_lambda();             // Direction penalty strength
+  const double& neutral_tolerance = evaluation_config.neutral_tolerance(); // Ignore tiny targets
+  const bool use_direction_penalty = evaluation_config.use_direction_penalty();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
-Layer& Layer::operator=(const Layer& src) noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(this != &src)
+  for (const auto& neuron : neurons)
   {
-    clean();
-    _neurons = src._neurons;
-    _number_input_neurons = src._number_input_neurons;
-    _number_output_neurons = src._number_output_neurons;
-    _residual_layer_number = src._residual_layer_number;
-    if (src._residual_projector != nullptr)
+    const unsigned neuron_index = neuron.get_index();
+    const double target = target_outputs[neuron_index];
+    const double output = given_outputs[neuron_index];
+
+    const double error = output - target;
+    const double abs_error = std::abs(error);
+
+    // --- Base Huber gradient ---
+    double grad;
+    if (abs_error <= delta)
     {
-      _residual_projector = new ResidualProjector(*src._residual_projector);
+      grad = error;
     }
-    _layer_type = src._layer_type;
+    else
+    {
+      grad = (error > 0.0 ? delta : -delta);
+    }
+
+    // --- Optional Direction Penalty ---
+    if (use_direction_penalty)
+    {
+      // Only apply if target is meaningful (not noise)
+      if (std::abs(target) > neutral_tolerance)
+      {
+        const bool sign_mismatch =
+          (target > 0.0 && output < 0.0) ||
+          (target < 0.0 && output > 0.0);
+
+        if (sign_mismatch)
+        {
+          // Smooth directional push (prevents collapse to zero)
+          const double direction_grad = output;
+
+          // Stronger penalty for stronger signals
+          const double strength = std::abs(target);
+
+          grad += lambda * strength * direction_grad;
+        }
+      }
+    }
+
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
-  return *this;
 }
 
-Layer& Layer::operator=(Layer&& src) noexcept
+void Layer::calculate_huber_loss_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(this != &src)
+
+  const double& delta = evaluation_config.huber_delta();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+
+  for (const auto& neuron : neurons)
   {
-    clean();
-    _neurons = std::move(src._neurons);
-    _number_input_neurons = src._number_input_neurons;
-    _number_output_neurons = src._number_output_neurons;
-    _layer_type = src._layer_type;
-    _residual_layer_number = src._residual_layer_number;
-    _residual_projector = src._residual_projector;
-   
-    src._number_output_neurons = 0;
-    src._number_input_neurons = 0;
-    src._residual_layer_number = -1;
-    src._residual_projector = nullptr;
+    const unsigned neuron_index = neuron.get_index();
+    const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
+    const double abs_error = std::abs(error);
+
+    double grad;
+    if (abs_error <= delta)
+    {
+      grad = error;
+    }
+    else
+    {
+      grad = (error > 0.0 ? delta : -delta);
+    }
+
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
-  return *this;
 }
 
-Layer::~Layer()
+void Layer::calculate_cross_entropy_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
-  clean();
-}
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  
+  const double dir_lambda = evaluation_config.direction_lambda();
+  const bool   use_dir = evaluation_config.use_direction_penalty();
+  const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
-void Layer::clean()
-{
-  delete _residual_projector;
-  _residual_projector = nullptr;
-}
-
-void Layer::move_residual_projector(ResidualProjector* residual_projector)
-{
-  if(residual_projector != _residual_projector)
+  // --- Optional directional boost ---
+  int pred_dir = 0;
+  int gt_dir = 0;
+  if (use_dir && activation_method == activation::method::softmax && !neurons.empty())
   {
-    delete _residual_projector;
-    _residual_projector = residual_projector;
+    // For multiclass (Softmax), we use a midpoint to define direction.
+    // In composite layers, we must only consider the current span of neurons.
+    const size_t num_classes = neurons.size();
+    const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+    const unsigned start_idx = neurons.front().get_index();
+    const unsigned end_idx = start_idx + static_cast<unsigned>(num_classes);
+
+    // Determine predicted winning index (ArgMax) for this slice
+    auto max_pred_it = std::max_element(given_outputs.begin() + start_idx, given_outputs.begin() + end_idx);
+    const size_t pred_idx = std::distance(given_outputs.begin() + start_idx, max_pred_it);
+
+    // Determine ground truth index for this slice
+    auto max_gt_it = std::max_element(target_outputs.begin() + start_idx, target_outputs.begin() + end_idx);
+    const size_t gt_idx = std::distance(target_outputs.begin() + start_idx, max_gt_it);
+
+    pred_dir = (static_cast<double>(pred_idx) > mid) ? 1 : (static_cast<double>(pred_idx) < mid ? -1 : 0);
+    gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
   }
-}
 
-unsigned Layer::number_neurons() const
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return _number_output_neurons + 1;  //  add one for the bias
-}
-
-Layer Layer::create_input_layer(const std::vector<Neuron>& neurons)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (neurons.size() <= 1) 
+  // This delta calculation assumes Softmax activation is used at the output layer.
+  // dL/dz = y_pred - y_true
+  for (const auto& neuron : neurons)
   {
-    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
-    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+    const unsigned neuron_index = neuron.get_index();
+    const double target = target_outputs[neuron_index];
+    const double output = given_outputs[neuron_index];
+
+    // Standard Cross-Entropy + Softmax gradient: (given - target)
+    double grad = (output - target);
+
+    // If softmax is used, temperature scaling applies to the gradient
+    if (activation_method == activation::method::softmax)
+    {
+        constexpr double temperature = 1.0;
+        grad /= temperature;
+    }
+
+    if (use_dir && activation_method == activation::method::softmax && gt_dir != 0 && pred_dir != gt_dir)
+    {
+      grad *= (1.0 + dir_lambda);
+    }
+
+    // Apply Cross Entropy scaling
+    grad *= ce_lambda;
+
+    if (!std::isfinite(grad))
+    {
+        Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
+    }
+
+    deltas[neuron_index] = grad * inv_num_neurons;
   }
-  auto layer = Layer(LayerType::Input);
-  layer._number_input_neurons = 0;
-  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
-  layer._neurons = neurons;
-  layer._residual_layer_number = -1;
-  return layer;
 }
 
-Layer Layer::create_input_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer)
+void Layer::calculate_bce_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(0, num_neurons_in_this_layer, num_neurons_in_next_layer, -1, LayerType::Input, activation::method::linear, OptimiserType::None, 0.0);
+
+  const double dir_lambda = evaluation_config.direction_lambda();
+  const bool   use_dir = evaluation_config.use_direction_penalty();
+  const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+
+  // --- Optional directional boost ---
+  int pred_dir = 0;
+  int gt_dir = 0;
+  if (use_dir && activation_method == activation::method::softmax && !neurons.empty())
+  {
+    // For multiclass (Softmax), we use a midpoint to define direction.
+    // In composite layers, we must only consider the current span of neurons.
+    const size_t num_classes = neurons.size();
+    const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+    const unsigned start_idx = neurons.front().get_index();
+    const unsigned end_idx = start_idx + static_cast<unsigned>(num_classes);
+
+    // Determine predicted winning index (ArgMax) for this slice
+    auto max_pred_it = std::max_element(given_outputs.begin() + start_idx, given_outputs.begin() + end_idx);
+    const size_t pred_idx = std::distance(given_outputs.begin() + start_idx, max_pred_it);
+
+    // Determine ground truth index for this slice
+    auto max_gt_it = std::max_element(target_outputs.begin() + start_idx, target_outputs.begin() + end_idx);
+    const size_t gt_idx = std::distance(target_outputs.begin() + start_idx, max_gt_it);
+
+    pred_dir = (static_cast<double>(pred_idx) > mid) ? 1 : (static_cast<double>(pred_idx) < mid ? -1 : 0);
+    gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
+  }
+
+  for (const auto& neuron : neurons)
+  {
+    const unsigned idx = neuron.get_index();
+
+    const double target = target_outputs[idx];
+    const double output = given_outputs[idx];
+
+    // --- Standard BCE gradient (correct for sigmoid output) ---
+    double grad = (output - target);
+
+    // --- Optional directional boost ---
+    if (use_dir)
+    {
+      if (activation_method == activation::method::softmax)
+      {
+        if (gt_dir != 0 && pred_dir != gt_dir)
+        {
+          grad *= (1.0 + dir_lambda);
+        }
+      }
+      else
+      {
+        const int direction = (target > 0.5) ? 1 : -1;
+        const int predicted_dir = (output > 0.5) ? 1 : -1;
+
+        if (direction != predicted_dir)
+        {
+          grad *= (1.0 + dir_lambda);
+        }
+      }
+    }
+
+    // --- Apply Cross Entropy scaling ---
+    grad *= ce_lambda;
+
+    // --- Normalize ---
+    deltas[idx] = grad * inv_num_neurons;
+  }
 }
 
-Layer Layer::create_hidden_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params)
+void Layer::calculate_mse_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (neurons.size() <= 1) 
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+
+  for (const auto& neuron : neurons)
   {
-    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
-    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+    const unsigned neuron_index = neuron.get_index();
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * inv_num_neurons;
   }
-  auto layer = Layer(LayerType::Hidden);
-  layer._number_input_neurons = num_neurons_in_previous_layer;
-  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
-  layer._neurons = neurons;
-  layer._residual_layer_number = residual_layer_number;
-  if(residual_weight_params.size() > 0 )
-  {
-    layer._residual_projector = new Layer::ResidualProjector(residual_weight_params);
-  }
-  return layer;
 }
 
-Layer Layer::create_hidden_layer(unsigned num_neurons_in_this_layer, unsigned num_neurons_in_next_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate)
+void Layer::calculate_rmse_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, num_neurons_in_next_layer, residual_layer_number, LayerType::Hidden, activation, optimiser_type, dropout_rate);
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+
+  // 1. Calculate MSE sum
+  double sum_squared_error = 0.0;
+  for (const auto& neuron : neurons)
+  {
+    const unsigned i = neuron.get_index();
+    const double diff = given_outputs[i] - target_outputs[i];
+    sum_squared_error += diff * diff;
+  }
+
+  // 2. Calculate RMSE
+  // Avoid division by zero if RMSE is 0 (perfect prediction)
+  const double mse = sum_squared_error * inv_num_neurons;
+  const double rmse = std::sqrt(mse);
+  const double epsilon = 1e-12;
+  const double divisor = (rmse < epsilon) ? epsilon : rmse;
+
+  // 3. Calculate deltas
+  // dE/dy = (1 / (N * RMSE)) * (y - t)
+  const double factor = inv_num_neurons / divisor;
+
+  for (const auto& neuron : neurons)
+  {
+    const unsigned neuron_index = neuron.get_index();
+    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * factor;
+  }
 }
 
-Layer Layer::create_output_layer(const std::vector<Neuron>& neurons, unsigned num_neurons_in_previous_layer, int residual_layer_number, const std::vector<std::vector<WeightParam>>& residual_weight_params)
+void Layer::calculate_log_cosh_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (neurons.size() <= 1) 
+  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+
+  for (const auto& neuron : neurons)
   {
-    Logger::error("Creating a layer with 1 neurons, (bias is needed).");
-    throw std::invalid_argument("Warning: Creating a layer with 1 neurons, (bias is needed).");
+    const unsigned neuron_index = neuron.get_index();
+    const double x = given_outputs[neuron_index] - target_outputs[neuron_index];
+    // d/dx log(cosh(x)) = tanh(x)
+    deltas[neuron_index] = std::tanh(x) * inv_num_neurons;
   }
-  auto layer = Layer(LayerType::Output);
-  layer._number_input_neurons = num_neurons_in_previous_layer;
-  layer._number_output_neurons = static_cast<unsigned>(neurons.size()) -1; // remove bias
-  layer._neurons = neurons;
-  layer._residual_layer_number = residual_layer_number;
-  if(residual_weight_params.size() > 0 )
-  {
-    layer._residual_projector = new Layer::ResidualProjector(residual_weight_params);
-  }
-  return layer;
-}
-
-Layer Layer::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const activation::method& activation, const OptimiserType& optimiser_type, int residual_layer_number)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return Layer(previous_layer._number_output_neurons, num_neurons_in_this_layer, 0, residual_layer_number, LayerType::Output, activation, optimiser_type, 0.0);
-}
-
-const std::vector<Neuron>& Layer::get_neurons() const 
-{ 
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return _neurons;
-}
-
-std::vector<Neuron>& Layer::get_neurons() 
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  return _neurons;
-}
-
-const Neuron& Layer::get_neuron(unsigned index) const 
-{ 
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (index >= _neurons.size()) 
-  {
-    Logger::error("Index out of bounds in Layer::get_neuron.");
-    throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
-  }
-  return _neurons[index];
-}
-
-Neuron& Layer::get_neuron(unsigned index) 
-{ 
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if (index >= _neurons.size()) 
-  {
-    Logger::error("Index out of bounds in Layer::get_neuron.");
-    throw std::out_of_range("Index out of bounds in Layer::get_neuron.");
-  }
-  return _neurons[index];
-}
-
-std::vector<double> Layer::residual_output_values(const std::vector<double>& residual_layer_outputs) const
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(nullptr == _residual_projector)
-  {
-    return {};
-  }
-  return _residual_projector->project(residual_layer_outputs);
-}
-
-WeightParam& Layer::residual_weight_param(unsigned residual_source_index, unsigned target_neuron_index)
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(nullptr == _residual_projector)
-  {
-    Logger::error("Trying to get residual weights for a layer that does not have any!");
-    throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
-  }
-  return _residual_projector->get_weight_params(residual_source_index, target_neuron_index);
-}
-
-const std::vector<std::vector<WeightParam>>& Layer::residual_weight_params() const
-{
-  MYODDWEB_PROFILE_FUNCTION("Layer");
-  if(nullptr == _residual_projector)
-  {
-    Logger::error("Trying to get residual weights for a layer that does not have any!");
-    throw std::invalid_argument("Trying to get residual weights for a layer that does not have any!");
-  }
-  return _residual_projector->get_weight_params();
 }

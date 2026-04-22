@@ -26,7 +26,7 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * mish
 * elu
 
-### Optimiser
+### Optimizer
 
 * None
 * SGD
@@ -45,6 +45,55 @@ If you spot anything wrong, please open a new issue ... as I said, I am still le
 * AMSGrad
 * LAMB
 * Lion
+
+### Hidden Layers
+
+The hidden layer information helps you to refine the hidden layer information
+
+* Layer type: 
+  * FF: Standard feed-forward layer for basic non-linear transformations.
+  * Elman: Simple recurrent layer that maintains a hidden state for processing sequential data.
+  * Gru: Gated recurrent unit layer designed to handle the vanishing gradient problem in long sequences.
+* Layer size: number of neuron in the hidden layer.
+* the activation object, (activation methods and alpha)
+* Weight Decay: The regularization strength for the layer's weights.
+
+```cpp
+    std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2, 0.05),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.01),
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_clip_threshold(2.0)
+      .with_hidden_layers(hidden_layers)
+      ...
+      .build();
+```
+
+### Output Layers
+
+By default, the output layer uses a single activation function and weight decay. However, you can define multiple logical output segments (Composite Outputs), each with its own activation, error calculation, and weight decay strength. This is ideal for tasks requiring simultaneous classification and regression with different regularization needs.
+
+```cpp
+    // Topology: 1 input, 8 hidden, 2 outputs
+    std::vector<unsigned> topology = { 1, 8, 2 };
+
+    auto output_layers = {
+      // First output: Sigmoid (Classification: Is positive?) with 0.01 weight decay
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.01),
+      // Second output: Tanh (Regression: Mapping value to [-1, 1]) with 0.05 weight decay
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05)
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_output_layer_details(output_layers)
+      .build();
+```
 
 ### Residual layer
 
@@ -66,25 +115,30 @@ Of course, the default is 0, (no jump)
 
 The Neural Network uses [norm-based gradient clipping](https://en.wikipedia.org/wiki/Vanishing_gradient_problem) with a default value of 1.0
 
-The default value is betweem 0.5 and 2.0 depending on the number of hidden network.
+The default value is between 0.5 and 2.0 depending on the number of hidden network.
 
 For very deep networks it might be best to set a value of ~5.0
 
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+    };
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
       .with_clip_threshold(2.0)
+      .with_hidden_layers(hidden_layers)
       ...
       .build();
 ```
 
-Effectively all the gradients will be "clipped" to within the threshold to prevent exploding gradients.
-
 ### Learning rate warm-up
 
-In some cases it is better to have a leanring warmup as the various weights balance.
+In some cases it is better to have a learning warmup as the various weights balance.
 
 The warmup is usually for the first few percents of training.
 
@@ -112,11 +166,17 @@ The rate must be between 0.0 and 1.0 and you must have the exact number of dropo
 
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
-    std::vector<double> dropout = { 0.0, 0.0, 0.2, 0.0 };
+
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.2),  // <-- 0.2 dropout (20%)
+      LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::relu, 0.01), 0.0),
+    };
 
     auto options = NeuralNetworkOptions::create(topology)
       ...
-      .with_dropout(dropout)
+      .with_hidden_layers(hidden_layers)
       ...
       .build();
 ```
@@ -155,8 +215,7 @@ int main()
   // 3 input network, a hidden layer with 4 neuron and 1 output layer.
   auto options = NeuralNetworkOptions::create({ 3,4,1 })
     .with_batch_size(batch_size)
-    .with_hidden_activation_method(activation::method::sigmoid)
-    .with_output_activation_method(activation::method::sigmoid)
+    .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -220,13 +279,17 @@ You can use `NeuralNetworkSerializer::save( ... )` to save a trained network and
 int main()
 {
   // create the NN
-  auto options = NeuralNetworkOptions::create({ 3,2,1 })
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(LayerDetails::LayerType::Elman, 8, activation(activation::method::tanh, 0.01), 0.0),
+  };
+
+  auto options = NeuralNetworkOptions::create({ 3,8,1 })
   .with_batch_size(batch_size)
-  .with_hidden_activation_method(activation::method::sigmoid)
-  .with_output_activation_method(activation::method::sigmoid)
+  .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
+  .with_hidden_layers(hidden_layers)
   .build();
 
   auto nn = new NeuralNetwork(options);
@@ -249,7 +312,7 @@ int main()
 }
 ```
 
-#### Trainning function variables
+#### Training function variables
 
 ```c++
 train(
@@ -261,9 +324,9 @@ train(
 * training_inputs: this is a vector of one or more `doubles` that will be used for each epoch as input data.
 * training_output: this is a vector of one or more `doubles` that will be used for each epoch as expected output.
 
-##### Trainning callback method
+##### Training callback method
 
-You can use a tainning callback method to see how the NN is training ...
+You can use a training callback method to see how the NN is training ...
 
 The helper method is to help you control how much data you want to pull while training.
 
@@ -277,11 +340,11 @@ You can use the `NeuralNetworkHelper& nn` to calculate the metrics.
 auto current_epoch_number = nn.epoch();
 auto total_number_of_epoch = nn.number_of_epoch();
 
-auto metrics = nn.calculate_forecast_metrics{ NeuralNetworkOptions::ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape});
+auto metrics = nn.calculate_forecast_metrics{ ErrorCalculation::rmse, NeuralNetworkOptions::ForecastAccuracy::mape});
 
 // use the rmse error and mape
 
-metrics = nn.calculate_forecast_metrics({NeuralNetworkOptions::ErrorCalculation::huber_loss, NeuralNetworkOptions::ForecastAccuracy::smape});
+metrics = nn.calculate_forecast_metrics({ErrorCalculation::huber_loss, NeuralNetworkOptions::ForecastAccuracy::smape});
 
 // use the hubber loss error and smape
 ```
@@ -315,8 +378,7 @@ int main()
 
   auto options = NeuralNetworkOptions::create({1, 4, 1})
     .with_batch_size(batch_size)
-    .with_hidden_activation_method(activation::method::sigmoid)
-    .with_output_activation_method(activation::method::sigmoid)
+    .with_output_layer_details(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse)
     .with_log_level(Logger::LogLevel::Information)
     .with_learning_rate(0.1)
     .with_number_of_epoch(10000)
@@ -370,33 +432,83 @@ auto options = NeuralNetworkOptions::create({1, 4, 1}).build();
 
 ```
 
-* hidden_activation_method[=sigmoid]
-* output_activation_method[=sigmoid]
+* hidden_layers: The hidden layers information, this is a std::vector<LayerDetails> with LayerDetails
+  * Type 
+  * Size 
+  * Activation
+  * Dropout
+  * Weight Decay: regularization strength for the hidden layer.
+* output_layer_details: One or more `OutputLayerDetails` objects. (You can also pass individual parameters for a single output layer).
+  * Layer size: The number of neurons in the output layer segment.
+  * activation: The activation function for the output layer.
+    * Method: The activation method, for example `sigmoid`.
+    * alpha: The alpha value for the activation function (e.g., for Leaky ReLU).
+  * Output error calculation: The error calculation type, for example, `ErrorCalculation::type::mse`.
+  * EvaluationConfig: An `EvaluationConfig` class to fine-tune error calculations (see below).
+  * Weight Decay: regularization strength for the output layer segment. Allows for different regularization strengths in compound output layers.
 * learning_rate[=0.15]: The starting learning rate.
 * learning_rate_warmup[=0.0, 0.0]: 
   * The start value, (must be less than the ultimate learning rate)
   * The target value, (between 0.0 and 1.0) how many percent will we go from start to target.
-* learning_rate_decay_rate[=0.0]: durring training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training. The number must be between 0.0 and 1.0
+* learning_rate_decay_rate[=0.0]: during training we will slowly decay the learning rate. The default is no change, and 0.5 would mean a 50% drop over the training. The number must be between 0.0 and 1.0
 * learning_rate_restart_rate[=1%] and learning_rate_restart_boost[=1]: Every 'x'% we will boost the learning rate by a factor of 'y', (the default is no boost as the boost is 1 ... and 1*LR=LR)
 * number_of_epoch[=1000]: The number of epoch we want to train for. This value is really specific to your data.
 * batch_size[=1]: The default number of batches we want to split the epochs in.
 * data_is_unique[=true]: By default we assume that the input data is unique and cannot be split for in-batch validation and final error validation.
 * progress_callback[=null]: The callback.
-* logger[=none]: Your log levele.
-* number_of_threads[=0]: The number of threads to use durring batch training, (0 means we will use the number of CPU -1)
+* logger[=none]: Your log level.
+* number_of_threads[=0]: The number of threads to use during batch training, (0 means we will use the number of CPU -1)
 * adaptive_learning_rate[=false]: If we want to use adaptive learning or not, (help prevent explosion and so on).
-* optimiser_type[=SGD]: The optimiser we will use during training.
+* optimiser_type[=SGD]: The optimizer we will use during training.
 * residual_layer_jump[=-1] if you are using residual layer connections, this is the jump back value.
-* dropout[={}]: you can set a dropout rate for one or more of your hidden layers.
 * clip_threshold[=1.0]: if the gradient goes outside this value then it is clipped.
+* shuffle_training_data[=true]: If true, the training data is shuffled before each epoch.
+* shuffle_bptt_batches[=true]: If true, the BPTT batches are shuffled before each epoch.
+* enable_bptt[=true]: Enable or disable Backpropagation Through Time for RNN layers. When true (default), full sequences are passed between recurrent layers. When false, only the final timestep is passed.
+* bptt_max_ticks[=0]: Limits the number of time steps (ticks) to propagate gradients backward during BPTT. 0 means unlimited (full BPTT). This is useful for long sequences to save memory and avoid vanishing gradients.
+* final_error_calculation_types[={}]: A list of error calculation types that will be displayed after training in a summary of error(s). If empty, no final calculation will be done.
+* update_training_monitor_percent[=0.0]: This value (between 0.0 and 1.0) is used to say how often, during training, we will be updating the training monitor value. 0.0 means no update.
+* has_bias[=true]: Controls whether biases are used in layers. Set to false to disable biases globally.
 
 Remember to call `.build()` to create your option as it does error checking.
 
-## Data Normalisation
+### Evaluation Configuration
 
-While the classes do not force you to normalise your data ... I strongly suggest you do :)
+The `EvaluationConfig` class allows you to fine-tune how errors and performance metrics are calculated, particularly for Huber-based losses and directional metrics.
 
-Normalise the input output between -1 and 1 or 0 and 1 and make sure that you use the proper activation method for your data.
+* `neutral_tolerance` [=0.0]: Used to ignore very small target values (noise) when calculating directional penalties or accuracy.
+* `confidence_threshold` [=0.0]: Used in `directional_confidence_score` and `prediction_coverage` to ignore predictions with low absolute magnitude (low confidence).
+* `huber_delta` [=1.0]: The threshold for Huber loss, defining where it transitions from quadratic (MSE-like) to linear (MAE-like) behavior.
+* `direction_lambda` [=0.0]: Scales the penalty for predicting the wrong direction (sign mismatch) when using `huber_direction_loss`.
+* `use_direction_penalty` [=false]: Enables or disables the additional directional penalty in `huber_direction_loss`.
+* `cross_entropy_lambda` [=1.0]: Scaling factor applied to gradients when using `cross_entropy` or `bce_loss`.
+
+You can configure this via `NeuralNetworkOptions`:
+
+```cpp
+    // Constructor: neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda
+    EvaluationConfig eval_config(0.0, 0.0, 0.5, 0.1, true, 1.0);
+
+    auto options = NeuralNetworkOptions::create(topology)
+      ...
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, eval_config))
+      ...
+      .build();
+```
+
+
+#### Usage in `Layer::calculate_error_deltas`
+
+When training, the output layer uses `calculate_error_deltas(...)` to compute the gradients for backpropagation. If you choose `huber_loss` or `huber_direction_loss` as your output error calculation type, the parameters in `EvaluationConfig` directly affect the resulting deltas:
+
+- **Huber Loss**: Uses `huber_delta` to switch between quadratic and linear gradients, making the network more robust to outliers.
+- **Huber Direction Loss**: In addition to the Huber loss, it applies a directional penalty (scaled by `direction_lambda`) if the prediction sign mismatched the target sign. This is only applied if the target magnitude exceeds `neutral_tolerance`.
+
+## Data Normalization
+
+While the classes do not force you to normalize your data ... I strongly suggest you do :)
+
+Normalize the input output between -1 and 1 or 0 and 1 and make sure that you use the proper activation method for your data.
 
 This will save you a lot of headache ...
 
@@ -409,8 +521,7 @@ After training you can get the calculated error as well as the mean absolute per
 ...
 auto options = NeuralNetworkOptions::create({1, 4, 1})
   .with_batch_size(batch_size)
-  .with_hidden_activation_method(activation::method::sigmoid)
-  .with_output_activation_method(activation::method::sigmoid)
+  .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.1), ErrorCalculation::type::mse, {0.001, 0.001, 1.0, 0.05, true, 1.0}))
   .with_log_level(Logger::LogLevel::Information)
   .with_learning_rate(0.1)
   .with_number_of_epoch(10000)
@@ -419,8 +530,9 @@ auto options = NeuralNetworkOptions::create({1, 4, 1})
 auto* nn = new NeuralNetwork(options);
 
 ...
-auto error_types = {NeuralNetworkOptions::ErrorCalculation::huber_loss, 
- NeuralNetworkOptions::ErrorCalculation::rmse };
+auto error_types = {
+  ErrorCalculation::huber_loss, 
+  ErrorCalculation::rmse };
 auto errors = nn->calculate_forecast_metrics( error_types);
 
 // errors[0] = huber_loss
@@ -430,14 +542,26 @@ auto errors = nn->calculate_forecast_metrics( error_types);
 
 ### Error Calculations
 
-  * NeuralNetworkOptions::ErrorCalculation::none
-  * NeuralNetworkOptions::ErrorCalculation::huber_loss
-  * NeuralNetworkOptions::ErrorCalculation::mae
-  * NeuralNetworkOptions::ErrorCalculation::mse
-  * NeuralNetworkOptions::ErrorCalculation::nrmse
-  * NeuralNetworkOptions::ErrorCalculation::rmse
-  * NeuralNetworkOptions::ErrorCalculation::mape
-  * NeuralNetworkOptions::ErrorCalculation::smape
-  * NeuralNetworkOptions::ErrorCalculation::wape
-  * NeuralNetworkOptions::ErrorCalculation::directional_accuracy
-  * NeuralNetworkOptions::ErrorCalculation::bce_loss
+  * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::huber_direction_loss
+  * ErrorCalculation::type::mae
+  * ErrorCalculation::type::mse
+  * ErrorCalculation::type::rmse
+  * ErrorCalculation::type::nrmse
+  * ErrorCalculation::type::mape
+  * ErrorCalculation::type::smape
+  * ErrorCalculation::type::wape
+  * ErrorCalculation::type::directional_accuracy
+  * ErrorCalculation::type::bce_loss
+  * ErrorCalculation::type::cross_entropy
+  * ErrorCalculation::type::log_cosh
+  * ErrorCalculation::type::directional_confidence_score
+
+### Output Loss Error Calculations
+
+  * ErrorCalculation::type::huber_loss
+  * ErrorCalculation::type::huber_direction_loss
+  * ErrorCalculation::type::mse
+  * ErrorCalculation::type::rmse
+  * ErrorCalculation::type::bce_loss
+  * ErrorCalculation::type::cross_entropy

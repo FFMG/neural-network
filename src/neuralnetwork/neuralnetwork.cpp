@@ -17,13 +17,7 @@ static const long long IntervalErorCheckInSeconds = 15;
 
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
-  _layers(
-    options.topology(), 
-    options.dropout(),
-    options.hidden_activation_method(), 
-    options.output_activation_method(),
-    options.optimiser_type(),
-    options.residual_layer_jump()),
+  _layers(options),
   _options(options),
   _neural_network_helper(nullptr)
 {
@@ -36,18 +30,21 @@ NeuralNetwork::NeuralNetwork(
   const activation::method& output_layer_activation
   ) :
   NeuralNetwork(NeuralNetworkOptions::create(topology)
-    .with_hidden_activation_method(hidden_layer_activation)
-    .with_output_activation_method(output_layer_activation)
+    .with_output_layer_details(OutputLayerDetails(
+      topology.back(), 
+      activation(output_layer_activation, 0.01), 
+      ErrorCalculation::type::mse, 
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
 
 NeuralNetwork::NeuralNetwork(
-  const std::vector<Layer>& layers, 
+  const Layers& layers,
   const NeuralNetworkOptions& options,
-  const std::map<NeuralNetworkOptions::ErrorCalculation, double>& errors
-  ) :
+  const std::vector<std::map<ErrorCalculation::type, double>>& errors
+) :
   _learning_rate(options.learning_rate()),
   _layers(layers),
   _options(options),
@@ -58,42 +55,61 @@ NeuralNetwork::NeuralNetwork(
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
-  _learning_rate(src._learning_rate),
   _layers(src._layers),
   _options(src._options),
-  _neural_network_helper(nullptr),
-  _saved_errors(src._saved_errors)
+  _neural_network_helper(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (src._neural_network_helper != nullptr)
+  *this = src;
+}
+
+NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (this != &src)
   {
-    _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
+    // to remain c++99 compliant we will not use std::scoped_lock
+    std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
+    std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
+    std::lock(lhs_lock, rhs_lock);
+
+    _learning_rate = src._learning_rate;
+    _layers = src._layers;
+    _options = src._options;
+    _saved_errors = src._saved_errors;
+    _last_metrics = src._last_metrics;
+    _gradients_pool = src._gradients_pool;
+    _hidden_states_pool = src._hidden_states_pool;
+
+    delete _neural_network_helper;
+    _neural_network_helper = nullptr;
+
+    if (src._neural_network_helper != nullptr)
+    {
+      _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
+    }
   }
+  return *this;
 }
 
 NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
 }
 
-const activation::method& NeuralNetwork::get_output_activation_method() const
+[[nodiscard]] const Layer& NeuralNetwork::get_layer(unsigned index) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _options.output_activation_method();
+  return _layers[index];
 }
 
-const activation::method& NeuralNetwork::get_hidden_activation_method() const
+[[nodiscard]] const Layers& NeuralNetwork::get_layers() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _options.hidden_activation_method();
-}
-
-const std::vector<Layer>& NeuralNetwork::get_layers() const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _layers.get_layers();
+  return _layers;
 }
 
 const std::vector<unsigned>& NeuralNetwork::get_topology() const
@@ -114,7 +130,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   return shuffled_indexes;
 }
 
-void NeuralNetwork::create_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
+void NeuralNetwork::create_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
@@ -133,7 +149,7 @@ void NeuralNetwork::create_indexes(NeuralNetworkHelper& neural_network_helper, b
   neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
 }
 
-void NeuralNetwork::create_shuffled_indexes(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
+void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::vector<size_t> training_indexes;
@@ -169,16 +185,15 @@ void NeuralNetwork::break_indexes(const std::vector<size_t>& indexes, bool data_
   assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
-    Logger::error("Logic error, unable to do a final batch error check.");
-    throw std::invalid_argument("Logic error, unable to do a final batch error check.");
+    Logger::panic("Logic error, unable to do a final batch error check.");
   }
 
   // then build the various indexes that will be used during testing.
   if(data_is_unique)
   {
-    // because the data is uniqe we must use all of it for training
+    // because the data is unique we must use all of it for training
     // this is important in some cases where the NN needs all the data to train
-    // otherwise we will ony train on some of the data.
+    // otherwise we will only train on some of the data.
     // the classic XOR example is a good use case ... 
     training_indexes = indexes;
   }
@@ -201,29 +216,40 @@ void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_netw
   create_batch_from_indexes(neural_network_helper.training_indexes(), training_inputs, training_outputs, shuffled_training_inputs, shuffled_training_outputs);
 }
 
-void NeuralNetwork::create_batch_from_indexes(const std::vector<size_t>& shuffled_indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const
+void NeuralNetwork::create_batch_from_indexes(
+  const std::vector<size_t>& indexes, 
+  const std::vector<std::vector<double>>& training_inputs, 
+  const std::vector<std::vector<double>>& training_outputs, 
+  std::vector<std::vector<double>>& training_inputs_data, 
+  std::vector<std::vector<double>>& training_outputs_data) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  shuffled_training_inputs.clear();
-  shuffled_training_outputs.clear();
-  shuffled_training_inputs.reserve(shuffled_indexes.size());
-  shuffled_training_outputs.reserve(shuffled_indexes.size());
-  for( auto shuffled_index : shuffled_indexes)
+  training_inputs_data.clear();
+  training_outputs_data.clear();
+  training_inputs_data.reserve(indexes.size());
+  training_outputs_data.reserve(indexes.size());
+  for( auto shuffled_index : indexes)
   {
-    shuffled_training_inputs.emplace_back(training_inputs[shuffled_index]);
-    shuffled_training_outputs.emplace_back(training_outputs[shuffled_index]);
+    training_inputs_data.emplace_back(training_inputs[shuffled_index]);
+    training_outputs_data.emplace_back(training_outputs[shuffled_index]);
   }
+}
+
+std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _layers.think(_options, inputs);
 }
 
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  GradientsAndOutputs gradients(get_topology());
+  if (inputs.size() != get_topology().front())
   {
-    std::shared_lock<std::shared_mutex> read(_mutex);
-    calculate_forward_feed(gradients, inputs, _layers, false);
+    Logger::error("The input size, '", inputs.size(),"' does not match the topology!");
+    return {};
   }
-  return gradients.output_back();
+  return _layers.think(_options, inputs);
 }
 
 double NeuralNetwork::get_learning_rate() const noexcept
@@ -232,22 +258,20 @@ double NeuralNetwork::get_learning_rate() const noexcept
   return _learning_rate;
 }
 
-NeuralNetworkHelper::NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(NeuralNetworkOptions::ErrorCalculation error_type) const
+double NeuralNetwork::get_percent_complete() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto results = calculate_forecast_metrics({ error_type }, false);
-  return results.front();
-}
-
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_forecast_metrics(error_types, false);
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  if (nullptr == _neural_network_helper)
+  {
+    return 1.0;
+  }
+  return _neural_network_helper->percent_complete();
 }
 
 bool NeuralNetwork::has_training_data() const
 {
-  std::shared_lock read(_mutex);
+  std::shared_lock<std::shared_mutex> read(_mutex);
   if (nullptr != _neural_network_helper)
   {
     return true; // we are currently training.
@@ -257,53 +281,73 @@ bool NeuralNetwork::has_training_data() const
   return !_saved_errors.empty();
 }
 
-std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<NeuralNetworkOptions::ErrorCalculation>& error_types, bool final_check) const
+NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> errors = {};
-  errors.reserve(errors.size());
+  auto results = calculate_forecast_metrics({ error_type }, false);
+  return results.front();
+}
+
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric_all_layers(ErrorCalculation::type error_type) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto results = calculate_forecast_metrics_all_layers({ error_type }, false);
+  return results.front();
+}
+
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto results = calculate_forecast_metrics_all_layers(error_types, false);
+  return results.front();
+}
+
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   {
     std::shared_lock read(_mutex);
-  if (nullptr == _neural_network_helper)
-  {
-    for (size_t index = 0; index < error_types.size(); ++index)
+    if (nullptr == _neural_network_helper)
     {
-      const auto& saved_error = _saved_errors.find(error_types[index]);
-        if (saved_error == _saved_errors.end())
+      std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
+      errors.reserve(_saved_errors.size());
+
+      std::vector<NeuralNetworkHelperMetrics> layer_errors;
+      layer_errors.reserve(error_types.size());
+
+      for (const auto& layer_saved_errors : _saved_errors)
       {
-          errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
-        Logger::warning("Trying to get training metrics:", (int)error_types[index], " when no training was done!");
-        continue;
+        for (const auto& error_type : error_types)
+        {
+          const auto& saved_error = layer_saved_errors.find(error_type);
+          if (saved_error == layer_saved_errors.end())
+          {
+            layer_errors.emplace_back(0.0, error_type);
+            Logger::warning("Trying to get training metrics:", (int)error_type, " when no training was done!");
+          }
+          else
+          {
+            layer_errors.emplace_back(saved_error->second, error_type);
+          }
+        }
+        errors.emplace_back(layer_errors);
+        layer_errors.clear();
       }
-      errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(saved_error->second, error_types[index]));
+      return errors;
     }
-    return errors;
-  }
   }
 
   const NeuralNetworkHelper& helper = *_neural_network_helper;
   const auto& training_inputs = helper.training_inputs();
-  const auto& taining_outputs = helper.training_outputs();
+  const auto& training_outputs = helper.training_outputs();
 
-  const std::vector<size_t>* checks_indexes = 0;
-  size_t prediction_size = 0;
-  if (final_check)
-  {
-    checks_indexes = &helper.final_check_indexes();
-  }
-  else
-  {
-    checks_indexes = &helper.checking_indexes();
-  }
-  prediction_size = checks_indexes->size();
+  const std::vector<size_t>* checks_indexes = final_check ? &helper.final_check_indexes() : &helper.checking_indexes();
+  size_t prediction_size = checks_indexes->size();
+
   if (prediction_size == 0)
   {
-    for (size_t index = 0; index < error_types.size(); ++index)
-    {
-      errors.emplace_back(NeuralNetworkHelper::NeuralNetworkHelperMetrics(0.0, error_types[index]));
-    }
-    return errors;
+    return {};
   }
 
   std::vector<std::vector<double>> predictions;
@@ -311,69 +355,124 @@ std::vector<NeuralNetworkHelper::NeuralNetworkHelperMetrics> NeuralNetwork::calc
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
 
-  GradientsAndOutputs gradients(get_topology());
-  std::shared_lock lock(_mutex);
   {
     std::shared_lock read(_mutex);
-    for (size_t index = 0; index < prediction_size; ++index)
+
+    // Use fresh, local vectors instead of the pool to ensure isolation.
+    std::vector<GradientsAndOutputs> temp_gradients;
+    std::vector<HiddenStates> temp_hidden_states;
+    temp_gradients.reserve(prediction_size);
+    temp_hidden_states.reserve(prediction_size);
+    while (temp_gradients.size() < prediction_size)
     {
-      const auto& checks_index = (*checks_indexes)[index];
-      const auto& inputs = training_inputs[checks_index];
-      calculate_forward_feed(gradients, inputs, _layers, false);
-      predictions.emplace_back(gradients.output_back());
-      gradients.zero();
-
-      // set the output we will need it just now.
-      checking_outputs.emplace_back(taining_outputs[checks_index]);
+      temp_gradients.emplace_back(get_topology());
+      temp_hidden_states.emplace_back(get_topology());
     }
-  }// release the lock
 
+    std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
 
-  for (size_t index = 0; index < error_types.size(); ++index)
-  {
-    errors.emplace_back(
-      NeuralNetworkHelper::NeuralNetworkHelperMetrics(
-      calculate_error(error_types[index], checking_outputs, predictions),
-        error_types[index]));
+    calculate_forward_feed_for_forecast_metrics(temp_gradients, training_inputs, sub_indices, _layers, temp_hidden_states, false);
+
+    for (size_t i = 0; i < prediction_size; ++i)
+    {
+      predictions.push_back(temp_gradients[i].output_back());
+      checking_outputs.push_back(training_outputs[sub_indices[i]]);
+    }
   }
-  return errors;
+
+  return _layers.output_layer().calculate_output_metrics(error_types, checking_outputs, predictions);
 }
 
-std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
+void NeuralNetwork::train_single_batch(
+    std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    const size_t batch_size
+  )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::vector<std::vector<double>> outputs(inputs.size(), std::vector<double>(1));
-  for (size_t i = 0; i < inputs.size(); ++i)
-  {
-    outputs[i] = think(inputs[i]);
-  }
-  return outputs;
+  _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
 
-NeuralNetwork::GradientsAndOutputs NeuralNetwork::train_single_batch(
-    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
-    const std::vector<std::vector<double>>::const_iterator outputs_begin,
-    const size_t size
-  ) const
+void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  bptt_inputs.clear();
+  bptt_outputs.clear();
 
-  GradientsAndOutputs gradients(get_topology(), static_cast<unsigned>(size));
-  if(size == 1)
+  const size_t total_samples = inputs.size();
+  if (total_samples == 0)
   {
-    calculate_forward_feed(gradients, *inputs_begin, _layers, true);
-    calculate_back_propagation(gradients, *outputs_begin, _layers);
-    return gradients;
+    return;
+  }
+  if (total_samples != outputs.size())
+  {
+    Logger::panic("The training input data size does not match the output data size!");
   }
 
-  for(size_t index = 0; index < size; ++index)
+  const auto& bptt_size = _options.bptt_max_ticks();
+  const size_t batch_size = static_cast<size_t>(_options.batch_size());
+
+  // If BPTT is disabled or sequence length is 1, we just need to split the data into batches of 'batch_size'
+  if (bptt_size <= 1 || !_options.enable_bptt())
   {
-    GradientsAndOutputs this_gradients(_options.topology());
-    calculate_forward_feed(gradients, *inputs_begin, _layers, true);
-    calculate_back_propagation(gradients, *outputs_begin, _layers);
-    gradients.add(this_gradients);
-  } 
-  return gradients;
+    for (size_t i = 0; i < total_samples; i += batch_size)
+    {
+      size_t end_idx = std::min(i + batch_size, total_samples);
+      bptt_inputs.emplace_back(inputs.begin() + i, inputs.begin() + end_idx);
+      bptt_outputs.emplace_back(outputs.begin() + i, outputs.begin() + end_idx);
+    }
+    return;
+  }
+
+  const auto& is_shuffled = _options.shuffle_bptt_batches();
+
+  // Create sequences
+  std::vector<std::vector<std::vector<double>>> sequences_inputs;
+  std::vector<std::vector<std::vector<double>>> sequences_outputs;
+
+  for (size_t start_idx = 0; start_idx < total_samples; start_idx += bptt_size)
+  {
+    size_t end_idx = std::min(start_idx + bptt_size, total_samples);
+
+    std::vector<std::vector<double>> seq_input(inputs.begin() + start_idx, inputs.begin() + end_idx);
+    std::vector<std::vector<double>> seq_output(outputs.begin() + start_idx, outputs.begin() + end_idx);
+
+    // Optionally skip incomplete sequences (last one)
+    if (seq_input.size() < bptt_size)
+    {
+      continue;
+    }
+
+    sequences_inputs.push_back(std::move(seq_input));
+    sequences_outputs.push_back(std::move(seq_output));
+  }
+
+  // Shuffle sequences if needed
+  if (!is_shuffled)
+  {
+    bptt_inputs = std::move(sequences_inputs);
+    bptt_outputs = std::move(sequences_outputs);
+    return;
+  }
+
+  std::vector<size_t> indices(sequences_inputs.size());
+  for (size_t i = 0; i < indices.size(); ++i) indices[i] = i;
+
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(indices.begin(), indices.end(), g);
+
+  std::vector<std::vector<std::vector<double>>> shuffled_inputs;
+  std::vector<std::vector<std::vector<double>>> shuffled_outputs;
+
+  for (size_t idx : indices)
+  {
+    shuffled_inputs.push_back(std::move(sequences_inputs[idx]));
+    shuffled_outputs.push_back(std::move(sequences_outputs[idx]));
+  }
+
+  bptt_inputs = std::move(shuffled_inputs);
+  bptt_outputs = std::move(shuffled_outputs);
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -392,37 +491,17 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   if(batch_size <=0 || batch_size > static_cast<int>(training_inputs.size()))
   {
-    Logger::error("The batch size if either -ve or too large for the training sample.");
-    throw std::invalid_argument("The batch size if either -ve or too large for the training sample.");
+    Logger::panic("The batch size if either -ve or too large for the training sample.");
   }
   if(training_outputs.size() != training_inputs.size())
   {
-    Logger::error("The number of training samples does not match the number of expected outputs.");
-    throw std::invalid_argument("The number of training samples does not match the number of expected outputs.");
+    Logger::panic("The number of training samples does not match the number of expected outputs.");
   }
 
   Logger::info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-  // create the thread pool if we need one ...
-  TaskQueuePool<GradientsAndOutputs>* task_pool = nullptr;
-  if (batch_size > 1)
-  {
-    task_pool = new TaskQueuePool<GradientsAndOutputs>(_options.number_of_threads());
-  }
-
   // create the neural network helper.
-  delete _neural_network_helper;
-  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
-
-  // set all the indexes in the helper, either shiffled or not.
-  if (options().shuffle_training_data())
-  {
-  create_shuffled_indexes(*_neural_network_helper, _options.data_is_unique());
-  }
-  else
-  {
-    create_indexes(*_neural_network_helper, _options.data_is_unique());
-  }
+  recreate_neural_network_helper(number_of_epoch, training_inputs, training_outputs);
 
   // create the callback task if we need one.
   SingleTaskQueue<bool>* callback_task = nullptr;
@@ -455,6 +534,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // add a log message.
   log_training_info(training_inputs, training_outputs);
 
+  // Reset optimizer state for all layers
+  for (unsigned int i = 0; i < _layers.size(); ++i)
+  {
+    _layers[i].reset_optimizer_state();
+  }
+
   // build the training output batch so we can use it for error calculations
   const auto training_indexes_size = _neural_network_helper->training_indexes().size();
   std::vector<std::vector<double>> training_outputs_batch = {};
@@ -466,7 +551,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   size_t num_batches = (training_indexes_size + batch_size - 1) / batch_size;
-  std::vector<GradientsAndOutputs> epoch_gradients;
+  std::vector<std::vector<GradientsAndOutputs>> epoch_gradients;
   epoch_gradients.reserve(num_batches);
 
   // for the learning rate decay we need to set the target learning rate and the decay rate.
@@ -478,62 +563,36 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
+  std::vector<std::vector<std::vector<double>>> bptt_in;
+  std::vector<std::vector<std::vector<double>>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
+    // Learning rate
+    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
+    _neural_network_helper->set_learning_rate(learning_rate);
+
+    // set the values
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
-    for (size_t start_index = 0; start_index < training_indexes_size; start_index += batch_size)
-    {
-      if (task_pool != nullptr)
-      {
-        const size_t end_size = std::min(start_index + batch_size, training_indexes_size);
-        const size_t total_size = end_size - start_index;
-        task_pool->enqueue([=]()
-          {
-            auto train = train_single_batch(
-              batch_training_inputs.begin() + start_index,
-              batch_training_outputs.begin() + start_index,
-              total_size);
-            return train;
-          });
-      }
-      else
-      {
-        //  size is 1, it is faster to not use a thread.
-        const size_t total_size = 1;
-        const auto& single_batch = train_single_batch(
-            batch_training_inputs.begin() + start_index,
-            batch_training_outputs.begin() + start_index,
-            total_size);
+    // (re) create the bptt batches
+    create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
-        apply_weight_gradients(_layers, single_batch, _neural_network_helper->learning_rate(), epoch);
-      }
+    const auto bptt_indexes_size = bptt_out.size();
+    for (size_t bptt_index = 0; bptt_index < bptt_indexes_size; ++bptt_index)
+    {
+      const auto total_size = bptt_out[bptt_index].size();
+      train_single_batch( bptt_in[bptt_index].begin(), bptt_out[bptt_index].begin(), total_size);
     }
     MYODDWEB_PROFILE_MARK();
 
-    // Collect the results
-    if (task_pool != nullptr)
+    // update the training monitor metrics
+    if (_neural_network_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
     {
-      epoch_gradients = task_pool->get();
-      apply_weight_gradients(_layers, epoch_gradients, _neural_network_helper->learning_rate(), epoch);
-
-      if (options().shuffle_training_data())
-      {
-      recreate_batch_from_indexes(*_neural_network_helper, training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
-      }
-
-      // clear it for next time
-      epoch_gradients.clear();
+      Logger::trace([=] {
+        return Logger::factory("Updating training monitor at epoch #", epoch, " of ", number_of_epoch);
+        });
     }
-
-    // Learning rate
-    //
-    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
-
-    // boost the learning rate base if we need to.
-    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate_base);
-    _neural_network_helper->set_learning_rate(learning_rate);
 
     // callback
     // 
@@ -546,24 +605,27 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
   }
 
-  if(task_pool != nullptr)
+  if (Logger::can_info() && options().final_error_calculation_types().size() > 0)
   {
-    task_pool->stop();
-    delete task_pool;
+    const auto& metrics = calculate_forecast_metrics_all_layers(options().final_error_calculation_types(), true);
+    std::string message = "";
+    unsigned output_layer_number = 0;
+    for (const auto metric : metrics)
+    {
+      for (const auto metric_error : metric)
+      {
+        if (!message.empty())
+        {
+          message += "\n";
+        }
+        message += Logger::factory("Final: Layer = ", output_layer_number, ", ", ErrorCalculation::type_to_string(metric_error.error_type()), " error: ", std::fixed, std::setprecision(15), metric_error.error());
+      }
+      ++output_layer_number;
+    }
+    Logger::info(message);
   }
 
-  auto metrics = calculate_forecast_metrics(
-    {
-      NeuralNetworkOptions::ErrorCalculation::rmse,
-      NeuralNetworkOptions::ErrorCalculation::mape,
-      NeuralNetworkOptions::ErrorCalculation::wape
-    }, true);
-
-  Logger::info("Final RMSE Error: ", std::fixed, std::setprecision (15), metrics[0].error());
-  Logger::info("Final mean absolute error (MAPE): ", std::fixed, std::setprecision (15), metrics[1].error()*100.0);
-  Logger::info("Final weighted absolute error (WAPE): ", std::fixed, std::setprecision(15), metrics[2].error() * 100.0);
-
-  // finaly learning rate
+  // finally learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
   // final callback to show 100% done.
@@ -579,6 +641,24 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   MYODDWEB_PROFILE_MARK();
+}
+
+void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  delete _neural_network_helper;
+  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+
+  // set all the indexes in the helper, either shuffled or not.
+  if (options().shuffle_training_data())
+  {
+    create_shuffled_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+  }
+  else
+  {
+    create_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+  }
 }
 
 bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const
@@ -611,45 +691,6 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
   return true; // continue training
 }
 
-double NeuralNetwork::calculate_clipping_scale(const Layer& layer, unsigned int layer_number) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto gradient_clip_threshold = options().clip_threshold();
-
-  double total_sq_sum = 0.0;
-
-  // Accumulate squared gradients for all weights and biases
-  for (size_t neuron_number = 0; neuron_number < layer.number_neurons(); ++neuron_number)
-  {
-    const auto& neuron = layer.get_neuron(static_cast<unsigned>(neuron_number));
-    for (const auto& weight_param : neuron.get_weight_params())
-    {
-      auto gradient = weight_param.gradient();
-      total_sq_sum += gradient * gradient;
-    }
-  }
-
-  double norm = std::sqrt(total_sq_sum);
-  if (!std::isfinite(norm))
-  {
-    Logger::error("Layer Number:", layer_number, ", Gradient norm is NaN / Inf � resetting optimizer buffers and skipping batch.");
-    return 0.0; // Skip updates entirely
-  }
-
-  if (norm <= gradient_clip_threshold || norm <= 0.0)
-  {
-    return 1.0; // No clipping needed, use identity scale
-  }
-
-  auto clipping_scale = gradient_clip_threshold / norm; // scale factor < 1 to reduce gradient norm
-  Logger::warning([&]
-    {
-      auto lr = get_learning_rate();
-      return Logger::factory(std::setprecision(4), "Layer Number:", layer_number, ", Clipping gradients: norm = ", norm, " scale = ", clipping_scale, " (learnign rate: ", lr, ")");
-    });
-  return clipping_scale;
-}
-
 double NeuralNetwork::calculate_smooth_learning_rate_boost(
   int epoch,
   int total_epochs,
@@ -676,12 +717,19 @@ double NeuralNetwork::calculate_smooth_learning_rate_boost(
   }
   // Calculate the number of boosts that have occurred so far
   auto total_boosts = total_epochs / boost_interval;
+  if (total_boosts == 0)
+  {
+    // Interval is larger than total epochs, cannot apply boost strategy as defined.
+    return base_learning_rate;
+  }
+
   auto per_boost_ratio = boost_ratio / total_boosts; // e.g., if 3 boosts, each boost is 1.10^(1/3)
 
   auto cycle_position = epoch % boost_interval; // e.g., if epoch 8 and interval is 7, position is 1
   auto progress = static_cast<double>(cycle_position) / boost_interval; // e.g., 1/7 = 0.142857
 
-  // Apply cosine boost: start at 0, peak at 1, then back to 0
+  // Apply cosine boost: start at 0, peak at 1 (smooth step up)
+  // This creates a smooth staircase effect when combined with cumulative_boost.
   auto cosine_multiplier = (1.0 - std::cos(progress * M_PI)) / 2.0;
   auto current_boost = per_boost_ratio * cosine_multiplier;
 
@@ -704,26 +752,45 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   {
     learning_rate = calculate_learning_rate_warmup(epoch, completed_percent);
   }
-  // are we decaying the learning rate?
-  // this is done after warmup
-  else if (learning_rate_decay_rate != 0)
+  else
   {
-    learning_rate = learning_rate_base * std::exp(-learning_rate_decay_rate * epoch);
-    Logger::trace([=] 
-      {
-        return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
-      });
+    // boost the learning rate base if we need to.
+    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate);
+
+    // are we decaying the learning rate?
+    // this is done after warmup
+    if (learning_rate_decay_rate != 0)
+    {
+      learning_rate = learning_rate * std::exp(-learning_rate_decay_rate * epoch);
+      Logger::trace([=] 
+        {
+          return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+        });
+    }
   }
 
   // then get the scheduler if we can improve it further.
-  if (_options.adaptive_learning_rate())
+  // This is done after warmup and is throttled to run every 5 epochs
+  if (_options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target() && epoch % 5 == 0)
   {
-    auto metric = calculate_forecast_metrics(
+    if (!_adaptive_lr_task.busy())
+    {
+      if (_adaptive_lr_task.has_result())
       {
-        NeuralNetworkOptions::ErrorCalculation::rmse,
-      }, false);
-    learning_rate = learning_rate_scheduler.update(metric[0].error(), learning_rate, epoch, number_of_epoch);
-    Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+        _last_metrics = _adaptive_lr_task.get();
+      }
+
+      // start a new task
+      _adaptive_lr_task.call([this]() {
+        return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
+        });
+    }
+
+    if (!_last_metrics.empty())
+    {
+      learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
+      Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+    }
   }
   return learning_rate;
 }
@@ -756,715 +823,121 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
   return warmup_learning_rate;
 }
 
-double NeuralNetwork::calculate_error(NeuralNetworkOptions::ErrorCalculation error_type, const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  switch (error_type)
-  {
-  case NeuralNetworkOptions::ErrorCalculation::none:
-    return 0.0;
-
-  case NeuralNetworkOptions::ErrorCalculation::huber_loss:
-    return calculate_huber_loss_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mae:
-    return calculate_mae_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mse:
-    return calculate_mse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::rmse:
-    return calculate_rmse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::nrmse:
-    return calculate_nrmse_error(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::mape:
-    return calculate_forecast_mape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::wape:
-    return calculate_forecast_wape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::smape:
-    return calculate_forecast_smape(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::directional_accuracy:
-    return calculate_directional_accuracy(ground_truth, predictions);
-
-  case NeuralNetworkOptions::ErrorCalculation::bce_loss:
-      return calculate_bce_loss(ground_truth, predictions);
-  }
-
-  Logger::error("Unknown ErrorCalculation type!");
-  throw std::invalid_argument("Unknown ErrorCalculation type!");
-}
-
-double NeuralNetwork::calculate_huber_loss_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions, double delta) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (ground_truth.size() != predictions.size())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Mismatched number of samples");
-  }
-
-  double total_loss = 0.0;
-  size_t count = 0;
-
-  for (size_t i = 0; i < ground_truth.size(); ++i)
-  {
-    if (ground_truth[i].size() != predictions[i].size())
-    {
-      Logger::error("Mismatched vector sizes at index ", i);
-      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
-    }
-
-    for (size_t j = 0; j < ground_truth[i].size(); ++j)
-    {
-      double error = ground_truth[i][j] - predictions[i][j];
-      double abs_error = std::abs(error);
-
-      if (abs_error <= delta)
-      {
-        total_loss += 0.5 * error * error;
-      }
-      else
-      {
-        total_loss += delta * (abs_error - 0.5 * delta);
-      }
-      ++count;
-    }
-  }
-  return (count > 0) ? (total_loss / count) : 0.0;
-}
-
-double NeuralNetwork::calculate_mae_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (ground_truth.size() != predictions.size())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-  
-
-  double total_abs_error = 0.0;
-  size_t count = 0;
-  for (size_t i = 0; i < ground_truth.size(); ++i)
-  {
-    if (ground_truth[i].size() != predictions[i].size())
-    {
-      Logger::error("Mismatched vector sizes at index ", i);
-      throw std::invalid_argument("Mismatched vector sizes at index " + std::to_string(i));
-    }
-    for (size_t j = 0; j < ground_truth[i].size(); ++j)
-    {
-      total_abs_error += std::abs(ground_truth[i][j] - predictions[i][j]);
-      ++count;
-    }
-  }
-  return (count > 0) ? (total_abs_error / count) : 0.0;
-}
-
-double NeuralNetwork::calculate_rmse_error(
-  const std::vector<std::vector<double>>& ground_truths,
-  const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_rmse = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-      continue;
-
-    double mse = 0.0;
-    for (size_t i = 0; i < gt.size(); ++i)
-    {
-      double diff = gt[i] - pred[i];
-      mse += diff * diff;
-    }
-
-    mse /= gt.size();
-    total_rmse += std::sqrt(mse);
-    ++sequence_count;
-  }
-
-  return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
-}
-
-double NeuralNetwork::calculate_bce_loss(
-  const std::vector<std::vector<double>>& ground_truths,
-  const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Mismatched number of samples");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_bce = 0.0;
-  size_t sequence_count = 0;
-
-  // small epsilon to avoid log(0)
-  const double eps = 1e-12;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-    {
-      continue;
-    }
-
-    double bce = 0.0;
-    for (size_t i = 0; i < gt.size(); ++i) 
-    {
-      // clip predictions to [eps, 1 - eps]
-      double p = std::max(eps, std::min(1.0 - eps, pred[i]));
-      double y = gt[i];
-
-      bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
-    }
-
-    bce /= gt.size();    // average over outputs in sequence
-    total_bce += bce;
-    ++sequence_count;
-  }
-
-  return (sequence_count == 0) ? 0.0 : (total_bce / sequence_count);
-}
-
-double NeuralNetwork::calculate_mse_error(const std::vector<std::vector<double>>& ground_truth, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (ground_truth.size() != predictions.size()) 
-  {
-    Logger::error("Mismatch in batch sizes.");
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-
-  double mean_squared_error = 0.0;
-  size_t valid_count = 0;
-
-  for (size_t i = 0; i < ground_truth.size(); ++i) 
-  {
-    const auto& true_output = ground_truth[i];
-    const auto& predicted_output = predictions[i];
-
-    if (true_output.size() != predicted_output.size()) 
-    {
-      Logger::warning("Mismatch in output vector sizes at index ",i);
-      continue;
-    }
-
-    for (size_t j = 0; j < true_output.size(); ++j) 
-    {
-      double error = predicted_output[j] - true_output[j];
-
-      if (!std::isfinite(error))
-      {
-        continue;
-      }
-
-      double squared_error = error * error;
-      if (!std::isfinite(squared_error))
-      {
-        continue;
-      }
-      ++valid_count;
-      mean_squared_error += (squared_error - mean_squared_error) / valid_count;
-    }
-  }
-
-  if (valid_count == 0)
-  {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  return mean_squared_error;
-}
-
-std::vector<double> NeuralNetwork::calculate_residual_projection_gradients(
-    unsigned layer_number,
-    unsigned neuron_number,
-    const GradientsAndOutputs& source
-) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const int residual_layer_number = _layers[layer_number].residual_layer_number();
-  if (residual_layer_number == -1)
-  {
-    return {};
-  }
-
-  const auto batch_size = source.batch_size();
-  const auto residual_output_count = source.num_outputs(static_cast<unsigned>(residual_layer_number));
-
-  // gradient of loss with respect to the neuron's output
-  const double delta = source.get_gradient(layer_number, neuron_number);
-
-  std::vector<double> gradients;
-  gradients.reserve(residual_output_count);
-
-  // regular residual outputs
-  for (unsigned i = 0; i < residual_output_count -1; ++i) // exclude bias
-  {
-    const double residual_output = source.get_output(static_cast<unsigned>(residual_layer_number), i);
-    gradients.push_back((residual_output * delta) / batch_size);
-  }
-
-  // residual bias contribution
-  gradients.push_back((1.0 * delta) / batch_size);
-
-  return gradients;
-}
-
-std::vector<double> NeuralNetwork::calculate_weight_gradients(unsigned layer_number, unsigned neuron_number, const GradientsAndOutputs& source) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (layer_number == 0 || layer_number > source.num_gradient_layers())
-  {
-    return {};
-  }
-  const auto batch_size = source.batch_size();
-  const auto number_outputs = source.num_outputs(layer_number - 1);
-  std::vector<double> gradients(number_outputs, 0.0);
-  const auto gradient = source.get_gradient(layer_number, neuron_number);
-  for (unsigned output_neuron_number = 0; output_neuron_number < number_outputs; ++output_neuron_number)
-  {
-    const auto& weight = source.get_output(layer_number-1, output_neuron_number);
-    gradients[output_neuron_number] = (weight * gradient) / batch_size;
-  }
-  return gradients;
-}
-
-// multiple batches
-void NeuralNetwork::apply_weight_gradients(Layers& layers, const std::vector<GradientsAndOutputs>& batch_activation_gradients, double learning_rate, unsigned epoch) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  for(const auto& batch_activation_gradient : batch_activation_gradients)  
-  {
-    apply_weight_gradients(layers, batch_activation_gradient, learning_rate, epoch);
-  }
-}
-
-// single batch
-void NeuralNetwork::apply_weight_gradients(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, double learning_rate, unsigned epoch) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto& layer_size = batch_activation_gradient.num_gradient_layers();
-
-  // we need to obtain write lock here as we are about to change the neurons
-  std::unique_lock lock(_mutex);
-  for (auto layer_number = layer_size-1; layer_number > 0; --layer_number)
-  {
-    auto& previous_layer = layers[layer_number - 1];
-    auto& current_layer = layers[layer_number];
-
-    std::vector<double> residual_output_values = {};
-    auto* residual_layer = get_residual_layer(layers, batch_activation_gradient, residual_output_values, current_layer);
-
-    auto clipping_scale = calculate_clipping_scale(current_layer, layer_number);
-    const auto& neuron_size = batch_activation_gradient.num_gradient_neurons(layer_number) -1; // exclude bias
-    for (unsigned neuron_number = 0; neuron_number < neuron_size; ++neuron_number)
-    {
-      auto& neuron = current_layer.get_neuron(neuron_number);
-      const auto& gradients = calculate_weight_gradients(layer_number, neuron_number, batch_activation_gradient);
-      neuron.apply_weight_gradients(previous_layer, gradients, learning_rate, epoch, clipping_scale);
-
-      if(residual_layer != nullptr)
-      {
-        const auto residual_gradients = calculate_residual_projection_gradients(
-            layer_number, neuron_number, batch_activation_gradient
-          );
-        neuron.apply_residual_weight_gradients(
-          current_layer, 
-          *residual_layer,
-          residual_output_values, 
-          residual_gradients, 
-          learning_rate, 
-          clipping_scale);
-      }
-    }
-  }
-}
-
-Layer* NeuralNetwork::get_residual_layer(Layers& layers, const GradientsAndOutputs& batch_activation_gradient, std::vector<double>& residual_output_values, const Layer& current_layer) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto residual_layer_number = current_layer.residual_layer_number();
-  if (residual_layer_number == -1)
-  {
-    return nullptr; // no residual layer
-  }
-  assert(residual_output_values.size() == 0);
-  auto* residual_layer = &(layers[static_cast<unsigned>(residual_layer_number)]);
-  auto residual_layer_neuron_size = residual_layer->number_neurons();
-  residual_output_values.reserve(residual_layer_neuron_size);
-  for (unsigned neuron_number = 0; neuron_number < residual_layer_neuron_size; ++neuron_number)
-  {
-    const auto output = batch_activation_gradient.get_output(residual_layer_number, neuron_number);
-    residual_output_values.emplace_back(output);
-  }
-  return residual_layer;
-}
-
-void NeuralNetwork::calculate_back_propagation(GradientsAndOutputs& gradients, const std::vector<double>& outputs, const Layers& layers) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  assert(outputs.size() == gradients.output_back().size());
-
-  // input layer is all 0, (bias is included)
-  const auto& input_gradients = std::vector<double>(layers.input_layer().number_neurons(), 0.0);
-  gradients.set_gradients(0, input_gradients);
-  
-  // set the output gradient
-  const auto& output_layer = layers.output_layer();
-  auto next_activation_gradients = calculate_output_gradients(outputs, gradients.output_back(), output_layer);
-  gradients.set_gradients(static_cast<unsigned>(layers.size()-1), next_activation_gradients);
-  for (auto layer_number = layers.size() - 2; layer_number > 0; --layer_number)
-  {
-    const auto& hidden_layer = layers[static_cast<unsigned>(layer_number)];
-    const auto& next_layer = layers[static_cast<unsigned>(layer_number + 1)];
-
-    const auto& hidden_layer_neuron_size = hidden_layer.number_neurons();
-    std::vector<double> current_activation_gradients;
-    current_activation_gradients.resize(hidden_layer_neuron_size, 0.0);
-    for (size_t hidden_layer_neuron_number = 0; hidden_layer_neuron_number < hidden_layer_neuron_size; ++hidden_layer_neuron_number)
-    {
-      const auto& neuron = hidden_layer.get_neuron(static_cast<unsigned>(hidden_layer_neuron_number));
-      const auto output_value = gradients.get_output(static_cast<unsigned>(layer_number), static_cast<unsigned>(hidden_layer_neuron_number));
-      const auto& gradient = neuron.calculate_hidden_gradients(next_layer, next_activation_gradients, output_value);
-      current_activation_gradients[hidden_layer_neuron_number] = gradient;
-    }
-    gradients.set_gradients(static_cast<unsigned>(layer_number), current_activation_gradients);
-    next_activation_gradients = std::move(current_activation_gradients);
-    current_activation_gradients = {};
-  }
-}
-
-void NeuralNetwork::calculate_forward_feed(
-  NeuralNetwork::GradientsAndOutputs& gradients_outputs,
-  const std::vector<double>& inputs, 
-  const Layers& layers,
+void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
+  std::vector<GradientsAndOutputs>& gradients_and_output,
+  const std::vector<std::vector<double>>& all_inputs,
+  const std::vector<size_t>& indices,
+  const Layers& layers_container,
+  std::vector<HiddenStates>& hidden_states,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  //  the initial set of output values where we are starting from.
-  gradients_outputs.set_outputs(0, inputs);
-
-  // then forward propagate from the input to ... hopefully, the output.
-  std::vector<std::vector<double>> layer_output_values;
-  layer_output_values.reserve(layers.size());
-  layer_output_values.emplace_back(inputs);
-  layer_output_values.back().push_back(1.0);
-  for (size_t layer_number = 1; layer_number < layers.size(); ++layer_number)
+  size_t batch_size = indices.size();
+  if (batch_size == 0)
   {
-    const auto& previous_layer = layers[static_cast<unsigned>(layer_number - 1)];
-    const auto& current_layer = layers[static_cast<unsigned>(layer_number)];
+    return;
+  }
 
-    // previous output values.
-    const auto& previous_layer_output_values = layer_output_values[layer_number -1];
+#if VALIDATE_DATA == 1
+  if (gradients_and_output.size() != batch_size)
+  {
+    Logger::panic("The gradient vector size does not match the batch size!");
+  }
+#endif
 
-    // the residual layer output values.
-    std::vector<double> residual_output_values = {};
-    const auto residual_layer_mumber = current_layer.residual_layer_number();
-    if(residual_layer_mumber != -1)
+  // --- 1. Store input layer outputs for the entire batch ---
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& current_input = all_inputs[indices[b]];
+    if (b < 2)
     {
-      // get that layer output values.
-      residual_output_values = current_layer.residual_output_values(layer_output_values[residual_layer_mumber]);
+      Logger::trace([=]
+        {
+          return Logger::factory("DEBUG: [b=", b, "] Forecast Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
+        });
     }
-    
-    std::vector<double> this_output_values;
-    this_output_values.reserve(current_layer.number_neurons() - 1);
-    for (size_t neuron_number = 0; neuron_number < current_layer.number_neurons() - 1; ++neuron_number)
-    {
-      const auto& neuron = current_layer.get_neuron(static_cast<unsigned>(neuron_number));
-      this_output_values.emplace_back(neuron.calculate_forward_feed(previous_layer, previous_layer_output_values, residual_output_values, is_training));
-    }
+    const size_t input_size = layers_container[0].get_number_neurons();
 
-    // log explosion
-    if (Logger::can_trace())
+    if (current_input.size() == input_size)
     {
-      double sum = 0.0;
-      double max_abs = 0.0;
-      for (double val : this_output_values)
+      gradients_and_output[b].set_outputs(0, current_input);
+      if (options().enable_bptt() && options().bptt_max_ticks() > 1)
       {
-        sum += val;
-        max_abs = std::max(max_abs, std::fabs(val));
-      }
-      double mean = sum / this_output_values.size();
-      if (std::fabs(mean) < 1e-6 || std::fabs(mean) > 10 || std::fabs(max_abs) > 50)
-      {
-        Logger::trace([=]
-          {
-            return Logger::factory("[ACT] Layer ", layer_number, ": mean=", mean, ", max=", max_abs);
-          });
+        const int ticks = options().bptt_max_ticks();
+        std::vector<double> expanded;
+        expanded.reserve(input_size * ticks);
+        for (int t = 0; t < ticks; ++t)
+        {
+        expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+        }
+        gradients_and_output[b].set_rnn_outputs(0, expanded);
       }
     }
-
-    gradients_outputs.set_outputs( static_cast<unsigned>(layer_number),this_output_values );
-
-    // add output value
-    this_output_values.push_back(1.0);
-    layer_output_values.emplace_back(std::move(this_output_values));
-  }
-}
-
-std::vector<double> NeuralNetwork::calculate_output_gradients(const std::vector<double>& target_outputs, const std::vector<double>& given_outputs, const Layer& output_layer) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  const auto output_layer_size = output_layer.number_neurons();
-  std::vector<double> activation_gradients = {};
-  activation_gradients.reserve(output_layer_size);
-  unsigned neuron_number_count = 0;
-  for (unsigned neuron_number = 0; neuron_number < output_layer_size; ++neuron_number)
-  {
-    const auto& neuron = output_layer.get_neuron(unsigned(neuron_number));
-    auto gradient = 0.0;
-    if (!neuron.is_bias())
+    else if (options().enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
     {
-      gradient = neuron.calculate_output_gradients(target_outputs[neuron_number_count], given_outputs[neuron_number_count]);
-      ++neuron_number_count;
+       // Sequence input provided!
+       std::vector<double> last_step(current_input.end() - input_size, current_input.end());
+       gradients_and_output[b].set_outputs(0, last_step);
+       gradients_and_output[b].set_rnn_outputs(0, current_input);
     }
-    activation_gradients.emplace_back(gradient);
-  }
-  return activation_gradients;
-}
-
-double NeuralNetwork::calculate_forecast_smape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_smape = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty()) {
-      continue; // skip empty or mismatched
-    }
-
-    double seq_error_sum = 0.0;
-    size_t count = 0;
-
-    for (size_t i = 0; i < gt.size(); ++i) 
+    else
     {
-      double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
-      if (denom < epsilon) continue; // skip both near-zero
-      seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
-      ++count;
-    }
-
-    if (count > 0) 
-    {
-      total_smape += seq_error_sum / count;
-      ++sequence_count;
+       gradients_and_output[b].set_outputs(0, current_input);
     }
   }
-  return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
-}
 
-double NeuralNetwork::calculate_directional_accuracy( const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double neutral_tolerance) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
+  // --- 2. Forward propagate layer by layer for the entire batch ---
+  for (size_t layer_number = 1; layer_number < layers_container.size(); ++layer_number)
   {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
+    const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
+    const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
-  size_t correct = 0;
-  size_t total = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.size() < 2)
+    // Prepare batched residual outputs
+    std::vector<std::vector<double>> batch_residual_values;
+    const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
+    if (residual_projector != nullptr)
     {
-      continue; // Skip sequences that are too short
-    }
-
-    for (size_t i = 1; i < gt.size(); ++i)
-    {
-      double gt_diff = gt[i] - gt[i - 1];
-      double pred_diff = pred[i] - pred[i - 1];
-
-      // Ignore negligible ground truth movements (noise)
-      if (std::abs(gt_diff) < neutral_tolerance)
+      auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
+      std::vector<std::vector<double>> batch_residual_inputs;
+      batch_residual_inputs.reserve(batch_size);
+      for (size_t b = 0; b < batch_size; ++b)
       {
-        continue;
+        const auto src_span = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
+        batch_residual_inputs.emplace_back(src_span.begin(), src_span.end());
       }
-
-      if ((gt_diff * pred_diff) > 0.0)
-      {
-        ++correct;
-      }
-      ++total;
+      batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
-  }
-  return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
-}
 
-double NeuralNetwork::calculate_nrmse_error(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_nrmse = 0.0;
-  size_t sequence_count = 0;
-  const double eps = 1e-12; // small value to avoid division by zero
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty())
-      continue;
-
-    double mse = 0.0;
-    double min_val = gt[0], max_val = gt[0], mean_abs = 0.0;
-
-    for (size_t i = 0; i < gt.size(); ++i)
+    // Ensure hidden state vectors are sized correctly
+    for (size_t b = 0; b < batch_size; ++b)
     {
-      double diff = gt[i] - pred[i];
-      mse += diff * diff;
-
-      min_val = std::min(min_val, gt[i]);
-      max_val = std::max(max_val, gt[i]);
-      mean_abs += std::abs(gt[i]);
+        if (current_layer.use_bptt())
+        {
+            const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+            const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+            
+            const size_t n_prev = previous_layer.get_number_neurons();
+            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
+            hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
+        }
+        else
+        {
+            hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
+        }
     }
 
-    mse /= gt.size();
-    double rmse = std::sqrt(mse);
-    mean_abs /= gt.size();
-
-    // Auto-select normalization
-    double denom = max_val - min_val;         // primary: range
-    if (denom < eps) denom = mean_abs;        // fallback: mean magnitude
-    if (denom < eps) continue;                // skip if both tiny
-
-    total_nrmse += rmse / denom;
-    ++sequence_count;
+    // Call batched forward feed
+    current_layer.calculate_forward_feed(
+      gradients_and_output,
+      previous_layer,
+      batch_residual_values,
+      hidden_states,
+      batch_size,
+      is_training
+    );
   }
-
-  return (sequence_count == 0) ? 0.0 : (total_nrmse / sequence_count);
-}
-
-double NeuralNetwork::calculate_forecast_wape(const std::vector<std::vector<double>>&ground_truths, const std::vector<std::vector<double>>&predictions) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty())
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_absolute_error = 0.0;
-  double total_absolute_actuals = 0.0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    // Skip mismatched or empty sequences
-    if (gt.size() != pred.size() || gt.empty())
-    {
-      continue;
-    }
-
-    // Sum the errors and actuals for this sequence
-    for (size_t i = 0; i < gt.size(); ++i)
-    {
-      total_absolute_error += std::abs(gt[i] - pred[i]);
-      total_absolute_actuals += std::abs(gt[i]);
-    }
-  }
-
-  // Perform a single division at the end
-  // Check if the total sum of actuals is zero
-  if (total_absolute_actuals == 0.0)
-  {
-    // If total actuals are 0, error is 0 only if total error is also 0.
-    // Otherwise, it's undefined. We can return 0 if both are 0, 
-    // or 1.0 (100% error) if we predicted non-zero values for all-zero actuals.
-    return (total_absolute_error == 0.0) ? 0.0 : 1.0;
-  }
-
-  // WAPE formula
-  return total_absolute_error / total_absolute_actuals;
-}
-
-double NeuralNetwork::calculate_forecast_mape(const std::vector<std::vector<double>>& ground_truths, const std::vector<std::vector<double>>& predictions, double epsilon) const
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (predictions.size() != ground_truths.size() || predictions.empty()) 
-  {
-    Logger::error("Input vectors must have the same, non-zero size.");
-    throw std::invalid_argument("Input vectors must have the same, non-zero size.");
-  }
-
-  double total_mape = 0.0;
-  size_t sequence_count = 0;
-
-  for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx) 
-  {
-    const auto& gt = ground_truths[seq_idx];
-    const auto& pred = predictions[seq_idx];
-
-    if (gt.size() != pred.size() || gt.empty()) 
-    {
-      continue; // skip empty or mismatched
-    }
-
-    double seq_error_sum = 0.0;
-    size_t count = 0;
-
-    for (size_t i = 0; i < gt.size(); ++i) 
-    {
-      double denom = std::abs(gt[i]);
-      if (denom < epsilon) continue; // skip tiny values
-      seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
-      ++count;
-    }
-
-    if (count > 0) 
-    {
-      total_mape += seq_error_sum / count;
-      ++sequence_count;
-    }
-  }
-  return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
 }
 
 void NeuralNetwork::log_training_info(
@@ -1486,38 +959,80 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "  Restart rate             : ", _options.learning_rate_restart_rate());
   Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
-  Logger::info(tab, "Hidden activation method   : ", activation::method_to_string(get_hidden_activation_method()));
-  Logger::info(tab, "Output activation method   : ", activation::method_to_string(get_output_activation_method()));
+
+  // Hidden
+  Logger::info(tab, "Hidden layer(s)            : ");
+  const auto& hl = _options.hidden_layers();
+  
+  // Log recurrent layers details
+  for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
+  {
+    const auto& this_hl = hl[hl_index];
+    Logger::info(tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
+                 tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
+                 tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
+                 tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
+                 tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
+                 tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
+                 tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
+                 tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
+  }
+
+  // Output
+  const auto& output_layer_details = _options.output_layer_details();
+  std::string output_layer_details_string;
+  
+  output_layer_details_string += Logger::factory(tab, "Output layer(s)            :", "\n");
+  auto output_layer_index = 0;
+  for (const auto& details : output_layer_details)
+  {
+    output_layer_details_string += Logger::factory(tab, tab, "[", output_layer_index, "]\n",
+      tab, tab, tab, "Size                   : ", details.get_size(), "\n",
+      tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(details.get_optimiser_type()), "\n",
+      tab, tab, tab, "Momentum               : ", details.get_momentum(), "\n",
+      tab, tab, tab, "Weight decay           : ", std::fixed, std::setprecision(7), details.get_weight_decay(), "\n",
+      tab, tab, tab, "Activation method      : ", activation::method_to_string(details.get_activation().get_method()), "\n",
+      tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), details.get_activation().get_alpha(), "\n",
+      tab, tab, tab, "Error calculation type : ", ErrorCalculation::type_to_string(details.get_output_error_calculation_type()), "\n",
+      tab, tab, tab, "Error evaluation config: ", std::fixed, std::setprecision(5), "\n",
+      tab, tab, tab, tab, "confidence-threshold : ", details.get_error_evaluation_config().confidence_threshold(), "\n",
+      tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
+      tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
+      tab, tab, tab, tab, "lambda\n",
+      tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+      tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+      tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false"); 
+    ++output_layer_index;
+    if (output_layer_index < output_layer_details.size())
+    {
+      output_layer_details_string += "\n";
+    }
+  }
+  Logger::info(output_layer_details_string);
+
   Logger::info(tab, "Residual layerjump         : ", _options.residual_layer_jump());
   Logger::info(tab, "Input size                 : ", training_inputs.front().size());
   Logger::info(tab, "Output size                : ", training_outputs.front().size());
-  Logger::info(tab, "Optimiser                  : ", optimiser_type_to_string(_options.optimiser_type()));
-
-  std::string hidden_layer_message = 
-                                "  Hidden layers              : {";
-  for (size_t layer = 1; layer < _layers.size() - 1; ++layer)
-  {
-    hidden_layer_message += std::to_string(_layers[static_cast<unsigned>(layer)].number_neurons() - 1); // remove the bias
-    if (layer < _layers.size() - 2)
-    {
-      hidden_layer_message += ", ";
-    }
-  }
-  hidden_layer_message += "}";
-  Logger::info(hidden_layer_message);
-
-  std::string dropout_layer_message = 
-                                "  Hidden layers dropout rate : {";
-  for( auto& dropout : options().dropout())
-  {
-    dropout_layer_message += std::to_string(dropout);
-    dropout_layer_message += ", ";
-  }
-  dropout_layer_message = dropout_layer_message.substr(0, dropout_layer_message.size() - 2); // remove the last ", "
-  dropout_layer_message += "}";
-  Logger::info(dropout_layer_message);
+  Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
+  Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
+  Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
 
   Logger::info(tab, "Batch size                 : ", _options.batch_size());
+  if (_options.final_error_calculation_types().size() == 0)
+  {
+    Logger::info(tab, "Final error(s) metrics     :\n", tab, tab, "None");
+  }
+  else
+  {
+    std::string message = tab;
+    message += "Final error(s) metrics     :";
+    for (const auto& type : _options.final_error_calculation_types())
+    {
+      message += Logger::factory("\n", tab, tab, ErrorCalculation::type_to_string(type));
+    }
+    Logger::info(message);
+  }
+
   if (_options.batch_size() > 1)
   {
     if (_options.number_of_threads() <= 0)
