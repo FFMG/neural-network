@@ -54,6 +54,7 @@ The hidden layer information helps you to refine the hidden layer information
   * FF: Standard feed-forward layer for basic non-linear transformations.
   * Elman: Simple recurrent layer that maintains a hidden state for processing sequential data.
   * Gru: Gated recurrent unit layer designed to handle the vanishing gradient problem in long sequences.
+  * Lstm: Long Short-Term Memory layer with four gates and a separate cell state for improved long-term dependency learning.
 * Layer size: number of neuron in the hidden layer.
 * the activation object, (activation methods and alpha)
 * Weight Decay: The regularization strength for the layer's weights.
