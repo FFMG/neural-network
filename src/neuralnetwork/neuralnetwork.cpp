@@ -1,7 +1,6 @@
 #include "logger.h"
 #include "neuralnetwork.h"
 
-#include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -142,7 +141,12 @@ void NeuralNetwork::create_indexes_in_lock(NeuralNetworkHelper& neural_network_h
   std::vector<size_t> indexes(sample_size);
   std::iota(indexes.begin(), indexes.end(), 0);
 
-  assert(sample_size == indexes.size());
+#if VALIDATE_DATA == 1
+  if (sample_size != indexes.size())
+  {
+    Logger::panic("Sample size does not match indexes size!");
+  }
+#endif
 
   break_indexes(indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
@@ -159,7 +163,12 @@ void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_
   auto sample_size = neural_network_helper.sample_size();
 
   auto shuffled_indexes = get_shuffled_indexes(sample_size);
-  assert(sample_size == shuffled_indexes.size());
+#if VALIDATE_DATA == 1
+  if (sample_size != shuffled_indexes.size())
+  {
+    Logger::panic("Sample size does not match shuffled indexes size!");
+  }
+#endif
 
   break_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
@@ -182,7 +191,13 @@ void NeuralNetwork::break_indexes(const std::vector<size_t>& indexes, bool data_
     final_check_indexes = {indexes.back()};
     return;
   }
-  assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
+#if VALIDATE_DATA == 1
+  if (training_size + checking_size >= total_size)// make sure we don't get more than 100%
+  {
+    Logger::panic("Cannot break indexes, size does not match!");
+  }
+#endif
+
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
     Logger::panic("Logic error, unable to do a final batch error check.");
