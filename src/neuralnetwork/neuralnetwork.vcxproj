@@ -155,8 +155,10 @@
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="aligned_allocator.h" />
+    <ClInclude Include="branchedoutputlayer.h" />
     <ClInclude Include="evaluationconfig.h" />
     <ClInclude Include="examples\addingproblem.h" />
+    <ClInclude Include="examples\branched_output.h" />
     <ClInclude Include="examples\compound_output_sandwich.h" />
     <ClInclude Include="examples\compound_softmax.h" />
     <ClInclude Include="examples\compound_trivial_softmax.h" />
@@ -188,6 +190,7 @@
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
+    <ClInclude Include="multioutputlayerdetails.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
     <ClInclude Include="neuralnetworkhelpermetrics.h" />
