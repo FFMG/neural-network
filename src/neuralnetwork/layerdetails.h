@@ -22,12 +22,6 @@ public:
   };
 
 public:
-  LayerDetails() noexcept :
-    LayerDetails(LayerType::None, 0, activation(), 0.0, 0.0, OptimiserType::None, 0.0)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
-  }
-
   LayerDetails( 
     LayerType layer_type, 
     unsigned layer_size, 

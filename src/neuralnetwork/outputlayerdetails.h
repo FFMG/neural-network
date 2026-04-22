@@ -10,12 +10,6 @@
 class OutputLayerDetails
 {
 public:
-  OutputLayerDetails() noexcept :
-    OutputLayerDetails(0, activation(), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.99)
-  {
-    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
-  }
-
   OutputLayerDetails(
     unsigned layer_size, 
     const activation& activation, 
