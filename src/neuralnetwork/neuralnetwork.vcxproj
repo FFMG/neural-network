@@ -175,7 +175,7 @@
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\copymemory.h" />
-    <ClInclude Include="examples\lstm_test.h" />
+    <ClInclude Include="examples\lstm.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\residualxor.h" />
     <ClInclude Include="examples\spiral.h" />
