@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "branchedoutputlayer.h"
 #include "elmanrnnlayer.h"
 #include "errorcalculation.h"
 #include "evaluationconfig.h"
@@ -14,6 +13,7 @@
 #include "layer.h"
 #include "layerdetails.h"
 #include "layers.h"
+#include "multioutputlayer.h"
 #include "multioutputlayerdetails.h"
 #include "neuralnetwork.h"
 #include "neuron.h"
@@ -70,7 +70,7 @@ private:
   static void add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_elmanrnnlayer(const ElmanRNNLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers);
-  static void add_branchedoutputlayer(const BranchedOutputLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_multioutputlayer(const MultiOutputLayer& layer, TinyJSON::TJValueArray& layers);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
   static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
   static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);

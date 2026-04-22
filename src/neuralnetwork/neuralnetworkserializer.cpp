@@ -130,7 +130,7 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
-    if (type == "branchedoutputlayer")
+    if (type == "multioutputlayer")
     {
       layers.emplace_back(
         std::move(create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details()))
@@ -1536,10 +1536,10 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
     return;
   }
 
-  auto branchedlayer = dynamic_cast<const BranchedOutputLayer*>(layer);
-  if (nullptr != branchedlayer)
+  auto multioutputlayer = dynamic_cast<const MultiOutputLayer*>(layer);
+  if (nullptr != multioutputlayer)
   {
-    add_branchedoutputlayer(*branchedlayer, layers);
+    add_multioutputlayer(*multioutputlayer, layers);
     return;
   }
 
@@ -1684,11 +1684,11 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
   return multi_output_layer_details;
 }
 
-void NeuralNetworkSerializer::add_branchedoutputlayer(const BranchedOutputLayer& layer, TinyJSON::TJValueArray& layers)
+void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
-  layer_object->set_string("layer-name", "branchedoutputlayer");
+  layer_object->set_string("layer-name", "multioutputlayer");
   layer_object->set_number("layer-type", (int)layer.get_layer_type());
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -1724,7 +1724,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_multioutputlayer(
   // has-bias would ideally be in the layer_object, defaulting to true
   bool has_bias = true; 
 
-  auto layer = std::make_unique<BranchedOutputLayer>(
+  auto layer = std::make_unique<MultiOutputLayer>(
     layer_index,
     number_input_neurons,
     number_output_neurons,
