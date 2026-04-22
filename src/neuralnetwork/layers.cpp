@@ -1,9 +1,9 @@
-#include "branchedoutputlayer.h"
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
 #include "layers.h"
+#include "multioutputlayer.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   _update_weights_pool(nullptr)
@@ -336,7 +336,7 @@ std::unique_ptr<Layer> Layers::create_multi_output_layer(unsigned num_neurons_in
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  return std::make_unique<BranchedOutputLayer>(
+  return std::make_unique<MultiOutputLayer>(
     layer_index,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer,
@@ -538,7 +538,7 @@ void Layers::calculate_back_propagation_hidden_layers(
     std::vector<std::vector<double>> batch_next_gradients;
     
     // Check if next layer is Branched
-    if (auto branched = dynamic_cast<const BranchedOutputLayer*>(&hidden_1)) {
+    if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1)) {
        branched->backprop_branches(batch_size, options.bptt_max_ticks());
        batch_next_gradients = branched->get_trunk_gradients(batch_size);
     } else {

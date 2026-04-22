@@ -17,49 +17,49 @@
  * A minimal layer implementation to act as a source for branch layers.
  * Branch layers expect their input from index 0 of the branch's internal buffers.
  */
-class BranchInputProxyLayer final : public Layer
+class MultiInputProxyLayer final : public Layer
 {
 public:
-  BranchInputProxyLayer(unsigned num_neurons) :
+  MultiInputProxyLayer(unsigned num_neurons) :
     Layer(0, Layer::LayerType::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
 
   Layer* clone() const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
-    return new BranchInputProxyLayer(*this);
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+    return new MultiInputProxyLayer(*this);
   }
 
   void calculate_forward_feed(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, std::vector<HiddenStates>&, size_t, bool) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
   void calculate_output_gradients(std::vector<GradientsAndOutputs>&, std::vector<std::vector<double>>::const_iterator, const std::vector<HiddenStates>&, size_t) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
   void calculate_hidden_gradients(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, const std::vector<HiddenStates>&, size_t, int) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
   void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
   void apply_stored_gradients(double, double) override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
   double get_gradient_norm_sq() const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchInputProxyLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
     return 0.0;
   }
 };
 
-class BranchedOutputLayer final : public Layer, public OutputLayer
+class MultiOutputLayer final : public Layer, public OutputLayer
 {
 public:
   struct Branch
@@ -138,7 +138,7 @@ public:
     }
   };
 
-  BranchedOutputLayer(
+  MultiOutputLayer(
     unsigned layer_index,
     unsigned num_inputs,
     unsigned num_outputs,
@@ -149,7 +149,7 @@ public:
     Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
     OutputLayer(extract_output_details(multi_output_layer_details))
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     
     for (const auto& multi_output_layer_detail : multi_output_layer_details)
     {
@@ -197,33 +197,34 @@ public:
     }
   }
 
-  BranchedOutputLayer(const BranchedOutputLayer& src) :
+  MultiOutputLayer(const MultiOutputLayer& src) :
     Layer(src),
     OutputLayer(src),
     _branches(src._branches)
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
   }
 
-  BranchedOutputLayer(BranchedOutputLayer&& src) noexcept :
+  MultiOutputLayer(MultiOutputLayer&& src) noexcept :
     Layer(std::move(src)),
     OutputLayer(std::move(src)),
     _branches(std::move(src._branches))
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
   }
 
-  BranchedOutputLayer& operator=(const BranchedOutputLayer&) = delete;
+  MultiOutputLayer& operator=(const MultiOutputLayer&) = delete;
+  MultiOutputLayer& operator=(MultiOutputLayer&&) = delete;
 
-  virtual ~BranchedOutputLayer()
+  virtual ~MultiOutputLayer()
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
   }
 
   Layer* clone() const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
-    return new BranchedOutputLayer(*this);
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    return new MultiOutputLayer(*this);
   }
 
   void calculate_forward_feed(
@@ -234,7 +235,7 @@ public:
     size_t batch_size,
     bool is_training) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
     
     // 1. Initialize branch buffers
@@ -256,7 +257,7 @@ public:
     }
 
     // 3. Forward through each branch (using a proxy for the trunk to match internal indices)
-    BranchInputProxyLayer proxy(get_number_input_neurons());
+    MultiInputProxyLayer proxy(get_number_input_neurons());
     for (size_t i = 0; i < _branches.size(); ++i)
     {
       auto& branch = const_cast<Branch&>(_branches[i]);
@@ -315,7 +316,7 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const override
   {
-     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
      std::lock_guard<std::mutex> lock(_mutex);
      unsigned offset = 0;
      for (size_t i = 0; i < _branches.size(); ++i)
@@ -344,7 +345,7 @@ public:
   // New method for custom backprop
   void backprop_branches(size_t batch_size, int bptt_max_ticks) const
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
     for (auto& branch : const_cast<std::vector<Branch>&>(_branches))
     {
@@ -375,7 +376,7 @@ public:
 
   std::vector<std::vector<double>> get_trunk_gradients(size_t batch_size) const
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
     std::vector<std::vector<double>> trunk_grads(batch_size, std::vector<double>(get_number_input_neurons(), 0.0));
     
@@ -405,7 +406,7 @@ public:
     size_t /*batch_size*/,
     int /*bptt_max_ticks*/) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     // This is handled by backprop_branches + get_trunk_gradients in Layers.cpp
   }
 
@@ -416,9 +417,9 @@ public:
     size_t batch_size,
     int bptt_max_ticks) override
   {
-     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
      std::lock_guard<std::mutex> lock(_mutex);
-     BranchInputProxyLayer proxy(get_number_input_neurons());
+     MultiInputProxyLayer proxy(get_number_input_neurons());
      for(auto& branch : _branches)
      {
        for(size_t l_idx = 0; l_idx < branch.layers.size(); ++l_idx)
@@ -439,7 +440,7 @@ public:
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override
   {
-     MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
      std::lock_guard<std::mutex> lock(_mutex);
      for(auto& branch : _branches)
      {
@@ -452,7 +453,7 @@ public:
 
   double get_gradient_norm_sq() const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     double sum = 0.0;
     for(const auto& branch : _branches)
     {
@@ -466,12 +467,12 @@ public:
 
   [[nodiscard]] const std::vector<Branch>& get_branches() const
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     return _branches;
   }
   [[nodiscard]] std::vector<Branch>& get_mutable_branches()
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     return _branches;
   }
 
@@ -481,7 +482,7 @@ public:
     const std::vector<std::vector<double>>& predictions
   ) const override
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
     errors.reserve(number_output_layers());
 
@@ -529,7 +530,7 @@ public:
 private:
   static std::vector<OutputLayerDetails> extract_output_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
   {
-    MYODDWEB_PROFILE_FUNCTION("BranchedOutputLayer");
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::vector<OutputLayerDetails> details;
     for (const auto& multi_output_layer_detail : multi_output_layer_details)
     {
