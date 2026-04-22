@@ -12,12 +12,6 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation() noexcept :
-  activation(method::linear, 0.0)
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-}
-
 activation::activation(const method method, double alpha) :
   _method(method),
   _alpha(alpha)
