@@ -130,6 +130,14 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
+    if (type == "lstmlayer")
+    {
+      layers.emplace_back(
+        std::move(create_lstmlayer(layer_index, *layer_object, options.number_of_threads()))
+      );
+      continue;
+    }
+
     if (type == "multioutputlayer")
     {
       layers.emplace_back(
@@ -409,6 +417,184 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     r_b_m2,
     r_b_timesteps,
     r_b_decays,
+    residual_projector.get(),
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  // get the neurons
+  auto neurons = get_neurons(layer_object, layer_index);
+
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_type_number = layer_object.get<int>("layer-type");
+  auto layer_type = (Layer::LayerType)layer_type_number;
+
+  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+
+  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+
+  // Cell Candidate weights
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
+
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
+
+  auto rw_values = layer_object.get<std::vector<double>>("rw-values");
+  auto rw_grads = layer_object.get<std::vector<double>>("rw-grads");
+  auto rw_velocities = layer_object.get<std::vector<double>>("rw-velocities");
+  auto rw_m1 = layer_object.get<std::vector<double>>("rw-m1");
+  auto rw_m2 = layer_object.get<std::vector<double>>("rw-m2");
+  auto rw_timesteps = layer_object.get<std::vector<long long>>("rw-timesteps");
+  auto rw_decays = layer_object.get<std::vector<double>>("rw-decays");
+
+  // Forget Gate
+  auto f_w_values = layer_object.get<std::vector<double>>("f-w-values");
+  auto f_w_grads = layer_object.get<std::vector<double>>("f-w-grads");
+  auto f_w_velocities = layer_object.get<std::vector<double>>("f-w-velocities");
+  auto f_w_m1 = layer_object.get<std::vector<double>>("f-w-m1");
+  auto f_w_m2 = layer_object.get<std::vector<double>>("f-w-m2");
+  auto f_w_timesteps = layer_object.get<std::vector<long long>>("f-w-timesteps");
+  auto f_w_decays = layer_object.get<std::vector<double>>("f-w-decays");
+
+  auto f_rw_values = layer_object.get<std::vector<double>>("f-rw-values");
+  auto f_rw_grads = layer_object.get<std::vector<double>>("f-rw-grads");
+  auto f_rw_velocities = layer_object.get<std::vector<double>>("f-rw-velocities");
+  auto f_rw_m1 = layer_object.get<std::vector<double>>("f-rw-m1");
+  auto f_rw_m2 = layer_object.get<std::vector<double>>("f-rw-m2");
+  auto f_rw_timesteps = layer_object.get<std::vector<long long>>("f-rw-timesteps");
+  auto f_rw_decays = layer_object.get<std::vector<double>>("f-rw-decays");
+
+  auto f_b_values = layer_object.get<std::vector<double>>("f-b-values");
+  auto f_b_grads = layer_object.get<std::vector<double>>("f-b-grads");
+  auto f_b_velocities = layer_object.get<std::vector<double>>("f-b-velocities");
+  auto f_b_m1 = layer_object.get<std::vector<double>>("f-b-m1");
+  auto f_b_m2 = layer_object.get<std::vector<double>>("f-b-m2");
+  auto f_b_timesteps = layer_object.get<std::vector<long long>>("f-b-timesteps");
+  auto f_b_decays = layer_object.get<std::vector<double>>("f-b-decays");
+
+  // Input Gate
+  auto i_w_values = layer_object.get<std::vector<double>>("i-w-values");
+  auto i_w_grads = layer_object.get<std::vector<double>>("i-w-grads");
+  auto i_w_velocities = layer_object.get<std::vector<double>>("i-w-velocities");
+  auto i_w_m1 = layer_object.get<std::vector<double>>("i-w-m1");
+  auto i_w_m2 = layer_object.get<std::vector<double>>("i-w-m2");
+  auto i_w_timesteps = layer_object.get<std::vector<long long>>("i-w-timesteps");
+  auto i_w_decays = layer_object.get<std::vector<double>>("i-w-decays");
+
+  auto i_rw_values = layer_object.get<std::vector<double>>("i-rw-values");
+  auto i_rw_grads = layer_object.get<std::vector<double>>("i-rw-grads");
+  auto i_rw_velocities = layer_object.get<std::vector<double>>("i-rw-velocities");
+  auto i_rw_m1 = layer_object.get<std::vector<double>>("i-rw-m1");
+  auto i_rw_m2 = layer_object.get<std::vector<double>>("i-rw-m2");
+  auto i_rw_timesteps = layer_object.get<std::vector<long long>>("i-rw-timesteps");
+  auto i_rw_decays = layer_object.get<std::vector<double>>("i-rw-decays");
+
+  auto i_b_values = layer_object.get<std::vector<double>>("i-b-values");
+  auto i_b_grads = layer_object.get<std::vector<double>>("i-b-grads");
+  auto i_b_velocities = layer_object.get<std::vector<double>>("i-b-velocities");
+  auto i_b_m1 = layer_object.get<std::vector<double>>("i-b-m1");
+  auto i_b_m2 = layer_object.get<std::vector<double>>("i-b-m2");
+  auto i_b_timesteps = layer_object.get<std::vector<long long>>("i-b-timesteps");
+  auto i_b_decays = layer_object.get<std::vector<double>>("i-b-decays");
+
+  // Output Gate
+  auto o_w_values = layer_object.get<std::vector<double>>("o-w-values");
+  auto o_w_grads = layer_object.get<std::vector<double>>("o-w-grads");
+  auto o_w_velocities = layer_object.get<std::vector<double>>("o-w-velocities");
+  auto o_w_m1 = layer_object.get<std::vector<double>>("o-w-m1");
+  auto o_w_m2 = layer_object.get<std::vector<double>>("o-w-m2");
+  auto o_w_timesteps = layer_object.get<std::vector<long long>>("o-w-timesteps");
+  auto o_w_decays = layer_object.get<std::vector<double>>("o-w-decays");
+
+  auto o_rw_values = layer_object.get<std::vector<double>>("o-rw-values");
+  auto o_rw_grads = layer_object.get<std::vector<double>>("o-rw-grads");
+  auto o_rw_velocities = layer_object.get<std::vector<double>>("o-rw-velocities");
+  auto o_rw_m1 = layer_object.get<std::vector<double>>("o-rw-m1");
+  auto o_rw_m2 = layer_object.get<std::vector<double>>("o-rw-m2");
+  auto o_rw_timesteps = layer_object.get<std::vector<long long>>("o-rw-timesteps");
+  auto o_rw_decays = layer_object.get<std::vector<double>>("o-rw-decays");
+
+  auto o_b_values = layer_object.get<std::vector<double>>("o-b-values");
+  auto o_b_grads = layer_object.get<std::vector<double>>("o-b-grads");
+  auto o_b_velocities = layer_object.get<std::vector<double>>("o-b-velocities");
+  auto o_b_m1 = layer_object.get<std::vector<double>>("o-b-m1");
+  auto o_b_m2 = layer_object.get<std::vector<double>>("o-b-m2");
+  auto o_b_timesteps = layer_object.get<std::vector<long long>>("o-b-timesteps");
+  auto o_b_decays = layer_object.get<std::vector<double>>("o-b-decays");
+
+  double momentum = layer_object.get<double>("momentum");
+
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
+
+  auto layer = std::make_unique<LSTMLayer>(
+    layer_index,
+    layer_type,
+    optimiser_type,
+    residual_layer_number,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    rw_values,
+    rw_grads,
+    rw_velocities,
+    rw_m1,
+    rw_m2,
+    rw_timesteps,
+    rw_decays,
+    // Forget Gate
+    f_w_values, f_w_grads, f_w_velocities, f_w_m1, f_w_m2, f_w_timesteps, f_w_decays,
+    f_rw_values, f_rw_grads, f_rw_velocities, f_rw_m1, f_rw_m2, f_rw_timesteps, f_rw_decays,
+    f_b_values, f_b_grads, f_b_velocities, f_b_m1, f_b_m2, f_b_timesteps, f_b_decays,
+    // Input Gate
+    i_w_values, i_w_grads, i_w_velocities, i_w_m1, i_w_m2, i_w_timesteps, i_w_decays,
+    i_rw_values, i_rw_grads, i_rw_velocities, i_rw_m1, i_rw_m2, i_rw_timesteps, i_rw_decays,
+    i_b_values, i_b_grads, i_b_velocities, i_b_m1, i_b_m2, i_b_timesteps, i_b_decays,
+    // Output Gate
+    o_w_values, o_w_grads, o_w_velocities, o_w_m1, o_w_m2, o_w_timesteps, o_w_decays,
+    o_rw_values, o_rw_grads, o_rw_velocities, o_rw_m1, o_rw_m2, o_rw_timesteps, o_rw_decays,
+    o_b_values, o_b_grads, o_b_velocities, o_b_m1, o_b_m2, o_b_timesteps, o_b_decays,
     residual_projector.get(),
     number_of_threads,
     lah,
@@ -1324,6 +1510,141 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   delete layer_object;
 }
 
+void NeuralNetworkSerializer::add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "lstmlayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+
+  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
+  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
+  
+  // Candidate Gate (g) - uses standard w/rw/b
+  layer_object->set_floats("w-values", layer.get_w_values());
+  layer_object->set_floats("w-grads", layer.get_w_grads());
+  layer_object->set_floats("w-velocities", layer.get_w_velocities());
+  layer_object->set_floats("w-m1", layer.get_w_m1());
+  layer_object->set_floats("w-m2", layer.get_w_m2());
+  layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
+  layer_object->set_floats("w-decays", layer.get_w_decays());
+
+  layer_object->set_floats("b-values", layer.get_b_values());
+  layer_object->set_floats("b-grads", layer.get_b_grads());
+  layer_object->set_floats("b-velocities", layer.get_b_velocities());
+  layer_object->set_floats("b-m1", layer.get_b_m1());
+  layer_object->set_floats("b-m2", layer.get_b_m2());
+  layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
+  layer_object->set_floats("b-decays", layer.get_b_decays());
+
+  layer_object->set_floats("rw-values", layer.get_rw_values());
+  layer_object->set_floats("rw-grads", layer.get_rw_grads());
+  layer_object->set_floats("rw-velocities", layer.get_rw_velocities());
+  layer_object->set_floats("rw-m1", layer.get_rw_m1());
+  layer_object->set_floats("rw-m2", layer.get_rw_m2());
+  layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
+  layer_object->set_floats("rw-decays", layer.get_rw_decays());
+
+  // Forget Gate (f)
+  layer_object->set_floats("f-w-values", layer.get_f_w_values());
+  layer_object->set_floats("f-w-grads", layer.get_f_w_grads());
+  layer_object->set_floats("f-w-velocities", layer.get_f_w_velocities());
+  layer_object->set_floats("f-w-m1", layer.get_f_w_m1());
+  layer_object->set_floats("f-w-m2", layer.get_f_w_m2());
+  layer_object->set_numbers("f-w-timesteps", layer.get_f_w_timesteps());
+  layer_object->set_floats("f-w-decays", layer.get_f_w_decays());
+
+  layer_object->set_floats("f-rw-values", layer.get_f_rw_values());
+  layer_object->set_floats("f-rw-grads", layer.get_f_rw_grads());
+  layer_object->set_floats("f-rw-velocities", layer.get_f_rw_velocities());
+  layer_object->set_floats("f-rw-m1", layer.get_f_rw_m1());
+  layer_object->set_floats("f-rw-m2", layer.get_f_rw_m2());
+  layer_object->set_numbers("f-rw-timesteps", layer.get_f_rw_timesteps());
+  layer_object->set_floats("f-rw-decays", layer.get_f_rw_decays());
+
+  layer_object->set_floats("f-b-values", layer.get_f_b_values());
+  layer_object->set_floats("f-b-grads", layer.get_f_b_grads());
+  layer_object->set_floats("f-b-velocities", layer.get_f_b_velocities());
+  layer_object->set_floats("f-b-m1", layer.get_f_b_m1());
+  layer_object->set_floats("f-b-m2", layer.get_f_b_m2());
+  layer_object->set_numbers("f-b-timesteps", layer.get_f_b_timesteps());
+  layer_object->set_floats("f-b-decays", layer.get_f_b_decays());
+
+  // Input Gate (i)
+  layer_object->set_floats("i-w-values", layer.get_i_w_values());
+  layer_object->set_floats("i-w-grads", layer.get_i_w_grads());
+  layer_object->set_floats("i-w-velocities", layer.get_i_w_velocities());
+  layer_object->set_floats("i-w-m1", layer.get_i_w_m1());
+  layer_object->set_floats("i-w-m2", layer.get_i_w_m2());
+  layer_object->set_numbers("i-w-timesteps", layer.get_i_w_timesteps());
+  layer_object->set_floats("i-w-decays", layer.get_i_w_decays());
+
+  layer_object->set_floats("i-rw-values", layer.get_i_rw_values());
+  layer_object->set_floats("i-rw-grads", layer.get_i_rw_grads());
+  layer_object->set_floats("i-rw-velocities", layer.get_i_rw_velocities());
+  layer_object->set_floats("i-rw-m1", layer.get_i_rw_m1());
+  layer_object->set_floats("i-rw-m2", layer.get_i_rw_m2());
+  layer_object->set_numbers("i-rw-timesteps", layer.get_i_rw_timesteps());
+  layer_object->set_floats("i-rw-decays", layer.get_i_rw_decays());
+
+  layer_object->set_floats("i-b-values", layer.get_i_b_values());
+  layer_object->set_floats("i-b-grads", layer.get_i_b_grads());
+  layer_object->set_floats("i-b-velocities", layer.get_i_b_velocities());
+  layer_object->set_floats("i-b-m1", layer.get_i_b_m1());
+  layer_object->set_floats("i-b-m2", layer.get_i_b_m2());
+  layer_object->set_numbers("i-b-timesteps", layer.get_i_b_timesteps());
+  layer_object->set_floats("i-b-decays", layer.get_i_b_decays());
+
+  // Output Gate (o)
+  layer_object->set_floats("o-w-values", layer.get_o_w_values());
+  layer_object->set_floats("o-w-grads", layer.get_o_w_grads());
+  layer_object->set_floats("o-w-velocities", layer.get_o_w_velocities());
+  layer_object->set_floats("o-w-m1", layer.get_o_w_m1());
+  layer_object->set_floats("o-w-m2", layer.get_o_w_m2());
+  layer_object->set_numbers("o-w-timesteps", layer.get_o_w_timesteps());
+  layer_object->set_floats("o-w-decays", layer.get_o_w_decays());
+
+  layer_object->set_floats("o-rw-values", layer.get_o_rw_values());
+  layer_object->set_floats("o-rw-grads", layer.get_o_rw_grads());
+  layer_object->set_floats("o-rw-velocities", layer.get_o_rw_velocities());
+  layer_object->set_floats("o-rw-m1", layer.get_o_rw_m1());
+  layer_object->set_floats("o-rw-m2", layer.get_o_rw_m2());
+  layer_object->set_numbers("o-rw-timesteps", layer.get_o_rw_timesteps());
+  layer_object->set_floats("o-rw-decays", layer.get_o_rw_decays());
+
+  layer_object->set_floats("o-b-values", layer.get_o_b_values());
+  layer_object->set_floats("o-b-grads", layer.get_o_b_grads());
+  layer_object->set_floats("o-b-velocities", layer.get_o_b_velocities());
+  layer_object->set_floats("o-b-m1", layer.get_o_b_m1());
+  layer_object->set_floats("o-b-m2", layer.get_o_b_m2());
+  layer_object->set_numbers("o-b-timesteps", layer.get_o_b_timesteps());
+  layer_object->set_floats("o-b-decays", layer.get_o_b_decays());
+
+  layer_object->set_float("momentum", layer.get_momentum());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
 void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -1533,6 +1854,13 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
   if (nullptr != grulayer)
   {
     add_grurnnlayer(*grulayer, layers);
+    return;
+  }
+
+  auto lstmlayer = dynamic_cast<const LSTMLayer*>(layer);
+  if (nullptr != lstmlayer)
+  {
+    add_lstmlayer(*lstmlayer, layers);
     return;
   }
 
@@ -1824,8 +2152,9 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
   // Recurrent weights (if applicable)
   auto* rnn_layer = dynamic_cast<ElmanRNNLayer*>(&layer);
   auto* gru_layer = dynamic_cast<GRURNNLayer*>(&layer);
+  auto* lstm_layer = dynamic_cast<LSTMLayer*>(&layer);
 
-  if (rnn_layer || gru_layer)
+  if (rnn_layer || gru_layer || lstm_layer)
   {
     if (layer_object.has_key("rw-values"))
     {
@@ -2033,6 +2362,85 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     {
       gru_layer->set_r_b_decays(layer_object.get<std::vector<double>>("r-b-decays"));
     }
+  }
+
+  // LSTM specific gates
+  if (lstm_layer)
+  {
+    // Forget Gate
+    if (layer_object.has_key("f-w-values")) lstm_layer->set_f_w_values(layer_object.get<std::vector<double>>("f-w-values"));
+    if (layer_object.has_key("f-w-grads")) lstm_layer->set_f_w_grads(layer_object.get<std::vector<double>>("f-w-grads"));
+    if (layer_object.has_key("f-w-velocities")) lstm_layer->set_f_w_velocities(layer_object.get<std::vector<double>>("f-w-velocities"));
+    if (layer_object.has_key("f-w-m1")) lstm_layer->set_f_w_m1(layer_object.get<std::vector<double>>("f-w-m1"));
+    if (layer_object.has_key("f-w-m2")) lstm_layer->set_f_w_m2(layer_object.get<std::vector<double>>("f-w-m2"));
+    if (layer_object.has_key("f-w-timesteps")) lstm_layer->set_f_w_timesteps(layer_object.get<std::vector<long long>>("f-w-timesteps"));
+    if (layer_object.has_key("f-w-decays")) lstm_layer->set_f_w_decays(layer_object.get<std::vector<double>>("f-w-decays"));
+
+    if (layer_object.has_key("f-rw-values")) lstm_layer->set_f_rw_values(layer_object.get<std::vector<double>>("f-rw-values"));
+    if (layer_object.has_key("f-rw-grads")) lstm_layer->set_f_rw_grads(layer_object.get<std::vector<double>>("f-rw-grads"));
+    if (layer_object.has_key("f-rw-velocities")) lstm_layer->set_f_rw_velocities(layer_object.get<std::vector<double>>("f-rw-velocities"));
+    if (layer_object.has_key("f-rw-m1")) lstm_layer->set_f_rw_m1(layer_object.get<std::vector<double>>("f-rw-m1"));
+    if (layer_object.has_key("f-rw-m2")) lstm_layer->set_f_rw_m2(layer_object.get<std::vector<double>>("f-rw-m2"));
+    if (layer_object.has_key("f-rw-timesteps")) lstm_layer->set_f_rw_timesteps(layer_object.get<std::vector<long long>>("f-rw-timesteps"));
+    if (layer_object.has_key("f-rw-decays")) lstm_layer->set_f_rw_decays(layer_object.get<std::vector<double>>("f-rw-decays"));
+
+    if (layer_object.has_key("f-b-values")) lstm_layer->set_f_b_values(layer_object.get<std::vector<double>>("f-b-values"));
+    if (layer_object.has_key("f-b-grads")) lstm_layer->set_f_b_grads(layer_object.get<std::vector<double>>("f-b-grads"));
+    if (layer_object.has_key("f-b-velocities")) lstm_layer->set_f_b_velocities(layer_object.get<std::vector<double>>("f-b-velocities"));
+    if (layer_object.has_key("f-b-m1")) lstm_layer->set_f_b_m1(layer_object.get<std::vector<double>>("f-b-m1"));
+    if (layer_object.has_key("f-b-m2")) lstm_layer->set_f_b_m2(layer_object.get<std::vector<double>>("f-b-m2"));
+    if (layer_object.has_key("f-b-timesteps")) lstm_layer->set_f_b_timesteps(layer_object.get<std::vector<long long>>("f-b-timesteps"));
+    if (layer_object.has_key("f-b-decays")) lstm_layer->set_f_b_decays(layer_object.get<std::vector<double>>("f-b-decays"));
+
+    // Input Gate
+    if (layer_object.has_key("i-w-values")) lstm_layer->set_i_w_values(layer_object.get<std::vector<double>>("i-w-values"));
+    if (layer_object.has_key("i-w-grads")) lstm_layer->set_i_w_grads(layer_object.get<std::vector<double>>("i-w-grads"));
+    if (layer_object.has_key("i-w-velocities")) lstm_layer->set_i_w_velocities(layer_object.get<std::vector<double>>("i-w-velocities"));
+    if (layer_object.has_key("i-w-m1")) lstm_layer->set_i_w_m1(layer_object.get<std::vector<double>>("i-w-m1"));
+    if (layer_object.has_key("i-w-m2")) lstm_layer->set_i_w_m2(layer_object.get<std::vector<double>>("i-w-m2"));
+    if (layer_object.has_key("i-w-timesteps")) lstm_layer->set_i_w_timesteps(layer_object.get<std::vector<long long>>("i-w-timesteps"));
+    if (layer_object.has_key("i-w-decays")) lstm_layer->set_i_w_decays(layer_object.get<std::vector<double>>("i-w-decays"));
+
+    if (layer_object.has_key("i-rw-values")) lstm_layer->set_i_rw_values(layer_object.get<std::vector<double>>("i-rw-values"));
+    if (layer_object.has_key("i-rw-grads")) lstm_layer->set_i_rw_grads(layer_object.get<std::vector<double>>("i-rw-grads"));
+    if (layer_object.has_key("i-rw-velocities")) lstm_layer->set_i_rw_velocities(layer_object.get<std::vector<double>>("i-rw-velocities"));
+    if (layer_object.has_key("i-rw-m1")) lstm_layer->set_i_rw_m1(layer_object.get<std::vector<double>>("i-rw-m1"));
+    if (layer_object.has_key("i-rw-m2")) lstm_layer->set_i_rw_m2(layer_object.get<std::vector<double>>("i-rw-m2"));
+    if (layer_object.has_key("i-rw-timesteps")) lstm_layer->set_i_rw_timesteps(layer_object.get<std::vector<long long>>("i-rw-timesteps"));
+    if (layer_object.has_key("i-rw-decays")) lstm_layer->set_i_rw_decays(layer_object.get<std::vector<double>>("i-rw-decays"));
+
+    if (layer_object.has_key("i-b-values")) lstm_layer->set_i_b_values(layer_object.get<std::vector<double>>("i-b-values"));
+    if (layer_object.has_key("i-b-grads")) lstm_layer->set_i_b_grads(layer_object.get<std::vector<double>>("i-b-grads"));
+    if (layer_object.has_key("i-b-velocities")) lstm_layer->set_i_b_velocities(layer_object.get<std::vector<double>>("i-b-velocities"));
+    if (layer_object.has_key("i-b-m1")) lstm_layer->set_i_b_m1(layer_object.get<std::vector<double>>("i-b-m1"));
+    if (layer_object.has_key("i-b-m2")) lstm_layer->set_i_b_m2(layer_object.get<std::vector<double>>("i-b-m2"));
+    if (layer_object.has_key("i-b-timesteps")) lstm_layer->set_i_b_timesteps(layer_object.get<std::vector<long long>>("i-b-timesteps"));
+    if (layer_object.has_key("i-b-decays")) lstm_layer->set_i_b_decays(layer_object.get<std::vector<double>>("i-b-decays"));
+
+    // Output Gate
+    if (layer_object.has_key("o-w-values")) lstm_layer->set_o_w_values(layer_object.get<std::vector<double>>("o-w-values"));
+    if (layer_object.has_key("o-w-grads")) lstm_layer->set_o_w_grads(layer_object.get<std::vector<double>>("o-w-grads"));
+    if (layer_object.has_key("o-w-velocities")) lstm_layer->set_o_w_velocities(layer_object.get<std::vector<double>>("o-w-velocities"));
+    if (layer_object.has_key("o-w-m1")) lstm_layer->set_o_w_m1(layer_object.get<std::vector<double>>("o-w-m1"));
+    if (layer_object.has_key("o-w-m2")) lstm_layer->set_o_w_m2(layer_object.get<std::vector<double>>("o-w-m2"));
+    if (layer_object.has_key("o-w-timesteps")) lstm_layer->set_o_w_timesteps(layer_object.get<std::vector<long long>>("o-w-timesteps"));
+    if (layer_object.has_key("o-w-decays")) lstm_layer->set_o_w_decays(layer_object.get<std::vector<double>>("o-w-decays"));
+
+    if (layer_object.has_key("o-rw-values")) lstm_layer->set_o_rw_values(layer_object.get<std::vector<double>>("o-rw-values"));
+    if (layer_object.has_key("o-rw-grads")) lstm_layer->set_o_rw_grads(layer_object.get<std::vector<double>>("o-rw-grads"));
+    if (layer_object.has_key("o-rw-velocities")) lstm_layer->set_o_rw_velocities(layer_object.get<std::vector<double>>("o-rw-velocities"));
+    if (layer_object.has_key("o-rw-m1")) lstm_layer->set_o_rw_m1(layer_object.get<std::vector<double>>("o-rw-m1"));
+    if (layer_object.has_key("o-rw-m2")) lstm_layer->set_o_rw_m2(layer_object.get<std::vector<double>>("o-rw-m2"));
+    if (layer_object.has_key("o-rw-timesteps")) lstm_layer->set_o_rw_timesteps(layer_object.get<std::vector<long long>>("o-rw-timesteps"));
+    if (layer_object.has_key("o-rw-decays")) lstm_layer->set_o_rw_decays(layer_object.get<std::vector<double>>("o-rw-decays"));
+
+    if (layer_object.has_key("o-b-values")) lstm_layer->set_o_b_values(layer_object.get<std::vector<double>>("o-b-values"));
+    if (layer_object.has_key("o-b-grads")) lstm_layer->set_o_b_grads(layer_object.get<std::vector<double>>("o-b-grads"));
+    if (layer_object.has_key("o-b-velocities")) lstm_layer->set_o_b_velocities(layer_object.get<std::vector<double>>("o-b-velocities"));
+    if (layer_object.has_key("o-b-m1")) lstm_layer->set_o_b_m1(layer_object.get<std::vector<double>>("o-b-m1"));
+    if (layer_object.has_key("o-b-m2")) lstm_layer->set_o_b_m2(layer_object.get<std::vector<double>>("o-b-m2"));
+    if (layer_object.has_key("o-b-timesteps")) lstm_layer->set_o_b_timesteps(layer_object.get<std::vector<long long>>("o-b-timesteps"));
+    if (layer_object.has_key("o-b-decays")) lstm_layer->set_o_b_decays(layer_object.get<std::vector<double>>("o-b-decays"));
   }
 
   // Residual projector
