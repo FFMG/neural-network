@@ -25,7 +25,7 @@ public:
     softmax
   };
 
-  activation(const method method, double alpha);
+  activation(const method method, double alpha, double temperature = 1.0);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
   activation& operator=(const activation& src) noexcept;
@@ -63,6 +63,26 @@ public:
 	  return _alpha;
   }
 
+  [[nodiscard]] inline double get_temperature() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    return _temperature;
+  }
+
+  inline void set_temperature(double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    _temperature = t;
+    if (_temperature < 1e-6) _temperature = 1e-6;
+  }
+
+  inline void scale_temperature(double factor) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    _temperature *= factor;
+    if (_temperature < 1e-6) _temperature = 1e-6;
+  }
+
 private:
   [[nodiscard]] double he_initialization(unsigned fan_in) const noexcept;
   [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept;
@@ -91,12 +111,13 @@ private:
   [[nodiscard]] static double calculate_gelu_derivative(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu_derivative(double x, double alpha) noexcept;
-  [[nodiscard]] static void calculate_softmax(double* begin, double* end) noexcept;
+  [[nodiscard]] static void calculate_softmax(double* begin, double* end, double temperature) noexcept;
   [[nodiscard]] static double calculate_softmax(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_softmax_derivative(double x, double alpha) noexcept;
 
   method _method;
   double _alpha;
+  double _temperature;
   activation_function _activate_ptr;
   activation_function _derivative_ptr;
 };
