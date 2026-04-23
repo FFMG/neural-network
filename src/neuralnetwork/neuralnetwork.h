@@ -39,10 +39,12 @@ public:
   virtual ~NeuralNetwork();
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
+  void calibrate_temperature(const std::vector<std::vector<double>>& validation_inputs, const std::vector<std::vector<double>>& validation_outputs);
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
+  void scale_temperature(unsigned output_layer_index, double factor) noexcept;
   [[nodiscard]] const Layers& get_layers() const;
   [[nodiscard]] const Layer& get_layer(unsigned index) const;
 
@@ -55,8 +57,9 @@ public:
   std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false) const;
 
   double get_learning_rate() const noexcept;
+  double get_temperature() const noexcept;
+  double get_temperature(unsigned output_layer_index) const noexcept;
   double get_percent_complete() const noexcept;
-
   bool has_training_data() const;
 
   inline NeuralNetworkOptions& options() noexcept { 

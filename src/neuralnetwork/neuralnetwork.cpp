@@ -117,6 +117,13 @@ const std::vector<unsigned>& NeuralNetwork::get_topology() const
   return _options.topology();
 }
 
+void NeuralNetwork::scale_temperature(unsigned output_layer_index, double factor) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  _layers.scale_temperature(output_layer_index, factor);
+}
+
 std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -250,6 +257,47 @@ void NeuralNetwork::create_batch_from_indexes(
   }
 }
 
+void NeuralNetwork::calibrate_temperature(const std::vector<std::vector<double>>& validation_inputs, const std::vector<std::vector<double>>& validation_outputs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (validation_inputs.empty() || validation_inputs.size() != validation_outputs.size())
+  {
+    return;
+  }
+
+  const unsigned num_heads = _options.has_multi_output() ? static_cast<unsigned>(_options.multi_output_layer_details().size()) : static_cast<unsigned>(_options.output_layer_details().size());
+  Logger::info("Calibrating temperature for ", num_heads, " output heads on ", validation_inputs.size(), " samples...");
+
+  for (unsigned head = 0; head < num_heads; ++head)
+  {
+    double best_temp = get_temperature(head);
+    double min_error = std::numeric_limits<double>::max();
+    const double initial_temp = best_temp;
+
+    // Search range: 0.1 to 5.0
+    for (double t = 0.1; t <= 5.01; t += 0.1)
+    {
+      scale_temperature(head, t / get_temperature(head));
+      
+      // Calculate error for this head using all validation data
+      auto all_metrics = calculate_forecast_metrics_all_layers({ ErrorCalculation::type::rmse }, false);
+      if (head < all_metrics.size() && !all_metrics[head].empty())
+      {
+        double current_error = all_metrics[head][0].error();
+        if (current_error < min_error)
+        {
+          min_error = current_error;
+          best_temp = t;
+        }
+      }
+    }
+
+    // Set to best found for this head
+    scale_temperature(head, best_temp / get_temperature(head));
+    Logger::info("Head #", head, " temperature calibrated from ", initial_temp, " to ", best_temp, " (Min RMSE: ", min_error, ")");
+  }
+}
+
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -271,6 +319,19 @@ double NeuralNetwork::get_learning_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _learning_rate;
+}
+
+double NeuralNetwork::get_temperature() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return get_temperature(0);
+}
+
+double NeuralNetwork::get_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  return _layers.get_temperature(output_layer_index);
 }
 
 double NeuralNetwork::get_percent_complete() const noexcept
@@ -642,6 +703,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   // finally learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
+
+  // Post-training temperature calibration using the validation set
+  calibrate_temperature(checking_training_inputs, checking_training_outputs);
 
   // final callback to show 100% done.
   if (progress_callback != nullptr)
