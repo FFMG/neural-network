@@ -12,9 +12,10 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation(const method method, double alpha) :
+activation::activation(const method method, double alpha, double temperature) :
   _method(method),
-  _alpha(alpha)
+  _alpha(alpha),
+  _temperature(temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -75,6 +76,7 @@ activation::activation(const method method, double alpha) :
 activation::activation(const activation& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
+  _temperature(src._temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -84,6 +86,7 @@ activation::activation(const activation& src) noexcept :
 activation::activation(activation&& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
+  _temperature(src._temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -97,6 +100,7 @@ activation& activation::operator=(const activation& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _temperature = src._temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -110,6 +114,7 @@ activation& activation::operator=(activation&& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _temperature = src._temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -133,7 +138,7 @@ void activation::activate(double* begin, double* end) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (_method == method::softmax)
   {
-    calculate_softmax(begin, end);
+    calculate_softmax(begin, end, _temperature);
   }
   else
   {
@@ -193,7 +198,7 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-void activation::calculate_softmax(double* begin, double* end) noexcept
+void activation::calculate_softmax(double* begin, double* end, double temperature) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (begin == end)
@@ -243,7 +248,6 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;
-  constexpr double temperature = 1.0;
   constexpr double LOGIT_CLAMP = 30.0;
 
   for (double* it = begin; it != end; ++it)
