@@ -73,55 +73,55 @@ public:
 
   [[nodiscard]] inline std::span<const double> get_gradients(unsigned layer) const
   {
-    return this->_gradients.get_span(layer);
+    return _gradients.get_span(layer);
   }
 
   [[nodiscard]] inline double* get_gradients_raw(unsigned layer)
   {
-    return this->_gradients.get_raw_ptr(layer);
+    return _gradients.get_raw_ptr(layer);
   }
 
   [[nodiscard]] inline const double* get_gradients_raw(unsigned layer) const
   {
-    return this->_gradients.get_raw_ptr(layer);
+    return _gradients.get_raw_ptr(layer);
   }
 
   inline void set_gradients(unsigned layer, const std::vector<double>& gradients)
   {
-    this->_gradients.set(layer, gradients);
+    _gradients.set(layer, gradients);
   }
 
   [[nodiscard]] inline std::span<const double> get_outputs(unsigned layer) const noexcept
   {
-    return this->_outputs.get_span(layer);
+    return _outputs.get_span(layer);
   }
 
   [[nodiscard]] inline double* get_outputs_raw(unsigned layer)
   {
-    return this->_outputs.get_raw_ptr(layer);
+    return _outputs.get_raw_ptr(layer);
   }
 
   [[nodiscard]] inline const double* get_outputs_raw(unsigned layer) const
   {
-    return this->_outputs.get_raw_ptr(layer);
+    return _outputs.get_raw_ptr(layer);
   }
 
   [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
   {
-    if (this->_outputs.number_neurons(layer) == neuron) return 1.0; // bias
-    return this->_outputs.get(layer, neuron);
+    if (_outputs.number_neurons(layer) == neuron) return 1.0; // bias
+    return _outputs.get(layer, neuron);
   }
 
   inline void set_outputs(unsigned layer, const std::vector<double>& outputs)
   {
-    this->_outputs.set(layer, outputs);
+    _outputs.set(layer, outputs);
   }
   
   [[nodiscard]] inline std::vector<double> output_back() const
   {
-    const size_t size = this->_outputs.number_layers();
+    const size_t size = _outputs.number_layers();
     if(size == 0) throw std::invalid_argument("No layers in container");
-    const auto s = this->_outputs.get_span(static_cast<unsigned>(size - 1));
+    const auto s = _outputs.get_span(static_cast<unsigned>(size - 1));
     return std::vector<double>(s.begin(), s.end());
   }
 

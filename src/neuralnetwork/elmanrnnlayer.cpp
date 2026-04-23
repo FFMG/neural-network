@@ -600,9 +600,9 @@ void ElmanRNNLayer::calculate_and_store_gradients(
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
   // 1. Reset gradients
-  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
   std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  if (has_bias()) std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+  if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
 
   // 2. Flatten batch inputs and rnn gradients for efficiency
   _flattened_inputs_buffer.resize(batch_size * num_time_steps * num_inputs);
@@ -665,7 +665,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(
             {
               continue;
             }
-            double* w_grad_row = &this->_w_grads[i * num_outputs];
+            double* w_grad_row = &_w_grads[i * num_outputs];
             for (size_t j = j0; j < j_limit; ++j)
             {
               w_grad_row[j] += x_val * g_row[j];
@@ -717,7 +717,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(
         const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
         for (unsigned j = 0; j < num_outputs; ++j)
         {
-          this->_b_grads[j] += g_row[j];
+          _b_grads[j] += g_row[j];
         }
       }
     }
@@ -727,10 +727,10 @@ void ElmanRNNLayer::calculate_and_store_gradients(
   const int active_ticks = t_start - t_end + 1;
   const double denom = static_cast<double>(batch_size) * active_ticks;
   const double inv_denom = 1.0 / (denom > 0 ? denom : 1.0);
-  for (double& grad : this->_w_grads) grad *= inv_denom;
+  for (double& grad : _w_grads) grad *= inv_denom;
   if (has_bias())
   {
-    for (double& grad : this->_b_grads)
+    for (double& grad : _b_grads)
     {
       grad *= inv_denom;
     }
@@ -748,7 +748,7 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   double norm_sq = 0.0;
-  for (const double grad : this->_w_grads)
+  for (const double grad : _w_grads)
   {
     norm_sq += grad * grad;
   }
@@ -758,7 +758,7 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
   }
   if (has_bias())
   {
-    for (const double grad : this->_b_grads)
+    for (const double grad : _b_grads)
     {
       norm_sq += grad * grad;
     }
@@ -770,7 +770,7 @@ void ElmanRNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   Layer::zero_gradients();
-  std::fill(this->_rw_grads.begin(), this->_rw_grads.end(), 0.0);
+  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
 }
 
 void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
@@ -785,13 +785,13 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
     for (unsigned i = 0; i < num_inputs; ++i)
     {
       unsigned weight_index = i * num_outputs + neuron_number;
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, get_optimiser_type(), neuron_number);
+      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, get_optimiser_type(), neuron_number);
     }
 
     // Apply bias weights
     if (has_bias())
     {
-      apply_weight_gradient(this->_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, get_optimiser_type(), neuron_number);
+      apply_weight_gradient(_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, get_optimiser_type(), neuron_number);
     }
         
     // Apply recurrent weights

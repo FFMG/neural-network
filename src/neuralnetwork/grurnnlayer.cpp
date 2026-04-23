@@ -1461,12 +1461,12 @@ void GRURNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   Layer::zero_gradients();
-  std::fill(this->_z_w_grads.begin(), this->_z_w_grads.end(), 0.0);
-  std::fill(this->_z_rw_grads.begin(), this->_z_rw_grads.end(), 0.0);
-  std::fill(this->_z_b_grads.begin(), this->_z_b_grads.end(), 0.0);
-  std::fill(this->_r_w_grads.begin(), this->_r_w_grads.begin(), 0.0);
-  std::fill(this->_r_rw_grads.begin(), this->_r_rw_grads.end(), 0.0);
-  std::fill(this->_r_b_grads.begin(), this->_r_b_grads.end(), 0.0);
+  std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
+  std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
+  std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
+  std::fill(_r_w_grads.begin(), _r_w_grads.begin(), 0.0);
+  std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
+  std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
 }
 
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)

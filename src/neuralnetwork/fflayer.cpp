@@ -525,10 +525,10 @@ void FFLayer::calculate_and_store_gradients(
   }
 
   // 2. Reset gradients
-  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
   if(has_bias())
   {
-    std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
   }
 
   // 3. Batched Weight Gradient Calculation (W_grad = X^T * G)
@@ -542,7 +542,7 @@ void FFLayer::calculate_and_store_gradients(
       const double x_val = x_row[i];
       if (x_val == 0.0) continue;
 
-      double* w_grad_row = &this->_w_grads[i * num_outputs];
+      double* w_grad_row = &_w_grads[i * num_outputs];
       for (size_t j = 0; j < num_outputs; ++j)
       {
         w_grad_row[j] += x_val * g_row[j];
@@ -558,20 +558,20 @@ void FFLayer::calculate_and_store_gradients(
       const double* g_row = &batch_grads_buffer[b * num_outputs];
       for (unsigned j = 0; j < num_outputs; ++j)
       {
-        this->_b_grads[j] += g_row[j];
+        _b_grads[j] += g_row[j];
       }
     }
   }
 
   // 5. Average gradients over batch
   const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
-  for (double& grad : this->_w_grads) 
+  for (double& grad : _w_grads) 
   {
     grad *= inv_batch_size;
   }
   if (has_bias())
   {
-    for (double& grad : this->_b_grads)
+    for (double& grad : _b_grads)
     {
       grad *= inv_batch_size;
     }
@@ -582,10 +582,10 @@ double FFLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   double norm_sq = 0.0;
-  for (const double grad : this->_w_grads) norm_sq += grad * grad;
+  for (const double grad : _w_grads) norm_sq += grad * grad;
   if (has_bias())
   {
-    for (const double grad : this->_b_grads)
+    for (const double grad : _b_grads)
     {
       norm_sq += grad * grad;
     }
@@ -605,24 +605,24 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
     for (unsigned i = 0; i < num_inputs; ++i)
     {
       unsigned weight_index = i * num_outputs + neuron_number;
-      double w_before = this->_w_values[weight_index];
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type, neuron_number);
-      double w_after = this->_w_values[weight_index];
+      double w_before = _w_values[weight_index];
+      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type, neuron_number);
+      double w_after = _w_values[weight_index];
       update_sum += std::abs(w_after - w_before);
     }
 
     if (has_bias())
     {
-      double b_before = this->_b_values[neuron_number];
-      apply_weight_gradient(this->_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
-      double b_after = this->_b_values[neuron_number];
+      double b_before = _b_values[neuron_number];
+      apply_weight_gradient(_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
+      double b_after = _b_values[neuron_number];
       update_sum += std::abs(b_after - b_before);
     }
   }
 
   // Clear gradients
-  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
-  std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
 }
 
 void FFLayer::run_gemm_backward(

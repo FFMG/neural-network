@@ -595,6 +595,6 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
   }
 
   // Clear gradients
-  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
-  std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
 }
