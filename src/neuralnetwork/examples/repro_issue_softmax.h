@@ -28,23 +28,38 @@ private:
   {
     MYODDWEB_PROFILE_FUNCTION("ExampleReproIssueSoftmax");
 
-    std::vector<unsigned> topology = { 17, 32, 64, 7 }; // 17 input, 32 hidden, 64 hidden, 2 reg + 5 softmax = 7 outputs
+    std::vector<unsigned> topology = { 1, 32, 64, 7 }; // 1 input, 32 hidden, 64 hidden, 2 reg + 5 softmax = 7 outputs
 
-    std::vector<LayerDetails> hidden_layers = {
+    std::vector<LayerDetails> hidden_layers = 
+    {
       LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9),
       LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9)
     };
 
     // Define compound output layers with prioritized classification lambdas
 
-    auto output_layers = {
-      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.01, 0.1, 0.1, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9),
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 5.0 }, 0.0, OptimiserType::NadamW, 0.9)
-    };
+    std::vector<MultiOutputLayerDetails> multi_output_layer_details;
+    MultiOutputLayerDetails b1
+    (
+      { 
+        LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) 
+      },
+      OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+    MultiOutputLayerDetails b2
+    (
+      {
+        LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
+      },
+      OutputLayerDetails(5, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
+    );
+
+    multi_output_layer_details.push_back(b1);
+    multi_output_layer_details.push_back(b2);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(16)
-      .with_output_layer_details(output_layers)
+      .with_output_layer_details(multi_output_layer_details)
       .with_log_level(log_level)
       .with_learning_rate(0.001)
       .with_clip_threshold(1.0)
@@ -243,10 +258,9 @@ static void ReproIssueMarketData(const std::string& save_nn_file, const std::str
     TEST_END
   }
 
-static void ReproIssueSoftmax(Logger::LogLevel log_level)
-{
-  TEST_START("Repro Issue Market Data")
-  // ... existing implementation ...
+  static void ReproIssueSoftmax(Logger::LogLevel log_level)
+  {
+    TEST_START("Repro Issue Market Data")
 
     srand(42); // Seed for reproducible results
 
