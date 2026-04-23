@@ -35,6 +35,7 @@ private:
       0.9
     );
     options.with_hidden_layers(hidden_layers);
+    options.build();
 
     return new NeuralNetwork(options);
   }

@@ -162,6 +162,7 @@
     <ClInclude Include="examples\compound_output_sandwich.h" />
     <ClInclude Include="examples\compound_softmax.h" />
     <ClInclude Include="examples\compound_trivial_softmax.h" />
+    <ClInclude Include="examples\lstm_multi.h" />
     <ClInclude Include="examples\multi_output.h" />
     <ClInclude Include="examples\multi_output_gru.h" />
     <ClInclude Include="examples\repro_issue.h" />
@@ -193,7 +194,7 @@
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
-    <ClInclude Include="multioutputlayer.h" />    
+    <ClInclude Include="multioutputlayer.h" />
     <ClInclude Include="multioutputlayerdetails.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
