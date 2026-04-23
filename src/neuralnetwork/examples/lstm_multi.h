@@ -26,10 +26,10 @@ private:
     // 2. Define multiple output layers
     // We want 2 separate output layers, each with 1 neuron.
     auto output_layers = {
-      // First output: Tanh
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9),
-      // Second output: Tanh
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
+      // First output: Tanh, Temperature 1.0
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9),
+      // Second output: Tanh, Temperature 1.0
+      OutputLayerDetails(1, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
     };
 
     // 3. Configure options
