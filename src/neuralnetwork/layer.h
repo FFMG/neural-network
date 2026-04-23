@@ -183,6 +183,39 @@ public:
     Logger::panic("Trying to initialize weight for neuron ", output_neuron_number, " which is not covered by any range!");
   }
 
+  inline void scale_temperature(double factor) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+    for (auto& r : _ranges)
+    {
+      r.activation_method.scale_temperature(factor);
+    }
+  }
+
+  [[nodiscard]] inline double get_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to get temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    return _ranges[range_index].activation_method.get_temperature();
+  }
+
+  inline void scale_temperature(unsigned range_index, double factor) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to scale temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    _ranges[range_index].activation_method.scale_temperature(factor);
+  }
+
 private:
   std::vector<range> _ranges;
   unsigned _number_input_neurons;
@@ -524,6 +557,24 @@ public:
   virtual void zero_gradients() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
+
+  virtual void scale_temperature(double factor) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    _layer_activation_helper.scale_temperature(factor);
+  }
+
+  [[nodiscard]] virtual double get_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper.get_temperature(range_index);
+  }
+
+  virtual void scale_temperature(unsigned range_index, double factor) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    _layer_activation_helper.scale_temperature(range_index, factor);
+  }
 
   void apply_update_to_vector(
     std::vector<double>& values,

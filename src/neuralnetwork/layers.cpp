@@ -168,6 +168,27 @@ Layer& Layers::operator[](unsigned index )
   return *_layers[index];
 }
 
+void Layers::scale_temperature(double factor) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  for (auto& layer : _layers)
+  {
+    layer->scale_temperature(factor);
+  }
+}
+
+double Layers::get_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return output_layer().get_temperature(output_layer_index);
+}
+
+void Layers::scale_temperature(unsigned output_layer_index, double factor) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  _layers.back()->scale_temperature(output_layer_index, factor);
+}
+
 const ResidualProjector* Layers::get_residual_layer_projector(unsigned index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
