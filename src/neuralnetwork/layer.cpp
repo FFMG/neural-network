@@ -198,8 +198,8 @@ void Layer::calculate_cross_entropy_error_deltas(
     // If softmax is used, temperature scaling applies to the gradient
     if (activation_method == activation::method::softmax)
     {
-        constexpr double temperature = 1.0;
-        grad /= temperature;
+      double temperature = get_activation(neuron_index).get_temperature();
+      grad /= temperature;
     }
 
     if (use_dir && activation_method == activation::method::softmax && gt_dir != 0 && pred_dir != gt_dir)
