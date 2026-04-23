@@ -13,6 +13,7 @@
 #include "./examples/compound_trivial_softmax.h"
 #include "./examples/copymemory.h"
 #include "./examples/lstm.h"
+#include "./examples/lstm_multi.h"
 #include "./examples/multi_output.h"
 #include "./examples/multi_output_gru.h"
 #include "./examples/repro_issue.h"
@@ -79,6 +80,8 @@ int main()
   
   // LSTM Test
   ExampleLstm::Run(log_level);
+  // LSTM Multi Test
+  ExampleLstmMulti::Run(log_level);
 
   MYODDWEB_PROFILE_END_SESSION();
 
