@@ -172,8 +172,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto layer_type_number = layer_object.get<int>("layer-type");
-  auto layer_type = (Layer::LayerType)layer_type_number;
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::LayerRole)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -210,7 +210,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
 
   auto layer = std::make_unique<ElmanRNNLayer>(
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     neurons,
@@ -262,8 +262,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto layer_type_number = layer_object.get<int>("layer-type");
-  auto layer_type = (Layer::LayerType)layer_type_number;
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::LayerRole)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -348,7 +348,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
 
   auto layer = std::make_unique<GRURNNLayer>(
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     neurons,
@@ -444,8 +444,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto layer_type_number = layer_object.get<int>("layer-type");
-  auto layer_type = (Layer::LayerType)layer_type_number;
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::LayerRole)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -558,7 +558,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
 
   auto layer = std::make_unique<LSTMLayer>(
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     neurons,
@@ -622,8 +622,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   }
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
-  auto layer_type_number = layer_object.get<int>("layer-type");
-  auto layer_type = (Layer::LayerType)layer_type_number;
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::LayerRole)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -650,7 +650,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
 
   auto layer = std::make_unique<FFLayer>(
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     number_input_neurons,
@@ -689,8 +689,6 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
   auto neurons = get_neurons(layer_object, layer_index);
-
-  auto layer_type_number = layer_object.get<int>("layer-type");
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -1364,7 +1362,7 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer.get_activation_helper(), *layer_object);
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -1422,7 +1420,7 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer.get_activation_helper(), *layer_object);
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -1529,7 +1527,7 @@ void NeuralNetworkSerializer::add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJ
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer.get_activation_helper(), *layer_object);
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -1664,7 +1662,7 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer.get_activation_helper(), *layer_object);
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_floats("w-values", layer.get_w_values());
@@ -1711,7 +1709,7 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
   layer_object->set_string("layer-name", "ffoutputlayer");
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
@@ -2023,7 +2021,7 @@ void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_object = new TinyJSON::TJValueObject();
   layer_object->set_string("layer-name", "multioutputlayer");
-  layer_object->set_number("layer-type", (int)layer.get_layer_type());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   

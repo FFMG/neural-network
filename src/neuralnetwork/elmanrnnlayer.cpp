@@ -7,7 +7,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   unsigned num_neurons_in_previous_layer, 
   unsigned num_neurons_in_this_layer, 
   double weight_decay,
-  LayerType layer_type, 
+  LayerRole layer_role,
   const activation& activation_method,
   const OptimiserType& optimiser_type, 
   int residual_layer_number,
@@ -22,7 +22,7 @@ ElmanRNNLayer::ElmanRNNLayer(
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer) * num_neurons_in_this_layer, weight_decay),
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -41,7 +41,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   const std::vector<double>& weight_decays,
-  LayerType layer_type,
+  LayerRole layer_role,
   const activation& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
@@ -53,7 +53,7 @@ ElmanRNNLayer::ElmanRNNLayer(
 ) :
   Layer(
     layer_index,
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -102,7 +102,7 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
 
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
-  const LayerType layer_type,
+  const LayerRole layer_role,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   const std::vector<Neuron>& neurons,
@@ -134,7 +134,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   Layer
   (
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     neurons,
