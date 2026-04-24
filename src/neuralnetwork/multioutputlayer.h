@@ -249,10 +249,29 @@ public:
     for (size_t b = 0; b < batch_size; ++b)
     {
        const auto trunk_output_span = batch_gradients_and_outputs[b].get_outputs(trunk_layer_index);
+       
+       if (b == 0)
+       {
+         Logger::trace(
+           [&trunk_layer_index, &trunk_output_span]
+           {
+             return Logger::factory("MultiOutputLayer [b=0] trunk_layer_index=", trunk_layer_index, " span_size=", trunk_output_span.size());
+           });
+       }
+
        std::vector<double> trunk_output(trunk_output_span.begin(), trunk_output_span.end());
        for (size_t i = 0; i < _branches.size(); ++i)
        {
-         const_cast<Branch&>(_branches[i]).gradients_and_outputs[b].set_outputs(0, trunk_output);
+         auto& branch = const_cast<Branch&>(_branches[i]);
+         if (b == 0) 
+         {
+           Logger::trace(
+             [&i, &branch] 
+             {
+               return Logger::factory("  Branch ", i, " input topology[0]=", branch.topology[0]);
+             });
+         }
+         branch.gradients_and_outputs[b].set_outputs(0, trunk_output);
        }
     }
 
