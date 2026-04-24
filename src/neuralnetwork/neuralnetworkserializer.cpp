@@ -829,9 +829,9 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     const auto momentum = phlo->get<double>("momentum");
 
 
-    const auto layer_type_string = phlo->try_get_string("type");
+    const auto layer_architecture_string = phlo->try_get_string("architecture");
     hidden_layer.emplace_back(LayerDetails(
-      Layer::architecture_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
+      Layer::architecture_from_string(layer_architecture_string == nullptr ? "ff" : layer_architecture_string),
       phlo->get<unsigned>("size"),
       activation(hidden_method, hidden_alpha, hidden_temperature),
       phlo->get<double>("dropout"),
@@ -1779,7 +1779,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
   for (const auto& hl : hidden_layers)
   {
     auto hidden_layer_object = new TinyJSON::TJValueObject();
-    hidden_layer_object->set("type", Layer::architecture_to_string(hl.get_layer_architecture()).c_str());
+    hidden_layer_object->set("architecture", Layer::architecture_to_string(hl.get_layer_architecture()).c_str());
     hidden_layer_object->set("size", hl.get_size());
     hidden_layer_object->set("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
     hidden_layer_object->set("activation-alpha", hl.get_activation().get_alpha());
