@@ -588,7 +588,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (_layer_role == LayerRole::Output)
+    if (_layer_role == Role::Output)
     {
       Logger::panic("The output layer MUST pass the neuron number!");
     }
@@ -1046,7 +1046,7 @@ public:
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer"); 
 #if VALIDATE_DATA == 1
-    if (_layer_role == LayerRole::Output)
+    if (_layer_role == Role::Output)
     {
       Logger::panic("The output layer MUST pass the neuron number to get momentum!");
     }
