@@ -225,7 +225,7 @@ private:
 class Layer
 {
 public:
-  enum class LayerType
+  enum class LayerRole
   {
     Input,
     Hidden,
@@ -241,7 +241,7 @@ public:
 
   Layer(const Layer& src) noexcept :
     _layer_index(src._layer_index),
-    _layer_type(src._layer_type),
+    _layer_role(src._layer_role),
     _optimiser_type(src._optimiser_type),
     _residual_layer_number(src._residual_layer_number),
     _neurons(src._neurons),
@@ -277,7 +277,7 @@ public:
 
   Layer(Layer&& src) noexcept :
     _layer_index(src._layer_index),
-    _layer_type(src._layer_type),
+    _layer_role(src._layer_role),
     _optimiser_type(std::move(src._optimiser_type)),
     _neurons(std::move(src._neurons)),
     _w_values(std::move(src._w_values)),
@@ -301,7 +301,7 @@ public:
     _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    src._layer_type = LayerType::Input;
+    src._layer_role = LayerRole::Input;
     src._layer_index = 0;
     src._optimiser_type = OptimiserType::None;
     src._residual_layer_number = 0;
@@ -314,7 +314,7 @@ public:
     if (this != &src)
     {
       _layer_index = src._layer_index;
-      _layer_type = src._layer_type;
+      _layer_role = src._layer_role;
       _optimiser_type = src._optimiser_type;
       _neurons = src._neurons;
 
@@ -362,7 +362,7 @@ public:
     if (this != &src)
     {
       _layer_index = src._layer_index;
-      _layer_type = src._layer_type;
+      _layer_role = src._layer_role;
       _optimiser_type = std::move(src._optimiser_type);
       _neurons = std::move(src._neurons);
 
@@ -425,10 +425,10 @@ public:
     return _layer_index;
   }
 
-  [[nodiscard]] inline LayerType get_layer_type() const noexcept
+  [[nodiscard]] inline LayerRole get_layer_role() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _layer_type;
+    return _layer_role;
   }
 
   [[nodiscard]] inline int get_residual_layer_number() const noexcept
@@ -513,7 +513,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (_layer_type == LayerType::Output)
+    if (_layer_role == LayerRole::Output)
     {
       Logger::panic("The output layer MUST pass the neuron number!");
     }
@@ -971,7 +971,7 @@ public:
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer"); 
 #if VALIDATE_DATA == 1
-    if (_layer_type == LayerType::Output)
+    if (_layer_role == LayerRole::Output)
     {
       Logger::panic("The output layer MUST pass the neuron number to get momentum!");
     }
@@ -1120,7 +1120,7 @@ public:
 protected:
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    LayerRole layer_role,
     const layer_activation_helper& lah,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1132,7 +1132,7 @@ protected:
     double momentum
   ) :
     _layer_index(layer_index),
-    _layer_type(layer_type),
+    _layer_role(layer_role),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
     _neurons(neurons),
@@ -1181,7 +1181,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    LayerRole layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1197,7 +1197,7 @@ protected:
     Layer
     (
       layer_index,
-      layer_type,
+      layer_role,
       layer_activation_helper(activation_method, number_input_neurons, number_output_neurons),
       optimiser_type,
       residual_layer_number,
@@ -1214,7 +1214,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    LayerRole layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1228,7 +1228,7 @@ protected:
     double momentum
   ) : Layer(
     layer_index,
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -1247,7 +1247,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerType layer_type,
+    const LayerRole layer_role,
     const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1274,7 +1274,7 @@ protected:
   ) noexcept :
     Layer(
       layer_index,
-      layer_type,
+      layer_role,
       optimiser_type,
       residual_layer_number,
       neurons,
@@ -1303,7 +1303,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerType layer_type,
+    const LayerRole layer_role,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     const std::vector<Neuron>& neurons,
@@ -1327,7 +1327,7 @@ protected:
     double momentum
   ) noexcept :
     _layer_index(layer_index),
-    _layer_type(layer_type),
+    _layer_role(layer_role),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
     _neurons(neurons),
@@ -1370,7 +1370,7 @@ protected:
   }
 
   unsigned _layer_index;
-  LayerType _layer_type;
+  LayerRole _layer_role;
   OptimiserType _optimiser_type;
   int _residual_layer_number;
   std::vector<Neuron> _neurons;

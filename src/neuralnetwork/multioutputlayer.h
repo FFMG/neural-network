@@ -21,7 +21,7 @@ class MultiInputProxyLayer final : public Layer
 {
 public:
   MultiInputProxyLayer(unsigned num_neurons) :
-    Layer(0, Layer::LayerType::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
+    Layer(0, LayerRole::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
@@ -146,7 +146,7 @@ public:
     int number_of_threads,
     bool has_bias
   ) :
-    Layer(layer_index, Layer::LayerType::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
+    Layer(layer_index, LayerRole::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
     OutputLayer(extract_output_details(multi_output_layer_details))
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
@@ -166,7 +166,7 @@ public:
           prev_n,
           ld.get_size(),
           ld.get_weight_decay(),
-          Layer::LayerType::Hidden,
+          LayerRole::Hidden,
           ld.get_activation(),
           ld.get_optimiser_type(),
           -1,
