@@ -240,7 +240,7 @@ public:
     Input,
     Hidden,
     Output,
-    Branched
+    MultiOutput
   };
 
   [[nodiscard]] inline static std::string architecture_to_string(const Architecture& architecture)
