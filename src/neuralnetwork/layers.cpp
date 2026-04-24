@@ -249,7 +249,7 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     0, 
     num_neurons_in_this_layer, 
     0.0,      // no weight decay
-    Layer::LayerRole::Input,
+    Layer::Role::Input,
     activation(activation::method::linear, 0.00),   //  Linear has no activation apha
     OptimiserType::None, 
     residual_layer_number, 
@@ -277,15 +277,15 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
 
   unsigned num_neurons_in_this_layer = layer_details.get_size();
 
-  switch (layer_details.get_type())
+  switch (layer_details.get_layer_architecture())
   {
-  case LayerDetails::LayerType::Elman:
+  case Layer::Architecture::Elman:
     return std::make_unique<ElmanRNNLayer>(
       layer_index, 
       previous_layer.get_number_neurons(), 
       num_neurons_in_this_layer, 
       weight_decay, 
-      Layer::LayerRole::Hidden,
+      Layer::Role::Hidden,
       layer_details.get_activation(),
       optimiser_type, 
       residual_layer_number, 
@@ -295,13 +295,13 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       has_bias, 
       momentum);
 
-  case LayerDetails::LayerType::Gru:
+  case Layer::Architecture::Gru:
     return std::make_unique<GRURNNLayer>(
       layer_index,
       previous_layer.get_number_neurons(),
       num_neurons_in_this_layer,
       weight_decay,
-      Layer::LayerRole::Hidden,
+      Layer::Role::Hidden,
       layer_details.get_activation(),
       optimiser_type,
       residual_layer_number,
@@ -311,13 +311,13 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       has_bias,
       momentum);
 
-  case LayerDetails::LayerType::Lstm:
+  case Layer::Architecture::Lstm:
     return std::make_unique<LSTMLayer>(
       layer_index,
       previous_layer.get_number_neurons(),
       num_neurons_in_this_layer,
       weight_decay,
-      Layer::LayerRole::Hidden,
+      Layer::Role::Hidden,
       layer_details.get_activation(),
       optimiser_type,
       residual_layer_number,
@@ -327,13 +327,13 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
       has_bias,
       momentum);
 
-  case LayerDetails::LayerType::FF:
+  case Layer::Architecture::FF:
     return std::make_unique<FFLayer>(
       layer_index, 
       previous_layer.get_number_neurons(),
       num_neurons_in_this_layer, 
       weight_decay, 
-      Layer::LayerRole::Hidden,
+      Layer::Role::Hidden,
       layer_details.get_activation(),
       optimiser_type, 
       residual_layer_number,

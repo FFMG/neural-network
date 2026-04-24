@@ -26,7 +26,7 @@ private:
     // Set the hidden layer to LSTM
     std::vector<LayerDetails> hidden_layers;
     hidden_layers.emplace_back(
-      LayerDetails::LayerType::Lstm,
+      Layer::Architecture::Lstm,
       10,
       activation(activation::method::tanh, 0.0),
       0.0, // dropout

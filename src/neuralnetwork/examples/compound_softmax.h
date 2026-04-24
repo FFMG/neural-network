@@ -34,8 +34,8 @@ private:
     std::vector<unsigned> topology = { 1, 16, 16, 6 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95),
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95)
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95),
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95)
     };
 
     // Define compound output layers

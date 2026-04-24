@@ -15,7 +15,7 @@ public:
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
-    LayerRole layer_role,
+    Role layer_role,
     const activation& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
@@ -29,7 +29,7 @@ public:
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
     const std::vector<double>& weight_decays,
-    LayerRole layer_role,
+    Role layer_role,
     const activation& activation_method,
     const OptimiserType& optimiser_type,
     int residual_layer_number,
@@ -41,7 +41,7 @@ public:
 
   ElmanRNNLayer(
     unsigned layer_index,
-    const LayerRole layer_role,
+    const Role layer_role,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     const std::vector<Neuron>& neurons,
@@ -77,6 +77,12 @@ public:
   ElmanRNNLayer& operator=(const ElmanRNNLayer& src) noexcept;
   ElmanRNNLayer& operator=(ElmanRNNLayer&& src) noexcept;
   virtual ~ElmanRNNLayer();
+
+  [[nodiscard]] inline virtual Architecture get_layer_architecture() const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return Architecture::Elman;
+  }
 
 public:
   bool use_bptt() const noexcept override 

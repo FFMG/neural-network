@@ -225,13 +225,86 @@ private:
 class Layer
 {
 public:
-  enum class LayerRole
+  enum class Architecture
+  {
+    None,
+    FF,
+    Elman,
+    Gru,
+    Lstm,
+    MultiOutput
+  };
+
+  enum class Role
   {
     Input,
     Hidden,
     Output,
     Branched
   };
+
+  [[nodiscard]] inline static std::string architecture_to_string(const Architecture& architecture)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (architecture)
+    {
+    case Architecture::None:
+      return "None";
+
+    case Architecture::FF:
+      return "FF";
+
+    case Architecture::Elman:
+      return "Elman";
+
+    case Architecture::Gru:
+      return "Gru";
+
+    case Architecture::Lstm:
+      return "Lstm";
+
+    case Architecture::MultiOutput:
+      return "MultiOutput";
+
+    default:
+      Logger::panic("Unknown Layer architecture: ", (int)architecture);
+    }
+  }
+
+  [[nodiscard]] inline static Architecture architecture_from_string(const std::string& str)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    std::string lower_str = str;
+    // Convert the string to lowercase for case-insensitive comparison
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+      [](unsigned char c) { return std::tolower(c); });
+
+    if (lower_str == "none")
+    {
+      return Architecture::None;
+    }
+    if (lower_str == "ff")
+    {
+      return Architecture::FF;
+    }
+    if (lower_str == "elman")
+    {
+      return Architecture::Elman;
+    }
+    if (lower_str == "gru")
+    {
+      return Architecture::Gru;
+    }
+    if (lower_str == "lstm")
+    {
+      return Architecture::Lstm;
+    }
+    if (lower_str == "multioutput")
+    {
+      return Architecture::MultiOutput;
+    }
+    Logger::panic("Unknown Layer architecture: ", str);
+  }
 
   [[nodiscard]] static std::vector<double> create_w_decays(unsigned number_input_neurons, unsigned number_output_neurons, double decay)
   {
@@ -301,7 +374,7 @@ public:
     _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    src._layer_role = LayerRole::Input;
+    src._layer_role = Role::Input;
     src._layer_index = 0;
     src._optimiser_type = OptimiserType::None;
     src._residual_layer_number = 0;
@@ -413,6 +486,8 @@ public:
     Logger::panic("Only output layers can calculate output metrics!");
   }
 
+  [[nodiscard]] virtual Architecture get_layer_architecture() const = 0;
+
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -425,7 +500,7 @@ public:
     return _layer_index;
   }
 
-  [[nodiscard]] inline LayerRole get_layer_role() const noexcept
+  [[nodiscard]] inline Role get_layer_role() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_role;
@@ -1120,7 +1195,7 @@ public:
 protected:
   Layer(
     unsigned layer_index,
-    LayerRole layer_role,
+    Role layer_role,
     const layer_activation_helper& lah,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1181,7 +1256,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerRole layer_role,
+    Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1214,7 +1289,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerRole layer_role,
+    Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1247,7 +1322,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerRole layer_role,
+    const Role layer_role,
     const activation& activation_method,
     const OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1303,7 +1378,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerRole layer_role,
+    const Role layer_role,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     const std::vector<Neuron>& neurons,
@@ -1370,7 +1445,7 @@ protected:
   }
 
   unsigned _layer_index;
-  LayerRole _layer_role;
+  Role _layer_role;
   OptimiserType _optimiser_type;
   int _residual_layer_number;
   std::vector<Neuron> _neurons;

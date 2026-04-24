@@ -21,9 +21,15 @@ class MultiInputProxyLayer final : public Layer
 {
 public:
   MultiInputProxyLayer(unsigned num_neurons) :
-    Layer(0, LayerRole::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
+    Layer(0, Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+  }
+
+  [[nodiscard]] inline virtual Architecture get_layer_architecture() const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+    return Architecture::MultiOutput;
   }
 
   Layer* clone() const override
@@ -40,9 +46,37 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
-  void calculate_hidden_gradients(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, const std::vector<HiddenStates>&, size_t, int) const override
+  void calculate_hidden_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& /*batch_hidden_states*/,
+    size_t batch_size,
+    int /*bptt_max_ticks*/) const override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+    const size_t N_this = get_number_neurons();
+    const size_t N_next = next_layer.get_number_neurons();
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const double* next_grads = batch_next_grad_matrix[b].data();
+      // If next layer is RNN, it might have sequence gradients. 
+      // But trunk-to-branch connection is usually many-to-one (last step or expanded).
+      // We assume standard non-RNN gradient flow for the proxy interface.
+      
+      std::vector<double> gradients(N_this, 0.0);
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        double sum = 0.0;
+        for (size_t k = 0; k < N_next; ++k)
+        {
+          sum += next_grads[k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
+        }
+        gradients[j] = sum;
+      }
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
+    }
   }
   void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override
   {
@@ -146,7 +180,7 @@ public:
     int number_of_threads,
     bool has_bias
   ) :
-    Layer(layer_index, LayerRole::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
+    Layer(layer_index, Role::Branched, layer_activation_helper(activation(activation::method::linear, 0.0), num_inputs, num_outputs), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
     OutputLayer(extract_output_details(multi_output_layer_details))
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
@@ -166,7 +200,7 @@ public:
           prev_n,
           ld.get_size(),
           ld.get_weight_decay(),
-          LayerRole::Hidden,
+          Role::Hidden,
           ld.get_activation(),
           ld.get_optimiser_type(),
           -1,
@@ -219,6 +253,12 @@ public:
   virtual ~MultiOutputLayer()
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+  }
+
+  [[nodiscard]] inline virtual Architecture get_layer_architecture() const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    return Architecture::MultiOutput;
   }
 
   Layer* clone() const override
@@ -366,13 +406,19 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
+    MultiInputProxyLayer proxy(get_number_input_neurons());
+
     for (auto& branch : const_cast<std::vector<Branch>&>(_branches))
     {
-      for (int l_idx = (int)branch.layers.size() - 2; l_idx >= 0; --l_idx)
+      // 1. Backprop through the branch layers (from Output to first Hidden)
+      for (int l_idx = (int)branch.layers.size() - 1; l_idx >= 0; --l_idx)
       {
         auto& current = *branch.layers[l_idx];
-        const auto& next = *branch.layers[l_idx+1];
+        const auto& next = (l_idx == (int)branch.layers.size() - 1) ? current : *branch.layers[l_idx+1];
         
+        // Skip output layer itself as its gradients were already set by calculate_output_gradients
+        if (l_idx == (int)branch.layers.size() - 1) continue;
+
         std::vector<std::vector<double>> batch_next_gradients;
         batch_next_gradients.reserve(batch_size);
         for(size_t b=0; b<batch_size; ++b)
@@ -390,6 +436,25 @@ public:
           bptt_max_ticks
         );
       }
+
+      // 2. Finally, calculate gradients for the branch input (index 0) using the proxy layer
+      // This is what get_trunk_gradients() will sum up.
+      const auto& first_layer = *branch.layers[0];
+      std::vector<std::vector<double>> batch_first_gradients;
+      batch_first_gradients.reserve(batch_size);
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        const auto g_span = branch.gradients_and_outputs[b].get_gradients(first_layer.get_layer_index());
+        batch_first_gradients.emplace_back(g_span.begin(), g_span.end());
+      }
+      proxy.calculate_hidden_gradients(
+        branch.gradients_and_outputs,
+        first_layer,
+        batch_first_gradients,
+        branch.hidden_states,
+        batch_size,
+        bptt_max_ticks
+      );
     }
   }
 
