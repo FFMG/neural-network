@@ -295,11 +295,11 @@ public:
             const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
             const size_t n_prev = prev_l.get_number_neurons();
             const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            branch.hidden_states[b].at(current_l.get_layer_index()).assign(num_time_steps, HiddenState(current_l.get_number_neurons()));
+            branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState());
           }
           else
           {
-            branch.hidden_states[b].at(current_l.get_layer_index()).assign(1, HiddenState(current_l.get_number_neurons()));
+            branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState());
           }
         }
 
