@@ -570,10 +570,12 @@ void LSTMLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutp
     for (int t = t_start; t >= t_end; --t)
     {
       const auto& state = layer_states[t];
-      const auto& packed = state.get_pre_activation_sums();
-      const auto& c_curr = state.get_cell_state_values();
-      const std::vector<double>& c_prev = (t > 0) ? layer_states[t - 1].get_cell_state_values() : std::vector<double>(N_this, 0.0);
-      const std::vector<double>& h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values() : std::vector<double>(N_this, 0.0);
+      const auto packed = state.get_pre_activation_sums();
+      const auto c_curr = state.get_cell_state_values();
+      
+      const bool has_prev = (t > 0);
+      const auto c_prev = has_prev ? layer_states[t - 1].get_cell_state_values() : std::span<double>();
+      const auto h_prev = has_prev ? layer_states[t - 1].get_hidden_state_values() : std::span<double>();
       
       const double* f = &packed[0];
       const double* i = &packed[N_this];
@@ -588,7 +590,7 @@ void LSTMLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutp
         double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
         double dc = dh * o[j] * (1.0 - tanh_c * tanh_c) + dc_next[j];
         double g = std::tanh(g_pre[j]);
-        double df = dc * c_prev[j] * f[j] * (1.0 - f[j]);
+        double df = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
         double di = dc * g * i[j] * (1.0 - i[j]);
         double dg = dc * i[j] * (1.0 - g * g);
         _f_b_grads[j] += df; _i_b_grads[j] += di; _o_b_grads[j] += do_gate; _b_grads[j] += dg;

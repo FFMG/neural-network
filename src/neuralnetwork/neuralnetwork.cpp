@@ -995,11 +995,11 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
             
             const size_t n_prev = previous_layer.get_number_neurons();
             const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
+            hidden_states[b].assign(layer_number, num_time_steps, HiddenState());
         }
         else
         {
-            hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
+            hidden_states[b].assign(layer_number, 1, HiddenState());
         }
     }
 
