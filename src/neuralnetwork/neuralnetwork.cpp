@@ -469,7 +469,7 @@ void NeuralNetwork::train_single_batch(
   _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
 
-void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
+void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   bptt_inputs.clear();
@@ -485,70 +485,66 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     Logger::panic("The training input data size does not match the output data size!");
   }
 
-  const auto& bptt_size = _options.bptt_max_ticks();
+  const auto& bptt_size = static_cast<size_t>(_options.bptt_max_ticks());
   const size_t batch_size = static_cast<size_t>(_options.batch_size());
 
-  // If BPTT is disabled or sequence length is 1, we just need to split the data into batches of 'batch_size'
+  // If BPTT is disabled or sequence length is 1, return single steps
   if (bptt_size <= 1 || !_options.enable_bptt())
   {
-    for (size_t i = 0; i < total_samples; i += batch_size)
+    bptt_inputs.reserve(total_samples);
+    bptt_outputs.reserve(total_samples);
+    for (size_t i = 0; i < total_samples; ++i)
     {
-      size_t end_idx = std::min(i + batch_size, total_samples);
-      bptt_inputs.emplace_back(inputs.begin() + i, inputs.begin() + end_idx);
-      bptt_outputs.emplace_back(outputs.begin() + i, outputs.begin() + end_idx);
+      bptt_inputs.push_back(inputs[i]);
+      bptt_outputs.push_back(outputs[i]);
     }
     return;
   }
 
   const auto& is_shuffled = _options.shuffle_bptt_batches();
+  const size_t input_size = inputs[0].size();
+  const size_t output_size = outputs[0].size();
 
-  // Create sequences
-  std::vector<std::vector<std::vector<double>>> sequences_inputs;
-  std::vector<std::vector<std::vector<double>>> sequences_outputs;
-
-  for (size_t start_idx = 0; start_idx < total_samples; start_idx += bptt_size)
+  // 1. Identify valid sequence start indices
+  std::vector<size_t> start_indices;
+  for (size_t start_idx = 0; start_idx + bptt_size <= total_samples; start_idx += bptt_size)
   {
-    size_t end_idx = std::min(start_idx + bptt_size, total_samples);
+    start_indices.push_back(start_idx);
+  }
 
-    std::vector<std::vector<double>> seq_input(inputs.begin() + start_idx, inputs.begin() + end_idx);
-    std::vector<std::vector<double>> seq_output(outputs.begin() + start_idx, outputs.begin() + end_idx);
+  // 2. Shuffle indices instead of data if requested
+  if (is_shuffled)
+  {
+    std::vector<size_t> shuffled_indices = start_indices;
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(shuffled_indices.begin(), shuffled_indices.end(), g);
+    start_indices = std::move(shuffled_indices);
+  }
 
-    // Optionally skip incomplete sequences (last one)
-    if (seq_input.size() < bptt_size)
+  // 3. Create flattened sequences
+  bptt_inputs.reserve(start_indices.size());
+  bptt_outputs.reserve(start_indices.size());
+
+  for (size_t start_idx : start_indices)
+  {
+    std::vector<double> flattened_in;
+    flattened_in.reserve(bptt_size * input_size);
+    std::vector<double> flattened_out;
+    flattened_out.reserve(bptt_size * output_size);
+
+    for (size_t t = 0; t < bptt_size; ++t)
     {
-      continue;
+      const auto& in_step = inputs[start_idx + t];
+      flattened_in.insert(flattened_in.end(), in_step.begin(), in_step.end());
+
+      const auto& out_step = outputs[start_idx + t];
+      flattened_out.insert(flattened_out.end(), out_step.begin(), out_step.end());
     }
 
-    sequences_inputs.push_back(std::move(seq_input));
-    sequences_outputs.push_back(std::move(seq_output));
+    bptt_inputs.push_back(std::move(flattened_in));
+    bptt_outputs.push_back(std::move(flattened_out));
   }
-
-  // Shuffle sequences if needed
-  if (!is_shuffled)
-  {
-    bptt_inputs = std::move(sequences_inputs);
-    bptt_outputs = std::move(sequences_outputs);
-    return;
-  }
-
-  std::vector<size_t> indices(sequences_inputs.size());
-  for (size_t i = 0; i < indices.size(); ++i) indices[i] = i;
-
-  std::random_device rd;
-  std::mt19937 g(rd());
-  std::shuffle(indices.begin(), indices.end(), g);
-
-  std::vector<std::vector<std::vector<double>>> shuffled_inputs;
-  std::vector<std::vector<std::vector<double>>> shuffled_outputs;
-
-  for (size_t idx : indices)
-  {
-    shuffled_inputs.push_back(std::move(sequences_inputs[idx]));
-    shuffled_outputs.push_back(std::move(sequences_outputs[idx]));
-  }
-
-  bptt_inputs = std::move(shuffled_inputs);
-  bptt_outputs = std::move(shuffled_outputs);
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -639,8 +635,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
-  std::vector<std::vector<std::vector<double>>> bptt_in;
-  std::vector<std::vector<std::vector<double>>> bptt_out;
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
@@ -651,14 +647,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
-    // (re) create the bptt batches
+    // (re) create the bptt batches (now returns flattened sequences)
     create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
-    const auto bptt_indexes_size = bptt_out.size();
-    for (size_t bptt_index = 0; bptt_index < bptt_indexes_size; ++bptt_index)
+    const size_t total_sequences = bptt_in.size();
+    for (size_t i = 0; i < total_sequences; i += batch_size)
     {
-      const auto total_size = bptt_out[bptt_index].size();
-      train_single_batch( bptt_in[bptt_index].begin(), bptt_out[bptt_index].begin(), total_size);
+      const size_t current_batch_size = std::min(static_cast<size_t>(batch_size), total_sequences - i);
+      train_single_batch(bptt_in.begin() + i, bptt_out.begin() + i, current_batch_size);
     }
     MYODDWEB_PROFILE_MARK();
 
