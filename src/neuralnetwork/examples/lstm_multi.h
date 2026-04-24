@@ -20,23 +20,59 @@ private:
   {
     MYODDWEB_PROFILE_FUNCTION("ExampleLstmMulti");
     
-    // 1. Topology: 1 input, 10 hidden neurons, 2 total output neurons
-    std::vector<unsigned> topology = { 1, 10, 20, 2 };
+    // 1. Topology: 17 inputs, 80 hidden neurons, 7 total output neurons
+    std::vector<unsigned> topology = { 17, 80, 40, 7 };
 
     // 2. Define multiple output layers
-    // We want 2 separate output layers, each with 1 neuron.
+    // We want 2 separate output layers, one with 5 neurons and one with 2 neurons.
     auto output_layers = {
-      // First output: Tanh, Temperature 1.0
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9),
-      // Second output: Tanh, Temperature 1.0
-      OutputLayerDetails(1, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
+      MultiOutputLayerDetails(
+        {
+          LayerDetails(Layer::Architecture::FF,
+                16,
+                activation(activation::method::tanh, 0.0, 1.0),
+                0.0, // dropout
+                0.01, // weight decay
+                OptimiserType::Adam,
+                0.9),
+          LayerDetails(Layer::Architecture::FF,
+                32,
+                activation(activation::method::tanh, 0.0, 1.0),
+                0.0, // dropout
+                0.01, // weight decay
+                OptimiserType::Adam,
+                0.9)
+        },
+        OutputLayerDetails(5, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
+      ),
+      MultiOutputLayerDetails(
+        {
+          LayerDetails(Layer::Architecture::FF,
+                16,
+                activation(activation::method::tanh, 0.0, 1.0),
+                0.0, // dropout
+                0.01, // weight decay
+                OptimiserType::Adam,
+                0.9),
+          LayerDetails(Layer::Architecture::FF,
+                32,
+                activation(activation::method::tanh, 0.0, 1.0),
+                0.0, // dropout
+                0.01, // weight decay
+                OptimiserType::Adam,
+                0.9)
+        },
+        // Second output: Tanh, Temperature 1.0
+        OutputLayerDetails(2, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
+        )
+
     };
 
     // 3. Configure options
     auto options = NeuralNetworkOptions::create(topology)
       .with_log_level(log_level)
       .with_learning_rate(0.01)
-      .with_number_of_epoch(500)
+      .with_number_of_epoch(5000)
       .with_batch_size(1)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(4) // sequence length
@@ -45,18 +81,18 @@ private:
     // Set the hidden layer to LSTM
     std::vector<LayerDetails> hidden_layers;
     hidden_layers.emplace_back(
-      LayerDetails::LayerType::Lstm,
-      10,
-      activation(activation::method::tanh, 0.0),
+      Layer::Architecture::Lstm,
+      80,
+      activation(activation::method::tanh, 0.0, 1.0),
       0.0, // dropout
       0.01, // weight decay
       OptimiserType::Adam,
       0.9
     );
     hidden_layers.emplace_back(
-      LayerDetails::LayerType::Lstm,
-      20,
-      activation(activation::method::tanh, 0.0),
+      Layer::Architecture::Lstm,
+      40,
+      activation(activation::method::tanh, 0.0, 1.0),
       0.0, // dropout
       0.01, // weight decay
       OptimiserType::Adam,
@@ -75,12 +111,12 @@ public:
     TEST_START("LSTM Multi-Output sequence test.")
     NeuralNetwork* nn = create_neural_network(log_level);
 
-    // 4. Prepare training data for a uni variate sequence:
-    // Sequence: [0.1, 0.2, 0.3, 0.4] -> Targets: [0.5, 0.25]
-    std::vector<double> sequence = { 0.1, 0.2, 0.3, 0.4 };
-    // wrap as batch of one sequence (sequence length must be divisible by input_size (1))
+    // 4. Prepare training data for a multivariate sequence:
+    // Sequence: [0.1, ..., 0.1] (17 values)
+    std::vector<double> sequence(17, 0.1);
+    // wrap as batch of one sequence
     std::vector<std::vector<double>> inputs = { sequence };
-    std::vector<std::vector<double>> targets = { { 0.5, 0.25 } };
+    std::vector<std::vector<double>> targets = { { 0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25 } };
 
     // 5. Train
     Logger::info("Training LSTM Multi-Output on simple sequence...");
@@ -90,7 +126,7 @@ public:
     auto prediction_batch = nn->think(inputs);
     if (!prediction_batch.empty())
     {
-      Logger::info("Prediction for [0.1, 0.2, 0.3, 0.4]: ");
+      Logger::info("Prediction for [0.1 (x17)]: ");
       Logger::info("  Output 1: ", prediction_batch[0][0], " (Expected ~0.5)");
       Logger::info("  Output 2: ", prediction_batch[0][1], " (Expected ~0.25)");
     }

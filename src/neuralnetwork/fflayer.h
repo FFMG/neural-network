@@ -12,7 +12,7 @@ public:
     unsigned num_neurons_in_previous_layer, 
     unsigned num_neurons_in_this_layer, 
     double weight_decay,
-    LayerRole layer_role,
+    Role layer_role,
     const activation& activation_method, 
     const OptimiserType& optimiser_type, 
     int residual_layer_number,
@@ -26,7 +26,7 @@ public:
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
     const std::vector<double>& weight_decays,
-    LayerRole layer_role,
+    const Role layer_role,
     const activation& activation_method,
     const OptimiserType& optimiser_type,
     int residual_layer_number,
@@ -38,7 +38,7 @@ public:
 
   FFLayer(
     unsigned layer_index,
-    const LayerRole layer_role,
+    const Role layer_role,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -69,6 +69,12 @@ public:
   FFLayer& operator=(const FFLayer& src) noexcept;
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
+
+  [[nodiscard]] inline virtual Architecture get_layer_architecture() const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return Architecture::FF;
+  }
 
 public:
   void calculate_forward_feed(
@@ -109,7 +115,7 @@ public:
 protected:
   FFLayer(unsigned layer_index,
     const std::vector<double>& weight_decays,
-    LayerRole layer_role,
+    const Role layer_role,
     const layer_activation_helper& lah,
     const OptimiserType& optimiser_type,
     int residual_layer_number,

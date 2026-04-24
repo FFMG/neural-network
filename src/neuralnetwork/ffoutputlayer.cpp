@@ -14,7 +14,7 @@ FFOutputLayer::FFOutputLayer(
   FFLayer(
     layer_index,
     create_weight_decays(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
-    LayerRole::Output,
+    Role::Output,
     create_layer_activation_helper(num_neurons_in_previous_layer, num_neurons_in_this_layer, output_layer_details),
     OptimiserType::None,
     -1,       //  no residual layer
@@ -115,7 +115,7 @@ FFOutputLayer::FFOutputLayer(
 ) noexcept : 
 FFLayer(
     layer_index,
-    LayerRole::Output,
+    Role::Output,
     OptimiserType::None,
     -1,       //  no residual layer
     number_input_neurons,

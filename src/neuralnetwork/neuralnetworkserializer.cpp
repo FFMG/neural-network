@@ -173,7 +173,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto layer_role_number = layer_object.get<int>("layer-role");
-  auto layer_role = (Layer::LayerRole)layer_role_number;
+  auto layer_role = (Layer::Role)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -263,7 +263,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto layer_role_number = layer_object.get<int>("layer-role");
-  auto layer_role = (Layer::LayerRole)layer_role_number;
+  auto layer_role = (Layer::Role)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -445,7 +445,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto layer_role_number = layer_object.get<int>("layer-role");
-  auto layer_role = (Layer::LayerRole)layer_role_number;
+  auto layer_role = (Layer::Role)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -623,7 +623,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
 
   auto layer_role_number = layer_object.get<int>("layer-role");
-  auto layer_role = (Layer::LayerRole)layer_role_number;
+  auto layer_role = (Layer::Role)layer_role_number;
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -831,7 +831,7 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
 
     const auto layer_type_string = phlo->try_get_string("type");
     hidden_layer.emplace_back(LayerDetails(
-      LayerDetails::type_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
+      Layer::architecture_from_string(layer_type_string == nullptr ? "ff" : layer_type_string), 
       phlo->get<unsigned>("size"),
       activation(hidden_method, hidden_alpha, hidden_temperature),
       phlo->get<double>("dropout"),
@@ -1779,7 +1779,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
   for (const auto& hl : hidden_layers)
   {
     auto hidden_layer_object = new TinyJSON::TJValueObject();
-    hidden_layer_object->set("type", hl.get_type_string().c_str());
+    hidden_layer_object->set("type", Layer::architecture_to_string(hl.get_layer_architecture()).c_str());
     hidden_layer_object->set("size", hl.get_size());
     hidden_layer_object->set("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
     hidden_layer_object->set("activation-alpha", hl.get_activation().get_alpha());
@@ -1984,7 +1984,7 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         
       const auto method = activation::string_to_method(phlo->try_get_string("activation-method", false));
       hidden_layers.emplace_back(LayerDetails(
-        LayerDetails::type_from_string(phlo->try_get_string("type", false)),
+        Layer::architecture_from_string(phlo->try_get_string("type", false)),
         phlo->get<unsigned>("size"),
         activation(method, phlo->get<double>("activation-alpha")),
         phlo->get<double>("dropout"),

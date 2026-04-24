@@ -53,7 +53,7 @@ private:
     {
       _hidden_layers.push_back(
         LayerDetails(
-          LayerDetails::LayerType::FF, 
+          Layer::Architecture::FF, 
           topology[i], 
           activation(activation::method::sigmoid, 0.01), 
           0.0, 

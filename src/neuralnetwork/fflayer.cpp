@@ -8,7 +8,7 @@ FFLayer::FFLayer(
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   double weight_decay,
-  LayerRole layer_role,
+  const Role layer_role,
   const activation& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
@@ -42,7 +42,7 @@ FFLayer::FFLayer(
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   const std::vector<double>& weight_decays,
-  LayerRole layer_role,
+  const Role layer_role,
   const activation& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
@@ -72,7 +72,7 @@ FFLayer::FFLayer(
 FFLayer::FFLayer(
   unsigned layer_index,
   const std::vector<double>& weight_decays,
-  LayerRole layer_role,
+  const Role layer_role,
   const layer_activation_helper& lah,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
@@ -107,7 +107,7 @@ FFLayer::FFLayer(const FFLayer& src) noexcept :
 
 FFLayer::FFLayer(
   unsigned layer_index,
-  const LayerRole layer_role,
+  const Role layer_role,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   unsigned number_input_neurons,
