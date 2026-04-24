@@ -479,6 +479,9 @@ void LSTMLayer::calculate_forward_feed(
   {
     const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
+
+    const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
   }
 }
 
@@ -502,7 +505,12 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
         else deltas[idx] = 0.0;
       }
     }
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::move(deltas));
+    // Set BOTH RNN gradients and standard gradients (last step)
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas);
+    
+    std::vector<double> last_step_deltas(N_this);
+    std::copy(deltas.end() - N_this, deltas.end(), last_step_deltas.begin());
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_deltas);
   }
 }
 
@@ -516,16 +524,28 @@ void LSTMLayer::calculate_hidden_gradients(std::vector<GradientsAndOutputs>& bat
     const size_t T = batch_hidden_states[b].at(get_layer_index()).size();
     std::vector<double> hidden_grads(T * N_this, 0.0);
     const double* next_grads = batch_next_grad_matrix[b].data();
+    
+    // If next_grads is a single step (size N_next), it applies only to the LAST step of this layer
+    const bool next_is_seq = (batch_next_grad_matrix[b].size() == T * N_next);
+
     for (size_t t = 0; t < T; ++t)
     {
+      if (!next_is_seq && t < T - 1) continue;
+      
+      const double* g_next_t = next_is_seq ? &next_grads[t * N_next] : next_grads;
       for (size_t j = 0; j < N_this; ++j)
       {
         double sum = 0.0;
-        for (size_t k = 0; k < N_next; ++k) sum += next_grads[t * N_next + k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
+        for (size_t k = 0; k < N_next; ++k) sum += g_next_t[k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
         hidden_grads[t * N_this + j] = sum;
       }
     }
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std::move(hidden_grads));
+    // Set BOTH RNN gradients and standard gradients (last step or sum)
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), hidden_grads);
+    
+    std::vector<double> last_step_grads(N_this);
+    std::copy(hidden_grads.end() - N_this, hidden_grads.end(), last_step_grads.begin());
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_grads);
   }
 }
 
@@ -535,23 +555,31 @@ void LSTMLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutp
   const size_t N_this = get_number_neurons();
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t T = hidden_states[0].at(get_layer_index()).size();
+  
+  const int t_start = static_cast<int>(T) - 1;
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
+
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& layer_states = hidden_states[b].at(get_layer_index());
-    const auto& upstream_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+    const auto& upstream_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
+    if (upstream_grads.empty()) continue;
+
     std::vector<double> dh_next(N_this, 0.0);
     std::vector<double> dc_next(N_this, 0.0);
-    for (int t = (int)T - 1; t >= 0; --t)
+    for (int t = t_start; t >= t_end; --t)
     {
       const auto& state = layer_states[t];
       const auto& packed = state.get_pre_activation_sums();
       const auto& c_curr = state.get_cell_state_values();
       const std::vector<double>& c_prev = (t > 0) ? layer_states[t - 1].get_cell_state_values() : std::vector<double>(N_this, 0.0);
       const std::vector<double>& h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values() : std::vector<double>(N_this, 0.0);
+      
       const double* f = &packed[0];
       const double* i = &packed[N_this];
       const double* o = &packed[2 * N_this];
       const double* g_pre = &packed[3 * N_this];
+      
       std::vector<double> dh_prev(N_this, 0.0);
       for (size_t j = 0; j < N_this; ++j)
       {
@@ -564,10 +592,14 @@ void LSTMLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutp
         double di = dc * g * i[j] * (1.0 - i[j]);
         double dg = dc * i[j] * (1.0 - g * g);
         _f_b_grads[j] += df; _i_b_grads[j] += di; _o_b_grads[j] += do_gate; _b_grads[j] += dg;
-        const double* x_t = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index()).empty() ? 
-                            batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index()).data() : 
-                            batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index()).data();
-        const double* x_curr = &x_t[t * N_prev];
+        
+        const auto& prev_rnn_out = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+        const auto& prev_std_out = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+        const double* x_t_base = !prev_rnn_out.empty() ? prev_rnn_out.data() : prev_std_out.data();
+        const size_t x_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+
+        const double* x_curr = (x_size == T * N_prev) ? &x_t_base[t * N_prev] : x_t_base;
+        
         for (size_t k = 0; k < N_prev; ++k)
         {
           _f_w_grads[k * N_this + j] += df * x_curr[k];
@@ -585,9 +617,19 @@ void LSTMLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutp
         }
         dc_next[j] = dc * f[j];
       }
-      dh_next = dh_prev;
+      dh_next = std::move(dh_prev);
     }
   }
+
+  // Normalization
+  const int active_ticks = t_start - t_end + 1;
+  const double inv_batch_active = 1.0 / (static_cast<double>(batch_size) * active_ticks);
+  const double inv_batch_rec = 1.0 / (static_cast<double>(batch_size) * (active_ticks > 1 ? active_ticks - 1 : 1.0));
+
+  auto norm = [](std::vector<double>& v, double factor) { for (double& x : v) x *= factor; };
+  norm(_f_w_grads, inv_batch_active); norm(_i_w_grads, inv_batch_active); norm(_o_w_grads, inv_batch_active); norm(_w_grads, inv_batch_active);
+  norm(_f_rw_grads, inv_batch_rec); norm(_i_rw_grads, inv_batch_rec); norm(_o_rw_grads, inv_batch_rec); norm(_rw_grads, inv_batch_rec);
+  norm(_f_b_grads, inv_batch_active); norm(_i_b_grads, inv_batch_active); norm(_o_b_grads, inv_batch_active); norm(_b_grads, inv_batch_active);
 }
 
 double LSTMLayer::get_gradient_norm_sq() const
