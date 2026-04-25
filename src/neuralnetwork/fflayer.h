@@ -9,12 +9,12 @@ class FFLayer : public Layer
 {
 public:
   FFLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     double weight_decay,
     Role layer_role,
-    const activation& activation_method, 
-    const OptimiserType& optimiser_type, 
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
@@ -79,26 +79,26 @@ public:
 public:
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &previous_layer,
-    const std::vector<std::vector<double>> &batch_residual_output_values,
-    std::vector<HiddenStates> &batch_hidden_states,
+    const Layer& previous_layer,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     bool is_training) const override;
 
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states,
+    const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &next_layer,
-    const std::vector<std::vector<double>> &batch_next_grad_matrix,
-    const std::vector<HiddenStates> &batch_hidden_states,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     int bptt_max_ticks) const override;
-  
+
   Layer* clone() const override;
 
   void calculate_and_store_gradients(
