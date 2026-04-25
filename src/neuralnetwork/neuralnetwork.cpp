@@ -1,6 +1,7 @@
 #include "logger.h"
 #include "neuralnetwork.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -115,13 +116,6 @@ const std::vector<unsigned>& NeuralNetwork::get_topology() const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _options.topology();
-}
-
-void NeuralNetwork::scale_temperature(unsigned output_layer_index, double factor) noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::unique_lock<std::shared_mutex> lock(_mutex);
-  _layers.scale_temperature(output_layer_index, factor);
 }
 
 std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
@@ -257,47 +251,6 @@ void NeuralNetwork::create_batch_from_indexes(
   }
 }
 
-void NeuralNetwork::calibrate_temperature(const std::vector<std::vector<double>>& validation_inputs, const std::vector<std::vector<double>>& validation_outputs)
-{
-  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (validation_inputs.empty() || validation_inputs.size() != validation_outputs.size())
-  {
-    return;
-  }
-
-  const unsigned num_heads = _options.has_multi_output() ? static_cast<unsigned>(_options.multi_output_layer_details().size()) : static_cast<unsigned>(_options.output_layer_details().size());
-  Logger::info("Calibrating temperature for ", num_heads, " output heads on ", validation_inputs.size(), " samples...");
-
-  for (unsigned head = 0; head < num_heads; ++head)
-  {
-    double best_temp = get_temperature(head);
-    double min_error = std::numeric_limits<double>::max();
-    const double initial_temp = best_temp;
-
-    // Search range: 0.1 to 5.0
-    for (double t = 0.1; t <= 5.01; t += 0.1)
-    {
-      scale_temperature(head, t / get_temperature(head));
-      
-      // Calculate error for this head using all validation data
-      auto all_metrics = calculate_forecast_metrics_all_layers({ ErrorCalculation::type::rmse }, false);
-      if (head < all_metrics.size() && !all_metrics[head].empty())
-      {
-        double current_error = all_metrics[head][0].error();
-        if (current_error < min_error)
-        {
-          min_error = current_error;
-          best_temp = t;
-        }
-      }
-    }
-
-    // Set to best found for this head
-    scale_temperature(head, best_temp / get_temperature(head));
-    Logger::info("Head #", head, " temperature calibrated from ", initial_temp, " to ", best_temp, " (Min RMSE: ", min_error, ")");
-  }
-}
-
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -332,6 +285,13 @@ double NeuralNetwork::get_temperature(unsigned output_layer_index) const noexcep
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::shared_lock<std::shared_mutex> read(_mutex);
   return _layers.get_temperature(output_layer_index);
+}
+
+double NeuralNetwork::get_inference_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  return _layers.get_inference_temperature(output_layer_index);
 }
 
 double NeuralNetwork::get_percent_complete() const noexcept
@@ -709,8 +669,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // finally learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
-  // Post-training temperature calibration using the validation set
-  calibrate_temperature(checking_training_inputs, checking_training_outputs);
+  // Post-training temperature calibration using the training set
+  optimize_inference_temperature(training_inputs, training_outputs);
 
   // final callback to show 100% done.
   if (progress_callback != nullptr)
@@ -725,6 +685,111 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   MYODDWEB_PROFILE_MARK();
+}
+
+void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  // 1. Identify which heads use softmax
+  const auto& layer_container = get_layers();
+  const auto& last_layer = layer_container.output_layer();
+  const auto& ranges = last_layer.get_activation_helper().ranges();
+  
+  std::vector<unsigned> softmax_heads;
+  for (unsigned i = 0; i < (unsigned)ranges.size(); ++i)
+  {
+    if (ranges[i].activation_method.get_method() == activation::method::softmax)
+    {
+      softmax_heads.push_back(i);
+    }
+  }
+
+  if (softmax_heads.empty())
+  {
+    return;
+  }
+
+  Logger::info("Optimizing inference temperature for ", (unsigned)softmax_heads.size(), " softmax heads...");
+
+  // 2. Sample up to 5000 samples for calibration
+  constexpr size_t MAX_CALIBRATION_SAMPLES = 5000;
+  const size_t num_samples = std::min(training_inputs.size(), MAX_CALIBRATION_SAMPLES);
+  
+  std::vector<size_t> calibration_indices(training_inputs.size());
+  std::iota(calibration_indices.begin(), calibration_indices.end(), 0);
+  
+  static std::random_device rd;
+  static std::mt19937 g(rd());
+  std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
+  calibration_indices.resize(num_samples);
+
+  // 3. Run forward pass to collect logits (pre-activation sums)
+  std::vector<GradientsAndOutputs> temp_grads;
+  std::vector<HiddenStates> temp_hidden_states;
+  temp_grads.reserve(num_samples);
+  temp_hidden_states.reserve(num_samples);
+  for (size_t i = 0; i < num_samples; ++i)
+  {
+    temp_grads.emplace_back(get_topology());
+    temp_hidden_states.emplace_back(get_topology());
+  }
+
+  calculate_forward_feed_for_forecast_metrics(temp_grads, training_inputs, calibration_indices, _layers, temp_hidden_states, true);
+
+  const unsigned last_layer_index = static_cast<unsigned>(layer_container.size() - 1);
+
+  // 4. Optimize each head
+  for (unsigned head_idx : softmax_heads)
+  {
+    const auto& range = ranges[head_idx];
+    
+    // Extract logits and target labels for this head
+    struct Sample { std::vector<double> logits; size_t target_idx; };
+    std::vector<Sample> samples;
+    samples.reserve(num_samples);
+
+    for (size_t i = 0; i < num_samples; ++i)
+    {
+      const auto& pre_act = temp_hidden_states[i].at(last_layer_index)[0].get_pre_activation_sums();
+      std::vector<double> head_logits(pre_act.begin() + range.start, pre_act.begin() + range.end);
+      
+      const auto& head_targets = training_outputs[calibration_indices[i]];
+      // Find the index of the true class (assuming one-hot or max-is-true)
+      auto max_it = std::max_element(head_targets.begin() + range.start, head_targets.begin() + range.end);
+      size_t target_idx = (size_t)std::distance(head_targets.begin() + range.start, max_it);
+      
+      samples.push_back({ std::move(head_logits), target_idx });
+    }
+
+    // 5. Line search for optimal T in [0.1, 5.0] to minimize Negative Log Likelihood (NLL)
+    double best_T = 1.0;
+    double min_nll = std::numeric_limits<double>::max();
+
+    for (double T = 0.1; T <= 5.05; T += 0.05)
+    {
+      double current_nll = 0.0;
+      for (const auto& sample : samples)
+      {
+        // Compute softmax for this T
+        double max_logit = *std::max_element(sample.logits.begin(), sample.logits.end());
+        long double sum_exp = 0.0L;
+        for (double l : sample.logits) sum_exp += std::exp(static_cast<long double>((l - max_logit) / T));
+        
+        double target_prob = static_cast<double>(std::exp(static_cast<long double>((sample.logits[sample.target_idx] - max_logit) / T)) / sum_exp);
+        current_nll -= std::log(std::max(target_prob, 1e-15));
+      }
+
+      if (current_nll < min_nll)
+      {
+        min_nll = current_nll;
+        best_T = T;
+      }
+    }
+
+    // Apply the optimized temperature
+    const_cast<Layer&>(last_layer).set_inference_temperature(head_idx, best_T);
+    Logger::info("Head #", head_idx, " optimized inference temperature: ", std::fixed, std::setprecision(4), best_T, " (NLL: ", min_nll / num_samples, ")");
+  }
 }
 
 void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
@@ -1138,8 +1203,8 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
         tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
         tab, tab, tab, tab, "lambda\n",
-        tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
-        tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+        tab, tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+        tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
         tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
       if (output_layer_index < output_layer_details.size())
       {

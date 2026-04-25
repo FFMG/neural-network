@@ -168,25 +168,22 @@ Layer& Layers::operator[](unsigned index )
   return *_layers[index];
 }
 
-void Layers::scale_temperature(double factor) noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Layers");
-  for (auto& layer : _layers)
-  {
-    layer->scale_temperature(factor);
-  }
-}
-
 double Layers::get_temperature(unsigned output_layer_index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   return output_layer().get_temperature(output_layer_index);
 }
 
-void Layers::scale_temperature(unsigned output_layer_index, double factor) noexcept
+double Layers::get_inference_temperature(unsigned output_layer_index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  _layers.back()->scale_temperature(output_layer_index, factor);
+  return output_layer().get_inference_temperature(output_layer_index);
+}
+
+void Layers::set_inference_temperature(unsigned output_layer_index, double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  _layers.back()->set_inference_temperature(output_layer_index, t);
 }
 
 const ResidualProjector* Layers::get_residual_layer_projector(unsigned index) const noexcept
@@ -330,7 +327,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
   case Layer::Architecture::FF:
     return std::make_unique<FFLayer>(
       layer_index, 
-      previous_layer.get_number_neurons(),
+      previous_layer.get_number_neurons(), 
       num_neurons_in_this_layer, 
       weight_decay, 
       Layer::Role::Hidden,

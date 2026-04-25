@@ -735,7 +735,7 @@ void GRURNNLayer::calculate_forward_feed(
         }
 
         std::vector<double> h_hat_vec = h_hat_pre;
-        get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this);
+        get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
 
         // g. Final State Update
         for (size_t j = 0; j < N_this; ++j)

@@ -72,10 +72,9 @@ public:
     return *_layers.back();
   }
 
-  void scale_temperature(double factor) noexcept;
-
   [[nodiscard]] double get_temperature(unsigned output_layer_index) const noexcept;
-  void scale_temperature(unsigned output_layer_index, double factor) noexcept;
+  [[nodiscard]] double get_inference_temperature(unsigned output_layer_index) const noexcept;
+  void set_inference_temperature(unsigned output_layer_index, double t) noexcept;
 
   void train(
     const NeuralNetworkOptions& options, 
