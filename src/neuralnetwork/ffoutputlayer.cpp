@@ -443,16 +443,14 @@ double FFOutputLayer::get_momentum(unsigned neuron_number) const noexcept
     return details[0].get_momentum();
   }
 
-  unsigned output_layer_index = 0;
   unsigned number_neurons = 0;
   for (const auto& detail : details)
   {
-    if (number_neurons <= neuron_number)
-    {
-      return details[output_layer_index].get_momentum();
-    }
-    ++output_layer_index;
     number_neurons += detail.get_size();
+    if (neuron_number < number_neurons)
+    {
+      return detail.get_momentum();
+    }
   }
   Logger::panic("Trying to get a neuron detail past the number of neurons");
 }
