@@ -517,6 +517,13 @@ void LSTMLayer::calculate_forward_feed(
         state.set_pre_activation_sums(packed_bptt);
         state.set_cell_state_values(current_c);
         state.set_hidden_state_values(current_h);
+        
+        // current_h is modified in next tick loop, so we need a copy for next t
+        // but current_h is already the output of the current tick, 
+        // and we need to pass it to the next tick as h_{t-1}.
+        // The implementation already does this correctly as current_h is defined outside t loop? 
+        // Wait, current_h is defined in `recurrent_pass` before the t-loop.
+        // That is correct.
       }
     }
   };
@@ -831,7 +838,16 @@ void LSTMLayer::calculate_bptt_batch_chunk(
 
       double* dh_next = &workspace.d_next_h[b_idx * N_this];
       double* dc_next = &workspace.d_next_c[b_idx * N_this];
+
+      // Reset dh_next and dc_next only at t_start
+      if (t == t_start)
+      {
+        std::fill(dh_next, dh_next + N_this, 0.0);
+        std::fill(dc_next, dc_next + N_this, 0.0);
+      }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
+      std::vector<double> dh_curr(N_this);
+      for(size_t j = 0; j < N_this; ++j) dh_curr[j] = upstream_grads[j] + dh_next[j];
 
       const double* f = &packed[0];
       const double* i = &packed[N_this];
@@ -843,9 +859,15 @@ void LSTMLayer::calculate_bptt_batch_chunk(
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
 
+      // Explicitly zero gate gradients for this tick
+      std::fill(df_chunk, df_chunk + N_this, 0.0);
+      std::fill(di_chunk, di_chunk + N_this, 0.0);
+      std::fill(do_chunk, do_chunk + N_this, 0.0);
+      std::fill(dg_chunk, dg_chunk + N_this, 0.0);
+
       for (size_t j = 0; j < N_this; ++j)
       {
-        double dh = upstream_grads[j] + dh_next[j];
+        double dh = dh_curr[j];
         double tanh_c = std::tanh(c_curr[j]);
         
         double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
@@ -873,6 +895,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(
         double do_g = do_chunk[j];
         double dg = dg_chunk[j];
 
+        // Ensure these gradients are correctly accumulated in dh_next for the next tick (t-1)
         for (size_t k = 0; k < N_this; ++k)
         {
           dh_next[k] += df * f_rw_values_T[k * N_this + j] +

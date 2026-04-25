@@ -96,9 +96,9 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
 #if VALIDATE_DATA == 1
-    if (number_neurons(layer) > data.size())
+    if (number_neurons(layer) < data.size())
     {
-      Logger::panic("trying to set values past the layer size: ", layer);
+      Logger::panic("trying to set values past the layer size: ", layer, " topology size: ", number_neurons(layer), " given data size: ", data.size());
     }
 #endif
     std::copy(data.begin(), data.end(), _data.begin() + _offsets[layer]);

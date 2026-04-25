@@ -583,7 +583,12 @@ void Layers::calculate_back_propagation_hidden_layers(
     
     // Check if next layer is Branched
     if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1)) {
-       branched->backprop_branches(batch_size, options.bptt_max_ticks());
+       // Only call backprop_branches if it's NOT the output layer, 
+       // because calculate_back_propagation_output_layer already did it.
+       if (static_cast<unsigned>(layer_number + 1) != size() - 1)
+       {
+         branched->backprop_branches(batch_size, options.bptt_max_ticks());
+       }
        batch_next_gradients = branched->get_trunk_gradients(batch_size);
     } else {
        batch_next_gradients.reserve(batch_size);
