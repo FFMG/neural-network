@@ -961,7 +961,7 @@ public:
 protected:
   Layer(
     unsigned layer_index,
-    Role layer_role,
+    const Role layer_role,
     const layer_activation_helper& lah,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1022,7 +1022,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    Role layer_role,
+    const Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1055,7 +1055,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    Role layer_role,
+    const Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,

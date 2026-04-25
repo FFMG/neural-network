@@ -35,31 +35,37 @@ public:
 
   [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _pre_activation_sums[neuron_index];
   }
 
   [[nodiscard]] inline std::span<double> get_pre_activation_sums() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _pre_activation_sums;
   }
 
   [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _hidden_state_values[neuron_index];
   }
 
   [[nodiscard]] inline std::span<double> get_hidden_state_values() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _hidden_state_values;
   }
 
   [[nodiscard]] inline double get_cell_state_value_at_neuron(unsigned neuron_index) const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _cell_state_values[neuron_index];
   }
 
   [[nodiscard]] inline std::span<double> get_cell_state_values() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _cell_state_values;
   }
 
