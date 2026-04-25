@@ -1984,7 +1984,7 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         
       const auto method = activation::string_to_method(phlo->try_get_string("activation-method", false));
       hidden_layers.emplace_back(LayerDetails(
-        Layer::architecture_from_string(phlo->try_get_string("type", false)),
+        Layer::architecture_from_string(phlo->try_get_string("architecture", false)),
         phlo->get<unsigned>("size"),
         activation(method, phlo->get<double>("activation-alpha")),
         phlo->get<double>("dropout"),
