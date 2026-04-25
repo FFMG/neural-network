@@ -956,7 +956,7 @@ private:
 
     void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
     {
-      grad_from_next_all_t.assign(num_time_steps * n, 0.0);
+      grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
       d_next_c.assign(batch_chunk_size * n, 0.0);
       rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 4 * n, 0.0);
