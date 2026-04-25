@@ -244,17 +244,18 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
 
   // --- Add warning for extreme logit range ---
   const double logit_range = max_val - min_val;
-  const double EXTREME_LOGIT_THRESHOLD = 80.0; // Increased to reduce noise for highly confident models
-  const double CATASTROPHIC_LOGIT_THRESHOLD = 150.0;
+  const double EXTREME_LOGIT_THRESHOLD = 200.0; // Increased to reduce noise for highly confident models
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 500.0;
 
   if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
     Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
   }
-  else if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  if (logit_range > EXTREME_LOGIT_THRESHOLD)
   {
-    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range,"). Consider increasing weight decay or reducing learning rate.");
+    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range, "). Consider increasing weight decay or reducing learning rate.");
   }
+
   // --- End warning addition ---
 
   // Exponentiate and accumulate in higher precision
