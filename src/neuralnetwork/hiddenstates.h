@@ -68,21 +68,25 @@ public:
 
   std::vector<HiddenState>& at(size_t layer_number)
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
     return _layer_views[layer_number];
   }
   
   const std::vector<HiddenState>& at(size_t layer_number) const
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
     return _layer_views[layer_number];
   }
 
   HiddenState& at(size_t layer_number, size_t time_step)
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
     return _layer_views[layer_number][time_step];
   }
 
   const HiddenState& at(size_t layer_number, size_t time_step) const
   {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
     return _layer_views[layer_number][time_step];
   }
 
