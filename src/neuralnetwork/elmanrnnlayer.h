@@ -3,6 +3,7 @@
 #include "hiddenstate.h"
 #include "layer.h"
 
+#include <shared_mutex>
 #include <vector>
 
 class ElmanRNNLayer final : public Layer
@@ -85,12 +86,17 @@ public:
   }
 
 public:
-  bool use_bptt() const noexcept override 
+  bool use_bptt() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return true;
   }
 
+  [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return 1;
+  }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       const Layer &previous_layer,
@@ -202,14 +208,38 @@ public:
     _rw_decays = v;
   }
 
+  void cache_recurrent_weights() override;
+
 private:
-  // Hoisted buffers for performance
-  mutable std::vector<double> _flattened_batch_inputs_buffer;
-  mutable std::vector<double> _batch_output_sequences_buffer;
-  mutable std::vector<double> _flattened_next_grads_buffer;
-  mutable std::vector<double> _flattened_inputs_buffer;
-  mutable std::vector<double> _flattened_rnn_grads_buffer;
-  mutable std::vector<double> _flattened_prev_h_buffer;
+  struct BPTTWorkspace 
+  {
+    using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
+    AlignedVector grad_from_next_all_t;
+    AlignedVector d_next_h;
+    AlignedVector rnn_grad_matrix;
+    AlignedVector chunk_dh_hat;
+
+    void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
+    {
+      grad_from_next_all_t.assign(num_time_steps * n, 0.0);
+      d_next_h.assign(batch_chunk_size * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * n, 0.0);
+      chunk_dh_hat.assign(batch_chunk_size * n, 0.0);
+    }
+  };
+
+  BPTTWorkspace& get_workspace(size_t thread_idx) const;
+
+  void calculate_bptt_batch_chunk(
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks,
+    BPTTWorkspace& workspace,
+    const BPTTWorkspace::AlignedVector& rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
   
@@ -221,4 +251,11 @@ private:
   std::vector<double> _rw_m2;
   std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
+
+  // Cached transposed recurrent weights
+  BPTTWorkspace::AlignedVector _rw_values_T;
+
+  // Per-thread workspaces for BPTT
+  mutable std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+  mutable std::shared_mutex _workspace_mutex;
 };

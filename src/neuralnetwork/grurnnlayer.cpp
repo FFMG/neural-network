@@ -814,6 +814,20 @@ void GRURNNLayer::calculate_output_gradients(
   Logger::panic("GRURNNLayer: Trying to calculate output gradient with a non output layer!");
 }
 
+GRURNNLayer::BPTTWorkspace& GRURNNLayer::get_workspace(size_t thread_idx) const
+{
+  std::unique_lock<std::shared_mutex> lock(_workspace_mutex);
+  if (_thread_workspaces.size() <= thread_idx)
+  {
+    _thread_workspaces.resize(thread_idx + 1);
+  }
+  if (!_thread_workspaces[thread_idx])
+  {
+    _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
+  }
+  return *_thread_workspaces[thread_idx];
+}
+
 void GRURNNLayer::calculate_bptt_batch_chunk(
   size_t start,
   size_t end,
@@ -835,9 +849,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
   // Use workspace instead of local allocations to avoid repeated memory management
-  workspace.grad_from_next_all_t.assign((end - start) * num_time_steps * N_this, 0.0);
-  workspace.d_next_h.assign((end - start) * N_this, 0.0);
-  workspace.rnn_grad_matrix.assign((end - start) * num_time_steps * 3 * N_this, 0.0);
+  workspace.resize(N_this, end - start, num_time_steps);
 
   // Precompute gradients from next layer (all time steps) using tiling for cache locality
   constexpr size_t BLOCK_SIZE = 64;
@@ -1169,7 +1181,6 @@ void GRURNNLayer::calculate_hidden_gradients(
   }
 
   const size_t N_this = get_number_neurons();
-
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0 || N_this == 0)
   {
@@ -1178,27 +1189,11 @@ void GRURNNLayer::calculate_hidden_gradients(
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
 
-  // Transpose recurrent weights once per batch for Step 2 and 3b cache-friendly access
-  // These are now local to avoid thread contention.
-  BPTTWorkspace::AlignedVector rw_values_T(N_this * N_this);
-  BPTTWorkspace::AlignedVector z_rw_values_T(N_this * N_this);
-  BPTTWorkspace::AlignedVector r_rw_values_T(N_this * N_this);
-
-  for (size_t i = 0; i < N_this; ++i)
-  {
-    for (size_t j = 0; j < N_this; ++j)
-    {
-      rw_values_T[j * N_this + i] = _rw_values[i * N_this + j];
-      z_rw_values_T[j * N_this + i] = _z_rw_values[i * N_this + j];
-      r_rw_values_T[j * N_this + i] = _r_rw_values[i * N_this + j];
-    }
-  }
-
   // Launch threads for each batch chunk
   if (num_threads <= 1)
   {
-    BPTTWorkspace local_workspace;
-    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, local_workspace, rw_values_T, z_rw_values_T, r_rw_values_T);
+    auto& workspace = const_cast<GRURNNLayer*>(this)->get_workspace(0);
+    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _z_rw_values_T, _r_rw_values_T);
   }
   else
   {
@@ -1209,10 +1204,10 @@ void GRURNNLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, &rw_values_T, &z_rw_values_T, &r_rw_values_T, this]()
+        _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
           {
-            BPTTWorkspace thread_local_workspace;
-            calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, thread_local_workspace, rw_values_T, z_rw_values_T, r_rw_values_T);
+            auto& workspace = const_cast<GRURNNLayer*>(this)->get_workspace(t);
+            calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _z_rw_values_T, _r_rw_values_T);
           });
       }
       start = end;
@@ -1464,7 +1459,7 @@ void GRURNNLayer::zero_gradients()
   std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
   std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
   std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
-  std::fill(_r_w_grads.begin(), _r_w_grads.begin(), 0.0);
+  std::fill(_r_w_grads.begin(), _r_w_grads.end(), 0.0);
   std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
   std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
 }
@@ -1521,6 +1516,30 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
 
        // C. Reset Gate (r)
        apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, neuron_number, _r_b_grads[neuron_number], learning_rate, clipping_scale, _optimiser_type, neuron_number);
+    }
+  }
+}
+
+void GRURNNLayer::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t n = get_number_neurons();
+  if (n == 0)
+  {
+    return;
+  }
+
+  _rw_values_T.resize(n * n);
+  _z_rw_values_T.resize(n * n);
+  _r_rw_values_T.resize(n * n);
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    for (size_t j = 0; j < n; ++j)
+    {
+      _rw_values_T[j * n + i] = _rw_values[i * n + j];
+      _z_rw_values_T[j * n + i] = _z_rw_values[i * n + j];
+      _r_rw_values_T[j * n + i] = _r_rw_values[i * n + j];
     }
   }
 }

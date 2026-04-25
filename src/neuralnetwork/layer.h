@@ -633,6 +633,10 @@ public:
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
 
+  virtual void cache_recurrent_weights() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
+
+  virtual unsigned get_pre_activation_multiplier() const noexcept { return 1; }
+
   virtual void scale_temperature(double factor) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

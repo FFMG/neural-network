@@ -4,6 +4,7 @@
 #include "hiddenstate.h"
 #include "layer.h"
 
+#include <shared_mutex>
 #include <vector>
 
 class GRURNNLayer final : public Layer
@@ -130,12 +131,17 @@ public:
   }
 
 public:
-  [[nodiscard]] inline bool use_bptt() const noexcept override 
+  [[nodiscard]] inline bool use_bptt() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     return true;
   }
 
+  [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return 3;
+  }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       const Layer &previous_layer,
@@ -174,6 +180,8 @@ public:
   void zero_gradients() override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
+  void cache_recurrent_weights() override;
 
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept
   {
@@ -526,7 +534,23 @@ private:
     AlignedVector chunk_dh_prev_accum;
     AlignedVector h_hat_vals;
     AlignedVector temp_Uh_T_dh_hat;
+
+    void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
+    {
+      grad_from_next_all_t.assign(num_time_steps * n, 0.0);
+      d_next_h.assign(batch_chunk_size * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 3 * n, 0.0);
+      chunk_dz.assign(batch_chunk_size * n, 0.0);
+      chunk_dr.assign(batch_chunk_size * n, 0.0);
+      chunk_dh_hat.assign(batch_chunk_size * n, 0.0);
+      chunk_dh_prev_accum.assign(batch_chunk_size * n, 0.0);
+      h_hat_vals.assign(n, 0.0);
+      temp_Uh_T_dh_hat.assign(batch_chunk_size * n, 0.0);
+    }
   };
+
+  BPTTWorkspace& get_workspace(size_t thread_idx) const;
+
   void calculate_bptt_batch_chunk(
     size_t start,
     size_t end,
@@ -615,4 +639,13 @@ private:
   std::vector<double> _r_b_m2;
   std::vector<long long> _r_b_timesteps;
   std::vector<double> _r_b_decays;
+
+  // Cached transposed recurrent weights
+  BPTTWorkspace::AlignedVector _rw_values_T;
+  BPTTWorkspace::AlignedVector _z_rw_values_T;
+  BPTTWorkspace::AlignedVector _r_rw_values_T;
+
+  // Per-thread workspaces for BPTT
+  mutable std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+  mutable std::shared_mutex _workspace_mutex;
 };

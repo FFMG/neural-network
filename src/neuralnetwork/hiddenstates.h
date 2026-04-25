@@ -34,15 +34,19 @@ public:
     for (auto& layer : _cell_state_values) std::fill(layer.begin(), layer.end(), 0.0);
   }
   
-  void assign(size_t layer_number, size_t num_time_steps, const HiddenState& /*ignored_proto*/)
+  void assign(size_t layer_number, size_t num_time_steps, const HiddenState& /*ignored_proto*/, unsigned multiplier = 1)
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenStates");
     const size_t n = _topology[layer_number];
     const size_t total_size = num_time_steps * n;
+    const size_t pre_total_size = num_time_steps * n * multiplier;
 
-    if (_pre_activation_sums[layer_number].size() != total_size)
+    if (_pre_activation_sums[layer_number].size() != pre_total_size)
     {
-      _pre_activation_sums[layer_number].assign(total_size, 0.0);
+      _pre_activation_sums[layer_number].assign(pre_total_size, 0.0);
+    }
+    if (_hidden_state_values[layer_number].size() != total_size)
+    {
       _hidden_state_values[layer_number].assign(total_size, 0.0);
       _cell_state_values[layer_number].assign(total_size, 0.0);
     }
@@ -58,7 +62,7 @@ public:
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      views.emplace_back(&p_pre[t * n], &p_hid[t * n], &p_cel[t * n], static_cast<unsigned>(n));
+      views.emplace_back(&p_pre[t * n * multiplier], &p_hid[t * n], &p_cel[t * n], static_cast<unsigned>(n), static_cast<unsigned>(n * multiplier));
     }
   }
 

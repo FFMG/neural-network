@@ -501,11 +501,11 @@ void Layers::calculate_forward_feed(
         const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
         const size_t n_prev = previous_layer.get_number_neurons();
         const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-        hidden_states[b].assign(layer_number, num_time_steps, HiddenState());
+        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
       }
       else
       {
-        hidden_states[b].assign(layer_number, 1, HiddenState());
+        hidden_states[b].assign(layer_number, 1, HiddenState(), current_layer.get_pre_activation_multiplier());
       }
     }
     // Call batched forward feed
@@ -557,7 +557,13 @@ void Layers::calculate_back_propagation_output_layer(
   const std::vector<HiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
+  auto& ol = output_layer();
+  ol.calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
+  
+  if (const auto& branched = dynamic_cast<const MultiOutputLayer*>(&ol))
+  {
+    branched->backprop_branches(batch_size, options.bptt_max_ticks());
+  }
 }
 
 void Layers::calculate_back_propagation_hidden_layers(
@@ -788,4 +794,14 @@ void Layers::train(
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
   update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);
+  cache_recurrent_weights();
+}
+
+void Layers::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  for (auto& layer : _layers)
+  {
+    layer->cache_recurrent_weights();
+  }
 }
