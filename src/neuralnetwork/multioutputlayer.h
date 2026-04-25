@@ -599,19 +599,6 @@ public:
     return sum;
   }
 
-  inline void scale_temperature(double factor) noexcept override
-  {
-    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
-    std::lock_guard<std::mutex> lock(_mutex);
-    for (auto& branch : _branches)
-    {
-      for (auto& layer : branch.layers)
-      {
-        layer->scale_temperature(factor);
-      }
-    }
-  }
-
   [[nodiscard]] inline double get_temperature(unsigned range_index) const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
@@ -627,18 +614,30 @@ public:
     return _branches[range_index].layers.back()->get_temperature(0);
   }
 
-  inline void scale_temperature(unsigned range_index, double factor) noexcept override
+  [[nodiscard]] inline double get_inference_temperature(unsigned range_index) const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
 #if VALIDATE_DATA == 1
     if (range_index >= _branches.size())
     {
-      Logger::panic("Trying to scale temperature for branch ", range_index, " which is out of bounds!");
+      Logger::panic("Trying to get inference temperature for branch ", range_index, " which is out of bounds!");
     }
 #endif
-    // Propagate scaling to the output layer of the specific branch
-    _branches[range_index].layers.back()->scale_temperature(0, factor);
+    return _branches[range_index].layers.back()->get_inference_temperature(0);
+  }
+
+  inline void set_inference_temperature(unsigned range_index, double t) noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    std::lock_guard<std::mutex> lock(_mutex);
+#if VALIDATE_DATA == 1
+    if (range_index >= _branches.size())
+    {
+      Logger::panic("Trying to set inference temperature for branch ", range_index, " which is out of bounds!");
+    }
+#endif
+    _branches[range_index].layers.back()->set_inference_temperature(0, t);
   }
 
   [[nodiscard]] const std::vector<Branch>& get_branches() const

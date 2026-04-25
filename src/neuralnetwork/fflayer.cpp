@@ -366,7 +366,7 @@ void FFLayer::run_post_gemm(
     for (const auto& r : _layer_activation_helper.ranges())
     {
       // 1. Batch activation for the range (modifies current_pre_act in-place)
-      r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end);
+      r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
 
       // 2. Apply dropout and store
       for (size_t j = r.start; j < r.end; j++)

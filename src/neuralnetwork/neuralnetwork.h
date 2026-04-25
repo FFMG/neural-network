@@ -39,12 +39,10 @@ public:
   virtual ~NeuralNetwork();
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
-  void calibrate_temperature(const std::vector<std::vector<double>>& validation_inputs, const std::vector<std::vector<double>>& validation_outputs);
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
 
   const std::vector<unsigned>& get_topology() const;
-  void scale_temperature(unsigned output_layer_index, double factor) noexcept;
   [[nodiscard]] const Layers& get_layers() const;
   [[nodiscard]] const Layer& get_layer(unsigned index) const;
 
@@ -59,6 +57,8 @@ public:
   double get_learning_rate() const noexcept;
   double get_temperature() const noexcept;
   double get_temperature(unsigned output_layer_index) const noexcept;
+  double get_inference_temperature(unsigned output_layer_index) const noexcept;
+
   double get_percent_complete() const noexcept;
   bool has_training_data() const;
 
@@ -71,10 +71,15 @@ public:
     return _options;
   }
 
+protected:
+  // No protected methods defined yet
+
 private:
+  void optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
+
   void train_single_batch(
-    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
-    const std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
     const size_t batch_size
   );
 
@@ -107,6 +112,7 @@ private:
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
+private:
   mutable std::shared_mutex _mutex;
 
   double _learning_rate;

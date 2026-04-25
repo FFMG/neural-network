@@ -12,10 +12,11 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation(const method method, double alpha, double temperature) :
+activation::activation(const method method, double alpha, double temperature, double inference_temperature) :
   _method(method),
   _alpha(alpha),
-  _temperature(temperature)
+  _temperature(temperature),
+  _inference_temperature(inference_temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -73,10 +74,17 @@ activation::activation(const method method, double alpha, double temperature) :
   }
 }
 
+activation::activation(const method method, double alpha, double temperature) :
+  activation(method, alpha, temperature, temperature)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+}
+
 activation::activation(const activation& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
   _temperature(src._temperature),
+  _inference_temperature(src._inference_temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -87,6 +95,7 @@ activation::activation(activation&& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
   _temperature(src._temperature),
+  _inference_temperature(src._inference_temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -101,6 +110,7 @@ activation& activation::operator=(const activation& src) noexcept
     _method = src._method;
     _alpha = src._alpha;
     _temperature = src._temperature;
+    _inference_temperature = src._inference_temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -115,6 +125,7 @@ activation& activation::operator=(activation&& src) noexcept
     _method = src._method;
     _alpha = src._alpha;
     _temperature = src._temperature;
+    _inference_temperature = src._inference_temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -133,12 +144,12 @@ double activation::calculate_linear_derivative(double, double) noexcept
   return 1.0;
 }
 
-void activation::activate(double* begin, double* end) const
+void activation::activate(double* begin, double* end, bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (_method == method::softmax)
   {
-    calculate_softmax(begin, end, _temperature);
+    calculate_softmax(begin, end, is_training ? _temperature : _inference_temperature);
   }
   else
   {

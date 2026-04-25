@@ -25,6 +25,7 @@ public:
     softmax
   };
 
+  activation(const method method, double alpha, double temperature, double inference_temperature);
   activation(const method method, double alpha, double temperature = 1.0);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
@@ -37,7 +38,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("activation");
     return _activate_ptr(x, _alpha); 
   }
-  void activate(double* begin, double* end) const;
+  void activate(double* begin, double* end, bool is_training = false) const;
 
   [[nodiscard]] inline double activate_derivative(double x) const noexcept 
   {
@@ -69,18 +70,17 @@ public:
     return _temperature;
   }
 
-  inline void set_temperature(double t) noexcept
+  [[nodiscard]] inline double get_inference_temperature() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
-    _temperature = t;
-    if (_temperature < 1e-6) _temperature = 1e-6;
+    return _inference_temperature;
   }
 
-  inline void scale_temperature(double factor) noexcept
+  inline void set_inference_temperature(double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
-    _temperature *= factor;
-    if (_temperature < 1e-6) _temperature = 1e-6;
+    _inference_temperature = t;
+    if (_inference_temperature < 1e-6) _inference_temperature = 1e-6;
   }
 
 private:
@@ -118,6 +118,7 @@ private:
   method _method;
   double _alpha;
   double _temperature;
+  double _inference_temperature;
   activation_function _activate_ptr;
   activation_function _derivative_ptr;
 };

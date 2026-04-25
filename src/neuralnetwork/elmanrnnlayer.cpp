@@ -383,7 +383,7 @@ void ElmanRNNLayer::calculate_forward_feed(
         auto& state = batch_hidden_states[b].at(get_layer_index())[t];
         state.set_pre_activation_sums(std::vector<double>(pre_t, pre_t + N_this));
 
-        get_activation().activate(pre_t, pre_t + N_this);
+        get_activation().activate(pre_t, pre_t + N_this, is_training);
 
         for (size_t j = 0; j < N_this; ++j)
         {
