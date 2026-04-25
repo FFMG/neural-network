@@ -21,6 +21,7 @@
 #endif
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 class Logger
 {
@@ -255,6 +256,12 @@ private:
       static_cast<int>(millis.count()));
   }
 
+  template <typename V>
+  struct is_vector : std::false_type {};
+
+  template <typename T, typename A>
+  struct is_vector<std::vector<T, A>> : std::true_type {};
+
   static void print_args(std::ostringstream&)
   {
     // No-op: This function does nothing, serving as the stopping point
@@ -265,15 +272,25 @@ private:
   template <typename T, typename... Args>
   static void print_args(std::ostringstream& oss, T&& first_arg, Args&&... rest)
   {
-    if constexpr (std::is_same_v<std::decay_t<T>, std::function<std::string()>>)
+    using DecayedT = std::decay_t<T>;
+    if constexpr (std::is_same_v<DecayedT, std::function<std::string()>>)
     {
       //  exact function
       oss << first_arg();
     }
-    else if constexpr (std::is_invocable_r_v<std::string, std::decay_t<T>>)
+    else if constexpr (std::is_invocable_r_v<std::string, DecayedT>)
     {
       //  lambda function
       oss << first_arg();
+    }
+    else if constexpr (is_vector<DecayedT>::value)
+    {
+      oss << "[";
+      for (size_t i = 0; i < first_arg.size(); ++i)
+      {
+        oss << first_arg[i] << (i == first_arg.size() - 1 ? "" : ", ");
+      }
+      oss << "]";
     }
     else
     {
