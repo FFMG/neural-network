@@ -246,6 +246,16 @@ public:
     MultiOutput
   };
 
+  static std::unique_ptr<Layer> create_hidden_layer(
+    unsigned layer_index,
+    unsigned number_input_neurons,
+    const class LayerDetails& ld,
+    int number_of_threads,
+    bool has_bias,
+    int residual_layer_number = -1,
+    ResidualProjector* residual_projector = nullptr
+  );
+
   [[nodiscard]] inline static std::string architecture_to_string(const Architecture& architecture)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

@@ -193,20 +193,12 @@ public:
       for (size_t i = 0; i < multi_output_layer_detail.get_hidden_layers().size(); ++i)
       {
         const auto& ld = multi_output_layer_detail.get_hidden_layer(static_cast<unsigned>(i));
-        auto l = std::make_unique<FFLayer>(
+        auto l = Layer::create_hidden_layer(
           (unsigned)branch.layers.size() + 1, // index in branch starts at 1
           prev_n,
-          ld.get_size(),
-          ld.get_weight_decay(),
-          Role::Hidden,
-          ld.get_activation(),
-          ld.get_optimiser_type(),
-          -1,
-          ld.get_dropout(),
-          nullptr,
+          ld,
           number_of_threads,
-          has_bias,
-          ld.get_momentum()
+          has_bias
         );
         prev_n = ld.get_size();
         branch.layers.emplace_back(std::move(l));

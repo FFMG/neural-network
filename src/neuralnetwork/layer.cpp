@@ -1,6 +1,98 @@
 #include <algorithm>
 #include "layer.h"
 #include "logger.h"
+#include "layerdetails.h"
+#include "fflayer.h"
+#include "elmanrnnlayer.h"
+#include "grurnnlayer.h"
+#include "lstmlayer.h"
+
+std::unique_ptr<Layer> Layer::create_hidden_layer(
+  unsigned layer_index,
+  unsigned number_input_neurons,
+  const LayerDetails& ld,
+  int number_of_threads,
+  bool has_bias,
+  int residual_layer_number,
+  ResidualProjector* residual_projector
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  switch (ld.get_layer_architecture())
+  {
+  case Layer::Architecture::FF:
+    return std::make_unique<FFLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_momentum()
+    );
+
+  case Layer::Architecture::Elman:
+    return std::make_unique<ElmanRNNLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_momentum()
+    );
+
+  case Layer::Architecture::Gru:
+    return std::make_unique<GRURNNLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_momentum()
+    );
+
+  case Layer::Architecture::Lstm:
+    return std::make_unique<LSTMLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_momentum()
+    );
+
+  default:
+    Logger::panic("Unknown Layer architecture: ", (int)ld.get_layer_architecture());
+    return nullptr;
+  }
+}
 
 void Layer::calculate_error_deltas(
   std::vector<double>& deltas,

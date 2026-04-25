@@ -259,11 +259,11 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
 }
 
 std::unique_ptr<Layer> Layers::create_hidden_layer(
-  double weight_decay, 
-  const Layer& previous_layer, 
-  const OptimiserType& optimiser_type, 
-  int residual_layer_number, 
-  double dropout_rate, 
+  double weight_decay,
+  const Layer& previous_layer,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
   const LayerDetails& layer_details,
   int number_of_threads,
   bool has_bias,
@@ -271,80 +271,18 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-
   unsigned num_neurons_in_this_layer = layer_details.get_size();
 
-  switch (layer_details.get_layer_architecture())
-  {
-  case Layer::Architecture::Elman:
-    return std::make_unique<ElmanRNNLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(), 
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::Role::Hidden,
-      layer_details.get_activation(),
-      optimiser_type, 
-      residual_layer_number, 
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias, 
-      momentum);
-
-  case Layer::Architecture::Gru:
-    return std::make_unique<GRURNNLayer>(
-      layer_index,
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer,
-      weight_decay,
-      Layer::Role::Hidden,
-      layer_details.get_activation(),
-      optimiser_type,
-      residual_layer_number,
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias,
-      momentum);
-
-  case Layer::Architecture::Lstm:
-    return std::make_unique<LSTMLayer>(
-      layer_index,
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer,
-      weight_decay,
-      Layer::Role::Hidden,
-      layer_details.get_activation(),
-      optimiser_type,
-      residual_layer_number,
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias,
-      momentum);
-
-  case Layer::Architecture::FF:
-    return std::make_unique<FFLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(), 
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::Role::Hidden,
-      layer_details.get_activation(),
-      optimiser_type, 
-      residual_layer_number,
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias, 
-      momentum);
-
-  default:
-    Logger::panic("Unknown or unsupported layer type!");
-  }
+  return Layer::create_hidden_layer(
+    layer_index,
+    previous_layer.get_number_neurons(),
+    layer_details,
+    number_of_threads,
+    has_bias,
+    residual_layer_number,
+    create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay)
+  );
 }
-
 std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
