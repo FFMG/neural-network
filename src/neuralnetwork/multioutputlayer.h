@@ -61,9 +61,6 @@ public:
     for (size_t b = 0; b < batch_size; ++b)
     {
       const double* next_grads = batch_next_grad_matrix[b].data();
-      // If next layer is RNN, it might have sequence gradients. 
-      // But trunk-to-branch connection is usually many-to-one (last step or expanded).
-      // We assume standard non-RNN gradient flow for the proxy interface.
       
       std::vector<double> gradients(N_this, 0.0);
       for (size_t j = 0; j < N_this; ++j)
@@ -75,6 +72,7 @@ public:
         }
         gradients[j] = sum;
       }
+
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
     }
   }
@@ -390,6 +388,21 @@ public:
          sub_targets[b].assign(full_target.begin() + offset, full_target.begin() + offset + b_out_size);
        }
        
+       // Synchronize hidden states for the last (output) layer
+       for (size_t b = 0; b < batch_size; ++b)
+       {
+         if (branch.layers.back()->use_bptt())
+         {
+           // For simplicity, assuming 1 timestep for the last layer of branch in this context,
+           // but should be consistent with forward pass logic
+           branch.hidden_states[b].assign(branch.layers.back()->get_layer_index(), 1, HiddenState());
+         }
+         else
+         {
+           branch.hidden_states[b].assign(branch.layers.back()->get_layer_index(), 1, HiddenState());
+         }
+       }
+       
        branch.layers.back()->calculate_output_gradients(
          branch.gradients_and_outputs,
          sub_targets.begin(),
@@ -419,6 +432,24 @@ public:
         // Skip output layer itself as its gradients were already set by calculate_output_gradients
         if (l_idx == (int)branch.layers.size() - 1) continue;
 
+        // Synchronize hidden states for the current layer
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+          if (current.use_bptt())
+          {
+            const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(current.get_layer_index());
+            const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(current.get_layer_index());
+            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+            const size_t n_prev = current.get_number_neurons(); // Actually input to next layer
+            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
+            branch.hidden_states[b].assign(current.get_layer_index(), num_time_steps, HiddenState());
+          }
+          else
+          {
+            branch.hidden_states[b].assign(current.get_layer_index(), 1, HiddenState());
+          }
+        }
+
         std::vector<std::vector<double>> batch_next_gradients;
         batch_next_gradients.reserve(batch_size);
         for(size_t b=0; b<batch_size; ++b)
@@ -440,6 +471,7 @@ public:
       // 2. Finally, calculate gradients for the branch input (index 0) using the proxy layer
       // This is what get_trunk_gradients() will sum up.
       const auto& first_layer = *branch.layers[0];
+
       std::vector<std::vector<double>> batch_first_gradients;
       batch_first_gradients.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
@@ -510,6 +542,24 @@ public:
        {
          auto& current_l = *branch.layers[l_idx];
          const Layer& prev_l = (l_idx == 0) ? static_cast<const Layer&>(proxy) : *branch.layers[l_idx-1];
+
+         // Synchronize hidden states for the current layer
+         for (size_t b = 0; b < batch_size; ++b)
+         {
+           if (current_l.use_bptt())
+           {
+             const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(prev_l.get_layer_index());
+             const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(prev_l.get_layer_index());
+             const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+             const size_t n_prev = prev_l.get_number_neurons();
+             const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
+             branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState());
+           }
+           else
+           {
+             branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState());
+           }
+         }
          
          current_l.calculate_and_store_gradients(
            branch.gradients_and_outputs,

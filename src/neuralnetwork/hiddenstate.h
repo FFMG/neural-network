@@ -8,12 +8,11 @@ class HiddenState
 public:
   HiddenState() = default;
 
-  HiddenState(double* pre_activation_sums, double* hidden_state_values, double* cell_state_values, unsigned num_neurons) noexcept
-    : _pre_activation_sums(pre_activation_sums, num_neurons),
-      _hidden_state_values(hidden_state_values, num_neurons),
-      _cell_state_values(cell_state_values, num_neurons)
+  HiddenState(double* pre_activation_sums, double* hidden_state_values, double* cell_state_values, unsigned int num_neurons, unsigned int num_pre_activations) :
+    _pre_activation_sums(pre_activation_sums, num_pre_activations),
+    _hidden_state_values(hidden_state_values, num_neurons),
+    _cell_state_values(cell_state_values, num_neurons)
   {
-    MYODDWEB_PROFILE_FUNCTION("HiddenState");
   }
 
   inline void set_pre_activation_sums(const std::vector<double>& sums) noexcept

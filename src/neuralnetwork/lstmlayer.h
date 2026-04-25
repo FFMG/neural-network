@@ -4,6 +4,7 @@
 #include "hiddenstate.h"
 #include "layer.h"
 
+#include <shared_mutex>
 #include <vector>
 
 class LSTMLayer final : public Layer
@@ -152,12 +153,17 @@ public:
   }
 
 public:
-  [[nodiscard]] inline bool use_bptt() const noexcept override 
+  [[nodiscard]] inline bool use_bptt() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
     return true;
   }
 
+  [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return 4;
+  }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
       const Layer &previous_layer,
@@ -196,6 +202,8 @@ public:
   void zero_gradients() override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
+
+  void cache_recurrent_weights() override;
 
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept
   {
@@ -407,7 +415,52 @@ private:
     AlignedVector c_vals;
     AlignedVector c_prev_vals;
     AlignedVector tanh_c_vals;
+
+    // For Tiling
+    AlignedVector temp_Uf_T_df;
+    AlignedVector temp_Ui_T_di;
+    AlignedVector temp_Uo_T_do;
+    AlignedVector temp_Ug_T_dg;
+
+    void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
+    {
+      grad_from_next_all_t.assign(num_time_steps * n, 0.0);
+      d_next_h.assign(batch_chunk_size * n, 0.0);
+      d_next_c.assign(batch_chunk_size * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 4 * n, 0.0);
+      chunk_df.assign(batch_chunk_size * n, 0.0);
+      chunk_di.assign(batch_chunk_size * n, 0.0);
+      chunk_do.assign(batch_chunk_size * n, 0.0);
+      chunk_dg.assign(batch_chunk_size * n, 0.0);
+      f_vals.assign(n, 0.0);
+      i_vals.assign(n, 0.0);
+      o_vals.assign(n, 0.0);
+      g_vals.assign(n, 0.0);
+      c_vals.assign(n, 0.0);
+      c_prev_vals.assign(n, 0.0);
+      tanh_c_vals.assign(n, 0.0);
+      temp_Uf_T_df.assign(batch_chunk_size * n, 0.0);
+      temp_Ui_T_di.assign(batch_chunk_size * n, 0.0);
+      temp_Uo_T_do.assign(batch_chunk_size * n, 0.0);
+      temp_Ug_T_dg.assign(batch_chunk_size * n, 0.0);
+    }
   };
+
+  BPTTWorkspace& get_workspace(size_t thread_idx) const;
+
+  void calculate_bptt_batch_chunk(
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks,
+    BPTTWorkspace& workspace,
+    const BPTTWorkspace::AlignedVector& rw_values_T,
+    const BPTTWorkspace::AlignedVector& f_rw_values_T,
+    const BPTTWorkspace::AlignedVector& i_rw_values_T,
+    const BPTTWorkspace::AlignedVector& o_rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
 
@@ -456,4 +509,14 @@ private:
   std::vector<long long> _o_rw_timesteps;
   std::vector<double> _o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_decays;
   std::vector<long long> _o_b_timesteps;
+
+  // Cached transposed recurrent weights
+  BPTTWorkspace::AlignedVector _rw_values_T;
+  BPTTWorkspace::AlignedVector _f_rw_values_T;
+  BPTTWorkspace::AlignedVector _i_rw_values_T;
+  BPTTWorkspace::AlignedVector _o_rw_values_T;
+
+  // Per-thread workspaces for BPTT
+  mutable std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+  mutable std::shared_mutex _workspace_mutex;
 };
