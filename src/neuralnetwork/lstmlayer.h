@@ -14,12 +14,12 @@ protected:
 
 public:
   LSTMLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     double weight_decay,
     const Role layer_role,
-    const activation& activation_method, 
-    const OptimiserType& optimiser_type, 
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
@@ -165,18 +165,18 @@ public:
     return 4;
   }
   void calculate_forward_feed(
-      std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-      const Layer &previous_layer,
-      const std::vector<std::vector<double>> &batch_residual_output_values,
-      std::vector<HiddenStates> &batch_hidden_states,
-      size_t batch_size,
-      bool is_training) const override;
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& previous_layer,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
+    bool is_training) const override;
 
   void calculate_output_gradients(
-      std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-      std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-      const std::vector<HiddenStates> &batch_hidden_states,
-      size_t batch_size) const  override;
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size) const override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -242,162 +242,694 @@ public:
   }
 
   // Forget Gate Accessors
-  [[nodiscard]] inline const std::vector<double>& get_f_w_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_values; }
-  [[nodiscard]] inline const std::vector<double>& get_f_w_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_f_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_f_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_f_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_f_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_f_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_w_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_f_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_w_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_values; }
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_f_rw_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_f_rw_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_rw_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_f_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_rw_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_rw_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_f_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_values; }
-  [[nodiscard]] inline const std::vector<double>& get_f_b_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_f_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_f_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_f_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_f_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_f_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _f_b_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_f_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_f_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _f_b_decays;
+  }
 
   // Input Gate Accessors
-  [[nodiscard]] inline const std::vector<double>& get_i_w_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_values; }
-  [[nodiscard]] inline const std::vector<double>& get_i_w_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_i_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_i_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_i_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_i_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_i_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_w_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_i_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_w_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_values; }
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_i_rw_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_i_rw_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_rw_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_i_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_rw_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_rw_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_i_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_values; }
-  [[nodiscard]] inline const std::vector<double>& get_i_b_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_i_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_i_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_i_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_i_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_i_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _i_b_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_i_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_i_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _i_b_decays;
+  }
 
   // Output Gate Accessors
-  [[nodiscard]] inline const std::vector<double>& get_o_w_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_values; }
-  [[nodiscard]] inline const std::vector<double>& get_o_w_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_o_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_o_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_o_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_o_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_o_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_w_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_o_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_w_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_values; }
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_o_rw_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_o_rw_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_rw_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_o_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_rw_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_rw_decays;
+  }
 
-  [[nodiscard]] inline const std::vector<double>& get_o_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_values; }
-  [[nodiscard]] inline const std::vector<double>& get_o_b_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_grads; }
-  [[nodiscard]] inline const std::vector<double>& get_o_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_velocities; }
-  [[nodiscard]] inline const std::vector<double>& get_o_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_m1; }
-  [[nodiscard]] inline const std::vector<double>& get_o_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_o_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_timesteps; }
-  [[nodiscard]] inline const std::vector<double>& get_o_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _o_b_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_values;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_grads;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_velocities;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_m1;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_m2;
+  }
+  [[nodiscard]] inline const std::vector<long long>& get_o_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_timesteps;
+  }
+  [[nodiscard]] inline const std::vector<double>& get_o_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _o_b_decays;
+  }
 
-  void set_rw_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_values = v; }
-  void set_rw_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_grads = v; }
-  void set_rw_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_velocities = v; }
-  void set_rw_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_m1 = v; }
-  void set_rw_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_m2 = v; }
-  void set_rw_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_timesteps = v; }
-  void set_rw_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _rw_decays = v; }
+  void set_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_values = v;
+  }
+  void set_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_grads = v;
+  }
+  void set_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_velocities = v;
+  }
+  void set_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_m1 = v;
+  }
+  void set_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_m2 = v;
+  }
+  void set_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_timesteps = v;
+  }
+  void set_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _rw_decays = v;
+  }
 
-  void set_f_w_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_values = v; }
-  void set_f_w_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_grads = v; }
-  void set_f_w_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_velocities = v; }
-  void set_f_w_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_m1 = v; }
-  void set_f_w_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_m2 = v; }
-  void set_f_w_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_timesteps = v; }
-  void set_f_w_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_w_decays = v; }
+  void set_f_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_values = v;
+  }
+  void set_f_w_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_grads = v;
+  }
+  void set_f_w_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_velocities = v;
+  }
+  void set_f_w_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_m1 = v;
+  }
+  void set_f_w_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_m2 = v;
+  }
+  void set_f_w_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_timesteps = v;
+  }
+  void set_f_w_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_w_decays = v;
+  }
 
-  void set_f_rw_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_values = v; }
-  void set_f_rw_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_grads = v; }
-  void set_f_rw_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_velocities = v; }
-  void set_f_rw_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_m1 = v; }
-  void set_f_rw_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_m2 = v; }
-  void set_f_rw_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_timesteps = v; }
-  void set_f_rw_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_rw_decays = v; }
+  void set_f_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_values = v;
+  }
+  void set_f_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_grads = v;
+  }
+  void set_f_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_velocities = v;
+  }
+  void set_f_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_m1 = v;
+  }
+  void set_f_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_m2 = v;
+  }
+  void set_f_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_timesteps = v;
+  }
+  void set_f_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_rw_decays = v;
+  }
 
-  void set_f_b_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_values = v; }
-  void set_f_b_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_grads = v; }
-  void set_f_b_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_velocities = v; }
-  void set_f_b_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_m1 = v; }
-  void set_f_b_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_m2 = v; }
-  void set_f_b_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_timesteps = v; }
-  void set_f_b_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _f_b_decays = v; }
+  void set_f_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_values = v;
+  }
+  void set_f_b_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_grads = v;
+  }
+  void set_f_b_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_velocities = v;
+  }
+  void set_f_b_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_m1 = v;
+  }
+  void set_f_b_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_m2 = v;
+  }
+  void set_f_b_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_timesteps = v;
+  }
+  void set_f_b_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _f_b_decays = v;
+  }
 
-  void set_i_w_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_values = v; }
-  void set_i_w_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_grads = v; }
-  void set_i_w_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_velocities = v; }
-  void set_i_w_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_m1 = v; }
-  void set_i_w_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_m2 = v; }
-  void set_i_w_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_timesteps = v; }
-  void set_i_w_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_w_decays = v; }
+  void set_i_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_values = v;
+  }
+  void set_i_w_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_grads = v;
+  }
+  void set_i_w_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_velocities = v;
+  }
+  void set_i_w_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_m1 = v;
+  }
+  void set_i_w_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_m2 = v;
+  }
+  void set_i_w_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_timesteps = v;
+  }
+  void set_i_w_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_w_decays = v;
+  }
 
-  void set_i_rw_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_values = v; }
-  void set_i_rw_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_grads = v; }
-  void set_i_rw_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_velocities = v; }
-  void set_i_rw_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_m1 = v; }
-  void set_i_rw_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_m2 = v; }
-  void set_i_rw_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_timesteps = v; }
-  void set_i_rw_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_rw_decays = v; }
+  void set_i_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_values = v;
+  }
+  void set_i_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_grads = v;
+  }
+  void set_i_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_velocities = v;
+  }
+  void set_i_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_m1 = v;
+  }
+  void set_i_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_m2 = v;
+  }
+  void set_i_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_timesteps = v;
+  }
+  void set_i_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_rw_decays = v;
+  }
 
-  void set_i_b_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_values = v; }
-  void set_i_b_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_grads = v; }
-  void set_i_b_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_velocities = v; }
-  void set_i_b_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_m1 = v; }
-  void set_i_b_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_m2 = v; }
-  void set_i_b_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_timesteps = v; }
-  void set_i_b_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _i_b_decays = v; }
+  void set_i_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_values = v;
+  }
+  void set_i_b_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_grads = v;
+  }
+  void set_i_b_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_velocities = v;
+  }
+  void set_i_b_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_m1 = v;
+  }
+  void set_i_b_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_m2 = v;
+  }
+  void set_i_b_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_timesteps = v;
+  }
+  void set_i_b_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _i_b_decays = v;
+  }
 
-  void set_o_w_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_values = v; }
-  void set_o_w_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_grads = v; }
-  void set_o_w_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_velocities = v; }
-  void set_o_w_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_m1 = v; }
-  void set_o_w_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_m2 = v; }
-  void set_o_w_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_timesteps = v; }
-  void set_o_w_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_w_decays = v; }
+  void set_o_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_values = v;
+  }
+  void set_o_w_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_grads = v;
+  }
+  void set_o_w_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_velocities = v;
+  }
+  void set_o_w_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_m1 = v;
+  }
+  void set_o_w_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_m2 = v;
+  }
+  void set_o_w_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_timesteps = v;
+  }
+  void set_o_w_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_w_decays = v;
+  }
 
-  void set_o_rw_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_values = v; }
-  void set_o_rw_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_grads = v; }
-  void set_o_rw_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_velocities = v; }
-  void set_o_rw_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_m1 = v; }
-  void set_o_rw_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_m2 = v; }
-  void set_o_rw_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_timesteps = v; }
-  void set_o_rw_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_rw_decays = v; }
+  void set_o_rw_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_values = v;
+  }
+  void set_o_rw_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_grads = v;
+  }
+  void set_o_rw_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_velocities = v;
+  }
+  void set_o_rw_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_m1 = v;
+  }
+  void set_o_rw_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_m2 = v;
+  }
+  void set_o_rw_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_timesteps = v;
+  }
+  void set_o_rw_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_rw_decays = v;
+  }
 
-  void set_o_b_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_values = v; }
-  void set_o_b_grads(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_grads = v; }
-  void set_o_b_velocities(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_velocities = v; }
-  void set_o_b_m1(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_m1 = v; }
-  void set_o_b_m2(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_m2 = v; }
-  void set_o_b_timesteps(const std::vector<long long>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_timesteps = v; }
-  void set_o_b_decays(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _o_b_decays = v; }
+  void set_o_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_values = v;
+  }
+  void set_o_b_grads(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_grads = v;
+  }
+  void set_o_b_velocities(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_velocities = v;
+  }
+  void set_o_b_m1(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_m1 = v;
+  }
+  void set_o_b_m2(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_m2 = v;
+  }
+  void set_o_b_timesteps(const std::vector<long long>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_timesteps = v;
+  }
+  void set_o_b_decays(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    _o_b_decays = v;
+  }
 
 private:
-  struct BPTTWorkspace 
+  struct BPTTWorkspace
   {
     using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
     AlignedVector grad_from_next_all_t;
@@ -476,7 +1008,7 @@ private:
     std::vector<double>& velocities, std::vector<double>& m1,
     std::vector<double>& m2, std::vector<long long>& timesteps,
     std::vector<double>& decays) const;
-  
+
   // SoA for recurrent weights (Cell Candidate g)
   std::vector<double> _rw_values;
   std::vector<double> _rw_grads;
@@ -520,3 +1052,4 @@ private:
   mutable std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
   mutable std::shared_mutex _workspace_mutex;
 };
+

@@ -19,19 +19,19 @@ FFLayer::FFLayer(
   double momentum
 ) :
   FFLayer(
-  layer_index,
-  num_neurons_in_previous_layer,
-  num_neurons_in_this_layer,
-  std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer) * num_neurons_in_this_layer, weight_decay),
-  layer_role,
-  activation_method,
-  optimiser_type,
-  residual_layer_number,
-  dropout_rate,
-  residual_projector,
-  number_of_threads,
-  has_bias,
-  momentum
+    layer_index,
+    num_neurons_in_previous_layer,
+    num_neurons_in_this_layer,
+    std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer)* num_neurons_in_this_layer, weight_decay),
+    layer_role,
+    activation_method,
+    optimiser_type,
+    residual_layer_number,
+    dropout_rate,
+    residual_projector,
+    number_of_threads,
+    has_bias,
+    momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -64,8 +64,8 @@ FFLayer::FFLayer(
     number_of_threads,
     has_bias,
     momentum
-    )
-  {
+  )
+{
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
 
@@ -132,30 +132,31 @@ FFLayer::FFLayer(
   const layer_activation_helper& lah,
   double momentum
 ) noexcept :
-  Layer(
-  layer_index,
-  layer_role,
-  optimiser_type,
-  residual_layer_number,
-  neurons,
-  w_values,
-  w_grads,
-  w_velocities,
-  w_m1,
-  w_m2,
-  w_timesteps,
-  w_decays,
-  b_values,
-  b_grads,
-  b_velocities,
-  b_m1,
-  b_m2,
-  b_timesteps,
-  b_decays,
-  residual_projector,
-  number_of_threads,
-  lah,
-  momentum
+  Layer
+  (
+    layer_index,
+    layer_role,
+    optimiser_type,
+    residual_layer_number,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    residual_projector,
+    number_of_threads,
+    lah,
+    momentum
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -170,7 +171,7 @@ FFLayer::FFLayer(FFLayer&& src) noexcept :
 FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(this != &src)
+  if (this != &src)
   {
     Layer::operator=(src);
   }
@@ -180,7 +181,7 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
 FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if(this != &src)
+  if (this != &src)
   {
     Layer::operator=(std::move(src));
   }
@@ -223,7 +224,7 @@ void FFLayer::calculate_forward_feed(
   }
 
   std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
-  
+
   // 2. Initialize with bias values
   if (has_bias())
   {
@@ -254,9 +255,9 @@ void FFLayer::calculate_forward_feed(
       if (start < end)
       {
         _task_queue_pool->enqueue([start, end, N_prev, N_this, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, this]()
-          { 
-            run_gemm(start, end, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer); 
-          });
+        {
+          run_gemm(start, end, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
+        });
       }
       start = end;
     }
@@ -278,9 +279,9 @@ void FFLayer::calculate_forward_feed(
       if (start < end)
       {
         _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, is_training, this]()
-          { 
-            run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training); 
-          });
+        {
+          run_post_gemm(start, end, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
+        });
       }
       start = end;
     }
@@ -307,7 +308,10 @@ void FFLayer::run_gemm(
     for (size_t i = 0; i < N_prev; ++i)
     {
       const double x_val = x_row[i];
-      if (x_val == 0.0) continue;
+      if (x_val == 0.0)
+      {
+        continue;
+      }
 
       const double* w_row = &W[i * N_this];
       for (size_t j = 0; j < N_this; ++j)
@@ -434,7 +438,7 @@ void FFLayer::calculate_hidden_gradients(
 
   // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
   // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
-  std::vector<double> flattened_this_grads_buffer(batch_size * N_this, 0.0);
+  std::vector<double> flattened_this_grads_buffer(batch_size* N_this, 0.0);
   const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
@@ -451,9 +455,10 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() {
-          run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer); 
-          }
+        _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]()
+        {
+          run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
+        }
         );
       }
       start = end;
@@ -476,9 +481,9 @@ void FFLayer::calculate_hidden_gradients(
       if (start < end)
       {
         _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]()
-          { 
-            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); 
-          });
+        {
+          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+        });
       }
       start = end;
     }
@@ -510,7 +515,7 @@ void FFLayer::calculate_and_store_gradients(
 
   // 1. Flatten inputs and gradients for the whole batch
   std::vector<double> batch_inputs_buffer(batch_size * num_inputs);
-  std::vector<double> batch_grads_buffer(batch_size * num_outputs);
+  std::vector<double> batch_grads_buffer(batch_size* num_outputs);
 
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const unsigned this_layer_index = get_layer_index();
@@ -526,7 +531,7 @@ void FFLayer::calculate_and_store_gradients(
 
   // 2. Reset gradients
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  if(has_bias())
+  if (has_bias())
   {
     std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
   }
@@ -540,7 +545,10 @@ void FFLayer::calculate_and_store_gradients(
     for (size_t i = 0; i < num_inputs; ++i)
     {
       const double x_val = x_row[i];
-      if (x_val == 0.0) continue;
+      if (x_val == 0.0)
+      {
+        continue;
+      }
 
       double* w_grad_row = &_w_grads[i * num_outputs];
       for (size_t j = 0; j < num_outputs; ++j)
@@ -565,7 +573,7 @@ void FFLayer::calculate_and_store_gradients(
 
   // 5. Average gradients over batch
   const double inv_batch_size = 1.0 / static_cast<double>(batch_size);
-  for (double& grad : _w_grads) 
+  for (double& grad : _w_grads)
   {
     grad *= inv_batch_size;
   }
@@ -582,7 +590,10 @@ double FFLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   double norm_sq = 0.0;
-  for (const double grad : _w_grads) norm_sq += grad * grad;
+  for (const double grad : _w_grads)
+  {
+    norm_sq += grad * grad;
+  }
   if (has_bias())
   {
     for (const double grad : _b_grads)

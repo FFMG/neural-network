@@ -11,8 +11,8 @@ public:
   FFOutputLayer(
     unsigned layer_index,
     const std::vector<OutputLayerDetails>& output_layer_details,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     int number_of_threads,
     bool has_bias);
 
@@ -49,7 +49,7 @@ public:
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states,
+    const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const override;
 
   void calculate_hidden_gradients(
@@ -67,14 +67,14 @@ public:
     std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     bool is_training) const override;
-  
+
   Layer* clone() const override;
 
   [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
     const std::vector<ErrorCalculation::type>& error_types,
     const std::vector<std::vector<double>>& checking_outputs,
     const std::vector<std::vector<double>>& predictions
-  ) const  override;
+  ) const override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
