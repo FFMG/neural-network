@@ -2045,6 +2045,8 @@ void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer
   layer_object->set("branches", branches_array);
   delete branches_array;
 
+  add_activation_helper(layer.get_activation_helper(), *layer_object);
+
   layers.add(layer_object);
   delete layer_object;
 }
