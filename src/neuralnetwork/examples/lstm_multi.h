@@ -114,21 +114,22 @@ public:
     // 4. Prepare training data for a multivariate sequence:
     // Sequence: [0.1, ..., 0.1] (17 values)
     std::vector<double> sequence(17, 0.1);
-    // wrap as batch of one sequence
-    std::vector<std::vector<double>> inputs = { sequence };
-    std::vector<std::vector<double>> targets = { { 0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25 } };
+    // Provide 4 samples so BPTT can form a batch of length 4
+    std::vector<std::vector<double>> inputs = { sequence, sequence, sequence, sequence };
+    std::vector<double> target = { 0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25 };
+    std::vector<std::vector<double>> targets = { target, target, target, target };
 
     // 5. Train
     Logger::info("Training LSTM Multi-Output on simple sequence...");
     nn->train(inputs, targets);
 
     // 6. Test prediction
-    auto prediction_batch = nn->think(inputs);
-    if (!prediction_batch.empty())
+    auto prediction = nn->think(sequence);
+    if (!prediction.empty())
     {
       Logger::info("Prediction for [0.1 (x17)]: ");
-      Logger::info("  Output 1: ", prediction_batch[0][0], " (Expected ~0.5)");
-      Logger::info("  Output 2: ", prediction_batch[0][1], " (Expected ~0.25)");
+      Logger::info("  Output 1: ", prediction[0], " (Expected ~0.5)");
+      Logger::info("  Output 2: ", prediction[5], " (Expected ~0.25)");
     }
 
     // 7. Test Serialization
@@ -139,15 +140,15 @@ public:
     auto loaded_nn = NeuralNetworkSerializer::load(model_path);
     if (loaded_nn != nullptr)
     {
-      auto loaded_prediction_batch = loaded_nn->think(inputs);
-      if (!loaded_prediction_batch.empty())
+      auto loaded_prediction = loaded_nn->think(sequence);
+      if (!loaded_prediction.empty())
       {
-        Logger::info("Loaded model prediction: ", loaded_prediction_batch[0][0], ", ", loaded_prediction_batch[0][1]);
+        Logger::info("Loaded model prediction: ", loaded_prediction[0], ", ", loaded_prediction[5]);
         
         bool match = true;
-        for(size_t i = 0; i < prediction_batch[0].size(); ++i)
+        for(size_t i = 0; i < prediction.size(); ++i)
         {
-          if (std::abs(prediction_batch[0][i] - loaded_prediction_batch[0][i]) > 1e-9)
+          if (std::abs(prediction[i] - loaded_prediction[i]) > 1e-9)
           {
             match = false;
             break;

@@ -485,11 +485,11 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     Logger::panic("The training input data size does not match the output data size!");
   }
 
-  const auto& bptt_size = static_cast<size_t>(_options.bptt_max_ticks());
+  const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
   const size_t batch_size = static_cast<size_t>(_options.batch_size());
 
   // If BPTT is disabled or sequence length is 1, return single steps
-  if (bptt_size <= 1 || !_options.enable_bptt())
+  if (bptt_size_option <= 1 || !_options.enable_bptt())
   {
     bptt_inputs.reserve(total_samples);
     bptt_outputs.reserve(total_samples);
@@ -499,6 +499,13 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
       bptt_outputs.push_back(outputs[i]);
     }
     return;
+  }
+
+  size_t bptt_size = bptt_size_option;
+  if (total_samples < bptt_size)
+  {
+    Logger::warning("The number of training samples (", total_samples, ") is less than the BPTT sequence length (", bptt_size, "). Clamping BPTT size to ", total_samples, ".");
+    bptt_size = total_samples;
   }
 
   const auto& is_shuffled = _options.shuffle_bptt_batches();
