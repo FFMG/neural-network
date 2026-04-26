@@ -119,6 +119,13 @@ public:
     size_t batch_size,
     int bptt_max_ticks) const override;
 
+  void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_output_gradients,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
+    int bptt_max_ticks) const override;
+
   double get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const;
 
   Layer* clone() const override;

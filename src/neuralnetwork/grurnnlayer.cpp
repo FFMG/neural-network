@@ -1,5 +1,6 @@
 #include "./libraries/instrumentor.h"
 #include "grurnnlayer.h"
+#include "fflayer.h"
 #include "logger.h"
 #include <immintrin.h>
 #include <numeric>
@@ -1214,6 +1215,27 @@ void GRURNNLayer::calculate_hidden_gradients(
     }
     _task_queue_pool->get();
   }
+}
+
+void GRURNNLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int bptt_max_ticks) const
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const auto N_this = get_number_neurons();
+  if (N_this == 0 || batch_size == 0) return;
+
+  // Use a local FFLayer as a proxy for an identity connection.
+  // This avoids duplicating the complex BPTT logic while correctly handling the MultiOutputLayer trunk gradients.
+  FFLayer proxy(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
+  proxy.set_w_values(id);
+
+  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
 double GRURNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const

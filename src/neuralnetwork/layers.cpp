@@ -525,6 +525,7 @@ void Layers::calculate_back_propagation_hidden_layers(
          branched->backprop_branches(batch_size, options.bptt_max_ticks());
        }
        batch_next_gradients = branched->get_trunk_gradients(batch_size);
+       hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
     } else {
        batch_next_gradients.reserve(batch_size);
        for (size_t b = 0; b < batch_size; ++b)
@@ -546,9 +547,8 @@ void Layers::calculate_back_propagation_hidden_layers(
          }
          batch_next_gradients.emplace_back(std::move(grad));
        }
+       hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
     }
-
-    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
   }
 }
 

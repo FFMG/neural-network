@@ -633,6 +633,13 @@ public:
     size_t batch_size,
     int bptt_max_ticks) const = 0;
 
+  virtual void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_output_gradients,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
+    int bptt_max_ticks) const = 0;
+
   virtual void calculate_and_store_gradients(
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,

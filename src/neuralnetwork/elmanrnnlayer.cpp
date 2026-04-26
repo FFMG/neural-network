@@ -1,5 +1,6 @@
 #include "./libraries/instrumentor.h"
 #include "elmanrnnlayer.h"
+#include "fflayer.h"
 #include "logger.h"
 #include <algorithm>
 #include <cmath>
@@ -513,6 +514,127 @@ void ElmanRNNLayer::calculate_hidden_gradients(
         {
           auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(t);
           calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+}
+
+void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int bptt_max_ticks) const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (batch_size == 0)
+  {
+    return;
+  }
+  const size_t N_this = get_number_neurons();
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0 || N_this == 0)
+  {
+    return;
+  }
+
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  
+  auto run_chunk = [this, &batch_gradients_and_outputs, &batch_output_gradients, &batch_hidden_states, bptt_max_ticks, N_this, num_time_steps](size_t start, size_t end, size_t t_id)
+  {
+    auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(t_id);
+    workspace.resize(N_this, end - start, num_time_steps);
+
+    for (size_t b = start; b < end; ++b)
+    {
+      const size_t b_idx = b - start;
+      const auto& next_grads = batch_output_gradients[b];
+      double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
+      if (next_grads.size() == num_time_steps * N_this)
+      {
+        std::copy(next_grads.begin(), next_grads.end(), dest_base);
+      }
+      else
+      {
+        if (next_grads.size() != N_this)
+        {
+          Logger::panic("ElmanRNNLayer #", get_layer_index(), " output gradient size mismatch! Expected ", N_this, " but got ", next_grads.size());
+        }
+        std::copy(next_grads.begin(), next_grads.end(), dest_base + (num_time_steps - 1) * N_this);
+      }
+    }
+
+    const int t_start = static_cast<int>(num_time_steps) - 1;
+    int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
+
+    for (int t = t_start; t >= t_end; --t)
+    {
+      for (size_t b = start; b < end; ++b)
+      {
+        const size_t b_idx = b - start;
+        const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+        const auto& state = layer_states[t];
+
+        double* dh_next = &workspace.d_next_h[b_idx * N_this];
+        const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
+        double* g_this_tick = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this];
+
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          double dh = upstream_grads[j] + dh_next[j];
+          double deriv = get_activation().activate_derivative(state.get_pre_activation_sum_at_neuron((unsigned)j));
+          g_this_tick[j] = dh * deriv;
+        }
+
+        std::fill(dh_next, dh_next + N_this, 0.0);
+        if (t > 0)
+        {
+          const double* rw = _rw_values_T.data();
+          for (size_t i = 0; i < N_this; ++i)
+          {
+            const double g_val = g_this_tick[i];
+            const double* rw_row = &rw[i * N_this];
+            for (size_t j = 0; j < N_this; ++j)
+            {
+              dh_next[j] += g_val * rw_row[j];
+            }
+          }
+        }
+      }
+    }
+
+    const size_t grad_size = num_time_steps * N_this;
+    for (size_t b = start; b < end; ++b)
+    {
+      const size_t b_idx = b - start;
+      const double* src = &workspace.rnn_grad_matrix[b_idx * grad_size];
+      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(src, src + grad_size));
+
+      std::vector<double> last_step_deltas(N_this);
+      std::copy(src + grad_size - N_this, src + grad_size, last_step_deltas.begin());
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_deltas);
+    }
+  };
+
+  if (num_threads <= 1)
+  {
+    run_chunk(0, batch_size, 0);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t_id = 0; t_id < num_threads; ++t_id)
+    {
+      size_t size = (batch_size / num_threads) + (t_id < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, t_id, &run_chunk]()
+        {
+          run_chunk(start, end, t_id);
         });
       }
       start = end;

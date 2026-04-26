@@ -491,6 +491,59 @@ void FFLayer::calculate_hidden_gradients(
   }
 }
 
+void FFLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int /*bptt_max_ticks*/) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const auto N_this = get_number_neurons();
+
+  if (batch_size == 0)
+  {
+    return;
+  }
+
+  // 1. Flatten output gradients for the whole batch [BatchSize x N_this]
+  std::vector<double> flattened_this_grads_buffer(batch_size * N_this);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& next_grads = batch_output_gradients[b];
+    if (next_grads.size() != N_this)
+    {
+      Logger::panic("FFLayer #", get_layer_index(), " output gradient size mismatch! Expected ", N_this, " but got ", next_grads.size());
+    }
+    std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * N_this);
+  }
+
+  // 2. Apply activation derivative and store results
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  if (num_threads <= 1)
+  {
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]()
+        {
+          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+}
+
 Layer* FFLayer::clone() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
