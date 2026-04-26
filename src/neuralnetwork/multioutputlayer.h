@@ -363,13 +363,31 @@ public:
     for (size_t b = 0; b < batch_size; ++b)
     {
        std::vector<double> concatenated_output;
+       std::vector<double> concatenated_pre_act;
        concatenated_output.reserve(get_number_neurons());
+       if (!batch_hidden_states.empty())
+       {
+         concatenated_pre_act.reserve(get_number_neurons());
+       }
+
        for (size_t i = 0; i < _branches.size(); ++i)
        {
-         const auto b_out_span = _branches[i].gradients_and_outputs[b].output_back();
+         const auto& branch = _branches[i];
+         const auto b_out_span = branch.gradients_and_outputs[b].output_back();
          concatenated_output.insert(concatenated_output.end(), b_out_span.begin(), b_out_span.end());
+
+         if (!batch_hidden_states.empty())
+         {
+           const auto branch_out_layer_idx = branch.layers.back()->get_layer_index();
+           const auto b_pre_act = branch.hidden_states[b].at(branch_out_layer_idx)[0].get_pre_activation_sums();
+           concatenated_pre_act.insert(concatenated_pre_act.end(), b_pre_act.begin(), b_pre_act.end());
+         }
        }
        batch_gradients_and_outputs[b].set_outputs(this_layer_index, concatenated_output);
+       if (!batch_hidden_states.empty())
+       {
+         batch_hidden_states[b].at(this_layer_index)[0].set_pre_activation_sums(concatenated_pre_act);
+       }
     }
   }
 
