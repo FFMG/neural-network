@@ -76,6 +76,20 @@ public:
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
     }
   }
+
+  void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_output_gradients,
+    const std::vector<HiddenStates>& /*batch_hidden_states*/,
+    size_t batch_size,
+    int /*bptt_max_ticks*/) const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), batch_output_gradients[b]);
+    }
+  }
   void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
@@ -510,6 +524,17 @@ public:
     std::vector<GradientsAndOutputs>& /*batch_gradients_and_outputs*/,
     const Layer& /*next_layer*/,
     const std::vector<std::vector<double>>& /*batch_next_grad_matrix*/,
+    const std::vector<HiddenStates>& /*batch_hidden_states*/,
+    size_t /*batch_size*/,
+    int /*bptt_max_ticks*/) const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    // This is handled by backprop_branches + get_trunk_gradients in Layers.cpp
+  }
+
+  void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& /*batch_gradients_and_outputs*/,
+    const std::vector<std::vector<double>>& /*batch_output_gradients*/,
     const std::vector<HiddenStates>& /*batch_hidden_states*/,
     size_t /*batch_size*/,
     int /*bptt_max_ticks*/) const override
