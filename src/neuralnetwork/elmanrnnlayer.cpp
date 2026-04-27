@@ -2,6 +2,7 @@
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "logger.h"
+#include "simd_utils.h"
 #include <algorithm>
 #include <cmath>
 
@@ -312,10 +313,7 @@ void ElmanRNNLayer::calculate_forward_feed(
             continue;
           }
           const double* w_row = &get_w_values()[i * N_this];
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            pre_t[j] += xi * w_row[j];
-          }
+          simd::mul_add(xi, w_row, pre_t, N_this);
         }
       }
     }
@@ -367,10 +365,7 @@ void ElmanRNNLayer::calculate_forward_feed(
             continue;
           }
           const double* u_row = &_rw_values[i * N_this];
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            pre_t[j] += hi * u_row[j];
-          }
+          simd::mul_add(hi, u_row, pre_t, N_this);
         }
 
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -498,7 +493,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
 
   if (num_threads <= 1)
   {
-    auto& workspace = get_workspace(0);
+    auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(0);
     calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
   }
   else
@@ -541,106 +536,13 @@ void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
     return;
   }
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  
-  auto run_chunk = [this, &batch_gradients_and_outputs, &batch_output_gradients, &batch_hidden_states, bptt_max_ticks, N_this, num_time_steps](size_t start, size_t end, size_t t_id)
-  {
-    auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(t_id);
-    workspace.resize(N_this, end - start, num_time_steps);
+  // Use local FFLayer proxy
+  FFLayer proxy(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
+  proxy.set_w_values(id);
 
-    for (size_t b = start; b < end; ++b)
-    {
-      const size_t b_idx = b - start;
-      const auto& next_grads = batch_output_gradients[b];
-      double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
-      if (next_grads.size() == num_time_steps * N_this)
-      {
-        std::copy(next_grads.begin(), next_grads.end(), dest_base);
-      }
-      else
-      {
-        if (next_grads.size() != N_this)
-        {
-          Logger::panic("ElmanRNNLayer #", get_layer_index(), " output gradient size mismatch! Expected ", N_this, " but got ", next_grads.size());
-        }
-        std::copy(next_grads.begin(), next_grads.end(), dest_base + (num_time_steps - 1) * N_this);
-      }
-    }
-
-    const int t_start = static_cast<int>(num_time_steps) - 1;
-    int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-
-    for (int t = t_start; t >= t_end; --t)
-    {
-      for (size_t b = start; b < end; ++b)
-      {
-        const size_t b_idx = b - start;
-        const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-        const auto& state = layer_states[t];
-
-        double* dh_next = &workspace.d_next_h[b_idx * N_this];
-        const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
-        double* g_this_tick = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this];
-
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          double dh = upstream_grads[j] + dh_next[j];
-          double deriv = get_activation().activate_derivative(state.get_pre_activation_sum_at_neuron((unsigned)j));
-          g_this_tick[j] = dh * deriv;
-        }
-
-        std::fill(dh_next, dh_next + N_this, 0.0);
-        if (t > 0)
-        {
-          const double* rw = _rw_values_T.data();
-          for (size_t i = 0; i < N_this; ++i)
-          {
-            const double g_val = g_this_tick[i];
-            const double* rw_row = &rw[i * N_this];
-            for (size_t j = 0; j < N_this; ++j)
-            {
-              dh_next[j] += g_val * rw_row[j];
-            }
-          }
-        }
-      }
-    }
-
-    const size_t grad_size = num_time_steps * N_this;
-    for (size_t b = start; b < end; ++b)
-    {
-      const size_t b_idx = b - start;
-      const double* src = &workspace.rnn_grad_matrix[b_idx * grad_size];
-      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(src, src + grad_size));
-
-      std::vector<double> last_step_deltas(N_this);
-      std::copy(src + grad_size - N_this, src + grad_size, last_step_deltas.begin());
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_deltas);
-    }
-  };
-
-  if (num_threads <= 1)
-  {
-    run_chunk(0, batch_size, 0);
-  }
-  else
-  {
-    size_t start = 0;
-    for (unsigned int t_id = 0; t_id < num_threads; ++t_id)
-    {
-      size_t size = (batch_size / num_threads) + (t_id < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([start, end, t_id, &run_chunk]()
-        {
-          run_chunk(start, end, t_id);
-        });
-      }
-      start = end;
-    }
-    _task_queue_pool->get();
-  }
+  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
 void ElmanRNNLayer::calculate_bptt_batch_chunk(
@@ -652,15 +554,16 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   const std::vector<HiddenStates>& batch_hidden_states,
   int bptt_max_ticks,
   BPTTWorkspace& workspace,
-  const BPTTWorkspace::AlignedVector& rw_values_T) const
+  const BPTTWorkspace::AlignedVector& /*rw_values_T*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
-  workspace.resize(N_this, end - start, num_time_steps);
+  workspace.resize(N_this, N_prev, end - start, num_time_steps);
 
   const size_t N_next = next_layer.get_number_neurons();
   const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
@@ -682,20 +585,7 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
       for (size_t j = 0; j < N_this; ++j)
       {
         const double* next_w_row = next_layer.get_w_values().data() + j * N_next;
-        __m256d sum_vec = _mm256_setzero_pd();
-        size_t k = 0;
-        for (; k + 3 < N_next; k += 4)
-        {
-          sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&g_next_t[k]), _mm256_loadu_pd(&next_w_row[k]), sum_vec);
-        }
-        double buffer[4];
-        _mm256_storeu_pd(buffer, sum_vec);
-        double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
-        for (; k < N_next; ++k)
-        {
-          sum += g_next_t[k] * next_w_row[k];
-        }
-        dest_t[j] += sum;
+        dest_t[j] += simd::dot_product(g_next_t, next_w_row, N_next);
       }
     }
   }
@@ -714,23 +604,22 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
       for (size_t j = 0; j < N_this; ++j)
       {
-        double dh = upstream_grads[j] + dh_next[j];
+        double dh = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
         double deriv = get_activation().activate_derivative(state.get_pre_activation_sum_at_neuron((unsigned)j));
         g_this_tick[j] = dh * deriv;
       }
 
-      std::fill(dh_next, dh_next + N_this, 0.0);
-      for (size_t j = 0; j < N_this; ++j)
+      // Calculate dX_t
+      double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
+      for (size_t k = 0; k < N_prev; ++k)
       {
-        const double gj = g_this_tick[j];
-        if (gj == 0.0)
-        {
-          continue;
-        }
-        for (size_t k = 0; k < N_this; ++k)
-        {
-          dh_next[k] += gj * rw_values_T[k * N_this + j];
-        }
+        dx_t[k] = simd::dot_product(g_this_tick, &get_w_values()[k * N_this], N_this);
+      }
+
+      std::fill(dh_next, dh_next + N_this, 0.0);
+      for (size_t k = 0; k < N_this; ++k)
+      {
+        dh_next[k] = simd::dot_product(g_this_tick, &_rw_values[k * N_this], N_this);
       }
     }
   }
@@ -738,14 +627,18 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   for (size_t b = start; b < end; ++b)
   {
     const size_t b_idx = b - start;
-    const double* src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * N_this];
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(src, src + num_time_steps * N_this));
+    const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
+
+    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * N_this];
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * N_this));
   }
 }
 
 void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  zero_gradients();
   const size_t N_this = get_number_neurons();
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t T = hidden_states[0].at(get_layer_index()).size();
@@ -753,11 +646,9 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
-    if (packed_grads.empty())
-    {
-      continue;
-    }
+    const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+    if (packed_grads.empty()) continue;
+
     const auto& layer_states = hidden_states[b].at(get_layer_index());
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
@@ -772,45 +663,25 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
 
       for (size_t j = 0; j < N_this; ++j)
       {
-        if (has_bias())
-        {
-          _b_grads[j] += g_t[j];
-        }
-        for (size_t k = 0; k < N_prev; ++k)
-        {
-          _w_grads[k * N_this + j] += g_t[j] * x_t[k];
-        }
+        if (has_bias()) _b_grads[j] += g_t[j];
+        for (size_t k = 0; k < N_prev; ++k) _w_grads[k * N_this + j] += g_t[j] * x_t[k];
         if (h_prev)
         {
-          for (size_t k = 0; k < N_this; ++k)
-          {
-            _rw_grads[k * N_this + j] += g_t[j] * h_prev[k];
-          }
+          for (size_t k = 0; k < N_this; ++k) _rw_grads[k * N_this + j] += g_t[j] * h_prev[k];
         }
       }
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size * T);
-  for (double& x : _w_grads)
-  {
-    x *= inv_batch;
-  }
-  for (double& x : _rw_grads)
-  {
-    x *= inv_batch;
-  }
-  if (has_bias())
-  {
-    for (double& x : _b_grads)
-    {
-      x *= inv_batch;
-    }
-  }
+  for (double& x : _w_grads) x *= inv_batch;
+  for (double& x : _rw_grads) x *= inv_batch;
+  if (has_bias()) for (double& x : _b_grads) x *= inv_batch;
 }
 
 double ElmanRNNLayer::get_gradient_norm_sq() const
 {
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   auto ssq = [](const std::vector<double>& v)
   {
     double s = 0; for (double x : v)
@@ -819,44 +690,26 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
     }
     return s;
   };
-  return ssq(_w_grads) + ssq(_rw_grads) + (has_bias() ? ssq(_b_grads) : 0.0);
+  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads);
 }
 
 void ElmanRNNLayer::zero_gradients()
 {
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  Layer::zero_gradients();
   std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  if (has_bias())
-  {
-    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
-  }
 }
 
 void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, get_optimiser_type());
   apply_update_to_vector(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, learning_rate, clipping_scale, false, get_optimiser_type());
   if (has_bias())
   {
     apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, get_optimiser_type());
   }
-}
-
-void ElmanRNNLayer::cache_recurrent_weights()
-{
-  const size_t n = get_number_neurons();
-  if (n == 0)
-  {
-    return;
-  }
-  _rw_values_T.resize(n * n);
-  for (size_t i = 0; i < n; ++i)
-  {
-    for (size_t j = 0; j < n; ++j)
-    {
-      _rw_values_T[j * n + i] = _rw_values[i * n + j];
-    }
-  }
+  zero_gradients();
 }
 
 ElmanRNNLayer::BPTTWorkspace& ElmanRNNLayer::get_workspace(size_t thread_idx) const
@@ -877,7 +730,23 @@ double ElmanRNNLayer::get_recurrent_weight_value(unsigned f, unsigned t) const
 {
   return _rw_values[f * get_number_neurons() + t];
 }
+
 Layer* ElmanRNNLayer::clone() const
 {
   return new ElmanRNNLayer(*this);
+}
+
+void ElmanRNNLayer::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const size_t n = get_number_neurons();
+  if (n == 0) return;
+  _rw_values_T.resize(n * n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    for (size_t j = 0; j < n; ++j)
+    {
+      _rw_values_T[j * n + i] = _rw_values[i * n + j];
+    }
+  }
 }

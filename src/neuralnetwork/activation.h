@@ -111,7 +111,7 @@ private:
   [[nodiscard]] static double calculate_gelu_derivative(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu_derivative(double x, double alpha) noexcept;
-  [[nodiscard]] static void calculate_softmax(double* begin, double* end, double temperature) noexcept;
+  static void calculate_softmax(double* begin, double* end, double temperature);
   [[nodiscard]] static double calculate_softmax(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_softmax_derivative(double x, double alpha) noexcept;
 

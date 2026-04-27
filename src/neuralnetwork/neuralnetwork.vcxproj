@@ -111,6 +111,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,6 +128,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -207,6 +209,7 @@
     <ClInclude Include="outputlayerdetails.h" />
     <ClInclude Include="residualprojector.h" />
     <ClInclude Include="rng.h" />
+    <ClInclude Include="simd_utils.h" />
     <ClInclude Include="taskqueue.h" />
     <ClInclude Include="trainingmonitor.h" />
     <ClInclude Include="weightparam.h" />

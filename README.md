@@ -188,6 +188,17 @@ For classification tasks using Softmax, the network automatically optimizes the 
 * `directional_confidence_score`
 * `prediction_coverage`
 
+## Performance Optimization (SIMD)
+
+To achieve high throughput during training and inference, this library leverages **Advanced Vector Extensions 2 (AVX2)** intrinsics for core mathematical operations (GEMM, dot products, and optimizer updates).
+
+To enable these optimizations, ensure your compiler is configured to target the AVX2 instruction set:
+
+*   **MSVC (Visual Studio):** Set `Enable Enhanced Instruction Set` to `Advanced Vector Extensions 2 (/arch:AVX2)` in the project properties.
+*   **GCC / Clang:** Use the `-mavx2 -mfma` flags during compilation.
+
+For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html) or [Wikipedia](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions).
+
 ## Technical Stack
 
 * **Language:** C++17/C++20

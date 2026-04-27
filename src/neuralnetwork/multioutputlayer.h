@@ -60,17 +60,22 @@ public:
 
     for (size_t b = 0; b < batch_size; ++b)
     {
-      const double* next_grads = batch_next_grad_matrix[b].data();
+      const auto& next_grads = batch_next_grad_matrix[b];
+      const size_t num_time_steps = next_grads.empty() ? 0 : next_grads.size() / N_next;
       
       std::vector<double> gradients(N_this, 0.0);
-      for (size_t j = 0; j < N_this; ++j)
+      for (size_t t = 0; t < num_time_steps; ++t)
       {
-        double sum = 0.0;
-        for (size_t k = 0; k < N_next; ++k)
+        const double* g_t = &next_grads[t * N_next];
+        for (size_t j = 0; j < N_this; ++j)
         {
-          sum += next_grads[k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
+          double sum = 0.0;
+          for (size_t k = 0; k < N_next; ++k)
+          {
+            sum += g_t[k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
+          }
+          gradients[j] += sum;
         }
-        gradients[j] = sum;
       }
 
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
@@ -478,8 +483,16 @@ public:
         batch_next_gradients.reserve(batch_size);
         for(size_t b=0; b<batch_size; ++b)
         {
-          const auto g_span = branch.gradients_and_outputs[b].get_gradients(next.get_layer_index());
-          batch_next_gradients.emplace_back(g_span.begin(), g_span.end());
+          const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(next.get_layer_index());
+          if (!rnn_span.empty())
+          {
+            batch_next_gradients.emplace_back(rnn_span.begin(), rnn_span.end());
+          }
+          else
+          {
+            const auto g_span = branch.gradients_and_outputs[b].get_gradients(next.get_layer_index());
+            batch_next_gradients.emplace_back(g_span.begin(), g_span.end());
+          }
         }
 
         current.calculate_hidden_gradients(
@@ -500,8 +513,16 @@ public:
       batch_first_gradients.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto g_span = branch.gradients_and_outputs[b].get_gradients(first_layer.get_layer_index());
-        batch_first_gradients.emplace_back(g_span.begin(), g_span.end());
+        const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(first_layer.get_layer_index());
+        if (!rnn_span.empty())
+        {
+          batch_first_gradients.emplace_back(rnn_span.begin(), rnn_span.end());
+        }
+        else
+        {
+          const auto g_span = branch.gradients_and_outputs[b].get_gradients(first_layer.get_layer_index());
+          batch_first_gradients.emplace_back(g_span.begin(), g_span.end());
+        }
       }
       proxy.calculate_hidden_gradients(
         branch.gradients_and_outputs,

@@ -1,5 +1,6 @@
 #include "./libraries/instrumentor.h"
 #include "fflayer.h"
+#include "simd_utils.h"
 #include "logger.h"
 #include <numeric>
 
@@ -314,10 +315,7 @@ void FFLayer::run_gemm(
       }
 
       const double* w_row = &W[i * N_this];
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        y_row[j] += x_val * w_row[j];
-      }
+      simd::mul_add(x_val, w_row, y_row, N_this);
     }
   }
 }
@@ -424,34 +422,57 @@ void FFLayer::calculate_hidden_gradients(
     return;
   }
 
-  // 1. Flatten next-layer gradients for the whole batch [BatchSize x N_next]
-  std::vector<double> flattened_next_grads_buffer(batch_size * N_next);
+  // 1. Determine sequence length from next-layer gradients
+  size_t num_time_steps = 1;
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& next_grads = batch_next_grad_matrix[b];
-    if (next_grads.size() != N_next)
+    if (!next_grads.empty())
     {
-      Logger::panic("FFLayer #", get_layer_index(), " next gradient size mismatch! Expected ", N_next, " but got ", next_grads.size(), " at batch sample ", b);
+       num_time_steps = next_grads.size() / N_next;
+       break;
     }
-    std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + b * N_next);
   }
 
-  // 2. Transposed Matrix-Matrix multiplication (G_this = G_next * W_next^T)
-  // G_this is [BatchSize x N_this], G_next is [BatchSize x N_next], W_next is [N_this x N_next]
-  std::vector<double> flattened_this_grads_buffer(batch_size* N_this, 0.0);
+  // 2. Flatten next-layer gradients for the whole batch [BatchSize * num_time_steps x N_next]
+  std::vector<double> flattened_next_grads_buffer(batch_size * num_time_steps * N_next);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& next_grads = batch_next_grad_matrix[b];
+    if (next_grads.size() != num_time_steps * N_next)
+    {
+      if (next_grads.size() == N_next)
+      {
+         for(size_t t=0; t<num_time_steps; ++t)
+            std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + (b * num_time_steps + t) * N_next);
+      }
+      else
+      {
+         Logger::panic("FFLayer #", get_layer_index(), " next gradient size mismatch! Expected ", N_next, " (x", num_time_steps, " steps) but got ", next_grads.size(), " at batch sample ", b);
+      }
+    }
+    else
+    {
+      std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + b * num_time_steps * N_next);
+    }
+  }
+
+  // 3. Matrix-Matrix multiplication (G_this = G_next * W_next^T)
+  const size_t effective_batch_size = batch_size * num_time_steps;
+  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this, 0.0);
   const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_gemm_backward(0, batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
+    run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
   }
   else
   {
     size_t start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (effective_batch_size / num_threads) + (t < (effective_batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
@@ -466,10 +487,39 @@ void FFLayer::calculate_hidden_gradients(
     _task_queue_pool->get();
   }
 
-  // 3. Apply activation derivative and store results
+  // 4. Apply activation derivative and store results
+  auto run_post_gemm_ff = [&](size_t b_start, size_t b_end)
+  {
+    for (size_t b = b_start; b < b_end; ++b)
+    {
+      std::vector<double> rnn_grads_row(num_time_steps * N_this);
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
+        const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[t];
+
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv;
+        }
+      }
+
+      if (num_time_steps > 1)
+      {
+        batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
+      }
+
+      // Also set standard gradients (from last step or if only 1 step)
+      std::vector<double> std_grads(N_this);
+      std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
+    }
+  };
+
   if (num_threads <= 1)
   {
-    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+    run_post_gemm_ff(0, batch_size);
   }
   else
   {
@@ -480,10 +530,7 @@ void FFLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]()
-        {
-          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
-        });
+        _task_queue_pool->enqueue([&run_post_gemm_ff, start, end]() { run_post_gemm_ff(start, end); });
       }
       start = end;
     }
@@ -506,23 +553,75 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
     return;
   }
 
-  // 1. Flatten output gradients for the whole batch [BatchSize x N_this]
-  std::vector<double> flattened_this_grads_buffer(batch_size * N_this);
+  // 1. Determine sequence length
+  size_t num_time_steps = 1;
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& next_grads = batch_output_gradients[b];
-    if (next_grads.size() != N_this)
+    if (!next_grads.empty())
     {
-      Logger::panic("FFLayer #", get_layer_index(), " output gradient size mismatch! Expected ", N_this, " but got ", next_grads.size());
+       num_time_steps = next_grads.size() / N_this;
+       break;
     }
-    std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * N_this);
   }
 
-  // 2. Apply activation derivative and store results
+  // 2. Flatten output gradients for the whole batch [BatchSize * num_time_steps x N_this]
+  const size_t effective_batch_size = batch_size * num_time_steps;
+  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& next_grads = batch_output_gradients[b];
+    if (next_grads.size() != num_time_steps * N_this)
+    {
+       if (next_grads.size() == N_this)
+       {
+          for(size_t t=0; t<num_time_steps; ++t)
+             std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + (b * num_time_steps + t) * N_this);
+       }
+       else
+       {
+          Logger::panic("FFLayer #", get_layer_index(), " output gradient size mismatch! Expected ", N_this, " but got ", next_grads.size());
+       }
+    }
+    else
+    {
+       std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+    }
+  }
+
+  // 3. Apply activation derivative and store results
+  auto run_post_gemm_ff = [&](size_t b_start, size_t b_end)
+  {
+    for (size_t b = b_start; b < b_end; ++b)
+    {
+      std::vector<double> rnn_grads_row(num_time_steps * N_this);
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
+        const auto& current_hidden_state = batch_hidden_states[b].at(get_layer_index())[t];
+
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
+          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv;
+        }
+      }
+
+      if (num_time_steps > 1)
+      {
+        batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
+      }
+
+      std::vector<double> std_grads(N_this);
+      std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
+    }
+  };
+
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+    run_post_gemm_ff(0, batch_size);
   }
   else
   {
@@ -533,10 +632,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]()
-        {
-          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
-        });
+        _task_queue_pool->enqueue([&run_post_gemm_ff, start, end]() { run_post_gemm_ff(start, end); });
       }
       start = end;
     }
@@ -604,10 +700,7 @@ void FFLayer::calculate_and_store_gradients(
       }
 
       double* w_grad_row = &_w_grads[i * num_outputs];
-      for (size_t j = 0; j < num_outputs; ++j)
-      {
-        w_grad_row[j] += x_val * g_row[j];
-      }
+      simd::mul_add(x_val, g_row, w_grad_row, num_outputs);
     }
   }
 
@@ -660,33 +753,18 @@ double FFLayer::get_gradient_norm_sq() const
 void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const unsigned num_outputs = get_number_neurons();
-  const unsigned num_inputs = get_number_input_neurons();
-
-  double update_sum = 0.0;
-  for (unsigned neuron_number = 0; neuron_number < num_outputs; ++neuron_number)
+  apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, _optimiser_type);
+  if (has_bias())
   {
-    for (unsigned i = 0; i < num_inputs; ++i)
-    {
-      unsigned weight_index = i * num_outputs + neuron_number;
-      double w_before = _w_values[weight_index];
-      apply_weight_gradient(_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, _optimiser_type, neuron_number);
-      double w_after = _w_values[weight_index];
-      update_sum += std::abs(w_after - w_before);
-    }
-
-    if (has_bias())
-    {
-      double b_before = _b_values[neuron_number];
-      apply_weight_gradient(_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
-      double b_after = _b_values[neuron_number];
-      update_sum += std::abs(b_after - b_before);
-    }
+    apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, _optimiser_type);
   }
 
   // Clear gradients
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
 }
 
 void FFLayer::run_gemm_backward(
@@ -717,12 +795,7 @@ void FFLayer::run_gemm_backward(
           for (size_t i = i0; i < i_limit; ++i)
           {
             const double* w_next_row = &W_next[i * N_next];
-            double sum = 0.0;
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              sum += g_next_row[j] * w_next_row[j];
-            }
-            g_this_row[i] += sum;
+            g_this_row[i] += simd::dot_product(g_next_row + j0, w_next_row + j0, j_limit - j0);
           }
         }
       }

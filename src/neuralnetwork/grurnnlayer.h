@@ -534,7 +534,8 @@ private:
     using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
     AlignedVector grad_from_next_all_t;
     AlignedVector d_next_h;
-    AlignedVector rnn_grad_matrix;
+    AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x 3N]
+    AlignedVector dx_matrix;      // Stores input gradients [Batch x T x N_prev]
     AlignedVector chunk_dz;
     AlignedVector chunk_dr;
     AlignedVector chunk_dh_hat;
@@ -542,11 +543,12 @@ private:
     AlignedVector h_hat_vals;
     AlignedVector temp_Uh_T_dh_hat;
 
-    void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
+    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
       grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
       rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 3 * n, 0.0);
+      dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
       chunk_dz.assign(batch_chunk_size * n, 0.0);
       chunk_dr.assign(batch_chunk_size * n, 0.0);
       chunk_dh_hat.assign(batch_chunk_size * n, 0.0);

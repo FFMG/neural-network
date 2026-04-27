@@ -2,6 +2,7 @@
 #include "grurnnlayer.h"
 #include "fflayer.h"
 #include "logger.h"
+#include "simd_utils.h"
 #include <immintrin.h>
 #include <numeric>
 
@@ -830,340 +831,185 @@ GRURNNLayer::BPTTWorkspace& GRURNNLayer::get_workspace(size_t thread_idx) const
 }
 
 void GRURNNLayer::calculate_bptt_batch_chunk(
-  size_t start,
-  size_t end,
-  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const Layer& next_layer,
-  const std::vector<std::vector<double>>& batch_next_grad_matrix,
-  const std::vector<HiddenStates>& batch_hidden_states,
-  int bptt_max_ticks,
-  BPTTWorkspace& workspace,
-  const BPTTWorkspace::AlignedVector& rw_values_T,
-  const BPTTWorkspace::AlignedVector& z_rw_values_T,
-  const BPTTWorkspace::AlignedVector& r_rw_values_T) const
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks,
+    BPTTWorkspace& workspace,
+    const BPTTWorkspace::AlignedVector& /*rw_values_T*/,
+    const BPTTWorkspace::AlignedVector& /*z_rw_values_T*/,
+    const BPTTWorkspace::AlignedVector& /*r_rw_values_T*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t N_this = get_number_neurons();
-  const size_t N_next = next_layer.get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
-  // Use workspace instead of local allocations to avoid repeated memory management
-  workspace.resize(N_this, end - start, num_time_steps);
+  workspace.resize(N_this, N_prev, end - start, num_time_steps);
 
-  // Precompute gradients from next layer (all time steps) using tiling for cache locality
-  constexpr size_t BLOCK_SIZE = 64;
+  // Step 1: Pre-calculate upstream gradients from next layer
+  const size_t N_next = next_layer.get_number_neurons();
+  const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+
   double* grad_next_all_ptr = workspace.grad_from_next_all_t.data();
 
-  for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
+  for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
-    size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
+    size_t b = start + b_idx;
+    const double* next_grad_matrix = batch_next_grad_matrix[b].data();
+
     for (int t = t_start; t >= t_end; --t)
     {
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      const double* next_grad_ptr = nullptr;
+      if (next_is_seq)
       {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
+        next_grad_ptr = &next_grad_matrix[t * N_next];
+      }
+      else if (t == t_start && batch_next_grad_matrix[b].size() == N_next)
+      {
+        next_grad_ptr = next_grad_matrix;
+      }
+
+      if (next_grad_ptr)
+      {
+        double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+        for (size_t i = 0; i < N_this; ++i)
         {
-          size_t b = start + b_idx;
-          const auto& next_grad_matrix = batch_next_grad_matrix[b];
-          const bool next_grad_is_seq = (next_grad_matrix.size() == N_next * num_time_steps);
-
-          const double* next_grad_ptr = nullptr;
-          if (next_grad_is_seq)
-          {
-            next_grad_ptr = &next_grad_matrix[t * N_next];
-          }
-          else if (t == t_start && next_grad_matrix.size() == N_next)
-          {
-            next_grad_ptr = next_grad_matrix.data();
-          }
-
-          if (next_grad_ptr)
-          {
-            double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
-              
-              // Vectorized Dot Product for Step 0
-              __m256d sum_vec = _mm256_setzero_pd();
-              size_t k = 0;
-              for (; k + 3 < N_next; k += 4)
-              {
-                __m256d g = _mm256_loadu_pd(&next_grad_ptr[k]);
-                __m256d w = _mm256_loadu_pd(&next_w_row[k]);
-                sum_vec = _mm256_fmadd_pd(g, w, sum_vec);
-              }
-              
-              double buffer[4];
-              _mm256_storeu_pd(buffer, sum_vec);
-              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
-              for (; k < N_next; ++k) sum += next_grad_ptr[k] * next_w_row[k];
-              
-              dest_ptr[i] += sum;
-            }
-          }
+          const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
+          dest_ptr[i] += simd::dot_product(next_grad_ptr, next_w_row, N_next);
         }
       }
     }
   }
 
-  // Prep chunk-level buffers from workspace
-  workspace.chunk_dz.resize((end - start) * N_this);
-  workspace.chunk_dr.resize((end - start) * N_this);
-  workspace.chunk_dh_hat.resize((end - start) * N_this);
-  workspace.chunk_dh_prev_accum.resize((end - start) * N_this);
-  workspace.h_hat_vals.resize(N_this);
-
+  // Step 2: BPTT Loop
   double* dz_ptr_all = workspace.chunk_dz.data();
   double* dr_ptr_all = workspace.chunk_dr.data();
   double* dh_hat_ptr_all = workspace.chunk_dh_hat.data();
   double* dh_prev_accum_ptr_all = workspace.chunk_dh_prev_accum.data();
-  double* d_next_h_ptr_base = workspace.d_next_h.data();
+  double* d_next_h_ptr_all = workspace.d_next_h.data();
   double* rnn_grad_ptr_all = workspace.rnn_grad_matrix.data();
 
-  // BPTT Loop
+  const __m256d one = _mm256_set1_pd(1.0);
+
   for (int t = t_start; t >= t_end; --t)
   {
-    std::fill(workspace.chunk_dh_prev_accum.begin(), workspace.chunk_dh_prev_accum.end(), 0.0);
-
-    // Step 1: dz, dh_hat (Vectorized)
+    // Step 2a: Calculate gate gradients
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
       size_t b = start + b_idx;
-      const size_t t_offset = (b_idx * num_time_steps + t) * N_this;
-      const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-
-      const double* z_vals = &packed_states[0];
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& state = layer_states[t];
+      const auto& h_vals = state.get_hidden_state_values();
+      const auto& packed_states = state.get_pre_activation_sums();
+      
+      const double* z_vals = packed_states.data();
+      const double* r_vals = &packed_states[N_this];
       const double* h_hat_pre_vals = &packed_states[2 * N_this];
-      const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
+      const double* h_hat_ptr = h_vals.data(); 
+      const double* h_prev_vals = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
-      const double* grad_next_ptr = &grad_next_all_ptr[t_offset];
-      const double* d_next_h_ptr = &d_next_h_ptr_base[b_idx * N_this];
-
-      std::copy(h_hat_pre_vals, h_hat_pre_vals + N_this, workspace.h_hat_vals.begin());
-      get_activation().activate(workspace.h_hat_vals.data(), workspace.h_hat_vals.data() + N_this);
-
-      const double* h_hat_ptr = workspace.h_hat_vals.data();
+      const double* grad_next_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+      double* d_next_h_ptr = &d_next_h_ptr_all[b_idx * N_this];
 
       size_t j = 0;
-      __m256d one = _mm256_set1_pd(1.0);
       for (; j + 3 < N_this; j += 4)
       {
-        __m256d dh = _mm256_add_pd(_mm256_loadu_pd(&grad_next_ptr[j]), _mm256_loadu_pd(&d_next_h_ptr[j]));
+        __m256d dh_raw = _mm256_add_pd(_mm256_loadu_pd(&grad_next_ptr[j]), _mm256_loadu_pd(&d_next_h_ptr[j]));
+        __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, _mm256_set1_pd(50.0)), _mm256_set1_pd(-50.0));
         __m256d z = _mm256_loadu_pd(&z_vals[j]);
         __m256d h_hat = _mm256_loadu_pd(&h_hat_ptr[j]);
         __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
-
         __m256d d_z = _mm256_mul_pd(dh, _mm256_sub_pd(h_hat, h_prev));
         __m256d d_z_pre = _mm256_mul_pd(d_z, _mm256_mul_pd(z, _mm256_sub_pd(one, z)));
-
         __m256d d_h_hat = _mm256_mul_pd(dh, z);
-        
-        // Scalar fallback for activation derivative (hard to vectorize virtual call)
         double derivatives[4];
         for(int k=0; k<4; ++k) derivatives[k] = get_activation().activate_derivative(h_hat_pre_vals[j+k]);
         __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_loadu_pd(derivatives));
-        
         __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
-
         _mm256_storeu_pd(&dz_ptr_all[b_idx * N_this + j], d_z_pre);
         _mm256_storeu_pd(&dh_hat_ptr_all[b_idx * N_this + j], d_h_hat_pre);
         _mm256_storeu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + j], d_h_prev_direct);
       }
-
       for (; j < N_this; ++j)
       {
-        double dh = grad_next_ptr[j] + d_next_h_ptr[j];
+        double dh = std::clamp(grad_next_ptr[j] + d_next_h_ptr[j], -50.0, 50.0);
         double z = z_vals[j];
         double h_hat = h_hat_ptr[j];
         double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-
-        double d_z = dh * (h_hat - h_prev);
-        double d_z_pre = d_z * z * (1.0 - z);
-
-        double d_h_hat = dh * z;
-        double d_h_hat_pre = d_h_hat * get_activation().activate_derivative(h_hat_pre_vals[j]);
-        double d_h_prev_direct = dh * (1.0 - z);
-
+        double d_z_pre = dh * (h_hat - h_prev) * z * (1.0 - z);
+        double d_h_hat_pre = dh * z * get_activation().activate_derivative(h_hat_pre_vals[j]);
         dz_ptr_all[b_idx * N_this + j] = d_z_pre;
         dh_hat_ptr_all[b_idx * N_this + j] = d_h_hat_pre;
-        dh_prev_accum_ptr_all[b_idx * N_this + j] = d_h_prev_direct;
+        dh_prev_accum_ptr_all[b_idx * N_this + j] = dh * (1.0 - z);
       }
     }
 
-    // Step 2: temp_Uh (dL/dr part) hoisted from the time loop (Vectorized Dot Product)
-    // Using transposed candidate recurrent weights rw_values_T
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
-    const double* rw_values_T_ptr = rw_values_T.data();
-
-    for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
-    {
-      size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-      {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double* w_row = &rw_values_T_ptr[i * N_this];
-            for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
-            {
-              const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
-              
-              __m256d sum_vec = _mm256_setzero_pd();
-              size_t j = j0;
-              for (; j + 3 < j_limit; j += 4)
-              {
-                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dh_hat_ptr[j]), _mm256_loadu_pd(&w_row[j]), sum_vec);
-              }
-              double buffer[4];
-              _mm256_storeu_pd(buffer, sum_vec);
-              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
-              for (; j < j_limit; ++j) sum += dh_hat_ptr[j] * w_row[j];
-              
-              temp_Uh_ptr_all[b_idx * N_this + i] += sum;
-            }
-          }
-        }
-      }
-    }
-
-    // Step 3: dr and propagate using tiling and cache-friendly access (Vectorized Dot Product)
-    for (size_t b_idx0 = 0; b_idx0 < end - start; b_idx0 += BLOCK_SIZE)
-    {
-      size_t b_idx_limit = std::min(b_idx0 + BLOCK_SIZE, end - start);
-      
-      // 3a. dr calculation (remains simple, but tiled for consistency)
-      for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
-      {
-        size_t b = start + b_idx;
-        const auto& packed_states = batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-        const double* r_vals = &packed_states[N_this];
-        const double* h_prev_vals = (t > 0) ? batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data() : nullptr;
-        const double* temp_Uh_ptr = &temp_Uh_ptr_all[b_idx * N_this];
-
-        size_t i = 0;
-        for (; i + 3 < N_this; i += 4)
-        {
-          __m256d grad_rh = _mm256_loadu_pd(&temp_Uh_ptr[i]);
-          __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[i]) : _mm256_setzero_pd();
-          __m256d r = _mm256_loadu_pd(&r_vals[i]);
-          
-          __m256d d_r = _mm256_mul_pd(grad_rh, h_prev);
-          __m256d d_r_pre = _mm256_mul_pd(d_r, _mm256_mul_pd(r, _mm256_sub_pd(_mm256_set1_pd(1.0), r)));
-          _mm256_storeu_pd(&dr_ptr_all[b_idx * N_this + i], d_r_pre);
-          
-          __m256d dh_prev = _mm256_mul_pd(grad_rh, r);
-          __m256d current_dh_prev = _mm256_loadu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + i]);
-          _mm256_storeu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + i], _mm256_add_pd(current_dh_prev, dh_prev));
-        }
-
-        for (; i < N_this; ++i)
-        {
-          double grad_rh = temp_Uh_ptr[i];
-          double h_prev = (h_prev_vals) ? h_prev_vals[i] : 0.0;
-          double r = r_vals[i];
-
-          double d_r = grad_rh * h_prev;
-          double d_r_pre = d_r * r * (1.0 - r);
-          dr_ptr_all[b_idx * N_this + i] = d_r_pre;
-          dh_prev_accum_ptr_all[b_idx * N_this + i] += grad_rh * r;
-        }
-      }
-
-      // 3b. Propagate U_z and U_r using tiling (Vectorized Dot Product)
-      // Using transposed gate recurrent weights
-      const double* z_rw_values_T_ptr = z_rw_values_T.data();
-      const double* r_rw_values_T_ptr = r_rw_values_T.data();
-
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-      {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double* wz_row = &z_rw_values_T_ptr[i * N_this];
-            const double* wr_row = &r_rw_values_T_ptr[i * N_this];
-            for (size_t b_idx = b_idx0; b_idx < b_idx_limit; ++b_idx)
-            {
-              const double* dz_ptr = &dz_ptr_all[b_idx * N_this];
-              const double* dr_ptr = &dr_ptr_all[b_idx * N_this];
-              
-              __m256d sum_vec = _mm256_setzero_pd();
-              size_t j = j0;
-              for (; j + 3 < j_limit; j += 4)
-              {
-                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dz_ptr[j]), _mm256_loadu_pd(&wz_row[j]), sum_vec);
-                sum_vec = _mm256_fmadd_pd(_mm256_loadu_pd(&dr_ptr[j]), _mm256_loadu_pd(&wr_row[j]), sum_vec);
-              }
-              double buffer[4];
-              _mm256_storeu_pd(buffer, sum_vec);
-              double sum = buffer[0] + buffer[1] + buffer[2] + buffer[3];
-              for (; j < j_limit; ++j) sum += dz_ptr[j] * wz_row[j] + dr_ptr[j] * wr_row[j];
-              
-              dh_prev_accum_ptr_all[b_idx * N_this + i] += sum;
-            }
-          }
-        }
-      }
-    }
-
-    // Store state for next iter
-    std::copy(workspace.chunk_dh_prev_accum.begin(), workspace.chunk_dh_prev_accum.end(), workspace.d_next_h.begin());
-
-    // Store gradients to output matrix (needed for previous layer)
-    // Packed: [d_h_hat, d_z, d_r]
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
-      size_t base_idx = (b_idx * num_time_steps + t) * 3 * N_this;
-      double* dest = &rnn_grad_ptr_all[base_idx];
-      const double* src_h_hat = &dh_hat_ptr_all[b_idx * N_this];
-      const double* src_dz = &dz_ptr_all[b_idx * N_this];
-      const double* src_dr = &dr_ptr_all[b_idx * N_this];
-
-      size_t j = 0;
-      for (; j + 3 < N_this; j += 4)
+      const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
+      for (size_t k = 0; k < N_this; ++k)
       {
-        _mm256_storeu_pd(&dest[j], _mm256_loadu_pd(&src_h_hat[j]));
-        _mm256_storeu_pd(&dest[N_this + j], _mm256_loadu_pd(&src_dz[j]));
-        _mm256_storeu_pd(&dest[2 * N_this + j], _mm256_loadu_pd(&src_dr[j]));
-      }
-      for (; j < N_this; ++j)
-      {
-        dest[j] = src_h_hat[j];
-        dest[N_this + j] = src_dz[j];
-        dest[2 * N_this + j] = src_dr[j];
+        temp_Uh_ptr_all[b_idx * N_this + k] = simd::dot_product(dh_hat_ptr, &_rw_values[k * N_this], N_this);
       }
     }
-  } // End BPTT Loop
 
-  // Copy results - optimized to write directly into GradientsAndOutputs buffers
-  const size_t grad_size = num_time_steps * 3 * N_this;
-  for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
-  {
-    size_t b = start + b_idx;
-    
-    // 1. Write RNN gradients directly into GradientsAndOutputs internal buffer
-    double* dest = batch_gradients_and_outputs[b].get_rnn_gradients_raw(get_layer_index(), grad_size);
-    const double* src = &workspace.rnn_grad_matrix[b_idx * grad_size];
-    std::copy(src, src + grad_size, dest);
-    
-    // 2. Efficiently zero out standard gradients for this layer index
-    double* std_grads = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    if (std_grads)
+    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
-      std::fill(std_grads, std_grads + N_this, 0.0);
+      size_t b = start + b_idx;
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& packed_states = layer_states[t].get_pre_activation_sums();
+      const double* r_vals = &packed_states[N_this];
+      const double* h_prev_vals = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
+      const double* temp_Uh_ptr = &temp_Uh_ptr_all[b_idx * N_this];
+      double* dr_ptr = &dr_ptr_all[b_idx * N_this];
+      double* dz_ptr = &dz_ptr_all[b_idx * N_this];
+      double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
+      double* dh_prev_accum = &dh_prev_accum_ptr_all[b_idx * N_this];
+      double* dh_next = &d_next_h_ptr_all[b_idx * N_this];
+
+      for (size_t k = 0; k < N_this; ++k)
+      {
+        double grad_rh = temp_Uh_ptr[k];
+        double h_prev = (h_prev_vals) ? h_prev_vals[k] : 0.0;
+        double r = r_vals[k];
+        double d_r_pre = grad_rh * h_prev * r * (1.0 - r);
+        dr_ptr[k] = d_r_pre;
+        dh_next[k] = dh_prev_accum[k] + grad_rh * r + 
+                          simd::dot_product(dz_ptr, &_z_rw_values[k * N_this], N_this) + 
+                          simd::dot_product(dr_ptr, &_r_rw_values[k * N_this], N_this);
+      }
+
+      double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
+      for (size_t k = 0; k < N_prev; ++k)
+      {
+        dx_t[k] = simd::dot_product(dz_ptr, &_z_w_values[k * N_this], N_this) + 
+                  simd::dot_product(dr_ptr, &_r_w_values[k * N_this], N_this) + 
+                  simd::dot_product(dh_hat_ptr, &_w_values[k * N_this], N_this);
+      }
+
+      double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * 3 * N_this];
+      std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);
+      std::copy(dz_ptr, dz_ptr + N_this, dest + N_this);
+      std::copy(dr_ptr, dr_ptr + N_this, dest + 2 * N_this);
     }
+  }
+
+  for (size_t b = start; b < end; ++b)
+  {
+    const size_t b_idx = b - start;
+    const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
+
+    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * 3 * N_this];
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * 3 * N_this));
   }
 }
 
@@ -1263,30 +1109,11 @@ void GRURNNLayer::calculate_and_store_gradients(
     return;
   }
 
+  // 1. Clear gradients
+  zero_gradients();
+
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
-
-  // 1. Clear gradients
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  if (has_bias())
-  {
-    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
-  }
-
-  std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
-  std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
-  if (has_bias())
-  {
-    std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
-  }
-
-  std::fill(_r_w_grads.begin(), _r_w_grads.end(), 0.0);
-  std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
-  if (has_bias())
-  {
-    std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
-  }
 
   const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
@@ -1306,7 +1133,7 @@ void GRURNNLayer::calculate_and_store_gradients(
   // we can just accumulate directly.
   for (unsigned b = 0; b < batch_size; ++b)
   {
-    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
+    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
     const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
     const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
     const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
@@ -1489,57 +1316,27 @@ void GRURNNLayer::zero_gradients()
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  
+  auto app = [&](std::vector<double>& v, std::vector<double>& g, std::vector<double>& vel, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& ts, const std::vector<double>& dec, bool is_bias) {
+    apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
+  };
 
-  const unsigned num_outputs = get_number_neurons();
-  const unsigned num_inputs = get_number_input_neurons();
+  // 1. Candidate State
+  app(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, false);
+  app(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, false);
+  if (has_bias()) app(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, true);
 
-  // Iterate over all neurons
-  for (unsigned neuron_number = 0; neuron_number < num_outputs; ++neuron_number)
-  {
-    // 1. Input-to-Hidden Weights
-    for (unsigned i = 0; i < num_inputs; ++i)
-    {
-      unsigned idx = i * num_outputs + neuron_number;
+  // 2. Update Gate (z)
+  app(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, false);
+  app(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, false);
+  if (has_bias()) app(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, true);
 
-      // A. Candidate State (Uses Base Layer storage)
-      apply_weight_gradient(_w_grads[idx], learning_rate, false, idx, clipping_scale, _optimiser_type, neuron_number);
+  // 3. Reset Gate (r)
+  app(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, false);
+  app(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, false);
+  if (has_bias()) app(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, true);
 
-      // B. Update Gate (z)
-      apply_update_to_weight(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, idx, _z_w_grads[idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-
-      // C. Reset Gate (r)
-      apply_update_to_weight(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, idx, _r_w_grads[idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-    }
-
-    // 2. Recurrent Weights (Hidden-to-Hidden)
-    for (unsigned k = 0; k < num_outputs; ++k)
-    {
-       // Indexing for recurrent weights: k (from) * num_outputs + j (to)
-       unsigned rec_idx = k * num_outputs + neuron_number;
-
-       // A. Candidate State
-       apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, rec_idx, _rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-
-       // B. Update Gate (z)
-       apply_update_to_weight(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, rec_idx, _z_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-
-       // C. Reset Gate (r)
-       apply_update_to_weight(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, rec_idx, _r_rw_grads[rec_idx], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-    }
-
-    // 3. Bias Weights
-    if (has_bias())
-    {
-       // A. Candidate State
-       apply_weight_gradient(_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, _optimiser_type, neuron_number);
-
-       // B. Update Gate (z)
-       apply_update_to_weight(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, neuron_number, _z_b_grads[neuron_number], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-
-       // C. Reset Gate (r)
-       apply_update_to_weight(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, neuron_number, _r_b_grads[neuron_number], learning_rate, clipping_scale, _optimiser_type, neuron_number);
-    }
-  }
+  zero_gradients();
 }
 
 void GRURNNLayer::cache_recurrent_weights()
