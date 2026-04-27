@@ -405,20 +405,34 @@ void FFLayer::calculate_hidden_gradients(
   const auto N_next = next_layer.get_number_neurons();
   if (batch_size == 0) return;
 
-  size_t num_time_steps = 1;
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    const auto& next_grads = batch_next_grad_matrix[b];
-    if (!next_grads.empty()) { num_time_steps = next_grads.size() / N_next; break; }
-  }
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0) return;
 
-  std::vector<double> flattened_next_grads_buffer(batch_size * num_time_steps * N_next);
+  std::vector<double> flattened_next_grads_buffer(batch_size * num_time_steps * N_next, 0.0);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& next_grads = batch_next_grad_matrix[b];
+    if (next_grads.empty()) continue;
+
     if (next_grads.size() == N_next)
-      for(size_t t=0; t<num_time_steps; ++t) std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + (b * num_time_steps + t) * N_next);
-    else std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + b * num_time_steps * N_next);
+    {
+      // Broadcast single gradient to all time steps
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + (b * num_time_steps + t) * N_next);
+      }
+    }
+    else if (next_grads.size() == num_time_steps * N_next)
+    {
+      std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.begin() + b * num_time_steps * N_next);
+    }
+    else
+    {
+      // Mismatch, take what we can or log error. 
+      // For now, copy as much as fits to avoid crash.
+      const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_next);
+      std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_next_grads_buffer.begin() + b * num_time_steps * N_next);
+    }
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
@@ -426,7 +440,11 @@ void FFLayer::calculate_hidden_gradients(
   const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1) run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
+  if (num_threads <= 1)
+  {
+    run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+  }
   else
   {
     size_t start = 0;
@@ -438,40 +456,13 @@ void FFLayer::calculate_hidden_gradients(
       start = end;
     }
     _task_queue_pool->get();
-  }
 
-  auto run_post_gemm_ff = [&](size_t b_start, size_t b_end)
-  {
-    for (size_t b = b_start; b < b_end; ++b)
-    {
-      std::vector<double> rnn_grads_row(num_time_steps * N_this);
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
-        const auto& current_hidden_state = layer_states[t];
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv;
-        }
-      }
-      if (num_time_steps > 1) batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
-      std::vector<double> std_grads(N_this);
-      std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
-    }
-  };
-
-  if (num_threads <= 1) run_post_gemm_ff(0, batch_size);
-  else
-  {
-    size_t start = 0;
+    start = 0;
     for (unsigned int t = 0; t < num_threads; ++t)
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([&run_post_gemm_ff, start, end]() { run_post_gemm_ff(start, end); });
+      if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
       start = end;
     }
     _task_queue_pool->get();
@@ -484,48 +475,36 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
   const auto N_this = get_number_neurons();
   if (batch_size == 0) return;
 
-  size_t num_time_steps = 1;
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    const auto& next_grads = batch_output_gradients[b];
-    if (!next_grads.empty()) { num_time_steps = next_grads.size() / N_this; break; }
-  }
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0) return;
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this);
+  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this, 0.0);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& next_grads = batch_output_gradients[b];
+    if (next_grads.empty()) continue;
+
     if (next_grads.size() == N_this)
+    {
        for(size_t t=0; t<num_time_steps; ++t) std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + (b * num_time_steps + t) * N_this);
-    else std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+    }
+    else if (next_grads.size() == num_time_steps * N_this)
+    {
+       std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+    }
+    else
+    {
+       const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
+       std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+    }
   }
 
-  auto run_post_gemm_ff = [&](size_t b_start, size_t b_end)
-  {
-    for (size_t b = b_start; b < b_end; ++b)
-    {
-      std::vector<double> rnn_grads_row(num_time_steps * N_this);
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
-        const auto& current_hidden_state = layer_states[t];
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          double deriv = get_activation().activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv;
-        }
-      }
-      if (num_time_steps > 1) batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
-      std::vector<double> std_grads(N_this);
-      std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
-    }
-  };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1) run_post_gemm_ff(0, batch_size);
+  if (num_threads <= 1)
+  {
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+  }
   else
   {
     size_t start = 0;
@@ -533,7 +512,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([&run_post_gemm_ff, start, end]() { run_post_gemm_ff(start, end); });
+      if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
       start = end;
     }
     _task_queue_pool->get();
@@ -542,7 +521,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
 
 Layer* FFLayer::clone() const { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return new FFLayer(*this); }
 
-void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& /*hidden_states*/, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
+void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   if (batch_size == 0) return;
@@ -551,9 +530,8 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const unsigned this_layer_index = get_layer_index();
 
-  size_t num_time_steps = 1;
-  const auto& first_rnn_out = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
-  if (!first_rnn_out.empty()) num_time_steps = first_rnn_out.size() / num_inputs;
+  const size_t num_time_steps = hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0) return;
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
