@@ -225,4 +225,146 @@ public:
       values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
     }
   }
+
+  // GRU BPTT Gate Step
+  inline static void gru_bptt_gate_step(
+    size_t n,
+    const double* grad_next,
+    const double* d_next_h,
+    const double* z_vals,
+    const double* h_hat_vals,
+    const double* h_prev_vals,
+    const double* h_hat_pre_vals,
+    double* dz_out,
+    double* dh_hat_out,
+    double* dh_prev_accum_out,
+    const std::function<double(double)>& activate_derivative) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    const __m256d clip_limit = _mm256_set1_pd(50.0);
+    const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d dh_raw = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j]), _mm256_loadu_pd(&d_next_h[j]));
+      __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, clip_limit), neg_clip_limit);
+
+      __m256d z = _mm256_loadu_pd(&z_vals[j]);
+      __m256d h_hat = _mm256_loadu_pd(&h_hat_vals[j]);
+      __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
+
+      __m256d d_z = _mm256_mul_pd(dh, _mm256_sub_pd(h_hat, h_prev));
+      __m256d d_z_pre = _mm256_mul_pd(d_z, _mm256_mul_pd(z, _mm256_sub_pd(one, z)));
+
+      __m256d d_h_hat = _mm256_mul_pd(dh, z);
+      
+      double derivatives[4];
+      for (int k = 0; k < 4; ++k)
+      {
+        derivatives[k] = activate_derivative(h_hat_pre_vals[j + k]);
+      }
+      __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_loadu_pd(derivatives));
+      
+      __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
+
+      _mm256_storeu_pd(&dz_out[j], d_z_pre);
+      _mm256_storeu_pd(&dh_hat_out[j], d_h_hat_pre);
+      _mm256_storeu_pd(&dh_prev_accum_out[j], d_h_prev_direct);
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
+      double z = z_vals[j];
+      double h_hat = h_hat_vals[j];
+      double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
+
+      double d_z_pre = dh * (h_hat - h_prev) * z * (1.0 - z);
+      double d_h_hat_pre = dh * z * activate_derivative(h_hat_pre_vals[j]);
+
+      dz_out[j] = d_z_pre;
+      dh_hat_out[j] = d_h_hat_pre;
+      dh_prev_accum_out[j] = dh * (1.0 - z);
+    }
+  }
+
+  // LSTM BPTT Gate Step
+  inline static void lstm_bptt_gate_step(
+    size_t n,
+    const double* dh_curr,
+    const double* dc_next,
+    const double* f,
+    const double* i,
+    const double* o,
+    const double* g_pre,
+    const double* c_curr,
+    const double* c_prev,
+    bool has_prev,
+    double* df_out,
+    double* di_out,
+    double* do_out,
+    double* dg_out,
+    double* dc_next_out) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d dh = _mm256_loadu_pd(&dh_curr[j]);
+      __m256d c = _mm256_loadu_pd(&c_curr[j]);
+      __m256d o_gate = _mm256_loadu_pd(&o[j]);
+      __m256d dc_nxt = _mm256_loadu_pd(&dc_next[j]);
+
+      // tanh_c = std::tanh(c)
+      double c_vals[4]; _mm256_storeu_pd(c_vals, c);
+      double tc_vals[4]; for(int k=0; k<4; ++k) tc_vals[k] = std::tanh(c_vals[k]);
+      __m256d tanh_c = _mm256_loadu_pd(tc_vals);
+
+      // do_gate = dh * tanh_c * o * (1 - o)
+      __m256d do_gate = _mm256_mul_pd(_mm256_mul_pd(dh, tanh_c), _mm256_mul_pd(o_gate, _mm256_sub_pd(one, o_gate)));
+      
+      // dc = dh * o * (1 - tanh_c^2) + dc_next
+      __m256d dc = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh, o_gate), _mm256_sub_pd(one, _mm256_mul_pd(tanh_c, tanh_c))), dc_nxt);
+
+      // g = std::tanh(g_pre)
+      double gp_vals[4]; _mm256_storeu_pd(gp_vals, _mm256_loadu_pd(&g_pre[j]));
+      double g_vals[4]; for(int k=0; k<4; ++k) g_vals[k] = std::tanh(gp_vals[k]);
+      __m256d g = _mm256_loadu_pd(g_vals);
+
+      __m256d f_gate = _mm256_loadu_pd(&f[j]);
+      __m256d i_gate = _mm256_loadu_pd(&i[j]);
+      __m256d cp = has_prev ? _mm256_loadu_pd(&c_prev[j]) : _mm256_setzero_pd();
+
+      // df = dc * c_prev * f * (1 - f)
+      __m256d df = _mm256_mul_pd(_mm256_mul_pd(dc, cp), _mm256_mul_pd(f_gate, _mm256_sub_pd(one, f_gate)));
+      // di = dc * g * i * (1 - i)
+      __m256d di = _mm256_mul_pd(_mm256_mul_pd(dc, g), _mm256_mul_pd(i_gate, _mm256_sub_pd(one, i_gate)));
+      // dg = dc * i * (1 - g^2)
+      __m256d dg = _mm256_mul_pd(_mm256_mul_pd(dc, i_gate), _mm256_sub_pd(one, _mm256_mul_pd(g, g)));
+
+      _mm256_storeu_pd(&df_out[j], df);
+      _mm256_storeu_pd(&di_out[j], di);
+      _mm256_storeu_pd(&do_out[j], do_gate);
+      _mm256_storeu_pd(&dg_out[j], dg);
+      _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc, f_gate));
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      double dh = dh_curr[j];
+      double tanh_c = std::tanh(c_curr[j]);
+      double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
+      double dc = dh * o[j] * (1.0 - tanh_c * tanh_c) + dc_next[j];
+      double g = std::tanh(g_pre[j]);
+      df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
+      di_out[j] = dc * g * i[j] * (1.0 - i[j]);
+      dg_out[j] = dc * i[j] * (1.0 - g * g);
+      dc_next_out[j] = dc * f[j];
+    }
+  }
 };

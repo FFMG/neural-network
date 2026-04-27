@@ -84,6 +84,7 @@ protected:
   void run_post_gemm(
     size_t start,
     size_t end,
+    size_t num_time_steps,
     size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,
