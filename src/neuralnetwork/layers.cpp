@@ -526,14 +526,13 @@ void Layers::calculate_back_propagation_hidden_layers(
        {
          const auto& g = gradients[b];
          std::vector<double> grad;
-         if (options.enable_bptt() && hidden_1.use_bptt())
+         
+         const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+         if (!rnn_span.empty())
          {
-           const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
-           if (!rnn_span.empty())
-           {
-             grad.assign(rnn_span.begin(), rnn_span.end());
-           }
+           grad.assign(rnn_span.begin(), rnn_span.end());
          }
+         
          if (grad.empty())
          {
            const auto std_span = g.get_gradients(static_cast<unsigned>(layer_number + 1));
