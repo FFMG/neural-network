@@ -835,7 +835,7 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
   }
   else
   {
-    Logger::debug("Progress callback function is still running, continuing to next epoch.");
+    Logger::trace("Progress callback function is still running, continuing to next epoch.");
   }
   return true; // continue training
 }

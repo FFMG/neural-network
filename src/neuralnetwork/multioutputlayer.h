@@ -63,10 +63,11 @@ public:
       const auto& next_grads = batch_next_grad_matrix[b];
       const size_t num_time_steps = next_grads.empty() ? 0 : next_grads.size() / N_next;
       
-      std::vector<double> gradients(N_this, 0.0);
+      std::vector<double> gradients_seq(num_time_steps * N_this, 0.0);
       for (size_t t = 0; t < num_time_steps; ++t)
       {
         const double* g_t = &next_grads[t * N_next];
+        double* dest_t = &gradients_seq[t * N_this];
         for (size_t j = 0; j < N_this; ++j)
         {
           double sum = 0.0;
@@ -74,11 +75,22 @@ public:
           {
             sum += g_t[k] * next_layer.get_weight_value((unsigned)j, (unsigned)k);
           }
-          gradients[j] += sum;
+          dest_t[j] = sum;
         }
       }
 
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), gradients);
+      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), gradients_seq);
+      
+      // Also provide a summed version in standard gradients for non-recurrent trunks
+      std::vector<double> sum_grads(N_this, 0.0);
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          sum_grads[j] += gradients_seq[t * N_this + j];
+        }
+      }
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), sum_grads);
     }
   }
 
@@ -539,20 +551,50 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
     std::lock_guard<std::mutex> lock(_mutex);
-    std::vector<std::vector<double>> trunk_grads(batch_size, std::vector<double>(get_number_input_neurons(), 0.0));
     
+    // Determine if any branch is providing a sequence
+    size_t max_seq_len = 1;
     for (const auto& branch : _branches)
     {
-      // Since first_layer.calculate_hidden_gradients was called, 
-      // the gradients at index 0 of branch.gradients_and_outputs[b] 
-      // contain the gradients for the branch input (the trunk).
-      
+      if (batch_size > 0)
+      {
+         const auto rnn_span = branch.gradients_and_outputs[0].get_rnn_gradients(0);
+         if (!rnn_span.empty())
+         {
+           max_seq_len = std::max(max_seq_len, rnn_span.size() / get_number_input_neurons());
+         }
+      }
+    }
+
+    std::vector<std::vector<double>> trunk_grads(batch_size, std::vector<double>(max_seq_len * get_number_input_neurons(), 0.0));
+    const size_t N_trunk = get_number_input_neurons();
+
+    for (const auto& branch : _branches)
+    {
       for(size_t b=0; b<batch_size; ++b)
       {
-        const auto g_span = branch.gradients_and_outputs[b].get_gradients(0);
-        for(size_t j=0; j<trunk_grads[b].size(); ++j)
+        const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(0);
+        if (!rnn_span.empty())
         {
-          trunk_grads[b][j] += g_span[j];
+          const size_t branch_seq_len = rnn_span.size() / N_trunk;
+          // If sequence lengths match, add element-wise
+          if (branch_seq_len == max_seq_len)
+          {
+            for(size_t i=0; i<rnn_span.size(); ++i) trunk_grads[b][i] += rnn_span[i];
+          }
+          else if (branch_seq_len == 1)
+          {
+            // Broadcast single gradient to all time steps
+            for(size_t t=0; t<max_seq_len; ++t)
+              for(size_t j=0; j<N_trunk; ++j) trunk_grads[b][t*N_trunk + j] += rnn_span[j];
+          }
+        }
+        else
+        {
+          const auto g_span = branch.gradients_and_outputs[b].get_gradients(0);
+          // Broadcast single gradient to all time steps
+          for(size_t t=0; t<max_seq_len; ++t)
+            for(size_t j=0; j<N_trunk; ++j) trunk_grads[b][t*N_trunk + j] += g_span[j];
         }
       }
     }
