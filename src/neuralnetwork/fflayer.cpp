@@ -675,15 +675,13 @@ void FFLayer::run_post_gemm_backward(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
-  // Determine num_time_steps from the flattened buffer size
-  // Buffer size is batch_size * num_time_steps * N_this
-  const size_t batch_size = batch_hidden_states.size();
-  const size_t num_time_steps = flattened_this_grads_buffer.size() / (batch_size * N_this);
-
   for (size_t b = start; b < end; b++)
   {
-    std::vector<double> rnn_grads_row(num_time_steps * N_this);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+    const size_t num_time_steps = layer_states.size();
+    if (num_time_steps == 0) continue;
+
+    std::vector<double> rnn_grads_row(num_time_steps * N_this, 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -705,8 +703,11 @@ void FFLayer::run_post_gemm_backward(
       batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
     }
     
-    std::vector<double> std_grads(N_this);
-    std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
+    if (!rnn_grads_row.empty())
+    {
+      std::vector<double> std_grads(N_this);
+      std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
+    }
   }
 }
