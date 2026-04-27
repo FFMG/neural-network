@@ -317,52 +317,57 @@ void FFOutputLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  if (batch_size == 0) return;
+
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
-
-  if (batch_size == 0)
-  {
-    return;
-  }
-
-  // 1. Flatten inputs for the whole batch
-  std::vector<double> batch_inputs_buffer(batch_size * N_prev);
   const unsigned prev_layer_index = previous_layer.get_layer_index();
+
+  // 1. Determine sequence length and flatten inputs
+  size_t num_time_steps = 1;
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto src_span = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    if (src_span.size() != N_prev)
-    {
-      Logger::panic("FFOutputLayer #", get_layer_index(), " input size mismatch! Expected ", N_prev, " but got ", src_span.size(), " from layer #", prev_layer_index, " at batch sample ", b);
-    }
-    std::copy(src_span.begin(), src_span.end(), batch_inputs_buffer.begin() + b * N_prev);
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      if (!rnn_in.empty()) { num_time_steps = rnn_in.size() / N_prev; break; }
   }
 
-  std::vector<double> batch_pre_activation_sums_buffer(batch_size * N_this, 0.0);
+  const size_t effective_batch_size = batch_size * num_time_steps;
+  std::vector<double> batch_inputs_buffer(effective_batch_size * N_prev);
+  
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    if (!rnn_in.empty()) std::copy(rnn_in.begin(), rnn_in.end(), batch_inputs_buffer.begin() + b * num_time_steps * N_prev);
+    else
+    {
+        const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+        for (size_t t = 0; t < num_time_steps; ++t) std::copy(std_in.begin(), std_in.end(), batch_inputs_buffer.begin() + (b * num_time_steps + t) * N_prev);
+    }
+  }
+
+  std::vector<double> batch_pre_activation_sums_buffer(effective_batch_size * N_this, 0.0);
 
   // 2. Initialize with bias values
   if (has_bias())
   {
-    for (size_t b = 0; b < batch_size; b++)
+    for (size_t eb = 0; eb < effective_batch_size; eb++)
     {
-      double* dest = &batch_pre_activation_sums_buffer[b * N_this];
-      for (size_t j = 0; j < N_this; j++)
-      {
-        dest[j] = get_bias_value((unsigned)j);
-      }
+      double* dest = &batch_pre_activation_sums_buffer[eb * N_this];
+      for (size_t j = 0; j < N_this; j++) dest[j] = get_bias_value((unsigned)j);
     }
   }
 
   // 3. Batched GEMM
-  run_gemm(0, batch_size, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
+  run_gemm(0, effective_batch_size, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
 
   // 4. Activation
-  run_post_gemm(0, batch_size, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
+  run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
 }
 
 void FFOutputLayer::run_post_gemm(
   size_t start,
   size_t end,
+  size_t num_time_steps,
   size_t N_this,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<std::vector<double>>& batch_residual_output_values,
@@ -372,65 +377,48 @@ void FFOutputLayer::run_post_gemm(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  std::vector<double> output_row(N_this);
-  std::vector<double> temp_pre_activations;
-  if (!batch_hidden_states.empty())
-  {
-    temp_pre_activations.resize(N_this);
-  }
-
+  
   for (size_t b = start; b < end; b++)
   {
-    double* current_pre_act = &batch_pre_activation_sums_buffer[b * N_this];
+    std::vector<double> output_row_seq(num_time_steps * N_this);
+    auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+    if (layer_states.size() != num_time_steps) layer_states.resize(num_time_steps);
 
-    // Residuals
-    if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+    for (size_t t = 0; t < num_time_steps; ++t)
     {
-      for (size_t j = 0; j < N_this; j++)
-      {
-        current_pre_act[j] += batch_residual_output_values[b][j];
-      }
-    }
+        double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
+        double* current_output_row = &output_row_seq[t * N_this];
 
-    if (!batch_hidden_states.empty())
-    {
-      std::copy(current_pre_act, current_pre_act + N_this, temp_pre_activations.begin());
-      batch_hidden_states[b].at(get_layer_index())[0].set_pre_activation_sums(temp_pre_activations);
-    }
-
-    // Activation, Dropout and Output
-    const auto output_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    for (const auto& r : _layer_activation_helper.ranges())
-    {
-      // 1. Batch activation for the range (modifies current_pre_act in-place)
-      r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-
-      // 2. Apply dropout and store
-      for (size_t j = r.start; j < r.end; j++)
-      {
-        const auto& neuron = get_neuron((unsigned)j);
-        double output = current_pre_act[j];
-
-        if (is_training && neuron.is_dropout())
+        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-          if (neuron.must_randomly_drop())
+          if (num_time_steps == 1 || t == num_time_steps - 1)
+            for (size_t j = 0; j < N_this; j++) current_pre_act[j] += batch_residual_output_values[b][j];
+        }
+
+        layer_states[t].set_pre_activation_sums(std::vector<double>(current_pre_act, current_pre_act + N_this));
+
+        for (const auto& r : _layer_activation_helper.ranges())
+        {
+          r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
+          for (size_t j = r.start; j < r.end; j++)
           {
-            output = 0.0;
-          }
-          else
-          {
-            output /= (1.0 - neuron.get_dropout_rate());
+            const auto& neuron = get_neuron((unsigned)j);
+            double output = current_pre_act[j];
+            if (is_training && neuron.is_dropout())
+            {
+              if (neuron.must_randomly_drop()) output = 0.0;
+              else output /= (1.0 - neuron.get_dropout_rate());
+            }
+            current_output_row[j] = output;
           }
         }
-        output_row[j] = output;
-        output_ptr[j] = output;
-      }
+        layer_states[t].set_hidden_state_values(std::vector<double>(current_output_row, current_output_row + N_this));
     }
 
-    if (!batch_hidden_states.empty())
-    {
-      batch_hidden_states[b].at(get_layer_index())[0].set_hidden_state_values(output_row);
-    }
+    if (num_time_steps > 1) batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq);
+    std::vector<double> last_step_output(N_this);
+    std::copy(output_row_seq.end() - N_this, output_row_seq.end(), last_step_output.begin());
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), last_step_output);
   }
 }
 

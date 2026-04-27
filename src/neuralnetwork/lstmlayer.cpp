@@ -7,21 +7,19 @@
 #include <cmath>
 #include <immintrin.h>
 
-LSTMLayer::LSTMLayer(
-  unsigned layer_index,
-  unsigned num_neurons_in_previous_layer, 
-  unsigned num_neurons_in_this_layer, 
-  double weight_decay,
-  const Role layer_role,
-  const activation& activation_method, 
-  const OptimiserType& optimiser_type, 
-  int residual_layer_number,
-  double dropout_rate,
-  ResidualProjector* residual_projector,
-  int number_of_threads,
-  bool has_bias,
-  double momentum
-) : LSTMLayer(
+LSTMLayer::LSTMLayer(unsigned layer_index,
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
+    double weight_decay,
+    const Role layer_role,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads,
+    bool has_bias,
+    double momentum) : LSTMLayer(
     layer_index,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
@@ -40,21 +38,19 @@ LSTMLayer::LSTMLayer(
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
 }
 
-LSTMLayer::LSTMLayer(
-  unsigned layer_index,
-  unsigned num_neurons_in_previous_layer,
-  unsigned num_neurons_in_this_layer,
-  const std::vector<double>& weight_decays,
-  const Role layer_role,
-  const activation& activation_method,
-  const OptimiserType& optimiser_type,
-  int residual_layer_number,
-  double dropout_rate,
-  ResidualProjector* residual_projector,
-  int number_of_threads,
-  bool has_bias,
-  double momentum
-) : Layer(
+LSTMLayer::LSTMLayer(unsigned layer_index,
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
+    const std::vector<double>& weight_decays,
+    const Role layer_role,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads,
+    bool has_bias,
+    double momentum) : Layer(
     layer_index,
     layer_role,
     activation_method,
@@ -75,102 +71,99 @@ LSTMLayer::LSTMLayer(
 }
 
 LSTMLayer::LSTMLayer(
-  unsigned layer_index,
-  const Role layer_role,
-  const OptimiserType optimiser_type,
-  int residual_layer_number,
-  const std::vector<Neuron>& neurons,
-  const std::vector<double>& w_values,
-  const std::vector<double>& w_grads,
-  const std::vector<double>& w_velocities,
-  const std::vector<double>& w_m1,
-  const std::vector<double>& w_m2,
-  const std::vector<long long>& w_timesteps,
-  const std::vector<double>& w_decays,
-  const std::vector<double>& b_values,
-  const std::vector<double>& b_grads,
-  const std::vector<double>& b_velocities,
-  const std::vector<double>& b_m1,
-  const std::vector<double>& b_m2,
-  const std::vector<long long>& b_timesteps,
-  const std::vector<double>& b_decays,
-  const std::vector<double>& rw_values,
-  const std::vector<double>& rw_grads,
-  const std::vector<double>& rw_velocities,
-  const std::vector<double>& rw_m1,
-  const std::vector<double>& rw_m2,
-  const std::vector<long long>& rw_timesteps,
-  const std::vector<double>& rw_decays,
-  // Forget Gate (f)
-  const std::vector<double>& f_w_values,
-  const std::vector<double>& f_w_grads,
-  const std::vector<double>& f_w_velocities,
-  const std::vector<double>& f_w_m1,
-  const std::vector<double>& f_w_m2,
-  const std::vector<long long>& f_w_timesteps,
-  const std::vector<double>& f_w_decays,
-  const std::vector<double>& f_rw_values,
-  const std::vector<double>& f_rw_grads,
-  const std::vector<double>& f_rw_velocities,
-  const std::vector<double>& f_rw_m1,
-  const std::vector<double>& f_rw_m2,
-  const std::vector<long long>& f_rw_timesteps,
-  const std::vector<double>& f_rw_decays,
-  const std::vector<double>& f_b_values,
-  const std::vector<double>& f_b_grads,
-  const std::vector<double>& f_b_velocities,
-  const std::vector<double>& f_b_m1,
-  const std::vector<double>& f_b_m2,
-  const std::vector<long long>& f_b_timesteps,
-  const std::vector<double>& f_b_decays,
-  // Input Gate (i)
-  const std::vector<double>& i_w_values,
-  const std::vector<double>& i_w_grads,
-  const std::vector<double>& i_w_velocities,
-  const std::vector<double>& i_w_m1,
-  const std::vector<double>& i_w_m2,
-  const std::vector<long long>& i_w_timesteps,
-  const std::vector<double>& i_w_decays,
-  const std::vector<double>& i_rw_values,
-  const std::vector<double>& i_rw_grads,
-  const std::vector<double>& i_rw_velocities,
-  const std::vector<double>& i_rw_m1,
-  const std::vector<double>& i_rw_m2,
-  const std::vector<long long>& i_rw_timesteps,
-  const std::vector<double>& i_rw_decays,
-  const std::vector<double>& i_b_values,
-  const std::vector<double>& i_b_grads,
-  const std::vector<double>& i_b_velocities,
-  const std::vector<double>& i_b_m1,
-  const std::vector<double>& i_b_m2,
-  const std::vector<long long>& i_b_timesteps,
-  const std::vector<double>& i_b_decays,
-  // Output Gate (o)
-  const std::vector<double>& o_w_values,
-  const std::vector<double>& o_w_grads,
-  const std::vector<double>& o_w_velocities,
-  const std::vector<double>& o_w_m1,
-  const std::vector<double>& o_w_m2,
-  const std::vector<long long>& o_w_timesteps,
-  const std::vector<double>& o_w_decays,
-  const std::vector<double>& o_rw_values,
-  const std::vector<double>& o_rw_grads,
-  const std::vector<double>& o_rw_velocities,
-  const std::vector<double>& o_rw_m1,
-  const std::vector<double>& o_rw_m2,
-  const std::vector<long long>& o_rw_timesteps,
-  const std::vector<double>& o_rw_decays,
-  const std::vector<double>& o_b_values,
-  const std::vector<double>& o_b_grads,
-  const std::vector<double>& o_b_velocities,
-  const std::vector<double>& o_b_m1,
-  const std::vector<double>& o_b_m2,
-  const std::vector<long long>& o_b_timesteps,
-  const std::vector<double>& o_b_decays,
-  const ResidualProjector* residual_projector,
-  int number_of_threads,
-  const layer_activation_helper& lah,
-  double momentum
+    unsigned layer_index,
+    const Role layer_role,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    const std::vector<double>& rw_values,
+    const std::vector<double>& rw_grads,
+    const std::vector<double>& rw_velocities,
+    const std::vector<double>& rw_m1,
+    const std::vector<double>& rw_m2,
+    const std::vector<long long>& rw_timesteps,
+    const std::vector<double>& rw_decays,
+    const std::vector<double>& f_w_values,
+    const std::vector<double>& f_w_grads,
+    const std::vector<double>& f_w_velocities,
+    const std::vector<double>& f_w_m1,
+    const std::vector<double>& f_w_m2,
+    const std::vector<long long>& f_w_timesteps,
+    const std::vector<double>& f_w_decays,
+    const std::vector<double>& f_rw_values,
+    const std::vector<double>& f_rw_grads,
+    const std::vector<double>& f_rw_velocities,
+    const std::vector<double>& f_rw_m1,
+    const std::vector<double>& f_rw_m2,
+    const std::vector<long long>& f_rw_timesteps,
+    const std::vector<double>& f_rw_decays,
+    const std::vector<double>& f_b_values,
+    const std::vector<double>& f_b_grads,
+    const std::vector<double>& f_b_velocities,
+    const std::vector<double>& f_b_m1,
+    const std::vector<double>& f_b_m2,
+    const std::vector<long long>& f_b_timesteps,
+    const std::vector<double>& f_b_decays,
+    const std::vector<double>& i_w_values,
+    const std::vector<double>& i_w_grads,
+    const std::vector<double>& i_w_velocities,
+    const std::vector<double>& i_w_m1,
+    const std::vector<double>& i_w_m2,
+    const std::vector<long long>& i_w_timesteps,
+    const std::vector<double>& i_w_decays,
+    const std::vector<double>& i_rw_values,
+    const std::vector<double>& i_rw_grads,
+    const std::vector<double>& i_rw_velocities,
+    const std::vector<double>& i_rw_m1,
+    const std::vector<double>& i_rw_m2,
+    const std::vector<long long>& i_rw_timesteps,
+    const std::vector<double>& i_rw_decays,
+    const std::vector<double>& i_b_values,
+    const std::vector<double>& i_b_grads,
+    const std::vector<double>& i_b_velocities,
+    const std::vector<double>& i_b_m1,
+    const std::vector<double>& i_b_m2,
+    const std::vector<long long>& i_b_timesteps,
+    const std::vector<double>& i_b_decays,
+    const std::vector<double>& o_w_values,
+    const std::vector<double>& o_w_grads,
+    const std::vector<double>& o_w_velocities,
+    const std::vector<double>& o_w_m1,
+    const std::vector<double>& o_w_m2,
+    const std::vector<long long>& o_w_timesteps,
+    const std::vector<double>& o_w_decays,
+    const std::vector<double>& o_rw_values,
+    const std::vector<double>& o_rw_grads,
+    const std::vector<double>& o_rw_velocities,
+    const std::vector<double>& o_rw_m1,
+    const std::vector<double>& o_rw_m2,
+    const std::vector<long long>& o_rw_timesteps,
+    const std::vector<double>& o_rw_decays,
+    const std::vector<double>& o_b_values,
+    const std::vector<double>& o_b_grads,
+    const std::vector<double>& o_b_velocities,
+    const std::vector<double>& o_b_m1,
+    const std::vector<double>& o_b_m2,
+    const std::vector<long long>& o_b_timesteps,
+    const std::vector<double>& o_b_decays,
+    const ResidualProjector* residual_projector,
+    int number_of_threads,
+    const layer_activation_helper& lah,
+    double momentum
 ) noexcept : Layer(
   layer_index,
   layer_role,
@@ -196,13 +189,7 @@ LSTMLayer::LSTMLayer(
   lah,
   momentum
 ),
-_rw_values(rw_values),
-_rw_grads(rw_grads),
-_rw_velocities(rw_velocities),
-_rw_m1(rw_m1),
-_rw_m2(rw_m2),
-_rw_timesteps(rw_timesteps),
-_rw_decays(rw_decays),
+_rw_values(rw_values), _rw_grads(rw_grads), _rw_velocities(rw_velocities), _rw_m1(rw_m1), _rw_m2(rw_m2), _rw_timesteps(rw_timesteps), _rw_decays(rw_decays),
 _f_w_values(f_w_values), _f_w_grads(f_w_grads), _f_w_velocities(f_w_velocities), _f_w_m1(f_w_m1), _f_w_m2(f_w_m2), _f_w_decays(f_w_decays), _f_w_timesteps(f_w_timesteps),
 _f_rw_values(f_rw_values), _f_rw_grads(f_rw_grads), _f_rw_velocities(f_rw_velocities), _f_rw_m1(f_rw_m1), _f_rw_m2(f_rw_m2), _f_rw_decays(f_rw_decays), _f_rw_timesteps(f_rw_timesteps),
 _f_b_values(f_b_values), _f_b_grads(f_b_grads), _f_b_velocities(f_b_velocities), _f_b_m1(f_b_m1), _f_b_m2(f_b_m2), _f_b_decays(f_b_decays), _f_b_timesteps(f_b_timesteps),
@@ -410,7 +397,7 @@ void LSTMLayer::calculate_forward_feed(
           std::copy(_f_b_values.begin(), _f_b_values.end(), f_pre);
           std::copy(_i_b_values.begin(), _i_b_values.end(), i_pre);
           std::copy(_o_b_values.begin(), _o_b_values.end(), o_pre);
-          std::copy(_b_values.begin(), _b_values.end(), g_pre);
+          std::copy(get_b_values().begin(), get_b_values().end(), g_pre);
         }
 
         // Input-to-Gates GEMV (vectorized)
@@ -422,7 +409,7 @@ void LSTMLayer::calculate_forward_feed(
           simd::mul_add(xi, &_f_w_values[i * N_this], f_pre, N_this);
           simd::mul_add(xi, &_i_w_values[i * N_this], i_pre, N_this);
           simd::mul_add(xi, &_o_w_values[i * N_this], o_pre, N_this);
-          simd::mul_add(xi, &_w_values[i * N_this], g_pre, N_this);
+          simd::mul_add(xi, &get_w_values()[i * N_this], g_pre, N_this);
         }
       }
     }
@@ -517,13 +504,6 @@ void LSTMLayer::calculate_forward_feed(
         state.set_pre_activation_sums(packed_bptt);
         state.set_cell_state_values(current_c);
         state.set_hidden_state_values(current_h);
-        
-        // current_h is modified in next tick loop, so we need a copy for next t
-        // but current_h is already the output of the current tick, 
-        // and we need to pass it to the next tick as h_{t-1}.
-        // The implementation already does this correctly as current_h is defined outside t loop? 
-        // Wait, current_h is defined in `recurrent_pass` before the t-loop.
-        // That is correct.
       }
     }
   };
@@ -572,9 +552,7 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
         else deltas[idx] = 0.0;
       }
     }
-    // Set BOTH RNN gradients and standard gradients (last step)
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas);
-    
     std::vector<double> last_step_deltas(N_this);
     std::copy(deltas.end() - N_this, deltas.end(), last_step_deltas.begin());
     batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_deltas);
@@ -591,14 +569,10 @@ void LSTMLayer::calculate_hidden_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   if (batch_size == 0) return;
-
   const size_t N_this = get_number_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0 || N_this == 0) return;
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-
-  // Launch threads for each batch chunk
   if (num_threads <= 1)
   {
     auto& workspace = get_workspace(0);
@@ -611,41 +585,35 @@ void LSTMLayer::calculate_hidden_gradients(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end)
-      {
-        _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
+      if (start < end) _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
           {
             auto& workspace = const_cast<LSTMLayer*>(this)->get_workspace(t);
             calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _f_rw_values_T, _i_rw_values_T, _o_rw_values_T);
           });
-      }
       start = end;
     }
     _task_queue_pool->get();
-    }
-    }
+  }
+}
 
-    void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<std::vector<double>>& batch_output_gradients,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    size_t batch_size,
-    int bptt_max_ticks) const
-    {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    const auto N_this = get_number_neurons();
-    if (N_this == 0 || batch_size == 0) return;
+void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int bptt_max_ticks) const
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const auto N_this = get_number_neurons();
+  if (N_this == 0 || batch_size == 0) return;
+  FFLayer proxy(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
+  proxy.set_w_values(id);
+  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
+}
 
-    // Use a local FFLayer as a proxy for an identity connection.
-    FFLayer proxy(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
-    std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
-    for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
-    proxy.set_w_values(id);
-
-    calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
-    }
-
-    void LSTMLayer::calculate_and_store_gradients(
+void LSTMLayer::calculate_and_store_gradients(
 const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
@@ -655,14 +623,11 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const size_t T = hidden_states[0].at(get_layer_index()).size();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  // Accumulate gradients across batch
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
     if (packed_grads.empty()) continue;
-
     const auto& layer_states = hidden_states[b].at(get_layer_index());
-    
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
     const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
@@ -674,17 +639,12 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
       const double* di = &packed_grads[t * 4 * N_this + N_this];
       const double* do_gate = &packed_grads[t * 4 * N_this + 2 * N_this];
       const double* dg = &packed_grads[t * 4 * N_this + 3 * N_this];
-
       const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
       const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
       for (size_t j = 0; j < N_this; ++j)
       {
-        _f_b_grads[j] += df[j];
-        _i_b_grads[j] += di[j];
-        _o_b_grads[j] += do_gate[j];
-        _b_grads[j] += dg[j];
-
+        _f_b_grads[j] += df[j]; _i_b_grads[j] += di[j]; _o_b_grads[j] += do_gate[j]; _b_grads[j] += dg[j];
         for (size_t k = 0; k < N_prev; ++k)
         {
           _f_w_grads[k * N_this + j] += df[j] * x_t[k];
@@ -692,7 +652,6 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
           _o_w_grads[k * N_this + j] += do_gate[j] * x_t[k];
           _w_grads[k * N_this + j] += dg[j] * x_t[k];
         }
-
         if (h_prev)
         {
           for (size_t k = 0; k < N_this; ++k)
@@ -707,7 +666,6 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   }
 
-  // Normalization
   const double inv_batch = 1.0 / static_cast<double>(batch_size * T);
   auto norm = [&](std::vector<double>& v) { for (double& x : v) x *= inv_batch; };
   norm(_w_grads); norm(_b_grads); norm(_rw_grads);
@@ -733,31 +691,21 @@ void LSTMLayer::zero_gradients()
 void LSTMLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-
   auto app = [&](std::vector<double>& v, std::vector<double>& g, std::vector<double>& vel, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& ts, const std::vector<double>& dec, bool is_bias) {
     apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
   };
-
-  // 1. Forget Gate (f)
   app(_f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_timesteps, _f_w_decays, false);
   app(_f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_timesteps, _f_b_decays, true);
   app(_f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_timesteps, _f_rw_decays, false);
-
-  // 2. Input Gate (i)
   app(_i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_timesteps, _i_w_decays, false);
   app(_i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_timesteps, _i_b_decays, true);
   app(_i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_timesteps, _i_rw_decays, false);
-
-  // 3. Candidate Cell State (g/c) - Uses Base Layer storage
   app(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, false);
   app(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, true);
   app(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, false);
-
-  // 4. Output Gate (o)
   app(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, false);
   app(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays, true);
   app(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, false);
-
   zero_gradients();
 }
 
@@ -766,51 +714,30 @@ void LSTMLayer::cache_recurrent_weights()
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t n = get_number_neurons();
   if (n == 0) return;
-
-  _rw_values_T.resize(n * n);
-  _f_rw_values_T.resize(n * n);
-  _i_rw_values_T.resize(n * n);
-  _o_rw_values_T.resize(n * n);
-
+  _rw_values_T.resize(n * n); _f_rw_values_T.resize(n * n); _i_rw_values_T.resize(n * n); _o_rw_values_T.resize(n * n);
   for (size_t i = 0; i < n; ++i)
-  {
-    for (size_t j = 0; j < n; ++j)
-    {
+    for (size_t j = 0; j < n; ++j) {
       _rw_values_T[j * n + i] = _rw_values[i * n + j];
       _f_rw_values_T[j * n + i] = _f_rw_values[i * n + j];
       _i_rw_values_T[j * n + i] = _i_rw_values[i * n + j];
       _o_rw_values_T[j * n + i] = _o_rw_values[i * n + j];
     }
-  }
 }
 
 LSTMLayer::BPTTWorkspace& LSTMLayer::get_workspace(size_t thread_idx) const
 {
   std::unique_lock<std::shared_mutex> lock(_workspace_mutex);
-  if (_thread_workspaces.size() <= thread_idx)
-  {
-    _thread_workspaces.resize(thread_idx + 1);
-  }
-  if (!_thread_workspaces[thread_idx])
-  {
-    _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
-  }
+  if (_thread_workspaces.size() <= thread_idx) _thread_workspaces.resize(thread_idx + 1);
+  if (!_thread_workspaces[thread_idx]) _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
   return *_thread_workspaces[thread_idx];
 }
 
-void LSTMLayer::calculate_bptt_batch_chunk(
-  size_t start,
-  size_t end,
-  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const Layer& next_layer,
-  const std::vector<std::vector<double>>& batch_next_grad_matrix,
-  const std::vector<HiddenStates>& batch_hidden_states,
-  int bptt_max_ticks,
-  BPTTWorkspace& workspace,
-  const BPTTWorkspace::AlignedVector& rw_values_T,
-  const BPTTWorkspace::AlignedVector& f_rw_values_T,
-  const BPTTWorkspace::AlignedVector& i_rw_values_T,
-  const BPTTWorkspace::AlignedVector& o_rw_values_T) const
+double LSTMLayer::get_recurrent_weight_value(unsigned f, unsigned t) const
+{
+  return _rw_values[f * get_number_neurons() + t];
+}
+
+void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const Layer& next_layer, const std::vector<std::vector<double>>& batch_next_grad_matrix, const std::vector<HiddenStates>& batch_hidden_states, int bptt_max_ticks, BPTTWorkspace& workspace, const BPTTWorkspace::AlignedVector& rw_values_T, const BPTTWorkspace::AlignedVector& f_rw_values_T, const BPTTWorkspace::AlignedVector& i_rw_values_T, const BPTTWorkspace::AlignedVector& o_rw_values_T) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t N_this = get_number_neurons();
@@ -818,122 +745,53 @@ void LSTMLayer::calculate_bptt_batch_chunk(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-
   workspace.resize(N_this, N_prev, end - start, num_time_steps);
-
-  // Step 1: Pre-calculate upstream gradients from next layer
   const size_t N_next = next_layer.get_number_neurons();
   const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
 
-  for (size_t b = start; b < end; ++b)
-  {
+  for (size_t b = start; b < end; ++b) {
     const size_t b_idx = b - start;
     const double* next_grads_base = batch_next_grad_matrix[b].data();
     double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
-
-    for (int t = t_start; t >= t_end; --t)
-    {
+    for (int t = t_start; t >= t_end; --t) {
       if (!next_is_seq && t < t_start) continue;
-
       const double* g_next_t = next_is_seq ? &next_grads_base[t * N_next] : next_grads_base;
       double* dest_t = &dest_base[t * N_this];
-
-      // Matrix-Vector Multiply: grad_this = next_layer.W^T * g_next_t
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        const double* next_w_row = next_layer.get_w_values().data() + j * N_next;
-        dest_t[j] += simd::dot_product(g_next_t, next_w_row, N_next);
-      }
+      for (size_t j = 0; j < N_this; ++j) dest_t[j] += simd::dot_product(g_next_t, next_layer.get_w_values().data() + j * N_next, N_next);
     }
   }
 
-  // Step 2: BPTT loop
-  for (int t = t_start; t >= t_end; --t)
-  {
-    for (size_t b = start; b < end; ++b)
-    {
+  for (int t = t_start; t >= t_end; --t) {
+    for (size_t b = start; b < end; ++b) {
       const size_t b_idx = b - start;
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
       const auto& state = layer_states[t];
-      const auto packed = state.get_pre_activation_sums(); // [f, i, o, g_pre]
+      const auto packed = state.get_pre_activation_sums();
       const auto c_curr = state.get_cell_state_values();
       const bool has_prev = (t > 0);
       const auto c_prev = has_prev ? layer_states[t - 1].get_cell_state_values() : std::span<const double>();
-
       double* dh_next = &workspace.d_next_h[b_idx * N_this];
       double* dc_next = &workspace.d_next_c[b_idx * N_this];
-
-      // Reset dh_next and dc_next only at t_start
-      if (t == t_start)
-      {
-        std::fill(dh_next, dh_next + N_this, 0.0);
-        std::fill(dc_next, dc_next + N_this, 0.0);
-      }
+      if (t == t_start) { std::fill(dh_next, dh_next + N_this, 0.0); std::fill(dc_next, dc_next + N_this, 0.0); }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       std::vector<double> dh_curr(N_this);
-      for(size_t j = 0; j < N_this; ++j) 
-      {
-        double dh = upstream_grads[j] + dh_next[j];
-        // Clip incoming hidden gradient to prevent explosion during BPTT
-        dh_curr[j] = std::clamp(dh, -50.0, 50.0);
-      }
-
-      const double* f = &packed[0];
-      const double* i = &packed[N_this];
-      const double* o = &packed[2 * N_this];
-      const double* g_pre = &packed[3 * N_this];
+      for(size_t j = 0; j < N_this; ++j) dh_curr[j] = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
 
       double* df_chunk = &workspace.chunk_df[b_idx * N_this];
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
 
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        double dh = dh_curr[j];
-        double tanh_c = std::tanh(c_curr[j]);
-        
-        double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
-        double dc = dh * o[j] * (1.0 - tanh_c * tanh_c) + dc_next[j];
-        
-        double g = std::tanh(g_pre[j]);
-        double df = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
-        double di = dc * g * i[j] * (1.0 - i[j]);
-        double dg = dc * i[j] * (1.0 - g * g);
+      simd::lstm_bptt_gate_step(N_this, dh_curr.data(), dc_next, packed.data(), &packed[N_this], &packed[2 * N_this], &packed[3 * N_this], c_curr.data(), c_prev.data(), has_prev, df_chunk, di_chunk, do_chunk, dg_chunk, dc_next);
 
-        df_chunk[j] = df;
-        di_chunk[j] = di;
-        do_chunk[j] = do_gate;
-        dg_chunk[j] = dg;
-
-        dc_next[j] = dc * f[j];
-      }
-
-      // 1. Calculate dX_t (gradient w.r.t input)
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       for (size_t k = 0; k < N_prev; ++k)
-      {
-        double sum = 0.0;
-        sum += simd::dot_product(df_chunk, &_f_w_values[k * N_this], N_this);
-        sum += simd::dot_product(di_chunk, &_i_w_values[k * N_this], N_this);
-        sum += simd::dot_product(do_chunk, &_o_w_values[k * N_this], N_this);
-        sum += simd::dot_product(dg_chunk, &_w_values[k * N_this], N_this);
-        dx_t[k] = sum;
-      }
+        dx_t[k] = simd::dot_product(df_chunk, &_f_w_values[k * N_this], N_this) + simd::dot_product(di_chunk, &_i_w_values[k * N_this], N_this) + simd::dot_product(do_chunk, &_o_w_values[k * N_this], N_this) + simd::dot_product(dg_chunk, &_w_values[k * N_this], N_this);
 
-      // 2. Propagate dh back to t-1 via recurrent weights (correctly using original weights)
       std::fill(dh_next, dh_next + N_this, 0.0);
       for (size_t k = 0; k < N_this; ++k)
-      {
-        double sum = 0.0;
-        sum += simd::dot_product(df_chunk, &_f_rw_values[k * N_this], N_this);
-        sum += simd::dot_product(di_chunk, &_i_rw_values[k * N_this], N_this);
-        sum += simd::dot_product(do_chunk, &_o_rw_values[k * N_this], N_this);
-        sum += simd::dot_product(dg_chunk, &_rw_values[k * N_this], N_this);
-        dh_next[k] = sum;
-      }
+        dh_next[k] = simd::dot_product(df_chunk, &_f_rw_values[k * N_this], N_this) + simd::dot_product(di_chunk, &_i_rw_values[k * N_this], N_this) + simd::dot_product(do_chunk, &_o_rw_values[k * N_this], N_this) + simd::dot_product(dg_chunk, &_rw_values[k * N_this], N_this);
 
-      // Store gate gradients for weight updates later
       double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * 4 * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);
       std::copy(di_chunk, di_chunk + N_this, grad_out_t + N_this);
@@ -942,13 +800,10 @@ void LSTMLayer::calculate_bptt_batch_chunk(
     }
   }
 
-  // Step 3: Write back to GradientsAndOutputs
-  for (size_t b = start; b < end; ++b)
-  {
+  for (size_t b = start; b < end; ++b) {
     const size_t b_idx = b - start;
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
-
     const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * 4 * N_this];
     batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * 4 * N_this));
   }

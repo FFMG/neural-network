@@ -895,8 +895,6 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   double* d_next_h_ptr_all = workspace.d_next_h.data();
   double* rnn_grad_ptr_all = workspace.rnn_grad_matrix.data();
 
-  const __m256d one = _mm256_set1_pd(1.0);
-
   for (int t = t_start; t >= t_end; --t)
   {
     // Step 2a: Calculate gate gradients
@@ -917,37 +915,19 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* grad_next_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
       double* d_next_h_ptr = &d_next_h_ptr_all[b_idx * N_this];
 
-      size_t j = 0;
-      for (; j + 3 < N_this; j += 4)
-      {
-        __m256d dh_raw = _mm256_add_pd(_mm256_loadu_pd(&grad_next_ptr[j]), _mm256_loadu_pd(&d_next_h_ptr[j]));
-        __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, _mm256_set1_pd(50.0)), _mm256_set1_pd(-50.0));
-        __m256d z = _mm256_loadu_pd(&z_vals[j]);
-        __m256d h_hat = _mm256_loadu_pd(&h_hat_ptr[j]);
-        __m256d h_prev = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
-        __m256d d_z = _mm256_mul_pd(dh, _mm256_sub_pd(h_hat, h_prev));
-        __m256d d_z_pre = _mm256_mul_pd(d_z, _mm256_mul_pd(z, _mm256_sub_pd(one, z)));
-        __m256d d_h_hat = _mm256_mul_pd(dh, z);
-        double derivatives[4];
-        for(int k=0; k<4; ++k) derivatives[k] = get_activation().activate_derivative(h_hat_pre_vals[j+k]);
-        __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_loadu_pd(derivatives));
-        __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
-        _mm256_storeu_pd(&dz_ptr_all[b_idx * N_this + j], d_z_pre);
-        _mm256_storeu_pd(&dh_hat_ptr_all[b_idx * N_this + j], d_h_hat_pre);
-        _mm256_storeu_pd(&dh_prev_accum_ptr_all[b_idx * N_this + j], d_h_prev_direct);
-      }
-      for (; j < N_this; ++j)
-      {
-        double dh = std::clamp(grad_next_ptr[j] + d_next_h_ptr[j], -50.0, 50.0);
-        double z = z_vals[j];
-        double h_hat = h_hat_ptr[j];
-        double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-        double d_z_pre = dh * (h_hat - h_prev) * z * (1.0 - z);
-        double d_h_hat_pre = dh * z * get_activation().activate_derivative(h_hat_pre_vals[j]);
-        dz_ptr_all[b_idx * N_this + j] = d_z_pre;
-        dh_hat_ptr_all[b_idx * N_this + j] = d_h_hat_pre;
-        dh_prev_accum_ptr_all[b_idx * N_this + j] = dh * (1.0 - z);
-      }
+      simd::gru_bptt_gate_step(
+        N_this,
+        grad_next_ptr,
+        d_next_h_ptr,
+        z_vals,
+        h_hat_ptr,
+        h_prev_vals,
+        h_hat_pre_vals,
+        &dz_ptr_all[b_idx * N_this],
+        &dh_hat_ptr_all[b_idx * N_this],
+        &dh_prev_accum_ptr_all[b_idx * N_this],
+        [&](double x) { return get_activation().activate_derivative(x); }
+      );
     }
 
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
