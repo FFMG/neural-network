@@ -140,7 +140,88 @@ public:
       double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
       double update = m_hat / (std::sqrt(v_hat) + epsilon);
       double w = values[j];
-      if (decays != nullptr) w *= (1.0 - lr * decays[j]);
+      if (decays != nullptr)
+      {
+        w *= (1.0 - lr * decays[j]);
+      }
+      values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+    }
+  }
+  // Full Nadam Update Step
+  inline static void nadam_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double* m2,
+    double b1,
+    double b2,
+    double p1,
+    double p2,
+    double lr,
+    double epsilon,
+    size_t n,
+    const double* decays = nullptr) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_b1 = _mm256_set1_pd(b1);
+    __m256d vec_one_minus_b1 = _mm256_set1_pd(1.0 - b1);
+    __m256d vec_b2 = _mm256_set1_pd(b2);
+    __m256d vec_one_minus_b2 = _mm256_set1_pd(1.0 - b2);
+    __m256d vec_p1 = _mm256_set1_pd(p1);
+    __m256d vec_p2 = _mm256_set1_pd(p2);
+    __m256d vec_lr = _mm256_set1_pd(lr);
+    __m256d vec_eps = _mm256_set1_pd(epsilon);
+
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d g = _mm256_loadu_pd(&grads[j]);
+      __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+      __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+      __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+      // Moments update
+      __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+      __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+      _mm256_storeu_pd(&m1[j], next_m1);
+      _mm256_storeu_pd(&m2[j], next_m2);
+
+      // Nadam scaling
+      __m256d m_hat = (p1 > 1e-15) ? _mm256_div_pd(next_m1, vec_p1) : next_m1;
+      __m256d v_hat = (p2 > 1e-15) ? _mm256_div_pd(next_m2, vec_p2) : next_m2;
+
+      // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
+      __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_div_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_p1));
+      __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
+
+      // Optional NadamW weight decay
+      if (decays != nullptr) 
+      {
+        __m256d d = _mm256_loadu_pd(&decays[j]);
+        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(_mm256_set1_pd(1.0), _mm256_mul_pd(vec_lr, d)));
+      }
+
+      __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+
+      // Hard clamp weights to prevent catastrophic numerical explosion
+      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, _mm256_set1_pd(100000.0)), _mm256_set1_pd(-100000.0));
+      _mm256_storeu_pd(&values[j], next_w);
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
+      m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
+      double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
+      double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
+      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) / p1;
+      double update = m_nadam / (std::sqrt(v_hat) + epsilon);
+      double w = values[j];
+      if (decays != nullptr)
+      {
+        w *= (1.0 - lr * decays[j]);
+      }
       values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
     }
   }
