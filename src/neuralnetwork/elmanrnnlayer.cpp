@@ -635,41 +635,110 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   }
 }
 
-void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int bptt_max_ticks)
+void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  zero_gradients();
+  if (batch_size == 0)
+  {
+    return;
+  }
+
   const size_t N_this = get_number_neurons();
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t T = hidden_states[0].at(get_layer_index()).size();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  for (size_t b = 0; b < batch_size; ++b)
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? N_this : 0, 0.0));
+
+  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-    if (packed_grads.empty()) continue;
+    auto& local_w_grads = thread_w_grads[thread_idx];
+    auto& local_rw_grads = thread_rw_grads[thread_idx];
+    auto& local_b_grads = thread_b_grads[thread_idx];
 
-    const auto& layer_states = hidden_states[b].at(get_layer_index());
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-    const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
-
-    for (size_t t = 0; t < T; ++t)
+    for (size_t b = start; b < end; ++b)
     {
-      const double* g_t = &packed_grads[t * N_this];
-      const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
-      const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty()) continue;
 
-      for (size_t j = 0; j < N_this; ++j)
+      const auto& layer_states = hidden_states[b].at(get_layer_index());
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
+
+      for (size_t t = 0; t < T; ++t)
       {
-        if (has_bias()) _b_grads[j] += g_t[j];
-        for (size_t k = 0; k < N_prev; ++k) _w_grads[k * N_this + j] += g_t[j] * x_t[k];
-        if (h_prev)
+        const double* g_t = &packed_grads[t * N_this];
+        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
+        const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
+
+        for (size_t j = 0; j < N_this; ++j)
         {
-          for (size_t k = 0; k < N_this; ++k) _rw_grads[k * N_this + j] += g_t[j] * h_prev[k];
+          const auto gj = g_t[j];
+          if (std::abs(gj) < 1e-15)
+          {
+            continue;
+          }
+
+          if (has_bias())
+          {
+            local_b_grads[j] += gj;
+          }
+          for (size_t k = 0; k < N_prev; ++k)
+          {
+            local_w_grads[k * N_this + j] += gj * x_t[k];
+          }
+          if (h_prev)
+          {
+            for (size_t k = 0; k < N_this; ++k)
+            {
+              local_rw_grads[k * N_this + j] += gj * h_prev[k];
+            }
+          }
         }
       }
+    }
+  };
+
+  if (num_threads <= 1)
+  {
+    run_chunk(0, batch_size, 0);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+
+  // Merge results
+  zero_gradients();
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    for (size_t i = 0; i < _w_grads.size(); ++i)
+    {
+      _w_grads[i] += thread_w_grads[t][i];
+    }
+    for (size_t i = 0; i < _rw_grads.size(); ++i)
+    {
+      _rw_grads[i] += thread_rw_grads[t][i];
+    }
+    if (has_bias())
+    {
+      for (size_t i = 0; i < _b_grads.size(); ++i) _b_grads[i] += thread_b_grads[t][i];
     }
   }
 
