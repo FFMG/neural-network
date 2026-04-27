@@ -342,8 +342,11 @@ void FFLayer::run_post_gemm(
   for (size_t b = start; b < end; b++)
   {
     std::vector<double> output_row_seq(num_time_steps * N_this);
-    auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-    if (layer_states.size() != num_time_steps) layer_states.resize(num_time_steps);
+    if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
+    {
+      batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
+    }
+    auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -356,7 +359,7 @@ void FFLayer::run_post_gemm(
             for (size_t j = 0; j < N_this; j++) current_pre_act[j] += batch_residual_output_values[b][j];
         }
 
-        layer_states[t].set_pre_activation_sums(std::vector<double>(current_pre_act, current_pre_act + N_this));
+        layer_states_ref[t].set_pre_activation_sums(std::vector<double>(current_pre_act, current_pre_act + N_this));
 
         for (const auto& r : _layer_activation_helper.ranges())
         {
@@ -373,7 +376,7 @@ void FFLayer::run_post_gemm(
             current_output_row[j] = output;
           }
         }
-        layer_states[t].set_hidden_state_values(std::vector<double>(current_output_row, current_output_row + N_this));
+        layer_states_ref[t].set_hidden_state_values(std::vector<double>(current_output_row, current_output_row + N_this));
     }
 
     if (num_time_steps > 1) batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq);
@@ -552,30 +555,88 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   const auto& first_rnn_out = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
   if (!first_rnn_out.empty()) num_time_steps = first_rnn_out.size() / num_inputs;
 
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
 
-  for (size_t b = 0; b < batch_size; ++b)
+  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+    auto& local_w_grads = thread_w_grads[thread_idx];
+    auto& local_b_grads = thread_b_grads[thread_idx];
 
-    const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-    const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-    const double* g_base = !rnn_grad.empty() ? rnn_grad.data() : std_grad.data();
-
-    for (size_t t = 0; t < num_time_steps; ++t)
+    for (size_t b = start; b < end; ++b)
     {
-      const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
-      const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
-      for (size_t i = 0; i < num_inputs; ++i)
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+
+      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+      const double* g_base = !rnn_grad.empty() ? rnn_grad.data() : std_grad.data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
       {
-        const double xi = x_t[i];
-        if (xi == 0.0) continue;
-        simd::mul_add(xi, g_t, &_w_grads[i * num_outputs], num_outputs);
+        const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
+        const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
+        for (size_t i = 0; i < num_inputs; ++i)
+        {
+          const double xi = x_t[i];
+          if (std::abs(xi) < 1e-15)
+          {
+            continue;
+          }
+          simd::mul_add(xi, g_t, &local_w_grads[i * num_outputs], num_outputs);
+        }
+        if (has_bias())
+        {
+          for (unsigned j = 0; j < num_outputs; ++j)
+          {
+            local_b_grads[j] += g_t[j];
+          }
+        }
       }
-      if (has_bias()) for (unsigned j = 0; j < num_outputs; ++j) _b_grads[j] += g_t[j];
+    }
+  };
+
+  if (num_threads <= 1)
+  {
+    run_chunk(0, batch_size, 0);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+
+  // Merge results
+  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+  if (has_bias())
+  {
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
+
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    for (size_t i = 0; i < _w_grads.size(); ++i)
+    {
+      _w_grads[i] += thread_w_grads[t][i];
+    }
+    if (has_bias())
+    {
+      for (size_t i = 0; i < _b_grads.size(); ++i)
+      {
+        _b_grads[i] += thread_b_grads[t][i];
+      }
     }
   }
 

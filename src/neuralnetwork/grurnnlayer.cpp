@@ -1089,173 +1089,180 @@ void GRURNNLayer::calculate_and_store_gradients(
     return;
   }
 
-  // 1. Clear gradients
-  zero_gradients();
-
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
-
   const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const int active_ticks = t_start - t_end + 1;
 
-  const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
-  
-  // Normalization follows ElmanRNNLayer pattern:
-  // - Input weights (W, z_w, r_w): normalized by (batch_size * active_ticks)
-  // - Recurrent weights (RW, z_rw, r_rw): normalized by (batch_size * (active_ticks - 1))
-  // This matches the number of times each weight is used in BPTT.
-  const double denom = static_cast<double>(batch_size) * time_scale;
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_z_w_grads(num_threads, std::vector<double>(_z_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_z_rw_grads(num_threads, std::vector<double>(_z_rw_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_r_w_grads(num_threads, std::vector<double>(_r_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_r_rw_grads(num_threads, std::vector<double>(_r_rw_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
+  std::vector<std::vector<double>> thread_z_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
+  std::vector<std::vector<double>> thread_r_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
 
-  // Use a thread-local accumulator pattern or just atomic accumulation?
-  // Since we are running single-threaded per layer in update_weights usually (or layer-parallel),
-  // we can just accumulate directly.
-  for (unsigned b = 0; b < batch_size; ++b)
+  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-    const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-    const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+    auto& local_w_grads = thread_w_grads[thread_idx];
+    auto& local_rw_grads = thread_rw_grads[thread_idx];
+    auto& local_z_w_grads = thread_z_w_grads[thread_idx];
+    auto& local_z_rw_grads = thread_z_rw_grads[thread_idx];
+    auto& local_r_w_grads = thread_r_w_grads[thread_idx];
+    auto& local_r_rw_grads = thread_r_rw_grads[thread_idx];
+    auto& local_b_grads = thread_b_grads[thread_idx];
+    auto& local_z_b_grads = thread_z_b_grads[thread_idx];
+    auto& local_r_b_grads = thread_r_b_grads[thread_idx];
 
-    // We expect rnn_grads to be packed: [T * 3 * N]
-    // Layout at time t: [d_h_hat (N), d_z (N), d_r (N)]
-    if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * 3 * num_outputs) continue;
-
-    for (int t = t_start; t >= t_end; --t)
+    for (size_t b = start; b < end; ++b)
     {
-      const size_t base_idx = t * 3 * num_outputs;
-      const double* d_h_hat_ptr = &rnn_grads[base_idx];
-      const double* d_z_ptr = &rnn_grads[base_idx + num_outputs];
-      const double* d_r_ptr = &rnn_grads[base_idx + 2 * num_outputs];
+      const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
+      const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
+      const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
 
-      const double* prev_input_ptr = nullptr;
-      if (prev_outputs.size() == num_inputs)
-      {
-        prev_input_ptr = prev_outputs.data(); // Static input
-      }
-      else if (prev_outputs.size() >= (t + 1) * num_inputs)
-      {
-        prev_input_ptr = &prev_outputs[t * num_inputs];
-      }
-       
-      const double* prev_hidden_ptr = nullptr;
-      if (t > 0)
-      {
-        prev_hidden_ptr = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data();
-      }
+      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * 3 * num_outputs) continue;
 
-      // 1. Input Weights Gradients (W * x)
-      if (prev_input_ptr)
+      for (int t = t_start; t >= t_end; --t)
       {
+        const size_t base_idx = t * 3 * num_outputs;
+        const double* d_h_hat_ptr = &rnn_grads[base_idx];
+        const double* d_z_ptr = &rnn_grads[base_idx + num_outputs];
+        const double* d_r_ptr = &rnn_grads[base_idx + 2 * num_outputs];
+
+        const double* prev_input_ptr = nullptr;
+        if (prev_outputs.size() == num_inputs)
+        {
+          prev_input_ptr = prev_outputs.data();
+        }
+        else if (prev_outputs.size() >= (t + 1) * num_inputs)
+        {
+          prev_input_ptr = &prev_outputs[t * num_inputs];
+        }
+        
+        const double* prev_hidden_ptr = nullptr;
+        if (t > 0)
+        {
+          prev_hidden_ptr = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data();
+        }
+
+        const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
         for (unsigned j = 0; j < num_outputs; ++j)
         {
-          const auto& dh = d_h_hat_ptr[j];
-          const auto& dz = d_z_ptr[j];
-          const auto& dr = d_r_ptr[j];
+          const double gh = d_h_hat_ptr[j];
+          const double gz = d_z_ptr[j];
+          const double gr = d_r_ptr[j];
 
-          for (unsigned i = 0; i < num_inputs; ++i)
+          if (has_bias())
           {
-            double x = prev_input_ptr[i];
-            _w_grads[i * num_outputs + j] += dh * x;
-            _z_w_grads[i * num_outputs + j] += dz * x;
-            _r_w_grads[i * num_outputs + j] += dr * x;
+            local_b_grads[j] += gh;
+            local_z_b_grads[j] += gz;
+            local_r_b_grads[j] += gr;
+          }
+
+          if (prev_input_ptr)
+          {
+            for (unsigned i = 0; i < num_inputs; ++i)
+            {
+              double x = prev_input_ptr[i];
+              if (std::abs(x) < 1e-15)
+              {
+                continue;
+              }
+              local_w_grads[i * num_outputs + j] += gh * x;
+              local_z_w_grads[i * num_outputs + j] += gz * x;
+              local_r_w_grads[i * num_outputs + j] += gr * x;
+            }
+          }
+
+          if (prev_hidden_ptr)
+          {
+            for (unsigned k = 0; k < num_outputs; ++k)
+            {
+              double h_prev = prev_hidden_ptr[k];
+              if (std::abs(h_prev) < 1e-15)
+              {
+                continue;
+              }
+              double r_val = packed[num_outputs + k]; 
+              local_rw_grads[k * num_outputs + j] += gh * (r_val * h_prev);
+              local_z_rw_grads[k * num_outputs + j] += gz * h_prev;
+              local_r_rw_grads[k * num_outputs + j] += gr * h_prev;
+            }
           }
         }
       }
+    }
+  };
 
-      // 2. Recurrent Weights Gradients (U * h_{t-1})
-      if (prev_hidden_ptr)
+  if (num_threads <= 1)
+  {
+    run_chunk(0, batch_size, 0);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
       {
-        for (unsigned j = 0; j < num_outputs; ++j)
-        {
-          const auto& dh = d_h_hat_ptr[j];
-          const auto& dz = d_z_ptr[j];
-          const auto& dr = d_r_ptr[j];
-               
-          // For h_hat, the recurrent input is actually (r_t * h_{t-1})
-          // We need r_t for this sample/time.
-          // It's stored in hidden_states[t] pre-activation sums, index N..2N (sigmoid applied? No, sums are pre-activations).
-          // Wait, apply_stored_gradients needs gradients w.r.t weights.
-          // dL/dU_h = dL/d_h_hat_pre * (r * h_{t-1})
-          // dL/dU_z = dL/d_z_pre * h_{t-1}
-          // dL/dU_r = dL/d_r_pre * h_{t-1}
-
-          // Retrieve r_t (post-activation)
-          // The hidden_state stores pre-activations.
-          // batch_hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums()[N + j] is r_pre?
-          // Wait, in calculate_forward_feed:
-          // packed_bptt_states[j] = z_val;          // Index 0..N-1
-          // packed_bptt_states[N_this + j] = r_val; // Index N..2N-1
-          // packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
-               
-          const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-               
-          for (unsigned k = 0; k < num_outputs; ++k)
-          {
-            double h_prev = prev_hidden_ptr[k];
-            double r_val = packed[num_outputs + k]; 
-                   
-            // Candidate State Recurrent: U_h * (r * h_prev)
-            _rw_grads[k * num_outputs + j] += dh * (r_val * h_prev);
-
-            // Update Gate Recurrent: U_z * h_prev
-            _z_rw_grads[k * num_outputs + j] += dz * h_prev;
-
-            // Reset Gate Recurrent: U_r * h_prev
-            _r_rw_grads[k * num_outputs + j] += dr * h_prev;
-          }
-        }
+        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { 
+          run_chunk(start, end, t); 
+        });
       }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
 
-      // 3. Bias Gradients
-      if (has_bias())
+  // Merge
+  zero_gradients();
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    for (size_t i = 0; i < _w_grads.size(); ++i)
+    {
+      _w_grads[i] += thread_w_grads[t][i];
+      _z_w_grads[i] += thread_z_w_grads[t][i];
+      _r_w_grads[i] += thread_r_w_grads[t][i];
+    }
+    for (size_t i = 0; i < _rw_grads.size(); ++i)
+    {
+      _rw_grads[i] += thread_rw_grads[t][i];
+      _z_rw_grads[i] += thread_z_rw_grads[t][i];
+      _r_rw_grads[i] += thread_r_rw_grads[t][i];
+    }
+    if (has_bias())
+    {
+      for (size_t i = 0; i < _b_grads.size(); ++i)
       {
-        for (unsigned j = 0; j < num_outputs; ++j)
-        {
-          _b_grads[j] += d_h_hat_ptr[j];
-          _z_b_grads[j] += d_z_ptr[j];
-          _r_b_grads[j] += d_r_ptr[j];
-        }
+        _b_grads[i] += thread_b_grads[t][i];
+        _z_b_grads[i] += thread_z_b_grads[t][i];
+        _r_b_grads[i] += thread_r_b_grads[t][i];
       }
     }
   }
 
-  // Final Normalization
+  const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
+  const double denom = static_cast<double>(batch_size) * time_scale;
+  
   const auto normalize = [&denom](std::vector<double>& grads)
   {
-    for (double& g : grads)
-    {
-      g /= denom;
-    }
+    for (double& g : grads) g /= denom;
   };
 
   normalize(_w_grads);
   normalize(_z_w_grads);
   normalize(_r_w_grads);
-
-  // Recurrent weights might typically be normalized differently if sequence length varies,
-  // but here we use the same denom.
-  // Note: ElmanRNNLayer normalizes recurrent weights by (batch_size * (active_ticks - 1))?
-  // Let's check ElmanRNNLayer: 
-  // const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
-  // for (double& grad : _rw_grads) grad /= (static_cast<double>(batch_size) * time_denom_rec);
-  
-  const double time_denom_rec = (active_ticks > 1) ? static_cast<double>(active_ticks - 1) : 1.0;
-  const double denom_rec = static_cast<double>(batch_size) * time_denom_rec;
-  
-  auto normalize_rec = [&denom_rec](std::vector<double>& grads)
-    {
-      for (double& g : grads)
-      {
-        g /= denom_rec;
-      }
-    };
-
-  normalize_rec(_rw_grads);
-  normalize_rec(_z_rw_grads);
-  normalize_rec(_r_rw_grads);
-
+  normalize(_rw_grads);
+  normalize(_z_rw_grads);
+  normalize(_r_rw_grads);
   if (has_bias())
   {
     normalize(_b_grads);

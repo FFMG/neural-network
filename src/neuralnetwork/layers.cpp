@@ -428,20 +428,14 @@ void Layers::calculate_forward_feed(
 
     for (size_t b = 0; b < batch_size; ++b)
     {
-      if (current_layer.use_bptt())
-      {
-        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-        const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+      const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+      const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
 
-        const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
-        const size_t n_prev = previous_layer.get_number_neurons();
-        const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
-      }
-      else
-      {
-        hidden_states[b].assign(layer_number, 1, HiddenState(), current_layer.get_pre_activation_multiplier());
-      }
+      const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
+      const size_t n_prev = previous_layer.get_number_neurons();
+      const size_t num_time_steps = (n_prev > 0 && !prev_rnn_span.empty()) ? seq_size / n_prev : 1;
+      
+      hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
     }
     // Call batched forward feed
     current_layer.calculate_forward_feed(
