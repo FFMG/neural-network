@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "layer.h"
+#include "simd_utils.h"
 #include "logger.h"
 #include "layerdetails.h"
 #include "fflayer.h"
@@ -519,29 +520,17 @@ void Layer::apply_update_to_vector(
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
 
-    for (size_t i = 0; i < n; ++i)
+    if (clipping_scale != 1.0)
     {
-      double grad = grads[i] * clipping_scale;
-      const long long t = ++timesteps[i];
-
-      const double p1 = 1.0 - std::pow(beta1, t);
-      const double p2 = 1.0 - std::pow(beta2, t);
-
-      m1[i] = beta1 * m1[i] + (1.0 - beta1) * grad;
-      m2[i] = beta2 * m2[i] + (1.0 - beta2) * (grad * grad);
-
-      double m_hat = m1[i] / p1;
-      double v_hat = m2[i] / p2;
-      double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
-
-      double current_weight = values[i];
-      if (optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
-      {
-        current_weight *= (1.0 - learning_rate * decays[i]);
-      }
-      values[i] = current_weight - learning_rate * update_step;
-      grads[i] = grad;
+      for (double& g : grads) g *= clipping_scale;
     }
+
+    for (auto& t : timesteps) ++t;
+    const double p1 = 1.0 - std::pow(beta1, timesteps[0]);
+    const double p2 = 1.0 - std::pow(beta2, timesteps[0]);
+    const double* decay_ptr = (optimiser_type == OptimiserType::AdamW && !is_bias && decays.size() >= n) ? decays.data() : nullptr;
+
+    simd::adam_step(values.data(), grads.data(), m1.data(), m2.data(), beta1, beta2, p1, p2, learning_rate, epsilon, n, decay_ptr);
   }
   break;
 
@@ -552,14 +541,21 @@ void Layer::apply_update_to_vector(
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
 
+    if (clipping_scale != 1.0)
+    {
+      for (double& g : grads) g *= clipping_scale;
+    }
+
+    for (auto& t : timesteps) ++t;
+    const double p1 = 1.0 - std::pow(beta1, timesteps[0]);
+    const double p2 = 1.0 - std::pow(beta2, timesteps[0]);
+
+    // Nadam is slightly different (m_nadam = beta1 * m_hat + (1-beta1)*g / p1)
+    // For now, I'll use a scalar loop for Nadam to ensure correctness, 
+    // but with the optimized p1/p2 outside.
     for (size_t i = 0; i < n; ++i)
     {
-      double grad = grads[i] * clipping_scale;
-      const long long t = ++timesteps[i];
-
-      const double p1 = 1.0 - std::pow(beta1, t);
-      const double p2 = 1.0 - std::pow(beta2, t);
-
+      double grad = grads[i];
       m1[i] = beta1 * m1[i] + (1.0 - beta1) * grad;
       m2[i] = beta2 * m2[i] + (1.0 - beta2) * (grad * grad);
 
@@ -575,7 +571,6 @@ void Layer::apply_update_to_vector(
         current_weight *= (1.0 - learning_rate * decays[i]);
       }
       values[i] = current_weight - learning_rate * update_step;
-      grads[i] = grad;
     }
   }
   break;

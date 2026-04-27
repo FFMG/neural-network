@@ -943,6 +943,7 @@ private:
     AlignedVector d_next_h;
     AlignedVector d_next_c;
     AlignedVector rnn_grad_matrix;
+    AlignedVector dx_matrix;
     AlignedVector chunk_df;
     AlignedVector chunk_di;
     AlignedVector chunk_do;
@@ -961,12 +962,13 @@ private:
     AlignedVector temp_Uo_T_do;
     AlignedVector temp_Ug_T_dg;
 
-    void resize(size_t n, size_t batch_chunk_size, size_t num_time_steps)
+    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
       grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
       d_next_c.assign(batch_chunk_size * n, 0.0);
       rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 4 * n, 0.0);
+      dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
       chunk_df.assign(batch_chunk_size * n, 0.0);
       chunk_di.assign(batch_chunk_size * n, 0.0);
       chunk_do.assign(batch_chunk_size * n, 0.0);

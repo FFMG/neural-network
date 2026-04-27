@@ -209,7 +209,7 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-void activation::calculate_softmax(double* begin, double* end, double temperature) noexcept
+void activation::calculate_softmax(double* begin, double* end, double temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (begin == end)
@@ -245,7 +245,7 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
   // --- Add warning for extreme logit range ---
   const double logit_range = max_val - min_val;
   const double EXTREME_LOGIT_THRESHOLD = 200.0; // Increased to reduce noise for highly confident models
-  const double CATASTROPHIC_LOGIT_THRESHOLD = 500.0;
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 1000.0;
 
   if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
