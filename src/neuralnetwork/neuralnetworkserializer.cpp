@@ -756,10 +756,10 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
     {
       Logger::panic("Could not find output layer error-calculation-type option!");
     }
-    auto output_method = activation::string_to_method(output_layer_object->try_get_string("activation-method", false));
-    auto output_alpha = output_layer_object->get_float("activation-alpha");
-    auto output_temperature = output_layer_object->get_float("activation-temperature", true, 1.0);
-    auto output_inference_temperature = output_layer_object->get_float("activation-inference-temperature", true, output_temperature);
+    const auto output_method = activation::string_to_method(output_layer_object->try_get_string("activation-method", false));
+    const auto output_alpha = output_layer_object->get_float("activation-alpha");
+    const auto output_temperature = output_layer_object->get_or<double>("activation-temperature", 1.0);
+    const auto output_inference_temperature = output_layer_object->get_or<double>("activation-inference-temperature", output_temperature);
     const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
     const auto output_activation_method = activation(output_method, output_alpha, output_temperature, output_inference_temperature);
     const auto optimiser_type = string_to_optimiser_type(output_layer_object->try_get_string("optimiser-type", false));
@@ -824,8 +824,8 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     const auto hidden_method_string = phlo->try_get_string("activation-method", false);
     const auto hidden_method = activation::string_to_method(hidden_method_string == nullptr ? "sigmoid" : hidden_method_string);
     const auto hidden_alpha = phlo->get<double>("activation-alpha");
-    const auto hidden_temperature = phlo->get_float("activation-temperature", true, 1.0);
-    const auto hidden_inference_temperature = phlo->get_float("activation-inference-temperature", true, hidden_temperature);
+    const auto hidden_temperature = phlo->get_or<double>("activation-temperature", 1.0);
+    const auto hidden_inference_temperature = phlo->get_or<double>("activation-inference-temperature", hidden_temperature);
 
     const auto optimiser_type = string_to_optimiser_type(phlo->try_get_string("optimiser-type", false));
     const auto momentum = phlo->get<double>("momentum");
@@ -931,43 +931,43 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     topology.push_back(static_cast<unsigned>(number->get_number()));
   }
   
-  auto log_level_string = options_object->try_get_string("log-level", false);
-  auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
+  const auto log_level_string = options_object->try_get_string("log-level", false);
+  const auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
   
-  auto learning_rate = options_object->get<double>("learning-rate");
-  auto learning_rate_warmup_start = options_object->get<double>("learning-rate-warmup-start");
-  auto learning_rate_warmup_target = options_object->get<double>("learning-rate-warmup-target");
+  const auto learning_rate = options_object->get<double>("learning-rate");
+  const auto learning_rate_warmup_start = options_object->get<double>("learning-rate-warmup-start");
+  const auto learning_rate_warmup_target = options_object->get<double>("learning-rate-warmup-target");
 
-  auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
-  auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
-  auto data_is_unique = options_object->get_boolean("data-is-unique");
-  auto number_of_threads = options_object->get<int>("number-of-threads");
-  auto learning_rate_decay_rate = options_object->get<double>("learning-rate-decay-rate");
-  auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
-  auto optimiser_type_string = options_object->try_get_string("optimiser-type");
-  auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
+  const auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
+  const auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
+  const auto data_is_unique = options_object->get_boolean("data-is-unique");
+  const auto number_of_threads = options_object->get<int>("number-of-threads");
+  const auto learning_rate_decay_rate = options_object->get<double>("learning-rate-decay-rate");
+  const auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
+  const auto optimiser_type_string = options_object->try_get_string("optimiser-type");
+  const auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
 
-  auto learning_rate_restart_rate = options_object->get<double>("learning-rate-restart-rate");
-  auto learning_rate_restart_boost = options_object->get<double>("learning-rate-restart-boost");
-  auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
-  auto clip_threshold = options_object->get<double>("clip-threshold");
-  auto shuffle_training_data = options_object->get_boolean("shuffle-training-data", false, false);
-  auto hidden_layers = get_hidden_layers(*options_object);
-  auto output_layer_details = get_output_layer_details(*options_object);
-  auto multi_output_layer_details = get_multi_output_layer_details(*options_object);
+  const auto learning_rate_restart_rate = options_object->get<double>("learning-rate-restart-rate");
+  const auto learning_rate_restart_boost = options_object->get<double>("learning-rate-restart-boost");
+  const auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
+  const auto clip_threshold = options_object->get<double>("clip-threshold");
+  const auto shuffle_training_data = options_object->get<bool>("shuffle-training-data");
+  const auto hidden_layers = get_hidden_layers(*options_object);
+  const auto output_layer_details = get_output_layer_details(*options_object);
+  const auto multi_output_layer_details = get_multi_output_layer_details(*options_object);
   
-  auto enable_bptt = options_object->get_boolean("enable-bptt", false, false);
-  int bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
-  auto shuffle_bptt_batches = options_object->get_boolean("shuffle-bptt-batches", false, false);
-  auto has_bias = options_object->get_boolean("has-bias", true, true);
+  const auto enable_bptt = options_object->get<bool>("enable-bptt");
+  const auto bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
+  const auto shuffle_bptt_batches = options_object->get<bool>("shuffle-bptt-batches");
+  const auto has_bias = options_object->get<bool>("has-bias");
 
-  auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
+  const auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
-  auto update_training_monitor_percent = options_object->get<double>("update-training-monitor-percent");
+  const auto update_training_monitor_percent = options_object->get<double>("update-training-monitor-percent");
 
-  auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
+  const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
-  auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
+  const auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
   std::vector<ErrorCalculation::type> final_error_calculation_types = {};
   if (nullptr != final_error_calculation_types_array)
   {
@@ -1125,8 +1125,8 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
     auto index = static_cast<unsigned>(index_object->get_number());
 
-    auto neuron_type = static_cast<Neuron::Type>(neuron_object->get_number("neuron-type", true, true));
-    auto dropout_rate = neuron_object->get<double>("dropout-rate");
+    const auto neuron_type = static_cast<Neuron::Type>(neuron_object->get<int>("neuron-type"));
+    const auto dropout_rate = neuron_object->get<double>("dropout-rate");
     
     auto neuron = Neuron(
       index,
@@ -1153,8 +1153,8 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   
-  auto activation_method_string = layer_object.try_get_string("activation-method");
-  auto activation_alpha = layer_object.get_float("activation-alpha", true, false);
+  const auto activation_method_string = layer_object.try_get_string("activation-method");
+  const auto activation_alpha = layer_object.get<double>("activation-alpha");
   activation default_activation(activation::string_to_method(activation_method_string == nullptr ? "sigmoid" : activation_method_string), activation_alpha);
 
   layer_activation_helper lah(default_activation, num_inputs, num_outputs);
@@ -1167,12 +1167,12 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
       auto* r_obj = dynamic_cast<const TinyJSON::TJValueObject*>(&r_val);
       if (r_obj != nullptr)
       {
-        auto start = r_obj->get<unsigned>("start");
-        auto end = r_obj->get<unsigned>("end");
-        auto method_str = r_obj->get_string("activation-method");
-        auto alpha = r_obj->get_float("activation-alpha");
-        auto temperature = r_obj->get_float("activation-temperature", true, 1.0);
-        auto inference_temperature = r_obj->get_float("activation-inference-temperature", true, temperature);
+        const auto start = r_obj->get<unsigned>("start");
+        const auto end = r_obj->get<unsigned>("end");
+        const auto method_str = r_obj->get_string("activation-method");
+        const auto alpha = r_obj->get_float("activation-alpha");
+        const auto temperature = r_obj->get_or<double>("activation-temperature", 1.0);
+        const auto inference_temperature = r_obj->get_or<double>("activation-inference-temperature", temperature);
         lah.set_bounds(activation(activation::string_to_method(method_str), alpha, temperature, inference_temperature), start, end);
       }
     }
