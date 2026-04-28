@@ -36,6 +36,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
   )
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  allocate_workspace();
 }
 
 LSTMLayer::LSTMLayer(unsigned layer_index,
@@ -68,6 +69,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  allocate_workspace();
 }
 
 LSTMLayer::LSTMLayer(
@@ -201,6 +203,7 @@ _o_rw_values(o_rw_values), _o_rw_grads(o_rw_grads), _o_rw_velocities(o_rw_veloci
 _o_b_values(o_b_values), _o_b_grads(o_b_grads), _o_b_velocities(o_b_velocities), _o_b_m1(o_b_m1), _o_b_m2(o_b_m2), _o_b_decays(o_b_decays), _o_b_timesteps(o_b_timesteps)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  allocate_workspace();
 }
 
 LSTMLayer::LSTMLayer(const LSTMLayer& src) noexcept :
@@ -230,7 +233,8 @@ LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
   _i_b_values(std::move(src._i_b_values)), _i_b_grads(std::move(src._i_b_grads)), _i_b_velocities(std::move(src._i_b_velocities)), _i_b_m1(std::move(src._i_b_m1)), _i_b_m2(std::move(src._i_b_m2)), _i_b_decays(std::move(src._i_b_decays)), _i_b_timesteps(std::move(src._i_b_timesteps)),
   _o_w_values(std::move(src._o_w_values)), _o_w_grads(std::move(src._o_w_grads)), _o_w_velocities(std::move(src._o_w_velocities)), _o_w_m1(std::move(src._o_w_m1)), _o_w_m2(std::move(src._o_w_m2)), _o_w_decays(std::move(src._o_w_decays)), _o_w_timesteps(std::move(src._o_w_timesteps)),
   _o_rw_values(std::move(src._o_rw_values)), _o_rw_grads(std::move(src._o_rw_grads)), _o_rw_velocities(std::move(src._o_rw_velocities)), _o_rw_m1(std::move(src._o_rw_m1)), _o_rw_m2(std::move(src._o_rw_m2)), _o_rw_decays(std::move(src._o_rw_decays)), _o_rw_timesteps(std::move(src._o_rw_timesteps)),
-  _o_b_values(std::move(src._o_b_values)), _o_b_grads(std::move(src._o_b_grads)), _o_b_velocities(std::move(src._o_b_velocities)), _o_b_m1(std::move(src._o_b_m1)), _o_b_m2(std::move(src._o_b_m2)), _o_b_decays(std::move(src._o_b_decays)), _o_b_timesteps(std::move(src._o_b_timesteps))
+  _o_b_values(std::move(src._o_b_values)), _o_b_grads(std::move(src._o_b_grads)), _o_b_velocities(std::move(src._o_b_velocities)), _o_b_m1(std::move(src._o_b_m1)), _o_b_m2(std::move(src._o_b_m2)), _o_b_decays(std::move(src._o_b_decays)), _o_b_timesteps(std::move(src._o_b_timesteps)),
+  _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
 }
@@ -251,6 +255,7 @@ LSTMLayer& LSTMLayer::operator=(const LSTMLayer& src) noexcept
     _o_w_values = src._o_w_values; _o_w_grads = src._o_w_grads; _o_w_velocities = src._o_w_velocities; _o_w_m1 = src._o_w_m1; _o_w_m2 = src._o_w_m2; _o_w_decays = src._o_w_decays; _o_w_timesteps = src._o_w_timesteps;
     _o_rw_values = src._o_rw_values; _o_rw_grads = src._o_rw_grads; _o_rw_velocities = src._o_rw_velocities; _o_rw_m1 = src._o_rw_m1; _o_rw_m2 = src._o_rw_m2; _o_rw_decays = src._o_rw_decays; _o_rw_timesteps = src._o_rw_timesteps;
     _o_b_values = src._o_b_values; _o_b_grads = src._o_b_grads; _o_b_velocities = src._o_b_velocities; _o_b_m1 = src._o_b_m1; _o_b_m2 = src._o_b_m2; _o_b_decays = src._o_b_decays; _o_b_timesteps = src._o_b_timesteps;
+    allocate_workspace();
   }
   return *this;
 }
@@ -271,6 +276,7 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
     _o_w_values = std::move(src._o_w_values); _o_w_grads = std::move(src._o_w_grads); _o_w_velocities = std::move(src._o_w_velocities); _o_w_m1 = std::move(src._o_w_m1); _o_w_m2 = std::move(src._o_w_m2); _o_w_decays = std::move(src._o_w_decays); _o_w_timesteps = std::move(src._o_w_timesteps);
     _o_rw_values = std::move(src._o_rw_values); _o_rw_grads = std::move(src._o_rw_grads); _o_rw_velocities = std::move(src._o_rw_velocities); _o_rw_m1 = std::move(src._o_rw_m1); _o_rw_m2 = std::move(src._o_rw_m2); _o_rw_decays = std::move(src._o_rw_decays); _o_rw_timesteps = std::move(src._o_rw_timesteps);
     _o_b_values = std::move(src._o_b_values); _o_b_grads = std::move(src._o_b_grads); _o_b_velocities = std::move(src._o_b_velocities); _o_b_m1 = std::move(src._o_b_m1); _o_b_m2 = std::move(src._o_b_m2); _o_b_decays = std::move(src._o_b_decays); _o_b_timesteps = std::move(src._o_b_timesteps);
+    _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
 }
@@ -585,11 +591,14 @@ void LSTMLayer::calculate_hidden_gradients(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
           {
-            auto& workspace = const_cast<LSTMLayer*>(this)->get_workspace(t);
+            auto& workspace = get_workspace(t);
             calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _f_rw_values_T, _i_rw_values_T, _o_rw_values_T);
           });
+      }
       start = end;
     }
     _task_queue_pool->get();
@@ -811,16 +820,48 @@ void LSTMLayer::cache_recurrent_weights()
     }
 }
 
+void LSTMLayer::allocate_workspace()
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  if (_task_queue_pool == nullptr)
+  {
+    return;
+  }
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  allocate_workspace(num_threads);
+}
+
+void LSTMLayer::allocate_workspace(unsigned int num_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  if (_thread_workspaces.size() <= num_threads)
+  {
+    _thread_workspaces.resize(num_threads);
+  }
+  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+  {
+    if (!_thread_workspaces[thread_idx])
+    {
+      _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
+    }
+  }
+}
+
 LSTMLayer::BPTTWorkspace& LSTMLayer::get_workspace(size_t thread_idx) const
 {
-  std::unique_lock<std::shared_mutex> lock(_workspace_mutex);
-  if (_thread_workspaces.size() <= thread_idx) _thread_workspaces.resize(thread_idx + 1);
-  if (!_thread_workspaces[thread_idx]) _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+#if VALIDATE_DATA == 1
+  if (thread_idx >= _thread_workspaces.size())
+  {
+    Logger::panic("Trying to get a workspace thread ", thread_idx, " past the workspaces size!");
+  }
+#endif
   return *_thread_workspaces[thread_idx];
 }
 
 double LSTMLayer::get_recurrent_weight_value(unsigned f, unsigned t) const
 {
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   return _rw_values[f * get_number_neurons() + t];
 }
 

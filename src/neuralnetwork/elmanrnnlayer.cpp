@@ -38,6 +38,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(
@@ -73,6 +74,7 @@ ElmanRNNLayer::ElmanRNNLayer(
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
@@ -86,6 +88,7 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
@@ -96,7 +99,8 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m1(std::move(src._rw_m1)),
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
-  _rw_decays(std::move(src._rw_decays))
+  _rw_decays(std::move(src._rw_decays)),
+  _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
@@ -167,6 +171,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   _rw_decays(rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
@@ -182,6 +187,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
+    allocate_workspace();
   }
   return *this;
 }
@@ -199,6 +205,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
+    _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
 }
@@ -493,7 +500,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
 
   if (num_threads <= 1)
   {
-    auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(0);
+    auto& workspace = get_workspace(0);
     calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
   }
   else
@@ -507,7 +514,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
       {
         _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
         {
-          auto& workspace = const_cast<ElmanRNNLayer*>(this)->get_workspace(t);
+          auto& workspace = get_workspace(t);
           calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
         });
       }
@@ -781,17 +788,42 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
   zero_gradients();
 }
 
+void ElmanRNNLayer::allocate_workspace()
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (_task_queue_pool == nullptr)
+  {
+    return;
+  }
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  allocate_workspace(num_threads);
+}
+
+void ElmanRNNLayer::allocate_workspace(unsigned int num_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (_thread_workspaces.size() <= num_threads)
+  {
+    _thread_workspaces.resize(num_threads);
+  }
+  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+  {
+    if (!_thread_workspaces[thread_idx])
+    {
+      _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
+    }
+  }
+}
+
 ElmanRNNLayer::BPTTWorkspace& ElmanRNNLayer::get_workspace(size_t thread_idx) const
 {
-  std::unique_lock<std::shared_mutex> lock(_workspace_mutex);
-  if (_thread_workspaces.size() <= thread_idx)
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+#if VALIDATE_DATA == 1
+  if (thread_idx >= _thread_workspaces.size())
   {
-    _thread_workspaces.resize(thread_idx + 1);
+    Logger::panic("Trying to get a workspace thread ", thread_idx, " past the workspaces size!");
   }
-  if (!_thread_workspaces[thread_idx])
-  {
-    _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
-  }
+#endif
   return *_thread_workspaces[thread_idx];
 }
 
