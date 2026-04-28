@@ -513,37 +513,36 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     const auto& configs = evaluation_config(output_layer_index);
     const size_t num_neurons = bounds.end - bounds.start + 1;
 
-    std::vector<std::vector<double>> sliced_predictions(batch_size);
-    std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+    // Unroll sequences: treat each time step of each batch item as an independent sample for metrics.
+    // This ensures that ErrorCalculation (which works on samples) correctly handles Softmax max-indices, etc.
+    std::vector<std::vector<double>> unrolled_predictions;
+    std::vector<std::vector<double>> unrolled_checking_outputs;
 
     for (size_t b = 0; b < batch_size; ++b)
     {
       const size_t b_num_time_steps = predictions[b].size() / total_outputs;
-      if (b_num_time_steps > 1)
+      for (size_t t = 0; t < b_num_time_steps; ++t)
       {
-        sliced_predictions[b].reserve(b_num_time_steps * num_neurons);
-        sliced_checking_outputs[b].reserve(b_num_time_steps * num_neurons);
-        for (size_t t = 0; t < b_num_time_steps; ++t)
-        {
-          sliced_predictions[b].insert(sliced_predictions[b].end(), 
-            predictions[b].begin() + t * total_outputs + bounds.start, 
-            predictions[b].begin() + t * total_outputs + bounds.start + num_neurons);
-          sliced_checking_outputs[b].insert(sliced_checking_outputs[b].end(), 
-            checking_outputs[b].begin() + t * total_outputs + bounds.start, 
-            checking_outputs[b].begin() + t * total_outputs + bounds.start + num_neurons);
-        }
-      }
-      else
-      {
-        sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
-        sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+        std::vector<double> p_slice(num_neurons);
+        std::vector<double> c_slice(num_neurons);
+
+        std::copy(predictions[b].begin() + t * total_outputs + bounds.start,
+                  predictions[b].begin() + t * total_outputs + bounds.start + num_neurons,
+                  p_slice.begin());
+
+        std::copy(checking_outputs[b].begin() + t * total_outputs + bounds.start,
+                  checking_outputs[b].begin() + t * total_outputs + bounds.start + num_neurons,
+                  c_slice.begin());
+
+        unrolled_predictions.push_back(std::move(p_slice));
+        unrolled_checking_outputs.push_back(std::move(c_slice));
       }
     }
 
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, sliced_checking_outputs, sliced_predictions, configs, activation_method),
+        ErrorCalculation::calculate_error(error_type, unrolled_checking_outputs, unrolled_predictions, configs, activation_method),
         error_type);
     }
     errors.emplace_back(std::move(layer_errors));
