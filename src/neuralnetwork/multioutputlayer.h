@@ -307,16 +307,23 @@ public:
 
     // 2. Set branch inputs from the trunk output
     const unsigned trunk_layer_index = previous_layer.get_layer_index();
+    size_t num_time_steps = 1;
     for (size_t b = 0; b < batch_size; ++b)
     {
+       const auto trunk_rnn_output_span = batch_gradients_and_outputs[b].get_rnn_outputs(trunk_layer_index);
        const auto trunk_output_span = batch_gradients_and_outputs[b].get_outputs(trunk_layer_index);
        
+       if (b == 0 && !trunk_rnn_output_span.empty())
+       {
+         num_time_steps = trunk_rnn_output_span.size() / get_number_input_neurons();
+       }
+
        if (b == 0)
        {
          Logger::trace(
-           [&trunk_layer_index, &trunk_output_span]
+           [&trunk_layer_index, &trunk_output_span, &num_time_steps]
            {
-             return Logger::factory("MultiOutputLayer [b=0] trunk_layer_index=", trunk_layer_index, " span_size=", trunk_output_span.size());
+             return Logger::factory("MultiOutputLayer [b=0] trunk_layer_index=", trunk_layer_index, " span_size=", trunk_output_span.size(), " ticks=", num_time_steps);
            });
        }
 
@@ -331,6 +338,10 @@ public:
              {
                return Logger::factory("  Branch ", i, " input topology[0]=", branch.topology[0]);
              });
+         }
+         if (!trunk_rnn_output_span.empty())
+         {
+           branch.gradients_and_outputs[b].set_rnn_outputs(0, std::vector<double>(trunk_rnn_output_span.begin(), trunk_rnn_output_span.end()));
          }
          branch.gradients_and_outputs[b].set_outputs(0, trunk_output);
        }
@@ -349,19 +360,12 @@ public:
         // Ensure hidden state vectors are sized correctly for branch layers
         for (size_t b = 0; b < batch_size; ++b)
         {
-          if (current_l.use_bptt())
-          {
-            const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(prev_l.get_layer_index());
-            const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(prev_l.get_layer_index());
-            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
-            const size_t n_prev = prev_l.get_number_neurons();
-            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState());
-          }
-          else
-          {
-            branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState());
-          }
+          const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(prev_l.get_layer_index());
+          const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(prev_l.get_layer_index());
+          const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+          const size_t n_prev = prev_l.get_number_neurons();
+          const size_t l_num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
+          branch.hidden_states[b].assign(current_l.get_layer_index(), l_num_time_steps, HiddenState());
         }
 
         current_l.calculate_forward_feed(
@@ -379,31 +383,64 @@ public:
     const unsigned this_layer_index = get_layer_index();
     for (size_t b = 0; b < batch_size; ++b)
     {
-       std::vector<double> concatenated_output;
-       std::vector<double> concatenated_pre_act;
-       concatenated_output.reserve(get_number_neurons());
-       if (!batch_hidden_states.empty())
-       {
-         concatenated_pre_act.reserve(get_number_neurons());
-       }
+       std::vector<double> concatenated_output_seq;
+       concatenated_output_seq.reserve(num_time_steps * get_number_neurons());
 
-       for (size_t i = 0; i < _branches.size(); ++i)
+       for (size_t t = 0; t < num_time_steps; ++t)
        {
-         const auto& branch = _branches[i];
-         const auto b_out_span = branch.gradients_and_outputs[b].output_back();
-         concatenated_output.insert(concatenated_output.end(), b_out_span.begin(), b_out_span.end());
-
-         if (!batch_hidden_states.empty())
+         for (size_t i = 0; i < _branches.size(); ++i)
          {
-           const auto branch_out_layer_idx = branch.layers.back()->get_layer_index();
-           const auto b_pre_act = branch.hidden_states[b].at(branch_out_layer_idx)[0].get_pre_activation_sums();
-           concatenated_pre_act.insert(concatenated_pre_act.end(), b_pre_act.begin(), b_pre_act.end());
+           const auto& branch = _branches[i];
+           const auto& b_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(branch.layers.back()->get_layer_index());
+           if (!b_rnn_out.empty())
+           {
+             const size_t b_out_n = branch.layers.back()->get_number_neurons();
+             concatenated_output_seq.insert(concatenated_output_seq.end(), b_rnn_out.begin() + t * b_out_n, b_rnn_out.begin() + (t + 1) * b_out_n);
+           }
+           else
+           {
+             const auto b_out_span = branch.gradients_and_outputs[b].get_outputs(branch.layers.back()->get_layer_index());
+             concatenated_output_seq.insert(concatenated_output_seq.end(), b_out_span.begin(), b_out_span.end());
+           }
          }
        }
-       batch_gradients_and_outputs[b].set_outputs(this_layer_index, concatenated_output);
+
+       if (num_time_steps > 1)
+       {
+         batch_gradients_and_outputs[b].set_rnn_outputs(this_layer_index, concatenated_output_seq);
+       }
+       
+       std::vector<double> last_step_output(get_number_neurons());
+       std::copy(concatenated_output_seq.end() - get_number_neurons(), concatenated_output_seq.end(), last_step_output.begin());
+       batch_gradients_and_outputs[b].set_outputs(this_layer_index, last_step_output);
+
        if (!batch_hidden_states.empty())
        {
-         batch_hidden_states[b].at(this_layer_index)[0].set_pre_activation_sums(concatenated_pre_act);
+         // We must concatenate pre-activations for each time step if we want full BPTT support in following layers
+         // but since this is usually the output layer, we might only need the views to be correctly sized.
+         if (batch_hidden_states[b].at(this_layer_index).size() != num_time_steps)
+         {
+           batch_hidden_states[b].assign(this_layer_index, num_time_steps, HiddenState());
+         }
+         
+         for (size_t t = 0; t < num_time_steps; ++t)
+         {
+           std::vector<double> concatenated_pre_act;
+           concatenated_pre_act.reserve(get_number_neurons());
+           for (size_t i = 0; i < _branches.size(); ++i)
+           {
+             const auto& branch = _branches[i];
+             const auto branch_out_layer_idx = branch.layers.back()->get_layer_index();
+             const auto b_pre_act = branch.hidden_states[b].at(branch_out_layer_idx)[t].get_pre_activation_sums();
+             concatenated_pre_act.insert(concatenated_pre_act.end(), b_pre_act.begin(), b_pre_act.end());
+           }
+           batch_hidden_states[b].at(this_layer_index)[t].set_pre_activation_sums(concatenated_pre_act);
+           // Hidden state values are already set via set_outputs/set_rnn_outputs above for the last step,
+           // but we should set them for all steps in the hidden state object too.
+           std::vector<double> step_output(get_number_neurons());
+           std::copy(concatenated_output_seq.begin() + t * get_number_neurons(), concatenated_output_seq.begin() + (t+1) * get_number_neurons(), step_output.begin());
+           batch_hidden_states[b].at(this_layer_index)[t].set_hidden_state_values(step_output);
+         }
        }
     }
   }
@@ -417,30 +454,35 @@ public:
      MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
      std::lock_guard<std::mutex> lock(_mutex);
      unsigned offset = 0;
+     const unsigned total_outputs = get_number_neurons();
+
      for (size_t i = 0; i < _branches.size(); ++i)
      {
        auto& branch = const_cast<Branch&>(_branches[i]);
-       const unsigned b_out_size = branch.layers.back()->get_number_neurons();
+       const auto& last_layer = *branch.layers.back();
+       const unsigned b_out_size = last_layer.get_number_neurons();
        
+       // Determine number of time steps from hidden states
+       const size_t num_time_steps = branch.hidden_states[0].at(last_layer.get_layer_index()).size();
+
        std::vector<std::vector<double>> sub_targets(batch_size);
        for(size_t b=0; b<batch_size; ++b)
        {
          const auto& full_target = *(target_outputs_begin + b);
-         sub_targets[b].assign(full_target.begin() + offset, full_target.begin() + offset + b_out_size);
-       }
-       
-       // Synchronize hidden states for the last (output) layer
-       for (size_t b = 0; b < batch_size; ++b)
-       {
-         if (branch.layers.back()->use_bptt())
+         if (full_target.size() == num_time_steps * total_outputs)
          {
-           // For simplicity, assuming 1 timestep for the last layer of branch in this context,
-           // but should be consistent with forward pass logic
-           branch.hidden_states[b].assign(branch.layers.back()->get_layer_index(), 1, HiddenState());
+           sub_targets[b].reserve(num_time_steps * b_out_size);
+           for (size_t t = 0; t < num_time_steps; ++t)
+           {
+             sub_targets[b].insert(sub_targets[b].end(), 
+               full_target.begin() + t * total_outputs + offset, 
+               full_target.begin() + t * total_outputs + offset + b_out_size);
+           }
          }
          else
          {
-           branch.hidden_states[b].assign(branch.layers.back()->get_layer_index(), 1, HiddenState());
+           // Fallback for single step target (or mismatched size)
+           sub_targets[b].assign(full_target.begin() + offset, full_target.begin() + offset + b_out_size);
          }
        }
        
@@ -767,9 +809,7 @@ public:
     }
 #endif
 
-    // Multi-output path logic works for 1 or more outputs
-    std::vector<std::vector<double>> sliced_predictions(batch_size);
-    std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+    const unsigned total_outputs = get_number_neurons();
 
     for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
     {
@@ -783,10 +823,31 @@ public:
       const auto& configs = evaluation_config(output_layer_index);
       const size_t num_neurons = bounds.end - bounds.start + 1;
 
+      std::vector<std::vector<double>> sliced_predictions(batch_size);
+      std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+
       for (size_t b = 0; b < batch_size; ++b)
       {
-        sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
-        sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+        const size_t b_num_time_steps = predictions[b].size() / total_outputs;
+        if (b_num_time_steps > 1)
+        {
+          sliced_predictions[b].reserve(b_num_time_steps * num_neurons);
+          sliced_checking_outputs[b].reserve(b_num_time_steps * num_neurons);
+          for (size_t t = 0; t < b_num_time_steps; ++t)
+          {
+            sliced_predictions[b].insert(sliced_predictions[b].end(), 
+              predictions[b].begin() + t * total_outputs + bounds.start, 
+              predictions[b].begin() + t * total_outputs + bounds.start + num_neurons);
+            sliced_checking_outputs[b].insert(sliced_checking_outputs[b].end(), 
+              checking_outputs[b].begin() + t * total_outputs + bounds.start, 
+              checking_outputs[b].begin() + t * total_outputs + bounds.start + num_neurons);
+          }
+        }
+        else
+        {
+          sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
+          sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+        }
       }
 
       for (const auto& error_type : error_types)
