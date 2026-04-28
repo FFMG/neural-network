@@ -498,30 +498,8 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     Logger::panic("The number of predictions is not the same as the number of given outputs!");
   }
 #endif
-  if (number_output_layers() == 1)
-  {
-    // only one output, fast path
-    std::vector<NeuralNetworkHelperMetrics> layer_errors;
-    layer_errors.reserve(error_types.size());
 
-    constexpr unsigned output_layer_index = 0; // layer zero, fast track only one layer...
-    const auto& configs = evaluation_config(output_layer_index);
-    const auto& activation = output_layer_details()[output_layer_index].get_activation();
-    const auto& activation_method = activation.get_method();
-
-    for (const auto& error_type : error_types)
-    {
-      layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, checking_outputs, predictions, configs, activation_method),
-        error_type);
-    }
-    errors.emplace_back(std::move(layer_errors));
-    return errors;
-  }
-
-  // Multi-output path
-  std::vector<std::vector<double>> sliced_predictions(batch_size);
-  std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+  const unsigned total_outputs = get_number_neurons();
 
   for (unsigned output_layer_index = 0; output_layer_index < number_output_layers(); ++output_layer_index)
   {
@@ -535,16 +513,37 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     const auto& configs = evaluation_config(output_layer_index);
     const size_t num_neurons = bounds.end - bounds.start + 1;
 
+    std::vector<std::vector<double>> sliced_predictions(batch_size);
+    std::vector<std::vector<double>> sliced_checking_outputs(batch_size);
+
     for (size_t b = 0; b < batch_size; ++b)
     {
-      sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
-      sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+      const size_t b_num_time_steps = predictions[b].size() / total_outputs;
+      if (b_num_time_steps > 1)
+      {
+        sliced_predictions[b].reserve(b_num_time_steps * num_neurons);
+        sliced_checking_outputs[b].reserve(b_num_time_steps * num_neurons);
+        for (size_t t = 0; t < b_num_time_steps; ++t)
+        {
+          sliced_predictions[b].insert(sliced_predictions[b].end(), 
+            predictions[b].begin() + t * total_outputs + bounds.start, 
+            predictions[b].begin() + t * total_outputs + bounds.start + num_neurons);
+          sliced_checking_outputs[b].insert(sliced_checking_outputs[b].end(), 
+            checking_outputs[b].begin() + t * total_outputs + bounds.start, 
+            checking_outputs[b].begin() + t * total_outputs + bounds.start + num_neurons);
+        }
+      }
+      else
+      {
+        sliced_predictions[b].assign(predictions[b].begin() + bounds.start, predictions[b].begin() + bounds.start + num_neurons);
+        sliced_checking_outputs[b].assign(checking_outputs[b].begin() + bounds.start, checking_outputs[b].begin() + bounds.start + num_neurons);
+      }
     }
 
     for (const auto& error_type : error_types)
     {
       layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, std::span(sliced_checking_outputs), std::span(sliced_predictions), configs, activation_method),
+        ErrorCalculation::calculate_error(error_type, sliced_checking_outputs, sliced_predictions, configs, activation_method),
         error_type);
     }
     errors.emplace_back(std::move(layer_errors));

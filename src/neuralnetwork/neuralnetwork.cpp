@@ -411,7 +411,16 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 
     for (size_t i = 0; i < prediction_size; ++i)
     {
-      predictions.push_back(temp_gradients[i].output_back());
+      const unsigned last_layer_index = static_cast<unsigned>(_layers.size() - 1);
+      const auto& rnn_out = temp_gradients[i].get_rnn_outputs(last_layer_index);
+      if (!rnn_out.empty())
+      {
+        predictions.push_back(rnn_out);
+      }
+      else
+      {
+        predictions.push_back(temp_gradients[i].output_back());
+      }
       checking_outputs.push_back(training_outputs[sub_indices[i]]);
     }
   }
