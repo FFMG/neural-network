@@ -38,6 +38,8 @@ GRURNNLayer::GRURNNLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+
+  allocate_workspace();
 }
 
 GRURNNLayer::GRURNNLayer(
@@ -74,6 +76,8 @@ GRURNNLayer::GRURNNLayer(
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   //  Note: we use the same weight decay for all GRU gates.
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+
+  allocate_workspace();
 }
 
 GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
@@ -131,6 +135,7 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_decays(src._r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  allocate_workspace();
 }
 
 GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
@@ -185,7 +190,8 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m1(std::move(src._r_b_m1)),
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
-  _r_b_decays(std::move(src._r_b_decays))
+  _r_b_decays(std::move(src._r_b_decays)),
+  _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 }
@@ -343,6 +349,7 @@ GRURNNLayer::GRURNNLayer(
     _r_b_decays(r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  allocate_workspace();
 }
 
 GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
@@ -404,6 +411,7 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
+    allocate_workspace();
   }
   return *this;
 }
@@ -466,6 +474,7 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
+    _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
 }
@@ -816,17 +825,42 @@ void GRURNNLayer::calculate_output_gradients(
   Logger::panic("GRURNNLayer: Trying to calculate output gradient with a non output layer!");
 }
 
+void GRURNNLayer::allocate_workspace()
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  if (_task_queue_pool == nullptr)
+  {
+    return;
+  }
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  allocate_workspace(num_threads);
+}
+
+void GRURNNLayer::allocate_workspace(unsigned int num_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  if (_thread_workspaces.size() <= num_threads)
+  {
+    _thread_workspaces.resize(num_threads);
+  }
+  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+  {
+    if (!_thread_workspaces[thread_idx])
+    {
+      _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
+    }
+  }
+}
+
 GRURNNLayer::BPTTWorkspace& GRURNNLayer::get_workspace(size_t thread_idx) const
 {
-  std::unique_lock<std::shared_mutex> lock(_workspace_mutex);
-  if (_thread_workspaces.size() <= thread_idx)
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+#if VALIDATE_DATA == 1
+  if (thread_idx >= _thread_workspaces.size())
   {
-    _thread_workspaces.resize(thread_idx + 1);
+    Logger::panic("Trying to get a workspace thread ", thread_idx, " past the workspaces size!");
   }
-  if (!_thread_workspaces[thread_idx])
-  {
-    _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
-  }
+#endif
   return *_thread_workspaces[thread_idx];
 }
 
@@ -1019,7 +1053,7 @@ void GRURNNLayer::calculate_hidden_gradients(
   // Launch threads for each batch chunk
   if (num_threads <= 1)
   {
-    auto& workspace = const_cast<GRURNNLayer*>(this)->get_workspace(0);
+    auto& workspace = get_workspace(0);
     calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _z_rw_values_T, _r_rw_values_T);
   }
   else
@@ -1033,7 +1067,7 @@ void GRURNNLayer::calculate_hidden_gradients(
       {
         _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
           {
-            auto& workspace = const_cast<GRURNNLayer*>(this)->get_workspace(t);
+            auto& workspace = get_workspace(t);
             calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _z_rw_values_T, _r_rw_values_T);
           });
       }

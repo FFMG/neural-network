@@ -3,7 +3,6 @@
 #include "hiddenstate.h"
 #include "layer.h"
 
-#include <shared_mutex>
 #include <vector>
 
 class ElmanRNNLayer final : public Layer
@@ -236,6 +235,8 @@ private:
   };
 
   BPTTWorkspace& get_workspace(size_t thread_idx) const;
+  void allocate_workspace(unsigned int num_threads);
+  void allocate_workspace();
 
   void calculate_bptt_batch_chunk(
     size_t start,
@@ -263,6 +264,5 @@ private:
   BPTTWorkspace::AlignedVector _rw_values_T;
 
   // Per-thread workspaces for BPTT
-  mutable std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
-  mutable std::shared_mutex _workspace_mutex;
+  std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
 };
