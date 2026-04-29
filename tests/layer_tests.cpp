@@ -82,3 +82,120 @@ TEST(LayerTest, StringToOptimiserType) {
     EXPECT_EQ(string_to_optimiser_type("adamw"), OptimiserType::AdamW);
     EXPECT_EQ(string_to_optimiser_type("sgd"), OptimiserType::SGD);
 }
+
+TEST(LayerTest, CalculateErrorDeltasMSE) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.4 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 0, 1);
+    EXPECT_NEAR(deltas[0], -0.1, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.2, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasRMSE) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.4 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::rmse, EvaluationConfig(), activation::method::linear, 0, 1);
+    // RMSE = sqrt( ((0.8-1)^2 + (0.4-0)^2) / 2 ) = sqrt( (0.04 + 0.16) / 2 ) = sqrt(0.1) approx 0.316227766
+    // Factor = inv_num_neurons / RMSE = 0.5 / sqrt(0.1) = 0.5 / 0.316227766 approx 1.58113883
+    // delta_0 = (0.8 - 1.0) * 1.58113883 = -0.316227766
+    // delta_1 = (0.4 - 0.0) * 1.58113883 = 0.632455532
+    double rmse = std::sqrt(0.1);
+    EXPECT_NEAR(deltas[0], -0.2 * 0.5 / rmse, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.4 * 0.5 / rmse, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasBCE) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.4 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::bce_loss, EvaluationConfig(), activation::method::sigmoid, 0, 1);
+    // BCE Delta = (y - t) / N = (0.8 - 1.0) / 2 = -0.1
+    //                         = (0.4 - 0.0) / 2 = 0.2
+    EXPECT_NEAR(deltas[0], -0.1, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.2, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasCE) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.2 }; // Must sum to 1 for CE? Actually implementation just does y-t
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::cross_entropy, EvaluationConfig(), activation::method::softmax, 0, 1);
+    // CE Delta = (y - t) = (0.8 - 1.0) = -0.2
+    //                   = (0.2 - 0.0) = 0.2
+    EXPECT_NEAR(deltas[0], -0.2, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.2, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasHuber) {
+    MockLayer layer(0, 1);
+    std::vector<double> deltas(1, 0.0);
+    std::vector<double> targets = { 1.0 };
+    EvaluationConfig config; // Default delta is likely 1.0
+    
+    // Case 1: Error < Delta (0.2 < 1.0) -> behaves like MSE (but with 1/N? let's check)
+    // Actually Huber in code: grad = error * inv_num_neurons
+    std::vector<double> given_small = { 1.2 };
+    layer.calculate_error_deltas(deltas, targets, given_small, ErrorCalculation::type::huber_loss, config, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], 0.2, 1e-9);
+
+    // Case 2: Error > Delta (2.0 > 1.0) -> behaves like MAE (grad = delta * inv_num_neurons)
+    std::vector<double> given_large = { 3.0 };
+    layer.calculate_error_deltas(deltas, targets, given_large, ErrorCalculation::type::huber_loss, config, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], 1.0, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasLogCosh) {
+    MockLayer layer(0, 1);
+    std::vector<double> deltas(1, 0.0);
+    std::vector<double> targets = { 1.0 };
+    std::vector<double> given = { 1.5 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::log_cosh, EvaluationConfig(), activation::method::linear, 0, 0);
+    // log(cosh(x))' = tanh(x)
+    // grad = tanh(y - t) * inv_num_neurons = tanh(0.5) * 1.0
+    EXPECT_NEAR(deltas[0], std::tanh(0.5), 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasRobustness) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 1.0 };
+    std::vector<double> given = { 1.0, 1.0 };
+
+    // Valid range [0, 1]
+    EXPECT_NO_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 0, 1));
+
+    // Invalid range: end < start
+    // In VALIDATE_DATA mode, this should panic (throw).
+#if VALIDATE_DATA == 1
+    EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 1, 0));
+    
+    // Invalid range: end >= get_number_neurons()
+    EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 0, 2));
+#endif
+}
+
+TEST(LayerTest, CalculateErrorDeltasOutOfSync) {
+    // Manually create a layer where _neurons is smaller than reported output size
+    class OutOfSyncLayer : public MockLayer {
+    public:
+        OutOfSyncLayer() : MockLayer(0, 5, 0) {
+            _neurons.clear(); // Force out of sync
+        }
+    };
+
+    OutOfSyncLayer layer;
+    std::vector<double> deltas(5, 0.0);
+    std::vector<double> targets(5, 1.0);
+    std::vector<double> given(5, 1.0);
+
+#if VALIDATE_DATA == 1
+    // This should throw because end_neuron (4) >= _neurons.size() (0)
+    EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 0, 4));
+#endif
+}

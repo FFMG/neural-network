@@ -55,7 +55,12 @@ add_executable(neuralnetwork_tests
     simd_utils_tests.cpp
     fflayer_tests.cpp
     grurnnlayer_tests.cpp
+    ffoutputlayer_tests.cpp
     layer_tests.cpp
+    multioutputlayer_tests.cpp
+    elmanrnnlayer_tests.cpp
+    lstmlayer_tests.cpp
+    layer_optimizer_tests.cpp
     ${NN_SOURCES}
 )
 

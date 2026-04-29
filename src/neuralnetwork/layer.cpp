@@ -112,13 +112,17 @@ void Layer::calculate_error_deltas(
   {
     Logger::panic("end neuron cannot be less than start neuron!");
   }
-  if (end_neuron > get_number_neurons() - 1)
+  if (end_neuron >= get_number_neurons())
   {
-    Logger::panic("end neuron Cannot be greater than ", get_number_neurons() -1, "!");
+    Logger::panic("end neuron Cannot be greater than or equal to ", get_number_neurons(), "!");
+  }
+  if (end_neuron >= _neurons.size())
+  {
+    Logger::panic("end neuron Cannot be greater than or equal to the number of available neurons ", _neurons.size(), "!");
   }
 #endif
 
-  std::span<Neuron> neurons_span(const_cast<Neuron*>(&_neurons[start_neuron]), end_neuron - start_neuron + 1);
+  std::span<Neuron> neurons_span(const_cast<Neuron*>(_neurons.data() + start_neuron), end_neuron - start_neuron + 1);
 
   switch (error_calculation_type)
   {

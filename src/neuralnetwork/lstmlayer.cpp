@@ -436,14 +436,14 @@ void LSTMLayer::calculate_forward_feed(
     _task_queue_pool->get();
   }
 
-  // 3. Sequential Recurrent Pass and Activations
+        // Sequential Recurrent Pass and Activations
   std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this);
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
     std::vector<double> current_h(N_this, 0.0);
     std::vector<double> current_c(N_this, 0.0);
-    std::vector<double> packed_bptt(4 * N_this);
+    std::vector<double> packed_bptt(5 * N_this);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
@@ -492,15 +492,28 @@ void LSTMLayer::calculate_forward_feed(
           packed_bptt[3 * N_this + j] = g_pre[j]; // Store pre-tanh for backprop
 
           current_c[j] = f * current_c[j] + i * g;
-          double out = o * std::tanh(current_c[j]);
+          double tanh_c = std::tanh(current_c[j]);
+          double out = o * tanh_c;
 
           // Dropout
+          double mask = 1.0;
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
             const auto& neuron = get_neuron((unsigned)j);
-            if (neuron.must_randomly_drop()) out = 0.0;
-            else out /= (1.0 - neuron.get_dropout_rate());
+            const double dropout_rate = neuron.get_dropout_rate();
+            if (neuron.must_randomly_drop())
+            {
+              out = 0.0;
+              mask = 0.0;
+            }
+            else
+            {
+              mask = 1.0 / (1.0 - dropout_rate);
+              out *= mask;
+            }
           }
+          packed_bptt[4 * N_this + j] = mask;
+
           current_h[j] = out;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
         }
@@ -903,7 +916,12 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       if (t == t_start) { std::fill(dh_next, dh_next + N_this, 0.0); std::fill(dc_next, dc_next + N_this, 0.0); }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       std::vector<double> dh_curr(N_this);
-      for(size_t j = 0; j < N_this; ++j) dh_curr[j] = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        // Apply dropout mask stored during forward feed
+        const double mask = packed[4 * N_this + j];
+        dh_curr[j] = std::clamp((upstream_grads[j] + dh_next[j]) * mask, -50.0, 50.0);
+      }
 
       double* df_chunk = &workspace.chunk_df[b_idx * N_this];
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
