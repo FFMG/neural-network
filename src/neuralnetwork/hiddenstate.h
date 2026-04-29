@@ -1,5 +1,6 @@
 #pragma once
 #include "./libraries/instrumentor.h"
+#include "logger.h"
 
 #include <vector>
 

@@ -48,6 +48,7 @@ add_executable(neuralnetwork_tests
     gradients_and_outputs_tests.cpp
     aligned_allocator_tests.cpp
     layers_and_neurons_container_tests.cpp
+    hidden_state_tests.cpp
     ${NN_SOURCES}
 )
 
