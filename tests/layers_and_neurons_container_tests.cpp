@@ -155,6 +155,7 @@ TEST(LayersAndNeuronsContainerTest, ValidationLogic)
 
   // Neuron out of bounds
   EXPECT_THROW(container.set(0, 2, 1.0), std::runtime_error);
+  EXPECT_THROW(container.get(0, 2), std::runtime_error);
   
   // Data size mismatch
   std::vector<double> too_much_data = { 1.0, 2.0, 3.0 };

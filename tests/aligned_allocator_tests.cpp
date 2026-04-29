@@ -9,6 +9,8 @@ public:
     static int constructions;
     static int destructions;
     LifecycleTracker() { constructions++; }
+    LifecycleTracker(const LifecycleTracker&) { constructions++; }
+    LifecycleTracker(LifecycleTracker&&) noexcept { constructions++; }
     ~LifecycleTracker() { destructions++; }
 };
 int LifecycleTracker::constructions = 0;
