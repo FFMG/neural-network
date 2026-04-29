@@ -30,11 +30,11 @@ namespace test_helper {
     return batch;
   }
 
-  // A simple concrete layer to use as 'previous_layer'
+  // A simple concrete layer to use as 'previous_layer' or 'next_layer'
   class MockLayer : public Layer {
   public:
-    MockLayer(unsigned layer_index, unsigned num_neurons) :
-      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0, num_neurons, {}, false, 0.0, nullptr, 1, 0.0) {}
+    MockLayer(unsigned layer_index, unsigned num_neurons, unsigned num_inputs = 0) :
+      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_inputs, num_neurons, {}, false, 0.0, nullptr, 1, 0.0) {}
 
     Architecture get_layer_architecture() const override { return Architecture::None; }
     void calculate_forward_feed(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, std::vector<HiddenStates>&, size_t, bool) const override {}

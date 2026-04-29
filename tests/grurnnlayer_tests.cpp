@@ -169,7 +169,8 @@ TEST_F(GRURNNLayerTest, CalculateHiddenGradients) {
     layer.set_rw_values({ 0.0 });
     layer.set_b_values({ 0.0 });
 
-    MockLayer next_layer(2, num_outputs);
+    MockLayer next_layer(2, num_outputs, num_outputs);
+    next_layer.set_w_values({ 1.0 });
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
