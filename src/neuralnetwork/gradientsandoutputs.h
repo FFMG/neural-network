@@ -2,6 +2,7 @@
 #include "./libraries/instrumentor.h"
 #include "layersandneuronscontainer.h"
 #include "logger.h"
+
 #include <map>
 #include <span>
 #include <vector>
@@ -158,8 +159,7 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_rnn_outputs(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-    const auto it = _rnn_outputs.find(layer);
-    if(it == _rnn_outputs.end())
+    if (layer >= _rnn_outputs.size())
     {
       static const std::vector<double> empty = {};
       return empty;
@@ -180,8 +180,7 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-    const auto it = _rnn_gradients.find(layer);
-    if(it == _rnn_gradients.end())
+    if (layer >= _rnn_gradients.size())
     {
       static const std::vector<double> empty = {};
       return empty;
