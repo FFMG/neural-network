@@ -388,6 +388,7 @@ void ElmanRNNLayer::calculate_forward_feed(
 
         get_activation().activate(pre_t, pre_t + N_this, is_training);
 
+        std::vector<double> mask(N_this, 1.0);
         for (size_t j = 0; j < N_this; ++j)
         {
           double out = pre_t[j];
@@ -397,15 +398,19 @@ void ElmanRNNLayer::calculate_forward_feed(
             if (neuron.must_randomly_drop())
             {
               out = 0.0;
+              mask[j] = 0.0;
             }
             else
             {
-              out /= (1.0 - neuron.get_dropout_rate());
+              const double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
+              out *= scale;
+              mask[j] = scale;
             }
           }
           current_h[j] = out;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
         }
+        state.set_cell_state_values(mask);
         state.set_hidden_state_values(current_h);
       }
     }
@@ -609,11 +614,12 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       double* g_this_tick = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this];
 
+      const auto mask = state.get_cell_state_values();
       for (size_t j = 0; j < N_this; ++j)
       {
         double dh = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
         double deriv = get_activation().activate_derivative(state.get_pre_activation_sum_at_neuron((unsigned)j));
-        g_this_tick[j] = dh * deriv;
+        g_this_tick[j] = dh * deriv * mask[j];
       }
 
       // Calculate dX_t

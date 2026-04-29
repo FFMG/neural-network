@@ -34,7 +34,7 @@ namespace test_helper {
   class MockLayer : public Layer {
   public:
     MockLayer(unsigned layer_index, unsigned num_neurons, unsigned num_inputs = 0) :
-      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_inputs, num_neurons, {}, false, 0.0, nullptr, 1, 0.0) {}
+      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_inputs, num_neurons, create_neurons(0.0, num_neurons), false, 0.0, nullptr, 1, 0.0) {}
 
     Architecture get_layer_architecture() const override { return Architecture::None; }
     void calculate_forward_feed(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, std::vector<HiddenStates>&, size_t, bool) const override {}
