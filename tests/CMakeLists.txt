@@ -52,6 +52,7 @@ add_executable(neuralnetwork_tests
     hidden_state_tests.cpp
     weight_param_tests.cpp
     neuron_tests.cpp
+    simd_utils_tests.cpp
     ${NN_SOURCES}
 )
 
