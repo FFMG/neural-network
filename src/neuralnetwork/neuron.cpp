@@ -83,7 +83,7 @@ unsigned Neuron::get_index() const
   return _index;
 }
 
-double Neuron::get_dropout_rate() const noexcept
+double Neuron::get_dropout_rate() const
 {
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 #if VALIDATE_DATA == 1

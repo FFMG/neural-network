@@ -1,5 +1,7 @@
 #pragma once
 #include "./libraries/instrumentor.h"
+#include "logger.h"
+
 #include <vector>
 #include <span>
 
@@ -33,7 +35,7 @@ public:
     std::copy(values.begin(), values.end(), _cell_state_values.begin());
   }
 
-  [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const noexcept
+  [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _pre_activation_sums[neuron_index];
@@ -45,7 +47,7 @@ public:
     return _pre_activation_sums;
   }
 
-  [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const noexcept
+  [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _hidden_state_values[neuron_index];
