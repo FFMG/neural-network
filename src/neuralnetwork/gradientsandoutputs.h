@@ -99,7 +99,7 @@ public:
     _gradients.set(layer, gradients);
   }
 
-  [[nodiscard]] inline std::span<const double> get_outputs(unsigned layer) const noexcept
+  [[nodiscard]] inline std::span<const double> get_outputs(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     return _outputs.get_span(layer);
@@ -117,7 +117,7 @@ public:
     return _outputs.get_raw_ptr(layer);
   }
 
-  [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const noexcept
+  [[nodiscard]] inline double get_output(unsigned layer, unsigned neuron) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     if (_outputs.number_neurons(layer) == neuron)
