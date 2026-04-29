@@ -98,6 +98,31 @@ TEST(HiddenStateTest, SetAndGetCellStateValues)
   EXPECT_DOUBLE_EQ(state.get_cell_state_value_at_neuron(2), 0.3);
 }
 
+TEST(HiddenStateTest, SetIndividualValues)
+{
+  unsigned num_neurons = 3;
+  std::vector<double> pre_sums(num_neurons, 0.0);
+  std::vector<double> hidden_values(num_neurons, 0.0);
+  std::vector<double> cell_values(num_neurons, 0.0);
+  HiddenState state(pre_sums.data(), hidden_values.data(), cell_values.data(), num_neurons, num_neurons);
+
+  state.set_pre_activation_sum(1, 4.4);
+  EXPECT_DOUBLE_EQ(state.get_pre_activation_sum_at_neuron(1), 4.4);
+  EXPECT_DOUBLE_EQ(pre_sums[1], 4.4);
+
+  state.set_hidden_state_value(0, -1.1);
+  EXPECT_DOUBLE_EQ(state.get_hidden_state_value_at_neuron(0), -1.1);
+  EXPECT_DOUBLE_EQ(hidden_values[0], -1.1);
+
+  state.set_cell_state_value(2, 9.9);
+  EXPECT_DOUBLE_EQ(state.get_cell_state_value_at_neuron(2), 9.9);
+  EXPECT_DOUBLE_EQ(cell_values[2], 9.9);
+
+  state.get_pre_activation_sum(0) = 7.7;
+  EXPECT_DOUBLE_EQ(state.get_pre_activation_sum_at_neuron(0), 7.7);
+  EXPECT_DOUBLE_EQ(pre_sums[0], 7.7);
+}
+
 TEST(HiddenStateTest, ShallowCopyConstructorAndAssignment)
 {
   unsigned num_neurons = 2;
