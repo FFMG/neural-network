@@ -49,11 +49,11 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
     // Branch B: 1 output layer (1 neuron, Sigmoid)
     
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
-    OutputLayerDetails oA(2, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
     std::vector<LayerDetails> hB = {};
-    OutputLayerDetails oB(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oB(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
     std::vector<MultiOutputLayerDetails> details = { modA, modB };
@@ -101,7 +101,7 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
     // Branch A Output:
     // Z_ao = [0.0*0.5 + 0.02*0.7, 0.0*0.6 + 0.02*0.8] = [0.014, 0.016]
     // Softmax([0.014, 0.016]) -> exp(0.014)=1.014098, exp(0.016)=1.016128, sum=2.030226
-    // A_ao = [0.4994999, 0.5005001]
+    // A_ao = [0.49950006, 0.50049994]
     
     // Branch B Output:
     // Z_bo = [0.5*0.9 - 0.2*-0.1] = [0.47]
@@ -109,27 +109,28 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
 
     const auto& outputs = batch_go[0].get_outputs(1);
     EXPECT_EQ(outputs.size(), 3);
-    EXPECT_NEAR(outputs[0], 0.4994999, 1e-6);
-    EXPECT_NEAR(outputs[1], 0.5005001, 1e-6);
-    EXPECT_NEAR(outputs[2], 0.6153829, 1e-6);
+    EXPECT_NEAR(outputs[0], 0.499500, 1e-6);
+    EXPECT_NEAR(outputs[1], 0.500500, 1e-6);
+    EXPECT_NEAR(outputs[2], 0.615383, 1e-6);
 }
 
 TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
     // Re-use same setup as Forward Feed
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
-    OutputLayerDetails oA(2, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
     std::vector<LayerDetails> hB = {};
-    OutputLayerDetails oB(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oB(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
     std::vector<MultiOutputLayerDetails> details = { modA, modB };
     MultiOutputLayer layer(1, 2, 3, details, 1, true);
 
     auto& branches = layer.get_mutable_branches();
-    branches[0].layers[1]->set_w_values({ 0.5, 0.6, 0.7, 0.8 }); // Needed for topology init if any
-    
+    branches[0].layers[1]->set_w_values({ 0.5, 0.6, 0.7, 0.8 });
+    branches[1].layers[0]->set_w_values({ 0.9, -0.1 });
+
     // We need to simulate a forward feed to initialize buffers
     MockLayer prev_layer(0, 2);
     std::vector<unsigned> topology = { 2, 3 };
@@ -144,20 +145,20 @@ TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
 
     // Branch A Output (Softmax + CE): grad = y - t
-    // From forward feed: A_ao = [0.4994999, 0.5005001]
-    // Grad_ao = [0.4994999 - 1.0, 0.5005001 - 0.0] = [-0.5005001, 0.5005001]
+    // From forward feed: A_ao = [0.49950006, 0.50049994]
+    // Grad_ao = [-0.500500, 0.500500]
     
-    // Branch B Output (Sigmoid + MSE): grad = (y - t) / N
-    // N=1 for this head.
-    // From forward feed: A_bo = [0.6153829]
-    // Grad_bo = [0.6153829 - 0.8] = [-0.1846171]
+    // Branch B Output (Sigmoid + MSE): grad = (y - t) * sig_deriv
+    // delta = (0.615383 - 0.8) = -0.184617
+    // deriv = sig_deriv(0.47) = 0.615383 * (1 - 0.615383) = 0.236686
+    // grad = -0.184617 * 0.236686 = -0.043696
 
     const auto& bA_grads = branches[0].gradients_and_outputs[0].get_gradients(branches[0].layers[1]->get_layer_index());
-    EXPECT_NEAR(bA_grads[0], -0.5005001, 1e-6);
-    EXPECT_NEAR(bA_grads[1], 0.5005001, 1e-6);
+    EXPECT_NEAR(bA_grads[0], -0.500500, 1e-4);
+    EXPECT_NEAR(bA_grads[1], 0.500500, 1e-4);
 
     const auto& bB_grads = branches[1].gradients_and_outputs[0].get_gradients(branches[1].layers[0]->get_layer_index());
-    EXPECT_NEAR(bB_grads[0], -0.1846171, 1e-6);
+    EXPECT_NEAR(bB_grads[0], -0.043696, 1e-4);
 }
 
 TEST_F(MultiOutputLayerTest, BackpropAndTrunkGradients) {

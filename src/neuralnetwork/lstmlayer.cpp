@@ -916,6 +916,14 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       if (t == t_start) { std::fill(dh_next, dh_next + N_this, 0.0); std::fill(dc_next, dc_next + N_this, 0.0); }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       std::vector<double> dh_curr(N_this);
+
+#if VALIDATE_DATA == 1
+      if (packed.size() < 5 * N_this)
+      {
+        Logger::panic("LSTMLayer BPTT: HiddenState size mismatch! Expected multiplier 5, but got ", (N_this > 0 ? packed.size() / N_this : 0));
+      }
+#endif
+
       for (size_t j = 0; j < N_this; ++j)
       {
         // Apply dropout mask stored during forward feed

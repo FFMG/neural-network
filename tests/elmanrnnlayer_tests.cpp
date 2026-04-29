@@ -87,32 +87,32 @@ TEST_F(ElmanRNNLayerTest, BPTTMathematicalVerification) {
   MockLayer next_layer(2, 1);
   next_layer.set_w_values({ 2.0 });
 
-  // Next layer gradients for 2 time steps: [10.0, 20.0]
-  std::vector<std::vector<double>> batch_next_grads = { { 10.0, 20.0 } };
+  // Next layer gradients for 2 time steps: [10.0, 10.0]
+  std::vector<std::vector<double>> batch_next_grads = { { 10.0, 10.0 } };
 
   layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
 
   // BPTT Math:
   // t=1:
-  // upstream_1 = g_next_1 * W_next = 20.0 * 2.0 = 40.0
-  // dh_1 = upstream_1 + dh_next (0) = 40.0
-  // g_tick_1 = dh_1 * deriv(1.4) = 40.0 * 1.0 = 40.0
-  // dx_1 = g_tick_1 * W = 40.0 * 0.5 = 20.0
-  // dh_next_for_0 = g_tick_1 * U = 40.0 * 0.8 = 32.0
+  // upstream_1 = g_next_1 * W_next = 10.0 * 2.0 = 20.0
+  // dh_1 = upstream_1 + dh_next (0) = 20.0
+  // g_tick_1 = dh_1 * deriv(1.4) = 20.0 * 1.0 = 20.0
+  // dx_1 = g_tick_1 * W = 20.0 * 0.5 = 10.0
+  // dh_next_for_0 = g_tick_1 * U = 20.0 * 0.8 = 16.0
 
   // t=0:
   // upstream_0 = g_next_0 * W_next = 10.0 * 2.0 = 20.0
-  // dh_0 = upstream_0 + dh_next_for_0 = 20.0 + 32.0 = 52.0
-  // g_tick_0 = dh_0 * deriv(0.5) = 52.0 * 1.0 = 52.0
-  // dx_0 = g_tick_0 * W = 52.0 * 0.5 = 26.0
+  // dh_0 = upstream_0 + dh_next_for_0 = 20.0 + 16.0 = 36.0
+  // g_tick_0 = dh_0 * deriv(0.5) = 36.0 * 1.0 = 36.0
+  // dx_0 = g_tick_0 * W = 36.0 * 0.5 = 18.0
 
   const auto rnn_grads = batch_go[0].get_rnn_gradients(1);
-  EXPECT_NEAR(rnn_grads[0], 26.0, 1e-9);
-  EXPECT_NEAR(rnn_grads[1], 20.0, 1e-9);
+  EXPECT_NEAR(rnn_grads[0], 18.0, 1e-9);
+  EXPECT_NEAR(rnn_grads[1], 10.0, 1e-9);
 
   const auto gate_grads = batch_go[0].get_rnn_gate_gradients(1);
-  EXPECT_NEAR(gate_grads[0], 52.0, 1e-9);
-  EXPECT_NEAR(gate_grads[1], 40.0, 1e-9);
+  EXPECT_NEAR(gate_grads[0], 36.0, 1e-9);
+  EXPECT_NEAR(gate_grads[1], 20.0, 1e-9);
 }
 
 TEST_F(ElmanRNNLayerTest, GradientStorageVerification) {

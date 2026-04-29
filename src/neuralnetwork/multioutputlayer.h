@@ -365,7 +365,7 @@ public:
           const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
           const size_t n_prev = prev_l.get_number_neurons();
           const size_t l_num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-          branch.hidden_states[b].assign(current_l.get_layer_index(), l_num_time_steps, HiddenState());
+          branch.hidden_states[b].assign(current_l.get_layer_index(), l_num_time_steps, HiddenState(), current_l.get_pre_activation_multiplier());
         }
 
         current_l.calculate_forward_feed(
@@ -525,11 +525,11 @@ public:
             const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
             const size_t n_prev = current.get_number_neurons(); // Actually input to next layer
             const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            branch.hidden_states[b].assign(current.get_layer_index(), num_time_steps, HiddenState());
+            branch.hidden_states[b].assign(current.get_layer_index(), num_time_steps, HiddenState(), current.get_pre_activation_multiplier());
           }
           else
           {
-            branch.hidden_states[b].assign(current.get_layer_index(), 1, HiddenState());
+            branch.hidden_states[b].assign(current.get_layer_index(), 1, HiddenState(), current.get_pre_activation_multiplier());
           }
         }
 
@@ -693,11 +693,11 @@ public:
              const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
              const size_t n_prev = prev_l.get_number_neurons();
              const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-             branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState());
+             branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState(), current_l.get_pre_activation_multiplier());
            }
            else
            {
-             branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState());
+             branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState(), current_l.get_pre_activation_multiplier());
            }
          }
          
