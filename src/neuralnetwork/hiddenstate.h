@@ -17,16 +17,34 @@ public:
   {
   }
 
+  inline void set_pre_activation_sum(unsigned index, double value) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    _pre_activation_sums[index] = value;
+  }
+
   inline void set_pre_activation_sums(const std::vector<double>& sums) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     std::copy(sums.begin(), sums.end(), _pre_activation_sums.begin());
   }
     
+  inline void set_hidden_state_value(unsigned index, double value) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    _hidden_state_values[index] = value;
+  }
+
   inline void set_hidden_state_values(const std::vector<double>& values) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     std::copy(values.begin(), values.end(), _hidden_state_values.begin());
+  }
+
+  inline void set_cell_state_value(unsigned index, double value) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    _cell_state_values[index] = value;
   }
 
   inline void set_cell_state_values(const std::vector<double>& values) noexcept
@@ -39,6 +57,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _pre_activation_sums[neuron_index];
+  }
+
+  [[nodiscard]] inline double& get_pre_activation_sum(unsigned index) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    return _pre_activation_sums[index];
   }
 
   [[nodiscard]] inline std::span<double> get_pre_activation_sums() const noexcept
