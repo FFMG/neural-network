@@ -25,7 +25,7 @@ public:
   [[nodiscard]] unsigned get_index() const;
   [[nodiscard]] const Type& get_type() const noexcept;
   [[nodiscard]] bool is_dropout() const noexcept;
-  [[nodiscard]] double get_dropout_rate() const noexcept;
+  [[nodiscard]] double get_dropout_rate() const;
 
   [[nodiscard]] bool must_randomly_drop() const;
 

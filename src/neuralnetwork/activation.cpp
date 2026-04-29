@@ -424,7 +424,7 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
       std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
 }
 
-double activation::weight_initialization(unsigned fan_in, unsigned fan_out) const
+double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -432,10 +432,10 @@ double activation::weight_initialization(unsigned fan_in, unsigned fan_out) cons
   case activation::method::sigmoid:
   case activation::method::tanh:
   case activation::method::softmax:
-    return xavier_initialization(fan_in, fan_out);
+    return xavier_initialization(fan_in, fan_out, seed);
 
   case activation::method::selu:
-    return selu_initialization(fan_in);
+    return selu_initialization(fan_in, seed);
 
   case activation::method::linear:
   case activation::method::relu:
@@ -445,61 +445,85 @@ double activation::weight_initialization(unsigned fan_in, unsigned fan_out) cons
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
-    return he_initialization(fan_in);
+    return he_initialization(fan_in, seed);
 
   default:
     throw std::invalid_argument("Unknown activation type!");
   }
 }
 
-double activation::xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept
+double activation::xavier_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
   
   // Standard Xavier initialization: Uniform(-sqrt(6/(fan_in+fan_out)), sqrt(6/(fan_in+fan_out)))
   double limit = std::sqrt(6.0 / (static_cast<double>(fan_in) + static_cast<double>(fan_out))); 
   std::uniform_real_distribution<double> dist(-limit, limit);
 
+  if (seed.has_value())
+  {
+    std::mt19937 local_gen(seed.value());
+    return dist(local_gen);
+  }
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
   return dist(gen);
 }
 
-double activation::he_initialization(unsigned fan_in) const noexcept
+double activation::he_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
   
   // Standard He initialization: Normal(0, sqrt(2/fan_in))
   double stddev = std::sqrt(2.0 / std::max(1u, fan_in));
   std::normal_distribution<double> dist(0.0, stddev);
 
+  if (seed.has_value())
+  {
+    std::mt19937 local_gen(seed.value());
+    return dist(local_gen);
+  }
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
   return dist(gen);
 }
 
-double activation::selu_initialization(unsigned fan_in) const noexcept
+double activation::selu_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
   
   // SELU initialization (LeCun): Normal(0, sqrt(1/fan_in))
   double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
   std::normal_distribution<double> dist(0.0, stddev);
 
+  if (seed.has_value())
+  {
+    std::mt19937 local_gen(seed.value());
+    return dist(local_gen);
+  }
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
   return dist(gen);
 }
 
-double activation::lecun_initialization(unsigned fan_in) const noexcept
+double activation::lecun_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
   
   double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
   std::normal_distribution<double> dist(0.0, stddev);
 
+  if (seed.has_value())
+  {
+    std::mt19937 local_gen(seed.value());
+    return dist(local_gen);
+  }
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
   return dist(gen);
 }
 

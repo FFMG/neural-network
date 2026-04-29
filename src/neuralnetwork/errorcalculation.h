@@ -270,8 +270,8 @@ public:
   static double calculate_huber_direction_loss(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& lambda = evaluation_config.direction_lambda();
-    const auto& delta = evaluation_config.huber_delta();
+    const auto lambda = evaluation_config.direction_lambda();
+    const auto delta = evaluation_config.huber_delta();
 
     double total_loss = 0.0;
     size_t count = 0;
@@ -872,7 +872,7 @@ public:
     double total_bce = 0.0;
     size_t count = 0;
 
-    const auto& eps = evaluation_config.epsilon();
+    const auto eps = evaluation_config.epsilon();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -887,8 +887,8 @@ public:
       for (size_t i = 0; i < gt.size(); ++i)
       {
         // clip predictions to [eps, 1 - eps]
-        const auto& p = std::max(eps, std::min(1.0 - eps, pred[i]));
-        const auto& y = gt[i];
+        const auto p = std::clamp(pred[i], eps, 1.0 - eps);
+        const auto y = gt[i];
 
         total_bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
         ++count;
