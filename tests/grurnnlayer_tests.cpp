@@ -54,7 +54,7 @@ TEST_F(GRURNNLayerTest, ForwardFeedBasic) {
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 3);
 
     // Step 1: x = 1.0, h_prev = 0.0
     batch_go[0].set_outputs(0, { 1.0 });
@@ -144,7 +144,7 @@ TEST_F(GRURNNLayerTest, AllActivationTypes) {
     for (auto m : methods) {
         GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(m, 0.1), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
         auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-        auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+        auto batch_hs = create_batch_hidden_states(topology, 1, 1, 3);
         batch_go[0].set_outputs(0, { 0.5 });
 
         EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
@@ -173,7 +173,7 @@ TEST_F(GRURNNLayerTest, CalculateHiddenGradients) {
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 3);
 
     // Forward pass to populate hidden states
     batch_go[0].set_outputs(0, { 1.0 }); // x = 1.0
@@ -184,7 +184,12 @@ TEST_F(GRURNNLayerTest, CalculateHiddenGradients) {
 
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
 
-    // From math above: grad_x = 0.5 * (1 - tanh(1)^2)
+    // From math above: 
+    // dL/dh_hat_pre = dL/dh * z * tanh'(h_hat_pre)
+    // dL/dh = 1.0 (from next_layer)
+    // z = sig(0) = 0.5
+    // h_hat_pre = 1.0 (from W_h=1, x=1)
+    // grad_x = dL/dh_hat_pre * W_h = 1.0 * 0.5 * (1.0 - tanh(1.0)^2) * 1.0
     double expected_grad_x = 0.5 * (1.0 - std::pow(std::tanh(1.0), 2));
     
     const auto& grads = batch_go[0].get_rnn_gradients(1);
@@ -199,7 +204,7 @@ TEST_F(GRURNNLayerTest, CalculateAndStoreGradients) {
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 3);
 
     // Setup state
     batch_go[0].set_outputs(0, { 1.0 }); // x = 1.0

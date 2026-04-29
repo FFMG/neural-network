@@ -912,10 +912,21 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       if (next_grad_ptr)
       {
         double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-        for (size_t i = 0; i < N_this; ++i)
+        if (&next_layer == this)
         {
-          const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
-          dest_ptr[i] += simd::dot_product(next_grad_ptr, next_w_row, N_next);
+          // Identity mapping: next_grad_ptr is already dL/dh_{t+1}
+          for (size_t i = 0; i < N_this; ++i)
+          {
+            dest_ptr[i] += next_grad_ptr[i];
+          }
+        }
+        else
+        {
+          for (size_t i = 0; i < N_this; ++i)
+          {
+            const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
+            dest_ptr[i] += simd::dot_product(next_grad_ptr, next_w_row, N_next);
+          }
         }
       }
     }
@@ -1325,6 +1336,7 @@ void GRURNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   Layer::zero_gradients();
+  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
   std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
   std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
   std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
