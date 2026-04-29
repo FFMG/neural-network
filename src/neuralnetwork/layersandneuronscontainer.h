@@ -85,9 +85,9 @@ public:
     {
       Logger::panic("trying to set value past the layer size: ", layer);
     }
-    if (_offsets[layer] + neuron >= _data.size())
+    if (neuron >= _topology[layer])
     {
-      Logger::panic("trying to set value past the neuron size: ", _offsets[layer] + neuron);
+      Logger::panic("trying to set value past the neuron size: ", neuron);
     }
 #endif
     _data[_offsets[layer] + neuron] = data;
@@ -105,9 +105,19 @@ public:
     std::copy(data.begin(), data.end(), _data.begin() + _offsets[layer]);
   }
   
-  [[nodiscard]] inline const double& get(unsigned layer, unsigned neuron) const noexcept
+  [[nodiscard]] inline const double& get(unsigned layer, unsigned neuron) const
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (layer >= _offsets.size())
+    {
+      Logger::panic("trying to get value past the layer size: ", layer);
+    }
+    if (neuron >= _topology[layer])
+    {
+      Logger::panic("trying to get value past the neuron size: ", neuron);
+    }
+#endif
     return _data[_offsets[layer] + neuron];
   }
 
