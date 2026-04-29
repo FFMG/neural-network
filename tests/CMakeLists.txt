@@ -44,6 +44,7 @@ set(NN_INCLUDE_DIRS
 add_executable(neuralnetwork_tests
     neuralnetwork.cpp
     activation_tests.cpp
+    error_calculation_tests.cpp
     ${NN_SOURCES}
 )
 
