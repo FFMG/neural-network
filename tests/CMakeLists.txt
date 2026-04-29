@@ -28,6 +28,7 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/layers.cpp"
     "${NN_SOURCE_DIR}/libraries/TinyJSON.cpp"
     "${NN_SOURCE_DIR}/libraries/tracy/TracyClient.cpp"
+    "${NN_SOURCE_DIR}/lstmlayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
     "${NN_SOURCE_DIR}/neuralnetworkhelper.cpp"
     "${NN_SOURCE_DIR}/neuralnetworkserializer.cpp"
