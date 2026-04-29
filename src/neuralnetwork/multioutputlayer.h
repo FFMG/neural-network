@@ -830,19 +830,32 @@ public:
 
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const size_t b_num_time_steps = predictions[b].size() / total_outputs;
-        for (size_t t = 0; t < b_num_time_steps; ++t)
+        const size_t p_total = predictions[b].size();
+        const size_t c_total = checking_outputs[b].size();
+
+        if (total_outputs == 0)
+        {
+          continue;
+        }
+
+        const size_t p_steps = p_total / total_outputs;
+        const size_t c_steps = c_total / total_outputs;
+        const size_t num_steps = std::min(p_steps, c_steps);
+
+        // Align at the end. For example, if c_steps=1 and p_steps=10, we take the last prediction step.
+        const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+        const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
+
+        for (size_t t = 0; t < num_steps; ++t)
         {
           std::vector<double> p_slice(num_neurons);
           std::vector<double> c_slice(num_neurons);
 
-          std::copy(predictions[b].begin() + t * total_outputs + bounds.start,
-                    predictions[b].begin() + t * total_outputs + bounds.start + num_neurons,
-                    p_slice.begin());
+          const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+          std::copy(p_start, p_start + num_neurons, p_slice.begin());
 
-          std::copy(checking_outputs[b].begin() + t * total_outputs + bounds.start,
-                    checking_outputs[b].begin() + t * total_outputs + bounds.start + num_neurons,
-                    c_slice.begin());
+          const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+          std::copy(c_start, c_start + num_neurons, c_slice.begin());
 
           unrolled_predictions.push_back(std::move(p_slice));
           unrolled_checking_outputs.push_back(std::move(c_slice));
