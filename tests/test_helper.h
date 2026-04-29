@@ -17,13 +17,13 @@ namespace test_helper {
     return batch;
   }
 
-  inline std::vector<HiddenStates> create_batch_hidden_states(const std::vector<unsigned>& topology, size_t batch_size, size_t num_ticks) {
+  inline std::vector<HiddenStates> create_batch_hidden_states(const std::vector<unsigned>& topology, size_t batch_size, size_t num_ticks, unsigned multiplier = 1) {
     std::vector<HiddenStates> batch;
     batch.reserve(batch_size);
     for (size_t i = 0; i < batch_size; ++i) {
       HiddenStates hs(topology);
       for (size_t l = 0; l < topology.size(); ++l) {
-        hs.assign(l, num_ticks, HiddenState(nullptr, nullptr, nullptr, 0, 0));
+        hs.assign(l, num_ticks, HiddenState(nullptr, nullptr, nullptr, 0, 0), multiplier);
       }
       batch.push_back(std::move(hs));
     }
