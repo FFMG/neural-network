@@ -64,7 +64,7 @@ TEST(NeuronTest, ValidationLogic)
   Neuron n(1, Neuron::Type::Normal, 0.0);
   
   // These should panic for Normal neurons
-  EXPECT_THROW(n.get_dropout_rate(), std::runtime_error);
-  EXPECT_THROW(n.must_randomly_drop(), std::runtime_error);
+  EXPECT_THROW((void)n.get_dropout_rate(), std::runtime_error);
+  EXPECT_THROW((void)n.must_randomly_drop(), std::runtime_error);
 }
 #endif
