@@ -618,7 +618,7 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     }
   }
 
-  const double inv_batch = 1.0 / static_cast<double>(batch_size * num_time_steps);
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
   for (double& grad : _w_grads) grad *= inv_batch;
   if (has_bias()) for (double& grad : _b_grads) grad *= inv_batch;
 }

@@ -1283,8 +1283,7 @@ void GRURNNLayer::calculate_and_store_gradients(
     }
   }
 
-  const double time_scale = (active_ticks > 0) ? static_cast<double>(active_ticks) : 1.0;
-  const double denom = static_cast<double>(batch_size) * time_scale;
+  const double denom = static_cast<double>(batch_size);
   
   const auto normalize = [&denom](std::vector<double>& grads)
   {

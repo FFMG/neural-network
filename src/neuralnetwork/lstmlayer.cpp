@@ -762,7 +762,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   }
 
-  const double inv_batch = 1.0 / static_cast<double>(batch_size * T);
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
   auto norm = [&](std::vector<double>& v) { for (double& x : v) x *= inv_batch; };
   norm(_w_grads); norm(_b_grads); norm(_rw_grads);
   norm(_f_w_grads); norm(_f_b_grads); norm(_f_rw_grads);
