@@ -70,3 +70,15 @@ TEST(LayerTest, ResetOptimizerState) {
     EXPECT_DOUBLE_EQ(layer.get_w_m1()[0], 0.0);
     EXPECT_DOUBLE_EQ(layer.get_w_m2()[0], 0.0);
 }
+
+TEST(LayerTest, OptimiserTypeToString) {
+    EXPECT_EQ(optimiser_type_to_string(OptimiserType::Adam), "Adam");
+    EXPECT_EQ(optimiser_type_to_string(OptimiserType::SGD), "SGD");
+    EXPECT_EQ(optimiser_type_to_string(OptimiserType::None), "None");
+}
+
+TEST(LayerTest, StringToOptimiserType) {
+    EXPECT_EQ(string_to_optimiser_type("Adam"), OptimiserType::Adam);
+    EXPECT_EQ(string_to_optimiser_type("adamw"), OptimiserType::AdamW);
+    EXPECT_EQ(string_to_optimiser_type("sgd"), OptimiserType::SGD);
+}
