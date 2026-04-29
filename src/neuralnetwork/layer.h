@@ -649,7 +649,12 @@ public:
 
   virtual double get_gradient_norm_sq() const = 0;
 
-  virtual void zero_gradients() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
+  virtual void zero_gradients() 
+  { 
+    MYODDWEB_PROFILE_FUNCTION("Layer"); 
+    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
 
