@@ -135,13 +135,13 @@ TEST_F(GradientsAndOutputsTest, Exceptions) {
     GradientsAndOutputs gao(topology);
     
     // Out of bounds layer
-    EXPECT_THROW(gao.get_gradients(10), std::runtime_error);
+    EXPECT_THROW((void)gao.get_gradients(10), std::runtime_error);
     
     // Invalid size for set_outputs
     std::vector<double> too_big = {1, 2, 3, 4}; // layer 0 only has 3
     EXPECT_THROW(gao.set_outputs(0, too_big), std::runtime_error);
 
     // Invalid layer for raw pointer
-    EXPECT_THROW(gao.get_outputs_raw(5), std::runtime_error);
+    EXPECT_THROW((void)gao.get_outputs_raw(5), std::runtime_error);
 #endif
 }

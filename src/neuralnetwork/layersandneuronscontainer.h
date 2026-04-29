@@ -1,5 +1,6 @@
 #include "./libraries/instrumentor.h"
 #include "aligned_allocator.h"
+#include "logger.h"
 #include <algorithm>
 #include <span>
 #include <vector>
@@ -92,7 +93,7 @@ public:
     _data[_offsets[layer] + neuron] = data;
   }
   
-  [[nodiscard]] void set(unsigned layer, const std::vector<double>& data)
+  void set(unsigned layer, const std::vector<double>& data)
   {
     MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
 #if VALIDATE_DATA == 1
