@@ -308,7 +308,7 @@ void Layer::calculate_cross_entropy_error_deltas(
         Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
     }
 
-    deltas[neuron_index] = grad * inv_num_neurons;
+    deltas[neuron_index] = grad;
   }
 }
 

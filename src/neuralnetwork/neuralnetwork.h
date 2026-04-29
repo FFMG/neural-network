@@ -125,6 +125,4 @@ private:
 
   mutable SingleTaskQueue<std::vector<NeuralNetworkHelperMetrics>> _adaptive_lr_task;
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
-  mutable std::vector<GradientsAndOutputs> _gradients_pool;
-  mutable std::vector<HiddenStates> _hidden_states_pool;
 };

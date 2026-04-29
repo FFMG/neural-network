@@ -78,8 +78,6 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _options = src._options;
     _saved_errors = src._saved_errors;
     _last_metrics = src._last_metrics;
-    _gradients_pool = src._gradients_pool;
-    _hidden_states_pool = src._hidden_states_pool;
 
     delete _neural_network_helper;
     _neural_network_helper = nullptr;
