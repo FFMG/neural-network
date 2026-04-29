@@ -64,7 +64,7 @@ public:
     _hidden_state_values = values;
   }
 
-  [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const noexcept
+  [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
 #if VALIDATE_DATA == 1
@@ -82,7 +82,7 @@ public:
     return _pre_activation_sums;
   }
 
-  [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const noexcept
+  [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
 #if VALIDATE_DATA == 1
