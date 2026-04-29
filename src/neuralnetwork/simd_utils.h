@@ -2,6 +2,7 @@
 
 #include "./libraries/instrumentor.h"
 #include <cmath>
+#include <algorithm>
 
 // Check if AVX2 is available (MSVC, GCC, Clang)
 #if defined(__AVX2__)
