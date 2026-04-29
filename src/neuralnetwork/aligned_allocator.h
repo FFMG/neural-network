@@ -32,10 +32,16 @@ public:
       using other = AlignedAllocator<U, Alignment>;
   };
 
-  AlignedAllocator() noexcept {}
+  AlignedAllocator() noexcept 
+  {
+    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
+  }
 
   template <typename U>
-  AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+  AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept 
+  {
+    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
+  }
 
   pointer allocate(size_type n) 
   {
