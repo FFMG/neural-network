@@ -241,8 +241,8 @@ TEST_F(MultiOutputLayerTest, BackpropAndTrunkGradients) {
 
 TEST_F(MultiOutputLayerTest, TemperatureMethods) {
     std::vector<LayerDetails> h = {};
-    OutputLayerDetails o1(2, activation(activation::method::softmax, 1.5), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-    OutputLayerDetails o2(1, activation(activation::method::softmax, 2.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails o1(2, activation(activation::method::softmax, 0.0, 1.5), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails o2(1, activation(activation::method::softmax, 0.0, 2.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod1(h, o1);
     MultiOutputLayerDetails mod2(h, o2);
     
@@ -280,7 +280,7 @@ TEST_F(MultiOutputLayerTest, CalculateOutputMetrics) {
 TEST_F(MultiOutputLayerTest, ActivationBranches) {
     // Verify that different activation types in different branches work
     OutputLayerDetails o1(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-    OutputLayerDetails o2(1, activation(activation::method::elu, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails o2(1, activation(activation::method::elu, 1.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     OutputLayerDetails o3(1, activation(activation::method::swish, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     
     MultiOutputLayerDetails mod1({}, o1);
@@ -304,7 +304,7 @@ TEST_F(MultiOutputLayerTest, ActivationBranches) {
     const auto& outputs = batch_go[0].get_outputs(1);
     // tanh(-1.0) approx -0.76159
     EXPECT_NEAR(outputs[0], std::tanh(-1.0), 1e-6);
-    // elu(-1.0) = alpha * (exp(-1.0) - 1). Default alpha=1.0? code says 1.0
+    // elu(-1.0) = alpha * (exp(-1.0) - 1). Corrected alpha=1.0 in activation constructor
     EXPECT_NEAR(outputs[1], 1.0 * (std::exp(-1.0) - 1.0), 1e-6);
     // swish(-1.0) = -1.0 * sigmoid(-1.0) = -1.0 * (1 / (1 + exp(1.0))) approx -0.2689
     EXPECT_NEAR(outputs[2], -1.0 * (1.0 / (1.0 + std::exp(1.0))), 1e-6);
