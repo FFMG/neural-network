@@ -38,12 +38,12 @@ set(NN_SOURCES
 set(NN_INCLUDE_DIRS
     "${NN_SOURCE_DIR}"
     "${NN_SOURCE_DIR}/libraries"
-    "${NN_SOURCE_DIR}/libraries/tracy"
 )
 
 # Create the test executable
 add_executable(neuralnetwork_tests
     neuralnetwork.cpp
+    activation_tests.cpp
     ${NN_SOURCES}
 )
 

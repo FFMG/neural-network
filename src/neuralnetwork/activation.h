@@ -46,7 +46,7 @@ public:
     return _derivative_ptr(x, _alpha); 
   }
 
-  [[nodiscard]] double weight_initialization(unsigned fan_in, unsigned fan_out) const;
+  [[nodiscard]] double weight_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed = std::nullopt) const;
 
   [[nodiscard]] std::string method_to_string() const;
   [[nodiscard]] static std::string method_to_string(method m);
@@ -65,10 +65,10 @@ public:
   }
 
 private:
-  [[nodiscard]] double he_initialization(unsigned fan_in) const noexcept;
-  [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out) const noexcept;
-  [[nodiscard]] double lecun_initialization(unsigned fan_in) const noexcept;
-  [[nodiscard]] double selu_initialization(unsigned fan_in) const noexcept;
+  [[nodiscard]] double he_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
+  [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const noexcept;
+  [[nodiscard]] double lecun_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
+  [[nodiscard]] double selu_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
 
   [[nodiscard]] static double calculate_selu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_selu_derivative(double x, double alpha) noexcept;
