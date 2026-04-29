@@ -749,7 +749,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
     }
   }
 
-  const double inv_batch = 1.0 / static_cast<double>(batch_size * T);
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
   for (double& x : _w_grads) x *= inv_batch;
   for (double& x : _rw_grads) x *= inv_batch;
   if (has_bias()) for (double& x : _b_grads) x *= inv_batch;
