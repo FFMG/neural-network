@@ -84,6 +84,7 @@
     <ClCompile Include="fflayer_tests.cpp" />
     <ClCompile Include="ffoutputlayer_tests.cpp" />
     <ClCompile Include="gradients_and_outputs_tests.cpp" />
+    <ClCompile Include="grurnnlayer_mt_tests.cpp" />
     <ClCompile Include="grurnnlayer_tests.cpp" />
     <ClCompile Include="hidden_state_tests.cpp" />
     <ClCompile Include="layers_and_neurons_container_tests.cpp" />
