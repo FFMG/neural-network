@@ -394,11 +394,11 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     // Branch B: 2 neurons -> 1 hidden (Tanh, Layer 1) -> 2 outputs (Softmax, Layer 2)
     
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
-    OutputLayerDetails oA(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oA(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
     std::vector<LayerDetails> hB = { LayerDetails(Layer::Architecture::FF, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
-    OutputLayerDetails oB(2, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails oB(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
     MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true);
@@ -437,7 +437,7 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     //      = [0.05 - 0.15 + 0.1, 0.1 - 0.2 - 0.1] = [0.0, -0.2]
     // H1_a = [ReLU(0.0), ReLU(-0.2)] = [0.0, 0.0]
     // O_z  = [0.0*0.5 + 0.0*0.6 + 0.2] = [0.2]
-    // O_a  = [Sigmoid(0.2)] = [1/(1+exp(-0.2))] = [1/(1+0.8187)] = [0.549833997]
+    // O_a  = [Sigmoid(0.2)] = [1/(1+exp(-0.2))] = [0.549834]
     
     // Branch B:
     // H1_z = [0.5*0.7 - 0.5*0.8 + 0.3] = [0.35 - 0.4 + 0.3] = [0.25]
