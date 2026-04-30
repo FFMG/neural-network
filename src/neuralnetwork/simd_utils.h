@@ -1,8 +1,9 @@
 #pragma once
 
 #include "./libraries/instrumentor.h"
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <functional>
 
 // Check if AVX2 is available (MSVC, GCC, Clang)
 #if defined(__AVX2__)
