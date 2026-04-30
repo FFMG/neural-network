@@ -54,6 +54,7 @@ add_executable(neuralnetwork_tests
     neuron_tests.cpp
     simd_utils_tests.cpp
     fflayer_tests.cpp
+    fflayer_mt_tests.cpp
     grurnnlayer_tests.cpp
     grurnnlayer_mt_tests.cpp
     ffoutputlayer_tests.cpp
