@@ -2,6 +2,7 @@
 #include "./libraries/instrumentor.h"
 #include "layersandneuronscontainer.h"
 #include "logger.h"
+
 #include <map>
 #include <span>
 #include <vector>
@@ -71,8 +72,9 @@ public:
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     _outputs.zero();
     _gradients.zero();
-    _rnn_outputs.clear();
-    _rnn_gradients.clear();
+    for (auto& vec : _rnn_outputs) vec.clear();
+    for (auto& vec : _rnn_gradients) vec.clear();
+    for (auto& vec : _rnn_gate_gradients) vec.clear();
   }
 
   [[nodiscard]] inline std::span<const double> get_gradients(unsigned layer) const
@@ -147,42 +149,52 @@ public:
   inline void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer >= _rnn_outputs.size())
+    {
+      _rnn_outputs.resize(layer + 1);
+    }
     _rnn_outputs[layer] = outputs;
   }
 
   [[nodiscard]] inline const std::vector<double>& get_rnn_outputs(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-    const auto it = _rnn_outputs.find(layer);
-    if(it == _rnn_outputs.end())
+    if (layer >= _rnn_outputs.size())
     {
       static const std::vector<double> empty = {};
       return empty;
     }
-    return it->second;
+    return _rnn_outputs[layer];
   }
 
   inline void set_rnn_gradients(unsigned layer, const std::vector<double>& gradients)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer >= _rnn_gradients.size())
+    {
+      _rnn_gradients.resize(layer + 1);
+    }
     _rnn_gradients[layer] = gradients;
   }
 
   [[nodiscard]] inline const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
-    const auto it = _rnn_gradients.find(layer);
-    if(it == _rnn_gradients.end())
+    if (layer >= _rnn_gradients.size())
     {
       static const std::vector<double> empty = {};
       return empty;
     }
-    return it->second;
+    return _rnn_gradients[layer];
   }
 
   [[nodiscard]] inline double* get_rnn_gradients_raw(unsigned layer, size_t size)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer >= _rnn_gradients.size())
+    {
+      _rnn_gradients.resize(layer + 1);
+    }
     auto& vec = _rnn_gradients[layer];
     if (vec.size() != size)
     {
@@ -191,9 +203,34 @@ public:
     return vec.data();
   }
 
+  inline void set_rnn_gate_gradients(unsigned layer, const std::vector<double>& gradients)
+  {
+    if (layer >= _rnn_gate_gradients.size()) _rnn_gate_gradients.resize(layer + 1);
+    _rnn_gate_gradients[layer] = gradients;
+  }
+
+  [[nodiscard]] inline const std::vector<double>& get_rnn_gate_gradients(unsigned layer) const
+  {
+    if(layer >= _rnn_gate_gradients.size())
+    {
+      static const std::vector<double> empty = {};
+      return empty;
+    }
+    return _rnn_gate_gradients[layer];
+  }
+
+  [[nodiscard]] inline double* get_rnn_gate_gradients_raw(unsigned layer, size_t size)
+  {
+    if (layer >= _rnn_gate_gradients.size()) _rnn_gate_gradients.resize(layer + 1);
+    auto& vec = _rnn_gate_gradients[layer];
+    if (vec.size() != size) vec.resize(size);
+    return vec.data();
+  }
+
 private:
   LayersAndNeuronsContainer _outputs;
   LayersAndNeuronsContainer _gradients;
-  std::map<unsigned, std::vector<double>> _rnn_outputs;
-  std::map<unsigned, std::vector<double>> _rnn_gradients;
+  std::vector<std::vector<double>> _rnn_outputs;
+  std::vector<std::vector<double>> _rnn_gradients;
+  std::vector<std::vector<double>> _rnn_gate_gradients;
 };

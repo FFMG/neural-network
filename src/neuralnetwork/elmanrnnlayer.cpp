@@ -1,28 +1,32 @@
 #include "./libraries/instrumentor.h"
 #include "elmanrnnlayer.h"
+#include "fflayer.h"
 #include "logger.h"
+#include "simd_utils.h"
+#include <algorithm>
+#include <cmath>
 
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
-  unsigned num_neurons_in_previous_layer, 
-  unsigned num_neurons_in_this_layer, 
+  unsigned num_neurons_in_previous_layer,
+  unsigned num_neurons_in_this_layer,
   double weight_decay,
-  LayerType layer_type, 
+  const Role layer_role,
   const activation& activation_method,
-  const OptimiserType& optimiser_type, 
+  const OptimiserType& optimiser_type,
   int residual_layer_number,
   double dropout_rate,
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
   double momentum
-  ) :
+) :
   ElmanRNNLayer(
     layer_index,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
     std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer) * num_neurons_in_this_layer, weight_decay),
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -34,6 +38,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(
@@ -41,7 +46,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   const std::vector<double>& weight_decays,
-  LayerType layer_type,
+  const Role layer_role,
   const activation& activation_method,
   const OptimiserType& optimiser_type,
   int residual_layer_number,
@@ -53,7 +58,7 @@ ElmanRNNLayer::ElmanRNNLayer(
 ) :
   Layer(
     layer_index,
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -68,10 +73,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  //  Note: we use the same weight decay for recurrent weights as well.
-  //  If we want different ones we would need another vector.
-  //  But for now we just use the first value or a common value.
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
@@ -85,6 +88,7 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
@@ -95,14 +99,15 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m1(std::move(src._rw_m1)),
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
-  _rw_decays(std::move(src._rw_decays))
+  _rw_decays(std::move(src._rw_decays)),
+  _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
 }
 
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
-  const LayerType layer_type,
+  const Role layer_role,
   const OptimiserType optimiser_type,
   int residual_layer_number,
   const std::vector<Neuron>& neurons,
@@ -134,7 +139,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   Layer
   (
     layer_index,
-    layer_type,
+    layer_role,
     optimiser_type,
     residual_layer_number,
     neurons,
@@ -164,14 +169,15 @@ ElmanRNNLayer::ElmanRNNLayer(
   _rw_m2(rw_m2),
   _rw_timesteps(rw_timesteps),
   _rw_decays(rw_decays)
-{  
+{
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  allocate_workspace();
 }
 
 ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if(this != &src)
+  if (this != &src)
   {
     Layer::operator=(src);
     _rw_values = src._rw_values;
@@ -181,6 +187,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
+    allocate_workspace();
   }
   return *this;
 }
@@ -188,7 +195,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
 ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if(this != &src)
+  if (this != &src)
   {
     Layer::operator=(std::move(src));
     _rw_values = std::move(src._rw_values);
@@ -198,6 +205,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
+    _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
 }
@@ -213,7 +221,7 @@ void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
   const size_t num_weights = static_cast<size_t>(num_neurons) * num_neurons;
 
   _rw_values.resize(num_weights);
-  for (size_t i = 0; i < num_neurons; ++i) 
+  for (size_t i = 0; i < num_neurons; ++i)
   {
     for (unsigned int o = 0; o < num_neurons; ++o)
     {
@@ -245,147 +253,75 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t N_this = get_number_neurons();
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  // 1. Determine time steps and flatten inputs [BatchSize x T x N_prev]
-  const auto& sample_rnn_inputs = batch_gradients_and_outputs[0].get_rnn_outputs(previous_layer.get_layer_index());
-  const auto sample_std_inputs = batch_gradients_and_outputs[0].get_outputs(previous_layer.get_layer_index());
-  
-  const size_t sample_size = !sample_rnn_inputs.empty() ? sample_rnn_inputs.size() : sample_std_inputs.size();
-  const size_t num_time_steps = N_prev > 0 ? sample_size / N_prev : 0;
-  if (num_time_steps == 0) return;
-
-  _flattened_batch_inputs_buffer.resize(batch_size * num_time_steps * N_prev);
+  // 1. Determine sequence length and flatten inputs
+  size_t num_time_steps = 0;
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-    const auto std_in = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-    const double* src = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-    const size_t src_size = !rnn_in.empty() ? rnn_in.size() : std_in.size();
-
-    if (src_size == num_time_steps * N_prev)
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    if (!rnn_in.empty())
     {
-      std::copy(src, src + src_size, _flattened_batch_inputs_buffer.begin() + b * num_time_steps * N_prev);
+      num_time_steps = rnn_in.size() / N_prev;
+      break;
     }
-    else if (src_size == N_prev)
+    const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    if (std_in.size() == N_prev)
     {
-      // Broadcast single input across all time steps
+      num_time_steps = 1;
+      break;
+    }
+  }
+  if (num_time_steps == 0)
+  {
+    return;
+  }
+
+  std::vector<double> flattened_inputs(batch_size * num_time_steps * N_prev);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    if (!rnn_in.empty())
+    {
+      std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs.begin() + b * num_time_steps * N_prev);
+    }
+    else
+    {
+      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        std::copy(src, src + N_prev, _flattened_batch_inputs_buffer.begin() + (b * num_time_steps + t) * N_prev);
+        std::copy(std_in.begin(), std_in.end(), flattened_inputs.begin() + (b * num_time_steps + t) * N_prev);
       }
     }
   }
 
-  // 2. Output buffer
-  _batch_output_sequences_buffer.assign(batch_size * num_time_steps * N_this, 0.0);
+  // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this, 0.0);
 
-  // 3. Process time steps sequentially (due to recurrent dependency)
-  auto run_forward_pass = [&](size_t start, size_t end)
+  auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
-    std::vector<double> pre_activation_sums(N_this);
-    std::vector<double> current_hidden_state_values(N_this);
-    const double* W = get_w_values().data();
-    const double* U = _rw_values.data();
-
-    for (size_t b = start; b < end; ++b)
+    for (size_t b = b_start; b < b_end; ++b)
     {
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        // a. Initialize with bias
+        const double* x_t = &flattened_inputs[(b * num_time_steps + t) * N_prev];
+        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
+
         if (has_bias())
         {
-          const double* B = get_b_values().data();
-          std::copy(B, B + N_this, pre_activation_sums.begin());
-        }
-        else
-        {
-          std::fill(pre_activation_sums.begin(), pre_activation_sums.end(), 0.0);
+          std::copy(get_b_values().begin(), get_b_values().end(), pre_t);
         }
 
-        // b. Input-to-Hidden (W * x_t) - Tiled
-        const double* x_t = &_flattened_batch_inputs_buffer[(b * num_time_steps + t) * N_prev];
-        constexpr size_t BLOCK_SIZE = 64;
-        for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+        for (size_t i = 0; i < N_prev; ++i)
         {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+          const double xi = x_t[i];
+          if (xi == 0.0)
           {
-            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double val = x_t[i];
-              if (val == 0.0) continue;
-              const double* w_row = &W[i * N_this];
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                pre_activation_sums[j] += val * w_row[j];
-              }
-            }
+            continue;
           }
+          const double* w_row = &get_w_values()[i * N_this];
+          simd::mul_add(xi, w_row, pre_t, N_this);
         }
-
-        // c. Hidden-to-Hidden (U * h_{t-1}) - Tiled
-        if (t > 0)
-        {
-          const auto& prev_h_vec = batch_hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values();
-          const double* h_prev = prev_h_vec.data();
-          for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-          {
-            size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-            for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-            {
-              size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-              for (size_t i = i0; i < i_limit; ++i)
-              {
-                const double val = h_prev[i];
-                if (val == 0.0)
-                {
-                  continue;
-                }
-                const double* u_row = &U[i * N_this];
-                for (size_t j = j0; j < j_limit; ++j)
-                {
-                  pre_activation_sums[j] += val * u_row[j];
-                }
-              }
-            }
-          }
-        }
-
-        // d. Residuals
-        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
-        {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            pre_activation_sums[j] += batch_residual_output_values[b][j];
-          }
-        }
-
-        // e. Activation and Store
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(pre_activation_sums);
-
-        get_activation().activate(pre_activation_sums.data(), pre_activation_sums.data() + N_this);
-
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          const auto& neuron = get_neuron((unsigned)j);
-          double output = pre_activation_sums[j];
-          if (is_training && neuron.is_dropout())
-          {
-            if (neuron.must_randomly_drop())
-            {
-              output = 0.0;
-            }
-            else
-            {
-              output /= (1.0 - neuron.get_dropout_rate());
-            }
-          }
-          current_hidden_state_values[j] = output;
-          _batch_output_sequences_buffer[(b * num_time_steps + t) * N_this + j] = output;
-        }
-
-        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_hidden_state_values);
       }
     }
   };
@@ -393,7 +329,7 @@ void ElmanRNNLayer::calculate_forward_feed(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_forward_pass(0, batch_size);
+    precalc_gates(0, batch_size);
   }
   else
   {
@@ -404,10 +340,99 @@ void ElmanRNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]()
+        _task_queue_pool->enqueue([&precalc_gates, start, end]()
+        {
+          precalc_gates(start, end);
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+
+  // 3. Sequential Recurrent Pass and Activations
+  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this);
+
+  auto recurrent_pass = [&](size_t b_start, size_t b_end)
+  {
+    std::vector<double> current_h(N_this, 0.0);
+    for (size_t b = b_start; b < b_end; ++b)
+    {
+      std::fill(current_h.begin(), current_h.end(), 0.0);
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
+
+        // Recurrent-to-Hidden (U * h_{t-1})
+        for (size_t i = 0; i < N_this; ++i)
+        {
+          const double hi = current_h[i];
+          if (hi == 0.0)
           {
-            run_forward_pass(start, end);
-          });
+            continue;
+          }
+          const double* u_row = &_rw_values[i * N_this];
+          simd::mul_add(hi, u_row, pre_t, N_this);
+        }
+
+        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+        {
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            pre_t[j] += batch_residual_output_values[b][j];
+          }
+        }
+
+        auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+        state.set_pre_activation_sums(std::vector<double>(pre_t, pre_t + N_this));
+
+        get_activation().activate(pre_t, pre_t + N_this, is_training);
+
+        std::vector<double> mask(N_this, 1.0);
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          double out = pre_t[j];
+          if (is_training && get_neuron((unsigned)j).is_dropout())
+          {
+            const auto& neuron = get_neuron((unsigned)j);
+            if (neuron.must_randomly_drop())
+            {
+              out = 0.0;
+              mask[j] = 0.0;
+            }
+            else
+            {
+              const double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
+              out *= scale;
+              mask[j] = scale;
+            }
+          }
+          current_h[j] = out;
+          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+        }
+        state.set_cell_state_values(mask);
+        state.set_hidden_state_values(current_h);
+      }
+    }
+  };
+
+  if (num_threads <= 1)
+  {
+    recurrent_pass(0, batch_size);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([&recurrent_pass, start, end]()
+        {
+          recurrent_pass(start, end);
+        });
       }
       start = end;
     }
@@ -416,22 +441,44 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* seq_ptr = &_batch_output_sequences_buffer[b * num_time_steps * N_this];
+    const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
-    
-    const double* last_ptr = &_batch_output_sequences_buffer[(b * num_time_steps + num_time_steps - 1) * N_this];
+    const double* last_ptr = seq_ptr + (num_time_steps - 1) * N_this;
     batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
   }
 }
 
-void ElmanRNNLayer::calculate_output_gradients(
-  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-  const std::vector<HiddenStates>& batch_hidden_states,
-  size_t batch_size) const
+void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, std::vector<std::vector<double>>::const_iterator target_outputs_begin, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  Logger::panic("ElmanRNNLayer: Trying to calculate output gradient with a non output layer!");
+  const size_t N_this = get_number_neurons();
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& states = batch_hidden_states[b].at(get_layer_index());
+    const size_t T = states.size();
+    std::vector<double> deltas(T * N_this);
+    const std::vector<double>& targets = *(target_outputs_begin + b);
+    for (size_t t = 0; t < T; ++t)
+    {
+      const auto& given = states[t].get_hidden_state_values();
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        size_t idx = t * N_this + j;
+        if (idx < targets.size())
+        {
+          deltas[idx] = given[j] - targets[idx];
+        }
+        else
+        {
+          deltas[idx] = 0.0;
+        }
+      }
+    }
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas);
+    std::vector<double> last_step_deltas(N_this);
+    std::copy(deltas.end() - N_this, deltas.end(), last_step_deltas.begin());
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), last_step_deltas);
+  }
 }
 
 void ElmanRNNLayer::calculate_hidden_gradients(
@@ -447,106 +494,19 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   {
     return;
   }
-
   const size_t N_this = get_number_neurons();
-  const size_t N_next = next_layer.get_number_output_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0 || N_this == 0) return;
-
-  const int t_start = static_cast<int>(num_time_steps) - 1;
-  int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-
-  // 1. Flatten next-layer gradients [BatchSize x T x N_next]
-  std::vector<double> flattened_next_grads(batch_size * num_time_steps * N_next, 0.0);
-  for (size_t b = 0; b < batch_size; ++b)
+  if (num_time_steps == 0 || N_this == 0)
   {
-    const auto& next_grad_vec = batch_next_grad_matrix[b];
-    if (next_grad_vec.size() == N_next * num_time_steps)
-    {
-      std::copy(next_grad_vec.begin(), next_grad_vec.end(), flattened_next_grads.begin() + b * num_time_steps * N_next);
-    }
-    else if (next_grad_vec.size() == N_next)
-    {
-      // Only last step has gradient (typical sequence-to-one)
-      std::copy(next_grad_vec.begin(), next_grad_vec.end(), flattened_next_grads.begin() + (b * num_time_steps + t_start) * N_next);
-    }
+    return;
   }
 
-  auto run_hidden_gradients = [&](size_t start, size_t end)
-  {
-    const size_t chunk_count = end - start;
-    std::vector<double> chunk_rnn_grads(chunk_count * num_time_steps * N_this, 0.0);
-    std::vector<double> d_next_h(chunk_count * N_this, 0.0);
-    const double* W_next = next_layer.get_w_values().data();
-    const double* U = _rw_values.data(); // Standard recurrent weights
-
-    for (int t = t_start; t >= t_end; --t)
-    {
-      for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
-      {
-        size_t b = start + b_idx;
-        const auto& current_h_step = batch_hidden_states[b].at(get_layer_index())[t];
-        const double* g_next = &flattened_next_grads[(b * num_time_steps + t) * N_next];
-        double* g_this_step = &chunk_rnn_grads[(b_idx * num_time_steps + t) * N_this];
-        double* dh_accum = &d_next_h[b_idx * N_this];
-
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          // dh = sum(g_next * W_next[i,:]) + d_next_h[i]
-          double dh = dh_accum[i];
-          const double* w_next_row = &W_next[i * N_next];
-          for (size_t k = 0; k < N_next; ++k) dh += g_next[k] * w_next_row[k];
-
-          const double deriv = get_activation().activate_derivative(current_h_step.get_pre_activation_sum_at_neuron((unsigned)i));
-          g_this_step[i] = dh * deriv;
-        }
-      }
-
-      // Propagate backward through recurrent weights U for step t-1
-      if (t > t_end)
-      {
-        std::vector<double> prev_dh_accum(chunk_count * N_this, 0.0);
-        for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
-        {
-          const double* g_this_step = &chunk_rnn_grads[(b_idx * num_time_steps + t) * N_this];
-          double* dh_prev = &prev_dh_accum[b_idx * N_this];
-          for (size_t i = 0; i < N_this; ++i)
-          {
-            const double* u_row = &U[i * N_this];
-            double sum = 0.0;
-            for (size_t j = 0; j < N_this; ++j) sum += g_this_step[j] * u_row[j];
-            dh_prev[i] = sum;
-          }
-        }
-        d_next_h = std::move(prev_dh_accum);
-      }
-    }
-
-    // Store results
-    for (size_t b_idx = 0; b_idx < chunk_count; ++b_idx)
-    {
-      size_t b = start + b_idx;
-      const double* chunk_ptr = &chunk_rnn_grads[b_idx * num_time_steps * N_this];
-      std::vector<double> rnn_grad_vec(chunk_ptr, chunk_ptr + num_time_steps * N_this);
-      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grad_vec);
-
-      // Sum over time for standard gradient
-      std::vector<double> grad_sum(N_this, 0.0);
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          grad_sum[i] += rnn_grad_vec[t * N_this + i];
-        }
-      }
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), grad_sum);
-    }
-  };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
+
   if (num_threads <= 1)
   {
-    run_hidden_gradients(0, batch_size);
+    auto& workspace = get_workspace(0);
+    calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
   }
   else
   {
@@ -557,10 +517,11 @@ void ElmanRNNLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([=]()
-          {
-            run_hidden_gradients(start, end);
-          });
+        _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
+        {
+          auto& workspace = get_workspace(t);
+          calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
+        });
       }
       start = end;
     }
@@ -568,24 +529,126 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   }
 }
 
-double ElmanRNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return _rw_values[from_neuron * get_number_neurons() + to_neuron];
-}
-
-Layer* ElmanRNNLayer::clone() const
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  return new ElmanRNNLayer(*this);
-}
-
-void ElmanRNNLayer::calculate_and_store_gradients(
-  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const std::vector<HiddenStates>& hidden_states,
-  const Layer& previous_layer,
+void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
   size_t batch_size,
-  int bptt_max_ticks)
+  int bptt_max_ticks) const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (batch_size == 0)
+  {
+    return;
+  }
+  const size_t N_this = get_number_neurons();
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  if (num_time_steps == 0 || N_this == 0)
+  {
+    return;
+  }
+
+  // Use local FFLayer proxy
+  FFLayer proxy(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
+  proxy.set_w_values(id);
+
+  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
+}
+
+void ElmanRNNLayer::calculate_bptt_batch_chunk(
+  size_t start,
+  size_t end,
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const Layer& next_layer,
+  const std::vector<std::vector<double>>& batch_next_grad_matrix,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  int bptt_max_ticks,
+  BPTTWorkspace& workspace,
+  const BPTTWorkspace::AlignedVector& /*rw_values_T*/) const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
+
+  workspace.resize(N_this, N_prev, end - start, num_time_steps);
+
+  const size_t N_next = next_layer.get_number_neurons();
+  const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+
+  for (size_t b = start; b < end; ++b)
+  {
+    const size_t b_idx = b - start;
+    const double* next_grads_base = batch_next_grad_matrix[b].data();
+    double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
+
+    for (int t = t_start; t >= t_end; --t)
+    {
+      if (!next_is_seq && t < t_start)
+      {
+        continue;
+      }
+      const double* g_next_t = next_is_seq ? &next_grads_base[t * N_next] : next_grads_base;
+      double* dest_t = &dest_base[t * N_this];
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        const double* next_w_row = next_layer.get_w_values().data() + j * N_next;
+        dest_t[j] += simd::dot_product(g_next_t, next_w_row, N_next);
+      }
+    }
+  }
+
+  for (int t = t_start; t >= t_end; --t)
+  {
+    for (size_t b = start; b < end; ++b)
+    {
+      const size_t b_idx = b - start;
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& state = layer_states[t];
+
+      double* dh_next = &workspace.d_next_h[b_idx * N_this];
+      const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
+      double* g_this_tick = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this];
+
+      const auto mask = state.get_cell_state_values();
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        double dh = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
+        double deriv = get_activation().activate_derivative(state.get_pre_activation_sum_at_neuron((unsigned)j));
+        g_this_tick[j] = dh * deriv * mask[j];
+      }
+
+      // Calculate dX_t
+      double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
+      for (size_t k = 0; k < N_prev; ++k)
+      {
+        dx_t[k] = simd::dot_product(g_this_tick, &get_w_values()[k * N_this], N_this);
+      }
+
+      std::fill(dh_next, dh_next + N_this, 0.0);
+      for (size_t k = 0; k < N_this; ++k)
+      {
+        dh_next[k] = simd::dot_product(g_this_tick, &_rw_values[k * N_this], N_this);
+      }
+    }
+  }
+
+  for (size_t b = start; b < end; ++b)
+  {
+    const size_t b_idx = b - start;
+    const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
+
+    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * N_this];
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * N_this));
+  }
+}
+
+void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (batch_size == 0)
@@ -593,212 +656,204 @@ void ElmanRNNLayer::calculate_and_store_gradients(
     return;
   }
 
-  const unsigned num_outputs = get_number_neurons();
-  const unsigned num_inputs = get_number_input_neurons();
-  const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
-  const int t_start = static_cast<int>(num_time_steps) - 1;
-  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = previous_layer.get_number_neurons();
+  const size_t T = hidden_states[0].at(get_layer_index()).size();
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  // 1. Reset gradients
-  std::fill(this->_w_grads.begin(), this->_w_grads.end(), 0.0);
-  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  if (has_bias()) std::fill(this->_b_grads.begin(), this->_b_grads.end(), 0.0);
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
+  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? N_this : 0, 0.0));
 
-  // 2. Flatten batch inputs and rnn gradients for efficiency
-  _flattened_inputs_buffer.resize(batch_size * num_time_steps * num_inputs);
-  std::fill(_flattened_inputs_buffer.begin(), _flattened_inputs_buffer.end(), 0.0);
-  _flattened_rnn_grads_buffer.resize(batch_size * num_time_steps * num_outputs);
-  std::fill(_flattened_rnn_grads_buffer.begin(), _flattened_rnn_grads_buffer.end(), 0.0);
-  _flattened_prev_h_buffer.resize(batch_size * num_time_steps * num_outputs);
-  std::fill(_flattened_prev_h_buffer.begin(), _flattened_prev_h_buffer.end(), 0.0);
-
-  for (size_t b = 0; b < batch_size; ++b)
+  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index());
-    if (rnn_grads.size() == num_time_steps * num_outputs)
-    {
-      std::copy(rnn_grads.begin(), rnn_grads.end(), _flattened_rnn_grads_buffer.begin() + b * num_time_steps * num_outputs);
-    }
+    auto& local_w_grads = thread_w_grads[thread_idx];
+    auto& local_rw_grads = thread_rw_grads[thread_idx];
+    auto& local_b_grads = thread_b_grads[thread_idx];
 
-    const auto& prev_rnn_out = batch_gradients_and_outputs[b].get_rnn_outputs(previous_layer.get_layer_index());
-    const auto& prev_std_out = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
-    const double* src_in = !prev_rnn_out.empty() ? prev_rnn_out.data() : prev_std_out.data();
-    const size_t src_in_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty()) continue;
 
-    if (src_in_size == num_time_steps * num_inputs)
-    {
-      std::copy(src_in, src_in + src_in_size, _flattened_inputs_buffer.begin() + b * num_time_steps * num_inputs);
-    }
-    else if (src_in_size == num_inputs)
-    {
-      for (size_t t = 0; t < num_time_steps; ++t)
+      const auto& layer_states = hidden_states[b].at(get_layer_index());
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
+
+      for (size_t t = 0; t < T; ++t)
       {
-        std::copy(src_in, src_in + num_inputs, _flattened_inputs_buffer.begin() + (b * num_time_steps + t) * num_inputs);
-      }
-    }
+        const double* g_t = &packed_grads[t * N_this];
+        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
+        const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
-    for (size_t t = 1; t < num_time_steps; ++t)
-    {
-      const auto& h_prev = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values();
-      std::copy(h_prev.begin(), h_prev.end(), _flattened_prev_h_buffer.begin() + (b * num_time_steps + t) * num_outputs);
-    }
-  }
-
-  // 3. Batched Outer Product for W_grads (Input-to-Hidden)
-  constexpr size_t BLOCK_SIZE = 64;
-  for (size_t i0 = 0; i0 < num_inputs; i0 += BLOCK_SIZE)
-  {
-    size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)num_inputs);
-    for (size_t j0 = 0; j0 < num_outputs; j0 += BLOCK_SIZE)
-    {
-      size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)num_outputs);
-      for (size_t b = 0; b < batch_size; ++b)
-      {
-        for (int t = t_start; t >= t_end; --t)
+        for (size_t j = 0; j < N_this; ++j)
         {
-          const double* x_row = &_flattened_inputs_buffer[(b * num_time_steps + t) * num_inputs];
-          const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
-          for (size_t i = i0; i < i_limit; ++i)
+          const auto gj = g_t[j];
+          if (std::abs(gj) < 1e-15)
           {
-            const double x_val = x_row[i];
-            if (x_val == 0.0)
+            continue;
+          }
+
+          if (has_bias())
+          {
+            local_b_grads[j] += gj;
+          }
+          for (size_t k = 0; k < N_prev; ++k)
+          {
+            local_w_grads[k * N_this + j] += gj * x_t[k];
+          }
+          if (h_prev)
+          {
+            for (size_t k = 0; k < N_this; ++k)
             {
-              continue;
-            }
-            double* w_grad_row = &this->_w_grads[i * num_outputs];
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              w_grad_row[j] += x_val * g_row[j];
+              local_rw_grads[k * N_this + j] += gj * h_prev[k];
             }
           }
         }
       }
     }
-  }
+  };
 
-  // 4. Batched Outer Product for RW_grads (Recurrent)
-  for (size_t i0 = 0; i0 < num_outputs; i0 += BLOCK_SIZE)
+  if (num_threads <= 1)
   {
-    size_t i_limit = std::min(i0 + BLOCK_SIZE, (size_t)num_outputs);
-    for (size_t j0 = 0; j0 < num_outputs; j0 += BLOCK_SIZE)
+    run_chunk(0, batch_size, 0);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
     {
-      size_t j_limit = std::min(j0 + BLOCK_SIZE, (size_t)num_outputs);
-      for (size_t b = 0; b < batch_size; ++b)
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
       {
-        for (int t = t_start; t >= std::max(1, t_end); --t)
-        {
-          const double* h_prev_row = &_flattened_prev_h_buffer[(b * num_time_steps + t) * num_outputs];
-          const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double h_val = h_prev_row[i];
-            if (h_val == 0.0)
-            {
-              continue;
-            }
-            double* rw_grad_row = &_rw_grads[i * num_outputs];
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              rw_grad_row[j] += h_val * g_row[j];
-            }
-          }
-        }
+        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
       }
+      start = end;
     }
+    _task_queue_pool->get();
   }
 
-  // 5. Bias Gradients
-  if (has_bias())
+  // Merge results
+  zero_gradients();
+  for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t b = 0; b < batch_size; ++b)
+    for (size_t i = 0; i < _w_grads.size(); ++i)
     {
-      for (int t = t_start; t >= t_end; --t)
-      {
-        const double* g_row = &_flattened_rnn_grads_buffer[(b * num_time_steps + t) * num_outputs];
-        for (unsigned j = 0; j < num_outputs; ++j)
-        {
-          this->_b_grads[j] += g_row[j];
-        }
-      }
+      _w_grads[i] += thread_w_grads[t][i];
     }
-  }
-
-  // 6. Normalization
-  const int active_ticks = t_start - t_end + 1;
-  const double denom = static_cast<double>(batch_size) * active_ticks;
-  const double inv_denom = 1.0 / (denom > 0 ? denom : 1.0);
-  for (double& grad : this->_w_grads) grad *= inv_denom;
-  if (has_bias())
-  {
-    for (double& grad : this->_b_grads)
+    for (size_t i = 0; i < _rw_grads.size(); ++i)
     {
-      grad *= inv_denom;
+      _rw_grads[i] += thread_rw_grads[t][i];
+    }
+    if (has_bias())
+    {
+      for (size_t i = 0; i < _b_grads.size(); ++i) _b_grads[i] += thread_b_grads[t][i];
     }
   }
 
-  const double denom_rec = static_cast<double>(batch_size) * (active_ticks > 1 ? active_ticks - 1 : 1.0);
-  const double inv_denom_rec = 1.0 / denom_rec;
-  for (double& grad : _rw_grads)
-  {
-    grad *= inv_denom_rec;
-  }
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
+  for (double& x : _w_grads) x *= inv_batch;
+  for (double& x : _rw_grads) x *= inv_batch;
+  if (has_bias()) for (double& x : _b_grads) x *= inv_batch;
 }
 
 double ElmanRNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  double norm_sq = 0.0;
-  for (const double grad : this->_w_grads)
+  auto ssq = [](const std::vector<double>& v)
   {
-    norm_sq += grad * grad;
-  }
-  for (const double grad : _rw_grads)
-  {
-    norm_sq += grad * grad;
-  }
-  if (has_bias())
-  {
-    for (const double grad : this->_b_grads)
+    double s = 0; for (double x : v)
     {
-      norm_sq += grad * grad;
+      s += x * x;
     }
-  }
-  return norm_sq;
+    return s;
+  };
+  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads);
 }
 
 void ElmanRNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   Layer::zero_gradients();
-  std::fill(this->_rw_grads.begin(), this->_rw_grads.end(), 0.0);
+  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
 }
 
 void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  const unsigned num_outputs = get_number_neurons();
-  const unsigned num_inputs = get_number_input_neurons();
-
-  for (unsigned neuron_number = 0; neuron_number < num_outputs; ++neuron_number)
+  apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, get_optimiser_type());
+  apply_update_to_vector(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, learning_rate, clipping_scale, false, get_optimiser_type());
+  if (has_bias())
   {
-    // Apply input-to-hidden weights
-    for (unsigned i = 0; i < num_inputs; ++i)
-    {
-      unsigned weight_index = i * num_outputs + neuron_number;
-      apply_weight_gradient(this->_w_grads[weight_index], learning_rate, false, weight_index, clipping_scale, get_optimiser_type(), neuron_number);
-    }
+    apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, get_optimiser_type());
+  }
+  zero_gradients();
+}
 
-    // Apply bias weights
-    if (has_bias())
+void ElmanRNNLayer::allocate_workspace()
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (_task_queue_pool == nullptr)
+  {
+    return;
+  }
+  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  allocate_workspace(num_threads);
+}
+
+void ElmanRNNLayer::allocate_workspace(unsigned int num_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (_thread_workspaces.size() <= num_threads)
+  {
+    _thread_workspaces.resize(num_threads);
+  }
+  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+  {
+    if (!_thread_workspaces[thread_idx])
     {
-      apply_weight_gradient(this->_b_grads[neuron_number], learning_rate, true, neuron_number, clipping_scale, get_optimiser_type(), neuron_number);
+      _thread_workspaces[thread_idx] = std::make_unique<BPTTWorkspace>();
     }
-        
-    // Apply recurrent weights
-    for (unsigned recurent_neuron_number = 0; recurent_neuron_number < num_outputs; ++recurent_neuron_number)
+  }
+}
+
+ElmanRNNLayer::BPTTWorkspace& ElmanRNNLayer::get_workspace(size_t thread_idx) const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+#if VALIDATE_DATA == 1
+  if (thread_idx >= _thread_workspaces.size())
+  {
+    Logger::panic("Trying to get a workspace thread ", thread_idx, " past the workspaces size!");
+  }
+#endif
+  return *_thread_workspaces[thread_idx];
+}
+
+double ElmanRNNLayer::get_recurrent_weight_value(unsigned f, unsigned t) const
+{
+  return _rw_values[f * get_number_neurons() + t];
+}
+
+Layer* ElmanRNNLayer::clone() const
+{
+  return new ElmanRNNLayer(*this);
+}
+
+void ElmanRNNLayer::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const size_t n = get_number_neurons();
+  if (n == 0) return;
+  _rw_values_T.resize(n * n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    for (size_t j = 0; j < n; ++j)
     {
-      const unsigned idx = recurent_neuron_number * num_outputs + neuron_number;
-      apply_update_to_weight(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, idx, _rw_grads[idx], learning_rate, clipping_scale, get_optimiser_type(), recurent_neuron_number);
+      _rw_values_T[j * n + i] = _rw_values[i * n + j];
     }
   }
 }

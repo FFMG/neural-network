@@ -34,25 +34,25 @@ private:
     std::vector<unsigned> topology = { 1, 16, 16, 6 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95),
-      LayerDetails(LayerDetails::LayerType::FF, 16, activation(activation::method::mish, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.95)
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::mish, 1.0), 0.0, 0.01, OptimiserType::NadamW, 0.95),
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::mish, 1.0), 0.0, 0.01, OptimiserType::NadamW, 0.95)
     };
 
     // Define compound output layers
     auto output_layers = {
       // First output: Sigmoid (Classification: Is positive?)
-      OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.95),
+      OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.01, OptimiserType::NadamW, 0.95),
       // Second output: Softmax (5-bucket classification)
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.95)
+      OutputLayerDetails(5, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.01, OptimiserType::NadamW, 0.95)
     };
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(32)
       .with_output_layer_details(output_layers)
       .with_log_level(log_level)
-      .with_learning_rate(0.005)
+      .with_learning_rate(0.001)
       .with_number_of_epoch(2000)
-.with_hidden_layers(hidden_layers)
+      .with_hidden_layers(hidden_layers)
       .with_final_error_calculation_types({ 
           ErrorCalculation::type::rmse,
           ErrorCalculation::type::mape,
@@ -104,7 +104,7 @@ private:
     MYODDWEB_PROFILE_FUNCTION("ExampleCompoundSoftmax");
     Logger::info("Running compound output validation tests...");
     
-    std::vector<double> test_inputs = { -1.8, -0.8, 0.0, 0.8, 1.8 };
+    std::vector<double> test_inputs = { -1.8, -0.8, -0.1, 0.8, 1.8 };
 
     bool all_passed = true;
     const double sigmoid_tolerance = 0.2;

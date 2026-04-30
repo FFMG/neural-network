@@ -1,9 +1,11 @@
-#include "branchedoutputlayer.h"
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
+#include "layer.h"
 #include "layers.h"
+#include "lstmlayer.h"
+#include "multioutputlayer.h"
 
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   _update_weights_pool(nullptr)
@@ -166,6 +168,24 @@ Layer& Layers::operator[](unsigned index )
   return *_layers[index];
 }
 
+double Layers::get_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return output_layer().get_temperature(output_layer_index);
+}
+
+double Layers::get_inference_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  return output_layer().get_inference_temperature(output_layer_index);
+}
+
+void Layers::set_inference_temperature(unsigned output_layer_index, double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  _layers.back()->set_inference_temperature(output_layer_index, t);
+}
+
 const ResidualProjector* Layers::get_residual_layer_projector(unsigned index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -226,7 +246,7 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
     0, 
     num_neurons_in_this_layer, 
     0.0,      // no weight decay
-    Layer::LayerType::Input, 
+    Layer::Role::Input,
     activation(activation::method::linear, 0.00),   //  Linear has no activation apha
     OptimiserType::None, 
     residual_layer_number, 
@@ -239,11 +259,11 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
 }
 
 std::unique_ptr<Layer> Layers::create_hidden_layer(
-  double weight_decay, 
-  const Layer& previous_layer, 
-  const OptimiserType& optimiser_type, 
-  int residual_layer_number, 
-  double dropout_rate, 
+  double weight_decay,
+  const Layer& previous_layer,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
   const LayerDetails& layer_details,
   int number_of_threads,
   bool has_bias,
@@ -251,64 +271,18 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-
   unsigned num_neurons_in_this_layer = layer_details.get_size();
 
-  switch (layer_details.get_type())
-  {
-  case LayerDetails::LayerType::Elman:
-    return std::make_unique<ElmanRNNLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(), 
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::LayerType::Hidden, 
-      layer_details.get_activation(),
-      optimiser_type, 
-      residual_layer_number, 
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias, 
-      momentum);
-
-  case LayerDetails::LayerType::Gru:
-    return std::make_unique<GRURNNLayer>(
-      layer_index,
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer,
-      weight_decay,
-      Layer::LayerType::Hidden,
-      layer_details.get_activation(),
-      optimiser_type,
-      residual_layer_number,
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias,
-      momentum);
-
-  case LayerDetails::LayerType::FF:
-    return std::make_unique<FFLayer>(
-      layer_index, 
-      previous_layer.get_number_neurons(),
-      num_neurons_in_this_layer, 
-      weight_decay, 
-      Layer::LayerType::Hidden, 
-      layer_details.get_activation(),
-      optimiser_type, 
-      residual_layer_number,
-      dropout_rate,
-      create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay),
-      number_of_threads,
-      has_bias, 
-      momentum);
-
-  default:
-    Logger::panic("Unknown or unsupported layer type!");
-  }
+  return Layer::create_hidden_layer(
+    layer_index,
+    previous_layer.get_number_neurons(),
+    layer_details,
+    number_of_threads,
+    has_bias,
+    residual_layer_number,
+    create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay)
+  );
 }
-
 std::unique_ptr<Layer> Layers::create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -336,7 +310,7 @@ std::unique_ptr<Layer> Layers::create_multi_output_layer(unsigned num_neurons_in
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
-  return std::make_unique<BranchedOutputLayer>(
+  return std::make_unique<MultiOutputLayer>(
     layer_index,
     previous_layer.get_number_neurons(),
     num_neurons_in_this_layer,
@@ -454,22 +428,15 @@ void Layers::calculate_forward_feed(
 
     for (size_t b = 0; b < batch_size; ++b)
     {
-      if (current_layer.use_bptt())
-      {
-        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-        const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
-        
-        const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
-        const size_t n_prev = previous_layer.get_number_neurons();
-        const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-        hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
-      }
-      else
-      {
-        hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
-      }
-    }
+      const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+      const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
 
+      const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
+      const size_t n_prev = previous_layer.get_number_neurons();
+      const size_t num_time_steps = (n_prev > 0 && !prev_rnn_span.empty()) ? seq_size / n_prev : 1;
+      
+      hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+    }
     // Call batched forward feed
     current_layer.calculate_forward_feed(
       gradients_and_output,
@@ -519,7 +486,13 @@ void Layers::calculate_back_propagation_output_layer(
   const std::vector<HiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  output_layer().calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
+  auto& ol = output_layer();
+  ol.calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
+  
+  if (const auto& branched = dynamic_cast<const MultiOutputLayer*>(&ol))
+  {
+    branched->backprop_branches(batch_size, options.bptt_max_ticks());
+  }
 }
 
 void Layers::calculate_back_propagation_hidden_layers(
@@ -538,23 +511,30 @@ void Layers::calculate_back_propagation_hidden_layers(
     std::vector<std::vector<double>> batch_next_gradients;
     
     // Check if next layer is Branched
-    if (auto branched = dynamic_cast<const BranchedOutputLayer*>(&hidden_1)) {
-       branched->backprop_branches(batch_size, options.bptt_max_ticks());
+    if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1)) {
+       // Only call backprop_branches if it's NOT the output layer, 
+       // because calculate_back_propagation_output_layer already did it.
+       if (static_cast<unsigned>(layer_number + 1) != size() - 1)
+       {
+         branched->backprop_branches(batch_size, options.bptt_max_ticks());
+       }
        batch_next_gradients = branched->get_trunk_gradients(batch_size);
+       hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
     } else {
+       bool next_is_recurrent = false;
        batch_next_gradients.reserve(batch_size);
        for (size_t b = 0; b < batch_size; ++b)
        {
          const auto& g = gradients[b];
          std::vector<double> grad;
-         if (options.enable_bptt() && hidden_1.use_bptt())
+         
+         const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
+         if (!rnn_span.empty())
          {
-           const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
-           if (!rnn_span.empty())
-           {
-             grad.assign(rnn_span.begin(), rnn_span.end());
-           }
+           grad.assign(rnn_span.begin(), rnn_span.end());
+           next_is_recurrent = true;
          }
+         
          if (grad.empty())
          {
            const auto std_span = g.get_gradients(static_cast<unsigned>(layer_number + 1));
@@ -562,9 +542,15 @@ void Layers::calculate_back_propagation_hidden_layers(
          }
          batch_next_gradients.emplace_back(std::move(grad));
        }
+       if (next_is_recurrent)
+       {
+         hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
+       }
+       else
+       {
+         hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
+       }
     }
-
-    hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
   }
 }
 
@@ -750,4 +736,14 @@ void Layers::train(
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
   update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);
+  cache_recurrent_weights();
+}
+
+void Layers::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  for (auto& layer : _layers)
+  {
+    layer->cache_recurrent_weights();
+  }
 }

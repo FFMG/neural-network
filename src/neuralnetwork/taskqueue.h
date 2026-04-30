@@ -76,7 +76,7 @@ public:
       }
       if(_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { this->run(); });
+        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
       }
       _tasks.emplace([task]() -> R { 
@@ -269,7 +269,7 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { this->run(); });
+        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
       }
       _tasks.emplace([task]() { 
@@ -450,7 +450,7 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { this->run(); });
+        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
       }
       _task = [task]() -> R { return task(); };
@@ -625,7 +625,7 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { this->run(); });
+        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
       }
       _task = [task]() { task(); };

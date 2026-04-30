@@ -13,8 +13,8 @@ private:
   {
     std::vector<unsigned> topology = { 1, 32, 64, 6 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9),
-      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9)
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9),
+      LayerDetails(Layer::Architecture::Gru, 64, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9)
     };
 
     auto options = NeuralNetworkOptions::create(topology)

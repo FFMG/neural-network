@@ -111,6 +111,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,6 +128,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -141,6 +143,7 @@
     <ClCompile Include="fflayer.cpp" />
     <ClCompile Include="ffoutputlayer.cpp" />
     <ClCompile Include="grurnnlayer.cpp" />
+    <ClCompile Include="lstmlayer.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="layers.cpp" />
     <ClCompile Include="libraries\TinyJSON.cpp" />
@@ -155,24 +158,27 @@
     <ClInclude Include="activation.h" />
     <ClInclude Include="adaptivelearningratescheduler.h" />
     <ClInclude Include="aligned_allocator.h" />
-    <ClInclude Include="branchedoutputlayer.h" />
     <ClInclude Include="evaluationconfig.h" />
     <ClInclude Include="examples\addingproblem.h" />
     <ClInclude Include="examples\branched_output.h" />
     <ClInclude Include="examples\compound_output_sandwich.h" />
     <ClInclude Include="examples\compound_softmax.h" />
     <ClInclude Include="examples\compound_trivial_softmax.h" />
+    <ClInclude Include="examples\lstm_multi.h" />
     <ClInclude Include="examples\multi_output.h" />
     <ClInclude Include="examples\multi_output_gru.h" />
     <ClInclude Include="examples\repro_issue.h" />
+    <ClInclude Include="examples\repro_issue_softmax.h" />
     <ClInclude Include="examples\syntheticsentiment.h" />
     <ClInclude Include="examples\trivial_softmax.h" />
     <ClInclude Include="ffoutputlayer.h" />
     <ClInclude Include="grurnnlayer.h" />
+    <ClInclude Include="lstmlayer.h" />
     <ClInclude Include="layer.h" />
     <ClInclude Include="elmanrnnlayer.h" />
     <ClInclude Include="errorcalculation.h" />
     <ClInclude Include="examples\copymemory.h" />
+    <ClInclude Include="examples\lstm.h" />
     <ClInclude Include="examples\helper.h" />
     <ClInclude Include="examples\residualxor.h" />
     <ClInclude Include="examples\spiral.h" />
@@ -190,6 +196,7 @@
     <ClInclude Include="libraries\TinyJSON.h" />
     <ClInclude Include="libraries\tracy\tracy\Tracy.hpp" />
     <ClInclude Include="logger.h" />
+    <ClInclude Include="multioutputlayer.h" />
     <ClInclude Include="multioutputlayerdetails.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="neuralnetworkhelper.h" />
@@ -202,6 +209,7 @@
     <ClInclude Include="outputlayerdetails.h" />
     <ClInclude Include="residualprojector.h" />
     <ClInclude Include="rng.h" />
+    <ClInclude Include="simd_utils.h" />
     <ClInclude Include="taskqueue.h" />
     <ClInclude Include="trainingmonitor.h" />
     <ClInclude Include="weightparam.h" />

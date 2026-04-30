@@ -1,7 +1,7 @@
 #include "logger.h"
 #include "neuralnetwork.h"
 
-#include <cassert>
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -78,8 +78,6 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _options = src._options;
     _saved_errors = src._saved_errors;
     _last_metrics = src._last_metrics;
-    _gradients_pool = src._gradients_pool;
-    _hidden_states_pool = src._hidden_states_pool;
 
     delete _neural_network_helper;
     _neural_network_helper = nullptr;
@@ -142,7 +140,12 @@ void NeuralNetwork::create_indexes_in_lock(NeuralNetworkHelper& neural_network_h
   std::vector<size_t> indexes(sample_size);
   std::iota(indexes.begin(), indexes.end(), 0);
 
-  assert(sample_size == indexes.size());
+#if VALIDATE_DATA == 1
+  if (sample_size != indexes.size())
+  {
+    Logger::panic("Sample size does not match indexes size!");
+  }
+#endif
 
   break_indexes(indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
@@ -159,7 +162,12 @@ void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_
   auto sample_size = neural_network_helper.sample_size();
 
   auto shuffled_indexes = get_shuffled_indexes(sample_size);
-  assert(sample_size == shuffled_indexes.size());
+#if VALIDATE_DATA == 1
+  if (sample_size != shuffled_indexes.size())
+  {
+    Logger::panic("Sample size does not match shuffled indexes size!");
+  }
+#endif
 
   break_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
@@ -182,7 +190,13 @@ void NeuralNetwork::break_indexes(const std::vector<size_t>& indexes, bool data_
     final_check_indexes = {indexes.back()};
     return;
   }
-  assert(training_size + checking_size < total_size); // make sure we don't get more than 100%
+#if VALIDATE_DATA == 1
+  if (training_size + checking_size >= total_size)// make sure we don't get more than 100%
+  {
+    Logger::panic("Cannot break indexes, size does not match!");
+  }
+#endif
+
   if(training_size + checking_size > total_size) // make sure we don't get more than 100%
   {
     Logger::panic("Logic error, unable to do a final batch error check.");
@@ -256,6 +270,26 @@ double NeuralNetwork::get_learning_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return _learning_rate;
+}
+
+double NeuralNetwork::get_temperature() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return get_temperature(0);
+}
+
+double NeuralNetwork::get_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  return _layers.get_temperature(output_layer_index);
+}
+
+double NeuralNetwork::get_inference_temperature(unsigned output_layer_index) const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  return _layers.get_inference_temperature(output_layer_index);
 }
 
 double NeuralNetwork::get_percent_complete() const noexcept
@@ -375,7 +409,16 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 
     for (size_t i = 0; i < prediction_size; ++i)
     {
-      predictions.push_back(temp_gradients[i].output_back());
+      const unsigned last_layer_index = static_cast<unsigned>(_layers.size() - 1);
+      const auto& rnn_out = temp_gradients[i].get_rnn_outputs(last_layer_index);
+      if (!rnn_out.empty())
+      {
+        predictions.push_back(rnn_out);
+      }
+      else
+      {
+        predictions.push_back(temp_gradients[i].output_back());
+      }
       checking_outputs.push_back(training_outputs[sub_indices[i]]);
     }
   }
@@ -393,7 +436,7 @@ void NeuralNetwork::train_single_batch(
   _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
 
-void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const
+void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   bptt_inputs.clear();
@@ -409,70 +452,73 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     Logger::panic("The training input data size does not match the output data size!");
   }
 
-  const auto& bptt_size = _options.bptt_max_ticks();
+  const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
   const size_t batch_size = static_cast<size_t>(_options.batch_size());
 
-  // If BPTT is disabled or sequence length is 1, we just need to split the data into batches of 'batch_size'
-  if (bptt_size <= 1 || !_options.enable_bptt())
+  // If BPTT is disabled or sequence length is 1, return single steps
+  if (bptt_size_option <= 1 || !_options.enable_bptt())
   {
-    for (size_t i = 0; i < total_samples; i += batch_size)
+    bptt_inputs.reserve(total_samples);
+    bptt_outputs.reserve(total_samples);
+    for (size_t i = 0; i < total_samples; ++i)
     {
-      size_t end_idx = std::min(i + batch_size, total_samples);
-      bptt_inputs.emplace_back(inputs.begin() + i, inputs.begin() + end_idx);
-      bptt_outputs.emplace_back(outputs.begin() + i, outputs.begin() + end_idx);
+      bptt_inputs.push_back(inputs[i]);
+      bptt_outputs.push_back(outputs[i]);
     }
     return;
+  }
+
+  size_t bptt_size = bptt_size_option;
+  if (total_samples < bptt_size)
+  {
+    Logger::warning("The number of training samples (", total_samples, ") is less than the BPTT sequence length (", bptt_size, "). Clamping BPTT size to ", total_samples, ".");
+    bptt_size = total_samples;
   }
 
   const auto& is_shuffled = _options.shuffle_bptt_batches();
+  const size_t input_size = inputs[0].size();
+  const size_t output_size = outputs[0].size();
 
-  // Create sequences
-  std::vector<std::vector<std::vector<double>>> sequences_inputs;
-  std::vector<std::vector<std::vector<double>>> sequences_outputs;
-
-  for (size_t start_idx = 0; start_idx < total_samples; start_idx += bptt_size)
+  // 1. Identify valid sequence start indices
+  std::vector<size_t> start_indices;
+  for (size_t start_idx = 0; start_idx + bptt_size <= total_samples; start_idx += bptt_size)
   {
-    size_t end_idx = std::min(start_idx + bptt_size, total_samples);
+    start_indices.push_back(start_idx);
+  }
 
-    std::vector<std::vector<double>> seq_input(inputs.begin() + start_idx, inputs.begin() + end_idx);
-    std::vector<std::vector<double>> seq_output(outputs.begin() + start_idx, outputs.begin() + end_idx);
+  // 2. Shuffle indices instead of data if requested
+  if (is_shuffled)
+  {
+    std::vector<size_t> shuffled_indices = start_indices;
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(shuffled_indices.begin(), shuffled_indices.end(), g);
+    start_indices = std::move(shuffled_indices);
+  }
 
-    // Optionally skip incomplete sequences (last one)
-    if (seq_input.size() < bptt_size)
+  // 3. Create flattened sequences
+  bptt_inputs.reserve(start_indices.size());
+  bptt_outputs.reserve(start_indices.size());
+
+  for (size_t start_idx : start_indices)
+  {
+    std::vector<double> flattened_in;
+    flattened_in.reserve(bptt_size * input_size);
+    std::vector<double> flattened_out;
+    flattened_out.reserve(bptt_size * output_size);
+
+    for (size_t t = 0; t < bptt_size; ++t)
     {
-      continue;
+      const auto& in_step = inputs[start_idx + t];
+      flattened_in.insert(flattened_in.end(), in_step.begin(), in_step.end());
+
+      const auto& out_step = outputs[start_idx + t];
+      flattened_out.insert(flattened_out.end(), out_step.begin(), out_step.end());
     }
 
-    sequences_inputs.push_back(std::move(seq_input));
-    sequences_outputs.push_back(std::move(seq_output));
+    bptt_inputs.push_back(std::move(flattened_in));
+    bptt_outputs.push_back(std::move(flattened_out));
   }
-
-  // Shuffle sequences if needed
-  if (!is_shuffled)
-  {
-    bptt_inputs = std::move(sequences_inputs);
-    bptt_outputs = std::move(sequences_outputs);
-    return;
-  }
-
-  std::vector<size_t> indices(sequences_inputs.size());
-  for (size_t i = 0; i < indices.size(); ++i) indices[i] = i;
-
-  std::random_device rd;
-  std::mt19937 g(rd());
-  std::shuffle(indices.begin(), indices.end(), g);
-
-  std::vector<std::vector<std::vector<double>>> shuffled_inputs;
-  std::vector<std::vector<std::vector<double>>> shuffled_outputs;
-
-  for (size_t idx : indices)
-  {
-    shuffled_inputs.push_back(std::move(sequences_inputs[idx]));
-    shuffled_outputs.push_back(std::move(sequences_outputs[idx]));
-  }
-
-  bptt_inputs = std::move(shuffled_inputs);
-  bptt_outputs = std::move(shuffled_outputs);
 }
 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
@@ -563,8 +609,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
-  std::vector<std::vector<std::vector<double>>> bptt_in;
-  std::vector<std::vector<std::vector<double>>> bptt_out;
+  _layers.cache_recurrent_weights();
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
@@ -575,14 +623,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     _neural_network_helper->set_epoch(epoch);
     _learning_rate = _neural_network_helper->learning_rate();
 
-    // (re) create the bptt batches
+    // (re) create the bptt batches (now returns flattened sequences)
     create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
-    const auto bptt_indexes_size = bptt_out.size();
-    for (size_t bptt_index = 0; bptt_index < bptt_indexes_size; ++bptt_index)
+    const size_t total_sequences = bptt_in.size();
+    for (size_t i = 0; i < total_sequences; i += batch_size)
     {
-      const auto total_size = bptt_out[bptt_index].size();
-      train_single_batch( bptt_in[bptt_index].begin(), bptt_out[bptt_index].begin(), total_size);
+      const size_t current_batch_size = std::min(static_cast<size_t>(batch_size), total_sequences - i);
+      train_single_batch(bptt_in.begin() + i, bptt_out.begin() + i, current_batch_size);
     }
     MYODDWEB_PROFILE_MARK();
 
@@ -628,6 +676,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // finally learning rate
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
 
+  // Post-training temperature calibration using the training set
+  optimize_inference_temperature(training_inputs, training_outputs);
+
   // final callback to show 100% done.
   if (progress_callback != nullptr)
   {
@@ -641,6 +692,111 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   MYODDWEB_PROFILE_MARK();
+}
+
+void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  // 1. Identify which heads use softmax
+  const auto& layer_container = get_layers();
+  const auto& last_layer = layer_container.output_layer();
+  const auto& ranges = last_layer.get_activation_helper().ranges();
+  
+  std::vector<unsigned> softmax_heads;
+  for (unsigned i = 0; i < (unsigned)ranges.size(); ++i)
+  {
+    if (ranges[i].activation_method.get_method() == activation::method::softmax)
+    {
+      softmax_heads.push_back(i);
+    }
+  }
+
+  if (softmax_heads.empty())
+  {
+    return;
+  }
+
+  Logger::info("Optimizing inference temperature for ", (unsigned)softmax_heads.size(), " softmax heads...");
+
+  // 2. Sample up to 5000 samples for calibration
+  constexpr size_t MAX_CALIBRATION_SAMPLES = 5000;
+  const size_t num_samples = std::min(training_inputs.size(), MAX_CALIBRATION_SAMPLES);
+  
+  std::vector<size_t> calibration_indices(training_inputs.size());
+  std::iota(calibration_indices.begin(), calibration_indices.end(), 0);
+  
+  static std::random_device rd;
+  static std::mt19937 g(rd());
+  std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
+  calibration_indices.resize(num_samples);
+
+  // 3. Run forward pass to collect logits (pre-activation sums)
+  std::vector<GradientsAndOutputs> temp_grads;
+  std::vector<HiddenStates> temp_hidden_states;
+  temp_grads.reserve(num_samples);
+  temp_hidden_states.reserve(num_samples);
+  for (size_t i = 0; i < num_samples; ++i)
+  {
+    temp_grads.emplace_back(get_topology());
+    temp_hidden_states.emplace_back(get_topology());
+  }
+
+  calculate_forward_feed_for_forecast_metrics(temp_grads, training_inputs, calibration_indices, _layers, temp_hidden_states, true);
+
+  const unsigned last_layer_index = static_cast<unsigned>(layer_container.size() - 1);
+
+  // 4. Optimize each head
+  for (unsigned head_idx : softmax_heads)
+  {
+    const auto& range = ranges[head_idx];
+    
+    // Extract logits and target labels for this head
+    struct Sample { std::vector<double> logits; size_t target_idx; };
+    std::vector<Sample> samples;
+    samples.reserve(num_samples);
+
+    for (size_t i = 0; i < num_samples; ++i)
+    {
+      const auto& pre_act = temp_hidden_states[i].at(last_layer_index)[0].get_pre_activation_sums();
+      std::vector<double> head_logits(pre_act.begin() + range.start, pre_act.begin() + range.end);
+      
+      const auto& head_targets = training_outputs[calibration_indices[i]];
+      // Find the index of the true class (assuming one-hot or max-is-true)
+      auto max_it = std::max_element(head_targets.begin() + range.start, head_targets.begin() + range.end);
+      size_t target_idx = (size_t)std::distance(head_targets.begin() + range.start, max_it);
+      
+      samples.push_back({ std::move(head_logits), target_idx });
+    }
+
+    // 5. Line search for optimal T in [0.1, 5.0] to minimize Negative Log Likelihood (NLL)
+    double best_T = 1.0;
+    double min_nll = std::numeric_limits<double>::max();
+
+    for (double T = 0.1; T <= 5.05; T += 0.05)
+    {
+      double current_nll = 0.0;
+      for (const auto& sample : samples)
+      {
+        // Compute softmax for this T
+        double max_logit = *std::max_element(sample.logits.begin(), sample.logits.end());
+        long double sum_exp = 0.0L;
+        for (double l : sample.logits) sum_exp += std::exp(static_cast<long double>((l - max_logit) / T));
+        
+        double target_prob = static_cast<double>(std::exp(static_cast<long double>((sample.logits[sample.target_idx] - max_logit) / T)) / sum_exp);
+        current_nll -= std::log(std::max(target_prob, 1e-15));
+      }
+
+      if (current_nll < min_nll)
+      {
+        min_nll = current_nll;
+        best_T = T;
+      }
+    }
+
+    // Apply the optimized temperature
+    const_cast<Layer&>(last_layer).set_inference_temperature(head_idx, best_T);
+    Logger::info("Head #", head_idx, " optimized inference temperature: ", std::fixed, std::setprecision(4), best_T, " (NLL: ", min_nll / num_samples, ")");
+  }
 }
 
 void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
@@ -686,7 +842,7 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
   }
   else
   {
-    Logger::debug("Progress callback function is still running, continuing to next epoch.");
+    Logger::trace("Progress callback function is still running, continuing to next epoch.");
   }
   return true; // continue training
 }
@@ -909,23 +1065,16 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
 
-    // Ensure hidden state vectors are sized correctly
     for (size_t b = 0; b < batch_size; ++b)
     {
-        if (current_layer.use_bptt())
-        {
-            const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-            const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
-            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
-            
-            const size_t n_prev = previous_layer.get_number_neurons();
-            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            hidden_states[b].at(layer_number).assign(num_time_steps, HiddenState(current_layer.get_number_neurons()));
-        }
-        else
-        {
-            hidden_states[b].at(layer_number).assign(1, HiddenState(current_layer.get_number_neurons()));
-        }
+      const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+      const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+
+      const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+      const size_t n_prev = previous_layer.get_number_neurons();
+      const size_t num_time_steps = (n_prev > 0 && !prev_rnn_out.empty()) ? seq_size / n_prev : 1;
+      
+      hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
     }
 
     // Call batched forward feed
@@ -968,7 +1117,7 @@ void NeuralNetwork::log_training_info(
   for (size_t hl_index = 0; hl_index < hl.size(); ++hl_index)
   {
     const auto& this_hl = hl[hl_index];
-    Logger::info(tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
+    Logger::info(tab, tab, "[", hl_index, "] Type    : ", Layer::architecture_to_string(this_hl.get_layer_architecture()), "\n",
                  tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
                  tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
                  tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
@@ -993,7 +1142,7 @@ void NeuralNetwork::log_training_info(
       {
         const auto& this_hl = head.get_hidden_layer(static_cast<unsigned>(hl_index));
         output_layer_head_details_string += Logger::factory(
-          tab, tab, tab, "[", hl_index, "] Type    : ", this_hl.get_type_string(), "\n",
+          tab, tab, tab, "[", hl_index, "] Type    : ", Layer::architecture_to_string(this_hl.get_layer_architecture()), "\n",
           tab, tab, tab, tab, "Size                   : ", this_hl.get_size(), "\n",
           tab, tab, tab, tab, "Optimizer type         : ", optimiser_type_to_string(this_hl.get_optimiser_type()), "\n",
           tab, tab, tab, tab, "Momentum               : ", std::fixed, std::setprecision(5), this_hl.get_momentum(), "\n",
@@ -1055,8 +1204,8 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, "neutral-tolerance    : ", details.get_error_evaluation_config().neutral_tolerance(), "\n",
         tab, tab, tab, tab, "huber delta          : ", details.get_error_evaluation_config().huber_delta(), "\n",
         tab, tab, tab, tab, "lambda\n",
-        tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
-        tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
+        tab, tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
+        tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
         tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
       if (output_layer_index < output_layer_details.size())
       {
