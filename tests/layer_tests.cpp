@@ -133,6 +133,36 @@ TEST(LayerTest, CalculateErrorDeltasCE) {
     EXPECT_NEAR(deltas[1], 0.2, 1e-9);
 }
 
+TEST(LayerTest, CalculateErrorDeltasMulticlassSoftmax) {
+    // Test 3 classes with Softmax and Cross Entropy
+    // Given outputs (y) = [0.7, 0.2, 0.1]
+    // Target outputs (t) = [1.0, 0.0, 0.0] (Class 0 is correct)
+    // Temperature (T) = 2.0
+    // dL/dz = (y - t) / T
+    
+    // We can't override get_activation as it's not virtual. 
+    // Instead, we use a MockLayer initialized with the correct activation.
+    unsigned num_classes = 3;
+    MockLayer layer(0, num_classes);
+    layer.get_activation_helper().set_bounds(activation(activation::method::softmax, 0.0, 2.0), 0, num_classes);
+    
+    std::vector<double> deltas(num_classes, 0.0);
+    std::vector<double> targets = { 1.0, 0.0, 0.0 };
+    std::vector<double> given = { 0.7, 0.2, 0.1 };
+    
+    EvaluationConfig config; // cross_entropy_lambda = 1.0, direction_penalty = false
+    
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::cross_entropy, config, activation::method::softmax, 0, 2);
+    
+    // Expected grads:
+    // grad_0 = (0.7 - 1.0) / 2.0 = -0.15
+    // grad_1 = (0.2 - 0.0) / 2.0 = 0.10
+    // grad_2 = (0.1 - 0.0) / 2.0 = 0.05
+    EXPECT_NEAR(deltas[0], -0.15, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.10, 1e-9);
+    EXPECT_NEAR(deltas[2], 0.05, 1e-9);
+}
+
 TEST(LayerTest, CalculateErrorDeltasHuber) {
     MockLayer layer(0, 1);
     std::vector<double> deltas(1, 0.0);

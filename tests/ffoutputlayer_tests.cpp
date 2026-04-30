@@ -268,3 +268,69 @@ TEST_F(FFOutputLayerTest, ForwardFeed) {
     EXPECT_NEAR(batch_go[0].get_output(1, 0), 0.5, 1e-9);
     EXPECT_NEAR(batch_go[0].get_output(1, 1), -0.2, 1e-9);
 }
+
+TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
+    // 2 inputs, 2 classes (one-hot)
+    // Task: input [1, 0] should be class 0.
+    unsigned num_inputs = 2;
+    unsigned num_outputs = 2;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+    
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    
+    // Initial weights: small random or specific
+    // Let's set weights to [0.1, -0.1, -0.1, 0.1]
+    layer.set_w_values({ 0.1, -0.1, -0.1, 0.1 });
+    layer.set_b_values({ 0.0, 0.0 });
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    // Input: [1.0, 0.5]
+    std::vector<double> input_vals = { 1.0, 0.5 };
+    batch_go[0].set_outputs(0, input_vals);
+    std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
+
+    double initial_error = 0.0;
+
+    for (int iter = 0; iter < 5; ++iter) {
+        // Forward
+        layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+        // Calculate Error for logging/verification
+        auto out_span = batch_go[0].get_outputs(1);
+        std::vector<std::vector<double>> predictions = { std::vector<double>(out_span.begin(), out_span.end()) };
+        auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, predictions);
+        double current_error = metrics[0][0].error();
+
+        if (iter == 0) {
+            initial_error = current_error;
+        }
+
+        // Backward
+        layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+        layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
+
+        // Update
+        layer.apply_stored_gradients(0.5, 1.0); // LR = 0.5
+    }
+
+    // Final forward pass
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+    auto final_out_span = batch_go[0].get_outputs(1);
+    std::vector<double> final_outputs(final_out_span.begin(), final_out_span.end());
+
+    // Class 0 probability should be higher than class 1
+    EXPECT_GT(final_outputs[0], final_outputs[1]);
+
+    // Final error should be less than initial error
+    std::vector<std::vector<double>> final_predictions = { final_outputs };
+    auto final_metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, final_predictions);
+    EXPECT_LT(final_metrics[0][0].error(), initial_error);
+    }
+
+

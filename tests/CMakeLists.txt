@@ -62,6 +62,7 @@ add_executable(neuralnetwork_tests
     lstmlayer_tests.cpp
     layer_optimizer_tests.cpp
     layer_details_tests.cpp
+    output_layer_details_tests.cpp
     ${NN_SOURCES}
 )
 
