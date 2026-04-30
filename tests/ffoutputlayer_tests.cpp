@@ -242,6 +242,37 @@ TEST_F(FFOutputLayerTest, ApplyStoredGradients) {
     EXPECT_DOUBLE_EQ(layer.get_w_grads()[0], 0.0);
 }
 
+TEST_F(FFOutputLayerTest, LearningRateRobustness) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+
+    std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
+    
+    for (double lr : learning_rates) {
+        double initial_w = 1.0;
+        double initial_b = 0.5;
+        layer.set_w_values({ initial_w });
+        layer.set_b_values({ initial_b });
+        
+        double w_grad = 0.1;
+        double b_grad = 0.05;
+        layer.set_w_grads({ w_grad });
+        layer.set_b_grads({ b_grad });
+
+        layer.apply_stored_gradients(lr, 1.0);
+
+        double expected_w = initial_w - lr * w_grad;
+        double expected_b = initial_b - lr * b_grad;
+        
+        EXPECT_NEAR(layer.get_w_values()[0], expected_w, 1e-9);
+        EXPECT_NEAR(layer.get_b_values()[0], expected_b, 1e-9);
+    }
+}
+
 TEST_F(FFOutputLayerTest, ForwardFeed) {
     unsigned num_inputs = 2;
     std::vector<OutputLayerDetails> details = {

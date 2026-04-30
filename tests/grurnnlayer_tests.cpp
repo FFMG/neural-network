@@ -120,3 +120,45 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     EXPECT_NEAR(gate_grads[1], expected_dz, 1e-4);
 }
 
+TEST_F(GRURNNLayerTest, LearningRateRobustness) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
+    
+    for (double lr : learning_rates) {
+        layer.set_w_values({ 1.0 });
+        layer.set_rw_values({ 1.0 });
+        layer.set_b_values({ 0.5 });
+        layer.set_z_w_values({ 1.0 });
+        layer.set_z_rw_values({ 1.0 });
+        layer.set_z_b_values({ 0.5 });
+        layer.set_r_w_values({ 1.0 });
+        layer.set_r_rw_values({ 1.0 });
+        layer.set_r_b_values({ 0.5 });
+        
+        layer.set_w_grads({ 0.1 });
+        layer.set_rw_grads({ 0.1 });
+        layer.set_b_grads({ 0.05 });
+        layer.set_z_w_grads({ 0.1 });
+        layer.set_z_rw_grads({ 0.1 });
+        layer.set_z_b_grads({ 0.05 });
+        layer.set_r_w_grads({ 0.1 });
+        layer.set_r_rw_grads({ 0.1 });
+        layer.set_r_b_grads({ 0.05 });
+
+        layer.apply_stored_gradients(lr, 1.0);
+
+        EXPECT_NEAR(layer.get_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+        EXPECT_NEAR(layer.get_z_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_z_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_z_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+        EXPECT_NEAR(layer.get_r_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_r_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_r_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+    }
+}
+
