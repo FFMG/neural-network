@@ -39,6 +39,7 @@ TEST(LayerTest, HelperMethods) {
     EXPECT_EQ(layer.get_layer_role(), Layer::Role::Input);
     EXPECT_EQ(layer.get_optimiser_type(), OptimiserType::None);
     EXPECT_FALSE(layer.has_bias());
+    EXPECT_EQ(layer.get_pre_activation_multiplier(), 1);
 }
 
 TEST(LayerTest, SettersAndGetters) {

@@ -77,6 +77,17 @@ public:
   }
 
 public:
+  // Multiplier = 1: Standard pre-activation sum (z)
+  static constexpr unsigned Multiplier = 1;
+  static constexpr unsigned GateCount = 1;
+
+  [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return Multiplier;
+  }
+
+public:
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& previous_layer,

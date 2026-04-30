@@ -17,7 +17,7 @@ TEST_F(GRURNNLayerTest, Construction) {
     EXPECT_EQ(layer.get_layer_index(), 1);
     EXPECT_EQ(layer.get_number_input_neurons(), 2);
     EXPECT_EQ(layer.get_number_neurons(), 3);
-    EXPECT_EQ(layer.get_pre_activation_multiplier(), 4);
+    EXPECT_EQ(layer.get_pre_activation_multiplier(), 5);
 }
 
 TEST_F(GRURNNLayerTest, ForwardFeedMathematicalVerification) {
@@ -31,7 +31,7 @@ TEST_F(GRURNNLayerTest, ForwardFeedMathematicalVerification) {
     MockLayer prev_layer(0, 1);
     std::vector<unsigned> topology = { 1, 1 };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 4);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
     
     batch_go[0].set_outputs(0, { 1.0 });
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
@@ -53,7 +53,7 @@ TEST_F(GRURNNLayerTest, BPTTMathematicalVerification) {
     
     std::vector<unsigned> topology = { 1, 1, 1 };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 4);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
     
     batch_go[0].set_outputs(0, { 1.0 });
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
@@ -85,13 +85,13 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     
     std::vector<unsigned> topology = { 1, 1, 1 };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 4);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
     
     batch_go[0].set_outputs(0, { 1.0 });
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
     
     const auto& packed = batch_hs[0].at(1)[0].get_pre_activation_sums();
-    double mask = packed[3]; // Our stored mask
+    double mask = packed[4]; // Our stored mask
     EXPECT_TRUE(mask == 0.0 || approx_equal(mask, 2.0)); // 1/(1-0.5) = 2.0
     
     const auto& outputs = batch_go[0].get_outputs(1);
@@ -116,7 +116,7 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     // dz_pre depends on (h_hat - h_prev).
     // h_hat in forward was masked.
     // dz_pre = dh * (masked_h_hat - h_prev) * z * (1-z)
-    double expected_dz = 1.0 * ( (mask == 0.0 ? 0.0 : 0.800499 * 2.0) - 0.0 ) * 0.668188 * 0.331812;
+    double expected_dz = 1.0 * ( (mask == 0.0 ? 0.0 : packed[3]) - 0.0 ) * 0.668188 * 0.331812;
     EXPECT_NEAR(gate_grads[1], expected_dz, 1e-4);
 }
 

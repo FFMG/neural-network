@@ -136,7 +136,15 @@ public:
     return true;
   }
 
-  static constexpr unsigned Multiplier = 4;
+  /* 
+   * Multiplier = 4:
+   * 1. Update gate (z) pre-activation
+   * 2. Reset gate (r) pre-activation
+   * 3. Candidate state (h_hat) pre-activation
+   * 4. Dropout mask (stored to ensure consistency between forward and BPTT passes)
+   */
+  static constexpr unsigned Multiplier = 5;
+  static constexpr unsigned GateCount = 3; // Update, Reset, Candidate
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
@@ -277,41 +285,29 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_r_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_timesteps; }
   [[nodiscard]] inline const std::vector<double>& get_r_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_decays; }
 
-  void set_rw_values(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_values = v;
-  }
-  void set_rw_grads(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_grads = v;
-  }
-  void set_rw_velocities(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_velocities = v;
-  }
-  void set_rw_m1(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_m1 = v;
-  }
-  void set_rw_m2(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_m2 = v;
-  }
-  void set_rw_timesteps(const std::vector<long long>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_timesteps = v;
-  }
-  void set_rw_decays(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    _rw_decays = v;
-  }
+  void set_w_values(const std::vector<double>& v) override;
+  void set_w_grads(const std::vector<double>& v) override;
+  void set_w_velocities(const std::vector<double>& v) override;
+  void set_w_m1(const std::vector<double>& v) override;
+  void set_w_m2(const std::vector<double>& v) override;
+  void set_w_timesteps(const std::vector<long long>& v) override;
+  void set_w_decays(const std::vector<double>& v) override;
+
+  void set_b_values(const std::vector<double>& v) override;
+  void set_b_grads(const std::vector<double>& v) override;
+  void set_b_velocities(const std::vector<double>& v) override;
+  void set_b_m1(const std::vector<double>& v) override;
+  void set_b_m2(const std::vector<double>& v) override;
+  void set_b_timesteps(const std::vector<long long>& v) override;
+  void set_b_decays(const std::vector<double>& v) override;
+
+  void set_rw_values(const std::vector<double>& v) override;
+  void set_rw_grads(const std::vector<double>& v) override;
+  void set_rw_velocities(const std::vector<double>& v) override;
+  void set_rw_m1(const std::vector<double>& v) override;
+  void set_rw_m2(const std::vector<double>& v) override;
+  void set_rw_timesteps(const std::vector<long long>& v) override;
+  void set_rw_decays(const std::vector<double>& v) override;
 
   void set_z_w_values(const std::vector<double>& v)
   {
@@ -548,7 +544,7 @@ private:
     {
       grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 3 * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
       dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
       chunk_dz.assign(batch_chunk_size * n, 0.0);
       chunk_dr.assign(batch_chunk_size * n, 0.0);

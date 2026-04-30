@@ -158,10 +158,21 @@ public:
     return true;
   }
 
+  /* 
+   * Multiplier = 5: 
+   * 1. Forget gate (f) pre-activation
+   * 2. Input gate (i) pre-activation
+   * 3. Output gate (o) pre-activation
+   * 4. Cell candidate (g) pre-activation
+   * 5. Dropout mask (stored to ensure consistency between forward and BPTT passes)
+   */
+  static constexpr unsigned Multiplier = 5;
+  static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
+
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    return 5;
+    return Multiplier;
   }
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -574,41 +585,29 @@ public:
     return _o_b_decays;
   }
 
-  void set_rw_values(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_values = v;
-  }
-  void set_rw_grads(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_grads = v;
-  }
-  void set_rw_velocities(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_velocities = v;
-  }
-  void set_rw_m1(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_m1 = v;
-  }
-  void set_rw_m2(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_m2 = v;
-  }
-  void set_rw_timesteps(const std::vector<long long>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_timesteps = v;
-  }
-  void set_rw_decays(const std::vector<double>& v)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    _rw_decays = v;
-  }
+  void set_w_values(const std::vector<double>& v) override;
+  void set_w_grads(const std::vector<double>& v) override;
+  void set_w_velocities(const std::vector<double>& v) override;
+  void set_w_m1(const std::vector<double>& v) override;
+  void set_w_m2(const std::vector<double>& v) override;
+  void set_w_timesteps(const std::vector<long long>& v) override;
+  void set_w_decays(const std::vector<double>& v) override;
+
+  void set_b_values(const std::vector<double>& v) override;
+  void set_b_grads(const std::vector<double>& v) override;
+  void set_b_velocities(const std::vector<double>& v) override;
+  void set_b_m1(const std::vector<double>& v) override;
+  void set_b_m2(const std::vector<double>& v) override;
+  void set_b_timesteps(const std::vector<long long>& v) override;
+  void set_b_decays(const std::vector<double>& v) override;
+
+  void set_rw_values(const std::vector<double>& v) override;
+  void set_rw_grads(const std::vector<double>& v) override;
+  void set_rw_velocities(const std::vector<double>& v) override;
+  void set_rw_m1(const std::vector<double>& v) override;
+  void set_rw_m2(const std::vector<double>& v) override;
+  void set_rw_timesteps(const std::vector<long long>& v) override;
+  void set_rw_decays(const std::vector<double>& v) override;
 
   void set_f_w_values(const std::vector<double>& v)
   {
@@ -966,7 +965,7 @@ private:
       grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
       d_next_c.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * 4 * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
       dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
       chunk_df.assign(batch_chunk_size * n, 0.0);
       chunk_di.assign(batch_chunk_size * n, 0.0);
