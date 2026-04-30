@@ -98,3 +98,54 @@ TEST_F(LSTMLayerTest, DropoutConsistencyVerification) {
   // Reusing the mask means dh_curr becomes (upstream + dh_next) * 0.0 = 0.0
   EXPECT_NEAR(batch_go[0].get_rnn_gate_gradients(1)[0], 0.0, 1e-9);
 }
+
+TEST_F(LSTMLayerTest, LearningRateRobustness) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
+    
+    for (double lr : learning_rates) {
+        layer.set_w_values({ 1.0 });
+        layer.set_rw_values({ 1.0 });
+        layer.set_b_values({ 0.5 });
+        layer.set_f_w_values({ 1.0 });
+        layer.set_f_rw_values({ 1.0 });
+        layer.set_f_b_values({ 0.5 });
+        layer.set_i_w_values({ 1.0 });
+        layer.set_i_rw_values({ 1.0 });
+        layer.set_i_b_values({ 0.5 });
+        layer.set_o_w_values({ 1.0 });
+        layer.set_o_rw_values({ 1.0 });
+        layer.set_o_b_values({ 0.5 });
+        
+        layer.set_w_grads({ 0.1 });
+        layer.set_rw_grads({ 0.1 });
+        layer.set_b_grads({ 0.05 });
+        layer.set_f_w_grads({ 0.1 });
+        layer.set_f_rw_grads({ 0.1 });
+        layer.set_f_b_grads({ 0.05 });
+        layer.set_i_w_grads({ 0.1 });
+        layer.set_i_rw_grads({ 0.1 });
+        layer.set_i_b_grads({ 0.05 });
+        layer.set_o_w_grads({ 0.1 });
+        layer.set_o_rw_grads({ 0.1 });
+        layer.set_o_b_grads({ 0.05 });
+
+        layer.apply_stored_gradients(lr, 1.0);
+
+        EXPECT_NEAR(layer.get_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+        EXPECT_NEAR(layer.get_f_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_f_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_f_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+        EXPECT_NEAR(layer.get_i_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_i_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_i_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+        EXPECT_NEAR(layer.get_o_w_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_o_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
+        EXPECT_NEAR(layer.get_o_b_values()[0], 0.5 - lr * 0.05, 1e-9);
+    }
+}
