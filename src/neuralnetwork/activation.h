@@ -1,6 +1,7 @@
 #pragma once
 #include "./libraries/instrumentor.h"
 
+#include <optional>
 #include <string>
 
 class activation
