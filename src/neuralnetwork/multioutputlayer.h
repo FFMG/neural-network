@@ -515,24 +515,6 @@ public:
         // Skip output layer itself as its gradients were already set by calculate_output_gradients
         if (l_idx == (int)branch.layers.size() - 1) continue;
 
-        // Synchronize hidden states for the current layer
-        for (size_t b = 0; b < batch_size; ++b)
-        {
-          if (current.use_bptt())
-          {
-            const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(current.get_layer_index());
-            const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(current.get_layer_index());
-            const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
-            const size_t n_prev = current.get_number_neurons(); // Actually input to next layer
-            const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-            branch.hidden_states[b].assign(current.get_layer_index(), num_time_steps, HiddenState(), current.get_pre_activation_multiplier());
-          }
-          else
-          {
-            branch.hidden_states[b].assign(current.get_layer_index(), 1, HiddenState(), current.get_pre_activation_multiplier());
-          }
-        }
-
         std::vector<std::vector<double>> batch_next_gradients;
         batch_next_gradients.reserve(batch_size);
         for(size_t b=0; b<batch_size; ++b)
@@ -544,8 +526,10 @@ public:
           }
           else
           {
-            const auto g_span = branch.gradients_and_outputs[b].get_gradients(next.get_layer_index());
-            batch_next_gradients.emplace_back(g_span.begin(), g_span.end());
+            const auto g_span = branch.gradients_and_outputs[b].get_outputs(next.get_layer_index()); // Wait, this should be gradients
+            // Actually, get_gradients is the last step.
+            const auto std_g_span = branch.gradients_and_outputs[b].get_gradients(next.get_layer_index());
+            batch_next_gradients.emplace_back(std_g_span.begin(), std_g_span.end());
           }
         }
 
@@ -634,9 +618,12 @@ public:
         else
         {
           const auto g_span = branch.gradients_and_outputs[b].get_gradients(0);
-          // Broadcast single gradient to all time steps
-          for(size_t t=0; t<max_seq_len; ++t)
-            for(size_t j=0; j<N_trunk; ++j) trunk_grads[b][t*N_trunk + j] += g_span[j];
+          if (!g_span.empty())
+          {
+            // Broadcast single gradient to all time steps
+            for(size_t t=0; t<max_seq_len; ++t)
+              for(size_t j=0; j<N_trunk; ++j) trunk_grads[b][t*N_trunk + j] += g_span[j];
+          }
         }
       }
     }
@@ -683,24 +670,6 @@ public:
          auto& current_l = *branch.layers[l_idx];
          const Layer& prev_l = (l_idx == 0) ? static_cast<const Layer&>(proxy) : *branch.layers[l_idx-1];
 
-         // Synchronize hidden states for the current layer
-         for (size_t b = 0; b < batch_size; ++b)
-         {
-           if (current_l.use_bptt())
-           {
-             const auto& prev_rnn_out = branch.gradients_and_outputs[b].get_rnn_outputs(prev_l.get_layer_index());
-             const auto prev_std_out = branch.gradients_and_outputs[b].get_outputs(prev_l.get_layer_index());
-             const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
-             const size_t n_prev = prev_l.get_number_neurons();
-             const size_t num_time_steps = n_prev > 0 ? seq_size / n_prev : 0;
-             branch.hidden_states[b].assign(current_l.get_layer_index(), num_time_steps, HiddenState(), current_l.get_pre_activation_multiplier());
-           }
-           else
-           {
-             branch.hidden_states[b].assign(current_l.get_layer_index(), 1, HiddenState(), current_l.get_pre_activation_multiplier());
-           }
-         }
-         
          current_l.calculate_and_store_gradients(
            branch.gradients_and_outputs,
            branch.hidden_states,
