@@ -627,165 +627,21 @@ void GRURNNLayer::calculate_forward_feed(
   // 2. Output sequence buffer
   std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
 
-  auto run_forward_pass = [&](size_t start, size_t end)
-  {
-    std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
-    std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
-
-    const double* W_z = _z_w_values.data();
-    const double* W_r = _r_w_values.data();
-    const double* W_h = get_w_values().data();
-    const double* U_z = _z_rw_values.data();
-    const double* U_r = _r_rw_values.data();
-    const double* U_h = _rw_values.data();
-
-    for (size_t b = start; b < end; ++b)
-    {
-      // Reset hidden state for each sample in the batch!
-      std::vector<double> prev_h(N_this, 0.0);
-      std::vector<double> current_h(N_this, 0.0);
-
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        // a. Initialize with bias
-        if (has_bias())
-        {
-          std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre.begin());
-          std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre.begin());
-          std::copy(_b_values.begin(), _b_values.end(), h_hat_pre.begin());
-        }
-        else
-        {
-          std::fill(z_pre.begin(), z_pre.end(), 0.0);
-          std::fill(r_pre.begin(), r_pre.end(), 0.0);
-          std::fill(h_hat_pre.begin(), h_hat_pre.end(), 0.0);
-        }
-
-        // b. Input-to-Gates (W * x_t) - Tiled
-        const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
-        constexpr size_t BLOCK_SIZE = 64;
-        for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
-        {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-          {
-            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double x_val = x_t[i];
-              if (x_val == 0.0) continue;
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                z_pre[j] += x_val * W_z[i * N_this + j];
-                r_pre[j] += x_val * W_r[i * N_this + j];
-                h_hat_pre[j] += x_val * W_h[i * N_this + j];
-              }
-            }
-          }
-        }
-
-        // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
-        const double* h_prev_ptr = prev_h.data();
-        for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-        {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-          {
-            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double h_val = h_prev_ptr[i];
-              if (h_val == 0.0) continue;
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                z_pre[j] += h_val * U_z[i * N_this + j];
-                r_pre[j] += h_val * U_r[i * N_this + j];
-              }
-            }
-          }
-        }
-
-        // d. Calculate Gates
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          double z = 1.0 / (1.0 + std::exp(-z_pre[j]));
-          double r = 1.0 / (1.0 + std::exp(-r_pre[j]));
-          packed_bptt_states[j] = z;
-          packed_bptt_states[N_this + j] = r;
-        }
-
-        // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
-        for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-        {
-          size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-          for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-          {
-            size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-            for (size_t i = i0; i < i_limit; ++i)
-            {
-              const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
-              if (gated_h == 0.0)
-              {
-                continue;
-              }
-              for (size_t j = j0; j < j_limit; ++j)
-              {
-                h_hat_pre[j] += gated_h * U_h[i * N_this + j];
-              }
-            }
-          }
-        }
-
-        // f. Residuals and Candidate Activation
-        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
-        {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            h_hat_pre[j] += batch_residual_output_values[b][j];
-          }
-        }
-
-        std::vector<double> h_hat_vec = h_hat_pre;
-        get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
-
-        // g. Final State Update and Dropout
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
-          
-          double mask = 1.0;
-          double h_hat = h_hat_vec[j];
-          if (is_training && get_neuron((unsigned)j).is_dropout())
-          {
-            const auto& neuron = get_neuron((unsigned)j);
-            if (neuron.must_randomly_drop())
-            {
-              mask = 0.0;
-              h_hat = 0.0;
-            }
-            else
-            {
-              mask = 1.0 / (1.0 - neuron.get_dropout_rate());
-              h_hat *= mask;
-            }
-          }
-          packed_bptt_states[3 * N_this + j] = h_hat;
-          packed_bptt_states[4 * N_this + j] = mask;
-          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
-          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
-        }
-        
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
-        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
-        prev_h = current_h;
-      }
-    }
-  };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    run_forward_pass(0, batch_size);
+    run_forward_pass(
+      0, 
+      batch_size,
+      N_this,
+      N_prev,
+      num_time_steps,
+      flattened_batch_inputs,
+      batch_residual_output_values,
+      batch_output_sequences,
+      batch_hidden_states,
+      is_training
+      );
   }
   else
   {
@@ -796,9 +652,31 @@ void GRURNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([run_forward_pass, start, end, this]()
+        _task_queue_pool->enqueue([
+          start, 
+          end, 
+          N_this,
+          &flattened_batch_inputs,
+          &batch_residual_output_values,
+          &batch_output_sequences,
+          &batch_hidden_states,
+          is_training,
+          num_time_steps,
+          N_prev,
+          this]()
           {
-            run_forward_pass(start, end);
+            run_forward_pass(
+              start, 
+              end, 
+              N_this,
+              N_prev,
+              num_time_steps,
+              flattened_batch_inputs,
+              batch_residual_output_values,
+              batch_output_sequences,
+              batch_hidden_states,
+              is_training
+              );
           });
       }
       start = end;
@@ -814,6 +692,172 @@ void GRURNNLayer::calculate_forward_feed(
     
     const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
     batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
+  }
+}
+
+void GRURNNLayer::run_forward_pass(
+  const size_t start,
+  const size_t end,
+  const size_t N_this,
+  const size_t N_prev,
+  const size_t num_time_steps,
+  const std::vector<double>& flattened_batch_inputs,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<double>& batch_output_sequences,
+  std::vector<HiddenStates>& batch_hidden_states,
+  bool is_training
+) const
+{
+  std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
+  std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
+
+  const double* W_z = _z_w_values.data();
+  const double* W_r = _r_w_values.data();
+  const double* W_h = get_w_values().data();
+  const double* U_z = _z_rw_values.data();
+  const double* U_r = _r_rw_values.data();
+  const double* U_h = _rw_values.data();
+
+  for (size_t b = start; b < end; ++b)
+  {
+    // Reset hidden state for each sample in the batch!
+    std::vector<double> prev_h(N_this, 0.0);
+    std::vector<double> current_h(N_this, 0.0);
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      // a. Initialize with bias
+      if (has_bias())
+      {
+        std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre.begin());
+        std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre.begin());
+        std::copy(_b_values.begin(), _b_values.end(), h_hat_pre.begin());
+      }
+      else
+      {
+        std::fill(z_pre.begin(), z_pre.end(), 0.0);
+        std::fill(r_pre.begin(), r_pre.end(), 0.0);
+        std::fill(h_hat_pre.begin(), h_hat_pre.end(), 0.0);
+      }
+
+      // b. Input-to-Gates (W * x_t) - Tiled
+      const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
+      constexpr size_t BLOCK_SIZE = 64;
+      for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+      {
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
+        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+        {
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double x_val = x_t[i];
+            if (x_val == 0.0) continue;
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              z_pre[j] += x_val * W_z[i * N_this + j];
+              r_pre[j] += x_val * W_r[i * N_this + j];
+              h_hat_pre[j] += x_val * W_h[i * N_this + j];
+            }
+          }
+        }
+      }
+
+      // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
+      const double* h_prev_ptr = prev_h.data();
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      {
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+        {
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double h_val = h_prev_ptr[i];
+            if (h_val == 0.0) continue;
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              z_pre[j] += h_val * U_z[i * N_this + j];
+              r_pre[j] += h_val * U_r[i * N_this + j];
+            }
+          }
+        }
+      }
+
+      // d. Calculate Gates
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        double z = 1.0 / (1.0 + std::exp(-z_pre[j]));
+        double r = 1.0 / (1.0 + std::exp(-r_pre[j]));
+        packed_bptt_states[j] = z;
+        packed_bptt_states[N_this + j] = r;
+      }
+
+      // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
+      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      {
+        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
+        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
+        {
+          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
+          for (size_t i = i0; i < i_limit; ++i)
+          {
+            const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
+            if (gated_h == 0.0)
+            {
+              continue;
+            }
+            for (size_t j = j0; j < j_limit; ++j)
+            {
+              h_hat_pre[j] += gated_h * U_h[i * N_this + j];
+            }
+          }
+        }
+      }
+
+      // f. Residuals and Candidate Activation
+      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+      {
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          h_hat_pre[j] += batch_residual_output_values[b][j];
+        }
+      }
+
+      std::vector<double> h_hat_vec = h_hat_pre;
+      get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
+
+      // g. Final State Update and Dropout
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+
+        double mask = 1.0;
+        double h_hat = h_hat_vec[j];
+        if (is_training && get_neuron((unsigned)j).is_dropout())
+        {
+          const auto& neuron = get_neuron((unsigned)j);
+          if (neuron.must_randomly_drop())
+          {
+            mask = 0.0;
+            h_hat = 0.0;
+          }
+          else
+          {
+            mask = 1.0 / (1.0 - neuron.get_dropout_rate());
+            h_hat *= mask;
+          }
+        }
+        packed_bptt_states[3 * N_this + j] = h_hat;
+        packed_bptt_states[4 * N_this + j] = mask;
+        current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
+        batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
+      }
+
+      batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
+      batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
+      prev_h = current_h;
+    }
   }
 }
 
