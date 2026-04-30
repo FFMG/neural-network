@@ -855,73 +855,73 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_timesteps; }
   [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_decays; }
   
-  void set_w_values(const std::vector<double>& v)
+  virtual void set_w_values(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_values = v;
   }
-  void set_w_grads(const std::vector<double>& v)
+  virtual void set_w_grads(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_grads = v;
   }
-  void set_w_velocities(const std::vector<double>& v)
+  virtual void set_w_velocities(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_velocities = v;
   }
-  void set_w_m1(const std::vector<double>& v)
+  virtual void set_w_m1(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_m1 = v;
   }
-  void set_w_m2(const std::vector<double>& v)
+  virtual void set_w_m2(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_m2 = v;
   }
-  void set_w_timesteps(const std::vector<long long>& v)
+  virtual void set_w_timesteps(const std::vector<long long>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_timesteps = v;
   }
-  void set_w_decays(const std::vector<double>& v)
+  virtual void set_w_decays(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_decays = v;
   }
 
-  void set_b_values(const std::vector<double>& v)
+  virtual void set_b_values(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_values = v;
   }
-  void set_b_grads(const std::vector<double>& v)
+  virtual void set_b_grads(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_grads = v;
   }
-  void set_b_velocities(const std::vector<double>& v)
+  virtual void set_b_velocities(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_velocities = v;
   }
-  void set_b_m1(const std::vector<double>& v)
+  virtual void set_b_m1(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_m1 = v;
   }
-  void set_b_m2(const std::vector<double>& v)
+  virtual void set_b_m2(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_m2 = v;
   }
-  void set_b_timesteps(const std::vector<long long>& v)
+  virtual void set_b_timesteps(const std::vector<long long>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_timesteps = v;
   }
-  void set_b_decays(const std::vector<double>& v)
+  virtual void set_b_decays(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_decays = v;

@@ -20,6 +20,7 @@ TEST_F(ElmanRNNLayerTest, ConstructionAndTopology) {
   EXPECT_EQ(layer.get_number_output_neurons(), 3);
   EXPECT_EQ(layer.get_layer_architecture(), Layer::Architecture::Elman);
   EXPECT_TRUE(layer.use_bptt());
+  EXPECT_EQ(layer.get_pre_activation_multiplier(), 1);
 }
 
 TEST_F(ElmanRNNLayerTest, ForwardFeedMathematicalVerification) {

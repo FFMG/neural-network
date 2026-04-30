@@ -17,7 +17,7 @@ public:
     const EvaluationConfig& error_evaluation_config,
     double weight_decay,
     OptimiserType optimiser_type,
-    double momentum) noexcept :
+    double momentum) :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),

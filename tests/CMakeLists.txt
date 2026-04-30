@@ -61,6 +61,7 @@ add_executable(neuralnetwork_tests
     elmanrnnlayer_tests.cpp
     lstmlayer_tests.cpp
     layer_optimizer_tests.cpp
+    layer_details_tests.cpp
     ${NN_SOURCES}
 )
 

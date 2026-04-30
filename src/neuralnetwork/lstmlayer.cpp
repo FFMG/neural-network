@@ -382,7 +382,7 @@ void LSTMLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 4 x N_this]
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * 4 * N_this, 0.0);
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this, 0.0);
 
   auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
@@ -391,7 +391,7 @@ void LSTMLayer::calculate_forward_feed(
       for (size_t t = 0; t < num_time_steps; ++t)
       {
         const double* x_t = &flattened_inputs[(b * num_time_steps + t) * N_prev];
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * 4 * N_this];
+        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
         double* f_pre = pre_t;
         double* i_pre = pre_t + N_this;
         double* o_pre = pre_t + 2 * N_this;
@@ -403,7 +403,7 @@ void LSTMLayer::calculate_forward_feed(
           std::copy(_f_b_values.begin(), _f_b_values.end(), f_pre);
           std::copy(_i_b_values.begin(), _i_b_values.end(), i_pre);
           std::copy(_o_b_values.begin(), _o_b_values.end(), o_pre);
-          std::copy(get_b_values().begin(), get_b_values().end(), g_pre);
+          std::copy(_b_values.begin(), _b_values.end(), g_pre);
         }
 
         // Input-to-Gates GEMV (vectorized)
@@ -443,7 +443,7 @@ void LSTMLayer::calculate_forward_feed(
   {
     std::vector<double> current_h(N_this, 0.0);
     std::vector<double> current_c(N_this, 0.0);
-    std::vector<double> packed_bptt(5 * N_this);
+    std::vector<double> packed_bptt(Multiplier * N_this);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
@@ -452,7 +452,7 @@ void LSTMLayer::calculate_forward_feed(
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * 4 * N_this];
+        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
         double* f_pre = pre_t;
         double* i_pre = pre_t + N_this;
         double* o_pre = pre_t + 2 * N_this;
@@ -512,7 +512,7 @@ void LSTMLayer::calculate_forward_feed(
               out *= mask;
             }
           }
-          packed_bptt[4 * N_this + j] = mask;
+          packed_bptt[GateCount * N_this + j] = mask;
 
           current_h[j] = out;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
@@ -689,10 +689,10 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
 
       for (size_t t = 0; t < T; ++t)
       {
-        const double* df = &packed_grads[t * 4 * N_this];
-        const double* di = &packed_grads[t * 4 * N_this + N_this];
-        const double* do_gate = &packed_grads[t * 4 * N_this + 2 * N_this];
-        const double* dg = &packed_grads[t * 4 * N_this + 3 * N_this];
+        const double* df = &packed_grads[t * GateCount * N_this];
+        const double* di = &packed_grads[t * GateCount * N_this + N_this];
+        const double* do_gate = &packed_grads[t * GateCount * N_this + 2 * N_this];
+        const double* dg = &packed_grads[t * GateCount * N_this + 3 * N_this]; // Gate 4 (Candidate)
         const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
         const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
@@ -918,16 +918,16 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       std::vector<double> dh_curr(N_this);
 
 #if VALIDATE_DATA == 1
-      if (packed.size() < 5 * N_this)
+      if (packed.size() < Multiplier * N_this)
       {
-        Logger::panic("LSTMLayer BPTT: HiddenState size mismatch! Expected multiplier 5, but got ", (N_this > 0 ? packed.size() / N_this : 0));
+        Logger::panic("LSTMLayer BPTT: HiddenState size mismatch! Expected multiplier ", Multiplier, ", but got ", (N_this > 0 ? packed.size() / N_this : 0));
       }
 #endif
 
       for (size_t j = 0; j < N_this; ++j)
       {
         // Apply dropout mask stored during forward feed
-        const double mask = packed[4 * N_this + j];
+        const double mask = packed[GateCount * N_this + j];
         dh_curr[j] = std::clamp((upstream_grads[j] + dh_next[j]) * mask, -50.0, 50.0);
       }
 
@@ -946,11 +946,11 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       for (size_t k = 0; k < N_this; ++k)
         dh_next[k] = simd::dot_product(df_chunk, &_f_rw_values[k * N_this], N_this) + simd::dot_product(di_chunk, &_i_rw_values[k * N_this], N_this) + simd::dot_product(do_chunk, &_o_rw_values[k * N_this], N_this) + simd::dot_product(dg_chunk, &_rw_values[k * N_this], N_this);
 
-      double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * 4 * N_this];
+      double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);
       std::copy(di_chunk, di_chunk + N_this, grad_out_t + N_this);
       std::copy(do_chunk, do_chunk + N_this, grad_out_t + 2 * N_this);
-      std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this);
+      std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this); // Gate 4 (Candidate)
     }
   }
 
@@ -958,7 +958,385 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
     const size_t b_idx = b - start;
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
-    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * 4 * N_this];
-    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * 4 * N_this));
+    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this];
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * GateCount * N_this));
+  }
+}
+
+void LSTMLayer::set_w_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_values.assign(v.begin(), v.begin() + expected_size);
+    _i_w_values.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_values.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_values(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_values(v);
+  }
+}
+
+void LSTMLayer::set_w_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_grads.assign(v.begin(), v.begin() + expected_size);
+    _i_w_grads.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_grads.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_grads(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_grads(v);
+  }
+}
+
+void LSTMLayer::set_w_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_velocities.assign(v.begin(), v.begin() + expected_size);
+    _i_w_velocities.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_velocities.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_velocities(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_velocities(v);
+  }
+}
+
+void LSTMLayer::set_w_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_m1.assign(v.begin(), v.begin() + expected_size);
+    _i_w_m1.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_m1.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_m1(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_m1(v);
+  }
+}
+
+void LSTMLayer::set_w_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_m2.assign(v.begin(), v.begin() + expected_size);
+    _i_w_m2.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_m2.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_m2(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_m2(v);
+  }
+}
+
+void LSTMLayer::set_w_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_timesteps.assign(v.begin(), v.begin() + expected_size);
+    _i_w_timesteps.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_timesteps.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_timesteps(std::vector<long long>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_timesteps(v);
+  }
+}
+
+void LSTMLayer::set_w_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_w_decays.assign(v.begin(), v.begin() + expected_size);
+    _i_w_decays.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_w_decays.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    Layer::set_w_decays(std::vector<double>(v.begin() + 3 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_decays(v);
+  }
+}
+
+void LSTMLayer::set_b_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_values.assign(v.begin(), v.begin() + N_this);
+    _i_b_values.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_values.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_values(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_values(v);
+  }
+}
+
+void LSTMLayer::set_b_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_grads.assign(v.begin(), v.begin() + N_this);
+    _i_b_grads.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_grads.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_grads(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_grads(v);
+  }
+}
+
+void LSTMLayer::set_b_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_velocities.assign(v.begin(), v.begin() + N_this);
+    _i_b_velocities.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_velocities.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_velocities(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_velocities(v);
+  }
+}
+
+void LSTMLayer::set_b_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_m1.assign(v.begin(), v.begin() + N_this);
+    _i_b_m1.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_m1.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_m1(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_m1(v);
+  }
+}
+
+void LSTMLayer::set_b_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_m2.assign(v.begin(), v.begin() + N_this);
+    _i_b_m2.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_m2.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_m2(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_m2(v);
+  }
+}
+
+void LSTMLayer::set_b_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_timesteps.assign(v.begin(), v.begin() + N_this);
+    _i_b_timesteps.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_timesteps.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_timesteps(std::vector<long long>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_timesteps(v);
+  }
+}
+
+void LSTMLayer::set_b_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _f_b_decays.assign(v.begin(), v.begin() + N_this);
+    _i_b_decays.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    _o_b_decays.assign(v.begin() + 2 * N_this, v.begin() + 3 * N_this);
+    Layer::set_b_decays(std::vector<double>(v.begin() + 3 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_decays(v);
+  }
+}
+
+void LSTMLayer::set_rw_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_values.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_values.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_values.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_values.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_values = v;
+  }
+}
+
+void LSTMLayer::set_rw_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_grads.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_grads.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_grads.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_grads.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_grads = v;
+  }
+}
+
+void LSTMLayer::set_rw_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_velocities.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_velocities.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_velocities.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_velocities.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_velocities = v;
+  }
+}
+
+void LSTMLayer::set_rw_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_m1.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_m1.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_m1.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_m1.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_m1 = v;
+  }
+}
+
+void LSTMLayer::set_rw_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_m2.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_m2.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_m2.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_m2.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_m2 = v;
+  }
+}
+
+void LSTMLayer::set_rw_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_timesteps.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_timesteps.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_timesteps.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_timesteps.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_timesteps = v;
+  }
+}
+
+void LSTMLayer::set_rw_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _f_rw_decays.assign(v.begin(), v.begin() + expected_size);
+    _i_rw_decays.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _o_rw_decays.assign(v.begin() + 2 * expected_size, v.begin() + 3 * expected_size);
+    _rw_decays.assign(v.begin() + 3 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_decays = v;
   }
 }

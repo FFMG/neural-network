@@ -405,10 +405,7 @@ public:
          }
        }
 
-       if (num_time_steps > 1)
-       {
-         batch_gradients_and_outputs[b].set_rnn_outputs(this_layer_index, concatenated_output_seq);
-       }
+       batch_gradients_and_outputs[b].set_rnn_outputs(this_layer_index, concatenated_output_seq);
        
        std::vector<double> last_step_output(get_number_neurons());
        std::copy(concatenated_output_seq.end() - get_number_neurons(), concatenated_output_seq.end(), last_step_output.begin());

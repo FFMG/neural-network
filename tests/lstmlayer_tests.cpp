@@ -20,7 +20,7 @@ TEST_F(LSTMLayerTest, ConstructionAndTopology) {
   EXPECT_EQ(layer.get_number_output_neurons(), 3);
   EXPECT_EQ(layer.get_layer_architecture(), Layer::Architecture::Lstm);
   EXPECT_TRUE(layer.use_bptt());
-  EXPECT_EQ(layer.get_pre_activation_multiplier(), 5); // Increased to 5 for dropout
+  EXPECT_EQ(layer.get_pre_activation_multiplier(), 5); 
 }
 
 TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {

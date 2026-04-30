@@ -314,10 +314,7 @@ void FFOutputLayer::run_output_gradients(
       }
     }
 
-    if (num_time_steps > 1)
-    {
-      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
-    }
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row);
     
     std::vector<double> last_step_grads(num_neurons);
     std::copy(rnn_grads_row.end() - num_neurons, rnn_grads_row.end(), last_step_grads.begin());
@@ -435,7 +432,7 @@ void FFOutputLayer::run_post_gemm(
         layer_states_ref[t].set_hidden_state_values(std::vector<double>(current_output_row, current_output_row + N_this));
     }
 
-    if (num_time_steps > 1) batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq);
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq);
     std::vector<double> last_step_output(N_this);
     std::copy(output_row_seq.end() - N_this, output_row_seq.end(), last_step_output.begin());
     batch_gradients_and_outputs[b].set_outputs(get_layer_index(), last_step_output);

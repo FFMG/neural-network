@@ -74,7 +74,7 @@ GRURNNLayer::GRURNNLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  //  Note: we use the same weight decay for all GRU gates.
+  
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
 
   allocate_workspace();
@@ -630,7 +630,7 @@ void GRURNNLayer::calculate_forward_feed(
   auto run_forward_pass = [&](size_t start, size_t end)
   {
     std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
-    std::vector<double> packed_bptt_states(4 * N_this); // Index [3*N_this, 4*N_this) used for dropout mask
+    std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
 
     const double* W_z = _z_w_values.data();
     const double* W_r = _r_w_values.data();
@@ -652,7 +652,7 @@ void GRURNNLayer::calculate_forward_feed(
         {
           std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre.begin());
           std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre.begin());
-          std::copy(get_b_values().begin(), get_b_values().end(), h_hat_pre.begin());
+          std::copy(_b_values.begin(), _b_values.end(), h_hat_pre.begin());
         }
         else
         {
@@ -769,7 +769,8 @@ void GRURNNLayer::calculate_forward_feed(
               h_hat *= mask;
             }
           }
-          packed_bptt_states[3 * N_this + j] = mask;
+          packed_bptt_states[3 * N_this + j] = h_hat;
+          packed_bptt_states[4 * N_this + j] = mask;
           current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
@@ -955,8 +956,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* z_vals = packed_states.data();
       const double* r_vals = &packed_states[N_this];
       const double* h_hat_pre_vals = &packed_states[2 * N_this];
-      const double* mask_vals = &packed_states[3 * N_this];
-      const double* h_hat_ptr = h_vals.data(); 
+      const double* h_hat_ptr = &packed_states[3 * N_this];
+      const double* mask_vals = &packed_states[4 * N_this];
       const double* h_prev_vals = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
       const double* grad_next_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
@@ -1029,10 +1030,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
                   simd::dot_product(dh_hat_ptr, &_w_values[k * N_this], N_this);
       }
 
-      double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * 3 * N_this];
+      double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);
       std::copy(dz_ptr, dz_ptr + N_this, dest + N_this);
-      std::copy(dr_ptr, dr_ptr + N_this, dest + 2 * N_this);
+      std::copy(dr_ptr, dr_ptr + N_this, dest + 2 * N_this); // Gate 3 (Reset)
     }
   }
 
@@ -1042,8 +1043,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
 
-    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * 3 * N_this];
-    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * 3 * N_this));
+    const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this];
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * GateCount * N_this));
   }
 }
 
@@ -1180,11 +1181,11 @@ void GRURNNLayer::calculate_and_store_gradients(
       const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
       const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
 
-      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * 3 * num_outputs) continue;
+      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs) continue;
 
       for (int t = t_start; t >= t_end; --t)
       {
-        const size_t base_idx = t * 3 * num_outputs;
+        const size_t base_idx = t * GateCount * num_outputs;
         const double* d_h_hat_ptr = &rnn_grads[base_idx];
         const double* d_z_ptr = &rnn_grads[base_idx + num_outputs];
         const double* d_r_ptr = &rnn_grads[base_idx + 2 * num_outputs];
@@ -1401,5 +1402,362 @@ void GRURNNLayer::cache_recurrent_weights()
       _z_rw_values_T[j * n + i] = _z_rw_values[i * n + j];
       _r_rw_values_T[j * n + i] = _r_rw_values[i * n + j];
     }
+  }
+}
+
+void GRURNNLayer::set_w_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_values.assign(v.begin(), v.begin() + expected_size);
+    _r_w_values.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_values(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_values(v);
+  }
+}
+
+void GRURNNLayer::set_w_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_grads.assign(v.begin(), v.begin() + expected_size);
+    _r_w_grads.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_grads(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_grads(v);
+  }
+}
+
+void GRURNNLayer::set_w_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_velocities.assign(v.begin(), v.begin() + expected_size);
+    _r_w_velocities.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_velocities(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_velocities(v);
+  }
+}
+
+void GRURNNLayer::set_w_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_m1.assign(v.begin(), v.begin() + expected_size);
+    _r_w_m1.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_m1(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_m1(v);
+  }
+}
+
+void GRURNNLayer::set_w_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_m2.assign(v.begin(), v.begin() + expected_size);
+    _r_w_m2.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_m2(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_m2(v);
+  }
+}
+
+void GRURNNLayer::set_w_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_timesteps.assign(v.begin(), v.begin() + expected_size);
+    _r_w_timesteps.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_timesteps(std::vector<long long>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_timesteps(v);
+  }
+}
+
+void GRURNNLayer::set_w_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t N_prev = get_number_input_neurons();
+  const size_t expected_size = N_this * N_prev;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_w_decays.assign(v.begin(), v.begin() + expected_size);
+    _r_w_decays.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    Layer::set_w_decays(std::vector<double>(v.begin() + 2 * expected_size, v.end()));
+  }
+  else
+  {
+    Layer::set_w_decays(v);
+  }
+}
+
+void GRURNNLayer::set_b_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_values.assign(v.begin(), v.begin() + N_this);
+    _r_b_values.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_values(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_values(v);
+  }
+}
+
+void GRURNNLayer::set_b_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_grads.assign(v.begin(), v.begin() + N_this);
+    _r_b_grads.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_grads(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_grads(v);
+  }
+}
+
+void GRURNNLayer::set_b_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_velocities.assign(v.begin(), v.begin() + N_this);
+    _r_b_velocities.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_velocities(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_velocities(v);
+  }
+}
+
+void GRURNNLayer::set_b_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_m1.assign(v.begin(), v.begin() + N_this);
+    _r_b_m1.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_m1(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_m1(v);
+  }
+}
+
+void GRURNNLayer::set_b_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_m2.assign(v.begin(), v.begin() + N_this);
+    _r_b_m2.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_m2(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_m2(v);
+  }
+}
+
+void GRURNNLayer::set_b_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_timesteps.assign(v.begin(), v.begin() + N_this);
+    _r_b_timesteps.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_timesteps(std::vector<long long>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_timesteps(v);
+  }
+}
+
+void GRURNNLayer::set_b_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  if (v.size() == N_this * GateCount)
+  {
+    _z_b_decays.assign(v.begin(), v.begin() + N_this);
+    _r_b_decays.assign(v.begin() + N_this, v.begin() + 2 * N_this);
+    Layer::set_b_decays(std::vector<double>(v.begin() + 2 * N_this, v.end()));
+  }
+  else
+  {
+    Layer::set_b_decays(v);
+  }
+}
+
+void GRURNNLayer::set_rw_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_values.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_values.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_values.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_values = v;
+  }
+}
+
+void GRURNNLayer::set_rw_grads(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_grads.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_grads.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_grads.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_grads = v;
+  }
+}
+
+void GRURNNLayer::set_rw_velocities(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_velocities.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_velocities.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_velocities.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_velocities = v;
+  }
+}
+
+void GRURNNLayer::set_rw_m1(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_m1.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_m1.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_m1.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_m1 = v;
+  }
+}
+
+void GRURNNLayer::set_rw_m2(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_m2.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_m2.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_m2.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_m2 = v;
+  }
+}
+
+void GRURNNLayer::set_rw_timesteps(const std::vector<long long>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_timesteps.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_timesteps.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_timesteps.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_timesteps = v;
+  }
+}
+
+void GRURNNLayer::set_rw_decays(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const size_t N_this = get_number_neurons();
+  const size_t expected_size = N_this * N_this;
+  if (v.size() == expected_size * GateCount)
+  {
+    _z_rw_decays.assign(v.begin(), v.begin() + expected_size);
+    _r_rw_decays.assign(v.begin() + expected_size, v.begin() + 2 * expected_size);
+    _rw_decays.assign(v.begin() + 2 * expected_size, v.end());
+  }
+  else
+  {
+    _rw_decays = v;
   }
 }

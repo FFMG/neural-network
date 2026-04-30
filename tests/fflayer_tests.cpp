@@ -24,12 +24,14 @@ TEST_F(FFLayerTest, ConstructorAndClone) {
     EXPECT_EQ(layer.get_number_input_neurons(), num_inputs);
     EXPECT_EQ(layer.get_number_output_neurons(), num_outputs);
     EXPECT_EQ(layer.get_layer_architecture(), Layer::Architecture::FF);
+    EXPECT_EQ(layer.get_pre_activation_multiplier(), 1);
 
     std::unique_ptr<Layer> cloned(layer.clone());
     EXPECT_EQ(cloned->get_layer_index(), 1);
     EXPECT_EQ(cloned->get_number_input_neurons(), num_inputs);
     EXPECT_EQ(cloned->get_number_output_neurons(), num_outputs);
     EXPECT_EQ(cloned->get_layer_architecture(), Layer::Architecture::FF);
+    EXPECT_EQ(cloned->get_pre_activation_multiplier(), 1);
 }
 
 TEST_F(FFLayerTest, ForwardFeedLinear) {

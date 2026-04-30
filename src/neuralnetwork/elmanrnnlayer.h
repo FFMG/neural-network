@@ -91,10 +91,14 @@ public:
     return true;
   }
 
+  // Multiplier = 1: Standard pre-activation sum (z)
+  static constexpr unsigned Multiplier = 1;
+  static constexpr unsigned GateCount = 1;
+
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-    return 1;
+    return Multiplier;
   }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -229,7 +233,7 @@ private:
     {
       grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
       d_next_h.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * n, 0.0);
+      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
       dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
     }
   };
