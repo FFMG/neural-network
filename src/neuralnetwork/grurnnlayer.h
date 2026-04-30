@@ -136,10 +136,12 @@ public:
     return true;
   }
 
+  static constexpr unsigned Multiplier = 4;
+
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    return 3;
+    return Multiplier;
   }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,

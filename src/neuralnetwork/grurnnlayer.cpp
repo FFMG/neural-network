@@ -630,7 +630,7 @@ void GRURNNLayer::calculate_forward_feed(
   auto run_forward_pass = [&](size_t start, size_t end)
   {
     std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
-    std::vector<double> packed_bptt_states(3 * N_this);
+    std::vector<double> packed_bptt_states(4 * N_this); // Index [3*N_this, 4*N_this) used for dropout mask
 
     const double* W_z = _z_w_values.data();
     const double* W_r = _r_w_values.data();
@@ -748,32 +748,33 @@ void GRURNNLayer::calculate_forward_feed(
         std::vector<double> h_hat_vec = h_hat_pre;
         get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
 
-        // g. Final State Update
+        // g. Final State Update and Dropout
         for (size_t j = 0; j < N_this; ++j)
         {
           packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
-        }
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
-
-        for (size_t j = 0; j < N_this; ++j)
-        {
+          
+          double mask = 1.0;
           double h_hat = h_hat_vec[j];
           if (is_training && get_neuron((unsigned)j).is_dropout())
           {
             const auto& neuron = get_neuron((unsigned)j);
             if (neuron.must_randomly_drop())
             {
+              mask = 0.0;
               h_hat = 0.0;
             }
             else
             {
-              h_hat /= (1.0 - neuron.get_dropout_rate());
+              mask = 1.0 / (1.0 - neuron.get_dropout_rate());
+              h_hat *= mask;
             }
           }
+          packed_bptt_states[3 * N_this + j] = mask;
           current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
-
+        
+        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
         batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
         prev_h = current_h;
       }
@@ -954,6 +955,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* z_vals = packed_states.data();
       const double* r_vals = &packed_states[N_this];
       const double* h_hat_pre_vals = &packed_states[2 * N_this];
+      const double* mask_vals = &packed_states[3 * N_this];
       const double* h_hat_ptr = h_vals.data(); 
       const double* h_prev_vals = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
@@ -973,6 +975,13 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         &dh_prev_accum_ptr_all[b_idx * N_this],
         [&](double x) { return get_activation().activate_derivative(x); }
       );
+
+      // Apply dropout mask to candidate state pre-activation gradient
+      double* dh_hat_pre = &dh_hat_ptr_all[b_idx * N_this];
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        dh_hat_pre[j] *= mask_vals[j];
+      }
     }
 
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
