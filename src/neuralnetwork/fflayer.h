@@ -9,12 +9,12 @@ class FFLayer : public Layer
 {
 public:
   FFLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     double weight_decay,
-    LayerType layer_type, 
-    const activation& activation_method, 
-    const OptimiserType& optimiser_type, 
+    const Role layer_role,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
@@ -26,7 +26,7 @@ public:
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
     const std::vector<double>& weight_decays,
-    LayerType layer_type,
+    const Role layer_role,
     const activation& activation_method,
     const OptimiserType& optimiser_type,
     int residual_layer_number,
@@ -38,7 +38,7 @@ public:
 
   FFLayer(
     unsigned layer_index,
-    const LayerType layer_type,
+    const Role layer_role,
     const OptimiserType optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
@@ -70,29 +70,53 @@ public:
   FFLayer& operator=(FFLayer&& src) noexcept;
   virtual ~FFLayer();
 
+  [[nodiscard]] inline virtual Architecture get_layer_architecture() const override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return Architecture::FF;
+  }
+
+public:
+  // Multiplier = 1: Standard pre-activation sum (z)
+  static constexpr unsigned Multiplier = 1;
+  static constexpr unsigned GateCount = 1;
+
+  [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return Multiplier;
+  }
+
 public:
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &previous_layer,
-    const std::vector<std::vector<double>> &batch_residual_output_values,
-    std::vector<HiddenStates> &batch_hidden_states,
+    const Layer& previous_layer,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     bool is_training) const override;
 
   void calculate_output_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates> &batch_hidden_states,
+    const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const override;
 
   void calculate_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer &next_layer,
-    const std::vector<std::vector<double>> &batch_next_grad_matrix,
-    const std::vector<HiddenStates> &batch_hidden_states,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size,
     int bptt_max_ticks) const override;
-  
+
+  void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_output_gradients,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
+    int bptt_max_ticks) const override;
+
   Layer* clone() const override;
 
   void calculate_and_store_gradients(
@@ -109,7 +133,7 @@ public:
 protected:
   FFLayer(unsigned layer_index,
     const std::vector<double>& weight_decays,
-    LayerType layer_type,
+    const Role layer_role,
     const layer_activation_helper& lah,
     const OptimiserType& optimiser_type,
     int residual_layer_number,
@@ -130,6 +154,7 @@ protected:
   virtual void run_post_gemm(
     size_t start,
     size_t end,
+    size_t num_time_steps,
     size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<std::vector<double>>& batch_residual_output_values,

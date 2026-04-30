@@ -12,15 +12,11 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
-activation::activation() noexcept :
-  activation(method::linear, 0.0)
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-}
-
-activation::activation(const method method, double alpha) :
+activation::activation(const method method, double alpha, double temperature, double inference_temperature) :
   _method(method),
-  _alpha(alpha)
+  _alpha(alpha),
+  _temperature(temperature),
+  _inference_temperature(inference_temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -78,9 +74,17 @@ activation::activation(const method method, double alpha) :
   }
 }
 
+activation::activation(const method method, double alpha, double temperature) :
+  activation(method, alpha, temperature, temperature)
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+}
+
 activation::activation(const activation& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
+  _temperature(src._temperature),
+  _inference_temperature(src._inference_temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -90,6 +94,8 @@ activation::activation(const activation& src) noexcept :
 activation::activation(activation&& src) noexcept :
   _method(src._method),
   _alpha(src._alpha),
+  _temperature(src._temperature),
+  _inference_temperature(src._inference_temperature),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -103,6 +109,8 @@ activation& activation::operator=(const activation& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _temperature = src._temperature;
+    _inference_temperature = src._inference_temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -116,6 +124,8 @@ activation& activation::operator=(activation&& src) noexcept
   {
     _method = src._method;
     _alpha = src._alpha;
+    _temperature = src._temperature;
+    _inference_temperature = src._inference_temperature;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -134,12 +144,12 @@ double activation::calculate_linear_derivative(double, double) noexcept
   return 1.0;
 }
 
-void activation::activate(double* begin, double* end) const
+void activation::activate(double* begin, double* end, bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (_method == method::softmax)
   {
-    calculate_softmax(begin, end);
+    calculate_softmax(begin, end, is_training ? _temperature : _inference_temperature);
   }
   else
   {
@@ -199,7 +209,7 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-void activation::calculate_softmax(double* begin, double* end) noexcept
+void activation::calculate_softmax(double* begin, double* end, double temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (begin == end)
@@ -234,22 +244,22 @@ void activation::calculate_softmax(double* begin, double* end) noexcept
 
   // --- Add warning for extreme logit range ---
   const double logit_range = max_val - min_val;
-  const double EXTREME_LOGIT_THRESHOLD = 80.0; // Increased to reduce noise for highly confident models
-  const double CATASTROPHIC_LOGIT_THRESHOLD = 150.0;
+  const double EXTREME_LOGIT_THRESHOLD = 200.0; // Increased to reduce noise for highly confident models
+  const double CATASTROPHIC_LOGIT_THRESHOLD = 1000.0;
 
   if (logit_range > CATASTROPHIC_LOGIT_THRESHOLD)
   {
     Logger::panic("CRITICAL: Catastrophic logit range detected (", logit_range, "). Initialization or weight update is unstable!");
   }
-  else if (logit_range > EXTREME_LOGIT_THRESHOLD) 
+  if (logit_range > EXTREME_LOGIT_THRESHOLD)
   {
-    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range,"). Consider increasing weight decay or reducing learning rate.");
+    Logger::warning("Softmax logits exhibit extreme range (max-min diff: ", logit_range, "). Consider increasing weight decay or reducing learning rate.");
   }
+
   // --- End warning addition ---
 
   // Exponentiate and accumulate in higher precision
   long double sum = 0.0L;
-  constexpr double temperature = 1.0;
   constexpr double LOGIT_CLAMP = 30.0;
 
   for (double* it = begin; it != end; ++it)

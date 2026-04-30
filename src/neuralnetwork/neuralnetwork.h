@@ -55,8 +55,11 @@ public:
   std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check = false) const;
 
   double get_learning_rate() const noexcept;
-  double get_percent_complete() const noexcept;
+  double get_temperature() const noexcept;
+  double get_temperature(unsigned output_layer_index) const noexcept;
+  double get_inference_temperature(unsigned output_layer_index) const noexcept;
 
+  double get_percent_complete() const noexcept;
   bool has_training_data() const;
 
   inline NeuralNetworkOptions& options() noexcept { 
@@ -68,10 +71,15 @@ public:
     return _options;
   }
 
+protected:
+  // No protected methods defined yet
+
 private:
+  void optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
+
   void train_single_batch(
-    const std::vector<std::vector<double>>::const_iterator inputs_begin, 
-    const std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
     const size_t batch_size
   );
 
@@ -83,7 +91,7 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
-  void create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<std::vector<double>>>& bptt_inputs, std::vector<std::vector<std::vector<double>>>& bptt_outputs) const;
+  void create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const;
   void recreate_batch_from_indexes(NeuralNetworkHelper& neural_network_helper, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& shuffled_training_inputs, std::vector<std::vector<double>>& shuffled_training_outputs) const;
   void create_batch_from_indexes(const std::vector<size_t>& indexes, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs, std::vector<std::vector<double>>& training_inputs_data, std::vector<std::vector<double>>& training_outputs_data) const;
   void break_indexes(const std::vector<size_t>& indexes, bool data_is_unique, std::vector<size_t>& training_indexes, std::vector<size_t>& checking_indexes, std::vector<size_t>& final_check_indexes) const;
@@ -104,6 +112,7 @@ private:
 
   std::vector<size_t> get_shuffled_indexes(size_t raw_size) const;
 
+private:
   mutable std::shared_mutex _mutex;
 
   double _learning_rate;
@@ -116,6 +125,4 @@ private:
 
   mutable SingleTaskQueue<std::vector<NeuralNetworkHelperMetrics>> _adaptive_lr_task;
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
-  mutable std::vector<GradientsAndOutputs> _gradients_pool;
-  mutable std::vector<HiddenStates> _hidden_states_pool;
 };

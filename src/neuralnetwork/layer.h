@@ -183,6 +183,42 @@ public:
     Logger::panic("Trying to initialize weight for neuron ", output_neuron_number, " which is not covered by any range!");
   }
 
+  [[nodiscard]] inline double get_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to get temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    return _ranges[range_index].activation_method.get_temperature();
+  }
+
+  [[nodiscard]] inline double get_inference_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to get inference temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    return _ranges[range_index].activation_method.get_inference_temperature();
+  }
+
+  inline void set_inference_temperature(unsigned range_index, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to set inference temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    _ranges[range_index].activation_method.set_inference_temperature(t);
+  }
+
 private:
   std::vector<range> _ranges;
   unsigned _number_input_neurons;
@@ -192,13 +228,96 @@ private:
 class Layer
 {
 public:
-  enum class LayerType
+  enum class Architecture
+  {
+    None,
+    FF,
+    Elman,
+    Gru,
+    Lstm,
+    MultiOutput
+  };
+
+  enum class Role
   {
     Input,
     Hidden,
     Output,
-    Branched
+    MultiOutput
   };
+
+  static std::unique_ptr<Layer> create_hidden_layer(
+    unsigned layer_index,
+    unsigned number_input_neurons,
+    const class LayerDetails& ld,
+    int number_of_threads,
+    bool has_bias,
+    int residual_layer_number = -1,
+    ResidualProjector* residual_projector = nullptr
+  );
+
+  [[nodiscard]] inline static std::string architecture_to_string(const Architecture& architecture)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (architecture)
+    {
+    case Architecture::None:
+      return "None";
+
+    case Architecture::FF:
+      return "FF";
+
+    case Architecture::Elman:
+      return "Elman";
+
+    case Architecture::Gru:
+      return "Gru";
+
+    case Architecture::Lstm:
+      return "Lstm";
+
+    case Architecture::MultiOutput:
+      return "MultiOutput";
+
+    default:
+      Logger::panic("Unknown Layer architecture: ", (int)architecture);
+    }
+  }
+
+  [[nodiscard]] inline static Architecture architecture_from_string(const std::string& str)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    std::string lower_str = str;
+    // Convert the string to lowercase for case-insensitive comparison
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
+      [](unsigned char c) { return std::tolower(c); });
+
+    if (lower_str == "none")
+    {
+      return Architecture::None;
+    }
+    if (lower_str == "ff")
+    {
+      return Architecture::FF;
+    }
+    if (lower_str == "elman")
+    {
+      return Architecture::Elman;
+    }
+    if (lower_str == "gru")
+    {
+      return Architecture::Gru;
+    }
+    if (lower_str == "lstm")
+    {
+      return Architecture::Lstm;
+    }
+    if (lower_str == "multioutput")
+    {
+      return Architecture::MultiOutput;
+    }
+    Logger::panic("Unknown Layer architecture: ", str);
+  }
 
   [[nodiscard]] static std::vector<double> create_w_decays(unsigned number_input_neurons, unsigned number_output_neurons, double decay)
   {
@@ -208,7 +327,7 @@ public:
 
   Layer(const Layer& src) noexcept :
     _layer_index(src._layer_index),
-    _layer_type(src._layer_type),
+    _layer_role(src._layer_role),
     _optimiser_type(src._optimiser_type),
     _residual_layer_number(src._residual_layer_number),
     _neurons(src._neurons),
@@ -244,7 +363,7 @@ public:
 
   Layer(Layer&& src) noexcept :
     _layer_index(src._layer_index),
-    _layer_type(src._layer_type),
+    _layer_role(src._layer_role),
     _optimiser_type(std::move(src._optimiser_type)),
     _neurons(std::move(src._neurons)),
     _w_values(std::move(src._w_values)),
@@ -268,7 +387,7 @@ public:
     _momentum(src._momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    src._layer_type = LayerType::Input;
+    src._layer_role = Role::Input;
     src._layer_index = 0;
     src._optimiser_type = OptimiserType::None;
     src._residual_layer_number = 0;
@@ -281,7 +400,7 @@ public:
     if (this != &src)
     {
       _layer_index = src._layer_index;
-      _layer_type = src._layer_type;
+      _layer_role = src._layer_role;
       _optimiser_type = src._optimiser_type;
       _neurons = src._neurons;
 
@@ -329,7 +448,7 @@ public:
     if (this != &src)
     {
       _layer_index = src._layer_index;
-      _layer_type = src._layer_type;
+      _layer_role = src._layer_role;
       _optimiser_type = std::move(src._optimiser_type);
       _neurons = std::move(src._neurons);
 
@@ -380,6 +499,8 @@ public:
     Logger::panic("Only output layers can calculate output metrics!");
   }
 
+  [[nodiscard]] virtual Architecture get_layer_architecture() const = 0;
+
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -392,10 +513,10 @@ public:
     return _layer_index;
   }
 
-  [[nodiscard]] inline LayerType get_layer_type() const noexcept
+  [[nodiscard]] inline Role get_layer_role() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
-    return _layer_type;
+    return _layer_role;
   }
 
   [[nodiscard]] inline int get_residual_layer_number() const noexcept
@@ -480,7 +601,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
 #if VALIDATE_DATA == 1
-    if (_layer_type == LayerType::Output)
+    if (_layer_role == Role::Output)
     {
       Logger::panic("The output layer MUST pass the neuron number!");
     }
@@ -512,6 +633,13 @@ public:
     size_t batch_size,
     int bptt_max_ticks) const = 0;
 
+  virtual void calculate_hidden_gradients_from_output_gradients(
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_output_gradients,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size,
+    int bptt_max_ticks) const = 0;
+
   virtual void calculate_and_store_gradients(
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,
@@ -521,9 +649,36 @@ public:
 
   virtual double get_gradient_norm_sq() const = 0;
 
-  virtual void zero_gradients() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
+  virtual void zero_gradients() 
+  { 
+    MYODDWEB_PROFILE_FUNCTION("Layer"); 
+    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  }
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) = 0;
+
+  virtual void cache_recurrent_weights() { MYODDWEB_PROFILE_FUNCTION("Layer"); }
+
+  virtual unsigned get_pre_activation_multiplier() const noexcept { return 1; }
+
+  [[nodiscard]] virtual double get_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper.get_temperature(range_index);
+  }
+
+  [[nodiscard]] virtual double get_inference_temperature(unsigned range_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _layer_activation_helper.get_inference_temperature(range_index);
+  }
+
+  virtual void set_inference_temperature(unsigned range_index, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    _layer_activation_helper.set_inference_temperature(range_index, t);
+  }
 
   void apply_update_to_vector(
     std::vector<double>& values,
@@ -536,115 +691,7 @@ public:
     double learning_rate,
     double clipping_scale,
     bool is_bias,
-    OptimiserType optimiser_type)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    const size_t n = values.size();
-    if (n == 0)
-    {
-      return;
-    }
-
-    switch (optimiser_type)
-    {
-    case OptimiserType::None:
-      for (size_t i = 0; i < n; ++i)
-      {
-        double grad = grads[i] * clipping_scale;
-        values[i] -= learning_rate * grad;
-        grads[i] = grad;
-      }
-      break;
-
-    case OptimiserType::SGD:
-    {
-      const auto&  momentum = get_momentum();
-      for (size_t i = 0; i < n; ++i)
-      {
-        double grad = grads[i] * clipping_scale;
-        if (!is_bias && i < decays.size() && decays[i] > 0.0)
-        {
-          grad += decays[i] * values[i];
-        }
-        velocities[i] = momentum * velocities[i] + grad;
-        values[i] -= learning_rate * velocities[i];
-        grads[i] = grad;
-      }
-    }
-    break;
-
-    case OptimiserType::Adam:
-    case OptimiserType::AdamW:
-    {
-      const double beta1 = get_momentum();
-      const double beta2 = 0.999;
-      const double epsilon = 1e-8;
-
-      for (size_t i = 0; i < n; ++i)
-      {
-        double grad = grads[i] * clipping_scale;
-        const long long t = ++timesteps[i];
-
-        const double p1 = 1.0 - std::pow(beta1, t);
-        const double p2 = 1.0 - std::pow(beta2, t);
-
-        m1[i] = beta1 * m1[i] + (1.0 - beta1) * grad;
-        m2[i] = beta2 * m2[i] + (1.0 - beta2) * (grad * grad);
-
-        double m_hat = m1[i] / p1;
-        double v_hat = m2[i] / p2;
-        double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
-
-        double current_weight = values[i];
-        if (optimiser_type == OptimiserType::AdamW && !is_bias && i < decays.size())
-        {
-          current_weight *= (1.0 - learning_rate * decays[i]);
-        }
-        values[i] = current_weight - learning_rate * update_step;
-        grads[i] = grad;
-      }
-    }
-    break;
-
-    case OptimiserType::Nadam:
-    case OptimiserType::NadamW:
-    {
-      const double beta1 = get_momentum();
-      const double beta2 = 0.999;
-      const double epsilon = 1e-8;
-
-      for (size_t i = 0; i < n; ++i)
-      {
-        double grad = grads[i] * clipping_scale;
-        const long long t = ++timesteps[i];
-
-        const double p1 = 1.0 - std::pow(beta1, t);
-        const double p2 = 1.0 - std::pow(beta2, t);
-
-        m1[i] = beta1 * m1[i] + (1.0 - beta1) * grad;
-        m2[i] = beta2 * m2[i] + (1.0 - beta2) * (grad * grad);
-
-        double m_hat = m1[i] / p1;
-        double v_hat = m2[i] / p2;
-
-        double m_nadam = beta1 * m_hat + ((1.0 - beta1) * grad) / p1;
-        double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
-
-        double current_weight = values[i];
-        if (optimiser_type == OptimiserType::NadamW && !is_bias && i < decays.size())
-        {
-          current_weight *= (1.0 - learning_rate * decays[i]);
-        }
-        values[i] = current_weight - learning_rate * update_step;
-        grads[i] = grad;
-      }
-    }
-    break;
-
-    default:
-      Logger::panic("Unknown optimizer type:", (int)optimiser_type);
-    }
-  }
+    OptimiserType optimiser_type);
 
   void apply_update_to_weight(
     std::vector<double>& values,
@@ -659,146 +706,9 @@ public:
     double learning_rate,
     double clipping_scale,
     OptimiserType optimiser_type,
-    unsigned neuron_number)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
+    unsigned neuron_number);
 
-    // validation
-    if (!std::isfinite(gradient))
-    {
-      Logger::panic("Error while calculating input weigh gradient it invalid.");
-    }
-
-    if (clipping_scale < 0.0)
-    {
-      // If clipping scale is negative, we clip the gradient to a fixed range
-      Logger::warning("Clipping gradient to a fixed range.");
-    }
-
-    double final_gradient = gradient * clipping_scale;
-
-    // Detect gradient explosions before they impact weights
-    if (std::abs(final_gradient) > 1e6)
-    {
-      Logger::panic("CRITICAL: Gradient too large! Grad: ", final_gradient, " lr: ", learning_rate);
-    }
-    else if (!std::isfinite(final_gradient))
-    {
-      Logger::panic("CRITICAL: Non-finite gradient detected! Grad: ", final_gradient);
-    }
-
-    // Log trace for some updates to avoid flooding
-    if (idx == 0 && (timesteps.empty() || timesteps[idx] % 50 == 0))
-    {
-      Logger::trace([&]()
-        {
-      std::ostringstream ss;
-      ss << "[Layer::apply_update_to_weight] layer=" << _layer_index
-        << ", idx=" << idx
-        << ", grad=" << gradient
-        << ", final_grad=" << final_gradient
-        << ", lr=" << learning_rate
-        << ", val_before=" << values[idx];
-          return ss.str();
-        });
-    }
-
-    switch (optimiser_type)
-    {
-    case OptimiserType::None:
-      values[idx] -= learning_rate * final_gradient;
-      grads[idx] = final_gradient;
-      break;
-
-    case OptimiserType::SGD:
-    {
-      double grad = final_gradient;
-      if (!is_bias_index(values) && decays.size() > idx && decays[idx] > 0.0)
-      {
-        grad += decays[idx] * values[idx];
-      }
-      double previous_velocity = velocities[idx];
-      double velocity = get_momentum(neuron_number) * previous_velocity + grad;
-      values[idx] -= learning_rate * velocity;
-      velocities[idx] = velocity;
-      grads[idx] = grad;
-    }
-    break;
-
-    case OptimiserType::Adam:
-    case OptimiserType::AdamW:
-    {
-      const double beta1 = get_momentum(neuron_number);
-      const double beta2 = 0.999;
-      const double epsilon = 1e-8;
-
-      const long long time_step = ++timesteps[idx];
-
-      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
-      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * (final_gradient * final_gradient);
-
-      double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
-      double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
-
-      double update_step = m_hat / (std::sqrt(v_hat) + epsilon);
-
-      double current_weight = values[idx];
-      if (optimiser_type == OptimiserType::AdamW && !is_bias_index(values) && decays.size() > idx)
-      {
-        current_weight *= (1.0 - learning_rate * decays[idx]);
-      }
-
-      values[idx] = current_weight - learning_rate * update_step;
-      grads[idx] = final_gradient;
-    }
-    break;
-
-    case OptimiserType::Nadam:
-    case OptimiserType::NadamW:
-    {
-      const double beta1 = get_momentum(neuron_number);
-      const double beta2 = 0.999;
-      const double epsilon = 1e-8;
-
-      const long long time_step = ++timesteps[idx];
-
-      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
-      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * (final_gradient * final_gradient);
-
-      double m_hat = m1[idx] / (1.0 - std::pow(beta1, time_step));
-      double v_hat = m2[idx] / (1.0 - std::pow(beta2, time_step));
-
-      double m_nadam = beta1 * m_hat + ((1.0 - beta1) * final_gradient) / (1.0 - std::pow(beta1, time_step));
-      double update_step = m_nadam / (std::sqrt(v_hat) + epsilon);
-
-      double current_weight = values[idx];
-      if (optimiser_type == OptimiserType::NadamW && !is_bias_index(values) && decays.size() > idx)
-      {
-        current_weight *= (1.0 - learning_rate * decays[idx]);
-      }
-
-      values[idx] = current_weight - learning_rate * update_step;
-      grads[idx] = final_gradient;
-    }
-    break;
-
-    default:
-      Logger::panic("Unknown optimizer type:", (int)optimiser_type);
-    }
-  }
-
-  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale, OptimiserType optimiser_type, unsigned neuron_number)
-  {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
-    if (is_bias)
-    {
-      apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, weight_index, gradient, learning_rate, clipping_scale, optimiser_type, neuron_number);
-    }
-    else
-    {
-      apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, gradient, learning_rate, clipping_scale, optimiser_type, neuron_number);
-    }
-  }
+  void apply_weight_gradient(double gradient, double learning_rate, bool is_bias, unsigned weight_index, double clipping_scale, OptimiserType optimiser_type, unsigned neuron_number);
 
   [[nodiscard]] const std::vector<Neuron>& get_neurons() const noexcept
   {
@@ -919,12 +829,6 @@ public:
   [[nodiscard]] inline double get_momentum() const noexcept 
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer"); 
-#if VALIDATE_DATA == 1
-    if (_layer_type == LayerType::Output)
-    {
-      Logger::panic("The output layer MUST pass the neuron number to get momentum!");
-    }
-#endif
     return _momentum; 
   }
 
@@ -951,73 +855,73 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_timesteps; }
   [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_decays; }
   
-  void set_w_values(const std::vector<double>& v)
+  virtual void set_w_values(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_values = v;
   }
-  void set_w_grads(const std::vector<double>& v)
+  virtual void set_w_grads(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_grads = v;
   }
-  void set_w_velocities(const std::vector<double>& v)
+  virtual void set_w_velocities(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_velocities = v;
   }
-  void set_w_m1(const std::vector<double>& v)
+  virtual void set_w_m1(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_m1 = v;
   }
-  void set_w_m2(const std::vector<double>& v)
+  virtual void set_w_m2(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_m2 = v;
   }
-  void set_w_timesteps(const std::vector<long long>& v)
+  virtual void set_w_timesteps(const std::vector<long long>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_timesteps = v;
   }
-  void set_w_decays(const std::vector<double>& v)
+  virtual void set_w_decays(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _w_decays = v;
   }
 
-  void set_b_values(const std::vector<double>& v)
+  virtual void set_b_values(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_values = v;
   }
-  void set_b_grads(const std::vector<double>& v)
+  virtual void set_b_grads(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_grads = v;
   }
-  void set_b_velocities(const std::vector<double>& v)
+  virtual void set_b_velocities(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_velocities = v;
   }
-  void set_b_m1(const std::vector<double>& v)
+  virtual void set_b_m1(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_m1 = v;
   }
-  void set_b_m2(const std::vector<double>& v)
+  virtual void set_b_m2(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_m2 = v;
   }
-  void set_b_timesteps(const std::vector<long long>& v)
+  virtual void set_b_timesteps(const std::vector<long long>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_timesteps = v;
   }
-  void set_b_decays(const std::vector<double>& v)
+  virtual void set_b_decays(const std::vector<double>& v)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     _b_decays = v;
@@ -1069,7 +973,7 @@ public:
 protected:
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    const Role layer_role,
     const layer_activation_helper& lah,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1081,7 +985,7 @@ protected:
     double momentum
   ) :
     _layer_index(layer_index),
-    _layer_type(layer_type),
+    _layer_role(layer_role),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
     _neurons(neurons),
@@ -1130,7 +1034,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    const Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1146,7 +1050,7 @@ protected:
     Layer
     (
       layer_index,
-      layer_type,
+      layer_role,
       layer_activation_helper(activation_method, number_input_neurons, number_output_neurons),
       optimiser_type,
       residual_layer_number,
@@ -1163,7 +1067,7 @@ protected:
 
   Layer(
     unsigned layer_index,
-    LayerType layer_type,
+    const Role layer_role,
     const activation& activation_method,
     OptimiserType optimiser_type,
     int residual_layer_number,
@@ -1177,7 +1081,7 @@ protected:
     double momentum
   ) : Layer(
     layer_index,
-    layer_type,
+    layer_role,
     activation_method,
     optimiser_type,
     residual_layer_number,
@@ -1196,9 +1100,9 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerType layer_type,
+    const Role layer_role,
     const activation& activation_method,
-    const OptimiserType optimiser_type,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     unsigned number_input_neurons,
     unsigned number_output_neurons,
@@ -1220,10 +1124,10 @@ protected:
     const ResidualProjector* residual_projector,
     int number_of_threads,
     double momentum
-  ) noexcept :
+  ) :
     Layer(
       layer_index,
-      layer_type,
+      layer_role,
       optimiser_type,
       residual_layer_number,
       neurons,
@@ -1252,8 +1156,8 @@ protected:
 
   Layer(
     unsigned layer_index,
-    const LayerType layer_type,
-    const OptimiserType optimiser_type,
+    const Role layer_role,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     const std::vector<Neuron>& neurons,
     const std::vector<double>& w_values,
@@ -1274,9 +1178,9 @@ protected:
     int number_of_threads,
     const layer_activation_helper& lah,
     double momentum
-  ) noexcept :
+  ) :
     _layer_index(layer_index),
-    _layer_type(layer_type),
+    _layer_role(layer_role),
     _optimiser_type(optimiser_type),
     _residual_layer_number(residual_layer_number),
     _neurons(neurons),
@@ -1317,20 +1221,6 @@ protected:
     }
     return neurons;
   }
-
-  unsigned _layer_index;
-  LayerType _layer_type;
-  OptimiserType _optimiser_type;
-  int _residual_layer_number;
-  std::vector<Neuron> _neurons;
-  std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_decays;
-  std::vector<long long> _w_timesteps;
-  std::vector<double> _b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_decays;
-  std::vector<long long> _b_timesteps;
-  ResidualProjector* _residual_projector;
-  std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
-  layer_activation_helper _layer_activation_helper;
-  double _momentum;
 
 private:
   [[nodiscard]] inline bool is_bias_index(const std::vector<double>& values) const noexcept
@@ -1391,4 +1281,19 @@ private:
     const std::vector<double>& given_outputs,
     const activation::method activation_method,
     std::span<Neuron> neurons) const;
+
+protected:
+  unsigned _layer_index;
+  Role _layer_role;
+  OptimiserType _optimiser_type;
+  int _residual_layer_number;
+  std::vector<Neuron> _neurons;
+  std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_decays;
+  std::vector<long long> _w_timesteps;
+  std::vector<double> _b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_decays;
+  std::vector<long long> _b_timesteps;
+  ResidualProjector* _residual_projector;
+  std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
+  layer_activation_helper _layer_activation_helper;
+  double _momentum;
 };

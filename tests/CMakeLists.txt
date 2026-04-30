@@ -28,6 +28,7 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/layers.cpp"
     "${NN_SOURCE_DIR}/libraries/TinyJSON.cpp"
     "${NN_SOURCE_DIR}/libraries/tracy/TracyClient.cpp"
+    "${NN_SOURCE_DIR}/lstmlayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
     "${NN_SOURCE_DIR}/neuralnetworkhelper.cpp"
     "${NN_SOURCE_DIR}/neuralnetworkserializer.cpp"
@@ -51,6 +52,20 @@ add_executable(neuralnetwork_tests
     hidden_state_tests.cpp
     weight_param_tests.cpp
     neuron_tests.cpp
+    simd_utils_tests.cpp
+    fflayer_tests.cpp
+    fflayer_mt_tests.cpp
+    grurnnlayer_tests.cpp
+    grurnnlayer_mt_tests.cpp
+    ffoutputlayer_tests.cpp
+    ffoutputlayer_mt_tests.cpp
+    layer_tests.cpp
+    multioutputlayer_tests.cpp
+    elmanrnnlayer_tests.cpp
+    lstmlayer_tests.cpp
+    layer_optimizer_tests.cpp
+    layer_details_tests.cpp
+    output_layer_details_tests.cpp
     ${NN_SOURCES}
 )
 

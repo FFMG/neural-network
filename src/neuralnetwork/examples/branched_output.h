@@ -27,7 +27,7 @@ public:
     // Branch 1: Shallow Regression
     MultiOutputLayerDetails b1
     (
-      { LayerDetails(LayerDetails::LayerType::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) },
+      { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) },
       OutputLayerDetails(2, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
     );
     multi_output_layer_details.push_back(b1);
@@ -36,15 +36,15 @@ public:
     MultiOutputLayerDetails b2
     (
       {
-        LayerDetails(LayerDetails::LayerType::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9),
-        LayerDetails(LayerDetails::LayerType::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
+        LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9),
+        LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9)
       },
       OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.9)
     );
     multi_output_layer_details.push_back(b2);
 
     auto options = NeuralNetworkOptions::create(topology)
-      .with_hidden_layers({ LayerDetails(LayerDetails::LayerType::Gru, 4, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) })
+      .with_hidden_layers({ LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.9) })
       .with_output_layer_details(multi_output_layer_details)
       .with_learning_rate(0.1)
       .with_number_of_epoch(500)

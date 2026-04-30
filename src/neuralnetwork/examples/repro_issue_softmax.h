@@ -28,29 +28,60 @@ private:
   {
     MYODDWEB_PROFILE_FUNCTION("ExampleReproIssueSoftmax");
 
-    std::vector<unsigned> topology = { 17, 32, 64, 7 }; // 17 input, 32 hidden, 64 hidden, 2 reg + 5 softmax = 7 outputs
+    // 17 inputs, 80 LSTM, 40 LSTM, 7 total outputs (2 in branch 0, 5 in branch 1)
+    std::vector<unsigned> topology = { 17, 80, 40, 7 }; 
 
-    std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(LayerDetails::LayerType::Gru, 32, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9),
-      LayerDetails(LayerDetails::LayerType::Gru, 64, activation(activation::method::tanh, 0.01), 0.5, 0.0001, OptimiserType::NadamW, 0.9)
+    std::vector<LayerDetails> trunk_hidden_layers = 
+    {
+      LayerDetails(Layer::Architecture::Lstm, 80, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95),
+      LayerDetails(Layer::Architecture::Lstm, 40, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95)
     };
 
-    // Define compound output layers with prioritized classification lambdas
+    std::vector<MultiOutputLayerDetails> multi_output_layer_details;
 
-    auto output_layers = {
-      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.01, 0.1, 0.1, 1.0, true, 1.0 }, 0.0, OptimiserType::NadamW, 0.9),
-      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 5.0 }, 0.0, OptimiserType::NadamW, 0.9)
-    };
+    // Branch 0: 2 outputs, Huber
+    MultiOutputLayerDetails b0
+    (
+      { 
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95),
+        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95)
+      },
+      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, EvaluationConfig(0.01, 0.15, 0.3, 0.3, false, 1.0), 0.0, OptimiserType::NadamW, 0.95)
+    );
+
+    // Branch 1: 5 outputs, Softmax
+    MultiOutputLayerDetails b1
+    (
+      {
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95),
+        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0.15, 0.0001, OptimiserType::NadamW, 0.95)
+      },
+      OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, EvaluationConfig(0.0, 0.2, 1.0, 0.3, false, 1.0), 0.0, OptimiserType::NadamW, 0.95)
+    );
+
+    multi_output_layer_details.push_back(b0);
+    multi_output_layer_details.push_back(b1);
 
     auto options = NeuralNetworkOptions::create(topology)
-      .with_batch_size(16)
-      .with_output_layer_details(output_layers)
+      .with_batch_size(32) // Match REAL
+      .with_output_layer_details(multi_output_layer_details)
       .with_log_level(log_level)
-      .with_learning_rate(0.001)
-      .with_clip_threshold(1.0)
-      .with_number_of_epoch(5000)
-      .with_hidden_layers(hidden_layers)
-      .with_shuffle_training_data(true) // Ensure shuffling is active
+      .with_learning_rate(0.0015) // Match REAL
+      .with_learning_rate_warmup(0.0003, 0.07) // Match REAL
+      .with_learning_rate_decay_rate(0.985) // Match REAL
+      .with_clip_threshold(1.5) // Match REAL
+      .with_number_of_epoch(500) 
+      .with_hidden_layers(trunk_hidden_layers)
+      .with_shuffle_training_data(true)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(24) // Match REAL
+      .with_final_error_calculation_types({
+        ErrorCalculation::type::huber_loss,
+        ErrorCalculation::type::huber_direction_loss,
+        ErrorCalculation::type::directional_accuracy,
+        ErrorCalculation::type::directional_confidence_score,
+        ErrorCalculation::type::prediction_coverage
+      })
       .build();
 
     return new NeuralNetwork(options);
@@ -77,108 +108,133 @@ private:
       
       inputs.push_back({ x });
 
-      std::vector<double> y(7, 0.0); // Changed from 6 to 7
+      std::vector<double> y(7, 0.0); 
       
       // Target 0: Regression 1
       y[0] = x * x;
       // Target 1: Regression 2
-      y[1] = x * x * x; // Added second regression target
+      y[1] = x * x * x; 
       
       // Target 2-6: 5-class One-Hot encoding for Softmax
       int bucket = get_bucket(x);
-      y[2 + bucket] = 1.0; // Changed index from 1 + bucket to 2 + bucket
+      y[2 + bucket] = 1.0; 
 
       outputs.push_back(y);
     }
   }
 
-static bool load_csv_data(const std::string& filename, std::vector<std::vector<double>>& inputs, std::vector<std::vector<double>>& outputs, size_t max_rows = 0)
-{
-  std::ifstream file(filename);
-  if (!file.is_open()) return false;
-
-  std::string line;
-  size_t rows_read = 0;
-  while (std::getline(file, line) && (max_rows == 0 || rows_read < max_rows))
+  static bool load_csv_data(const std::string& filename, std::vector<std::vector<double>>& inputs, std::vector<std::vector<double>>& outputs, size_t max_rows = 0)
   {
-    std::stringstream ss(line);
-    std::string val;
-    std::vector<double> row;
-    while (std::getline(ss, val, ','))
+    std::ifstream file(filename);
+    if (!file.is_open()) return false;
+
+    std::string line;
+    size_t rows_read = 0;
+    while (std::getline(file, line) && (max_rows == 0 || rows_read < max_rows))
     {
-      row.push_back(std::stod(val));
+      std::stringstream ss(line);
+      std::string val;
+      std::vector<double> row;
+      while (std::getline(ss, val, ','))
+      {
+        row.push_back(std::stod(val));
+      }
+      if (row.size() >= 24) 
+      {
+        inputs.push_back(std::vector<double>(row.begin(), row.begin() + 17));
+        outputs.push_back(std::vector<double>(row.begin() + 17, row.begin() + 24));
+        rows_read++;
+      }
     }
-    if (row.size() == 24) // 17 inputs + 7 outputs
-    {
-      inputs.push_back(std::vector<double>(row.begin(), row.begin() + 17));
-      outputs.push_back(std::vector<double>(row.begin() + 17, row.end()));
-      rows_read++;
-    }
+    return true;
   }
-  return true;
-}
 
 public:
-static void ReproIssueMarketData(const std::string& nn_file, const std::string& save_nn_file, const std::string& csv_file, Logger::LogLevel log_level, size_t max_rows = 0)
-{
-  TEST_START("Repro Issue Market Data")
-  
-  NeuralNetwork* nn = NeuralNetworkSerializer::load(nn_file);
-  if (nullptr == nn)
+  static void ReproIssueMarketData(const std::string& nn_file, const std::string& save_nn_file, const std::string& csv_file, Logger::LogLevel log_level, size_t max_rows = 0)
   {
-    Logger::error("Failed to load NN : ", nn_file);
-    return;
-  }
-  std::vector<std::vector<double>> inputs, outputs;
-
-  if (!load_csv_data(csv_file, inputs, outputs, max_rows))
-  {
-    Logger::error("Failed to load CSV: ", csv_file);
-    delete nn;
-    return;
-  }
-
-  Logger::info("Loaded ", inputs.size(), " samples from ", csv_file);
-  // Verify distribution
-  std::vector<int> counts(5, 0);
-  for (const auto& o : outputs)
-  {
-    for (int i = 0; i < 5; ++i)
+    TEST_START("Repro Issue Market Data")
+    
+    NeuralNetwork* nn = nullptr;
+    if (!nn_file.empty())
     {
-      if (o[2 + i] > 0.5) { counts[i]++; break; }
+      nn = NeuralNetworkSerializer::load(nn_file);
+      if (nullptr == nn)
+      {
+        Logger::error("Failed to load NN : ", nn_file);
+        return;
+      }
     }
+    else
+    {
+      nn = create_neural_network(log_level);
+    }
+
+    std::vector<std::vector<double>> inputs, outputs;
+    if (!load_csv_data(csv_file, inputs, outputs, max_rows))
+    {
+      Logger::error("Failed to load CSV: ", csv_file);
+      delete nn;
+      return;
+    }
+
+    Logger::info("Loaded ", inputs.size(), " samples from ", csv_file);
+    
+    // Verify distribution
+    std::vector<int> counts(5, 0);
+    for (const auto& o : outputs)
+    {
+      for (int i = 0; i < 5; ++i)
+      {
+        if (o[2 + i] > 0.5) { counts[i]++; break; }
+      }
+    }
+    for (int i = 0; i < 5; ++i)
+      Logger::info("Class ", i, ": ", (double)counts[i] / outputs.size() * 100.0, "%");
+
+    nn->train(inputs, outputs);
+
+    // Metrics for both branches
+    std::vector<ErrorCalculation::type> all_layer_metrics = { 
+      ErrorCalculation::type::huber_direction_loss, 
+      ErrorCalculation::type::cross_entropy, 
+      ErrorCalculation::type::directional_confidence_score, 
+      ErrorCalculation::type::prediction_coverage 
+    };
+
+    auto metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics, true);
+
+    Logger::info("Branch 0 Metrics (Regression/Huber):");
+    if (metrics_results.size() > 0)
+    {
+      for (const auto& m : metrics_results[0])
+      {
+        Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
+      }
+    }
+
+    Logger::info("Branch 1 Metrics (Softmax/Cross-Entropy):");
+    if (metrics_results.size() > 1)
+    {
+      for (const auto& m : metrics_results[1])
+      {
+        Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
+      }
+    }
+
+    // Detailed sample check
+    Logger::info("Checking sample 0 results:");
+    auto res0 = nn->think(inputs[0]);
+    Logger::info("Think: ", Logger::vec_to_string(res0));
+    Logger::info("Given: ", Logger::vec_to_string(outputs[0]));
+
+    if (!save_nn_file.empty())
+    {
+      NeuralNetworkSerializer::save(*nn, save_nn_file);
+    }
+    
+    delete nn;
+    TEST_END
   }
-  for (int i = 0; i < 5; ++i)
-    Logger::info("Class ", i, ": ", (double)counts[i] / outputs.size() * 100.0, "%");
-
-  nn->train(inputs, outputs);
-
-  // Monitoring
-  //Logger::info("Final Softmax Weights Sum: ", nn->get_output_layer_weights_sum(1));
-  //Logger::info("Final Logits (sample 0): ", Logger::vec_to_string(nn->get_output_layer_logits(1, inputs[0])));
-
-  // Calculate metrics for both layers - request only appropriate metrics for each
-  std::vector<ErrorCalculation::type> layer0_metrics = { ErrorCalculation::type::huber_direction_loss };
-  std::vector<ErrorCalculation::type> layer1_metrics = { ErrorCalculation::type::cross_entropy, ErrorCalculation::type::directional_confidence_score, ErrorCalculation::type::prediction_coverage };
-
-  auto layer0_metrics_results = nn->calculate_forecast_metrics_all_layers(layer0_metrics, true);
-  auto layer1_metrics_results = nn->calculate_forecast_metrics_all_layers(layer1_metrics, true);
-
-  Logger::info("Layer 0 Metrics (Regression):");
-  for (const auto& m : layer0_metrics_results[0])
-  {
-    Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
-  }
-
-  Logger::info("Layer 1 Metrics (Softmax):");
-  for (const auto& m : layer1_metrics_results[0])
-  {
-    Logger::info("  ", ErrorCalculation::type_to_string(m.error_type()), ": ", m.error());
-  }
-  NeuralNetworkSerializer::save(*nn, save_nn_file);
-  delete nn;
-  TEST_END
-}
 
 static void ReproIssueMarketData(const std::string& save_nn_file, const std::string& csv_file, Logger::LogLevel log_level, size_t max_rows = 0)
 {
@@ -243,10 +299,9 @@ static void ReproIssueMarketData(const std::string& save_nn_file, const std::str
     TEST_END
   }
 
-static void ReproIssueSoftmax(Logger::LogLevel log_level)
-{
-  TEST_START("Repro Issue Market Data")
-  // ... existing implementation ...
+  static void ReproIssueSoftmax(Logger::LogLevel log_level)
+  {
+    TEST_START("Repro Issue Market Data")
 
     srand(42); // Seed for reproducible results
 

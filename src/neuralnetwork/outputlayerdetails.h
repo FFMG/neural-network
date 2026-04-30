@@ -10,12 +10,6 @@
 class OutputLayerDetails
 {
 public:
-  OutputLayerDetails() noexcept :
-    OutputLayerDetails(0, activation(), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.99)
-  {
-    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
-  }
-
   OutputLayerDetails(
     unsigned layer_size, 
     const activation& activation, 
@@ -23,7 +17,7 @@ public:
     const EvaluationConfig& error_evaluation_config,
     double weight_decay,
     OptimiserType optimiser_type,
-    double momentum) noexcept :
+    double momentum) :
     _layer_size(layer_size),
     _activation(activation),
     _output_error_calculation_type(output_error_calculation_type),

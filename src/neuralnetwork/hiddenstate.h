@@ -3,80 +3,86 @@
 #include "logger.h"
 
 #include <vector>
+#include <span>
 
 class HiddenState
 {
 public:
   HiddenState() = default;
 
-  HiddenState(unsigned num_neurons) noexcept
-    : _pre_activation_sums(num_neurons, 0.0),
-      _hidden_state_values(num_neurons, 0.0)
+  HiddenState(double* pre_activation_sums, double* hidden_state_values, double* cell_state_values, unsigned int num_neurons, unsigned int num_pre_activations) :
+    _pre_activation_sums(pre_activation_sums, num_pre_activations),
+    _hidden_state_values(hidden_state_values, num_neurons),
+    _cell_state_values(cell_state_values, num_neurons)
   {
-    MYODDWEB_PROFILE_FUNCTION("HiddenState");
   }
 
-  HiddenState(const HiddenState& src) noexcept :
-    _pre_activation_sums(src._pre_activation_sums),
-    _hidden_state_values(src._hidden_state_values)
+  inline void set_pre_activation_sum(unsigned index, double value) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
-  }
-
-  HiddenState(HiddenState&& src) noexcept :
-    _pre_activation_sums(std::move(src._pre_activation_sums)),
-    _hidden_state_values(std::move(src._hidden_state_values))
-  {
-    MYODDWEB_PROFILE_FUNCTION("HiddenState");
-  }
-
-  HiddenState& operator=(const HiddenState& src) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("HiddenState");
-    if (this != &src)
-    {
-      _pre_activation_sums = src._pre_activation_sums;
-      _hidden_state_values = src._hidden_state_values;
-    }
-    return *this;
-  }
-
-  HiddenState& operator=(HiddenState&& src) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("HiddenState");
-    if (this != &src)
-    {
-      _pre_activation_sums = std::move(src._pre_activation_sums);
-      _hidden_state_values = std::move(src._hidden_state_values);
-    }
-    return *this;
+    _pre_activation_sums[index] = value;
   }
 
   inline void set_pre_activation_sums(const std::vector<double>& sums) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
-    _pre_activation_sums = sums;
+    const auto size = std::min<size_t>(sums.size(), _pre_activation_sums.size());
+    std::copy(sums.begin(), sums.begin() + size, _pre_activation_sums.begin());
   }
     
+  inline void set_hidden_state_value(unsigned index, double value) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    if (index < _hidden_state_values.size())
+    {
+      _hidden_state_values[index] = value;
+    }
+  }
+
   inline void set_hidden_state_values(const std::vector<double>& values) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
-    _hidden_state_values = values;
+    const auto size = std::min<size_t>(values.size(), _hidden_state_values.size());
+    std::copy(values.begin(), values.begin() + size, _hidden_state_values.begin());
+  }
+
+  inline void set_cell_state_value(unsigned index, double value) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    if (index < _cell_state_values.size())
+    {
+      _cell_state_values[index] = value;
+    }
+  }
+
+  inline void set_cell_state_values(const std::vector<double>& values) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    const auto size = std::min<size_t>(values.size(), _cell_state_values.size());
+    std::copy(values.begin(), values.begin() + size, _cell_state_values.begin());
   }
 
   [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
-#if VALIDATE_DATA == 1
     if (neuron_index >= _pre_activation_sums.size())
     {
-      Logger::panic("The neuron index is out of bound for activation sum value!");
+      return 0.0;
     }
-#endif
     return _pre_activation_sums[neuron_index];
   }
 
-  [[nodiscard]] inline const std::vector<double>& get_pre_activation_sums() const noexcept
+  [[nodiscard]] inline double& get_pre_activation_sum(unsigned index) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    if (index >= _pre_activation_sums.size())
+    {
+       return _dummy;
+    }
+    return _pre_activation_sums[index];
+  }
+
+  [[nodiscard]] inline std::span<double> get_pre_activation_sums() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _pre_activation_sums;
@@ -85,22 +91,38 @@ public:
   [[nodiscard]] inline double get_hidden_state_value_at_neuron(unsigned neuron_index) const
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
-#if VALIDATE_DATA == 1
     if (neuron_index >= _hidden_state_values.size())
     {
-      Logger::panic("The neuron index is out of bound for hidden state value!");
+      return 0.0;
     }
-#endif
     return _hidden_state_values[neuron_index];
   }
 
-  [[nodiscard]] inline const std::vector<double>& get_hidden_state_values() const noexcept
+  [[nodiscard]] inline std::span<double> get_hidden_state_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     return _hidden_state_values;
   }
 
+  [[nodiscard]] inline double get_cell_state_value_at_neuron(unsigned neuron_index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    if (neuron_index >= _cell_state_values.size())
+    {
+      return 0.0;
+    }
+    return _cell_state_values[neuron_index];
+  }
+
+  [[nodiscard]] inline std::span<double> get_cell_state_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    return _cell_state_values;
+  }
+
 private:
-    std::vector<double> _pre_activation_sums;
-    std::vector<double> _hidden_state_values;
+  std::span<double> _pre_activation_sums;
+  std::span<double> _hidden_state_values;
+  std::span<double> _cell_state_values;
+  double _dummy = 0.0;
 };
