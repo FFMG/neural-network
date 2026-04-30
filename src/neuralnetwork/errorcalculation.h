@@ -302,7 +302,7 @@ public:
           loss = delta * (abs_error - 0.5 * delta);
         }
 
-        if (std::abs(target) > 1e-6) // ignore noise
+        if (evaluation_config.use_direction_penalty() && std::abs(target) > 1e-6) // ignore noise
         {
           const double x = -scale * target * output;
 
