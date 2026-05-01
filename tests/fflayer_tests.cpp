@@ -15,6 +15,72 @@ protected:
     }
 };
 
+TEST_F(FFLayerTest, HandCalculated2x2Forward) {
+    // 2 inputs, 2 neurons
+    FFLayer layer(2, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    
+    // Set weights: [1.0, 0.5, -1.0, 0.0]
+    // W[in][out] usually: W[0][0]=1.0, W[0][1]=0.5, W[1][0]=-1.0, W[1][1]=0.0
+    layer.set_w_values({ 1.0, 0.5, -1.0, 0.0 });
+    layer.set_b_values({ 0.1, -0.1 });
+
+    MockLayer prev_layer(0, 2);
+    std::vector<unsigned> topology = { 2, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    
+    // Feed [1.0, 1.0]
+    batch_go[0].set_outputs(0, { 1.0, 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    // Neuron 0: 1.0*1.0 + 1.0*(-1.0) + 0.1 = 0.1
+    // Neuron 1: 1.0*0.5 + 1.0*(0.0) - 0.1 = 0.4
+    EXPECT_NEAR(outputs[0], 0.1, 1e-9);
+    EXPECT_NEAR(outputs[1], 0.4, 1e-9);
+}
+
+TEST_F(FFLayerTest, HandCalculated2x2Backward) {
+    FFLayer layer(2, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    layer.set_w_values({ 1.0, 0.5, -1.0, 0.0 });
+    layer.set_b_values({ 0.1, -0.1 });
+
+    MockLayer prev_layer(0, 2);
+    MockLayer next_layer(2, 2); // Dummy next layer
+    std::vector<unsigned> topology = { 2, 2, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    
+    // Forward pass to set up state
+    batch_go[0].set_outputs(0, { 1.0, 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    // Inject upstream gradients: [0.5, 0.5]
+    std::vector<std::vector<double>> batch_next_grads = { { 0.5, 0.5 } };
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
+    
+    // Calculate weight gradients
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 1);
+    
+    const auto& w_grads = layer.get_w_grads();
+    const auto& b_grads = layer.get_b_grads();
+    
+    // dL/dw_ij = upstream_j * input_i
+    // Input is [1.0, 1.0], Upstream is [0.5, 0.5]
+    // dL/dw_00 = 0.5 * 1.0 = 0.5
+    // dL/dw_01 = 0.5 * 1.0 = 0.5
+    // dL/dw_10 = 0.5 * 1.0 = 0.5
+    // dL/dw_11 = 0.5 * 1.0 = 0.5
+    EXPECT_NEAR(w_grads[0], 0.5, 1e-9);
+    EXPECT_NEAR(w_grads[1], 0.5, 1e-9);
+    EXPECT_NEAR(w_grads[2], 0.5, 1e-9);
+    EXPECT_NEAR(w_grads[3], 0.5, 1e-9);
+    
+    // dL/db_j = upstream_j
+    EXPECT_NEAR(b_grads[0], 0.5, 1e-9);
+    EXPECT_NEAR(b_grads[1], 0.5, 1e-9);
+}
+
 TEST_F(FFLayerTest, ConstructorAndClone) {
     unsigned num_inputs = 3;
     unsigned num_outputs = 2;

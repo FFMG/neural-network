@@ -120,6 +120,55 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     EXPECT_NEAR(gate_grads[1], expected_dz, 1e-4);
 }
 
+TEST_F(GRURNNLayerTest, SequenceUnrolling3Steps) {
+    // 1 input, 1 neuron GRU
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    
+    // Set weights to simple values
+    layer.set_z_w_values({ 0.1 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.0 });
+    layer.set_r_w_values({ 0.1 }); layer.set_r_rw_values({ 0.1 }); layer.set_r_b_values({ 0.0 });
+    layer.set_w_values({ 0.1 });   layer.set_rw_values({ 0.1 });   layer.set_b_values({ 0.0 });
+
+    MockLayer prev_layer(0, 1);
+    std::vector<unsigned> topology = { 1, 1 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 3, 5); // 3 steps
+    
+    // Feed sequence [1.0, 0.5, -1.0]
+    batch_go[0].set_rnn_outputs(0, { 1.0, 0.5, -1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    const auto& outputs = batch_go[0].get_rnn_outputs(1);
+    
+    // Hand calculation for 3 steps:
+    // z = sigmoid(w_z*x + rw_z*h_prev + b_z)
+    // r = sigmoid(w_r*x + rw_r*h_prev + b_r)
+    // h_hat = tanh(w*x + rw*(r*h_prev) + b)
+    // h = (1-z)*h_prev + z*h_hat
+    
+    // t=0: x=1.0, h_prev=0
+    // z = sigmoid(0.1*1 + 0) = sigmoid(0.1) = 0.524979
+    // r = sigmoid(0.1*1 + 0) = 0.524979
+    // h_hat = tanh(0.1*1 + 0) = tanh(0.1) = 0.099668
+    // h_0 = (1-0.524979)*0 + 0.524979*0.099668 = 0.052323
+    EXPECT_NEAR(outputs[0], 0.052323, 1e-6);
+
+    // t=1: x=0.5, h_prev=0.052323
+    // z = sigmoid(0.1*0.5 + 0.1*0.052323) = sigmoid(0.0552323) = 0.513803
+    // r = sigmoid(0.0552323) = 0.513803
+    // h_hat = tanh(0.1*0.5 + 0.1*(0.513803*0.052323)) = tanh(0.052688) = 0.052639
+    // h_1 = (1-0.513803)*0.052323 + 0.513803*0.052639 = 0.25439 + 0.27046 = 0.052485
+    EXPECT_NEAR(outputs[1], 0.052485, 1e-6);
+
+    // t=2: x=-1.0, h_prev=0.052485
+    // z = sigmoid(0.1*(-1.0) + 0.1*0.052485) = sigmoid(-0.0947515) = 0.476332
+    // r = sigmoid(-0.0947515) = 0.476332
+    // h_hat = tanh(0.1*(-1.0) + 0.1*(0.476332*0.052485)) = tanh(-0.0975) = -0.09719
+    // h_2 = (1-0.476332)*0.052485 + 0.476332*(-0.09719) = 0.027485 - 0.04629 = -0.018805
+    EXPECT_NEAR(outputs[2], -0.018805, 1e-6);
+}
+
+
 TEST_F(GRURNNLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;

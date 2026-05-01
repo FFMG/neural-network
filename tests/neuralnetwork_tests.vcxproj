@@ -82,6 +82,7 @@
     <ClCompile Include="activation_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_tests.cpp" />
+    <ClCompile Include="elmanrnnlayer_mt_tests.cpp" />
     <ClCompile Include="error_calculation_tests.cpp" />
     <ClCompile Include="fflayer_tests.cpp" />
     <ClCompile Include="fflayer_mt_tests.cpp" />
@@ -96,7 +97,9 @@
     <ClCompile Include="layer_optimizer_tests.cpp" />
     <ClCompile Include="layer_tests.cpp" />
     <ClCompile Include="lstmlayer_tests.cpp" />
+    <ClCompile Include="lstmlayer_mt_tests.cpp" />
     <ClCompile Include="multioutputlayer_tests.cpp" />
+    <ClCompile Include="network_integration_tests.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
     <ClCompile Include="neuron_tests.cpp" />
     <ClCompile Include="simd_utils_tests.cpp" />
