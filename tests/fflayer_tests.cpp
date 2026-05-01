@@ -313,3 +313,58 @@ TEST_F(FFLayerTest, LearningRateRobustness) {
         EXPECT_NEAR(layer.get_b_values()[0], expected_b, 1e-9);
     }
 }
+
+TEST_F(FFLayerTest, SequentialGradients) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2); // 2 time steps
+
+    // Inputs: x_0 = 1.0, x_1 = 2.0
+    batch_go[0].set_rnn_outputs(0, { 1.0, 2.0 });
+    // Gradients: g_0 = 0.5, g_1 = 0.3
+    batch_go[0].set_rnn_gradients(1, { 0.5, 0.3 });
+
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
+
+    // Expected W_grad = (g_0*x_0 + g_1*x_1) / batch_size
+    //                = (0.5*1.0 + 0.3*2.0) / 1 = 0.5 + 0.6 = 1.1
+    // Expected b_grad = (g_0 + g_1) / batch_size
+    //                = (0.5 + 0.3) / 1 = 0.8
+    EXPECT_NEAR(layer.get_w_grads()[0], 1.1, 1e-9);
+    EXPECT_NEAR(layer.get_b_grads()[0], 0.8, 1e-9);
+}
+
+TEST_F(FFLayerTest, SequentialGradientsBatch2) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 2);
+
+    // Batch 0
+    batch_go[0].set_rnn_outputs(0, { 1.0, 2.0 });
+    batch_go[0].set_rnn_gradients(1, { 0.5, 0.3 });
+    // Batch 1
+    batch_go[1].set_rnn_outputs(0, { 0.5, 1.5 });
+    batch_go[1].set_rnn_gradients(1, { 0.2, 0.4 });
+
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 2, 0);
+
+    // W_grad_b0 = (0.5*1.0 + 0.3*2.0) = 1.1
+    // W_grad_b1 = (0.2*0.5 + 0.4*1.5) = 0.1 + 0.6 = 0.7
+    // Total W_grad = (1.1 + 0.7) / 2 = 0.9
+    EXPECT_NEAR(layer.get_w_grads()[0], 0.9, 1e-9);
+
+    // b_grad_b0 = (0.5 + 0.3) = 0.8
+    // b_grad_b1 = (0.2 + 0.4) = 0.6
+    // Total b_grad = (0.8 + 0.6) / 2 = 0.7
+    EXPECT_NEAR(layer.get_b_grads()[0], 0.7, 1e-9);
+}

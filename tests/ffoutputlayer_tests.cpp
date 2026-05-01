@@ -273,6 +273,32 @@ TEST_F(FFOutputLayerTest, LearningRateRobustness) {
     }
 }
 
+TEST_F(FFOutputLayerTest, SequentialGradients) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2); // 2 time steps
+
+    // Inputs: x_0 = 1.0, x_1 = 2.0
+    batch_go[0].set_rnn_outputs(0, { 1.0, 2.0 });
+    // Gradients: g_0 = 0.5, g_1 = 0.3
+    batch_go[0].set_rnn_gradients(1, { 0.5, 0.3 });
+
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
+
+    // Expected W_grad = (g_0*x_0 + g_1*x_1) / batch_size = 1.1
+    // Expected b_grad = (g_0 + g_1) / batch_size = 0.8
+    EXPECT_NEAR(layer.get_w_grads()[0], 1.1, 1e-9);
+    EXPECT_NEAR(layer.get_b_grads()[0], 0.8, 1e-9);
+}
+
 TEST_F(FFOutputLayerTest, ForwardFeed) {
     unsigned num_inputs = 2;
     std::vector<OutputLayerDetails> details = {

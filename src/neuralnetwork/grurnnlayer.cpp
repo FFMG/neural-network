@@ -742,46 +742,23 @@ void GRURNNLayer::run_forward_pass(
 
       // b. Input-to-Gates (W * x_t) - Tiled
       const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
-      constexpr size_t BLOCK_SIZE = 64;
-      for (size_t i0 = 0; i0 < N_prev; i0 += BLOCK_SIZE)
+      for (size_t i = 0; i < N_prev; ++i)
       {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_prev);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double x_val = x_t[i];
-            if (x_val == 0.0) continue;
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              z_pre[j] += x_val * W_z[i * N_this + j];
-              r_pre[j] += x_val * W_r[i * N_this + j];
-              h_hat_pre[j] += x_val * W_h[i * N_this + j];
-            }
-          }
-        }
+        const double x_val = x_t[i];
+        if (x_val == 0.0) continue;
+        simd::mul_add(x_val, &W_z[i * N_this], z_pre.data(), N_this);
+        simd::mul_add(x_val, &W_r[i * N_this], r_pre.data(), N_this);
+        simd::mul_add(x_val, &W_h[i * N_this], h_hat_pre.data(), N_this);
       }
 
       // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
       const double* h_prev_ptr = prev_h.data();
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      for (size_t i = 0; i < N_this; ++i)
       {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double h_val = h_prev_ptr[i];
-            if (h_val == 0.0) continue;
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              z_pre[j] += h_val * U_z[i * N_this + j];
-              r_pre[j] += h_val * U_r[i * N_this + j];
-            }
-          }
-        }
+        const double h_val = h_prev_ptr[i];
+        if (h_val == 0.0) continue;
+        simd::mul_add(h_val, &U_z[i * N_this], z_pre.data(), N_this);
+        simd::mul_add(h_val, &U_r[i * N_this], r_pre.data(), N_this);
       }
 
       // d. Calculate Gates
@@ -794,25 +771,11 @@ void GRURNNLayer::run_forward_pass(
       }
 
       // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
+      for (size_t i = 0; i < N_this; ++i)
       {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t j0 = 0; j0 < N_this; j0 += BLOCK_SIZE)
-        {
-          size_t j_limit = std::min(j0 + BLOCK_SIZE, N_this);
-          for (size_t i = i0; i < i_limit; ++i)
-          {
-            const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
-            if (gated_h == 0.0)
-            {
-              continue;
-            }
-            for (size_t j = j0; j < j_limit; ++j)
-            {
-              h_hat_pre[j] += gated_h * U_h[i * N_this + j];
-            }
-          }
-        }
+        const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
+        if (gated_h == 0.0) continue;
+        simd::mul_add(gated_h, &U_h[i * N_this], h_hat_pre.data(), N_this);
       }
 
       // f. Residuals and Candidate Activation
@@ -1054,16 +1017,23 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       double* dh_prev_accum = &dh_prev_accum_ptr_all[b_idx * N_this];
       double* dh_next = &d_next_h_ptr_all[b_idx * N_this];
 
+      // Calculate Reset gate gradients for all neurons first
       for (size_t k = 0; k < N_this; ++k)
       {
         double grad_rh = temp_Uh_ptr[k];
         double h_prev = (h_prev_vals) ? h_prev_vals[k] : 0.0;
         double r = r_vals[k];
-        double d_r_pre = grad_rh * h_prev * r * (1.0 - r);
-        dr_ptr[k] = d_r_pre;
-        dh_next[k] = dh_prev_accum[k] + grad_rh * r + 
-                          simd::dot_product(dz_ptr, &_z_rw_values[k * N_this], N_this) + 
-                          simd::dot_product(dr_ptr, &_r_rw_values[k * N_this], N_this);
+        dr_ptr[k] = grad_rh * h_prev * r * (1.0 - r);
+      }
+
+      // Now backpropagate to previous hidden state
+      for (size_t k = 0; k < N_this; ++k)
+      {
+        double grad_rh = temp_Uh_ptr[k];
+        double r = r_vals[k];
+        dh_next[k] = dh_prev_accum[k] + grad_rh * r +
+          simd::dot_product(dz_ptr, &_z_rw_values[k * N_this], N_this) +
+          simd::dot_product(dr_ptr, &_r_rw_values[k * N_this], N_this);
       }
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
@@ -1230,9 +1200,9 @@ void GRURNNLayer::calculate_and_store_gradients(
       for (int t = t_start; t >= t_end; --t)
       {
         const size_t base_idx = t * GateCount * num_outputs;
-        const double* d_h_hat_ptr = &rnn_grads[base_idx];
-        const double* d_z_ptr = &rnn_grads[base_idx + num_outputs];
-        const double* d_r_ptr = &rnn_grads[base_idx + 2 * num_outputs];
+        const double* gh = &rnn_grads[base_idx];
+        const double* gz = &rnn_grads[base_idx + num_outputs];
+        const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
 
         const double* prev_input_ptr = nullptr;
         if (prev_outputs.size() == num_inputs)
@@ -1251,48 +1221,47 @@ void GRURNNLayer::calculate_and_store_gradients(
         }
 
         const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
-        for (unsigned j = 0; j < num_outputs; ++j)
+
+        // Bias Gradients
+        if (has_bias())
         {
-          const double gh = d_h_hat_ptr[j];
-          const double gz = d_z_ptr[j];
-          const double gr = d_r_ptr[j];
-
-          if (has_bias())
+          for (unsigned j = 0; j < num_outputs; ++j)
           {
-            local_b_grads[j] += gh;
-            local_z_b_grads[j] += gz;
-            local_r_b_grads[j] += gr;
+            local_b_grads[j] += gh[j];
+            local_z_b_grads[j] += gz[j];
+            local_r_b_grads[j] += gr[j];
           }
+        }
 
-          if (prev_input_ptr)
+        // Weight Gradients (Outer Product) - Vectorized over num_outputs
+        if (prev_input_ptr)
+        {
+          for (unsigned i = 0; i < num_inputs; ++i)
           {
-            for (unsigned i = 0; i < num_inputs; ++i)
-            {
-              double x = prev_input_ptr[i];
-              if (std::abs(x) < 1e-15)
-              {
-                continue;
-              }
-              local_w_grads[i * num_outputs + j] += gh * x;
-              local_z_w_grads[i * num_outputs + j] += gz * x;
-              local_r_w_grads[i * num_outputs + j] += gr * x;
-            }
+            double x = prev_input_ptr[i];
+            if (std::abs(x) < 1e-15) continue;
+            simd::mul_add(x, gh, &local_w_grads[i * num_outputs], num_outputs);
+            simd::mul_add(x, gz, &local_z_w_grads[i * num_outputs], num_outputs);
+            simd::mul_add(x, gr, &local_r_w_grads[i * num_outputs], num_outputs);
           }
+        }
 
-          if (prev_hidden_ptr)
+        // Recurrent Weight Gradients (Outer Product) - Vectorized over num_outputs
+        if (prev_hidden_ptr)
+        {
+          const double* r_vals = &packed[num_outputs];
+          for (unsigned k = 0; k < num_outputs; ++k)
           {
-            for (unsigned k = 0; k < num_outputs; ++k)
-            {
-              double h_prev = prev_hidden_ptr[k];
-              if (std::abs(h_prev) < 1e-15)
-              {
-                continue;
-              }
-              double r_val = packed[num_outputs + k]; 
-              local_rw_grads[k * num_outputs + j] += gh * (r_val * h_prev);
-              local_z_rw_grads[k * num_outputs + j] += gz * h_prev;
-              local_r_rw_grads[k * num_outputs + j] += gr * h_prev;
-            }
+            double h_prev = prev_hidden_ptr[k];
+            if (std::abs(h_prev) < 1e-15) continue;
+            
+            // gh * (r_val * h_prev) is specific to the candidate recurrent state
+            double r_val = r_vals[k];
+            simd::mul_add(r_val * h_prev, gh, &local_rw_grads[k * num_outputs], num_outputs);
+            
+            // Update and Reset gates use simple h_prev
+            simd::mul_add(h_prev, gz, &local_z_rw_grads[k * num_outputs], num_outputs);
+            simd::mul_add(h_prev, gr, &local_r_rw_grads[k * num_outputs], num_outputs);
           }
         }
       }

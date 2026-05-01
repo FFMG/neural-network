@@ -149,3 +149,57 @@ TEST_F(LSTMLayerTest, LearningRateRobustness) {
         EXPECT_NEAR(layer.get_o_b_values()[0], 0.5 - lr * 0.05, 1e-9);
     }
 }
+
+TEST_F(LSTMLayerTest, BPTTRobustness) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_f_w_values({ 0.2 }); layer.set_f_rw_values({ 0.3 }); layer.set_f_b_values({ 0.1 });
+    layer.set_i_w_values({ 0.4 }); layer.set_i_rw_values({ 0.5 }); layer.set_i_b_values({ 0.1 });
+    layer.set_o_w_values({ 0.6 }); layer.set_o_rw_values({ 0.7 }); layer.set_o_b_values({ 0.1 });
+    layer.set_w_values({ 0.5 });   layer.set_rw_values({ 0.1 });   layer.set_b_values({ 0.1 });
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2, 5); // 2 steps, multiplier 5
+
+    // Forward pass x_0=1, x_1=1
+    batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    MockLayer next_layer(2, num_outputs);
+    next_layer.set_w_values({ 1.0 });
+    std::vector<std::vector<double>> batch_next_grads = { { 0.0, 1.0 } }; // dL/dh_1 = 1.0
+
+    // Test BPTT=1
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 1);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 1);
+
+    // Expected values from manual math (BPTT=1):
+    EXPECT_NEAR(layer.get_w_grads()[0],   0.23526629, 1e-6);
+    EXPECT_NEAR(layer.get_rw_grads()[0],  0.05066721, 1e-6);
+    EXPECT_NEAR(layer.get_b_grads()[0],   0.23526629, 1e-6);
+    EXPECT_NEAR(layer.get_f_w_grads()[0], 0.04226857, 1e-6);
+    EXPECT_NEAR(layer.get_f_rw_grads()[0],0.00910300, 1e-6);
+    EXPECT_NEAR(layer.get_i_w_grads()[0], 0.06588742, 1e-6);
+    EXPECT_NEAR(layer.get_i_rw_grads()[0],0.01418959, 1e-6);
+    EXPECT_NEAR(layer.get_o_w_grads()[0], 0.10568376, 1e-6);
+    EXPECT_NEAR(layer.get_o_rw_grads()[0],0.02275997, 1e-6);
+
+    // Test BPTT=2 (Full sequence)
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 2);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 2);
+
+    // Expected values from manual math (BPTT=2):
+    EXPECT_NEAR(layer.get_w_grads()[0],   0.23526629 + 0.17460737, 1e-6);
+    EXPECT_NEAR(layer.get_rw_grads()[0],  0.05066721, 1e-6);
+    EXPECT_NEAR(layer.get_b_grads()[0],   0.23526629 + 0.17460737, 1e-6);
+    EXPECT_NEAR(layer.get_f_w_grads()[0], 0.04226857, 1e-6);
+    EXPECT_NEAR(layer.get_f_rw_grads()[0],0.00910300, 1e-6);
+    EXPECT_NEAR(layer.get_i_w_grads()[0], 0.06588742 + 0.04975254, 1e-6);
+    EXPECT_NEAR(layer.get_i_rw_grads()[0],0.01418959, 1e-6);
+    EXPECT_NEAR(layer.get_o_w_grads()[0], 0.10568376 + 0.01022788, 1e-6);
+    EXPECT_NEAR(layer.get_o_rw_grads()[0],0.02275997, 1e-6);
+}
