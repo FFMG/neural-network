@@ -43,7 +43,7 @@ set(NN_INCLUDE_DIRS
 
 # Create the test executable
 add_executable(neuralnetwork_tests
-    neuralnetwork.cpp
+    neuralnetwork_tests.cpp
     activation_tests.cpp
     error_calculation_tests.cpp
     gradients_and_outputs_tests.cpp
@@ -86,12 +86,10 @@ target_link_libraries(neuralnetwork_tests PRIVATE
 target_compile_definitions(neuralnetwork_tests PRIVATE
     VALIDATE_DATA=1
     _CRT_SECURE_NO_WARNINGS
-    # TRACY_ENABLE # Disabled by default as per user preference
     MYODDWEB_PROFILE=0
 )
 
-# Enable CTest (optional but good practice)
-include(GoogleTest) # This is the line usually missing
-
+include(GoogleTest)
 include(CTest)
+
 gtest_discover_tests(neuralnetwork_tests)
