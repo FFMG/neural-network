@@ -104,6 +104,7 @@
     <ClCompile Include="neuron_tests.cpp" />
     <ClCompile Include="output_layer_details_tests.cpp" />
     <ClCompile Include="simd_utils_tests.cpp" />
+    <ClCompile Include="simd_utils_mt_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />
     <ClCompile Include="..\src\neuralnetwork\activation.cpp" />
     <ClCompile Include="..\src\neuralnetwork\elmanrnnlayer.cpp" />
