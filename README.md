@@ -128,6 +128,24 @@ Norm-based gradient clipping is enabled by default to prevent exploding gradient
       .build();
 ```
 
+### Data Shuffling and BPTT
+
+When training recurrent networks (RNN, GRU, LSTM), the order of samples is critical for learning temporal dependencies. The library provides two levels of shuffling:
+
+*   **`shuffle-training-data` (Global Shuffling):** If set to `true`, the raw input samples are randomized *before* sequences are formed. 
+    *   **WARNING:** This should be set to `false` when using recurrent layers, as it destroys the chronological order of the data, making it impossible for the network to learn time-based patterns.
+*   **`shuffle-bptt-batches` (Sequence Shuffling):** If set to `true`, the library first creates contiguous "blocks" of data (of size `bptt_max_ticks`) where the internal chronological order is preserved. It then shuffles the order of these *blocks*.
+    *   **RECOMMENDED:** This is the preferred way to shuffle recurrent data. It ensures the GRU/LSTM sees valid timelines within each batch while preventing the model from over-fitting to the global sequence of the dataset.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_shuffle_training_data(false) // Keep chronological for RNNs
+      .with_shuffle_bptt_batches(true)  // Shuffle blocks for better generalization
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(24)
+      .build();
+```
+
 ### Learning Rate Strategies
 
 The library supports warmup and exponential decay:
