@@ -50,4 +50,17 @@ namespace test_helper {
   inline bool approx_equal(double a, double b, double epsilon = 1e-6) {
     return std::abs(a - b) < epsilon;
   }
+
+  /**
+   * @brief Get a sensible number of threads for MT tests.
+   * On powerful machines, we want high thread counts to force race conditions.
+   * On limited CI machines, we want to avoid over-subscription timeouts.
+   */
+  inline unsigned get_test_threads() {
+    auto cores = std::thread::hardware_concurrency();
+    if (cores > 4) {
+      return 64; // High concurrency for dev machines
+    }
+    return 16;   // Safe limit for CI/small machines
+  }
 }

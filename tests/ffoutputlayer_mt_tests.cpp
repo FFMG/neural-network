@@ -42,7 +42,7 @@ TEST_F(FFOutputLayerMTTest, ForwardFeedMTConsistency)
     const unsigned num_inputs = 16;
     const unsigned num_neurons = 32;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64; 
+    const unsigned num_threads = get_test_threads(); 
 
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_neurons / 2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0),
@@ -97,7 +97,7 @@ TEST_F(FFOutputLayerMTTest, OutputGradientsMTConsistency)
     const unsigned num_inputs = 16;
     const unsigned num_neurons = 32;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
 
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_neurons / 2, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0),
@@ -162,7 +162,7 @@ TEST_F(FFOutputLayerMTTest, GradientStorageMTConsistency)
     const unsigned num_inputs = 16;
     const unsigned num_neurons = 32;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
 
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_neurons, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
