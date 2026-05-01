@@ -41,28 +41,35 @@ TEST(NetworkIntegrationTest, CrossLayerGradientPropagation) {
     EXPECT_NEAR(batch_go[0].get_output(3, 0), 1.0, 1e-9);
 
     // Target y = 0.0. Loss = (1-0)^2 = 1. dLoss/dy = 2*(1-0) = 2.0
+    // BUT the library uses (a-y)/N for MSE gradient.
+    // Given outputs = 1.0, Target = 0.0, N = 1.
+    // dL/dz3 = (1.0 - 0.0) / 1.0 = 1.0
     std::vector<std::vector<double>> targets = { { 0.0 } };
     
     // Backward pass
     layer3.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1); 
-    // dL/dz3 = 2.0 (since linear activation)
-    EXPECT_NEAR(batch_go[0].get_gradients(3)[0], 2.0, 1e-9);
+    // dL/dz3 = 1.0
+    double grad3 = batch_go[0].get_gradients(3)[0];
+    EXPECT_NEAR(grad3, 1.0, 1e-9);
 
     // Propagate to layer 2
     auto span3 = batch_go[0].get_gradients(3);
     std::vector<std::vector<double>> next_grads = { std::vector<double>(span3.begin(), span3.end()) };
     layer2.calculate_hidden_gradients(batch_go, layer3, next_grads, batch_hs, 1, 0);
-    // dL/dz2 = dL/dz3 * W3 * act_deriv2 = 2.0 * 1.0 * 1.0 = 2.0
-    EXPECT_NEAR(batch_go[0].get_rnn_gradients(2)[0], 2.0, 1e-9);
+    // dL/dz2 = dL/dz3 * W3 * act_deriv2 = 1.0 * 1.0 * 1.0 = 1.0
+    double grad2 = batch_go[0].get_rnn_gradients(2)[0];
+    EXPECT_NEAR(grad2, 1.0, 1e-9);
 
     // Propagate to layer 1
-    next_grads = { batch_go[0].get_rnn_gradients(2) };
+    auto span2 = batch_go[0].get_rnn_gradients(2);
+    next_grads = { std::vector<double>(span2.begin(), span2.end()) };
     layer1.calculate_hidden_gradients(batch_go, layer2, next_grads, batch_hs, 1, 0);
-    // dL/dz1 = dL/dz2 * W2 * act_deriv1 = 2.0 * 1.0 * 1.0 = 2.0
-    EXPECT_NEAR(batch_go[0].get_gradients(1)[0], 2.0, 1e-9);
+    // dL/dz1 = dL/dz2 * W2 * act_deriv1 = 1.0 * 1.0 * 1.0 = 1.0
+    double grad1 = batch_go[0].get_gradients(1)[0];
+    EXPECT_NEAR(grad1, 1.0, 1e-9);
 
     // Store gradients for layer 1
-    layer1.calculate_and_store_gradients(batch_go, batch_hs, MockLayer(0, 1), 1, 0);
-    // dL/dW1 = dL/dz1 * x = 2.0 * 1.0 = 2.0
-    EXPECT_NEAR(layer1.get_w_grads()[0], 2.0, 1e-9);
+    layer1.calculate_and_store_gradients(batch_go, batch_hs, MockLayer(0, 1, 1), 1, 0);
+    // dL/dW1 = dL/dz1 * x = 1.0 * 1.0 = 1.0
+    EXPECT_NEAR(layer1.get_w_grads()[0], 1.0, 1e-9);
 }
