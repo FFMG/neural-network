@@ -795,25 +795,27 @@ void GRURNNLayer::run_forward_pass(
       {
         packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
 
+        double h_hat_activated = h_hat_vec[j];
+        packed_bptt_states[3 * N_this + j] = h_hat_activated; // Store activated h_hat before dropout
+
         double mask = 1.0;
-        double h_hat = h_hat_vec[j];
+        double h_hat_final = h_hat_activated;
         if (is_training && get_neuron((unsigned)j).is_dropout())
         {
           const auto& neuron = get_neuron((unsigned)j);
           if (neuron.must_randomly_drop())
           {
             mask = 0.0;
-            h_hat = 0.0;
+            h_hat_final = 0.0;
           }
           else
           {
             mask = 1.0 / (1.0 - neuron.get_dropout_rate());
-            h_hat *= mask;
+            h_hat_final *= mask;
           }
         }
-        packed_bptt_states[3 * N_this + j] = h_hat;
         packed_bptt_states[4 * N_this + j] = mask;
-        current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat;
+        current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_final;
         batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
       }
 
@@ -970,6 +972,22 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* grad_next_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
       double* d_next_h_ptr = &d_next_h_ptr_all[b_idx * N_this];
 
+      // Pre-calculate derivatives
+      std::vector<double> dh_hat_pre_deriv(N_this);
+      const auto& act = get_activation();
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        if (act.get_method() == activation::method::tanh) {
+          double h_hat = h_hat_ptr[j];
+          dh_hat_pre_deriv[j] = 1.0 - h_hat * h_hat;
+        } else if (act.get_method() == activation::method::sigmoid) {
+          double h_hat = h_hat_ptr[j];
+          dh_hat_pre_deriv[j] = h_hat * (1.0 - h_hat);
+        } else {
+          dh_hat_pre_deriv[j] = act.activate_derivative(h_hat_pre_vals[j]);
+        }
+      }
+
       simd::gru_bptt_gate_step(
         N_this,
         grad_next_ptr,
@@ -978,18 +996,12 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         h_hat_ptr,
         h_prev_vals,
         h_hat_pre_vals,
+        mask_vals,
         &dz_ptr_all[b_idx * N_this],
         &dh_hat_ptr_all[b_idx * N_this],
         &dh_prev_accum_ptr_all[b_idx * N_this],
-        [&](double x) { return get_activation().activate_derivative(x); }
+        dh_hat_pre_deriv.data()
       );
-
-      // Apply dropout mask to candidate state pre-activation gradient
-      double* dh_hat_pre = &dh_hat_ptr_all[b_idx * N_this];
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        dh_hat_pre[j] *= mask_vals[j];
-      }
     }
 
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);

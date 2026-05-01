@@ -476,21 +476,32 @@ void LSTMLayer::calculate_forward_feed(
         }
 
         // Activations
+        std::vector<double> g_act_vec(g_pre, g_pre + N_this);
+        get_activation().activate(g_act_vec.data(), g_act_vec.data() + N_this, is_training);
+
         for (size_t j = 0; j < N_this; ++j)
         {
           double f = 1.0 / (1.0 + std::exp(-f_pre[j]));
           double i = 1.0 / (1.0 + std::exp(-i_pre[j]));
           double o = 1.0 / (1.0 + std::exp(-o_pre[j]));
-          double g = std::tanh(g_pre[j]);
+          double g_activated = g_act_vec[j];
 
           packed_bptt[j] = f;
           packed_bptt[N_this + j] = i;
           packed_bptt[2 * N_this + j] = o;
-          packed_bptt[3 * N_this + j] = g; // Store ACTIVATED g for backprop consistency
+          packed_bptt[3 * N_this + j] = g_pre[j]; // Store PRE-ACTIVATION g
 
-          current_c[j] = f * current_c[j] + i * g;
-          double tanh_c = std::tanh(current_c[j]);
-          double out = o * tanh_c;
+          current_c[j] = f * current_c[j] + i * g_activated;
+        }
+
+        std::vector<double> c_act_vec = current_c;
+        get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
+
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          double o = packed_bptt[2 * N_this + j];
+          double activated_c = c_act_vec[j];
+          double out = o * activated_c;
 
           // Dropout
           double mask = 1.0;
@@ -510,7 +521,6 @@ void LSTMLayer::calculate_forward_feed(
             }
           }
           packed_bptt[GateCount * N_this + j] = mask;
-          packed_bptt[5 * N_this + j] = tanh_c; // Store tanh(c) for backprop stability
 
           current_h[j] = out;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
@@ -927,15 +937,59 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       const double* df_ptr = &packed[0];
       const double* di_ptr = &packed[N_this];
       const double* do_ptr = &packed[2 * N_this];
-      const double* g_act_ptr = &packed[3 * N_this];
-      const double* tanh_c_ptr = &packed[5 * N_this];
+      const double* g_pre_ptr = &packed[3 * N_this]; // Now storing pre-activation g
 
       double* df_chunk = &workspace.chunk_df[b_idx * N_this];
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
+      double* activated_c_chunk = &workspace.tanh_c_vals[b_idx * N_this];
+      double* activated_g_chunk = &workspace.g_vals[b_idx * N_this]; // Reuse g_vals for activated g
 
-      simd::lstm_bptt_gate_step(N_this, dh_curr.data(), dc_next, df_ptr, di_ptr, do_ptr, g_act_ptr, tanh_c_ptr, c_prev.data(), has_prev, df_chunk, di_chunk, do_chunk, dg_chunk, dc_next);
+      for (size_t j = 0; j < N_this; ++j) {
+        activated_c_chunk[j] = get_activation().activate(c_curr[j]);
+        activated_g_chunk[j] = get_activation().activate(g_pre_ptr[j]);
+      }
+
+      // Pre-calculate derivatives
+      std::vector<double> dc_act_deriv(N_this);
+      std::vector<double> dg_act_deriv(N_this);
+      const auto& act = get_activation();
+      for (size_t j = 0; j < N_this; ++j) {
+        double act_c = activated_c_chunk[j];
+        double act_g = activated_g_chunk[j];
+        if (act.get_method() == activation::method::tanh) {
+          dc_act_deriv[j] = 1.0 - act_c * act_c;
+          dg_act_deriv[j] = 1.0 - act_g * act_g;
+        } else if (act.get_method() == activation::method::sigmoid) {
+          dc_act_deriv[j] = act_c * (1.0 - act_c);
+          dg_act_deriv[j] = act_g * (1.0 - act_g);
+        } else {
+          dc_act_deriv[j] = act.activate_derivative(c_curr[j]);
+          dg_act_deriv[j] = act.activate_derivative(g_pre_ptr[j]);
+        }
+      }
+
+      simd::lstm_bptt_gate_step(
+        N_this, 
+        dh_curr.data(), 
+        dc_next, 
+        df_ptr, 
+        di_ptr, 
+        do_ptr, 
+        g_pre_ptr, 
+        activated_g_chunk,
+        activated_c_chunk, 
+        c_prev.data(), 
+        has_prev, 
+        df_chunk, 
+        di_chunk, 
+        do_chunk, 
+        dg_chunk, 
+        dc_next,
+        dc_act_deriv.data(),
+        dg_act_deriv.data()
+      );
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       for (size_t k = 0; k < N_prev; ++k)

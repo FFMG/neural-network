@@ -460,6 +460,7 @@ TEST_F(ErrorCalculationTest, SoftmaxPredictionCoverage) {
 TEST_F(ErrorCalculationTest, ComplexArchitectureIntegration) {
   // Input(2) -> Hidden1(FF, 3, ReLU) -> Hidden2(RNN, 3, Tanh) -> Output(FF, 1, Sigmoid)
   auto options = NeuralNetworkOptions::create({2, 3, 3, 1})
+         .with_log_level(Logger::LogLevel::Information)
          .with_hidden_layers({
            LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0),
            LayerDetails(Layer::Architecture::Elman, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0)
@@ -498,6 +499,7 @@ TEST_F(ErrorCalculationTest, ComplexArchitectureIntegration) {
 TEST_F(ErrorCalculationTest, MultiOutputArchitectureIntegration) {
   // Test with multiple outputs to ensure unrolling works
   auto options = NeuralNetworkOptions::create({2, 5, 3}) // 3 outputs
+         .with_log_level(Logger::LogLevel::Information)
          .with_hidden_layers({
            LayerDetails(Layer::Architecture::FF, 5, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0)
          })

@@ -116,7 +116,7 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     // dz_pre depends on (h_hat - h_prev).
     // h_hat in forward was masked.
     // dz_pre = dh * (masked_h_hat - h_prev) * z * (1-z)
-    double expected_dz = 1.0 * ( (mask == 0.0 ? 0.0 : packed[3]) - 0.0 ) * 0.668188 * 0.331812;
+    double expected_dz = 1.0 * (packed[3] * mask - 0.0) * 0.668188 * 0.331812;
     EXPECT_NEAR(gate_grads[1], expected_dz, 1e-4);
 }
 
@@ -190,35 +190,29 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
     layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 1);
 
     // Expected values from manual math (BPTT=1):
-    // W_grad = 0.41467406, U_grad = 0.12177937, b_grad = 0.41467406
-    // Wz_grad = 0.04781826, Uz_grad = 0.01931050, bz_grad = 0.04781826
-    // Wr_grad = 0.00332176, Ur_grad = 0.00134143, br_grad = 0.00332176
-    EXPECT_NEAR(layer.get_w_grads()[0],   0.41467406, 1e-6);
-    EXPECT_NEAR(layer.get_rw_grads()[0],  0.12177937, 1e-6);
-    EXPECT_NEAR(layer.get_b_grads()[0],   0.41467406, 1e-6);
-    EXPECT_NEAR(layer.get_z_w_grads()[0], 0.04781826, 1e-6);
-    EXPECT_NEAR(layer.get_z_rw_grads()[0],0.01931050, 1e-6);
-    EXPECT_NEAR(layer.get_z_b_grads()[0], 0.04781826, 1e-6);
-    EXPECT_NEAR(layer.get_r_w_grads()[0], 0.00332176, 1e-6);
-    EXPECT_NEAR(layer.get_r_rw_grads()[0],0.00134143, 1e-6);
-    EXPECT_NEAR(layer.get_r_b_grads()[0], 0.00332176, 1e-6);
+    EXPECT_NEAR(layer.get_w_grads()[0],   0.41455598, 1e-6);
+    EXPECT_NEAR(layer.get_rw_grads()[0],  0.12175109, 1e-6);
+    EXPECT_NEAR(layer.get_b_grads()[0],   0.41455598, 1e-6);
+    EXPECT_NEAR(layer.get_z_w_grads()[0], 0.04784955, 1e-6);
+    EXPECT_NEAR(layer.get_z_rw_grads()[0],0.01932314, 1e-6);
+    EXPECT_NEAR(layer.get_z_b_grads()[0], 0.04784955, 1e-6);
+    EXPECT_NEAR(layer.get_r_w_grads()[0], 0.00332064, 1e-6);
+    EXPECT_NEAR(layer.get_r_rw_grads()[0],0.00134098, 1e-6);
+    EXPECT_NEAR(layer.get_r_b_grads()[0], 0.00332064, 1e-6);
 
     // Test BPTT=2 (Full sequence)
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 2);
     layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 2);
 
     // Expected values from manual math (BPTT=2):
-    // W_grad = 0.56673765, U_grad = 0.12177937, b_grad = 0.56673765
-    // Wz_grad = 0.09586019, Uz_grad = 0.01931050, bz_grad = 0.09586019
-    // Wr_grad = 0.00332176, Ur_grad = 0.00134143, br_grad = 0.00332176
-    EXPECT_NEAR(layer.get_w_grads()[0],   0.56673765, 1e-6);
-    EXPECT_NEAR(layer.get_rw_grads()[0],  0.12177937, 1e-6);
-    EXPECT_NEAR(layer.get_b_grads()[0],   0.56673765, 1e-6);
-    EXPECT_NEAR(layer.get_z_w_grads()[0], 0.09586019, 1e-6);
-    EXPECT_NEAR(layer.get_z_rw_grads()[0],0.01931050, 1e-6);
-    EXPECT_NEAR(layer.get_z_b_grads()[0], 0.09586019, 1e-6);
-    EXPECT_NEAR(layer.get_r_w_grads()[0], 0.00332176, 1e-6);
-    EXPECT_NEAR(layer.get_r_rw_grads()[0],0.00134143, 1e-6);
-    EXPECT_NEAR(layer.get_r_b_grads()[0], 0.00332176, 1e-6);
+    EXPECT_NEAR(layer.get_w_grads()[0],   0.56661270, 1e-6);
+    EXPECT_NEAR(layer.get_rw_grads()[0],  0.12175109, 1e-6);
+    EXPECT_NEAR(layer.get_b_grads()[0],   0.56661270, 1e-6);
+    EXPECT_NEAR(layer.get_z_w_grads()[0], 0.09588963, 1e-6);
+    EXPECT_NEAR(layer.get_z_rw_grads()[0],0.01932314, 1e-6);
+    EXPECT_NEAR(layer.get_z_b_grads()[0], 0.09588963, 1e-6);
+    EXPECT_NEAR(layer.get_r_w_grads()[0], 0.00332064, 1e-6);
+    EXPECT_NEAR(layer.get_r_rw_grads()[0],0.00134098, 1e-6);
+    EXPECT_NEAR(layer.get_r_b_grads()[0], 0.00332064, 1e-6);
 }
 

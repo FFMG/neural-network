@@ -129,6 +129,8 @@ TEST(SimdUtilsTest, GruBpttGateStep) {
   std::vector<double> h_prev_vals = { 0.1, 0.2, 0.3, 0.4, 0.5 };
   std::vector<double> h_hat_pre_vals = { 0.5, 0.4, 0.3, 0.2, 0.1 };
 
+  std::vector<double> mask_vals = { 1.0, 2.0, 0.0, 1.0, 1.0 }; // Test various masks
+
   std::vector<double> dz_out(n);
   std::vector<double> dh_hat_out(n);
   std::vector<double> dh_prev_accum_out(n);
@@ -141,12 +143,18 @@ TEST(SimdUtilsTest, GruBpttGateStep) {
 
   for (size_t i = 0; i < n; ++i) {
     double dh = std::clamp(grad_next[i] + d_next_h[i], -50.0, 50.0);
-    expected_dz[i] = dh * (h_hat_vals[i] - h_prev_vals[i]) * z_vals[i] * (1.0 - z_vals[i]);
-    expected_dh_hat[i] = dh * z_vals[i] * activate_derivative(h_hat_pre_vals[i]);
+    double h_hat_final = h_hat_vals[i] * mask_vals[i];
+    expected_dz[i] = dh * (h_hat_final - h_prev_vals[i]) * z_vals[i] * (1.0 - z_vals[i]);
+    expected_dh_hat[i] = dh * z_vals[i] * activate_derivative(h_hat_pre_vals[i]) * mask_vals[i];
     expected_dh_prev[i] = dh * (1.0 - z_vals[i]);
   }
 
-  simd::gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), dz_out.data(), dh_hat_out.data(), dh_prev_accum_out.data(), activate_derivative);
+  std::vector<double> dh_hat_pre_deriv(n);
+  for (size_t i = 0; i < n; ++i) {
+    dh_hat_pre_deriv[i] = activate_derivative(h_hat_pre_vals[i]);
+  }
+
+  simd::gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), mask_vals.data(), dz_out.data(), dh_hat_out.data(), dh_prev_accum_out.data(), dh_hat_pre_deriv.data());
 
   expect_vec_near(dz_out, expected_dz);
   expect_vec_near(dh_hat_out, expected_dh_hat);
@@ -176,19 +184,51 @@ TEST(SimdUtilsTest, LstmBpttGateStep) {
   std::vector<double> expected_dg(n);
   std::vector<double> expected_dc_next(n);
 
+  std::vector<double> tanh_c_vals(n);
+  std::vector<double> g_act_vals(n);
+
   for (size_t j = 0; j < n; ++j) {
     double dh = dh_curr[j];
     double tanh_c = std::tanh(c_curr[j]);
+    tanh_c_vals[j] = tanh_c;
     double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
     double dc = dh * o[j] * (1.0 - tanh_c * tanh_c) + dc_next[j];
     double g = std::tanh(g_pre[j]);
+    g_act_vals[j] = g;
     expected_df[j] = dc * c_prev[j] * f[j] * (1.0 - f[j]);
     expected_di[j] = dc * g * i_gate[j] * (1.0 - i_gate[j]);
+    expected_do[j] = do_gate;
     expected_dg[j] = dc * i_gate[j] * (1.0 - g * g);
     expected_dc_next[j] = dc * f[j];
   }
 
-  simd::lstm_bptt_gate_step(n, dh_curr.data(), dc_next.data(), f.data(), i_gate.data(), o.data(), g_pre.data(), c_curr.data(), c_prev.data(), true, df_out.data(), di_out.data(), do_out.data(), dg_out.data(), dc_next_out.data());
+  std::vector<double> dc_act_deriv(n);
+  std::vector<double> dg_act_deriv(n);
+  for (size_t j = 0; j < n; ++j) {
+    dc_act_deriv[j] = 1.0 - tanh_c_vals[j] * tanh_c_vals[j];
+    dg_act_deriv[j] = 1.0 - g_act_vals[j] * g_act_vals[j];
+  }
+
+  simd::lstm_bptt_gate_step(
+    n, 
+    dh_curr.data(), 
+    dc_next.data(), 
+    f.data(), 
+    i_gate.data(), 
+    o.data(), 
+    g_pre.data(), // Pass pre-activation g
+    g_act_vals.data(), // Pass activated g
+    tanh_c_vals.data(), 
+    c_prev.data(), 
+    true, 
+    df_out.data(), 
+    di_out.data(), 
+    do_out.data(), 
+    dg_out.data(), 
+    dc_next_out.data(),
+    dc_act_deriv.data(),
+    dg_act_deriv.data()
+  );
 
   expect_vec_near(df_out, expected_df);
   expect_vec_near(di_out, expected_di);
