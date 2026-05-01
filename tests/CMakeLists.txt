@@ -44,6 +44,7 @@ set(NN_INCLUDE_DIRS
 # Create the test executable
 add_executable(neuralnetwork_tests
     activation_tests.cpp
+    adaptive_learning_rate_scheduler_tests.cpp
     aligned_allocator_tests.cpp
     elmanrnnlayer_mt_tests.cpp
     elmanrnnlayer_tests.cpp
