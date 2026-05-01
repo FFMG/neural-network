@@ -99,7 +99,7 @@ public:
     std::unique_lock<std::mutex> lock(_mutex);
     _condition_busy_task_complete.wait(lock, [this] 
       {
-        return _total_pending_tasks.load() == 0;
+        return _total_pending_tasks.load() == 0 || _state.load() == State::Stopped;
       });
 
     output.swap(_results);
@@ -131,7 +131,7 @@ private:
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     std::vector<R> local_results;
     local_results.reserve(100); // pre-allocate some space.
-    while (_state.load(std::memory_order_relaxed) == State::Started || !_tasks.empty())
+    while (true)
     {
       std::function<R()> task;
       {
@@ -140,9 +140,14 @@ private:
           {
             return !_tasks.empty() || _state.load() != State::Started;
           });
+        
+        if (_tasks.empty() && _state.load() != State::Started)
+        {
+          break;
+        }
+
         if (_tasks.empty())
         {
-          if (_state.load() != State::Started) break;
           continue;
         }
 
@@ -158,7 +163,6 @@ private:
           local_results.push_back(std::move(result));
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
 
-          // If this was the last pending task, notify waiters.
           if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
           {
             _results.insert(_results.end(),
@@ -186,7 +190,11 @@ private:
         }
       }
     }
-    _state.store(State::Stopped);
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      _state.store(State::Stopped);
+      _condition_busy_task_complete.notify_all();
+    }
   }
 
   std::thread _worker;
