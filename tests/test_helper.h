@@ -58,9 +58,9 @@ namespace test_helper {
    */
   inline unsigned get_test_threads() {
     auto cores = std::thread::hardware_concurrency();
-    if (cores > 4) {
+    if (cores >= 4) {
       return 64; // High concurrency for dev machines
     }
-    return 16;   // Safe limit for CI/small machines
+    return 8;   // Safe limit for CI/small machines
   }
 }
