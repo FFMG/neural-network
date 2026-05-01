@@ -158,17 +158,15 @@ public:
     return true;
   }
 
-  /* 
-   * Multiplier = 6: 
+  /*
+   * Multiplier = 5:
    * 1. Forget gate (f) pre-activation
    * 2. Input gate (i) pre-activation
    * 3. Output gate (o) pre-activation
    * 4. Cell candidate (g) activated (tanh)
    * 5. Dropout mask (stored to ensure consistency between forward and BPTT passes)
-   * 6. tanh(c) (stored to avoid redundant tanh calculations in BPTT)
    */
-  static constexpr unsigned Multiplier = 6;
-  static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
+  static constexpr unsigned Multiplier = 5;  static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
@@ -972,13 +970,13 @@ private:
       chunk_di.assign(batch_chunk_size * n, 0.0);
       chunk_do.assign(batch_chunk_size * n, 0.0);
       chunk_dg.assign(batch_chunk_size * n, 0.0);
-      f_vals.assign(n, 0.0);
-      i_vals.assign(n, 0.0);
-      o_vals.assign(n, 0.0);
-      g_vals.assign(n, 0.0);
-      c_vals.assign(n, 0.0);
-      c_prev_vals.assign(n, 0.0);
-      tanh_c_vals.assign(n, 0.0);
+      f_vals.assign(batch_chunk_size * n, 0.0);
+      i_vals.assign(batch_chunk_size * n, 0.0);
+      o_vals.assign(batch_chunk_size * n, 0.0);
+      g_vals.assign(batch_chunk_size * n, 0.0);
+      c_vals.assign(batch_chunk_size * n, 0.0);
+      c_prev_vals.assign(batch_chunk_size * n, 0.0);
+      tanh_c_vals.assign(batch_chunk_size * n, 0.0);
       temp_Uf_T_df.assign(batch_chunk_size * n, 0.0);
       temp_Ui_T_di.assign(batch_chunk_size * n, 0.0);
       temp_Uo_T_do.assign(batch_chunk_size * n, 0.0);
