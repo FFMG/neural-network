@@ -263,12 +263,8 @@ public:
 
       __m256d d_h_hat = _mm256_mul_pd(dh, z);
       
-      double derivatives[4];
-      for (int k = 0; k < 4; ++k)
-      {
-        derivatives[k] = activate_derivative(h_hat_pre_vals[j + k]);
-      }
-      __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_loadu_pd(derivatives));
+      // d_h_hat_pre = d_h_hat * (1 - h_hat^2) for tanh activation
+      __m256d d_h_hat_pre = _mm256_mul_pd(d_h_hat, _mm256_sub_pd(one, _mm256_mul_pd(h_hat, h_hat)));
       
       __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
 
@@ -285,7 +281,8 @@ public:
       double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
 
       double d_z_pre = dh * (h_hat - h_prev) * z * (1.0 - z);
-      double d_h_hat_pre = dh * z * activate_derivative(h_hat_pre_vals[j]);
+      // d_h_hat_pre = dh * z * (1 - h_hat^2) for tanh
+      double d_h_hat_pre = dh * z * (1.0 - h_hat * h_hat);
 
       dz_out[j] = d_z_pre;
       dh_hat_out[j] = d_h_hat_pre;
@@ -301,8 +298,8 @@ public:
     const double* f,
     const double* i,
     const double* o,
-    const double* g_pre,
-    const double* c_curr,
+    const double* g_act,
+    const double* tanh_c_vals,
     const double* c_prev,
     bool has_prev,
     double* df_out,
@@ -318,14 +315,9 @@ public:
     for (; j + 3 < n; j += 4)
     {
       __m256d dh = _mm256_loadu_pd(&dh_curr[j]);
-      __m256d c = _mm256_loadu_pd(&c_curr[j]);
+      __m256d tanh_c = _mm256_loadu_pd(&tanh_c_vals[j]);
       __m256d o_gate = _mm256_loadu_pd(&o[j]);
       __m256d dc_nxt = _mm256_loadu_pd(&dc_next[j]);
-
-      // tanh_c = std::tanh(c)
-      double c_vals[4]; _mm256_storeu_pd(c_vals, c);
-      double tc_vals[4]; for(int k=0; k<4; ++k) tc_vals[k] = std::tanh(c_vals[k]);
-      __m256d tanh_c = _mm256_loadu_pd(tc_vals);
 
       // do_gate = dh * tanh_c * o * (1 - o)
       __m256d do_gate = _mm256_mul_pd(_mm256_mul_pd(dh, tanh_c), _mm256_mul_pd(o_gate, _mm256_sub_pd(one, o_gate)));
@@ -333,11 +325,7 @@ public:
       // dc = dh * o * (1 - tanh_c^2) + dc_next
       __m256d dc = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh, o_gate), _mm256_sub_pd(one, _mm256_mul_pd(tanh_c, tanh_c))), dc_nxt);
 
-      // g = std::tanh(g_pre)
-      double gp_vals[4]; _mm256_storeu_pd(gp_vals, _mm256_loadu_pd(&g_pre[j]));
-      double g_vals[4]; for(int k=0; k<4; ++k) g_vals[k] = std::tanh(gp_vals[k]);
-      __m256d g = _mm256_loadu_pd(g_vals);
-
+      __m256d g = _mm256_loadu_pd(&g_act[j]); // Already activated (tanh)
       __m256d f_gate = _mm256_loadu_pd(&f[j]);
       __m256d i_gate = _mm256_loadu_pd(&i[j]);
       __m256d cp = has_prev ? _mm256_loadu_pd(&c_prev[j]) : _mm256_setzero_pd();
@@ -359,12 +347,13 @@ public:
     for (; j < n; ++j)
     {
       double dh = dh_curr[j];
-      double tanh_c = std::tanh(c_curr[j]);
+      double tanh_c = tanh_c_vals[j];
       double do_gate = dh * tanh_c * o[j] * (1.0 - o[j]);
       double dc = dh * o[j] * (1.0 - tanh_c * tanh_c) + dc_next[j];
-      double g = std::tanh(g_pre[j]);
+      double g = g_act[j]; // Already activated (tanh)
       df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
       di_out[j] = dc * g * i[j] * (1.0 - i[j]);
+      do_out[j] = do_gate;
       dg_out[j] = dc * i[j] * (1.0 - g * g);
       dc_next_out[j] = dc * f[j];
     }

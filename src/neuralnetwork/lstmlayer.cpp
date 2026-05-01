@@ -463,13 +463,10 @@ void LSTMLayer::calculate_forward_feed(
         {
           const double hi = current_h[i];
           if (hi == 0.0) continue;
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            f_pre[j] += hi * _f_rw_values[i * N_this + j];
-            i_pre[j] += hi * _i_rw_values[i * N_this + j];
-            o_pre[j] += hi * _o_rw_values[i * N_this + j];
-            g_pre[j] += hi * _rw_values[i * N_this + j];
-          }
+          simd::mul_add(hi, &_f_rw_values[i * N_this], f_pre, N_this);
+          simd::mul_add(hi, &_i_rw_values[i * N_this], i_pre, N_this);
+          simd::mul_add(hi, &_o_rw_values[i * N_this], o_pre, N_this);
+          simd::mul_add(hi, &_rw_values[i * N_this], g_pre, N_this);
         }
 
         // Residuals (on candidate gate g)
@@ -489,7 +486,7 @@ void LSTMLayer::calculate_forward_feed(
           packed_bptt[j] = f;
           packed_bptt[N_this + j] = i;
           packed_bptt[2 * N_this + j] = o;
-          packed_bptt[3 * N_this + j] = g_pre[j]; // Store pre-tanh for backprop
+          packed_bptt[3 * N_this + j] = g; // Store ACTIVATED g for backprop consistency
 
           current_c[j] = f * current_c[j] + i * g;
           double tanh_c = std::tanh(current_c[j]);
@@ -513,6 +510,7 @@ void LSTMLayer::calculate_forward_feed(
             }
           }
           packed_bptt[GateCount * N_this + j] = mask;
+          packed_bptt[5 * N_this + j] = tanh_c; // Store tanh(c) for backprop stability
 
           current_h[j] = out;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
@@ -698,39 +696,34 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
 
         for (size_t j = 0; j < N_this; ++j)
         {
-          const double dfj = df[j], dij = di[j], doj = do_gate[j], dgj = dg[j];
-          if (std::abs(dfj) < 1e-15 && std::abs(dij) < 1e-15 && std::abs(doj) < 1e-15 && std::abs(dgj) < 1e-15)
-          {
-            continue;
-          }
+          local_f_b_grads[j] += df[j];
+          local_i_b_grads[j] += di[j];
+          local_o_b_grads[j] += do_gate[j];
+          local_b_grads[j] += dg[j];
+        }
 
-          local_f_b_grads[j] += dfj; local_i_b_grads[j] += dij; local_o_b_grads[j] += doj; local_b_grads[j] += dgj;
-          for (size_t k = 0; k < N_prev; ++k)
+        // Weight Gradients (Outer Product) - Vectorized over N_this
+        for (size_t k = 0; k < N_prev; ++k)
+        {
+          const double xk = x_t[k];
+          if (std::abs(xk) < 1e-15) continue;
+          simd::mul_add(xk, df, &local_f_w_grads[k * N_this], N_this);
+          simd::mul_add(xk, di, &local_i_w_grads[k * N_this], N_this);
+          simd::mul_add(xk, do_gate, &local_o_w_grads[k * N_this], N_this);
+          simd::mul_add(xk, dg, &local_w_grads[k * N_this], N_this);
+        }
+
+        // Recurrent Weight Gradients (Outer Product) - Vectorized over N_this
+        if (h_prev)
+        {
+          for (size_t k = 0; k < N_this; ++k)
           {
-            const double xk = x_t[k];
-            if (std::abs(xk) < 1e-15)
-            {
-              continue;
-            }
-            local_f_w_grads[k * N_this + j] += dfj * xk;
-            local_i_w_grads[k * N_this + j] += dij * xk;
-            local_o_w_grads[k * N_this + j] += doj * xk;
-            local_w_grads[k * N_this + j] += dgj * xk;
-          }
-          if (h_prev)
-          {
-            for (size_t k = 0; k < N_this; ++k)
-            {
-              const double hk = h_prev[k];
-              if (std::abs(hk) < 1e-15)
-              {
-                continue;
-              }
-              local_f_rw_grads[k * N_this + j] += dfj * hk;
-              local_i_rw_grads[k * N_this + j] += dij * hk;
-              local_o_rw_grads[k * N_this + j] += doj * hk;
-              local_rw_grads[k * N_this + j] += dgj * hk;
-            }
+            const double hk = h_prev[k];
+            if (std::abs(hk) < 1e-15) continue;
+            simd::mul_add(hk, df, &local_f_rw_grads[k * N_this], N_this);
+            simd::mul_add(hk, di, &local_i_rw_grads[k * N_this], N_this);
+            simd::mul_add(hk, do_gate, &local_o_rw_grads[k * N_this], N_this);
+            simd::mul_add(hk, dg, &local_rw_grads[k * N_this], N_this);
           }
         }
       }
@@ -931,12 +924,18 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         dh_curr[j] = std::clamp((upstream_grads[j] + dh_next[j]) * mask, -50.0, 50.0);
       }
 
+      const double* df_ptr = &packed[0];
+      const double* di_ptr = &packed[N_this];
+      const double* do_ptr = &packed[2 * N_this];
+      const double* g_act_ptr = &packed[3 * N_this];
+      const double* tanh_c_ptr = &packed[5 * N_this];
+
       double* df_chunk = &workspace.chunk_df[b_idx * N_this];
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
 
-      simd::lstm_bptt_gate_step(N_this, dh_curr.data(), dc_next, packed.data(), &packed[N_this], &packed[2 * N_this], &packed[3 * N_this], c_curr.data(), c_prev.data(), has_prev, df_chunk, di_chunk, do_chunk, dg_chunk, dc_next);
+      simd::lstm_bptt_gate_step(N_this, dh_curr.data(), dc_next, df_ptr, di_ptr, do_ptr, g_act_ptr, tanh_c_ptr, c_prev.data(), has_prev, df_chunk, di_chunk, do_chunk, dg_chunk, dc_next);
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       for (size_t k = 0; k < N_prev; ++k)
