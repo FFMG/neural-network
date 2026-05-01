@@ -53,6 +53,7 @@ add_executable(neuralnetwork_tests
     weight_param_tests.cpp
     neuron_tests.cpp
     simd_utils_tests.cpp
+    simd_utils_mt_tests.cpp
     fflayer_tests.cpp
     fflayer_mt_tests.cpp
     grurnnlayer_tests.cpp

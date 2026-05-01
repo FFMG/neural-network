@@ -14,6 +14,15 @@
 class simd
 {
 public:
+  // Scalar fallback for mul_add
+  inline static void scalar_mul_add(const double x, const double* w, double* y, size_t n, size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y[j] += x * w[j];
+    }
+  }
+
   // A simple vectorized GEMM block (y += x * w)
   // Computes: y[j] += x * w[j] for j = 0..N
   inline static void mul_add(const double x, const double* w, double* y, size_t n) noexcept
@@ -38,10 +47,18 @@ public:
       _mm256_storeu_pd(&y[j], vec_y);
     }
 #endif
-    for (; j < n; ++j)
+    scalar_mul_add(x, w, y, n, j);
+  }
+
+  // Scalar fallback for dot_product
+  [[nodiscard]] inline static double scalar_dot_product(const double* a, const double* b, size_t n, size_t start = 0) noexcept
+  {
+    double total_sum = 0.0;
+    for (size_t j = start; j < n; ++j)
     {
-      y[j] += x * w[j];
+      total_sum += a[j] * b[j];
     }
+    return total_sum;
   }
 
   // Vectorized dot product (returns sum(a[j] * b[j]))
@@ -67,11 +84,40 @@ public:
     _mm256_storeu_pd(sums, vec_sum);
     total_sum = sums[0] + sums[1] + sums[2] + sums[3];
 #endif
-    for (; j < n; ++j)
-    {
-      total_sum += a[j] * b[j];
-    }
+    total_sum += scalar_dot_product(a, b, n, j);
     return total_sum;
+  }
+
+  // Scalar fallback for adam_step
+  inline static void scalar_adam_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double* m2,
+    double b1,
+    double b2,
+    double p1,
+    double p2,
+    double lr,
+    double epsilon,
+    size_t n,
+    const double* decays = nullptr,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
+      m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
+      double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
+      double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
+      double update = m_hat / (std::sqrt(v_hat) + epsilon);
+      double w = values[j];
+      if (decays != nullptr)
+      {
+        w *= (1.0 - lr * decays[j]);
+      }
+      values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+    }
   }
 
   // Full Adam Update Step
@@ -134,13 +180,32 @@ public:
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
-    for (; j < n; ++j) 
+    scalar_adam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j);
+  }
+  // Scalar fallback for nadam_step
+  inline static void scalar_nadam_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double* m2,
+    double b1,
+    double b2,
+    double p1,
+    double p2,
+    double lr,
+    double epsilon,
+    size_t n,
+    const double* decays = nullptr,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
     {
       m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
       m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
       double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
       double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
-      double update = m_hat / (std::sqrt(v_hat) + epsilon);
+      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) / p1;
+      double update = m_nadam / (std::sqrt(v_hat) + epsilon);
       double w = values[j];
       if (decays != nullptr)
       {
@@ -149,6 +214,7 @@ public:
       values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
     }
   }
+
   // Full Nadam Update Step
   inline static void nadam_step(
     double* values,
@@ -211,20 +277,40 @@ public:
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
-    for (; j < n; ++j)
+    scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j);
+  }
+
+  // Scalar fallback for gru_bptt_gate_step
+  inline static void scalar_gru_bptt_gate_step(
+    size_t n,
+    const double* grad_next,
+    const double* d_next_h,
+    const double* z_vals,
+    const double* h_hat_vals,
+    const double* h_prev_vals,
+    const double* h_hat_pre_vals,
+    const double* mask_vals,
+    double* dz_out,
+    double* dh_hat_out,
+    double* dh_prev_accum_out,
+    const double* h_hat_pre_deriv_vals,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
     {
-      m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
-      m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
-      double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
-      double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
-      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) / p1;
-      double update = m_nadam / (std::sqrt(v_hat) + epsilon);
-      double w = values[j];
-      if (decays != nullptr)
-      {
-        w *= (1.0 - lr * decays[j]);
-      }
-      values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+      double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
+      double z = z_vals[j];
+      double h_hat = h_hat_vals[j];
+      double mask = mask_vals[j];
+      double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
+      double h_hat_final = h_hat * mask;
+
+      double d_z_pre = dh * (h_hat_final - h_prev) * z * (1.0 - z);
+      double d_h_hat_pre = dh * z * h_hat_pre_deriv_vals[j] * mask;
+
+      dz_out[j] = d_z_pre;
+      dh_hat_out[j] = d_h_hat_pre;
+      dh_prev_accum_out[j] = dh * (1.0 - z);
     }
   }
 
@@ -277,21 +363,46 @@ public:
       _mm256_storeu_pd(&dh_prev_accum_out[j], d_h_prev_direct);
     }
 #endif
-    for (; j < n; ++j)
+    scalar_gru_bptt_gate_step(n, grad_next, d_next_h, z_vals, h_hat_vals, h_prev_vals, h_hat_pre_vals, mask_vals, dz_out, dh_hat_out, dh_prev_accum_out, h_hat_pre_deriv_vals, j);
+  }
+
+  // Scalar fallback for lstm_bptt_gate_step
+  inline static void scalar_lstm_bptt_gate_step(
+    size_t n,
+    const double* dh_curr,
+    const double* dc_next_in,
+    const double* f,
+    const double* i,
+    const double* o,
+    const double* g_pre_vals,
+    const double* activated_g_vals,
+    const double* activated_c_vals,
+    const double* c_prev,
+    bool has_prev,
+    double* df_out,
+    double* di_out,
+    double* do_out,
+    double* dg_out,
+    double* dc_next_out,
+    const double* dc_act_deriv_vals,
+    const double* dg_act_deriv_vals,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
     {
-      double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
-      double z = z_vals[j];
-      double h_hat = h_hat_vals[j];
-      double mask = mask_vals[j];
-      double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-      double h_hat_final = h_hat * mask;
+      double dh = std::clamp(dh_curr[j], -50.0, 50.0);
+      double act_c = activated_c_vals[j];
+      double do_gate_s = dh * act_c * o[j] * (1.0 - o[j]);
 
-      double d_z_pre = dh * (h_hat_final - h_prev) * z * (1.0 - z);
-      double d_h_hat_pre = dh * z * h_hat_pre_deriv_vals[j] * mask;
+      double dc = dh * o[j] * dc_act_deriv_vals[j] + dc_next_in[j];
 
-      dz_out[j] = d_z_pre;
-      dh_hat_out[j] = d_h_hat_pre;
-      dh_prev_accum_out[j] = dh * (1.0 - z);
+      double g_act = activated_g_vals[j];
+
+      df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
+      di_out[j] = dc * g_act * i[j] * (1.0 - i[j]);
+      do_out[j] = do_gate_s;
+      dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
+      dc_next_out[j] = dc * f[j];
     }
   }
 
@@ -353,21 +464,26 @@ public:
       _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc, f_gate));
     }
 #endif
-    for (; j < n; ++j)
-    {
-      double dh = std::clamp(dh_curr[j], -50.0, 50.0);
-      double act_c = activated_c_vals[j];
-      double do_gate_s = dh * act_c * o[j] * (1.0 - o[j]);
-      
-      double dc = dh * o[j] * dc_act_deriv_vals[j] + dc_next_in[j];
-      
-      double g_act = activated_g_vals[j];
-
-      df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
-      di_out[j] = dc * g_act * i[j] * (1.0 - i[j]);
-      do_out[j] = do_gate_s;
-      dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
-      dc_next_out[j] = dc * f[j];
-    }
+    scalar_lstm_bptt_gate_step(
+      n, 
+      dh_curr, 
+      dc_next_in, 
+      f, 
+      i, 
+      o, 
+      g_pre_vals, 
+      activated_g_vals, 
+      activated_c_vals, 
+      c_prev, 
+      has_prev, 
+      df_out, 
+      di_out, 
+      do_out, 
+      dg_out, 
+      dc_next_out, 
+      dc_act_deriv_vals, 
+      dg_act_deriv_vals, 
+      j
+    );
   }
 };
