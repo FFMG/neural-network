@@ -43,33 +43,34 @@ set(NN_INCLUDE_DIRS
 
 # Create the test executable
 add_executable(neuralnetwork_tests
-    neuralnetwork_tests.cpp
     activation_tests.cpp
-    error_calculation_tests.cpp
-    gradients_and_outputs_tests.cpp
     aligned_allocator_tests.cpp
-    layers_and_neurons_container_tests.cpp
+    elmanrnnlayer_mt_tests.cpp
+    elmanrnnlayer_tests.cpp
+    error_calculation_tests.cpp
+    fflayer_mt_tests.cpp
+    fflayer_tests.cpp
+    ffoutputlayer_mt_tests.cpp
+    ffoutputlayer_tests.cpp
+    gradients_and_outputs_tests.cpp
+    grurnnlayer_mt_tests.cpp
+    grurnnlayer_tests.cpp
     hidden_state_tests.cpp
-    weight_param_tests.cpp
+    layer_details_tests.cpp
+    layer_optimizer_tests.cpp
+    layer_tests.cpp
+    layers_and_neurons_container_tests.cpp
+    learning_rate_tests.cpp
+    lstmlayer_mt_tests.cpp
+    lstmlayer_tests.cpp
+    multioutputlayer_tests.cpp
+    network_integration_tests.cpp
+    neuralnetwork_tests.cpp    
     neuron_tests.cpp
+    output_layer_details_tests.cpp
     simd_utils_tests.cpp
     simd_utils_mt_tests.cpp
-    fflayer_tests.cpp
-    fflayer_mt_tests.cpp
-    grurnnlayer_tests.cpp
-    grurnnlayer_mt_tests.cpp
-    ffoutputlayer_tests.cpp
-    ffoutputlayer_mt_tests.cpp
-    layer_tests.cpp
-    multioutputlayer_tests.cpp
-    elmanrnnlayer_tests.cpp
-    elmanrnnlayer_mt_tests.cpp
-    lstmlayer_tests.cpp
-    lstmlayer_mt_tests.cpp
-    network_integration_tests.cpp
-    layer_optimizer_tests.cpp
-    layer_details_tests.cpp
-    output_layer_details_tests.cpp
+    weight_param_tests.cpp
     ${NN_SOURCES}
 )
 
