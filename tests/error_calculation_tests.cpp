@@ -1,11 +1,11 @@
-#include <gtest/gtest.h>
+#include "activation.h"
 #include "errorcalculation.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
-#include "activation.h"
-#include <vector>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <gtest/gtest.h>
+#include <vector>
 
 namespace math_expect {
   // --- Basic Formulas ---
