@@ -17,7 +17,7 @@ protected:
 
 TEST_F(FFLayerTest, HandCalculated2x2Forward) {
     // 2 inputs, 2 neurons
-    FFLayer layer(2, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
     
     // Set weights: [1.0, 0.5, -1.0, 0.0]
     // W[in][out] usually: W[0][0]=1.0, W[0][1]=0.5, W[1][0]=-1.0, W[1][1]=0.0
@@ -41,13 +41,15 @@ TEST_F(FFLayerTest, HandCalculated2x2Forward) {
 }
 
 TEST_F(FFLayerTest, HandCalculated2x2Backward) {
-    FFLayer layer(2, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
     layer.set_w_values({ 1.0, 0.5, -1.0, 0.0 });
     layer.set_b_values({ 0.1, -0.1 });
 
     MockLayer prev_layer(0, 2);
-    MockLayer next_layer(2, 2); // Dummy next layer
-    std::vector<unsigned> topology = { 2, 2, 2 };
+    MockLayer next_layer(2, 2, 2); // 2 output neurons, 2 input neurons
+    next_layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 }); // Identity
+
+    std::vector<unsigned> topology = { 2, 2 };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
     
@@ -60,7 +62,7 @@ TEST_F(FFLayerTest, HandCalculated2x2Backward) {
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
     
     // Calculate weight gradients
-    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 1);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
     
     const auto& w_grads = layer.get_w_grads();
     const auto& b_grads = layer.get_b_grads();
