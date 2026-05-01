@@ -223,7 +223,7 @@ private:
         ++explodingPattern;
       }
     }
-    if (explodingPattern >= comparisons - 1)
+    if (explodingPattern >= comparisons - 1 || explodingCount >= comparisons - 1)
     {
       return RateState::Exploding;
     }
@@ -262,7 +262,7 @@ private:
 
     // Apply the standard formula for percent change.
     double change = newValue - oldValue;
-    return (change / oldValue) * 100.0;
+    return (change / oldValue);
   }
 
   double linear_decay(double current_learning_rate, int epoch, int number_of_epoch)

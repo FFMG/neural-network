@@ -80,6 +80,7 @@
   <ItemGroup>
     <ClCompile Include="..\src\neuralnetwork\lstmlayer.cpp" />
     <ClCompile Include="activation_tests.cpp" />
+    <ClCompile Include="adaptive_learning_rate_scheduler_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_mt_tests.cpp" />
