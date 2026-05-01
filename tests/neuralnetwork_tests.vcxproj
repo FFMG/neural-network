@@ -96,6 +96,7 @@
     <ClCompile Include="layer_details_tests.cpp" />
     <ClCompile Include="layer_optimizer_tests.cpp" />
     <ClCompile Include="layer_tests.cpp" />
+    <ClCompile Include="learning_rate_tests.cpp" />
     <ClCompile Include="lstmlayer_tests.cpp" />
     <ClCompile Include="lstmlayer_mt_tests.cpp" />
     <ClCompile Include="multioutputlayer_tests.cpp" />
