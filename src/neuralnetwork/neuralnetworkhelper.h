@@ -122,17 +122,7 @@ public:
     unsigned number_of_epoch,
     const std::vector<std::vector<double>>& training_inputs,
     const std::vector<std::vector<double>>& training_outputs
-  ) noexcept :
-    _neural_network(&neural_network),
-    _learning_rate(learning_rate),
-    _number_of_epoch(number_of_epoch),
-    _epoch(0),
-    _percent_complete(0.0),
-    _training_inputs(training_inputs),
-    _training_outputs(training_outputs)
-  {
-    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-  }
+  ) noexcept;
 
   void set_epoch(unsigned epoch) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
