@@ -42,7 +42,7 @@ TEST_F(FFLayerMTTest, ForwardFeedMTConsistency)
     const unsigned num_inputs = 16;
     const unsigned num_neurons = 32;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64; // High thread count to force race conditions
+    const unsigned num_threads = get_test_threads();
 
     FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
     FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
@@ -93,7 +93,7 @@ TEST_F(FFLayerMTTest, BackwardFeedMTConsistency)
     const unsigned num_neurons = 32;
     const unsigned next_neurons = 16;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
 
     FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
     FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
@@ -164,7 +164,7 @@ TEST_F(FFLayerMTTest, GradientStorageMTConsistency)
     const unsigned num_neurons = 32;
     const unsigned next_neurons = 16;
     const unsigned batch_size = 256;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
 
     FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
     FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);

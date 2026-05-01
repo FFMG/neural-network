@@ -58,7 +58,7 @@ TEST_F(LSTMLayerMTTest, ForwardFeedMTConsistency)
     const unsigned num_inputs = 8;
     const unsigned num_neurons = 16;
     const unsigned batch_size = 128;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
     const unsigned num_timesteps = 10;
 
     LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
@@ -107,7 +107,7 @@ TEST_F(LSTMLayerMTTest, BackwardFeedMTConsistency)
     const unsigned num_inputs = 8;
     const unsigned num_neurons = 16;
     const unsigned batch_size = 128;
-    const unsigned num_threads = 64;
+    const unsigned num_threads = get_test_threads();
     const unsigned num_timesteps = 10;
 
     LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
