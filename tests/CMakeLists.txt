@@ -91,5 +91,7 @@ target_compile_definitions(neuralnetwork_tests PRIVATE
 )
 
 # Enable CTest (optional but good practice)
+include(GoogleTest) # This is the line usually missing
+
 include(CTest)
-add_test(NAME NeuralNetworkTests COMMAND neuralnetwork_tests)
+gtest_discover_tests(neuralnetwork_tests)
