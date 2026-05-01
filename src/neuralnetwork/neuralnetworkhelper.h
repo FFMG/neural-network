@@ -72,7 +72,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _learning_rate; 
   }
-  [[nodiscard]] void set_learning_rate(double learning_rate) noexcept {
+  void set_learning_rate(double learning_rate) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _learning_rate = learning_rate; 
   }

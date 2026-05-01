@@ -169,11 +169,11 @@ private:
           }
         }
       }
-      catch(const std::exception& e)
+      catch(...)
       {
-        Logger::error("TaskQueue caught exception in task:", e.what());
         {
           std::unique_lock<std::mutex> lock(_mutex);
+          if (!_exception_ptr) _exception_ptr = std::current_exception();
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
           if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
           {
@@ -184,7 +184,6 @@ private:
             _condition_busy_task_complete.notify_all();
           }
         }
-        throw; 
       }
     }
     _state.store(State::Stopped);
@@ -201,6 +200,7 @@ private:
 
   std::queue<std::function<R()>> _tasks;
   std::vector<R> _results;
+  std::exception_ptr _exception_ptr = nullptr;
 };
 
 template <>
@@ -292,6 +292,13 @@ public:
         return _total_pending_tasks.load() == 0;
       });
 
+    if (_exception_ptr)
+    {
+      std::exception_ptr p = nullptr;
+      std::swap(p, _exception_ptr);
+      std::rethrow_exception(p);
+    }
+
     _total_completed_tasks.store(0);
   }
 
@@ -349,18 +356,17 @@ private:
           }
         }
       }
-      catch (const std::exception& e)
+      catch (...)
       {
-        Logger::error("TaskQueue caught exception in task:", e.what());
         {
           std::unique_lock<std::mutex> lock(_mutex);
+          if (!_exception_ptr) _exception_ptr = std::current_exception();
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
           if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
           {
             _condition_busy_task_complete.notify_all();
           }
         }
-        throw; 
       }
     }
     _state.store(State::Stopped);
@@ -376,6 +382,7 @@ private:
   std::atomic<int> _total_pending_tasks;
 
   std::queue<std::function<void()>> _tasks;
+  std::exception_ptr _exception_ptr = nullptr;
 };
 
 template <typename R>
@@ -467,6 +474,13 @@ public:
     std::unique_lock<std::mutex> lock(_mutex);
     wait_for_task(lock);
 
+    if (_exception_ptr)
+    {
+      std::exception_ptr p = nullptr;
+      std::swap(p, _exception_ptr);
+      std::rethrow_exception(p);
+    }
+
     R output;
     output = _result; 
     _has_result.store(false);
@@ -529,13 +543,12 @@ private:
           _condition_busy_task_complete.notify_all();
         }
       }
-      catch(const std::exception& e)
+      catch(...)
       {
         std::unique_lock<std::mutex> lock(_mutex);
+        if (!_exception_ptr) _exception_ptr = std::current_exception();
         _busy_task.store(false);
         _condition_busy_task_complete.notify_all();
-        Logger::error("SingleTaskQueue caught exception in task:", e.what());
-        throw; 
       }
     }
     _state.store(State::Stopped);
@@ -553,6 +566,7 @@ private:
 
   std::function<R()> _task;
   R _result;
+  std::exception_ptr _exception_ptr = nullptr;
 };
 
 template <>
@@ -641,6 +655,13 @@ public:
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
     std::unique_lock<std::mutex> lock(_mutex);
     wait_for_task(lock);
+    
+    if (_exception_ptr)
+    {
+      std::exception_ptr p = nullptr;
+      std::swap(p, _exception_ptr);
+      std::rethrow_exception(p);
+    }
   }
 
   inline bool busy() const
@@ -696,13 +717,12 @@ private:
           _condition_busy_task_complete.notify_all();
         }
       }
-      catch (const std::exception& e)
+      catch (...)
       {
         std::unique_lock<std::mutex> lock(_mutex);
+        if (!_exception_ptr) _exception_ptr = std::current_exception();
         _busy_task.store(false);
         _condition_busy_task_complete.notify_all();
-        Logger::error("SingleTaskQueue caught exception in task:", e.what());
-        throw; 
       }
     }
     _state.store(State::Stopped);
@@ -718,6 +738,7 @@ private:
   std::atomic<bool> _task_is_present;
 
   std::function<void()> _task;
+  std::exception_ptr _exception_ptr = nullptr;
 };
 
 template <typename R>
@@ -853,7 +874,7 @@ private:
     {
       _task_queues.emplace_back(std::make_unique<TaskQueue<R>>());
     }
-    Logger::trace([&_number_of_threads] {
+    Logger::trace([this] {
       return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
@@ -972,7 +993,7 @@ private:
     {
       _task_queues.emplace_back(std::make_unique<TaskQueue<void>>());
     }
-    Logger::trace([&] {
+    Logger::trace([this] {
       return Logger::factory("ThreadPool initialized with ", _number_of_threads, " worker threads.");
       });
   }
