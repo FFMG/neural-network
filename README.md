@@ -153,13 +153,20 @@ When training recurrent networks (RNN, GRU, LSTM), the order of samples is criti
 
 ### Learning Rate Strategies
 
-The library supports warmup and exponential decay:
+The library supports various strategies to manage learning rate dynamics:
+
+*   **Warmup:** Linearly (or geometrically) increases the rate from a starting value to the target rate over a percentage of the total epochs.
+*   **Exponential Decay:** Reduces the learning rate by a fixed decay factor after each epoch.
+*   **Smooth Cosine Boosts (Restarts):** Periodically boosts the learning rate using a smooth cosine staircase to help the model escape local minima.
+*   **Adaptive Learning Rate:** Dynamically adjusts the learning rate based on recent error trends. It detects states like `Plateauing`, `Improving`, or `Exploding` and adjusts the rate accordingly.
 
 ```cpp
     auto options = NeuralNetworkOptions::create(topology)
       .with_learning_rate(0.001)
-      .with_learning_rate_warmup(0.0001, 0.05) // Start at 0.0001, reach 0.001 at 5% of training
-      .with_learning_rate_decay_rate(0.985)    // Decay per epoch
+      .with_learning_rate_warmup(0.0001, 0.05) // Start at 0.0001, reach target at 5% of training
+      .with_learning_rate_decay_rate(0.985)    // Decay factor applied per epoch
+      .with_learning_rate_boost_rate(0.2, 0.1) // Boost by 10% every 20% of training epochs
+      .with_adaptive_learning_rates(true)      // Enable dynamic error-based adjustment
       .build();
 ```
 
@@ -169,6 +176,29 @@ Individual layers can have dropout applied via `LayerDetails`. During training, 
 
 ```cpp
     LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25); // 25% dropout
+```
+
+### General Training Options
+
+These options control the overall execution of the training process:
+
+*   **`number_of_epoch`:** Total number of training iterations over the dataset.
+*   **`batch_size`:** Number of samples processed before internal gradient updates are applied.
+*   **`number_of_threads`:** Controls multi-threaded execution for GEMM and layer operations.
+*   **`progress_callback`:** A lambda or function called after each epoch to monitor error metrics and progress.
+*   **`has_bias`:** Global toggle to enable or disable bias neurons for all layers.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_number_of_epoch(5000)
+      .with_batch_size(32)
+      .with_number_of_threads(8)
+      .with_has_bias(true)
+      .with_progress_callback([](NeuralNetworkHelper& helper) {
+          Logger::info("Epoch: ", helper.epoch(), " Error: ", helper.error());
+          return true; // Return false to stop training early
+      })
+      .build();
 ```
 
 ### Inference Temperature Calibration
