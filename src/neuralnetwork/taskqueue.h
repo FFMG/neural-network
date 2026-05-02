@@ -163,7 +163,7 @@ private:
           local_results.push_back(std::move(result));
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
 
-          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) <= 1)
           {
             _results.insert(_results.end(),
               std::make_move_iterator(local_results.begin()),
@@ -179,7 +179,7 @@ private:
           std::unique_lock<std::mutex> lock(_mutex);
           if (!_exception_ptr) _exception_ptr = std::current_exception();
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
-          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) <= 1)
           {
             _results.insert(_results.end(),
               std::make_move_iterator(local_results.begin()),
@@ -358,7 +358,7 @@ private:
           std::unique_lock<std::mutex> lock(_mutex);
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
 
-          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) <= 1)
           {
             _condition_busy_task_complete.notify_all();
           }
@@ -370,7 +370,7 @@ private:
           std::unique_lock<std::mutex> lock(_mutex);
           if (!_exception_ptr) _exception_ptr = std::current_exception();
           _total_completed_tasks.fetch_add(1, std::memory_order_relaxed);
-          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+          if (_total_pending_tasks.fetch_sub(1, std::memory_order_acq_rel) <= 1)
           {
             _condition_busy_task_complete.notify_all();
           }

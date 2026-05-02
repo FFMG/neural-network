@@ -45,6 +45,10 @@ namespace test_helper {
     void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override {}
     double get_gradient_norm_sq() const override { return 0.0; }
     void apply_stored_gradients(double, double) override {}
+
+    static std::vector<Neuron> create_neurons_exposed(double dropout_rate, unsigned number_output_neurons) {
+      return Layer::create_neurons(dropout_rate, number_output_neurons);
+    }
   };
 
   inline bool approx_equal(double a, double b, double epsilon = 1e-6) {
@@ -59,7 +63,7 @@ namespace test_helper {
   inline unsigned get_test_threads() {
     auto cores = std::thread::hardware_concurrency();
     if (cores >= 4) {
-      return 64; // High concurrency for dev machines
+      return 32; // Reduced from 64 for stability
     }
     return 8;   // Safe limit for CI/small machines
   }

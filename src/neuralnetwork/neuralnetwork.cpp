@@ -927,25 +927,37 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
 
   // then get the scheduler if we can improve it further.
   // This is done after warmup and is throttled to run every 5 epochs
-  if (_options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target() && epoch % 5 == 0)
+  if (_options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target())
   {
-    if (!_adaptive_lr_task.busy())
+    if (epoch % 5 == 0)
     {
-      if (_adaptive_lr_task.has_result())
+      if (!_adaptive_lr_task.busy())
       {
-        _last_metrics = _adaptive_lr_task.get();
+        if (_adaptive_lr_task.has_result())
+        {
+          _last_metrics = _adaptive_lr_task.get();
+        }
+
+        // start a new task
+        _adaptive_lr_task.call([this]() {
+          return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
+          });
       }
 
-      // start a new task
-      _adaptive_lr_task.call([this]() {
-        return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
-        });
+      if (!_last_metrics.empty())
+      {
+        learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
+        learning_rate_scheduler.set_learning_rate(learning_rate);
+        Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+      }
     }
-
-    if (!_last_metrics.empty())
+    else
     {
-      learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
-      Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+      // Persist the last adaptive rate if we have one
+      if (learning_rate_scheduler.current_learning_rate() != 0.0)
+      {
+        learning_rate = learning_rate_scheduler.current_learning_rate();
+      }
     }
   }
   return learning_rate;

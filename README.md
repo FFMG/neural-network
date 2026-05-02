@@ -42,6 +42,10 @@ While not focused on high performance, it provides a clean implementation of the
 * LAMB
 * Lion
 
+## Options
+
+The following sections describe the various configuration options available when building a network using `NeuralNetworkOptions`.
+
 ### Hidden Layers
 
 The hidden layer configuration allows you to define the architecture of your network's trunk.
@@ -54,6 +58,7 @@ The hidden layer configuration allows you to define the architecture of your net
 * **Layer size:** Number of neurons in the hidden layer.
 * **Activation:** The activation object (method, alpha, and temperature).
 * **Weight Decay:** Regularization strength.
+* **Dropout:** Percentage of neurons to randomly drop during training (0.0 to 1.0).
 * **Optimiser:** Each layer can optionally have its own optimizer configuration.
 
 ```cpp
@@ -160,7 +165,7 @@ The library supports warmup and exponential decay:
 
 ### Dropout
 
-Individual layers can have dropout applied:
+Individual layers can have dropout applied via `LayerDetails`. During training, neurons are randomly deactivated according to the dropout rate, and the remaining activations are scaled by `1 / (1 - rate)` to maintain the expected sum. Dropout is automatically disabled during inference (`think`).
 
 ```cpp
     LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25); // 25% dropout

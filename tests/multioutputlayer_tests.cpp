@@ -28,7 +28,6 @@ TEST_F(MultiOutputLayerTest, ConstructionAndTopology) {
 
     std::vector<MultiOutputLayerDetails> details = { mod1, mod2 };
     
-    // MultiOutputLayer(index, num_inputs, num_outputs, details, threads, has_bias)
     MultiOutputLayer layer(5, 4, 5, details, 1, true);
 
     EXPECT_EQ(layer.get_layer_index(), 5);
@@ -36,18 +35,11 @@ TEST_F(MultiOutputLayerTest, ConstructionAndTopology) {
     EXPECT_EQ(layer.get_number_output_neurons(), 5);
     EXPECT_EQ(layer.get_branches().size(), 2);
     
-    // Branch 1 should have 2 layers (hidden + output)
     EXPECT_EQ(layer.get_branches()[0].layers.size(), 2);
-    // Branch 2 should have 1 layer (output)
     EXPECT_EQ(layer.get_branches()[1].layers.size(), 1);
 }
 
 TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
-    // Setup a simple MultiOutputLayer
-    // Input: 2 neurons
-    // Branch A: 1 hidden layer (2 neurons, ReLU), 1 output layer (2 neurons, Softmax)
-    // Branch B: 1 output layer (1 neuron, Sigmoid)
-    
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
     OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
@@ -59,19 +51,12 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
     std::vector<MultiOutputLayerDetails> details = { modA, modB };
     MultiOutputLayer layer(1, 2, 3, details, 1, true);
 
-    // Access branches to set specific weights
     auto& branches = layer.get_mutable_branches();
     
-    // Branch A Hidden Layer (ReLU)
-    // Use weights that move z away from 0.0 for robustness
     branches[0].layers[0]->set_w_values({ 0.2, 0.4, 0.6, 0.8 });
     branches[0].layers[0]->set_b_values({ 0.1, -0.1 });
-
-    // Branch A Output Layer (Softmax)
     branches[0].layers[1]->set_w_values({ 0.5, 0.6, 0.7, 0.8 });
     branches[0].layers[1]->set_b_values({ 0.0, 0.0 });
-
-    // Branch B Output Layer (Sigmoid)
     branches[1].layers[0]->set_w_values({ 0.9, -0.1 });
     branches[1].layers[0]->set_b_values({ 0.0 });
 
@@ -84,22 +69,6 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
 
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Math:
-    // Input: [0.5, -0.2]
-    // Branch A Hidden:
-    // Z_ah = [0.5*0.2 - 0.2*0.6 + 0.1, 0.5*0.4 - 0.2*0.8 - 0.1]
-    //      = [0.1 - 0.12 + 0.1, 0.2 - 0.16 - 0.1] = [0.08, -0.06]
-    // A_ah = [0.08, 0.0]
-    // Branch A Output:
-    // Z_ao = [0.08*0.5 + 0.0*0.7, 0.08*0.6 + 0.0*0.8] = [0.04, 0.048]
-    // Softmax([0.04, 0.048]):
-    // exp(0.04)=1.0408108, exp(0.048)=1.0491708, sum=2.0899816
-    // A_ao = [0.4979999, 0.5020001]
-    
-    // Branch B Output:
-    // Z_bo = [0.5*0.9 - 0.2*-0.1] = [0.47]
-    // A_bo = [sigmoid(0.47)] = [0.6153829]
-
     const auto& outputs = batch_go[0].get_outputs(1);
     EXPECT_NEAR(outputs[0], 0.498000, 1e-6);
     EXPECT_NEAR(outputs[1], 0.502000, 1e-6);
@@ -107,7 +76,6 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
 }
 
 TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
-    // Explicitly clean EvaluationConfig to disable any direction boost/scaling
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
@@ -134,18 +102,8 @@ TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
     batch_go[0].set_outputs(0, { 0.5, -0.2 });
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Targets: Branch A: [1.0, 0.0], Branch B: [0.8]
     std::vector<std::vector<double>> targets = { { 1.0, 0.0, 0.8 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
-
-    // Branch A Output (Softmax + CE): grad = y - t
-    // A_ao = [0.4979999, 0.5020001]
-    // Grad_ao = [-0.502000, 0.502000]
-    
-    // Branch B Output (Sigmoid + MSE): grad = (y - t) * sig_deriv
-    // delta = (0.615383 - 0.8) = -0.184617
-    // deriv = 0.615383 * (1 - 0.615383) = 0.236686
-    // grad = -0.184617 * 0.236686 = -0.043696
 
     const auto& bA_grads = branches[0].gradients_and_outputs[0].get_gradients(branches[0].layers[1]->get_layer_index());
     EXPECT_NEAR(bA_grads[0], -0.502000, 1e-4);
@@ -311,10 +269,6 @@ TEST_F(MultiOutputLayerTest, MultiInputProxyLayerTest) {
 }
 
 TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
-    // Trunk: 2 inputs -> 2 neurons
-    // Branch A: 2 inputs -> 2 hidden (ReLU) -> 1 output (Sigmoid, MSE)
-    // Branch B: 2 inputs -> 1 hidden (Tanh) -> 2 outputs (Softmax, CE)
-    
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0) };
@@ -328,18 +282,13 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true);
     auto& branches = layer.get_mutable_branches();
 
-    // Set weights to move z away from 0.0 for robustness
-    // Branch A H1 (ReLU): W=[[0.2, 0.4], [0.6, 0.8]], B=[0.1, -0.1]
     branches[0].layers[0]->set_w_values({ 0.2, 0.4, 0.6, 0.8 });
     branches[0].layers[0]->set_b_values({ 0.1, -0.1 });
-    // Branch A O (Sigmoid): W=[[0.5], [0.6]], B=[0.2]
     branches[0].layers[1]->set_w_values({ 0.5, 0.6 });
     branches[0].layers[1]->set_b_values({ 0.2 });
 
-    // Branch B H1 (Tanh): W=[[0.7], [0.8]], B=[0.3]
     branches[1].layers[0]->set_w_values({ 0.7, 0.8 });
     branches[1].layers[0]->set_b_values({ 0.3 });
-    // Branch B O (Softmax): W=[[0.9, 1.0]], B=[-0.2, 0.2]
     branches[1].layers[1]->set_w_values({ 0.9, 1.0 });
     branches[1].layers[1]->set_b_values({ -0.2, 0.2 });
 
@@ -351,38 +300,93 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Forward Math:
-    // Input: [0.5, -0.5]
-    // Branch A H1: z = [0.5*0.2 - 0.5*0.6 + 0.1, 0.5*0.4 - 0.5*0.8 - 0.1] = [-0.1, -0.1]
-    // Branch A H1 a: [0.0, 0.0]
-    // Branch A O: z = [0.0*0.5 + 0.0*0.6 + 0.2] = [0.2], a = [sigmoid(0.2)] = [0.549834]
-    
-    // Branch B H1: z = [0.5*0.7 - 0.5*0.8 + 0.3] = [0.35 - 0.4 + 0.3] = [0.25]
-    // Branch B H1 a: [tanh(0.25)] = [0.24491866]
-    // Branch B O: z = [0.24491866*0.9 - 0.2, 0.24491866*1.0 + 0.2] = [0.02042679, 0.44491866]
-    // Branch B O a: exp(0.0204)=1.0206, exp(0.4449)=1.5603, sum=2.5809, a = [0.395442, 0.604558]
-
     const auto& outputs = batch_go[0].get_outputs(1);
     EXPECT_NEAR(outputs[0], 0.549834, 1e-5);
     EXPECT_NEAR(outputs[1], 0.395442, 1e-5);
     EXPECT_NEAR(outputs[2], 0.604558, 1e-5);
 
-    // Backprop Math:
     std::vector<std::vector<double>> targets = { { 1.0, 1.0, 0.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
     
-    // Branch A O grad: (0.549834 - 1.0) * sig'(0.2) = -0.450166 * 0.247517 = -0.111424
-    // Branch B O grad (CE): [0.395442 - 1.0, 0.604558 - 0.0] = [-0.604558, 0.604558]
-    
     layer.backprop_branches(1, 0);
-    
-    // Branch A H1: z = [-0.1, -0.1], ReLU' = [0.0, 0.0] -> Branch A Trunk grad = [0, 0]
-    
-    // Branch B H1: z = 0.25, tanh' = 0.940015
-    // Branch B H1 grad: (-0.604558*0.9 + 0.604558*1.0) * 0.940015 = 0.0604558 * 0.940015 = 0.056829
-    // Branch B Trunk grad: [0.056829*0.7, 0.056829*0.8] = [0.03978, 0.04546]
     
     auto trunk_grads = layer.get_trunk_gradients(1);
     EXPECT_NEAR(trunk_grads[0][0], 0.03978, 1e-4);
     EXPECT_NEAR(trunk_grads[0][1], 0.04546, 1e-4);
+}
+
+TEST_F(MultiOutputLayerTest, DropoutStatisticalVerification) {
+    const unsigned num_inputs = 100;
+    const unsigned num_outputs = 1000;
+    const double dropout_rate = 0.5;
+
+    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0) };
+    OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    MultiOutputLayerDetails mod(h, o);
+
+    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true);
+    
+    // Set weights to 1.0 so output = input * 1.0 (before dropout)
+    auto& branch_h = *layer.get_mutable_branches()[0].layers[0];
+    branch_h.set_w_values(std::vector<double>(num_inputs * num_outputs, 1.0));
+    branch_h.set_b_values(std::vector<double>(num_outputs, 0.0));
+    
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs }; // Trunk topology
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+    
+    // Input 1.0
+    batch_go[0].set_outputs(0, std::vector<double>(num_inputs, 1.0));
+
+    // Training mode
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    // Get the hidden layer output from the branch
+    const auto& branch_hidden_out = layer.get_branches()[0].gradients_and_outputs[0].get_outputs(1);
+    
+    unsigned dropped = 0;
+    double sum = 0.0;
+    double expected_scaled_value = num_inputs * (1.0 / (1.0 - dropout_rate));
+
+    for (double val : branch_hidden_out) {
+        if (val == 0.0) dropped++;
+        else sum += val;
+    }
+
+    double actual_rate = static_cast<double>(dropped) / num_outputs;
+    EXPECT_NEAR(actual_rate, dropout_rate, 0.05); // 5% tolerance for 10k samples
+    
+    if (num_outputs - dropped > 0) {
+        double avg_active = sum / (num_outputs - dropped);
+        EXPECT_NEAR(avg_active, expected_scaled_value, 1e-7);
+    }
+}
+
+TEST_F(MultiOutputLayerTest, DropoutNotInference) {
+    const unsigned num_inputs = 10;
+    const unsigned num_outputs = 100;
+    const double dropout_rate = 0.5;
+
+    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0) };
+    OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    MultiOutputLayerDetails mod(h, o);
+
+    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true);
+    layer.get_mutable_branches()[0].layers[0]->set_w_values(std::vector<double>(num_inputs * num_outputs, 1.0));
+    layer.get_mutable_branches()[0].layers[0]->set_b_values(std::vector<double>(num_outputs, 0.0));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+    batch_go[0].set_outputs(0, std::vector<double>(num_inputs, 1.0));
+
+    // Inference mode (is_training = false)
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& branch_hidden_out = layer.get_branches()[0].gradients_and_outputs[0].get_outputs(1);
+    for (double val : branch_hidden_out) {
+        EXPECT_NEAR(val, (double)num_inputs, 1e-7); // No dropout, no scaling
+    }
 }

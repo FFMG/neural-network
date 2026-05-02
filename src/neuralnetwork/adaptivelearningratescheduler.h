@@ -37,7 +37,8 @@ public:
     _min_percent_change(min_percent_change),
     _adjustment_rate(adjustment_rate),
     _cool_down(0),
-    _max_learning_rate(0.0)
+    _max_learning_rate(0.0),
+    _current_learning_rate(0.0)
   {
     assert(min_percent_change >= 0 && min_percent_change <= 1.0);
   }
@@ -48,12 +49,23 @@ public:
   AdaptiveLearningRateScheduler(AdaptiveLearningRateScheduler&&) = delete;
   AdaptiveLearningRateScheduler& operator=(AdaptiveLearningRateScheduler&&) = delete;
 
+  [[nodiscard]] double current_learning_rate() const noexcept
+  {
+    return _current_learning_rate;
+  }
+
+  void set_learning_rate(double lr) noexcept
+  {
+    _current_learning_rate = lr;
+  }
+
   double update(double currentError, double current_learning_rate, int epoch, int number_of_epoch)
   {
     if (_max_learning_rate == 0)
     {
       //  set the max learning rate.
       _max_learning_rate = std::clamp(2* current_learning_rate, current_learning_rate, 0.99);
+      _current_learning_rate = current_learning_rate;
       Logger::debug("Adaptive Learning Rate max value set to: ", std::fixed, std::setprecision(15), _max_learning_rate);
     }
 
@@ -158,6 +170,7 @@ private:
   double _adjustment_rate;
   int _cool_down;
   double _max_learning_rate;
+  double _current_learning_rate;
 
   double clamp_learning_rate(double new_learning_rate) const
   {
