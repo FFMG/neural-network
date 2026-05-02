@@ -36,7 +36,6 @@ TEST_F(FFOutputLayerTest, ConstructorAndClone) {
 }
 
 TEST_F(FFOutputLayerTest, CalculateOutputGradientsMSE) {
-    // MSE with Linear activation: dL/dz = (y - t) / N
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
     std::vector<OutputLayerDetails> details = {
@@ -49,25 +48,19 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsMSE) {
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1);
 
-    // Given outputs (y) = [0.8, 0.4]
-    // Target outputs (t) = [1.0, 0.0]
     batch_hs[0].at(1, 0).set_hidden_state_values({ 0.8, 0.4 });
-    batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.8, 0.4 }); // linear
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.8, 0.4 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
 
     std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
 
-    // Expected deltas:
-    // delta_0 = (0.8 - 1.0) / 2 = -0.1
-    // delta_1 = (0.4 - 0.0) / 2 = 0.2
-    // Since linear activation derivative is 1.0, grad = delta
     const auto grads = batch_go[0].get_gradients(1);
     EXPECT_NEAR(grads[0], -0.1, 1e-9);
     EXPECT_NEAR(grads[1], 0.2, 1e-9);
 }
 
 TEST_F(FFOutputLayerTest, CalculateOutputGradientsBCE) {
-    // BCE with Sigmoid activation: dL/dz = (y - t) / N (Simplified)
     unsigned num_inputs = 2;
     unsigned num_outputs = 1;
     std::vector<OutputLayerDetails> details = {
@@ -80,21 +73,18 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsBCE) {
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1);
 
-    // y = sigmoid(z). Let z = 0, so y = 0.5
     batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5 });
     batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0 });
 
     std::vector<std::vector<double>> targets = { { 1.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
 
-    // Expected delta: (0.5 - 1.0) / 1 = -0.5
-    // BCE + Sigmoid usually cancels the derivative in the code if 'is_not_using_activation_derivative' is true.
     const auto grads = batch_go[0].get_gradients(1);
     EXPECT_NEAR(grads[0], -0.5, 1e-9);
 }
 
 TEST_F(FFOutputLayerTest, CalculateOutputGradientsCE) {
-    // Cross-Entropy with Softmax: dL/dz = (y - t) (Note: usually no 1/N in CE implementation in this codebase)
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
     std::vector<OutputLayerDetails> details = {
@@ -107,23 +97,144 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsCE) {
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1);
 
-    // y = softmax(z). Let z = [0, 0], so y = [0.5, 0.5]
     batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5, 0.5 });
     batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.0, 0.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
 
     std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
 
-    // Expected grads: 
-    // grad_0 = 0.5 - 1.0 = -0.5
-    // grad_1 = 0.5 - 0.0 = 0.5
     const auto grads = batch_go[0].get_gradients(1);
     EXPECT_NEAR(grads[0], -0.5, 1e-9);
     EXPECT_NEAR(grads[1], 0.5, 1e-9);
 }
 
+TEST_F(FFOutputLayerTest, DropoutStatisticalVerification) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1000;
+    double dropout_rate = 0.5;
+    
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    std::vector<Neuron> neurons;
+    for (unsigned i = 0; i < num_outputs; ++i) {
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate);
+    }
+
+    FFOutputLayer layer(
+        1, details, num_inputs, num_outputs, neurons,
+        std::vector<double>(num_inputs * num_outputs, 1.0),
+        std::vector<double>(num_inputs * num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_inputs * num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_outputs, 0.0),
+        1
+    );
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    int dropped_count = 0;
+    int kept_count = 0;
+    for (double out : outputs) {
+        if (out == 0.0) dropped_count++;
+        else if (approx_equal(out, 1.0 / (1.0 - dropout_rate))) kept_count++;
+    }
+
+    EXPECT_EQ(dropped_count + kept_count, (int)num_outputs);
+    EXPECT_NEAR(dropped_count, num_outputs * dropout_rate, num_outputs * 0.05);
+}
+
+TEST_F(FFOutputLayerTest, DropoutNotInference) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1000;
+    double dropout_rate = 0.5;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    std::vector<Neuron> neurons;
+    for (unsigned i = 0; i < num_outputs; ++i) {
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate);
+    }
+
+    FFOutputLayer layer(
+        1, details, num_inputs, num_outputs, neurons,
+        std::vector<double>(num_inputs * num_outputs, 1.0),
+        std::vector<double>(num_inputs * num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_inputs * num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_outputs, 0.0),
+        1
+    );
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    for (double out : outputs) {
+        EXPECT_NEAR(out, 1.0, 1e-9);
+    }
+}
+
+TEST_F(FFOutputLayerTest, DropoutConsistencyVerification) {
+    // 1 neuron with 100% dropout
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    double dropout_rate = 1.0;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    std::vector<Neuron> neurons;
+    neurons.emplace_back(0, Neuron::Type::Dropout, dropout_rate);
+
+    FFOutputLayer layer(
+        1, details, num_inputs, num_outputs, neurons,
+        { 1.0 }, { 0.0 }, {}, {}, {}, {}, { 0.0 },
+        { 0.0 }, { 0.0 }, {}, {}, {}, {}, { 0.0 },
+        1
+    );
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    // Forward pass: should drop (output 0.0)
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+    EXPECT_NEAR(batch_go[0].get_outputs(1)[0], 0.0, 1e-9);
+
+    // Backward pass: gradient should also be 0.0
+    std::vector<std::vector<double>> targets = { { 1.0 } };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+
+    // The gradient should be 0.0 because the neuron was dropped.
+    EXPECT_NEAR(batch_go[0].get_gradients(1)[0], 0.0, 1e-9);
+}
+
 TEST_F(FFOutputLayerTest, MultiHeadOutput) {
-    // Test multiple output heads with different activations and optimizers
     unsigned num_inputs = 2;
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0),
@@ -137,10 +248,9 @@ TEST_F(FFOutputLayerTest, MultiHeadOutput) {
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1);
 
-    // Head 0: y=0.8, t=1.0 -> delta = (0.8-1.0)/1 = -0.2
-    // Head 1: y=0.5, t=1.0 -> delta = (0.5-1.0)/1 = -0.5
     batch_hs[0].at(1, 0).set_hidden_state_values({ 0.8, 0.5 });
     batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.8, 0.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
 
     std::vector<std::vector<double>> targets = { { 1.0, 1.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
@@ -164,9 +274,8 @@ TEST_F(FFOutputLayerTest, CalculateOutputMetrics) {
 
     auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::mse }, targets, predictions);
 
-    // MSE = ( (0.8-1.0)^2 + (0.4-0.0)^2 ) / 2 = (0.04 + 0.16) / 2 = 0.1
-    EXPECT_EQ(metrics.size(), 1); // 1 head
-    EXPECT_EQ(metrics[0].size(), 1); // 1 error type
+    EXPECT_EQ(metrics.size(), 1); 
+    EXPECT_EQ(metrics[0].size(), 1);
     EXPECT_NEAR(metrics[0][0].error(), 0.1, 1e-9);
 }
 
@@ -202,6 +311,7 @@ TEST_F(FFOutputLayerTest, AllActivationTypes) {
         
         batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5 });
         batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.5 });
+        batch_hs[0].at(1, 0).set_cell_state_values({ 1.0 });
         
         std::vector<std::vector<double>> targets = { { 1.0 } };
         EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
@@ -234,11 +344,9 @@ TEST_F(FFOutputLayerTest, ApplyStoredGradients) {
 
     layer.set_w_values({ 1.0 });
     layer.set_w_grads({ 0.1 });
-    layer.apply_stored_gradients(0.1, 1.0); // LR=0.1
+    layer.apply_stored_gradients(0.1, 1.0); 
 
-    // 1.0 - 0.1 * 0.1 = 0.99
     EXPECT_NEAR(layer.get_w_values()[0], 0.99, 1e-9);
-    // Grads should be cleared
     EXPECT_DOUBLE_EQ(layer.get_w_grads()[0], 0.0);
 }
 
@@ -284,17 +392,13 @@ TEST_F(FFOutputLayerTest, SequentialGradients) {
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 2); // 2 time steps
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2); 
 
-    // Inputs: x_0 = 1.0, x_1 = 2.0
     batch_go[0].set_rnn_outputs(0, { 1.0, 2.0 });
-    // Gradients: g_0 = 0.5, g_1 = 0.3
     batch_go[0].set_rnn_gradients(1, { 0.5, 0.3 });
 
     layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
 
-    // Expected W_grad = (g_0*x_0 + g_1*x_1) / batch_size = 1.1
-    // Expected b_grad = (g_0 + g_1) / batch_size = 0.8
     EXPECT_NEAR(layer.get_w_grads()[0], 1.1, 1e-9);
     EXPECT_NEAR(layer.get_b_grads()[0], 0.8, 1e-9);
 }
@@ -308,7 +412,6 @@ TEST_F(FFOutputLayerTest, ForwardFeed) {
     unsigned num_outputs = 2;
     FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
 
-    // Identity weights, zero bias
     layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
     layer.set_b_values({ 0.0, 0.0 });
 
@@ -321,14 +424,11 @@ TEST_F(FFOutputLayerTest, ForwardFeed) {
 
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
 
-    // Expected outputs: [0.5, -0.2]
     EXPECT_NEAR(batch_go[0].get_output(1, 0), 0.5, 1e-9);
     EXPECT_NEAR(batch_go[0].get_output(1, 1), -0.2, 1e-9);
 }
 
 TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
-    // 2 inputs, 2 classes (one-hot)
-    // Task: input [1, 0] should be class 0.
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
     std::vector<OutputLayerDetails> details = {
@@ -337,8 +437,6 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
     
     FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
     
-    // Initial weights: small random or specific
-    // Let's set weights to [0.1, -0.1, -0.1, 0.1]
     layer.set_w_values({ 0.1, -0.1, -0.1, 0.1 });
     layer.set_b_values({ 0.0, 0.0 });
 
@@ -347,7 +445,6 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1);
 
-    // Input: [1.0, 0.5]
     std::vector<double> input_vals = { 1.0, 0.5 };
     batch_go[0].set_outputs(0, input_vals);
     std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
@@ -355,10 +452,8 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
     double initial_error = 0.0;
 
     for (int iter = 0; iter < 5; ++iter) {
-        // Forward
         layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-        // Calculate Error for logging/verification
         auto out_span = batch_go[0].get_outputs(1);
         std::vector<std::vector<double>> predictions = { std::vector<double>(out_span.begin(), out_span.end()) };
         auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, predictions);
@@ -368,26 +463,19 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
             initial_error = current_error;
         }
 
-        // Backward
         layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
         layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
 
-        // Update
-        layer.apply_stored_gradients(0.5, 1.0); // LR = 0.5
+        layer.apply_stored_gradients(0.5, 1.0); 
     }
 
-    // Final forward pass
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
     auto final_out_span = batch_go[0].get_outputs(1);
     std::vector<double> final_outputs(final_out_span.begin(), final_out_span.end());
 
-    // Class 0 probability should be higher than class 1
     EXPECT_GT(final_outputs[0], final_outputs[1]);
 
-    // Final error should be less than initial error
     std::vector<std::vector<double>> final_predictions = { final_outputs };
     auto final_metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, final_predictions);
     EXPECT_LT(final_metrics[0][0].error(), initial_error);
-    }
-
-
+}

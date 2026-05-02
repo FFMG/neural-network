@@ -3,6 +3,7 @@
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 using namespace test_helper;
 
@@ -95,8 +96,6 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     EXPECT_TRUE(mask == 0.0 || approx_equal(mask, 2.0)); // 1/(1-0.5) = 2.0
     
     const auto& outputs = batch_go[0].get_outputs(1);
-    // If mask=0, h_t = (1-z)*0 + z*0 = 0. (Since h_prev=0)
-    // If mask=2, h_t = (1-z)*0 + z*(h_hat*2) = z*h_hat*2
     
     if (mask == 0.0) {
         EXPECT_NEAR(outputs[0], 0.0, 1e-6);
@@ -109,13 +108,8 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
     
     const auto& gate_grads = batch_go[0].get_rnn_gate_gradients(1);
-    // dh_hat_pre should be scaled by mask
-    // Expected dh_hat_pre unmasked = 0.24001
     EXPECT_NEAR(gate_grads[0], 0.24001 * mask, 1e-4);
     
-    // dz_pre depends on (h_hat - h_prev).
-    // h_hat in forward was masked.
-    // dz_pre = dh * (masked_h_hat - h_prev) * z * (1-z)
     double expected_dz = 1.0 * (packed[3] * mask - 0.0) * 0.668188 * 0.331812;
     EXPECT_NEAR(gate_grads[1], expected_dz, 1e-4);
 }
@@ -140,34 +134,78 @@ TEST_F(GRURNNLayerTest, SequenceUnrolling3Steps) {
 
     const auto& outputs = batch_go[0].get_rnn_outputs(1);
     
-    // Hand calculation for 3 steps:
-    // z = sigmoid(w_z*x + rw_z*h_prev + b_z)
-    // r = sigmoid(w_r*x + rw_r*h_prev + b_r)
-    // h_hat = tanh(w*x + rw*(r*h_prev) + b)
-    // h = (1-z)*h_prev + z*h_hat
-    
-    // t=0: x=1.0, h_prev=0
-    // z = sigmoid(0.1*1 + 0) = sigmoid(0.1) = 0.524979
-    // r = sigmoid(0.1*1 + 0) = 0.524979
-    // h_hat = tanh(0.1*1 + 0) = tanh(0.1) = 0.099668
-    // h_0 = (1-0.524979)*0 + 0.524979*0.099668 = 0.052323
     EXPECT_NEAR(outputs[0], 0.052323, 1e-5);
-
-    // t=1: x=0.5, h_prev=0.052323
-    // z = sigmoid(0.1*0.5 + 0.1*0.052323) = sigmoid(0.0552323) = 0.513803
-    // r = sigmoid(0.0552323) = 0.513803
-    // h_hat = tanh(0.1*0.5 + 0.1*(0.513803*0.052323)) = tanh(0.052688) = 0.052639
-    // h_1 = (1-0.513803)*0.052323 + 0.513803*0.052639 = 0.25439 + 0.27046 = 0.052485
     EXPECT_NEAR(outputs[1], 0.052486, 1e-5);
-
-    // t=2: x=-1.0, h_prev=0.052485
-    // z = sigmoid(0.1*(-1.0) + 0.1*0.052485) = sigmoid(-0.0947515) = 0.476332
-    // r = sigmoid(-0.0947515) = 0.476332
-    // h_hat = tanh(0.1*(-1.0) + 0.1*(0.476332*0.052485)) = tanh(-0.0975) = -0.09719
-    // h_2 = (1-0.476332)*0.052485 + 0.476332*(-0.09719) = 0.027485 - 0.04629 = -0.018805
     EXPECT_NEAR(outputs[2], -0.018810, 1e-5);
 }
 
+TEST_F(GRURNNLayerTest, DropoutStatisticalVerification) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1000;
+    double dropout_rate = 0.5;
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+
+    // Identity weights for hidden candidate, zero for gates to keep it simple
+    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
+    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+    
+    layer.set_z_w_values(std::vector<double>(num_outputs, 0.0));
+    layer.set_z_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_z_b_values(std::vector<double>(num_outputs, 10.0)); // large bias for z means z ~ 1 (always update)
+
+    layer.set_r_w_values(std::vector<double>(num_outputs, 0.0));
+    layer.set_r_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_r_b_values(std::vector<double>(num_outputs, 10.0)); // large bias for r means r ~ 1 (no reset)
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    int dropped_count = 0;
+    int kept_count = 0;
+    for (double out : outputs) {
+        if (out == 0.0) dropped_count++;
+        else if (std::abs(out - 1.0 / (1.0 - dropout_rate)) < 1e-2) kept_count++;
+    }
+
+    EXPECT_EQ(dropped_count + kept_count, (int)num_outputs);
+    EXPECT_NEAR(dropped_count, num_outputs * dropout_rate, num_outputs * 0.05);
+}
+
+TEST_F(GRURNNLayerTest, DropoutNotInference) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1000;
+    double dropout_rate = 0.5;
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+
+    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
+    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+    
+    layer.set_z_b_values(std::vector<double>(num_outputs, 10.0));
+    layer.set_r_b_values(std::vector<double>(num_outputs, 10.0));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    for (double out : outputs) {
+        EXPECT_NEAR(out, 1.0, 1e-2); // Relaxed tolerance due to sigmoid(10) compounding
+    }
+}
 
 TEST_F(GRURNNLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
@@ -229,7 +267,6 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
     batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Assume next layer is identity, dL/dh_1 = 1.0, dL/dh_0 = 0.0
     MockLayer next_layer(2, num_outputs);
     next_layer.set_w_values({ 1.0 });
     std::vector<std::vector<double>> batch_next_grads = { { 0.0, 1.0 } }; // t=0: 0.0, t=1: 1.0
@@ -238,7 +275,6 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 1);
     layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 1);
 
-    // Expected values from manual math (BPTT=1):
     EXPECT_NEAR(layer.get_w_grads()[0],   0.41455598, 1e-6);
     EXPECT_NEAR(layer.get_rw_grads()[0],  0.12175109, 1e-6);
     EXPECT_NEAR(layer.get_b_grads()[0],   0.41455598, 1e-6);
@@ -253,7 +289,6 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
     layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 2);
     layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 2);
 
-    // Expected values from manual math (BPTT=2):
     EXPECT_NEAR(layer.get_w_grads()[0],   0.56661270, 1e-6);
     EXPECT_NEAR(layer.get_rw_grads()[0],  0.12175109, 1e-6);
     EXPECT_NEAR(layer.get_b_grads()[0],   0.56661270, 1e-6);
@@ -264,4 +299,3 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
     EXPECT_NEAR(layer.get_r_rw_grads()[0],0.00134098, 1e-6);
     EXPECT_NEAR(layer.get_r_b_grads()[0], 0.00332064, 1e-6);
 }
-
