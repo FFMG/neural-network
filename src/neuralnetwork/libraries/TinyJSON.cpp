@@ -12,6 +12,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <cctype>
 
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
@@ -119,6 +120,7 @@ namespace TinyJSON
     const TJCHAR* _key_quote;
     const TJCHAR* _new_line;
     const bool _escape_special_characters;
+    bool _has_error;
 
     internal_dump_configuration(
       formating formating,
@@ -137,7 +139,8 @@ namespace TinyJSON
       _value_quote(value_quote),
       _key_quote(key_quote),
       _new_line(new_line),
-      _escape_special_characters(escape_special_characters)
+      _escape_special_characters(escape_special_characters),
+      _has_error(false)
     {
       _buffer = nullptr;
       _buffer_max_length = _buffer_pos = 0;
@@ -587,15 +590,16 @@ namespace TinyJSON
       // then we have to make sure that we get the correct one.
       auto binary_search_result_ci = binary_search(key, false);
       auto dictionary_index_ci = binary_search_result_ci._dictionary_index;
-      int value_index_ci = binary_search_result_ci._was_found ? _values_dictionary_cs[dictionary_index_ci]._value_index : -1;
+      int value_index_ci = binary_search_result_ci._was_found ? _values_dictionary_ci[dictionary_index_ci]._value_index : -1;
 
       // if we have no indexes then we have noting to pop.
       if (value_index_cs == -1)
       {
-        TJASSERT(value_index_ci == -1); // how can it be???
-                                        // surely if we do not have one we do not have the other 
         return false;
       }
+
+      // surely if we have one we must have the other.
+      TJASSERT(value_index_ci != -1);
 
       // if both indexes are the same, then we can just remove them.
       if (value_index_cs == value_index_ci)
@@ -662,7 +666,7 @@ namespace TinyJSON
     /// set a value in our dictionary, if the value exists, (by name)
     /// we will replace the old value with the new value.
     /// </summary>
-    void set(TJMember* value)
+    void set(TJMember* value, const parse_options& options)
     {
       const TJCHAR* key = value->name();
       if (nullptr == _values)
@@ -675,6 +679,7 @@ namespace TinyJSON
       auto binary_search_result_cs = binary_search(key, true);
       if (true == binary_search_result_cs._was_found)
       {
+        options.callback_function(parse_options::message_type::warning, TJCHARPREFIX("Duplicate key found, overwriting."));
         replace_dictionaries_data(value, binary_search_result_cs._dictionary_index);
         return;
       }
@@ -1101,10 +1106,18 @@ namespace TinyJSON
     {
       if (true == case_sensitive)
       {
-        return strcmp(s1, s2);
+        while (*s1 == *s2)
+        {
+          if (*s1++ == TJ_NULL_TERMINATOR)
+          {
+            return 0;
+          }
+          ++s2;
+        }
+        return (*s1 < *s2) ? -1 : 1;
       }
 
-      while (tolower(*s1) == tolower(*s2))
+      while (tolower(static_cast<unsigned char>(*s1)) == tolower(static_cast<unsigned char>(*s2)))
       {
         if (*s1++ == TJ_NULL_TERMINATOR)
         {
@@ -1112,7 +1125,7 @@ namespace TinyJSON
         }
         ++s2;
       }
-      return tolower(*s1) - tolower(*s2);
+      return tolower(static_cast<unsigned char>(*s1)) - tolower(static_cast<unsigned char>(*s2));
     }
 
     /// <summary>
@@ -1471,9 +1484,13 @@ namespace TinyJSON
 
       // recreate the final string
       TJCHAR* final_string = new TJCHAR[total_length];
-      add_string_to_string(string_number, final_string, final_string_pos, total_length);
-      add_char_to_string('.', final_string, final_string_pos, total_length);
-      add_string_to_string(string_fraction, final_string, final_string_pos, total_length);
+      if (!add_string_to_string(string_number, final_string, final_string_pos, total_length) ||
+          !add_char_to_string('.', final_string, final_string_pos, total_length) ||
+          !add_string_to_string(string_fraction, final_string, final_string_pos, total_length))
+      {
+        delete[] final_string;
+        final_string = nullptr;
+      }
 
       // cleanup the number and fraction.
       delete[] string_number;
@@ -1531,16 +1548,22 @@ namespace TinyJSON
 
       // recreate the final string
       TJCHAR* final_string = new TJCHAR[total_length];
-      add_string_to_string(string_number, final_string, final_string_pos, total_length);
-      if (nullptr != string_fraction)
+      bool success = add_string_to_string(string_number, final_string, final_string_pos, total_length);
+      if (success && nullptr != string_fraction)
       {
-        add_char_to_string('.', final_string, final_string_pos, total_length);
-        add_string_to_string(string_fraction, final_string, final_string_pos, total_length);
+        success = add_char_to_string('.', final_string, final_string_pos, total_length) &&
+                  add_string_to_string(string_fraction, final_string, final_string_pos, total_length);
       }
-      if (nullptr != string_exponent)
+      if (success && nullptr != string_exponent)
       {
-        add_char_to_string('e', final_string, final_string_pos, total_length);
-        add_string_to_string(string_exponent, final_string, final_string_pos, total_length);
+        success = add_char_to_string('e', final_string, final_string_pos, total_length) &&
+                  add_string_to_string(string_exponent, final_string, final_string_pos, total_length);
+      }
+
+      if (!success)
+      {
+        delete[] final_string;
+        final_string = nullptr;
       }
 
       // cleanup the number and fraction.
@@ -1646,8 +1669,9 @@ namespace TinyJSON
         }
         if(number > 0 )
         {
-          decimal = decimal + (number * fast_power_of_16(power++));
+          decimal = decimal + (number * fast_power_of_16(power));
         }
+        power++;
       }
       return decimal;
     }
@@ -1703,10 +1727,18 @@ namespace TinyJSON
     {
       if (true == case_sensitive)
       {
-        return strcmp(s1, s2);
+        while (*s1 == *s2)
+        {
+          if (*s1++ == TJ_NULL_TERMINATOR)
+          {
+            return 0;
+          }
+          ++s2;
+        }
+        return (*s1 < *s2) ? -1 : 1;
       }
 
-      while (tolower(*s1) == tolower(*s2))
+      while (tolower(static_cast<unsigned char>(*s1)) == tolower(static_cast<unsigned char>(*s2)))
       {
         if (*s1++ == TJ_NULL_TERMINATOR)
         {
@@ -1714,7 +1746,7 @@ namespace TinyJSON
         }
         ++s2;
       }
-      return tolower(*s1) - tolower(*s2);
+      return tolower(static_cast<unsigned char>(*s1)) - tolower(static_cast<unsigned char>(*s2));
     }
 
     /// <summary>
@@ -1793,10 +1825,9 @@ namespace TinyJSON
     /// Increase the size of a string to make space.
     /// </summary>
     /// <param name="source"></param>
-    /// <param name="length"></param>
-    /// <param name="resize_length"></param>
+    /// <param name="current_length"></param>
     /// <param name="needed_length">How much we should grow at least by</param>
-    /// <returns></returns>
+    /// <returns>The new max length of the string, or 0 if we reached the limit</returns>
     static unsigned int resize_string(TJCHAR*& source, unsigned int current_length, const unsigned int needed_length)
     {
       //  create the new string
@@ -1813,34 +1844,29 @@ namespace TinyJSON
       {
         // we have reached the limit
         // we simply cannot go further and we do not want to risk further corruption.
-        _Exit(-1);
+        return 0;
       }
+
       unsigned int resize_length = 0;
-      if (current_length >= TJ_DEFAULT_STRING_MAX_READ_GROW)
+      if (current_length < needed_length)
       {
-        // we are about to reach the limit, if we cannot make it here, we will break.
-        resize_length = TJ_DEFAULT_STRING_MAX_READ_SIZE;
+        resize_length = needed_length + TJ_DEFAULT_STRING_READ_SIZE;
       }
       else
       {
-        // we are about to multiply by 2
-        // so if the length is less what we need this will be an issue.
-        if (current_length < needed_length)
-        {
-          if (needed_length > TJ_DEFAULT_STRING_MAX_READ_GROW)
-          {
-            resize_length += TJ_DEFAULT_STRING_MAX_READ_GROW;
-          }
-          else
-          {
-            resize_length += needed_length;
-          }
-        }
-        else
-        {
-          //  multiply our capacity by 2
-          resize_length = current_length << 1;
-        }
+        //  multiply our capacity by 2
+        resize_length = current_length << 1;
+      }
+
+      if (resize_length > TJ_DEFAULT_STRING_MAX_READ_SIZE)
+      {
+        resize_length = TJ_DEFAULT_STRING_MAX_READ_SIZE;
+      }
+      
+      // if even after all this we are still less than what we need, then we failed.
+      if (resize_length < needed_length)
+      {
+        return 0;
       }
 
       // create the new array.
@@ -1859,15 +1885,21 @@ namespace TinyJSON
     /// <param name="buffer"></param>
     /// <param name="buffer_pos"></param>
     /// <param name="buffer_max_length"></param>
-    static void add_char_to_string(const TJCHAR char_to_add, TJCHAR*& buffer, int& buffer_pos, int& buffer_max_length) noexcept
+    /// <returns>True if the character was added, false otherwise (e.g. limit reached)</returns>
+    static bool add_char_to_string(const TJCHAR char_to_add, TJCHAR*& buffer, int& buffer_pos, int& buffer_max_length)
     {
       if (buffer_pos + 1 >= buffer_max_length)
       {
         buffer_max_length = resize_string(buffer, buffer_max_length, 1);
+        if (buffer_max_length == 0)
+        {
+          return false;
+        }
       }
       buffer[buffer_pos] = char_to_add;
       buffer[buffer_pos+1] = TJ_NULL_TERMINATOR;
       ++buffer_pos;
+      return true;
     }
 
     /// <summary>
@@ -1877,23 +1909,29 @@ namespace TinyJSON
     /// <param name="buffer"></param>
     /// <param name="buffer_pos"></param>
     /// <param name="buffer_max_length"></param>
-    static void add_string_to_string(const TJCHAR* string_to_add, TJCHAR*& buffer, int& buffer_pos, int& buffer_max_length) noexcept
+    /// <returns>True if the string was added, false otherwise (e.g. limit reached)</returns>
+    static bool add_string_to_string(const TJCHAR* string_to_add, TJCHAR*& buffer, int& buffer_pos, int& buffer_max_length)
     {
       if (nullptr == string_to_add)
       {
-        return;
+        return true;
       }
 
       // what we want to add
-      auto length = static_cast<int>(strlen(string_to_add));
-      int total_length = static_cast<int>(length + sizeof(TJCHAR));//  we need one extra for the null char
+      auto length = static_cast<int>(string_length(string_to_add));
+      int total_length = static_cast<int>(length + 1);//  we need one extra for the null char
       if (buffer_pos + total_length >= buffer_max_length)
       {
         buffer_max_length = resize_string(buffer, buffer_max_length, buffer_pos+total_length);
+        if (buffer_max_length == 0)
+        {
+          return false;
+        }
       }
-      memcpy(buffer + buffer_pos, string_to_add, length);
+      memcpy(buffer + buffer_pos, string_to_add, length * sizeof(TJCHAR));
       buffer[buffer_pos+length] = TJ_NULL_TERMINATOR;
       buffer_pos += length;
+      return true;
     }
 
     static bool try_add_char_to_string_after_escape(const TJCHAR*& source, TJCHAR*& result, int& result_pos, int& result_max_length)
@@ -1912,33 +1950,27 @@ namespace TinyJSON
       case TJ_ESCAPE_REVERSE_SOLIDUS: // \    reverse solidus U+005C
         // skip the escpape and keep the character
         source++;
-        add_char_to_string(next_char, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(next_char, result, result_pos, result_max_length);
 
       case'f':  // f    form feed       U+000C
         source++;
-        add_char_to_string(TJ_ESCAPE_FORM_FEED, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(TJ_ESCAPE_FORM_FEED, result, result_pos, result_max_length);
 
       case 'b': // b    backspace       U+0008
         source++;
-        add_char_to_string(TJ_ESCAPE_BACKSPACE, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(TJ_ESCAPE_BACKSPACE, result, result_pos, result_max_length);
 
       case 'n': // n    line feed       U+000A
         source++;
-        add_char_to_string(TJ_ESCAPE_LINE_FEED, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(TJ_ESCAPE_LINE_FEED, result, result_pos, result_max_length);
 
       case 'r': // r    carriage return U+000D
         source++;
-        add_char_to_string(TJ_ESCAPE_CARRIAGE_RETURN, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(TJ_ESCAPE_CARRIAGE_RETURN, result, result_pos, result_max_length);
 
       case 't': // t    tab             U+0009
         source++;
-        add_char_to_string(TJ_ESCAPE_TAB, result, result_pos, result_max_length);
-        return true;
+        return add_char_to_string(TJ_ESCAPE_TAB, result, result_pos, result_max_length);
 
       case 'u': // /uxxxx escape
         {
@@ -1953,7 +1985,11 @@ namespace TinyJSON
             switch (possible_hex_char)
             {
             TJ_CASE_HEX
-              add_char_to_string(possible_hex_char, hex, buffer_pos, buffer_max_length);
+              if (!add_char_to_string(possible_hex_char, hex, buffer_pos, buffer_max_length))
+              {
+                delete[] hex;
+                return false;
+              }
               break;
 
             default:
@@ -1974,25 +2010,37 @@ namespace TinyJSON
           if (decimal <= 0x7F) 
           {
             // 1-byte UTF-8 (ASCII)
-            add_char_to_string(static_cast<char>(decimal), result, result_pos, result_max_length);
+            if (!add_char_to_string(static_cast<char>(decimal), result, result_pos, result_max_length))
+            {
+              return false;
+            }
           }
           else if (decimal <= 0x7FF) 
           {
             // 2-byte UTF-8
-            add_char_to_string(static_cast<char>(0xC0 | (decimal >> 6)), result, result_pos, result_max_length);
-            add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length);
+            if (!add_char_to_string(static_cast<char>(0xC0 | (decimal >> 6)), result, result_pos, result_max_length) ||
+                !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
+            {
+              return false;
+            }
           }
           else if (decimal <= 0xFFFF)
           {
             // 3-byte UTF-8
-            add_char_to_string(static_cast<char>(0xE0 | (decimal >> 12)), result, result_pos, result_max_length);
-            add_char_to_string(static_cast<char>(0x80 | ((decimal >> 6) & 0x3F)), result, result_pos, result_max_length);
-            add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length);
+            if (!add_char_to_string(static_cast<char>(0xE0 | (decimal >> 12)), result, result_pos, result_max_length) ||
+                !add_char_to_string(static_cast<char>(0x80 | ((decimal >> 6) & 0x3F)), result, result_pos, result_max_length) ||
+                !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
+            {
+              return false;
+            }
           }
 #else
-          add_char_to_string(static_cast<TJCHAR>(decimal), result, result_pos, result_max_length);
+          if (!add_char_to_string(static_cast<TJCHAR>(decimal), result, result_pos, result_max_length))
+          {
+            return false;
+          }
 #endif
-          source += 6;  //  the full \uXXXX = 6 char
+          source += 5;  //  the full \uXXXX = 6 char (caller will add the 6th)
           return true;
         }
         return false;
@@ -2031,8 +2079,15 @@ namespace TinyJSON
           if (!try_add_char_to_string_after_escape(p, result, result_pos, result_max_length))
           {
             delete[] result;
-            // ERROR: invalid/unknown character after single reverse solidus.
-            parse_result.assign_exception_message("Invalid/unknown character after single reverse solidus.");
+            if (result_max_length == 0)
+            {
+              parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            }
+            else
+            {
+              // ERROR: invalid/unknown character after single reverse solidus.
+              parse_result.assign_exception_message("Invalid/unknown character after single reverse solidus.");
+            }
             return nullptr;
           }
           p++;
@@ -2041,7 +2096,12 @@ namespace TinyJSON
         case TJ_ESCAPE_SOLIDUS:         // % x2F / ; /    solidus         U + 002F
           // solidus can be escaped ... and not escaped...
           // this is a case where it is not escaped.
-          add_char_to_string(*p, result, result_pos, result_max_length);
+          if (!add_char_to_string(*p, result, result_pos, result_max_length))
+          {
+            delete[] result;
+            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            return nullptr;
+          }
           p++;
           break;
 
@@ -2057,12 +2117,22 @@ namespace TinyJSON
 
           // Allocate memory for the result string
           // Null-terminate the string
-          add_char_to_string(TJ_NULL_TERMINATOR, result, result_pos, result_max_length);
+          if (!add_char_to_string(TJ_NULL_TERMINATOR, result, result_pos, result_max_length))
+          {
+            delete[] result;
+            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            return nullptr;
+          }
           return result;
 
         default:
           // we are still in the string, then we are good.
-          add_char_to_string(*p, result, result_pos, result_max_length);
+          if (!add_char_to_string(*p, result, result_pos, result_max_length))
+          {
+            delete[] result;
+            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            return nullptr;
+          }
           p++;
           break;
         }
@@ -2853,13 +2923,13 @@ namespace TinyJSON
     }
 
     /// <summary>
-    /// We are moving the owership of the TJMember to the array.
+    /// We are moving the ownership of the TJMember to the array.
     /// If the array is not created we will create it and add the value.
-    /// Duplicate values will be overwiten here, the old value will be removed and the new one added.
+    /// Duplicate values will be overwritten here, the old value will be removed and the new one added.
     /// </summary>
     /// <param name="member"></param>
     /// <param name="members"></param>
-    static void move_member_to_members(TJMember* member, TJDICTIONARY*& members, const parse_options& options = {})
+    static void move_member_to_members(TJMember* member, TJDICTIONARY*& members, const parse_options& options)
     {
       if (nullptr == members)
       {
@@ -2874,6 +2944,7 @@ namespace TinyJSON
           });
         if (current != members->end())
         {
+          options.callback_function(parse_options::message_type::warning, TJCHARPREFIX("Duplicate key found, overwriting."));
           delete* current;
           *current = member;
           return;
@@ -2881,7 +2952,7 @@ namespace TinyJSON
       }
       members->push_back(member);
 #else
-      members->set(member);
+      members->set(member, options);
 #endif
     }
 
@@ -3478,7 +3549,8 @@ namespace TinyJSON
       }
     }
 
-    outFile.write(json, strlen(json));
+    auto length = TJHelper::string_length(json);
+    outFile.write((const char*)json, length * sizeof(TJCHAR));
 
     if (!outFile) 
     {
@@ -3779,6 +3851,11 @@ namespace TinyJSON
           TJCHARPREFIX("\""), 
           TJCHARPREFIX("\""), nullptr, true);
         internal_dump(configuration, nullptr);
+        if (configuration._has_error)
+        {
+          delete[] configuration._buffer;
+          return nullptr;
+        }
         _last_dump = configuration._buffer;
       }
       break;
@@ -3791,6 +3868,11 @@ namespace TinyJSON
           TJCHARPREFIX("\""), 
           TJCHARPREFIX("\n"), true);
         internal_dump(configuration, nullptr);
+        if (configuration._has_error)
+        {
+          delete[] configuration._buffer;
+          return nullptr;
+        }
         _last_dump = configuration._buffer;
       }
       break;
@@ -3803,6 +3885,11 @@ namespace TinyJSON
     free_last_dump();
     internal_dump_configuration configuration(formating::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
     internal_dump(configuration, nullptr);
+    if (configuration._has_error)
+    {
+      delete[] configuration._buffer;
+      return nullptr;
+    }
     _last_dump = configuration._buffer;
     return _last_dump;
   }
@@ -4073,64 +4160,85 @@ namespace TinyJSON
     (void)current_indent;
 
     // add the quote, (if we have one)
-    TJHelper::add_string_to_string(configuration._value_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(configuration._value_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+      return;
+    }
     if (nullptr == _value)
     {
-      TJHelper::add_string_to_string(TJCHARPREFIX(""), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+      if (!TJHelper::add_string_to_string(TJCHARPREFIX(""), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+      {
+        configuration._has_error = true;
+        return;
+      }
     }
     else if (configuration._escape_special_characters)
     {
       const TJCHAR* p = _value;
       while (*p != TJ_NULL_TERMINATOR)
       {
+        bool success = true;
         switch (*p)
         {
         case TJ_ESCAPE_QUOTATION: // % x22 / ; "    quotation mark  U+0022
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\\""), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\\""), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_REVERSE_SOLIDUS: // % x5C / ; \    reverse solidus U + 005C
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\\\"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\\\"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_SOLIDUS: // % x2F / ; / solidus         U + 002F
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\/"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\/"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_BACKSPACE: // % x62 / ; b    backspace       U + 0008
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\b"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\b"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_FORM_FEED: // % x66 / ; f    form feed       U + 000C
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\f"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\f"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_LINE_FEED:  // % x6E / ; n    line feed       U + 000A
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\n"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\n"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_CARRIAGE_RETURN:  // % x72 / ; r    carriage return U + 000D
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\r"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\r"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         case TJ_ESCAPE_TAB:  // % x74 / ; t    tab             U + 0009
-          TJHelper::add_string_to_string(TJCHARPREFIX("\\t"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_string_to_string(TJCHARPREFIX("\\t"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
 
         default:
-          TJHelper::add_char_to_string(*p, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          success = TJHelper::add_char_to_string(*p, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
           break;
+        }
+        if (!success)
+        {
+          configuration._has_error = true;
+          return;
         }
         ++p;
       }
     }
     else
     {
-      TJHelper::add_string_to_string(_value, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+      if (!TJHelper::add_string_to_string(_value, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+      {
+        configuration._has_error = true;
+        return;
+      }
     }
 
     // then close the quote, (if we have one)
-    TJHelper::add_string_to_string(configuration._value_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(configuration._value_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   bool TJValueString::is_string() const
@@ -4208,7 +4316,10 @@ namespace TinyJSON
     (void)current_indent;
 
     // then the word we are after
-    TJHelper::add_string_to_string(_is_true ? TJCHARPREFIX("true"): TJCHARPREFIX("false"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(_is_true ? TJCHARPREFIX("true"): TJCHARPREFIX("false"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   bool TJValueBoolean::is_true() const
@@ -4271,7 +4382,10 @@ namespace TinyJSON
     (void)current_indent;
 
     // then the word we are after
-    TJHelper::add_string_to_string(TJCHARPREFIX("null"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(TJCHARPREFIX("null"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   bool TJValueNull::is_null() const
@@ -4304,7 +4418,7 @@ namespace TinyJSON
       for (unsigned int i = 0; i < size; ++i)
       {
         const auto& member = other._members->at(i);
-        _members->set(new TJMember(*member));
+        _members->set(new TJMember(*member), _parse_options);
       }
 #endif
     }
@@ -4336,7 +4450,7 @@ namespace TinyJSON
         for (unsigned int i = 0; i < size; ++i)
         {
           const auto& member = other._members->at(i);
-          _members->set(new TJMember(*member));
+          _members->set(new TJMember(*member), _parse_options);
         }
 #endif
       }
@@ -4653,7 +4767,7 @@ namespace TinyJSON
       for(unsigned int i = 0; i < size; ++i)
       {
         const auto& member = _members->at(i);
-        members->set(new TJMember(*member));
+        members->set(new TJMember(*member), _parse_options);
       }
 #endif
       object->_members = members;
@@ -4679,7 +4793,11 @@ namespace TinyJSON
   void TJValueObject::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
   {
     // open it
-    TJHelper::add_char_to_string('{', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_char_to_string('{', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+      return;
+    }
 
     auto number_of_items = get_number_of_items();
     if (number_of_items > 0)
@@ -4687,15 +4805,24 @@ namespace TinyJSON
       // only return if we have data.
       if (configuration._formating == formating::indented)
       {
-        TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+        if (!TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+        {
+          configuration._has_error = true;
+          return;
+        }
       }
 
       int inner_buffer_pos = 0;
       int inner_buffer_max_length = 0;
       TJCHAR* inner_current_indent = nullptr;
 
-      TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length);
-      TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length);
+      if (!TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length) ||
+          !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
+      {
+        delete[] inner_current_indent;
+        configuration._has_error = true;
+        return;
+      }
 
 #if TJ_INCLUDE_STDVECTOR == 1
       for (const auto& member : *_members)
@@ -4706,31 +4833,52 @@ namespace TinyJSON
       {
         const auto& member = _members->at(i);
 #endif
-        TJHelper::add_string_to_string(inner_current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-
-        TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-        TJHelper::add_string_to_string(member->name(), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-        TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-
-        TJHelper::add_string_to_string(configuration._key_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+        if (!TJHelper::add_string_to_string(inner_current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+            !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+            !TJHelper::add_string_to_string(member->name(), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+            !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+            !TJHelper::add_string_to_string(configuration._key_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+        {
+          delete[] inner_current_indent;
+          configuration._has_error = true;
+          return;
+        }
 
         member->value()->internal_dump(configuration, inner_current_indent);
+        if (configuration._has_error)
+        {
+          delete[] inner_current_indent;
+          return;
+        }
 
         // don't add on the last item
         if (--number_of_items > 0)
         {
-          TJHelper::add_string_to_string(configuration._item_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          if (!TJHelper::add_string_to_string(configuration._item_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+          {
+            delete[] inner_current_indent;
+            configuration._has_error = true;
+            return;
+          }
         }
         if (configuration._formating == formating::indented)
         {
-          TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          if (!TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+          {
+            delete[] inner_current_indent;
+            configuration._has_error = true;
+            return;
+          }
         }
       }
       delete[] inner_current_indent;
     }
     // close it.
-    TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-    TJHelper::add_char_to_string('}', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+        !TJHelper::add_char_to_string('}', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   bool TJValueObject::is_object() const
@@ -4831,6 +4979,10 @@ namespace TinyJSON
     delete [] value->_last_dump;
     internal_dump_configuration configuration(formating::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
     value->internal_dump(configuration, nullptr);
+    if (configuration._has_error)
+    {
+      return nullptr;
+    }
     value->_last_dump = configuration._buffer;
 
     return value->_last_dump;
@@ -4944,20 +5096,33 @@ namespace TinyJSON
   void TJValueArray::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
   {
     // open it
-    TJHelper::add_char_to_string('[', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_char_to_string('[', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+      return;
+    }
 
     auto number_of_items = get_number_of_items();
     if (number_of_items > 0)
     {
       // only return if we have data.
-      TJHelper::add_string_to_string(configuration._new_line, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+      if (!TJHelper::add_string_to_string(configuration._new_line, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+      {
+        configuration._has_error = true;
+        return;
+      }
 
       int inner_buffer_pos = 0;
       int inner_buffer_max_length = 0;
       TJCHAR* inner_current_indent = nullptr;
       
-      TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length);
-      TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length);
+      if (!TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length) ||
+          !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
+      {
+        delete[] inner_current_indent;
+        configuration._has_error = true;
+        return;
+      }
 
 #if TJ_INCLUDE_STDVECTOR == 1
       for (const auto& value : *_values)
@@ -4968,21 +5133,44 @@ namespace TinyJSON
       {
         const auto& value = _values->at(i);
 #endif
-        TJHelper::add_string_to_string(inner_current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+        if (!TJHelper::add_string_to_string(inner_current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+        {
+          delete[] inner_current_indent;
+          configuration._has_error = true;
+          return;
+        }
         value->internal_dump(configuration, inner_current_indent);
+        if (configuration._has_error)
+        {
+          delete[] inner_current_indent;
+          return;
+        }
 
         // don't add on the last item
         if (--number_of_items > 0)
         {
-          TJHelper::add_string_to_string(configuration._item_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+          if (!TJHelper::add_string_to_string(configuration._item_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+          {
+            delete[] inner_current_indent;
+            configuration._has_error = true;
+            return;
+          }
         }
-        TJHelper::add_string_to_string(configuration._new_line, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+        if (!TJHelper::add_string_to_string(configuration._new_line, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+        {
+          delete[] inner_current_indent;
+          configuration._has_error = true;
+          return;
+        }
       }
       delete[] inner_current_indent;
     }
     // close it.
-    TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
-    TJHelper::add_char_to_string(']', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+        !TJHelper::add_char_to_string(']', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   /// <summary>
@@ -5326,7 +5514,10 @@ namespace TinyJSON
     auto string = TJHelper::fast_number_to_string(_number, 0, _is_negative );
 
     // then the number
-    TJHelper::add_string_to_string(string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
 
     delete[] string;
   }
@@ -5456,9 +5647,17 @@ namespace TinyJSON
 
     // make sthe string is needed
     make_string_if_needed();
+    if (nullptr == _string)
+    {
+      configuration._has_error = true;
+      return;
+    }
 
     // then the number
-    TJHelper::add_string_to_string(_string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(_string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   long double TJValueNumberFloat::get_number() const
@@ -5610,9 +5809,17 @@ namespace TinyJSON
     // we only create the string value when the caller asks for it.
     // this is to make sure that we do not create it on parsing.
     make_string_if_needed();
+    if (nullptr == _string)
+    {
+      configuration._has_error = true;
+      return;
+    }
 
     // then the number
-    TJHelper::add_string_to_string(_string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length);
+    if (!TJHelper::add_string_to_string(_string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    {
+      configuration._has_error = true;
+    }
   }
 
   void TJValueNumberExponent::make_string_if_needed() const
