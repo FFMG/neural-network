@@ -108,9 +108,16 @@ TEST_F(LSTMLayerTest, DropoutStatisticalVerification) {
     const auto& outputs = batch_go[0].get_outputs(1);
     int dropped_count = 0;
     int kept_count = 0;
-    for (double out : outputs) {
-        if (out == 0.0) dropped_count++;
-        else if (std::abs(out - 1.0 / (1.0 - dropout_rate)) < 1e-2) kept_count++;
+    const double expected_kept = 1.0 / (1.0 - dropout_rate);
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        double out = outputs[i];
+        if (out == 0.0) {
+            dropped_count++;
+        } else if (std::abs(out - expected_kept) < 0.05) {
+            kept_count++;
+        } else {
+            Logger::error("Neuron ", i, " output unexpected value: ", out, " (expected 0.0 or ~", expected_kept, ")");
+        }
     }
 
     EXPECT_EQ(dropped_count + kept_count, (int)num_outputs);

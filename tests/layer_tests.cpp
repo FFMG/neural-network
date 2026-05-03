@@ -81,6 +81,32 @@ TEST(LayerTest, StringToOptimiserType) {
     EXPECT_EQ(string_to_optimiser_type("sgd"), OptimiserType::SGD);
 }
 
+TEST(LayerTest, CalculateErrorDeltasBCENonSigmoid) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.4 };
+    // For non-sigmoid, dL/da = (a-y)/(a*(1-a))
+    // Neuron 0: (0.8 - 1.0) / (0.8 * 0.2) = -0.2 / 0.16 = -1.25
+    // Neuron 1: (0.4 - 0.0) / (0.4 * 0.6) = 0.4 / 0.24 = 1.666666666...
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::bce_loss, EvaluationConfig(), activation::method::linear, 0, 1);
+    EXPECT_NEAR(deltas[0], -1.25 * 0.5, 1e-9); // 0.5 because of inv_num_neurons
+    EXPECT_NEAR(deltas[1], (0.4/0.24) * 0.5, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasCENonSoftmax) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 1.0, 0.0 };
+    std::vector<double> given = { 0.8, 0.2 };
+    // For non-softmax, dL/da = -y/a
+    // Neuron 0: -1.0 / 0.8 = -1.25
+    // Neuron 1: -0.0 / 0.2 = 0.0
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::cross_entropy, EvaluationConfig(), activation::method::linear, 0, 1);
+    EXPECT_NEAR(deltas[0], -1.25, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.0, 1e-9);
+}
+
 TEST(LayerTest, CalculateErrorDeltasMSE) {
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);

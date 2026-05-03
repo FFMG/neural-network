@@ -289,14 +289,23 @@ void Layer::calculate_cross_entropy_error_deltas(
     const double target = target_outputs[neuron_index];
     const double output = given_outputs[neuron_index];
 
-    // Standard Cross-Entropy + Softmax gradient: (given - target)
-    double grad = (output - target);
-
-    // If softmax is used, temperature scaling applies to the gradient
+    double grad;
     if (activation_method == activation::method::softmax)
     {
+      // Standard Cross-Entropy + Softmax gradient: (given - target)
+      grad = (output - target);
+
+      // If softmax is used, temperature scaling applies to the gradient
       double temperature = get_activation(neuron_index).get_temperature();
       grad /= temperature;
+    }
+    else
+    {
+      // For non-softmax activation, the raw derivative dL/da = -target/output.
+      // This will then be multiplied by f'(z) later because skip_derivative is false for non-softmax CE.
+      const double eps = 1e-12;
+      double clamped_output = std::max(eps, std::min(1.0 - eps, output));
+      grad = -target / clamped_output;
     }
 
     if (use_dir && activation_method == activation::method::softmax && gt_dir != 0 && pred_dir != gt_dir)
@@ -363,8 +372,21 @@ void Layer::calculate_bce_error_deltas(
     const double target = target_outputs[idx];
     const double output = given_outputs[idx];
 
-    // --- Standard BCE gradient (correct for sigmoid output) ---
-    double grad = (output - target);
+    // --- BCE gradient ---
+    double grad;
+    if (activation_method == activation::method::sigmoid)
+    {
+      // Standard BCE + Sigmoid gradient: (given - target)
+      grad = (output - target);
+    }
+    else
+    {
+      // For non-sigmoid activation, the raw derivative dL/da = (a - y) / (a * (1 - a)).
+      // This will then be multiplied by f'(z) later because skip_derivative is false for non-sigmoid BCE.
+      const double eps = 1e-12;
+      double clamped_output = std::max(eps, std::min(1.0 - eps, output));
+      grad = (clamped_output - target) / (clamped_output * (1.0 - clamped_output));
+    }
 
     // --- Optional directional boost ---
     if (use_dir)
