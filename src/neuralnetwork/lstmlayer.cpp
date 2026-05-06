@@ -444,6 +444,8 @@ void LSTMLayer::calculate_forward_feed(
     std::vector<double> current_h(N_this, 0.0);
     std::vector<double> current_c(N_this, 0.0);
     std::vector<double> packed_bptt(Multiplier * N_this);
+    std::vector<double> g_act_vec(N_this, 0.0);
+    std::vector<double> c_act_vec(N_this, 0.0);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
@@ -476,7 +478,7 @@ void LSTMLayer::calculate_forward_feed(
         }
 
         // Activations
-        std::vector<double> g_act_vec(g_pre, g_pre + N_this);
+        std::copy(g_pre, g_pre + N_this, g_act_vec.begin());
         get_activation().activate(g_act_vec.data(), g_act_vec.data() + N_this, is_training);
 
         for (size_t j = 0; j < N_this; ++j)
@@ -494,7 +496,7 @@ void LSTMLayer::calculate_forward_feed(
           current_c[j] = f * current_c[j] + i * g_activated;
         }
 
-        std::vector<double> c_act_vec = current_c;
+        c_act_vec = current_c;
         get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
 
         for (size_t j = 0; j < N_this; ++j)
@@ -918,7 +920,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       double* dc_next = &workspace.d_next_c[b_idx * N_this];
       if (t == t_start) { std::fill(dh_next, dh_next + N_this, 0.0); std::fill(dc_next, dc_next + N_this, 0.0); }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
-      std::vector<double> dh_curr(N_this);
+      double* dh_curr = &workspace.dh_curr[b_idx * N_this];
 
 #if VALIDATE_DATA == 1
       if (packed.size() < Multiplier * N_this)
@@ -952,8 +954,8 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       }
 
       // Pre-calculate derivatives
-      std::vector<double> dc_act_deriv(N_this);
-      std::vector<double> dg_act_deriv(N_this);
+      double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
+      double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
       const auto& act = get_activation();
       for (size_t j = 0; j < N_this; ++j) {
         double act_c = activated_c_chunk[j];
@@ -972,7 +974,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
       simd::lstm_bptt_gate_step(
         N_this, 
-        dh_curr.data(), 
+        dh_curr, 
         dc_next, 
         df_ptr, 
         di_ptr, 
@@ -987,8 +989,8 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         do_chunk, 
         dg_chunk, 
         dc_next,
-        dc_act_deriv.data(),
-        dg_act_deriv.data()
+        dc_act_deriv,
+        dg_act_deriv
       );
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
