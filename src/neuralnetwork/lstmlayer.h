@@ -958,6 +958,9 @@ private:
     AlignedVector temp_Ui_T_di;
     AlignedVector temp_Uo_T_do;
     AlignedVector temp_Ug_T_dg;
+    AlignedVector dh_curr;
+    AlignedVector dc_act_deriv;
+    AlignedVector dg_act_deriv;
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
@@ -981,6 +984,9 @@ private:
       temp_Ui_T_di.assign(batch_chunk_size * n, 0.0);
       temp_Uo_T_do.assign(batch_chunk_size * n, 0.0);
       temp_Ug_T_dg.assign(batch_chunk_size * n, 0.0);
+      dh_curr.assign(batch_chunk_size * n, 0.0);
+      dc_act_deriv.assign(batch_chunk_size * n, 0.0);
+      dg_act_deriv.assign(batch_chunk_size * n, 0.0);
     }
   };
 
