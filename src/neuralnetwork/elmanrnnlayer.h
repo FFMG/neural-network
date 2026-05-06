@@ -253,6 +253,16 @@ private:
     BPTTWorkspace& workspace,
     const BPTTWorkspace::AlignedVector& rw_values_T) const;
 
+  void pre_calculate_gates(
+    const size_t& b_start, 
+    const size_t& b_end,
+    const size_t N_this,
+    const size_t N_prev,
+    const size_t num_time_steps,
+    const std::vector<double>& flattened_batch_inputs,
+    std::vector<double>& batch_pre_act
+    ) const;
+
   void initialize_recurrent_weights(double weight_decay);
   
   // SoA for recurrent weights
