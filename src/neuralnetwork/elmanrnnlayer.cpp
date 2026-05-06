@@ -277,20 +277,20 @@ void ElmanRNNLayer::calculate_forward_feed(
     return;
   }
 
-  std::vector<double> flattened_inputs(batch_size * num_time_steps * N_prev);
+  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     if (!rnn_in.empty())
     {
-      std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs.begin() + b * num_time_steps * N_prev);
+      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
     }
     else
     {
       const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        std::copy(std_in.begin(), std_in.end(), flattened_inputs.begin() + (b * num_time_steps + t) * N_prev);
+        std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
       }
     }
   }
@@ -298,38 +298,10 @@ void ElmanRNNLayer::calculate_forward_feed(
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
   std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this, 0.0);
 
-  auto precalc_gates = [&](size_t b_start, size_t b_end)
-  {
-    for (size_t b = b_start; b < b_end; ++b)
-    {
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        const double* x_t = &flattened_inputs[(b * num_time_steps + t) * N_prev];
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
-
-        if (has_bias())
-        {
-          std::copy(get_b_values().begin(), get_b_values().end(), pre_t);
-        }
-
-        for (size_t i = 0; i < N_prev; ++i)
-        {
-          const double xi = x_t[i];
-          if (xi == 0.0)
-          {
-            continue;
-          }
-          const double* w_row = &get_w_values()[i * N_this];
-          simd::mul_add(xi, w_row, pre_t, N_this);
-        }
-      }
-    }
-  };
-
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   if (num_threads <= 1)
   {
-    precalc_gates(0, batch_size);
+    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
   }
   else
   {
@@ -340,10 +312,10 @@ void ElmanRNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([&precalc_gates, start, end]()
-        {
-          precalc_gates(start, end);
-        });
+        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs, &batch_pre_act, this]()
+          {
+            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+          });
       }
       start = end;
     }
@@ -445,6 +417,42 @@ void ElmanRNNLayer::calculate_forward_feed(
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
     const double* last_ptr = seq_ptr + (num_time_steps - 1) * N_this;
     batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
+  }
+}
+
+void ElmanRNNLayer::pre_calculate_gates(
+  const size_t& b_start, 
+  const size_t& b_end,
+  const size_t N_this,
+  const size_t N_prev,
+  const size_t num_time_steps,
+  const std::vector<double>& flattened_batch_inputs,
+  std::vector<double>& batch_pre_act
+) const
+{
+  for (size_t b = b_start; b < b_end; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
+      double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
+
+      if (has_bias())
+      {
+        std::copy(get_b_values().begin(), get_b_values().end(), pre_t);
+      }
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double xi = x_t[i];
+        if (xi == 0.0)
+        {
+          continue;
+        }
+        const double* w_row = &get_w_values()[i * N_this];
+        simd::mul_add(xi, w_row, pre_t, N_this);
+      }
+    }
   }
 }
 
