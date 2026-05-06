@@ -688,6 +688,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete callback_task;
 
     // then do one final call, again, we don't care about the result.
+    _neural_network_helper->set_epoch(number_of_epoch);
     progress_callback(*_neural_network_helper);
   }
 
