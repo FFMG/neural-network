@@ -63,14 +63,16 @@ namespace math_expect {
     return tanh_sp + x * sig * (1.0 - tanh_sp * tanh_sp);
   }
 
-  double swish(double x, double) {
-    double clamped_x = std::max(-60.0, std::min(60.0, x));
-    return x / (1.0 + std::exp(-clamped_x));
+  double swish(double x, double alpha) {
+    double z = alpha * x;
+    double clamped_z = std::clamp(z, -60.0, 60.0);
+    return x / (1.0 + std::exp(-clamped_z));
   }
-  double swish_deriv(double x, double) {
-    double clamped_x = std::max(-60.0, std::min(60.0, x));
-    double sig = 1.0 / (1.0 + std::exp(-clamped_x));
-    return sig + x * sig * (1.0 - sig);
+  double swish_deriv(double x, double alpha) {
+    double z = alpha * x;
+    double clamped_z = std::clamp(z, -60.0, 60.0);
+    double sig = 1.0 / (1.0 + std::exp(-clamped_z));
+    return sig + alpha * x * sig * (1.0 - sig);
   }
 
   double gelu(double x, double) {
@@ -169,8 +171,22 @@ TEST_F(ActivationTest, Mish) {
 }
 
 TEST_F(ActivationTest, Swish) {
-  test_activation(activation::method::swish, math_expect::swish);
-  test_derivative(activation::method::swish, math_expect::swish_deriv);
+  test_activation(activation::method::swish, math_expect::swish, true);
+  test_derivative(activation::method::swish, math_expect::swish_deriv, true);
+}
+
+TEST_F(ActivationTest, SwishWithBetaTwo) {
+  const double beta = 2.0;
+  activation act(activation::method::swish, beta);
+  for (double val : test_values) {
+    double expected = math_expect::swish(val, beta);
+    double actual = act.activate(val);
+    EXPECT_NEAR(expected, actual, tolerance) << "Failed activation for Swish (beta=2.0) at x=" << val;
+    
+    double expected_deriv = math_expect::swish_deriv(val, beta);
+    double actual_deriv = act.activate_derivative(val);
+    EXPECT_NEAR(expected_deriv, actual_deriv, tolerance) << "Failed derivative for Swish (beta=2.0) at x=" << val;
+  }
 }
 
 TEST_F(ActivationTest, GELU) {

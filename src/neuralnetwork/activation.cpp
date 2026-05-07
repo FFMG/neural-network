@@ -392,21 +392,23 @@ double activation::calculate_mish_derivative(double x, double) noexcept
   return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
 }
 
-double activation::calculate_swish(double x, double) noexcept
+double activation::calculate_swish(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
-  const double exp_term = std::exp(std::clamp(-x, -MAX_EXP_INPUT, MAX_EXP_INPUT));
+  const double z = alpha * x;
+  const double exp_term = std::exp(std::clamp(-z, -MAX_EXP_INPUT, MAX_EXP_INPUT));
   return x / (1.0 + exp_term);
 }
 
-double activation::calculate_swish_derivative(double x, double) noexcept
+double activation::calculate_swish_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   constexpr double MAX_EXP_INPUT = 60.0;
-  double clamped_x = std::clamp(x, -MAX_EXP_INPUT, MAX_EXP_INPUT);
-  double sigmoid = 1.0 / (1.0 + std::exp(-clamped_x));
-  return sigmoid + x * sigmoid * (1.0 - sigmoid);
+  const double z = alpha * x;
+  const double clamped_z = std::clamp(z, -MAX_EXP_INPUT, MAX_EXP_INPUT);
+  const double sigmoid = 1.0 / (1.0 + std::exp(-clamped_z));
+  return sigmoid + alpha * x * sigmoid * (1.0 - sigmoid);
 }
 
 double activation::calculate_gelu(double x, double) noexcept
