@@ -319,6 +319,10 @@ NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalcula
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto results = calculate_forecast_metrics({ error_type }, false);
+  if (results.empty())
+  {
+    return NeuralNetworkHelperMetrics(0.0, error_type);
+  }
   return results.front();
 }
 
@@ -326,6 +330,10 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto results = calculate_forecast_metrics_all_layers({ error_type }, false);
+  if (results.empty())
+  {
+    return {};
+  }
   return results.front();
 }
 
@@ -333,6 +341,10 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto results = calculate_forecast_metrics_all_layers(error_types, false);
+  if (results.empty())
+  {
+    return {};
+  }
   return results.front();
 }
 
@@ -687,6 +699,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     callback_task->stop();
     delete callback_task;
 
+    // calculate the final learning rate for the final callback.
+    auto final_learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, number_of_epoch, number_of_epoch, learning_rate_scheduler);
+    _neural_network_helper->set_learning_rate(final_learning_rate);
+
     // then do one final call, again, we don't care about the result.
     _neural_network_helper->set_epoch(number_of_epoch);
     progress_callback(*_neural_network_helper);
@@ -928,7 +944,8 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
 
   // then get the scheduler if we can improve it further.
   // This is done after warmup and is throttled to run every 5 epochs
-  if (_options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target())
+  // we only do this if we are not at the end of the training.
+  if (epoch < number_of_epoch && _options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target())
   {
     if (epoch % 5 == 0)
     {
