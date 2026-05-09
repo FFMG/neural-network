@@ -323,8 +323,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _tasks.emplace([task]() { 
         MYODDWEB_PROFILE_FUNCTION("TaskQueue::enqueue");
@@ -524,8 +528,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _task = [task]() -> R { return task(); };
       _task_is_present.store(true);
@@ -719,8 +727,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _task = [task]() { task(); };
       _task_is_present.store(true);

@@ -108,6 +108,7 @@
     <ClCompile Include="simd_utils_tests.cpp" />
     <ClCompile Include="simd_utils_mt_tests.cpp" />
     <ClCompile Include="taskqueue_tests.cpp" />
+    <ClCompile Include="taskqueue_comprehensive_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />
     <ClCompile Include="..\src\neuralnetwork\activation.cpp" />
     <ClCompile Include="..\src\neuralnetwork\elmanrnnlayer.cpp" />
