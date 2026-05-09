@@ -199,6 +199,12 @@ TEST_F(GRURNNLayerTest, DropoutNotInference) {
     layer.set_z_b_values(std::vector<double>(num_outputs, 10.0));
     layer.set_r_b_values(std::vector<double>(num_outputs, 10.0));
 
+    // zero out the weights so we only test the bias.
+    layer.set_z_w_values(std::vector<double>(num_outputs * num_inputs, 0.0));
+    layer.set_z_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_r_w_values(std::vector<double>(num_outputs * num_inputs, 0.0));
+    layer.set_r_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);

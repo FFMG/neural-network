@@ -180,4 +180,16 @@ private:
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& batch_hidden_states,
     const std::vector<double>& flattened_this_grads_buffer) const;
+
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    unsigned this_layer_index,
+    unsigned num_inputs,
+    unsigned num_outputs,
+    size_t num_time_steps,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_b_grads) const;
 };

@@ -37,21 +37,40 @@ public:
   TaskQueue(const TaskQueue&) = delete;
   TaskQueue& operator=(const TaskQueue&) = delete;
 
-  void stop() 
+  void stop()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
     State old_state = State::Started;
     if (_state.compare_exchange_strong(old_state, State::Stopping))
     {
-      _condition_new_task.notify_all();
-      _condition_busy_task_complete.notify_all();
-    }
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _condition_new_task.notify_all();
+        _condition_busy_task_complete.notify_all();
+      }
 
-    if (_worker.joinable())
-    {
-      _worker.join();
+      if (_worker.joinable())
+      {
+        _worker.join();
+      }
+      _state.store(State::Stopped);
     }
-    _state.store(State::Stopped);
+    else
+    {
+      // If it's already stopping, just wait for it to become stopped.
+      if (_state.load() == State::Stopping)
+      {
+        if (_worker.joinable() && _worker.get_id() != std::this_thread::get_id())
+        {
+          // We can't safely join here because another thread is joining.
+          // We just wait for the state to become Stopped.
+          std::unique_lock<std::mutex> lock(_mutex);
+          _condition_busy_task_complete.wait(lock, [this] {
+            return _state.load() == State::Stopped;
+          });
+        }
+      }
+    }
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -103,6 +122,14 @@ public:
       });
 
     output.swap(_results);
+
+    if (_exception_ptr)
+    {
+      std::exception_ptr p = nullptr;
+      std::swap(p, _exception_ptr);
+      std::rethrow_exception(p);
+    }
+
     _total_completed_tasks.store(0);
     return output;
   }
@@ -244,15 +271,34 @@ public:
     State old_state = State::Started;
     if (_state.compare_exchange_strong(old_state, State::Stopping))
     {
-      _condition_new_task.notify_all();
-      _condition_busy_task_complete.notify_all();
-    }
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _condition_new_task.notify_all();
+        _condition_busy_task_complete.notify_all();
+      }
 
-    if (_worker.joinable())
-    {
-      _worker.join();
+      if (_worker.joinable())
+      {
+        _worker.join();
+      }
+      _state.store(State::Stopped);
     }
-    _state.store(State::Stopped);
+    else
+    {
+      // If it's already stopping, just wait for it to become stopped.
+      if (_state.load() == State::Stopping)
+      {
+        if (_worker.joinable() && _worker.get_id() != std::this_thread::get_id())
+        {
+          // We can't safely join here because another thread is joining.
+          // We just wait for the state to become Stopped.
+          std::unique_lock<std::mutex> lock(_mutex);
+          _condition_busy_task_complete.wait(lock, [this] {
+            return _state.load() == State::Stopped;
+          });
+        }
+      }
+    }
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -277,8 +323,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _tasks.emplace([task]() { 
         MYODDWEB_PROFILE_FUNCTION("TaskQueue::enqueue");
@@ -377,7 +427,11 @@ private:
         }
       }
     }
-    _state.store(State::Stopped);
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      _state.store(State::Stopped);
+      _condition_busy_task_complete.notify_all();
+    }
   }
 
   std::thread _worker;
@@ -429,22 +483,31 @@ public:
     auto old_state = State::Started;
     if (_state.compare_exchange_strong(old_state, State::Stopping))
     {
-      _condition_new_task.notify_all();
-      _condition_busy_task_complete.notify_all();
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _condition_new_task.notify_all();
+        _condition_busy_task_complete.notify_all();
+      }
 
       if (_worker.joinable())
       {
         _worker.join();
       }
+      _state.store(State::Stopped);
     }
-    else 
+    else
     {
-      if (_worker.joinable())
+      if (_state.load() == State::Stopping)
       {
-        _worker.join();
+        if (_worker.joinable() && _worker.get_id() != std::this_thread::get_id())
+        {
+          std::unique_lock<std::mutex> lock(_mutex);
+          _condition_busy_task_complete.wait(lock, [this] {
+            return _state.load() == State::Stopped;
+          });
+        }
       }
     }
-    _state.store(State::Stopped);
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -465,8 +528,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _task = [task]() -> R { return task(); };
       _task_is_present.store(true);
@@ -559,7 +626,11 @@ private:
         _condition_busy_task_complete.notify_all();
       }
     }
-    _state.store(State::Stopped);
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      _state.store(State::Stopped);
+      _condition_busy_task_complete.notify_all();
+    }
   }
 
   std::thread _worker;
@@ -611,22 +682,31 @@ public:
     auto old_state = State::Started;
     if (_state.compare_exchange_strong(old_state, State::Stopping))
     {
-      _condition_new_task.notify_all();
-      _condition_busy_task_complete.notify_all();
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _condition_new_task.notify_all();
+        _condition_busy_task_complete.notify_all();
+      }
 
       if (_worker.joinable())
       {
         _worker.join();
       }
+      _state.store(State::Stopped);
     }
-    else 
+    else
     {
-      if (_worker.joinable())
+      if (_state.load() == State::Stopping)
       {
-        _worker.join();
+        if (_worker.joinable() && _worker.get_id() != std::this_thread::get_id())
+        {
+          std::unique_lock<std::mutex> lock(_mutex);
+          _condition_busy_task_complete.wait(lock, [this] {
+            return _state.load() == State::Stopped;
+          });
+        }
       }
     }
-    _state.store(State::Stopped);
   }
 
   // Accepts any callable + arguments matching the return type R
@@ -647,8 +727,12 @@ public:
       }
       if (_state.load() == State::Stopped)
       {
-        _worker = std::thread([this] { run(); });
         _state.store(State::Started);
+        if (_worker.joinable())
+        {
+          _worker.join();
+        }
+        _worker = std::thread([this] { run(); });
       }
       _task = [task]() { task(); };
       _task_is_present.store(true);
@@ -733,7 +817,11 @@ private:
         _condition_busy_task_complete.notify_all();
       }
     }
-    _state.store(State::Stopped);
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      _state.store(State::Stopped);
+      _condition_busy_task_complete.notify_all();
+    }
   }
 
   std::thread _worker;
