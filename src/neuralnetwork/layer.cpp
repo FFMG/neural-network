@@ -126,6 +126,8 @@ void Layer::calculate_error_deltas(
 
   switch (error_calculation_type)
   {
+  case ErrorCalculation::type::none:
+    return;
   case ErrorCalculation::type::huber_loss:
     return calculate_huber_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::huber_direction_loss:
@@ -140,8 +142,15 @@ void Layer::calculate_error_deltas(
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::log_cosh:
     return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs, activation_method, neurons_span);
-  default:
-    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type), " is not supported for Layer!");
+  case ErrorCalculation::type::mae:
+  case ErrorCalculation::type::nrmse:
+  case ErrorCalculation::type::mape:
+  case ErrorCalculation::type::smape:
+  case ErrorCalculation::type::wape:
+  case ErrorCalculation::type::directional_accuracy:
+  case ErrorCalculation::type::directional_confidence_score:
+  case ErrorCalculation::type::prediction_coverage:
+    Logger::panic("Error calculation type, ", ErrorCalculation::type_to_string(error_calculation_type), " is not supported for Layer training!");
   }
 }
 
