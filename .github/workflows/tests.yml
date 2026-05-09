@@ -40,3 +40,20 @@ jobs:
     - name: Run Tests
       working-directory: ${{github.workspace}}/tests/build
       run: ctest -C Release --output-on-failure
+
+  build-and-test-macos:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/tests/build -S ${{github.workspace}}/tests
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/tests/build --config Release
+
+    - name: Run Tests
+      working-directory: ${{github.workspace}}/tests/build
+      run: ctest -C Release --output-on-failure
