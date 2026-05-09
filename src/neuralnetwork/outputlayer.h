@@ -96,7 +96,18 @@ protected:
     case ErrorCalculation::type::mse:
     case ErrorCalculation::type::rmse:
     case ErrorCalculation::type::huber_loss:
-    case ErrorCalculation::type::log_cosh: return false; // Always use derivative for MSE-like losses unless it's linear (where deriv=1 anyway)
+    case ErrorCalculation::type::log_cosh:
+    case ErrorCalculation::type::none:
+    case ErrorCalculation::type::huber_direction_loss:
+    case ErrorCalculation::type::mae:
+    case ErrorCalculation::type::nrmse:
+    case ErrorCalculation::type::mape:
+    case ErrorCalculation::type::smape:
+    case ErrorCalculation::type::wape:
+    case ErrorCalculation::type::directional_accuracy:
+    case ErrorCalculation::type::directional_confidence_score:
+    case ErrorCalculation::type::prediction_coverage:
+      return false; // Always use derivative for MSE-like losses unless it's linear (where deriv=1 anyway)
     }
     return false;
   }

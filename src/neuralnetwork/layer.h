@@ -501,6 +501,9 @@ public:
   ) const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    (void)error_types;
+    (void)checking_outputs;
+    (void)predictions;
     Logger::panic("Only output layers can calculate output metrics!");
   }
 
@@ -840,6 +843,7 @@ public:
   [[nodiscard]] inline virtual double get_momentum(unsigned neuron_number) const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    (void)neuron_number;
     return _momentum;
   }
 

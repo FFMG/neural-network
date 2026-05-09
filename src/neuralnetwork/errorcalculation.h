@@ -194,7 +194,7 @@ public:
     case type::directional_accuracy:
       if (activation_method == activation::method::softmax)
       {
-        return calculate_softmax_directional_accuracy(ground_truths, predictions, evaluation_config);
+        return calculate_softmax_directional_accuracy(ground_truths, predictions);
       }
       return calculate_directional_accuracy(ground_truths, predictions, evaluation_config, activation_method);
 
@@ -746,7 +746,7 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(confident) / total);
   }
 
-  static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions,const EvaluationConfig& evaluation_config)
+  static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;

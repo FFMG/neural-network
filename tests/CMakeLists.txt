@@ -87,6 +87,13 @@ target_link_libraries(neuralnetwork_tests PRIVATE
     gtest_main
 )
 
+# Set strict warning levels
+if(MSVC)
+    target_compile_options(neuralnetwork_tests PRIVATE /W4 /WX)
+else()
+    target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+endif()
+
 # Add preprocessor definitions to match the main project
 target_compile_definitions(neuralnetwork_tests PRIVATE
     VALIDATE_DATA=1

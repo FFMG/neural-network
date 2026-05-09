@@ -38,7 +38,7 @@ TEST_F(LayerOptimizerTest, ApplyUpdateToWeightSGD) {
     double input_grad = 0.2;
     double lr = 0.01;
     double clipping = 1.0;
-    double momentum = 0.9; // MockLayer default or we can set it?
+    // double momentum = 0.9; // MockLayer default or we can set it?
     // Let's check Layer constructor: _momentum(momentum)
     // MockLayer(unsigned num_neurons, unsigned num_inputs) calls Layer with momentum 0.0?
     // Wait, test_helper.h: MockLayer(...) : Layer(..., 0.0)
