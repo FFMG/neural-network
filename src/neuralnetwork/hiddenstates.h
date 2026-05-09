@@ -21,10 +21,86 @@ public:
     _layer_views.resize(num_layers);
   }
 
-  HiddenStates(const HiddenStates& src) = default;
-  HiddenStates(HiddenStates&& src) noexcept = default;
-  HiddenStates& operator=(HiddenStates&& src) noexcept = default;
-  HiddenStates& operator=(const HiddenStates& src) = default;
+  HiddenStates(const HiddenStates& src) :
+    _topology(src._topology),
+    _pre_activation_sums(src._pre_activation_sums),
+    _hidden_state_values(src._hidden_state_values),
+    _cell_state_values(src._cell_state_values)
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    rebuild_views();
+  }
+
+  HiddenStates(HiddenStates&& src) noexcept :
+    _topology(std::move(src._topology)),
+    _pre_activation_sums(std::move(src._pre_activation_sums)),
+    _hidden_state_values(std::move(src._hidden_state_values)),
+    _cell_state_values(std::move(src._cell_state_values))
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    rebuild_views();
+  }
+
+  HiddenStates& operator=(const HiddenStates& src)
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    if (this != &src)
+    {
+      _topology = src._topology;
+      _pre_activation_sums = src._pre_activation_sums;
+      _hidden_state_values = src._hidden_state_values;
+      _cell_state_values = src._cell_state_values;
+      rebuild_views();
+    }
+    return *this;
+  }
+
+  HiddenStates& operator=(HiddenStates&& src) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    if (this != &src)
+    {
+      _topology = std::move(src._topology);
+      _pre_activation_sums = std::move(src._pre_activation_sums);
+      _hidden_state_values = std::move(src._hidden_state_values);
+      _cell_state_values = std::move(src._cell_state_values);
+      rebuild_views();
+    }
+    return *this;
+  }
+
+  void rebuild_views()
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenStates");
+    _layer_views.clear();
+    const size_t num_layers = _topology.size();
+    _layer_views.resize(num_layers);
+
+    for (size_t layer_number = 0; layer_number < num_layers; ++layer_number)
+    {
+      const size_t n = _topology[layer_number];
+      if (n == 0) continue;
+
+      const size_t total_hid = _hidden_state_values[layer_number].size();
+      const size_t num_time_steps = total_hid / n;
+      if (num_time_steps == 0) continue;
+
+      const size_t total_pre = _pre_activation_sums[layer_number].size();
+      const unsigned multiplier = static_cast<unsigned>(total_pre / (num_time_steps * n));
+
+      auto& views = _layer_views[layer_number];
+      views.reserve(num_time_steps);
+
+      double* p_pre = _pre_activation_sums[layer_number].data();
+      double* p_hid = _hidden_state_values[layer_number].data();
+      double* p_cel = _cell_state_values[layer_number].data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        views.emplace_back(&p_pre[t * n * multiplier], &p_hid[t * n], &p_cel[t * n], static_cast<unsigned>(n), static_cast<unsigned>(n * multiplier));
+      }
+    }
+  }
 
   void zero()
   {

@@ -75,15 +75,13 @@ private:
   }
 
 public:
-  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept :
-    _output_layer_details(nno._output_layer_details)
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = nno;
   }
 
-  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept :
-    _output_layer_details(std::move(nno._output_layer_details))
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     *this = std::move(nno);
@@ -136,7 +134,7 @@ public:
       _number_of_epoch = nno._number_of_epoch;
       _batch_size = nno._batch_size;
       _data_is_unique = nno._data_is_unique;
-      _progress_callback = nno._progress_callback;
+      _progress_callback = std::move(nno._progress_callback);
       _log_level = nno._log_level;
       _number_of_threads = nno._number_of_threads;
       _learning_rate_decay_rate = nno._learning_rate_decay_rate;
@@ -156,6 +154,7 @@ public:
       _has_bias = nno._has_bias;
       _multi_output_layer_details = std::move(nno._multi_output_layer_details);
       
+      nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
@@ -171,6 +170,11 @@ public:
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
       nno._has_bias = true;
+      nno._learning_rate_decay_rate = 0;
+      nno._adaptive_learning_rate = false;
+      nno._learning_rate_restart_rate = 0;
+      nno._learning_rate_restart_boost = 0;
+      nno._number_of_threads = 0;
     }
     return *this;
   }

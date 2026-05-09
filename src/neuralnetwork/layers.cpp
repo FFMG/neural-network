@@ -75,12 +75,15 @@ Layers::Layers(const Layers& src) noexcept :
   _update_weights_pool(nullptr)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
+  std::shared_lock<std::shared_mutex> lock(src._mutex);
   _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
   _layers.reserve(src._layers.size());
   for(const auto& layer : src._layers)
   {
     _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
   }
+  _training_gradients_buffer = src._training_gradients_buffer;
+  _training_hidden_states_buffer = src._training_hidden_states_buffer;
 }
 
 Layers::Layers(
@@ -113,6 +116,10 @@ Layers& Layers::operator=(const Layers& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("Layers");
   if(this != &src)
   {
+    std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
+    std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
+    std::lock(lhs_lock, rhs_lock);
+
     delete _update_weights_pool;
     _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
 
@@ -122,6 +129,9 @@ Layers& Layers::operator=(const Layers& src) noexcept
     {
       _layers.emplace_back(std::unique_ptr<Layer>(layer->clone()));
     }
+
+    _training_gradients_buffer = src._training_gradients_buffer;
+    _training_hidden_states_buffer = src._training_hidden_states_buffer;
   }
   return *this;
 }
@@ -131,6 +141,10 @@ Layers& Layers::operator=(Layers&& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("Layers");
   if (this != &src)
   {
+    std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
+    std::unique_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
+    std::lock(lhs_lock, rhs_lock);
+
     _layers = std::move(src._layers);
 
     _training_gradients_buffer = std::move(src._training_gradients_buffer);

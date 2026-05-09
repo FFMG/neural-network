@@ -85,7 +85,9 @@ public:
       _error_evaluation_config = std::move(src._error_evaluation_config);
       _weight_decay = src._weight_decay;
       _optimiser_type = src._optimiser_type;
+      _momentum = src._momentum;
       src._weight_decay = 0;
+      src._momentum = 0;
       src._layer_size = 0;
     }
     return *this;

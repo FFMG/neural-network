@@ -46,6 +46,7 @@ Neuron::Neuron(Neuron&& src) noexcept :
 
   src._index = 0;
   src._type = Neuron::Type::Normal;
+  src._dropout_rate = 0.0;
 }
 
 Neuron& Neuron::operator=(Neuron&& src) noexcept
