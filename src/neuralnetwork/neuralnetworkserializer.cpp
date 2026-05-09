@@ -43,7 +43,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   auto json_object = dynamic_cast<const TinyJSON::TJValueObject*>(tj);
   if (nullptr != json_object)
   {
-    auto final_learning_rate = json_object->get<double>("final-learning-rate");
+    auto final_learning_rate = json_object->get_or<double>("final-learning-rate", 0.0);
     if (final_learning_rate != 0.0)
     {
       options.with_learning_rate(final_learning_rate);
@@ -204,7 +204,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto rw_timesteps = layer_object.get<std::vector<long long>>("rw-timesteps");
   auto rw_decays = layer_object.get<std::vector<double>>("rw-decays");
 
-  double momentum = layer_object.get<double>("momentum");
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -342,7 +342,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto r_b_timesteps = layer_object.get<std::vector<long long>>("r-b-timesteps");
   auto r_b_decays = layer_object.get<std::vector<double>>("r-b-decays");
 
-  double momentum = layer_object.get<double>("momentum");
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -552,7 +552,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   auto o_b_timesteps = layer_object.get<std::vector<long long>>("o-b-timesteps");
   auto o_b_decays = layer_object.get<std::vector<double>>("o-b-decays");
 
-  double momentum = layer_object.get<double>("momentum");
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -644,7 +644,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
   auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
   auto b_decays = layer_object.get<std::vector<double>>("b-decays");
-  double momentum = layer_object.get<double>("momentum");
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
 
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
@@ -934,36 +934,36 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto log_level_string = options_object->try_get_string("log-level", false);
   const auto log_level = Logger::string_to_level(log_level_string == nullptr ? "none" : log_level_string);
   
-  const auto learning_rate = options_object->get<double>("learning-rate");
-  const auto learning_rate_warmup_start = options_object->get<double>("learning-rate-warmup-start");
-  const auto learning_rate_warmup_target = options_object->get<double>("learning-rate-warmup-target");
+  const auto learning_rate = options_object->get_or<double>("learning-rate", 0.001);
+  const auto learning_rate_warmup_start = options_object->get_or<double>("learning-rate-warmup-start", 0.0);
+  const auto learning_rate_warmup_target = options_object->get_or<double>("learning-rate-warmup-target", 0.0);
 
-  const auto number_of_epoch = static_cast<int>(options_object->get_number("number-of-epoch"));
-  const auto batch_size = static_cast<int>(options_object->get_number("batch-size"));
-  const auto data_is_unique = options_object->get_boolean("data-is-unique");
-  const auto number_of_threads = options_object->get<int>("number-of-threads");
-  const auto learning_rate_decay_rate = options_object->get<double>("learning-rate-decay-rate");
-  const auto adaptive_learning_rate = options_object->get_boolean("adaptive-learning-rate");
+  const auto number_of_epoch = options_object->get<int>("number-of-epoch");
+  const auto batch_size = options_object->get<int>("batch-size");
+  const auto data_is_unique = options_object->get<bool>("data-is-unique");
+  const auto number_of_threads = options_object->get_or<int>("number-of-threads", 0);
+  const auto learning_rate_decay_rate = options_object->get_or<double>("learning-rate-decay-rate", 0.0);
+  const auto adaptive_learning_rate = options_object->get<bool>("adaptive-learning-rate");
   const auto optimiser_type_string = options_object->try_get_string("optimiser-type");
   const auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
 
-  const auto learning_rate_restart_rate = options_object->get<double>("learning-rate-restart-rate");
-  const auto learning_rate_restart_boost = options_object->get<double>("learning-rate-restart-boost");
-  const auto residual_layer_jump = static_cast<int>(options_object->get_number("residual-layer-jump"));
-  const auto clip_threshold = options_object->get<double>("clip-threshold");
+  const auto learning_rate_restart_rate = options_object->get_or<double>("learning-rate-restart-rate", 0.0);
+  const auto learning_rate_restart_boost = options_object->get_or<double>("learning-rate-restart-boost", 0.0);
+  const auto residual_layer_jump = options_object->get<int>("residual-layer-jump");
+  const auto clip_threshold = options_object->get_or<double>("clip-threshold", 1.0);
   const auto shuffle_training_data = options_object->get<bool>("shuffle-training-data");
   const auto hidden_layers = get_hidden_layers(*options_object);
   const auto output_layer_details = get_output_layer_details(*options_object);
   const auto multi_output_layer_details = get_multi_output_layer_details(*options_object);
   
   const auto enable_bptt = options_object->get<bool>("enable-bptt");
-  const auto bptt_max_ticks = options_object->get<int>("bptt-max-ticks");
+  const auto bptt_max_ticks = options_object->get_or<int>("bptt-max-ticks", 0);
   const auto shuffle_bptt_batches = options_object->get<bool>("shuffle-bptt-batches");
   const auto has_bias = options_object->get<bool>("has-bias");
 
   const auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
 
-  const auto update_training_monitor_percent = options_object->get<double>("update-training-monitor-percent");
+  const auto update_training_monitor_percent = options_object->get_or<double>("update-training-monitor-percent", 0.0);
 
   const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
@@ -1153,9 +1153,13 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   
-  const auto activation_method_string = layer_object.try_get_string("activation-method");
-  const auto activation_alpha = layer_object.get<double>("activation-alpha");
-  activation default_activation(activation::string_to_method(activation_method_string == nullptr ? "sigmoid" : activation_method_string), activation_alpha);
+  const auto method_str = layer_object.try_get_string("activation-method");
+  const auto method = activation::string_to_method(method_str == nullptr ? "sigmoid" : method_str);
+  const auto alpha = layer_object.get_or<double>("activation-alpha", 1.0);
+  const auto temperature = layer_object.get_or<double>("activation-temperature", 1.0);
+  const auto inference_temperature = layer_object.get_or<double>("activation-inference-temperature", temperature);
+
+  activation default_activation(method, alpha, temperature, inference_temperature);
 
   layer_activation_helper lah(default_activation, num_inputs, num_outputs);
 
@@ -1267,11 +1271,13 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   for (const auto& multi_output_layer_detail : options.multi_output_layer_details())
   {
     auto* multi_output_layer_details_obj = new TinyJSON::TJValueObject();
-    multi_output_layer_details_obj->set("hidden-layers", add_hidden_layers(multi_output_layer_detail.get_hidden_layers()));
+    auto* hidden_layers_array = add_hidden_layers(multi_output_layer_detail.get_hidden_layers());
+    multi_output_layer_details_obj->set("hidden-layers", hidden_layers_array);
+    delete hidden_layers_array;
     
     std::vector<OutputLayerDetails> olds = { multi_output_layer_detail.get_output_details() };
     auto* olds_arr = add_output_layer_details(olds);
-    multi_output_layer_details_obj->set("output-detail", olds_arr->at(0)->clone());
+    multi_output_layer_details_obj->set("output-detail", olds_arr->at(0));
     delete olds_arr;
     
     multi_output_layer_details_array->add(multi_output_layer_details_obj);
@@ -1988,11 +1994,16 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         continue;
       }
         
-      const auto method = activation::string_to_method(phlo->try_get_string("activation-method", false));
+      const auto method_str = phlo->try_get_string("activation-method", false);
+      const auto method = activation::string_to_method(method_str == nullptr ? "sigmoid" : method_str);
+      const auto alpha = phlo->get<double>("activation-alpha");
+      const auto temperature = phlo->get_or<double>("activation-temperature", 1.0);
+      const auto inference_temperature = phlo->get_or<double>("activation-inference-temperature", temperature);
+
       hidden_layers.emplace_back(LayerDetails(
         Layer::architecture_from_string(phlo->try_get_string("architecture", false)),
         phlo->get<unsigned>("size"),
-        activation(method, phlo->get<double>("activation-alpha")),
+        activation(method, alpha, temperature, inference_temperature),
         phlo->get<double>("dropout"),
         phlo->get<double>("weight-decay"),
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
@@ -2007,10 +2018,15 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
       Logger::panic("Missing output layer details for MultiOutputLayerDetails");
     }
 
-    auto method = activation::string_to_method(od_obj->try_get_string("activation-method", false));
+    const auto method_str = od_obj->try_get_string("activation-method", false);
+    const auto method = activation::string_to_method(method_str == nullptr ? "sigmoid" : method_str);
+    const auto alpha = od_obj->get_float("activation-alpha");
+    const auto temperature = od_obj->get_or<double>("activation-temperature", 1.0);
+    const auto inference_temperature = od_obj->get_or<double>("activation-inference-temperature", temperature);
+
     const auto output_details = OutputLayerDetails(
       od_obj->get<unsigned>("size"),
-      activation(method, od_obj->get_float("activation-alpha")),
+      activation(method, alpha, temperature, inference_temperature),
       ErrorCalculation::string_to_type(od_obj->get_string("error-calculation-type")),
       get_error_evaluation_config(od_obj),
       od_obj->get<double>("weight-decay"),
