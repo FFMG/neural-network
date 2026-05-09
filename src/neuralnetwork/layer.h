@@ -468,16 +468,21 @@ public:
       _b_timesteps = std::move(src._b_timesteps);
       _b_decays = std::move(src._b_decays);
 
+      _residual_layer_number = src._residual_layer_number;
       delete _residual_projector;
       _residual_projector = src._residual_projector;
 
       _task_queue_pool = std::move(src._task_queue_pool);
 
       _layer_activation_helper = std::move(src._layer_activation_helper);
+      _momentum = src._momentum;
 
       src._layer_index = 0;
+      src._layer_role = Role::Input;
       src._optimiser_type = OptimiserType::None;
+      src._residual_layer_number = 0;
       src._residual_projector = nullptr;
+      src._momentum = 0;
     }
     return *this;
   }

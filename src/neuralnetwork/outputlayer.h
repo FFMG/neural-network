@@ -30,6 +30,7 @@ public:
     _number_output_layers(src._number_output_layers)
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayer");
+    src._number_output_layers = 0;
   }
 
   OutputLayer& operator=(const OutputLayer& src) noexcept
@@ -52,6 +53,7 @@ public:
       _output_layer_details = std::move(src._output_layer_details);
       _bounds = std::move(src._bounds);
       _number_output_layers = src._number_output_layers;
+      src._number_output_layers = 0;
     }
     return *this;
   }

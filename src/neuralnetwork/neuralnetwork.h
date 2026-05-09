@@ -34,7 +34,10 @@ public:
   NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::vector<std::map<ErrorCalculation::type, double>>& errors);
 
   NeuralNetwork(const NeuralNetwork& src);
+  NeuralNetwork(NeuralNetwork&& src) noexcept;
+
   NeuralNetwork& operator=(const NeuralNetwork&);
+  NeuralNetwork& operator=(NeuralNetwork&&) noexcept;
 
   virtual ~NeuralNetwork();
 

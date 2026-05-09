@@ -46,6 +46,7 @@ public:
       _gradients = src._gradients;
       _rnn_outputs = src._rnn_outputs;
       _rnn_gradients = src._rnn_gradients;
+      _rnn_gate_gradients = src._rnn_gate_gradients;
     }
     return *this;
   }
@@ -59,6 +60,7 @@ public:
       _gradients = std::move(src._gradients);
       _rnn_outputs = std::move(src._rnn_outputs);
       _rnn_gradients = std::move(src._rnn_gradients);
+      _rnn_gate_gradients = std::move(src._rnn_gate_gradients);
     }
     return *this;
   }

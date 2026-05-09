@@ -63,6 +63,15 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   *this = src;
 }
 
+NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
+  _layers(std::move(src._layers)),
+  _options(std::move(src._options)),
+  _neural_network_helper(nullptr)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  *this = std::move(src);
+}
+
 NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -85,7 +94,36 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     if (src._neural_network_helper != nullptr)
     {
       _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
+      _neural_network_helper->_neural_network = this;
     }
+  }
+  return *this;
+}
+
+NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (this != &src)
+  {
+    std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
+    std::unique_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
+    std::lock(lhs_lock, rhs_lock);
+
+    _learning_rate = src._learning_rate;
+    _layers = std::move(src._layers);
+    _options = std::move(src._options);
+    _saved_errors = std::move(src._saved_errors);
+    _last_metrics = std::move(src._last_metrics);
+
+    delete _neural_network_helper;
+    _neural_network_helper = src._neural_network_helper;
+    if (_neural_network_helper != nullptr)
+    {
+      _neural_network_helper->_neural_network = this;
+    }
+
+    src._neural_network_helper = nullptr;
+    src._learning_rate = 0.0;
   }
   return *this;
 }
@@ -252,6 +290,7 @@ void NeuralNetwork::create_batch_from_indexes(
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
   return _layers.think(_options, inputs);
 }
 
@@ -263,6 +302,7 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
     Logger::error("The input size, '", inputs.size(),"' does not match the topology!");
     return {};
   }
+  std::shared_lock<std::shared_mutex> read(_mutex);
   return _layers.think(_options, inputs);
 }
 
