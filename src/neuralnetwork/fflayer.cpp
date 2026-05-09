@@ -523,7 +523,13 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() 
+          { 
+            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); 
+          });
+      }
       start = end;
     }
     _task_queue_pool->get();
@@ -548,48 +554,9 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
   std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
 
-  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
-  {
-    auto& local_w_grads = thread_w_grads[thread_idx];
-    auto& local_b_grads = thread_b_grads[thread_idx];
-
-    for (size_t b = start; b < end; ++b)
-    {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-
-      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-      const double* g_base = !rnn_grad.empty() ? rnn_grad.data() : std_grad.data();
-
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
-        const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
-        for (size_t i = 0; i < num_inputs; ++i)
-        {
-          const double xi = x_t[i];
-          if (std::abs(xi) < 1e-15)
-          {
-            continue;
-          }
-          simd::mul_add(xi, g_t, &local_w_grads[i * num_outputs], num_outputs);
-        }
-        if (has_bias())
-        {
-          for (unsigned j = 0; j < num_outputs; ++j)
-          {
-            local_b_grads[j] += g_t[j];
-          }
-        }
-      }
-    }
-  };
-
   if (num_threads <= 1)
   {
-    run_chunk(0, batch_size, 0);
+    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, thread_w_grads[0], thread_b_grads[0]);
   }
   else
   {
@@ -600,7 +567,25 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
+        auto& thread_w_grads_t = thread_w_grads[t];
+        auto& thread_b_grads_t = thread_b_grads[t];
+        _task_queue_pool->enqueue(
+          [
+            this,
+            start, 
+            end, 
+            &batch_gradients_and_outputs, 
+            prev_layer_index, 
+            this_layer_index, 
+            num_inputs, 
+            num_outputs, 
+            num_time_steps, 
+            &thread_w_grads_t,
+            &thread_b_grads_t
+          ]()
+        {
+          calculate_and_store_gradients_chunk(start, end, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, thread_w_grads_t, thread_b_grads_t);
+        });
       }
       start = end;
     }
@@ -717,6 +702,53 @@ void FFLayer::run_post_gemm_backward(
       std::vector<double> std_grads(N_this);
       std::copy(rnn_grads_row.end() - N_this, rnn_grads_row.end(), std_grads.begin());
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), std_grads);
+    }
+  }
+}
+
+void FFLayer::calculate_and_store_gradients_chunk(
+  size_t start,
+  size_t end,
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  unsigned prev_layer_index,
+  unsigned this_layer_index,
+  unsigned num_inputs,
+  unsigned num_outputs,
+  size_t num_time_steps,
+  std::vector<double>& local_w_grads,
+  std::vector<double>& local_b_grads) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  for (size_t b = start; b < end; ++b)
+  {
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+
+    const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+    const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+    const double* g_base = !rnn_grad.empty() ? rnn_grad.data() : std_grad.data();
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
+      const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        const double xi = x_t[i];
+        if (std::abs(xi) < 1e-15)
+        {
+          continue;
+        }
+        simd::mul_add(xi, g_t, &local_w_grads[i * num_outputs], num_outputs);
+      }
+      if (has_bias())
+      {
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+          local_b_grads[j] += g_t[j];
+        }
+      }
     }
   }
 }

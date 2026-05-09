@@ -71,6 +71,8 @@ add_executable(neuralnetwork_tests
     output_layer_details_tests.cpp
     simd_utils_tests.cpp
     simd_utils_mt_tests.cpp
+    taskqueue_tests.cpp
+    taskqueue_comprehensive_tests.cpp
     weight_param_tests.cpp
     ${NN_SOURCES}
 )

@@ -317,7 +317,7 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
     
     LayerDetails h1(Layer::Architecture::FF, 1, activation(activation::method::leakyRelu, 0.01), 0.0, 0.0, OptimiserType::SGD, 0.0);
     LayerDetails h2(Layer::Architecture::FF, 1, activation(activation::method::selu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
-    LayerDetails h3(Layer::Architecture::FF, 1, activation(activation::method::swish, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
+    LayerDetails h3(Layer::Architecture::FF, 1, activation(activation::method::swish, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
     LayerDetails h4(Layer::Architecture::FF, 1, activation(activation::method::mish, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
     LayerDetails h5(Layer::Architecture::FF, 1, activation(activation::method::gelu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
     
