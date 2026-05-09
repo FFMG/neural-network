@@ -422,7 +422,7 @@ TEST_F(ErrorCalculationTest, SoftmaxDirectionalAccuracy) {
   std::vector<std::vector<double>> gt_sm = {{1.0, 0.0, 0.0}, {0.0, 0.0, 1.0}, {0.0, 1.0, 0.0}}; // DOWN, UP, NEUTRAL
   std::vector<std::vector<double>> pr_sm = {{0.8, 0.1, 0.1}, {0.1, 0.1, 0.8}, {0.3, 0.4, 0.3}}; // Match, Match, Neutral Match
   double expected = math_expect::softmax_directional_accuracy(gt_sm, pr_sm);
-  double actual = ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm, pr_sm, config);
+  double actual = ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm, pr_sm);
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
