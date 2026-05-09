@@ -187,7 +187,7 @@ TEST_F(MultiOutputLayerTest, CalculateOutputMetrics) {
 TEST_F(MultiOutputLayerTest, ActivationBranches) {
     OutputLayerDetails o1(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     OutputLayerDetails o2(1, activation(activation::method::elu, 1.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-    OutputLayerDetails o3(1, activation(activation::method::swish, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails o3(1, activation(activation::method::swish, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     
     MultiOutputLayerDetails mod1({}, o1);
     MultiOutputLayerDetails mod2({}, o2);
