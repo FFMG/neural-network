@@ -526,7 +526,6 @@ public:
           }
           else
           {
-            const auto g_span = branch.gradients_and_outputs[b].get_outputs(next.get_layer_index()); // Wait, this should be gradients
             // Actually, get_gradients is the last step.
             const auto std_g_span = branch.gradients_and_outputs[b].get_gradients(next.get_layer_index());
             batch_next_gradients.emplace_back(std_g_span.begin(), std_g_span.end());
