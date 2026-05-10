@@ -1743,7 +1743,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto output_layer_array = new TinyJSON::TJValueArray();
-  for (const auto output_layer_detail : output_layer_details)
+  for (const auto& output_layer_detail : output_layer_details)
   {
     auto output_layer_object = new TinyJSON::TJValueObject();
     output_layer_object->set_number("size", output_layer_detail.get_size());
