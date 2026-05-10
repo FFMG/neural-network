@@ -712,9 +712,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     const auto& metrics = calculate_forecast_metrics_all_layers(options().final_error_calculation_types(), true);
     std::string message = "";
     unsigned output_layer_number = 0;
-    for (const auto metric : metrics)
+    for (const auto& metric : metrics)
     {
-      for (const auto metric_error : metric)
+      for (const auto& metric_error : metric)
       {
         if (!message.empty())
         {
@@ -1247,7 +1247,7 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
         tab, tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
 
-      if (output_layer_head_index < heads.size())
+      if (output_layer_head_index < static_cast<int>(heads.size()))
       {
         output_layer_head_details_string += "\n";
       }
