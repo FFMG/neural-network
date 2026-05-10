@@ -363,6 +363,7 @@ public:
     _layer_index(src._layer_index),
     _layer_role(src._layer_role),
     _optimiser_type(std::move(src._optimiser_type)),
+    _residual_layer_number(src._residual_layer_number),
     _neurons(std::move(src._neurons)),
     _w_values(std::move(src._w_values)),
     _w_grads(std::move(src._w_grads)),
@@ -378,7 +379,6 @@ public:
     _b_m2(std::move(src._b_m2)),
     _b_timesteps(std::move(src._b_timesteps)),
     _b_decays(std::move(src._b_decays)),
-    _residual_layer_number(src._residual_layer_number),
     _residual_projector(src._residual_projector),
     _task_queue_pool(std::move(src._task_queue_pool)),
     _layer_activation_helper(std::move(src._layer_activation_helper)),
@@ -1295,10 +1295,12 @@ protected:
   OptimiserType _optimiser_type;
   int _residual_layer_number;
   std::vector<Neuron> _neurons;
-  std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_decays;
+  std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2;
   std::vector<long long> _w_timesteps;
-  std::vector<double> _b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_decays;
+  std::vector<double> _w_decays;
+  std::vector<double> _b_values, _b_grads, _b_velocities, _b_m1, _b_m2;
   std::vector<long long> _b_timesteps;
+  std::vector<double> _b_decays;
   ResidualProjector* _residual_projector;
   std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
   layer_activation_helper _layer_activation_helper;

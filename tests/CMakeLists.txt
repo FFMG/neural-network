@@ -89,7 +89,12 @@ target_link_libraries(neuralnetwork_tests PRIVATE
 
 # Set strict warning levels
 if(MSVC)
-    target_compile_options(neuralnetwork_tests PRIVATE /W4 /WX)
+    target_compile_options(neuralnetwork_tests PRIVATE 
+        /W4 
+        /WX 
+        /permissive-
+        /w15038 # Enable C5038: member initialization order as a Level 1 warning
+    )
 else()
     target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 endif()
