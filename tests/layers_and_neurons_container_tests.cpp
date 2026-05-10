@@ -3,20 +3,6 @@
 #include <vector>
 #include <numeric>
 
-namespace
-{
-  /**
-   * \brief Helper to create a topology
-   * \param topology The topology to create
-   * \return The container
-   */
-  LayersAndNeuronsContainer create_container(const std::vector<unsigned>& topology)
-  {
-    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainerTest");
-    return LayersAndNeuronsContainer(topology);
-  }
-}
-
 TEST(LayersAndNeuronsContainerTest, ConstructorInitializesTopologyAndOffsets)
 {
   std::vector<unsigned> topology = { 3, 5, 2 };
