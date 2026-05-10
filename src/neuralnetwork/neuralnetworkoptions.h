@@ -49,7 +49,7 @@ private:
       Logger::panic("The topology must contain at least an input and an output layer!");
     }
 
-    for (int i = 1; i < topology.size() - 1; ++i)
+    for (size_t i = 1; i < topology.size() - 1; ++i)
     {
       _hidden_layers.push_back(
         LayerDetails(
