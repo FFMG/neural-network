@@ -107,13 +107,13 @@ TEST_F(TaskQueueComprehensiveTest, SingleTaskQueueStressTest)
 TEST_F(TaskQueueComprehensiveTest, TaskQueueExceptionHandling) 
 {
   TaskQueue<int> queue;
-  queue.enqueue([]() -> int { throw std::runtime_error("Test Exception"); return 0; });
+  queue.enqueue([]() -> int { throw std::runtime_error("Test Exception"); });
   EXPECT_THROW(queue.get(), std::runtime_error);
 }
 
 TEST_F(TaskQueueComprehensiveTest, SingleTaskQueueExceptionHandling) 
 {
   SingleTaskQueue<int> queue;
-  queue.call([]() -> int { throw std::runtime_error("Test Exception"); return 0; });
+  queue.call([]() -> int { throw std::runtime_error("Test Exception"); });
   EXPECT_THROW(queue.get(), std::runtime_error);
 }

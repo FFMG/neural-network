@@ -6,7 +6,7 @@
 class NeuralNetworkHelperMetrics final
 {
 public:
-  [[nodiscard]] inline long double error() const noexcept
+  [[nodiscard]] inline double error() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
     return _error;
@@ -55,7 +55,7 @@ public:
     return *this;
   }
 
-  NeuralNetworkHelperMetrics(long double error, ErrorCalculation::type error_type) noexcept :
+  NeuralNetworkHelperMetrics(double error, ErrorCalculation::type error_type) noexcept :
     _error(error),
     _error_type(error_type)
   {
@@ -63,6 +63,6 @@ public:
   }
 
 protected:
-  long double _error;
+  double _error;
   ErrorCalculation::type _error_type;
 };

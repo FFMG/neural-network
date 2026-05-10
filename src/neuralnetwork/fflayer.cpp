@@ -160,6 +160,8 @@ FFLayer::FFLayer(
     momentum
   )
 {
+  (void)number_input_neurons;
+  (void)number_output_neurons;
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
 
@@ -399,6 +401,10 @@ void FFLayer::run_post_gemm(
 
 void FFLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, std::vector<std::vector<double>>::const_iterator target_outputs_begin, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size) const
 {
+  (void)batch_gradients_and_outputs;
+  (void)target_outputs_begin;
+  (void)batch_hidden_states;
+  (void)batch_size;
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   Logger::panic("FFLayer: Trying to calculate output gradient with a non output layer!");
 }

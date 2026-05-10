@@ -91,7 +91,6 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
 
   default:
     Logger::panic("Unknown Layer architecture: ", (int)ld.get_layer_architecture());
-    return nullptr;
   }
 }
 
@@ -162,6 +161,7 @@ void Layer::calculate_huber_direction_loss_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   const double& delta = evaluation_config.huber_delta();                   // Huber threshold
@@ -225,6 +225,7 @@ void Layer::calculate_huber_loss_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   const double& delta = evaluation_config.huber_delta();
@@ -258,12 +259,12 @@ void Layer::calculate_cross_entropy_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
   
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
-  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
   // --- Optional directional boost ---
   int pred_dir = 0;
@@ -342,6 +343,7 @@ void Layer::calculate_bce_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
   const double dir_lambda = evaluation_config.direction_lambda();
@@ -434,6 +436,7 @@ void Layer::calculate_mse_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
@@ -451,6 +454,7 @@ void Layer::calculate_rmse_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
@@ -488,6 +492,7 @@ void Layer::calculate_log_cosh_error_deltas(
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
+  (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
 
@@ -620,8 +625,8 @@ void Layer::apply_update_to_weight(
 
     if (clipping_scale < 0.0)
     {
-      // If clipping scale is negative, we clip the gradient to a fixed range
-      Logger::warning("Clipping gradient to a fixed range.");
+      // If clipping scale is negative, we clip the gradient to a range
+      Logger::warning("Clipping gradient to a range.");
     }
 
     double final_gradient = gradient * clipping_scale;

@@ -141,7 +141,7 @@ private:
 
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias);
-  std::unique_ptr<Layer> create_hidden_layer(double weight_decay, const Layer& previous_layer, const OptimiserType& optimiser_type, int residual_layer_number, double dropout_rate, const LayerDetails& layer_details, int number_of_threads, bool has_bias, double momentum);
+  std::unique_ptr<Layer> create_hidden_layer(const Layer& previous_layer, int residual_layer_number, const LayerDetails& layer_details, int number_of_threads, bool has_bias);
   std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias);
   std::unique_ptr<Layer> create_multi_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details, int number_of_threads, bool has_bias);
 

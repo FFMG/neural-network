@@ -180,8 +180,8 @@ TEST_F(MultiOutputLayerTest, CalculateOutputMetrics) {
     auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::mse }, targets, predictions);
     
     EXPECT_EQ(metrics.size(), 2);
-    EXPECT_NEAR(metrics[0][0].error(), 0.04, 1e-6);
-    EXPECT_NEAR(metrics[1][0].error(), 0.16, 1e-6);
+    EXPECT_NEAR((double)metrics[0][0].error(), 0.04, 1e-6);
+    EXPECT_NEAR((double)metrics[1][0].error(), 0.16, 1e-6);
 }
 
 TEST_F(MultiOutputLayerTest, ActivationBranches) {

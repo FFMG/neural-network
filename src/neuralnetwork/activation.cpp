@@ -308,7 +308,7 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
   }
 }
 
-double activation::calculate_softmax(double x, double) noexcept
+double activation::calculate_softmax(double, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   Logger::warning("Calling the softmax activation indicate that the wrong error type/activation pair was used!");

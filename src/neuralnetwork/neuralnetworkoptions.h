@@ -375,7 +375,7 @@ public:
     // check the output layer
     if (has_multi_output())
     {
-      int total_branched_output_size = 0;
+      unsigned total_branched_output_size = 0;
       for (const auto& branch : multi_output_layer_details())
       {
         if (branch.get_output_details().get_size() == 0)
@@ -391,7 +391,7 @@ public:
     }
     else
     {
-      int total_output_layer_size = 0;
+      unsigned total_output_layer_size = 0;
       for (const auto& ol : output_layer_details())
       {
         if (ol.get_size() == 0)

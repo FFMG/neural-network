@@ -193,6 +193,12 @@ void FFOutputLayer::calculate_hidden_gradients(
   size_t batch_size,
   int bptt_max_ticks) const
 {
+  (void)batch_gradients_and_outputs;
+  (void)next_layer;
+  (void)batch_next_grad_matrix;
+  (void)batch_hidden_states;
+  (void)batch_size;
+  (void)bptt_max_ticks;
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   Logger::panic("The output layer cannot do hidden layer calculations!");
 }

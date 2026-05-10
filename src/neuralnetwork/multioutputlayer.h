@@ -449,6 +449,9 @@ public:
     size_t batch_size) const override
   {
      MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+     (void)batch_gradients_and_outputs;
+     (void)batch_hidden_states;
+     (void)batch_size;
      std::lock_guard<std::mutex> lock(_mutex);
      unsigned offset = 0;
      const unsigned total_outputs = get_number_neurons();
@@ -651,13 +654,16 @@ public:
   }
 
   void calculate_and_store_gradients(
-    const std::vector<GradientsAndOutputs>& /*batch_gradients_and_outputs*/,
-    const std::vector<HiddenStates>& /*hidden_states*/,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
     const Layer& previous_layer,
     size_t batch_size,
     int bptt_max_ticks) override
   {
      MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+     (void)batch_gradients_and_outputs;
+     (void)hidden_states;
+     (void)previous_layer;
      std::lock_guard<std::mutex> lock(_mutex);
      MultiInputProxyLayer proxy(get_number_input_neurons());
      for(auto& branch : _branches)

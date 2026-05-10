@@ -885,6 +885,10 @@ double LSTMLayer::get_recurrent_weight_value(unsigned f, unsigned t) const
 
 void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const Layer& next_layer, const std::vector<std::vector<double>>& batch_next_grad_matrix, const std::vector<HiddenStates>& batch_hidden_states, int bptt_max_ticks, BPTTWorkspace& workspace, const BPTTWorkspace::AlignedVector& rw_values_T, const BPTTWorkspace::AlignedVector& f_rw_values_T, const BPTTWorkspace::AlignedVector& i_rw_values_T, const BPTTWorkspace::AlignedVector& o_rw_values_T) const
 {
+  (void)rw_values_T;
+  (void)f_rw_values_T;
+  (void)i_rw_values_T;
+  (void)o_rw_values_T;
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t N_this = get_number_neurons();
   const size_t N_prev = get_number_input_neurons();

@@ -93,7 +93,6 @@ Layers NeuralNetworkSerializer::create_layers(
     Logger::panic("Could not locate the layers array.");
   }
 
-  unsigned number_input_neurons = 0;
   for(unsigned layer_index = 0; layer_index < static_cast<unsigned>(number_of_layers); ++layer_index)
   {
     const auto* layer_object = static_cast<const TinyJSON::TJValueObject*>(layers_array->at(layer_index));
@@ -148,8 +147,6 @@ Layers NeuralNetworkSerializer::create_layers(
 
     Logger::panic("Unknown Layer type:", type);
   }
-
-  const auto* json_object = dynamic_cast<const TinyJSON::TJValueObject*>(&json);
 
   return Layers(options, layers);
 }
@@ -757,7 +754,7 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
       Logger::panic("Could not find output layer error-calculation-type option!");
     }
     const auto output_method = activation::string_to_method(output_layer_object->try_get_string("activation-method", false));
-    const auto output_alpha = output_layer_object->get_float("activation-alpha");
+    const auto output_alpha = (double)output_layer_object->get_float("activation-alpha");
     const auto output_temperature = output_layer_object->get_or<double>("activation-temperature", 1.0);
     const auto output_inference_temperature = output_layer_object->get_or<double>("activation-inference-temperature", output_temperature);
     const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
@@ -945,7 +942,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto learning_rate_decay_rate = options_object->get_or<double>("learning-rate-decay-rate", 0.0);
   const auto adaptive_learning_rate = options_object->get<bool>("adaptive-learning-rate");
   const auto optimiser_type_string = options_object->try_get_string("optimiser-type");
-  const auto optimiser_type = string_to_optimiser_type(optimiser_type_string == nullptr ? "sgd" : optimiser_type_string);
+  (void)optimiser_type_string;
 
   const auto learning_rate_restart_rate = options_object->get_or<double>("learning-rate-restart-rate", 0.0);
   const auto learning_rate_restart_boost = options_object->get_or<double>("learning-rate-restart-boost", 0.0);
@@ -962,10 +959,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto has_bias = options_object->get<bool>("has-bias");
 
   const auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
+  (void)output_error_calculation_type_string;
 
   const auto update_training_monitor_percent = options_object->get_or<double>("update-training-monitor-percent", 0.0);
-
-  const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_type_string == nullptr ? "mse" : output_error_calculation_type_string);
 
   const auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
   std::vector<ErrorCalculation::type> final_error_calculation_types = {};
@@ -1171,13 +1167,13 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
       auto* r_obj = dynamic_cast<const TinyJSON::TJValueObject*>(&r_val);
       if (r_obj != nullptr)
       {
-        const auto start = r_obj->get<unsigned>("start");
-        const auto end = r_obj->get<unsigned>("end");
-        const auto method_str = r_obj->get_string("activation-method");
-        const auto alpha = r_obj->get_float("activation-alpha");
-        const auto temperature = r_obj->get_or<double>("activation-temperature", 1.0);
-        const auto inference_temperature = r_obj->get_or<double>("activation-inference-temperature", temperature);
-        lah.set_bounds(activation(activation::string_to_method(method_str), alpha, temperature, inference_temperature), start, end);
+        const auto r_start = r_obj->get<unsigned>("start");
+        const auto r_end = r_obj->get<unsigned>("end");
+        const auto r_method_str = r_obj->get_string("activation-method");
+        const auto r_alpha = (double)r_obj->get_float("activation-alpha");
+        const auto r_temperature = r_obj->get_or<double>("activation-temperature", 1.0);
+        const auto r_inference_temperature = r_obj->get_or<double>("activation-inference-temperature", r_temperature);
+        lah.set_bounds(activation(activation::string_to_method(r_method_str), r_alpha, r_temperature, r_inference_temperature), r_start, r_end);
       }
     }
   }
@@ -1914,7 +1910,6 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto& error_types = all_error_types();
-  const unsigned output_layer = 0;
   auto tj_errors_array = new TinyJSON::TJValueArray();
 
   const auto all_metrics = nn.calculate_forecast_metrics_all_layers(error_types);
@@ -2020,7 +2015,7 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
 
     const auto method_str = od_obj->try_get_string("activation-method", false);
     const auto method = activation::string_to_method(method_str == nullptr ? "sigmoid" : method_str);
-    const auto alpha = od_obj->get_float("activation-alpha");
+    const auto alpha = (double)od_obj->get_float("activation-alpha");
     const auto temperature = od_obj->get_or<double>("activation-temperature", 1.0);
     const auto inference_temperature = od_obj->get_or<double>("activation-inference-temperature", temperature);
 
