@@ -276,7 +276,8 @@ TEST_F(FFOutputLayerTest, CalculateOutputMetrics) {
 
     EXPECT_EQ(metrics.size(), 1); 
     EXPECT_EQ(metrics[0].size(), 1);
-    EXPECT_NEAR(metrics[0][0].error(), 0.1, 1e-9);
+
+    EXPECT_NEAR((double)metrics[0][0].error(), 0.1, 1e-9);
 }
 
 TEST_F(FFOutputLayerTest, AllActivationTypes) {
@@ -457,7 +458,7 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
         auto out_span = batch_go[0].get_outputs(1);
         std::vector<std::vector<double>> predictions = { std::vector<double>(out_span.begin(), out_span.end()) };
         auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, predictions);
-        double current_error = metrics[0][0].error();
+        double current_error = (double)metrics[0][0].error();
 
         if (iter == 0) {
             initial_error = current_error;

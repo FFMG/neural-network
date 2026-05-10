@@ -38,15 +38,10 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   {
     const auto hidden_layer_number = layer_number - 1;
     const auto& layer_details = hidden_layers[hidden_layer_number];
-    auto num_neurons_current_layer = topology[layer_number];
-    auto num_neurons_next_layer = topology[layer_number + 1];
-    auto dropout_rate = layer_details.get_dropout();
     const auto& previous_layer = *_layers.back();
     const auto residual_layer_number = compute_residual_layer(static_cast<int>(layer_number), residual_layer_jump);
-    const auto& optimiser_type = layer_details.get_optimiser_type();
-    const auto& momentum = layer_details.get_momentum();
     
-    layer = create_hidden_layer(layer_details.get_weight_decay(), previous_layer, optimiser_type, residual_layer_number, dropout_rate, layer_details, number_of_threads, options.has_bias(), momentum);
+    layer = create_hidden_layer(previous_layer, residual_layer_number, layer_details, number_of_threads, options.has_bias());
 
     _layers.emplace_back(std::move(layer));
   }
@@ -273,19 +268,16 @@ std::unique_ptr<Layer> Layers::create_input_layer(unsigned num_neurons_in_this_l
 }
 
 std::unique_ptr<Layer> Layers::create_hidden_layer(
-  double weight_decay,
   const Layer& previous_layer,
-  const OptimiserType& optimiser_type,
   int residual_layer_number,
-  double dropout_rate,
   const LayerDetails& layer_details,
   int number_of_threads,
-  bool has_bias,
-  double momentum)
+  bool has_bias)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   unsigned layer_index = previous_layer.get_layer_index() + 1;
   unsigned num_neurons_in_this_layer = layer_details.get_size();
+  double weight_decay = layer_details.get_weight_decay();
 
   return Layer::create_hidden_layer(
     layer_index,
@@ -482,6 +474,7 @@ void Layers::calculate_back_propagation_input_layer(
   std::vector<GradientsAndOutputs>& gradients,
   size_t batch_size) const
 {
+  (void)options;
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
   // input layer is all 0, (bias is included)

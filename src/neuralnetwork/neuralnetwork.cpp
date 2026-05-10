@@ -37,6 +37,7 @@ NeuralNetwork::NeuralNetwork(
       { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
+  (void)hidden_layer_activation;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
 
@@ -379,6 +380,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
 
 std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
 {
+  (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto results = calculate_forecast_metrics_all_layers(error_types, false);
   if (results.empty())
@@ -390,6 +392,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
 
 std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
 {
+  (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   {
@@ -505,7 +508,6 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   }
 
   const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
-  const size_t batch_size = static_cast<size_t>(_options.batch_size());
 
   // If BPTT is disabled or sequence length is 1, return single steps
   if (bptt_size_option <= 1 || !_options.enable_bptt())
@@ -977,7 +979,7 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
       learning_rate = learning_rate * std::exp(-learning_rate_decay_rate * epoch);
       Logger::trace([=] 
         {
-          return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+          return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), (double)(completed_percent * 100.0), "%)");
         });
     }
   }
@@ -1006,7 +1008,7 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
       {
         learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
         learning_rate_scheduler.set_learning_rate(learning_rate);
-        Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+        Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), (double)(completed_percent * 100.0), "%)");
       }
     }
     else
@@ -1044,7 +1046,7 @@ double NeuralNetwork::calculate_learning_rate_warmup(int epoch, double completed
     warmup_learning_rate = start * geom;
   }
   Logger::trace([=] {
-      return Logger::factory("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), completed_percent * 100.0, "%)");
+      return Logger::factory("Learning rate warmup to ", std::fixed, std::setprecision(15), warmup_learning_rate, " at epoch ", epoch, " (", std::setprecision(4), (double)(completed_percent * 100.0), "%)");
     });
   return warmup_learning_rate;
 }

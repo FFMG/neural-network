@@ -832,6 +832,10 @@ void GRURNNLayer::calculate_output_gradients(
   const std::vector<HiddenStates>& batch_hidden_states,
   size_t batch_size) const
 {
+  (void)batch_gradients_and_outputs;
+  (void)target_outputs_begin;
+  (void)batch_hidden_states;
+  (void)batch_size;
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   Logger::panic("GRURNNLayer: Trying to calculate output gradient with a non output layer!");
 }
@@ -959,11 +963,9 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       size_t b = start + b_idx;
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
       const auto& state = layer_states[t];
-      const auto& h_vals = state.get_hidden_state_values();
       const auto& packed_states = state.get_pre_activation_sums();
       
       const double* z_vals = packed_states.data();
-      const double* r_vals = &packed_states[N_this];
       const double* h_hat_pre_vals = &packed_states[2 * N_this];
       const double* h_hat_ptr = &packed_states[3 * N_this];
       const double* mask_vals = &packed_states[4 * N_this];
@@ -1175,7 +1177,6 @@ void GRURNNLayer::calculate_and_store_gradients(
   const unsigned num_time_steps = (unsigned)hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-  const int active_ticks = t_start - t_end + 1;
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));

@@ -296,6 +296,7 @@ public:
     const double* h_hat_pre_deriv_vals,
     size_t start = 0) noexcept
   {
+    (void)h_hat_pre_vals;
     for (size_t j = start; j < n; ++j)
     {
       double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
@@ -388,6 +389,7 @@ public:
     const double* dg_act_deriv_vals,
     size_t start = 0) noexcept
   {
+    (void)g_pre_vals;
     for (size_t j = start; j < n; ++j)
     {
       double dh = std::clamp(dh_curr[j], -50.0, 50.0);
