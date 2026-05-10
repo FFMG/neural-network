@@ -27,7 +27,7 @@ TEST(TaskQueueTest, ConcurrencyBombardment) {
     std::vector<std::thread> producers;
 
     for (int p = 0; p < num_producers; ++p) {
-        producers.emplace_back([&queue, tasks_per_producer, &producers_finished]() {
+        producers.emplace_back([&queue, &producers_finished]() {
             for (int i = 0; i < tasks_per_producer; ++i) {
                 queue.enqueue([]() { return 1; });
             }
