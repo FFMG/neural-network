@@ -327,7 +327,7 @@ namespace TinyJSON
     *this = exception;
   }
 
-  TJParseException::~TJParseException()
+  TJParseException::~TJParseException() noexcept
   {
     free_message();
   }
