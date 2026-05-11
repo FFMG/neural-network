@@ -380,7 +380,7 @@ namespace TinyJSON
     *this = exception;
   }
 
-  TJWriteException::~TJWriteException()
+  TJWriteException::~TJWriteException() noexcept
   {
     free_message();
   }
