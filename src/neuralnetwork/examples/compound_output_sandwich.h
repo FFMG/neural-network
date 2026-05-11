@@ -74,6 +74,7 @@ private:
 
   static void verify_network(NeuralNetwork& nn, const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, const std::string& label)
   {
+    (void)outputs;
     auto results = nn.think(inputs);
     
     bool s0_sum_ok = true;

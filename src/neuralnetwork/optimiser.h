@@ -50,7 +50,7 @@ inline OptimiserType string_to_optimiser_type(const std::string& str)
   std::string lower_str = str;
   // Convert the string to lowercase for case-insensitive comparison
   std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
-    [](unsigned char c) { return std::tolower(c); });
+    [](unsigned char c) { return static_cast<char>(std::tolower(static_cast<int>(c))); });
 
   if (lower_str == "sgd")
   {
