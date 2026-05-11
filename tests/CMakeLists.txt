@@ -15,6 +15,9 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# Option to enable Tracy Profiler
+option(ENABLE_TRACY "Enable Tracy Profiler" OFF)
+
 # Define source files from the main project (relative to this directory)
 set(NN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src/neuralnetwork")
 
@@ -34,6 +37,10 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/neuralnetworkserializer.cpp"
     "${NN_SOURCE_DIR}/neuron.cpp"
 )
+
+if(ENABLE_TRACY)
+    list(APPEND NN_SOURCES "${NN_SOURCE_DIR}/libraries/tracy/TracyClient.cpp")
+endif()
 
 # Define include directories
 set(NN_INCLUDE_DIRS
@@ -105,6 +112,10 @@ target_compile_definitions(neuralnetwork_tests PRIVATE
     _CRT_SECURE_NO_WARNINGS
     MYODDWEB_PROFILE=0
 )
+
+if(ENABLE_TRACY)
+    target_compile_definitions(neuralnetwork_tests PRIVATE TRACY_ENABLE)
+endif()
 
 include(GoogleTest)
 include(CTest)
