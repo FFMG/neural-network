@@ -17,7 +17,6 @@
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
 static constexpr unsigned int TJ_DEFAULT_STRING_MAX_READ_SIZE = 4294967295;
-static constexpr unsigned int TJ_DEFAULT_STRING_MAX_READ_GROW = TJ_DEFAULT_STRING_MAX_READ_SIZE / 2;
 
 static constexpr TJCHAR TJ_NULL_TERMINATOR = '\0';
 
