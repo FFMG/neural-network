@@ -12,9 +12,6 @@
 # define M_PI   3.141592653589793238462643383279502884
 #endif
 
-static const double RecentAverageSmoothingFactor = 100.0;
-static const long long IntervalErorCheckInSeconds = 15;
-
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(options),
