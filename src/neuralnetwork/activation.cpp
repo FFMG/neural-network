@@ -540,7 +540,7 @@ activation::method activation::string_to_method(const std::string& str)
   MYODDWEB_PROFILE_FUNCTION("activation");
   std::string lower_str = str;
   std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
-    [](unsigned char c) { return std::tolower(c); });
+    [](unsigned char c) { return static_cast<char>(std::tolower(static_cast<int>(c))); });
 
   if (lower_str == "linear")
   {

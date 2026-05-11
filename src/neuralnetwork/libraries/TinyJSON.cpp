@@ -447,9 +447,9 @@ namespace TinyJSON
       if (nullptr == _values)
       {
         //  first time using the array.
-        _values = new TJValue*[_capacity];
+        _values = new TJValue * [_capacity];
       }
-      if (_number_of_items == _capacity)
+      while (_number_of_items >= _capacity)
       {
         grow();
       }
@@ -515,7 +515,7 @@ namespace TinyJSON
       _capacity = _capacity << 1;
 
       // create the new container
-      TJValue** temp_values = new TJValue*[_capacity];
+      TJValue** temp_values = new TJValue * [_capacity];
 
       // just move the data from one to the other as we wil take ownership of it.
       memmove(temp_values, _values, _number_of_items * sizeof(TJValue*));
@@ -620,27 +620,27 @@ namespace TinyJSON
         );
       }
       else
-      if (value_index_cs != value_index_ci)
-      {
-        // this is a bit more difficult, while we found the exact match
-        // there seem to be a case insensitive match as well.
-        // so we now have to remove it by index.
+        if (value_index_cs != value_index_ci)
+        {
+          // this is a bit more difficult, while we found the exact match
+          // there seem to be a case insensitive match as well.
+          // so we now have to remove it by index.
 
-        // we know that the case sensitive one was found ... so it can be removed.
-        remove_dictionary_data_by_dictionary_index
-        (
-          binary_search_result_cs._dictionary_index,
-          _number_of_items_dictionary_cs,
-          _values_dictionary_cs
-        );
+          // we know that the case sensitive one was found ... so it can be removed.
+          remove_dictionary_data_by_dictionary_index
+          (
+            binary_search_result_cs._dictionary_index,
+            _number_of_items_dictionary_cs,
+            _values_dictionary_cs
+          );
 
-        // the issue is the one that is not case sensitive, we nee to remove the correct one.
-        remove_dictionary_data_by_value_index(
-          value_index_cs,
-          _number_of_items_dictionary_ci,
-          _values_dictionary_ci
-        );
-      }
+          // the issue is the one that is not case sensitive, we nee to remove the correct one.
+          remove_dictionary_data_by_value_index(
+            value_index_cs,
+            _number_of_items_dictionary_ci,
+            _values_dictionary_ci
+          );
+        }
 
       // shift the value to the right and update the counter.
       shift_value_right(value_index_cs);
@@ -705,8 +705,8 @@ namespace TinyJSON
 
       // add the dictionary index value
       add_dictionary_data(
-        key, 
-        value_index, 
+        key,
+        value_index,
         dictionary_index_cs,
         _values_dictionary_cs,
         _number_of_items_dictionary_cs
@@ -769,12 +769,12 @@ namespace TinyJSON
       auto binary_search_result = binary_search(key, case_sensitive);
 
       // if we found it, return the actual index value.
-      int index = binary_search_result._was_found ? 
-        ( case_sensitive ? 
-          _values_dictionary_cs[binary_search_result._dictionary_index]._value_index 
+      int index = binary_search_result._was_found ?
+        (case_sensitive ?
+          _values_dictionary_cs[binary_search_result._dictionary_index]._value_index
           :
           _values_dictionary_ci[binary_search_result._dictionary_index]._value_index
-        )
+          )
         : -1;
 
       return index != -1 ? _values[index] : nullptr;
@@ -875,7 +875,7 @@ namespace TinyJSON
       TJASSERT(_capacity > _number_of_items);
 
       // create the new containers as temp containers
-      auto temp_values = new TJMember*[_capacity];
+      auto temp_values = new TJMember * [_capacity];
       auto temp_values_dictionary_cs = new dictionary_data[_capacity];
       auto temp_values_dictionary_ci = new dictionary_data[_capacity];
 
@@ -1018,7 +1018,7 @@ namespace TinyJSON
         }
       }
     }
-    
+
     /// <summary>
     /// Replace both the dictionarry data.
     /// </summary>
@@ -1074,8 +1074,8 @@ namespace TinyJSON
     /// <param name="value_index"></param>
     /// <param name="dictionary_index"></param>
     static void add_dictionary_data(
-      const TJCHAR* key, 
-      unsigned int value_index, 
+      const TJCHAR* key,
+      unsigned int value_index,
       unsigned int dictionary_index,
       dictionary_data*& dictionary,
       unsigned int& dictionary_size
@@ -1156,7 +1156,7 @@ namespace TinyJSON
     /// <param name="case_sensitive"></param>
     /// <returns></returns>
     static search_result binary_search(
-      const TJCHAR* key, 
+      const TJCHAR* key,
       const dictionary_data* dictionary,
       const unsigned int dictionary_size,
       bool case_sensitive
@@ -1221,8 +1221,8 @@ namespace TinyJSON
       // shift everything in memory a little to the left.
       memmove(
         &dictionary[dictionary_index],                                  // we are moving +1 to the left
-        &dictionary[dictionary_index+1],                                      // we are moving from here.
-        (dictionary_size - dictionary_index -1) * sizeof(dictionary_data)); // we are moving the total number of elements less were we are shifting from.
+        &dictionary[dictionary_index + 1],                                      // we are moving from here.
+        (dictionary_size - dictionary_index - 1) * sizeof(dictionary_data)); // we are moving the total number of elements less were we are shifting from.
     }
 
     /// <summary>
@@ -1253,7 +1253,7 @@ namespace TinyJSON
       int dictionary_index,
       dictionary_data*& dictionary,
       const unsigned int dictionary_size
-      )
+    )
     {
       if (dictionary_size == 0)
       {
@@ -1291,7 +1291,7 @@ namespace TinyJSON
     friend TJValueString;
   protected:
     // Function to multiply an unsigned integer by 10 using bit-shifting
-    static unsigned long long fast_multiply_by_10(unsigned long long number) 
+    static unsigned long long fast_multiply_by_10(unsigned long long number)
     {
       return (number << 3) + (number << 1);
     }
@@ -1351,7 +1351,6 @@ namespace TinyJSON
           return i;
         }
       }
-      return 0;
     }
 
     /// <summary>
@@ -1437,11 +1436,11 @@ namespace TinyJSON
         reverse_buffer[reverse_position++] = '+';
       }
 
-      TJCHAR* buffer = new TJCHAR[reverse_position+1];
+      TJCHAR* buffer = new TJCHAR[reverse_position + 1];
       buffer[reverse_position] = TJ_NULL_TERMINATOR;
       for (unsigned int i = 0; i < reverse_position; ++i)
       {
-        buffer[reverse_position -1 - i] = reverse_buffer[i];
+        buffer[reverse_position - 1 - i] = reverse_buffer[i];
       }
 
       length = reverse_position;
@@ -1479,14 +1478,14 @@ namespace TinyJSON
       auto string_fraction = fast_number_to_string(fraction, fraction_exponent, false, length_of_fraction);
 
       // calculate the total length, we add +1 for the '.' and +1 for the null terminator
-      int total_length  = length_of_number + length_of_fraction + 1 + 1;
+      int total_length = length_of_number + length_of_fraction + 1 + 1;
       int final_string_pos = 0;
 
       // recreate the final string
       TJCHAR* final_string = new TJCHAR[total_length];
       if (!add_string_to_string(string_number, final_string, final_string_pos, total_length) ||
-          !add_char_to_string('.', final_string, final_string_pos, total_length) ||
-          !add_string_to_string(string_fraction, final_string, final_string_pos, total_length))
+        !add_char_to_string('.', final_string, final_string_pos, total_length) ||
+        !add_string_to_string(string_fraction, final_string, final_string_pos, total_length))
       {
         delete[] final_string;
         final_string = nullptr;
@@ -1532,7 +1531,7 @@ namespace TinyJSON
       TJCHAR* string_exponent = nullptr;
       if (exponent < 0)
       {
-        string_exponent = fast_number_to_string(-1*exponent, 0, true, length_of_exponent);
+        string_exponent = fast_number_to_string(-1 * exponent, 0, true, length_of_exponent);
       }
       else
       {
@@ -1543,7 +1542,7 @@ namespace TinyJSON
       //   - +1 for the '.' (if needed)
       //   - +1 for the null terminator
       //   - +1 for the 'e' (if needed)
-      int total_length = length_of_number + length_of_fraction + length_of_exponent +1 + 1 + 1;
+      int total_length = length_of_number + length_of_fraction + length_of_exponent + 1 + 1 + 1;
       int final_string_pos = 0;
 
       // recreate the final string
@@ -1552,12 +1551,12 @@ namespace TinyJSON
       if (success && nullptr != string_fraction)
       {
         success = add_char_to_string('.', final_string, final_string_pos, total_length) &&
-                  add_string_to_string(string_fraction, final_string, final_string_pos, total_length);
+          add_string_to_string(string_fraction, final_string, final_string_pos, total_length);
       }
       if (success && nullptr != string_exponent)
       {
         success = add_char_to_string('e', final_string, final_string_pos, total_length) &&
-                  add_string_to_string(string_exponent, final_string, final_string_pos, total_length);
+          add_string_to_string(string_exponent, final_string, final_string_pos, total_length);
       }
 
       if (!success)
@@ -1588,7 +1587,7 @@ namespace TinyJSON
       long long decimal = 0ll;
       auto length = string_length(source);
       auto power = 0;
-      for(int i = length-1; i >= 0; --i)
+      for (int i = length - 1; i >= 0; --i)
       {
         unsigned int number = 0;
         switch (source[i])
@@ -1667,7 +1666,7 @@ namespace TinyJSON
           // this number is not an ex
           return -1;
         }
-        if(number > 0 )
+        if (number > 0)
         {
           decimal = decimal + (number * fast_power_of_16(power));
         }
@@ -1862,7 +1861,7 @@ namespace TinyJSON
       {
         resize_length = TJ_DEFAULT_STRING_MAX_READ_SIZE;
       }
-      
+
       // if even after all this we are still less than what we need, then we failed.
       if (resize_length < needed_length)
       {
@@ -1871,8 +1870,8 @@ namespace TinyJSON
 
       // create the new array.
       TJCHAR* new_string = new TJCHAR[resize_length];
-      memmove(new_string, source, current_length* sizeof(TJCHAR));
-      memset(new_string+ current_length, TJ_NULL_TERMINATOR, sizeof(TJCHAR) * (resize_length- current_length));
+      memmove(new_string, source, current_length * sizeof(TJCHAR));
+      memset(new_string + current_length, TJ_NULL_TERMINATOR, sizeof(TJCHAR) * (resize_length - current_length));
       delete[] source;
       source = new_string;
       return resize_length;
@@ -1897,7 +1896,7 @@ namespace TinyJSON
         }
       }
       buffer[buffer_pos] = char_to_add;
-      buffer[buffer_pos+1] = TJ_NULL_TERMINATOR;
+      buffer[buffer_pos + 1] = TJ_NULL_TERMINATOR;
       ++buffer_pos;
       return true;
     }
@@ -1922,14 +1921,14 @@ namespace TinyJSON
       int total_length = static_cast<int>(length + 1);//  we need one extra for the null char
       if (buffer_pos + total_length >= buffer_max_length)
       {
-        buffer_max_length = resize_string(buffer, buffer_max_length, buffer_pos+total_length);
+        buffer_max_length = resize_string(buffer, buffer_max_length, buffer_pos + total_length);
         if (buffer_max_length == 0)
         {
           return false;
         }
       }
       memcpy(buffer + buffer_pos, string_to_add, length * sizeof(TJCHAR));
-      buffer[buffer_pos+length] = TJ_NULL_TERMINATOR;
+      buffer[buffer_pos + length] = TJ_NULL_TERMINATOR;
       buffer_pos += length;
       return true;
     }
@@ -1973,77 +1972,77 @@ namespace TinyJSON
         return add_char_to_string(TJ_ESCAPE_TAB, result, result_pos, result_max_length);
 
       case 'u': // /uxxxx escape
+      {
+        // this is the worse case scenario .. we now have to try read the next 4 characters
+        // U+0000 through U+FFFF
+        TJCHAR* hex = nullptr;
+        int buffer_pos = 0;
+        int buffer_max_length = 0;
+        for (auto i = 0; i < 4; ++i)
         {
-          // this is the worse case scenario .. we now have to try read the next 4 characters
-          // U+0000 through U+FFFF
-          TJCHAR* hex = nullptr;
-          int buffer_pos = 0;
-          int buffer_max_length = 0;
-          for (auto i = 0; i < 4; ++i)
+          const auto& possible_hex_char = *(source + i + 2);  //  we add two for '/u'
+          switch (possible_hex_char)
           {
-            const auto& possible_hex_char = *(source + i + 2);  //  we add two for '/u'
-            switch (possible_hex_char)
-            {
             TJ_CASE_HEX
               if (!add_char_to_string(possible_hex_char, hex, buffer_pos, buffer_max_length))
               {
                 delete[] hex;
                 return false;
               }
-              break;
+            break;
 
-            default:
-            case TJ_NULL_TERMINATOR:
-                //  not sure what this is, but it is not valid.
-                delete[] hex;
-                return false;
-            }
+          default:
+          case TJ_NULL_TERMINATOR:
+            //  not sure what this is, but it is not valid.
+            delete[] hex;
+            return false;
           }
+        }
 
-          auto decimal = fast_hex_to_decimal(hex);
-          delete[] hex;
-          if (decimal < 0)
-          {
-            return false; //  not sure what this is.
-          }
+        auto decimal = fast_hex_to_decimal(hex);
+        delete[] hex;
+        if (decimal < 0)
+        {
+          return false; //  not sure what this is.
+        }
 #if TJ_USE_CHAR == 1
-          if (decimal <= 0x7F) 
-          {
-            // 1-byte UTF-8 (ASCII)
-            if (!add_char_to_string(static_cast<char>(decimal), result, result_pos, result_max_length))
-            {
-              return false;
-            }
-          }
-          else if (decimal <= 0x7FF) 
-          {
-            // 2-byte UTF-8
-            if (!add_char_to_string(static_cast<char>(0xC0 | (decimal >> 6)), result, result_pos, result_max_length) ||
-                !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
-            {
-              return false;
-            }
-          }
-          else if (decimal <= 0xFFFF)
-          {
-            // 3-byte UTF-8
-            if (!add_char_to_string(static_cast<char>(0xE0 | (decimal >> 12)), result, result_pos, result_max_length) ||
-                !add_char_to_string(static_cast<char>(0x80 | ((decimal >> 6) & 0x3F)), result, result_pos, result_max_length) ||
-                !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
-            {
-              return false;
-            }
-          }
-#else
-          if (!add_char_to_string(static_cast<TJCHAR>(decimal), result, result_pos, result_max_length))
+        if (decimal <= 0x7F)
+        {
+          // 1-byte UTF-8 (ASCII)
+          if (!add_char_to_string(static_cast<char>(decimal), result, result_pos, result_max_length))
           {
             return false;
           }
-#endif
-          source += 5;  //  the full \uXXXX = 6 char (caller will add the 6th)
-          return true;
         }
-        return false;
+        else if (decimal <= 0x7FF)
+        {
+          // 2-byte UTF-8
+          if (!add_char_to_string(static_cast<char>(0xC0 | (decimal >> 6)), result, result_pos, result_max_length) ||
+            !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
+          {
+            return false;
+          }
+        }
+        else if (decimal <= 0xFFFF)
+        {
+          // 3-byte UTF-8
+          if (!add_char_to_string(static_cast<char>(0xE0 | (decimal >> 12)), result, result_pos, result_max_length) ||
+            !add_char_to_string(static_cast<char>(0x80 | ((decimal >> 6) & 0x3F)), result, result_pos, result_max_length) ||
+            !add_char_to_string(static_cast<char>(0x80 | (decimal & 0x3F)), result, result_pos, result_max_length))
+          {
+            return false;
+          }
+        }
+#else
+        if (!add_char_to_string(static_cast<TJCHAR>(decimal), result, result_pos, result_max_length))
+        {
+          return false;
+        }
+#endif
+        source += 5;  //  the full \uXXXX = 6 char (caller will add the 6th)
+        return true;
+      }
+      return false;
       }
 
       //  this is not an escaped character, just a single reverse solidus
@@ -2059,37 +2058,37 @@ namespace TinyJSON
       {
         switch (*p)
         {
-        TJ_CASE_SPACE
-          //  only read if we started.
-          switch (*p)
-          {
-          case TJ_ESCAPE_LINE_FEED:       // % x6E / ; n    line feed       U + 000A
-          case TJ_ESCAPE_CARRIAGE_RETURN: // % x72 / ; r    carriage return U + 000D
-          case  TJ_ESCAPE_TAB:            // % x74 / ; t    tab             U + 0009
-            // ERROR: invalid character inside the string.
-            delete[] result;
-            parse_result.assign_exception_message("Invalid character inside the string.");
-            return nullptr;
-          }
+          TJ_CASE_SPACE
+            //  only read if we started.
+            switch (*p)
+            {
+            case TJ_ESCAPE_LINE_FEED:       // % x6E / ; n    line feed       U + 000A
+            case TJ_ESCAPE_CARRIAGE_RETURN: // % x72 / ; r    carriage return U + 000D
+            case  TJ_ESCAPE_TAB:            // % x74 / ; t    tab             U + 0009
+              // ERROR: invalid character inside the string.
+              delete[] result;
+              parse_result.assign_exception_message("Invalid character inside the string.");
+              return nullptr;
+            }
           add_char_to_string(*p, result, result_pos, result_max_length);
           p++;
           break;
 
-        TJ_CASE_MAYBE_ESCAPE
-          if (!try_add_char_to_string_after_escape(p, result, result_pos, result_max_length))
-          {
-            delete[] result;
-            if (result_max_length == 0)
+          TJ_CASE_MAYBE_ESCAPE
+            if (!try_add_char_to_string_after_escape(p, result, result_pos, result_max_length))
             {
-              parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+              delete[] result;
+              if (result_max_length == 0)
+              {
+                parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+              }
+              else
+              {
+                // ERROR: invalid/unknown character after single reverse solidus.
+                parse_result.assign_exception_message("Invalid/unknown character after single reverse solidus.");
+              }
+              return nullptr;
             }
-            else
-            {
-              // ERROR: invalid/unknown character after single reverse solidus.
-              parse_result.assign_exception_message("Invalid/unknown character after single reverse solidus.");
-            }
-            return nullptr;
-          }
           p++;
           break;
 
@@ -2112,8 +2111,8 @@ namespace TinyJSON
           parse_result.assign_exception_message("Invalid character inside the string..");
           return nullptr;
 
-        TJ_CASE_START_STRING
-          p++;
+          TJ_CASE_START_STRING
+            p++;
 
           // Allocate memory for the result string
           // Null-terminate the string
@@ -2541,8 +2540,8 @@ namespace TinyJSON
         // we will then add the two together.
         unsigned long long shifted_unsigned_fraction = 0;
         const auto& shifted_unsigned_whole_number = shift_number_right(
-          unsigned_whole_number, 
-          exponent, 
+          unsigned_whole_number,
+          exponent,
           shifted_unsigned_fraction);
 
         // we then need to shift the faction iseft to the right a little so we can add the given fraction.
@@ -2673,25 +2672,25 @@ namespace TinyJSON
             {
               ++found_spaces;
             }
-            p++;
-            break;
+          p++;
+          break;
 
           TJ_CASE_DIGIT
             if (nullptr == start)
             {
               start = p; // this is the start
             }
-            if (found_spaces > 0)
-            {
-              // ERROR: Number has a space between it.
-              parse_result.assign_exception_message("Number has a space between it.");
-              return nullptr;
-            }
-            p++;
-            break;
+          if (found_spaces > 0)
+          {
+            // ERROR: Number has a space between it.
+            parse_result.assign_exception_message("Number has a space between it.");
+            return nullptr;
+          }
+          p++;
+          break;
 
         default:
-          return read_string( start, p, found_spaces);
+          return read_string(start, p, found_spaces);
         }
       }
 
@@ -2938,8 +2937,8 @@ namespace TinyJSON
 #if TJ_INCLUDE_STDVECTOR == 1
       else
       {
-        auto current = std::find_if(members->begin(), members->end(), [&](TJMember*& elem) 
-          { 
+        auto current = std::find_if(members->begin(), members->end(), [&](TJMember*& elem)
+          {
             return TJHelper::are_same(elem->name(), member->name(), true);
           });
         if (current != members->end())
@@ -2980,30 +2979,30 @@ namespace TinyJSON
         TJCHAR c = *p;
         switch (c)
         {
-        TJ_CASE_SPACE
-          p++;
+          TJ_CASE_SPACE
+            p++;
           break;
 
-        TJ_CASE_END_OBJECT
-          // but is it what we expected?
-          if (waiting_for_a_string)
-          {
-            // ERROR: unexpected end of object, there was a "," after
-            //        the last string and we expected a string now, not a close "}"
-            free_members(members);
-            parse_result.assign_exception_message("Unexpected end of object, there was a ', ' after the last string.");
-            return nullptr;
-          }
+          TJ_CASE_END_OBJECT
+            // but is it what we expected?
+            if (waiting_for_a_string)
+            {
+              // ERROR: unexpected end of object, there was a "," after
+              //        the last string and we expected a string now, not a close "}"
+              free_members(members);
+              parse_result.assign_exception_message("Unexpected end of object, there was a ', ' after the last string.");
+              return nullptr;
+            }
           p++;
 
           // we are done, we found it.
           // we give the ownership of the members over.
           return TJValueObject::move(members, parse_result.options());
 
-        TJ_CASE_START_STRING
-        {
-          // we got our string, no longer waiting for one.
-          waiting_for_a_string = false;
+          TJ_CASE_START_STRING
+          {
+            // we got our string, no longer waiting for one.
+            waiting_for_a_string = false;
 
           // we are no longer after the string
           after_string = false;
@@ -3031,19 +3030,19 @@ namespace TinyJSON
 
           found_comma = false;
           move_member_to_members(member, members, parse_result.options());
-          
-          after_string = true;
-        }
-        break;
 
-        TJ_CASE_COMMA
-          if (!after_string)
-          {
-            // ERROR: found a comma out of order
-            free_members(members);
-            parse_result.assign_exception_message("Found a comma out of order.");
-            return nullptr;
+          after_string = true;
           }
+          break;
+
+          TJ_CASE_COMMA
+            if (!after_string)
+            {
+              // ERROR: found a comma out of order
+              free_members(members);
+              parse_result.assign_exception_message("Found a comma out of order.");
+              return nullptr;
+            }
           // we are no longer after the string
           after_string = false;
           waiting_for_a_string = true;
@@ -3089,33 +3088,33 @@ namespace TinyJSON
         TJCHAR c = *p;
         switch (c)
         {
-        TJ_CASE_SPACE
-          p++;
+          TJ_CASE_SPACE
+            p++;
           break;
 
-        TJ_CASE_END_ARRAY
-          if (found_comma && waiting_for_a_value)
-          {
-            // ERROR: unexpected end of array, there was a "," after
-            //        the last value and we expected a value now, not a close "]"
-            free_values(values);
-            parse_result.assign_exception_message("Unexpected end of array, there was a ', ' after the last string.");
-            return nullptr;
-          }
+          TJ_CASE_END_ARRAY
+            if (found_comma && waiting_for_a_value)
+            {
+              // ERROR: unexpected end of array, there was a "," after
+              //        the last value and we expected a value now, not a close "]"
+              free_values(values);
+              parse_result.assign_exception_message("Unexpected end of array, there was a ', ' after the last string.");
+              return nullptr;
+            }
           p++;
 
           // we are done, we found it.
           // we give the ownership of the members over.
           return TJValueArray::move(values, parse_result.options());
 
-        TJ_CASE_COMMA
-          if (waiting_for_a_value)
-          {
-            // ERROR: found a comma out of order, (2 commas)
-            free_values(values);
-            parse_result.assign_exception_message("Found a comma out of order, (2 commas).");
-            return nullptr;
-          }
+          TJ_CASE_COMMA
+            if (waiting_for_a_value)
+            {
+              // ERROR: found a comma out of order, (2 commas)
+              free_values(values);
+              parse_result.assign_exception_message("Found a comma out of order, (2 commas).");
+              return nullptr;
+            }
           // we are now waiting for a value
           waiting_for_a_value = true;
           found_comma = true;
@@ -3166,23 +3165,23 @@ namespace TinyJSON
         TJCHAR c = *p;
         switch (c)
         {
-        TJ_CASE_SPACE
-          p++;
+          TJ_CASE_SPACE
+            p++;
           break;
 
-        TJ_CASE_START_STRING
-        {
-          auto string_value = try_continue_read_string(++p, parse_result);
-          if (nullptr == string_value)
+          TJ_CASE_START_STRING
           {
-            //  ERROR: could not read the string properly.
-            return nullptr;
-          }
+            auto string_value = try_continue_read_string(++p, parse_result);
+            if (nullptr == string_value)
+            {
+              //  ERROR: could not read the string properly.
+              return nullptr;
+            }
 
-          // whave read the string
-          // no need to try and move further forward.
-          return TJValueString::move(string_value, parse_result.options());
-        }
+            // whave read the string
+            // no need to try and move further forward.
+            return TJValueString::move(string_value, parse_result.options());
+          }
 
         case 't':
           {
@@ -3221,7 +3220,7 @@ namespace TinyJSON
         }
 
         TJ_CASE_DIGIT
-        TJ_CASE_SIGN
+          TJ_CASE_SIGN
         {
           auto number = try_read_number(p, parse_result);
           if (nullptr == number)
@@ -3232,7 +3231,7 @@ namespace TinyJSON
           return number;
         }
 
-        TJ_CASE_BEGIN_ARRAY
+          TJ_CASE_BEGIN_ARRAY
         {
           // an array within an array
           parse_result.push_depth();
@@ -3246,7 +3245,7 @@ namespace TinyJSON
           return tjvalue_array;
         }
 
-        TJ_CASE_BEGIN_OBJECT
+          TJ_CASE_BEGIN_OBJECT
         {
           // an object within the object
           parse_result.push_depth();
@@ -3318,12 +3317,12 @@ namespace TinyJSON
       {
         return false;
       }
-      const auto& c1 = *(source +1);
+      const auto& c1 = *(source + 1);
       if (c1 != TJ_UTF8_BOM1)
       {
         return false;
       }
-      const auto& c2 = *(source +2);
+      const auto& c2 = *(source + 2);
       if (c2 != TJ_UTF8_BOM2)
       {
         return false;
@@ -3376,7 +3375,7 @@ namespace TinyJSON
     std::streamsize file_size = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    TJCHAR* buffer = new TJCHAR[static_cast<size_t>(file_size)+1];
+    TJCHAR* buffer = new TJCHAR[static_cast<size_t>(file_size) + 1];
     if (!file.read(buffer, file_size))
     {
       delete[] buffer;
@@ -3465,8 +3464,8 @@ namespace TinyJSON
     {
       switch (*source)
       {
-      TJ_CASE_SPACE
-        source++;
+        TJ_CASE_SPACE
+          source++;
         break;
 
       default:
@@ -3557,7 +3556,7 @@ namespace TinyJSON
     auto length = TJHelper::string_length(json);
     outFile.write((const char*)json, length * sizeof(TJCHAR));
 
-    if (!outFile) 
+    if (!outFile)
     {
       write_result.assign_exception_message("Unable to write to file.");
       write_result.throw_if_exception();
@@ -3566,7 +3565,7 @@ namespace TinyJSON
 
     outFile.close();
 
-    if (!outFile) 
+    if (!outFile)
     {
       write_result.assign_exception_message("Unable to close the file.");
       write_result.throw_if_exception();
@@ -3627,7 +3626,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJMember::TJMember(const TJCHAR* string, const TJValue* value, const parse_options& options):
+  TJMember::TJMember(const TJCHAR* string, const TJValue* value, const parse_options& options) :
     _string(nullptr),
     _value(nullptr),
     _parse_options(options)
@@ -3747,7 +3746,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValue::~TJValue() 
+  TJValue::~TJValue()
   {
     free_last_dump();
   }
@@ -3849,38 +3848,38 @@ namespace TinyJSON
     switch (formating)
     {
     case formating::minify:
+    {
+      internal_dump_configuration configuration(formating, nullptr,
+        TJCHARPREFIX(","),
+        TJCHARPREFIX(":"),
+        TJCHARPREFIX("\""),
+        TJCHARPREFIX("\""), nullptr, true);
+      internal_dump(configuration, nullptr);
+      if (configuration._has_error)
       {
-        internal_dump_configuration configuration(formating, nullptr, 
-          TJCHARPREFIX(","), 
-          TJCHARPREFIX(":"), 
-          TJCHARPREFIX("\""), 
-          TJCHARPREFIX("\""), nullptr, true);
-        internal_dump(configuration, nullptr);
-        if (configuration._has_error)
-        {
-          delete[] configuration._buffer;
-          return nullptr;
-        }
-        _last_dump = configuration._buffer;
+        delete[] configuration._buffer;
+        return nullptr;
       }
-      break;
+      _last_dump = configuration._buffer;
+    }
+    break;
     case formating::indented:
+    {
+      internal_dump_configuration configuration(formating, indent,
+        TJCHARPREFIX(","),
+        TJCHARPREFIX(": "),
+        TJCHARPREFIX("\""),
+        TJCHARPREFIX("\""),
+        TJCHARPREFIX("\n"), true);
+      internal_dump(configuration, nullptr);
+      if (configuration._has_error)
       {
-        internal_dump_configuration configuration(formating, indent, 
-          TJCHARPREFIX(","), 
-          TJCHARPREFIX(": "), 
-          TJCHARPREFIX("\""), 
-          TJCHARPREFIX("\""), 
-          TJCHARPREFIX("\n"), true);
-        internal_dump(configuration, nullptr);
-        if (configuration._has_error)
-        {
-          delete[] configuration._buffer;
-          return nullptr;
-        }
-        _last_dump = configuration._buffer;
+        delete[] configuration._buffer;
+        return nullptr;
       }
-      break;
+      _last_dump = configuration._buffer;
+    }
+    break;
     }
     return _last_dump;
   }
@@ -3899,23 +3898,23 @@ namespace TinyJSON
     return _last_dump;
   }
 
-  int TJValue::internal_size() const 
-  { 
+  int TJValue::internal_size() const
+  {
     // default just one value
-    return 1; 
-  } 
-  const TJValue& TJValue::internal_at(int index) const 
-  { 
+    return 1;
+  }
+  const TJValue& TJValue::internal_at(int index) const
+  {
     (void)index;
     // default just one value
-    return *this; 
+    return *this;
   }
 
-  TJValue& TJValue::internal_at(int index) 
-  { 
+  TJValue& TJValue::internal_at(int index)
+  {
     (void)index;
     // default just one value
-    return *this; 
+    return *this;
   }
 
   bool TJValue::get_boolean() const
@@ -3925,13 +3924,13 @@ namespace TinyJSON
     {
       return boolean_object->is_true();
     }
-    
+
     if (_parse_options.strict)
     {
       ParseResult _parse_result(_parse_options);
       _parse_result.assign_exception_message_and_throw("The value is not a boolean!");
     }
-    
+
     auto null_object = dynamic_cast<const TJValueNull*>(this);
     if (nullptr != null_object)
     {
@@ -3958,13 +3957,13 @@ namespace TinyJSON
     {
       return number_object->get_float();
     }
-    
+
     if (_parse_options.strict)
     {
       ParseResult _parse_result(_parse_options);
       _parse_result.assign_exception_message_and_throw("The value is not a number!");
     }
-    
+
     auto null_object = dynamic_cast<const TJValueNull*>(this);
     if (nullptr != null_object)
     {
@@ -3991,13 +3990,13 @@ namespace TinyJSON
     {
       return number_object->get_number();
     }
-    
+
     if (_parse_options.strict)
     {
       ParseResult _parse_result(_parse_options);
       _parse_result.assign_exception_message_and_throw("The value is not a number!");
     }
-    
+
     auto null_object = dynamic_cast<const TJValueNull*>(this);
     if (nullptr != null_object)
     {
@@ -4049,13 +4048,13 @@ namespace TinyJSON
     {
       return string_object->raw_value();
     }
-    
+
     if (_parse_options.strict)
     {
       ParseResult _parse_result(_parse_options);
       _parse_result.assign_exception_message_and_throw("The value is not a string!");
     }
-    
+
     const auto* boolean_object = dynamic_cast<const TJValueBoolean*>(this);
     if (nullptr != boolean_object)
     {
@@ -4321,7 +4320,7 @@ namespace TinyJSON
     (void)current_indent;
 
     // then the word we are after
-    if (!TJHelper::add_string_to_string(_is_true ? TJCHARPREFIX("true"): TJCHARPREFIX("false"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+    if (!TJHelper::add_string_to_string(_is_true ? TJCHARPREFIX("true") : TJCHARPREFIX("false"), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
     {
       configuration._has_error = true;
     }
@@ -4725,7 +4724,7 @@ namespace TinyJSON
     auto member = new TJMember(key, nullptr, _parse_options);
     TJValue* value_array = new TJValueArray(_parse_options);
     auto array = reinterpret_cast<TJValueArray*>(value_array);
-    for(const auto& value : values)
+    for (const auto& value : values)
     {
       array->add_float(value);
     }
@@ -4769,7 +4768,7 @@ namespace TinyJSON
       }
 #else
       auto size = _members->size();
-      for(unsigned int i = 0; i < size; ++i)
+      for (unsigned int i = 0; i < size; ++i)
       {
         const auto& member = _members->at(i);
         members->set(new TJMember(*member), _parse_options);
@@ -4822,7 +4821,7 @@ namespace TinyJSON
       TJCHAR* inner_current_indent = nullptr;
 
       if (!TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length) ||
-          !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
+        !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
       {
         delete[] inner_current_indent;
         configuration._has_error = true;
@@ -4839,10 +4838,10 @@ namespace TinyJSON
         const auto& member = _members->at(i);
 #endif
         if (!TJHelper::add_string_to_string(inner_current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-            !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-            !TJHelper::add_string_to_string(member->name(), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-            !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-            !TJHelper::add_string_to_string(configuration._key_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+          !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+          !TJHelper::add_string_to_string(member->name(), configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+          !TJHelper::add_string_to_string(configuration._key_quote, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
+          !TJHelper::add_string_to_string(configuration._key_separator, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
         {
           delete[] inner_current_indent;
           configuration._has_error = true;
@@ -4877,14 +4876,14 @@ namespace TinyJSON
         }
       }
       delete[] inner_current_indent;
-    }
+      }
     // close it.
     if (!TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-        !TJHelper::add_char_to_string('}', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+      !TJHelper::add_char_to_string('}', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
     {
       configuration._has_error = true;
     }
-  }
+    }
 
   bool TJValueObject::is_object() const
   {
@@ -4903,7 +4902,7 @@ namespace TinyJSON
 
   TJMember* TJValueObject::at(int idx) const
   {
-    if(idx < 0 || unsigned(idx) >= get_number_of_items())
+    if (idx < 0 || unsigned(idx) >= get_number_of_items())
     {
       return nullptr;
     }
@@ -4936,7 +4935,7 @@ namespace TinyJSON
   /// </summary>
   /// <param name="key"></param>
   /// <returns></returns>
-  const TJValue* TJValueObject::try_get_value(const TJCHAR* key, bool case_sensitive) const
+  const TJValue* TJValueObject::try_get_value(const TJCHAR * key, bool case_sensitive) const
   {
     if (nullptr == key)
     {
@@ -4950,7 +4949,7 @@ namespace TinyJSON
 #if TJ_INCLUDE_STDVECTOR == 1
     auto it = std::find_if(_members->begin(), _members->end(), [&](TJMember* value) {
       return TJHelper::are_same(key, value->name(), case_sensitive);
-    });
+      });
 
     return (it == _members->end()) ? nullptr : (*it)->value();
 #else
@@ -4963,7 +4962,7 @@ namespace TinyJSON
 #endif
   }
 
-  bool TJValueObject::has_key(const TJCHAR* key, bool case_sensitive) const
+  bool TJValueObject::has_key(const TJCHAR * key, bool case_sensitive) const
   {
     return try_get_value(key, case_sensitive) != nullptr;
   }
@@ -4973,7 +4972,7 @@ namespace TinyJSON
   /// </summary>
   /// <param name="key"></param>
   /// <returns></returns>
-  const TJCHAR* TJValueObject::try_get_string(const TJCHAR* key, bool case_sensitive) const
+  const TJCHAR* TJValueObject::try_get_string(const TJCHAR * key, bool case_sensitive) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
@@ -4981,7 +4980,7 @@ namespace TinyJSON
       return nullptr;
     }
 
-    delete [] value->_last_dump;
+    delete[] value->_last_dump;
     internal_dump_configuration configuration(formating::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
     value->internal_dump(configuration, nullptr);
     if (configuration._has_error)
@@ -4995,13 +4994,13 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// TJValueArray
-  TJValueArray::TJValueArray(const parse_options& options) :
+  TJValueArray::TJValueArray(const parse_options & options) :
     TJValue(options),
     _values(nullptr)
   {
   }
 
-  TJValueArray::TJValueArray(const TJValueArray& other) :
+  TJValueArray::TJValueArray(const TJValueArray & other) :
     TJValue(other),
     _values(nullptr)
   {
@@ -5024,14 +5023,14 @@ namespace TinyJSON
     }
   }
 
-  TJValueArray::TJValueArray(TJValueArray&& other) noexcept :
+  TJValueArray::TJValueArray(TJValueArray && other) noexcept :
     TJValue(std::move(other)),
     _values(other._values)
   {
     other._values = nullptr;
   }
 
-  TJValueArray& TJValueArray::operator=(const TJValueArray& other)
+  TJValueArray& TJValueArray::operator=(const TJValueArray & other)
   {
     if (this != &other)
     {
@@ -5058,7 +5057,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValueArray& TJValueArray::operator=(TJValueArray&& other) noexcept
+  TJValueArray& TJValueArray::operator=(TJValueArray && other) noexcept
   {
     if (this != &other)
     {
@@ -5075,7 +5074,7 @@ namespace TinyJSON
     free_values();
   }
 
-  TJValueArray* TJValueArray::move(TJLIST*& values, const parse_options& options)
+  TJValueArray* TJValueArray::move(TJLIST * &values, const parse_options & options)
   {
     auto value = new TJValueArray(options);
     value->_values = values;
@@ -5083,22 +5082,22 @@ namespace TinyJSON
     return value;
   }
 
-  int TJValueArray::internal_size() const 
-  { 
-    return get_number_of_items(); 
+  int TJValueArray::internal_size() const
+  {
+    return get_number_of_items();
   }
 
   const TJValue& TJValueArray::internal_at(int index) const
-  { 
+  {
     return *(at(index));
   }
 
   TJValue& TJValueArray::internal_at(int index)
-  { 
+  {
     return *(at(index));
   }
 
-  void TJValueArray::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
+  void TJValueArray::internal_dump(internal_dump_configuration & configuration, const TJCHAR * current_indent) const
   {
     // open it
     if (!TJHelper::add_char_to_string('[', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
@@ -5120,9 +5119,9 @@ namespace TinyJSON
       int inner_buffer_pos = 0;
       int inner_buffer_max_length = 0;
       TJCHAR* inner_current_indent = nullptr;
-      
+
       if (!TJHelper::add_string_to_string(current_indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length) ||
-          !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
+        !TJHelper::add_string_to_string(configuration._indent, inner_current_indent, inner_buffer_pos, inner_buffer_max_length))
       {
         delete[] inner_current_indent;
         configuration._has_error = true;
@@ -5169,14 +5168,14 @@ namespace TinyJSON
         }
       }
       delete[] inner_current_indent;
-    }
+      }
     // close it.
     if (!TJHelper::add_string_to_string(current_indent, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length) ||
-        !TJHelper::add_char_to_string(']', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
+      !TJHelper::add_char_to_string(']', configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
     {
       configuration._has_error = true;
     }
-  }
+    }
 
   /// <summary>
   /// Allow each derived class to create a copy of itself.
@@ -5201,9 +5200,9 @@ namespace TinyJSON
 #endif
       }
       array->_values = values;
-    }
+      }
     return array;
-  }
+    }
 
   bool TJValueArray::is_array() const
   {
@@ -5253,7 +5252,7 @@ namespace TinyJSON
   std::vector<long double> TJValueArray::get_floats() const
   {
     std::vector<long double> values = {};
-    for( unsigned int i = 0; i < get_number_of_items(); ++i)
+    for (unsigned int i = 0; i < get_number_of_items(); ++i)
     {
       auto value = at(i);
       if (!value->is_number())
@@ -5286,7 +5285,7 @@ namespace TinyJSON
     return values;
   }
 
-  void TJValueArray::add_move(TJValue* value)
+  void TJValueArray::add_move(TJValue * value)
   {
     if (nullptr == value)
     {
@@ -5306,7 +5305,7 @@ namespace TinyJSON
 #endif
   }
 
-  void TJValueArray::add(const TJValue* value)
+  void TJValueArray::add(const TJValue * value)
   {
     if (nullptr == value)
     {
@@ -5317,7 +5316,7 @@ namespace TinyJSON
     add_move(value->clone());
   }
 
-  void TJValueArray::add_raw_numbers(const std::vector<long long>& values)
+  void TJValueArray::add_raw_numbers(const std::vector<long long>&values)
   {
     for (const auto& value : values)
     {
@@ -5325,7 +5324,7 @@ namespace TinyJSON
     }
   }
 
-  void TJValueArray::add_raw_floats(const std::vector<long double>& values)
+  void TJValueArray::add_raw_floats(const std::vector<long double>&values)
   {
     for (const auto& value : values)
     {
@@ -5338,13 +5337,13 @@ namespace TinyJSON
     auto* objectNumber = new TJValueNumberInt(value, _parse_options);
     add_move(objectNumber);
   }
-  
+
   void TJValueArray::add_raw_float(long double value)
   {
     auto* tjNumber = TJHelper::try_create_number_from_float(value, _parse_options);
     add_move(tjNumber);
   }
-  
+
   void TJValueArray::add_boolean(bool value)
   {
     auto* objectBoolean = new TJValueBoolean(value, _parse_options);
@@ -5359,25 +5358,25 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// TJValue Number
-  TJValueNumber::TJValueNumber(const bool is_negative, const parse_options& options) : 
+  TJValueNumber::TJValueNumber(const bool is_negative, const parse_options & options) :
     TJValue(options),
     _is_negative(is_negative)
   {
   }
 
-  TJValueNumber::TJValueNumber(const TJValueNumber& other) :
+  TJValueNumber::TJValueNumber(const TJValueNumber & other) :
     TJValue(other),
     _is_negative(other._is_negative)
   {
   }
 
-  TJValueNumber::TJValueNumber(TJValueNumber&& other) noexcept :
+  TJValueNumber::TJValueNumber(TJValueNumber && other) noexcept :
     TJValue(std::move(other)),
     _is_negative(other._is_negative)
   {
   }
 
-  TJValueNumber& TJValueNumber::operator=(const TJValueNumber& other)
+  TJValueNumber& TJValueNumber::operator=(const TJValueNumber & other)
   {
     if (this != &other)
     {
@@ -5387,7 +5386,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValueNumber& TJValueNumber::operator=(TJValueNumber&& other) noexcept
+  TJValueNumber& TJValueNumber::operator=(TJValueNumber && other) noexcept
   {
     if (this != &other)
     {
@@ -5457,31 +5456,31 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// TJValue whole Number
-  TJValueNumberInt::TJValueNumberInt(const unsigned long long& number, const bool is_negative, const parse_options& options) :
+  TJValueNumberInt::TJValueNumberInt(const unsigned long long& number, const bool is_negative, const parse_options & options) :
     TJValueNumber(is_negative, options),
     _number(number)
   {
   }
 
-  TJValueNumberInt::TJValueNumberInt(const long long& number, const parse_options& options) :
+  TJValueNumberInt::TJValueNumberInt(const long long& number, const parse_options & options) :
     TJValueNumber(number < 0, options),
     _number(number < 0 ? -1 * static_cast<unsigned long long>(number) : static_cast<unsigned long long>(number))
   {
   }
 
-  TJValueNumberInt::TJValueNumberInt(const TJValueNumberInt& other) :
+  TJValueNumberInt::TJValueNumberInt(const TJValueNumberInt & other) :
     TJValueNumber(other),
     _number(other._number)
   {
   }
 
-  TJValueNumberInt::TJValueNumberInt(TJValueNumberInt&& other) noexcept :
+  TJValueNumberInt::TJValueNumberInt(TJValueNumberInt && other) noexcept :
     TJValueNumber(std::move(other)),
     _number(other._number)
   {
   }
 
-  TJValueNumberInt& TJValueNumberInt::operator=(const TJValueNumberInt& other)
+  TJValueNumberInt& TJValueNumberInt::operator=(const TJValueNumberInt & other)
   {
     if (this != &other)
     {
@@ -5491,7 +5490,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValueNumberInt& TJValueNumberInt::operator=(TJValueNumberInt&& other) noexcept
+  TJValueNumberInt& TJValueNumberInt::operator=(TJValueNumberInt && other) noexcept
   {
     if (this != &other)
     {
@@ -5510,13 +5509,13 @@ namespace TinyJSON
     return new TJValueNumberInt(*this);
   }
 
-  void TJValueNumberInt::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
+  void TJValueNumberInt::internal_dump(internal_dump_configuration & configuration, const TJCHAR * current_indent) const
   {
     //  unused
     (void)current_indent;
 
     // if we have no fraction, then just return it.
-    auto string = TJHelper::fast_number_to_string(_number, 0, _is_negative );
+    auto string = TJHelper::fast_number_to_string(_number, 0, _is_negative);
 
     // then the number
     if (!TJHelper::add_string_to_string(string, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
@@ -5534,7 +5533,7 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// TJValue float Number
-  TJValueNumberFloat::TJValueNumberFloat(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, bool is_negative, const parse_options& options) :
+  TJValueNumberFloat::TJValueNumberFloat(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, bool is_negative, const parse_options & options) :
     TJValueNumber(is_negative, options),
     _string(nullptr),
     _number(number),
@@ -5543,7 +5542,7 @@ namespace TinyJSON
   {
   }
 
-  TJValueNumberFloat::TJValueNumberFloat(long double number, const parse_options& options) :
+  TJValueNumberFloat::TJValueNumberFloat(long double number, const parse_options & options) :
     TJValueNumber(number < 0.0L, options),
     _string(nullptr),
     _number(TJHelper::get_whole_number_from_float(number)),
@@ -5552,7 +5551,7 @@ namespace TinyJSON
   {
   }
 
-  TJValueNumberFloat::TJValueNumberFloat(const TJValueNumberFloat& other) :
+  TJValueNumberFloat::TJValueNumberFloat(const TJValueNumberFloat & other) :
     TJValueNumber(other),
     _string(nullptr),
     _number(other._number),
@@ -5567,7 +5566,7 @@ namespace TinyJSON
     }
   }
 
-  TJValueNumberFloat::TJValueNumberFloat(TJValueNumberFloat&& other) noexcept :
+  TJValueNumberFloat::TJValueNumberFloat(TJValueNumberFloat && other) noexcept :
     TJValueNumber(std::move(other)),
     _string(other._string),
     _number(other._number),
@@ -5577,7 +5576,7 @@ namespace TinyJSON
     other._string = nullptr;
   }
 
-  TJValueNumberFloat& TJValueNumberFloat::operator=(const TJValueNumberFloat& other)
+  TJValueNumberFloat& TJValueNumberFloat::operator=(const TJValueNumberFloat & other)
   {
     if (this != &other)
     {
@@ -5600,7 +5599,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValueNumberFloat& TJValueNumberFloat::operator=(TJValueNumberFloat&& other) noexcept
+  TJValueNumberFloat& TJValueNumberFloat::operator=(TJValueNumberFloat && other) noexcept
   {
     if (this != &other)
     {
@@ -5645,7 +5644,7 @@ namespace TinyJSON
     return new TJValueNumberFloat(*this);
   }
 
-  void TJValueNumberFloat::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
+  void TJValueNumberFloat::internal_dump(internal_dump_configuration & configuration, const TJCHAR * current_indent) const
   {
     // unused
     (void)current_indent;
@@ -5681,17 +5680,17 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// TJValue float Number
-  TJValueNumberExponent::TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent, bool is_negative, const parse_options& options) :
+  TJValueNumberExponent::TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent, bool is_negative, const parse_options & options) :
     TJValueNumber(is_negative, options),
     _string(nullptr),
     _number(number),
     _fraction(fraction),
     _fraction_exponent(fraction_exponent),
-    _exponent(exponent)    
+    _exponent(exponent)
   {
   }
 
-  TJValueNumberExponent::TJValueNumberExponent(const TJValueNumberExponent& other) :
+  TJValueNumberExponent::TJValueNumberExponent(const TJValueNumberExponent & other) :
     TJValueNumber(other),
     _string(nullptr),
     _number(other._number),
@@ -5707,7 +5706,7 @@ namespace TinyJSON
     }
   }
 
-  TJValueNumberExponent::TJValueNumberExponent(TJValueNumberExponent&& other) noexcept :
+  TJValueNumberExponent::TJValueNumberExponent(TJValueNumberExponent && other) noexcept :
     TJValueNumber(std::move(other)),
     _string(other._string),
     _number(other._number),
@@ -5718,7 +5717,7 @@ namespace TinyJSON
     other._string = nullptr;
   }
 
-  TJValueNumberExponent& TJValueNumberExponent::operator=(const TJValueNumberExponent& other)
+  TJValueNumberExponent& TJValueNumberExponent::operator=(const TJValueNumberExponent & other)
   {
     if (this != &other)
     {
@@ -5742,7 +5741,7 @@ namespace TinyJSON
     return *this;
   }
 
-  TJValueNumberExponent& TJValueNumberExponent::operator=(TJValueNumberExponent&& other) noexcept
+  TJValueNumberExponent& TJValueNumberExponent::operator=(TJValueNumberExponent && other) noexcept
   {
     if (this != &other)
     {
@@ -5806,7 +5805,7 @@ namespace TinyJSON
     return new TJValueNumberExponent(*this);
   }
 
-  void TJValueNumberExponent::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
+  void TJValueNumberExponent::internal_dump(internal_dump_configuration & configuration, const TJCHAR * current_indent) const
   {
     // unused
     (void)current_indent;
@@ -5835,4 +5834,4 @@ namespace TinyJSON
     }
     _string = TJHelper::fast_number_fraction_and_exponent_to_string(_number, _fraction, _fraction_exponent, _exponent, _is_negative);
   }
-} // TinyJSON
+  } // TinyJSON
