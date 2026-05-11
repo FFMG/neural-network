@@ -3,7 +3,6 @@
 #include "fflayer.h"
 #include "logger.h"
 #include "simd_utils.h"
-#include <immintrin.h>
 #include <numeric>
 
 GRURNNLayer::GRURNNLayer(
