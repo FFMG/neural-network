@@ -5,7 +5,6 @@
 #include "logger.h"
 #include <algorithm>
 #include <cmath>
-#include <immintrin.h>
 
 LSTMLayer::LSTMLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
