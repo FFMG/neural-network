@@ -59,7 +59,6 @@ public:
     for (size_t i = 0; i < num_samples; ++i)
     {
       std::vector<int> seq_indices;
-      double sentiment = 0.5; // undefined
 
       // Simple template choice
       // 0: "The movie is [not] [very] good/bad"
