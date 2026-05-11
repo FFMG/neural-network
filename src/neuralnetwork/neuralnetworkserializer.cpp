@@ -100,7 +100,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "fflayer")
     {
       layers.emplace_back(
-        std::move(create_fflayer(layer_index, *layer_object, options.number_of_threads()))
+        create_fflayer(layer_index, *layer_object, options.number_of_threads())
       );
       continue;
     }
@@ -108,7 +108,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "ffoutputlayer")
     {
       layers.emplace_back(
-        std::move(create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.output_layer_details() ))
+        create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.output_layer_details() )
       );
       continue;
     }
@@ -116,7 +116,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "elmanrnnlayer")
     {
       layers.emplace_back(
-        std::move(create_elmanrnnlayer(layer_index, *layer_object, options.number_of_threads()))
+        create_elmanrnnlayer(layer_index, *layer_object, options.number_of_threads())
       );
       continue;
     }
@@ -124,7 +124,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "grurnnlayer")
     {
       layers.emplace_back(
-        std::move(create_grurnnlayer(layer_index, *layer_object, options.number_of_threads()))
+        create_grurnnlayer(layer_index, *layer_object, options.number_of_threads())
       );
       continue;
     }
@@ -132,7 +132,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "lstmlayer")
     {
       layers.emplace_back(
-        std::move(create_lstmlayer(layer_index, *layer_object, options.number_of_threads()))
+        create_lstmlayer(layer_index, *layer_object, options.number_of_threads())
       );
       continue;
     }
@@ -140,7 +140,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "multioutputlayer")
     {
       layers.emplace_back(
-        std::move(create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details()))
+        create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details())
       );
       continue;
     }
