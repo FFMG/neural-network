@@ -90,6 +90,7 @@ private:
   static bool run_tests(NeuralNetwork& nn, size_t sequence_length)
   {
     MYODDWEB_PROFILE_FUNCTION("ExampleMultiOutputGru");
+    (void)sequence_length;
     Logger::info("Running validation tests...");
     
     struct TestCase {
