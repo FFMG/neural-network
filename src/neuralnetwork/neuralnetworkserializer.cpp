@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 
 #include "./libraries/instrumentor.h"
@@ -46,7 +48,14 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
     auto final_learning_rate = json_object->get_or<double>("final-learning-rate", 0.0);
     if (final_learning_rate != 0.0)
     {
-      options.with_learning_rate(final_learning_rate);
+      // 1. Calculate the new target as the geometric mean
+      const auto updated_target = std::sqrt(final_learning_rate * options.learning_rate());
+      options.with_learning_rate(updated_target);
+
+      // 2. Set warmup start to final_learning_rate to resume smoothly.
+      // We use std::min to ensure warmup_start <= updated_target, avoiding the panic in build().
+      const auto safe_warmup_start = std::min(final_learning_rate, updated_target);
+      options.with_learning_rate_warmup(safe_warmup_start, options.learning_rate_warmup_target());
     }
   }
 
@@ -880,8 +889,8 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
   add_basic(*tj);
-  add_options(nn.options(), *tj);
   add_final_learning_rate(nn, *tj);
+  add_options(nn.options(), *tj);
   add_errors(nn, *tj);
   add_layers(nn, *tj);
   
