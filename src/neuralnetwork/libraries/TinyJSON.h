@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 // Licensed to Florent Guelfucci under one or more agreements.
 // Florent Guelfucci licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
@@ -96,12 +96,12 @@ namespace TinyJSON
 #define TJDICTIONARY std::vector<TJMember*>
 #define TJLIST std::vector<TJValue*>
 #else
-  class TJList;
-  class TJDictionary;
+class TJList;
+class TJDictionary;
 #define TJDICTIONARY TJDictionary
 #define TJLIST TJList
 #endif
-
+ 
   // optional class
   template<typename T>
   class Optional
@@ -242,13 +242,13 @@ namespace TinyJSON
       }
     }
 
-    [[nodiscard]] inline T& value()&
+    [[nodiscard]] inline T& value() &
     {
       if (!_has_value) throw std::logic_error("Optional has no value");
       return _storage.value;
     }
 
-    [[nodiscard]] inline const T& value() const&
+    [[nodiscard]] inline const T& value() const &
     {
       if (!_has_value) throw std::logic_error("Optional has no value");
       return _storage.value;
@@ -274,7 +274,7 @@ namespace TinyJSON
       return _storage.value;
     }
 
-    [[nodiscard]] inline const T& operator*() const& noexcept
+    [[nodiscard]] inline const T& operator*() const & noexcept
     {
       return _storage.value;
     }
@@ -331,7 +331,8 @@ namespace TinyJSON
     {
       rfc4627,
       rfc7159,
-      rfc8259
+      rfc8259,
+      json5_1_0_0   //  https://spec.json5.org/ v1.0.0
     };
 
     enum message_type
@@ -373,9 +374,9 @@ namespace TinyJSON
     //  4 = error
     //  5 = fatal/panic/exception
     /// <summary>
-    std::function<void(message_type, const TJCHAR*)> callback_function = [](message_type, const TJCHAR*) {
+    std::function<void(message_type, const TJCHAR*)> callback_function = [] (message_type, const TJCHAR*) {
       // do nothing
-      };
+    };
   };
 
   /// <summary>
@@ -533,6 +534,7 @@ namespace TinyJSON
     virtual bool is_true() const;
     virtual bool is_false() const;
     virtual bool is_null() const;
+    virtual bool is_comment() const;
 
     const TJCHAR* dump(formating formating = formating::indented, const TJCHAR* indent = TJCHARPREFIX("  ")) const;
     const TJCHAR* dump_string() const;
@@ -547,7 +549,7 @@ namespace TinyJSON
 
     bool get_boolean() const;
     const TJCHAR* get_string() const;
-
+    
     // Non-template overload for ambiguous case - default to long long
     inline std::vector<long long> get_numbers() const
     {
@@ -570,7 +572,7 @@ namespace TinyJSON
 
     template<typename T>
     std::vector<TJ_TEMPLATE_NUMBER::type>
-      get_numbers() const
+    get_numbers() const
     {
       auto llVector = get_raw_numbers();
       std::vector<T> tVector;
@@ -578,7 +580,7 @@ namespace TinyJSON
 
       // Transform and move the values
       std::transform(std::make_move_iterator(llVector.begin()),
-        std::make_move_iterator(llVector.end()),
+                     std::make_move_iterator(llVector.end()),
         std::back_inserter(tVector),
         [](long long value) { return static_cast<T>(value); });
       return tVector;
@@ -586,7 +588,7 @@ namespace TinyJSON
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-      get_floats() const
+    get_floats() const
     {
       auto ldVector = get_raw_floats();
       std::vector<T> tVector;
@@ -602,14 +604,14 @@ namespace TinyJSON
 
     template<typename T>
     TJ_TEMPLATE_NUMBER::type
-      get_number() const
+    get_number() const
     {
       return static_cast<T>(get_raw_number());
     }
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-      get_float() const
+    get_float() const
     {
       return static_cast<T>(get_raw_float());
     }
@@ -617,7 +619,7 @@ namespace TinyJSON
     // For integral types (excluding bool)
     template<typename T>
     typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-      get() const
+    get() const
     {
       return get_number<T>();
     }
@@ -625,7 +627,7 @@ namespace TinyJSON
     // For floating point types
     template<typename T>
     typename std::enable_if<std::is_floating_point<T>::value, T>::type
-      get() const
+    get() const
     {
       return get_float<T>();
     }
@@ -633,7 +635,7 @@ namespace TinyJSON
     // For boolean
     template<typename T>
     typename std::enable_if<std::is_same<T, bool>::value, bool>::type
-      get() const
+    get() const
     {
       return get_boolean();
     }
@@ -641,7 +643,7 @@ namespace TinyJSON
     // For strings (const TJCHAR*)
     template<typename T>
     typename std::enable_if<std::is_same<T, const TJCHAR*>::value, const TJCHAR*>::type
-      get() const
+    get() const
     {
       return get_string();
     }
@@ -650,7 +652,7 @@ namespace TinyJSON
     // For std::string
     template<typename T>
     typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
-      get() const
+    get() const
     {
       const TJCHAR* str = get_string();
       return str ? std::string(str) : std::string();
@@ -660,7 +662,7 @@ namespace TinyJSON
     // For vectors
     template<typename T>
     typename std::enable_if<is_vector<T>::value, T>::type
-      get() const
+    get() const
     {
       typedef typename T::value_type V;
       return get_vector_internal<V>(std::is_integral<V>());
@@ -747,6 +749,14 @@ namespace TinyJSON
     static TJValue* parse(const TJCHAR* source, const parse_options& parse_options = {});
 
     /// <summary>
+    /// Parse a json5 string
+    /// </summary>
+    /// <param name="source">The source we are trying to parse.</param>
+    /// <param name="parse_options">The option we want to use when parsing this.</param>
+    /// <returns></returns>
+    static TJValue* parse5(const TJCHAR* source, const parse_options& parse_options = {});
+
+    /// <summary>
     /// Parse a json file
     /// </summary>
     /// <param name="file_path">The source file we are trying to parse.</param>
@@ -830,8 +840,52 @@ namespace TinyJSON
     void free_value();
   };
 
+  class TJNumberedValues
+  {
+  protected:
+    TJNumberedValues() noexcept : _number_of_items(-1)
+    {
+    }
+    TJNumberedValues(const TJNumberedValues& other) noexcept : _number_of_items(other._number_of_items)
+    {
+    }
+    TJNumberedValues(TJNumberedValues&& other) noexcept : _number_of_items(other._number_of_items)
+    {
+      other._number_of_items = 0;
+    }
+    TJNumberedValues& operator=(const TJNumberedValues& other) noexcept
+    {
+      if (this != &other)
+      {
+        _number_of_items = other._number_of_items;
+      }
+      return *this;
+    }
+    TJNumberedValues& operator=(TJNumberedValues&& other) noexcept
+    {
+      if (this != &other)
+      {
+        _number_of_items = other._number_of_items;
+        other._number_of_items = 0;
+      }
+      return *this;
+    }
+    int get_number_of_items() const noexcept {
+      return _number_of_items;
+    };
+    void reset_number_of_items() noexcept {
+      _number_of_items = -1;
+    }
+    void set_number_of_items(int number_of_items) const noexcept {
+      _number_of_items = number_of_items;
+    }
+  private:
+    mutable int _number_of_items;
+  };
+
+
   // A Json object that contain an array of key/value pairs.
-  class TJValueObject : public TJValue
+  class TJValueObject : public TJValue, protected TJNumberedValues
   {
     friend TJHelper;
   public:
@@ -849,6 +903,12 @@ namespace TinyJSON
     /// </summary>
     /// <returns></returns>
     unsigned int get_number_of_items() const;
+
+    /// <summary>
+    /// Get the number of elements in this object (including comments)
+    /// </summary>
+    /// <returns></returns>
+    unsigned int get_number_of_elements() const;
 
     /// <summary>
     /// Try and get a string value, if it does not exist, then we return null.
@@ -924,14 +984,14 @@ namespace TinyJSON
 
     template<typename T>
     TJ_TEMPLATE_NUMBER::type
-      get_number(const TJCHAR* key, bool case_sensitive = true) const
+    get_number(const TJCHAR* key, bool case_sensitive = true) const
     {
       auto value = get_raw_number(key, case_sensitive);
       return static_cast<T>(value.has_value() ? value.value() : 0.0);
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_NUMBER::type>
-      get_numbers(const TJCHAR* key, bool case_sensitive = true) const
+    get_numbers(const TJCHAR* key, bool case_sensitive = true) const
     {
       auto llVector = get_raw_numbers(key, case_sensitive);
       if (!llVector.has_value())
@@ -951,14 +1011,14 @@ namespace TinyJSON
 
     template<typename T>
     TJ_TEMPLATE_FLOAT::type
-      get_float(const TJCHAR* key, bool case_sensitive = true) const
+    get_float(const TJCHAR* key, bool case_sensitive = true) const
     {
       auto value = get_raw_float(key, case_sensitive);
       return static_cast<T>(value.has_value() ? value.value() : 0.0);
     }
     template<typename T>
     std::vector<TJ_TEMPLATE_FLOAT::type>
-      get_floats(const TJCHAR* key, bool case_sensitive = true) const
+    get_floats(const TJCHAR* key, bool case_sensitive = true) const
     {
       auto ldVector = get_raw_floats(key, case_sensitive);
       if (!ldVector.has_value())
@@ -979,7 +1039,7 @@ namespace TinyJSON
     // For integral types (excluding bool)
     template<typename T>
     typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       return get_number<T>(key, case_sensitive);
     }
@@ -987,7 +1047,7 @@ namespace TinyJSON
     // For floating point types
     template<typename T>
     typename std::enable_if<std::is_floating_point<T>::value, T>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       return get_float<T>(key, case_sensitive);
     }
@@ -995,7 +1055,7 @@ namespace TinyJSON
     // For boolean
     template<typename T>
     typename std::enable_if<std::is_same<T, bool>::value, bool>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       return get_boolean(key, case_sensitive);
     }
@@ -1003,7 +1063,7 @@ namespace TinyJSON
     // For strings (const TJCHAR*)
     template<typename T>
     typename std::enable_if<std::is_same<T, const TJCHAR*>::value, const TJCHAR*>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       return get_string(key, case_sensitive);
     }
@@ -1012,7 +1072,7 @@ namespace TinyJSON
     // For std::string
     template<typename T>
     typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       const TJCHAR* str = get_string(key, case_sensitive);
       return str ? std::string(str) : std::string();
@@ -1029,7 +1089,7 @@ namespace TinyJSON
     // For vectors
     template<typename T>
     typename std::enable_if<is_vector<T>::value, T>::type
-      get(const TJCHAR* key, bool case_sensitive = true) const
+    get(const TJCHAR* key, bool case_sensitive = true) const
     {
       typedef typename T::value_type V;
       return get_vector_internal<V>(key, case_sensitive, std::is_integral<V>());
@@ -1100,7 +1160,7 @@ namespace TinyJSON
     {
       set_raw_numbers(key, values);
     }
-
+        
 #if TJ_INCLUDE_STD_STRING == 1
     inline bool get_boolean(const std::string& key, bool case_sensitive = true) const
     {
@@ -1118,7 +1178,7 @@ namespace TinyJSON
     {
       return get_string(key.c_str(), case_sensitive);
     }
-    inline std::vector<long double> get_floats(const std::string& key, bool case_sensitive = true) const
+    inline std::vector<long double> get_floats(const std::string& key,bool case_sensitive = true) const
     {
       return get_floats(key.c_str(), case_sensitive);
     }
@@ -1136,7 +1196,7 @@ namespace TinyJSON
 
     template<typename T>
     std::vector<TJ_TEMPLATE_FLOAT::type>
-      get_floats(const std::string& key, bool case_sensitive = true) const
+    get_floats(const std::string& key, bool case_sensitive = true) const
     {
       return get_floats(key, case_sensitive);
     }
@@ -1166,6 +1226,7 @@ namespace TinyJSON
 
     TJMember* operator [](int idx) const;
     TJMember* at(int idx) const;
+    TJMember* element_at(int idx) const;
 
     bool is_object() const override;
 
@@ -1193,7 +1254,7 @@ namespace TinyJSON
     /// <param name="value"></param>
     template<typename T>
     typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, void>::type
-      set(const TJCHAR* key, T value)
+    set(const TJCHAR* key, T value)
     {
       set_number(key, static_cast<long long>(value));
     }
@@ -1206,7 +1267,7 @@ namespace TinyJSON
     /// <returns></returns>
     template<typename T>
     typename std::enable_if<std::is_floating_point<T>::value, void>::type
-      set(const TJCHAR* key, T value)
+    set(const TJCHAR* key, T value)
     {
       set_float(key, static_cast<long double>(value));
     }
@@ -1219,7 +1280,7 @@ namespace TinyJSON
     /// <returns></returns>
     template<typename T>
     typename std::enable_if<std::is_same<T, bool>::value, void>::type
-      set(const TJCHAR* key, T value)
+    set(const TJCHAR* key, T value)
     {
       set_boolean(key, value);
     }
@@ -1232,7 +1293,7 @@ namespace TinyJSON
     /// <returns></returns>
     template<typename T>
     typename std::enable_if<std::is_same<T, const TJCHAR*>::value, void>::type
-      set(const TJCHAR* key, T value)
+    set(const TJCHAR* key, T value)
     {
       set_string(key, value);
     }
@@ -1246,7 +1307,7 @@ namespace TinyJSON
     /// <returns></returns>
     template<typename T>
     typename std::enable_if<std::is_same<T, std::string>::value, void>::type
-      set(const TJCHAR* key, const T& value)
+    set(const TJCHAR* key, const T& value)
     {
       set_string(key, value.c_str());
     }
@@ -1272,7 +1333,7 @@ namespace TinyJSON
     /// <returns></returns>
     template<typename T>
     typename std::enable_if<is_vector<T>::value, void>::type
-      set(const TJCHAR* key, const T& value)
+    set(const TJCHAR* key, const T& value)
     {
       typedef typename T::value_type V;
       set_vector_internal<V>(key, value, std::is_integral<V>());
@@ -1390,11 +1451,12 @@ namespace TinyJSON
     // All the key value pairs in this object.
     TJDICTIONARY* _members;
 
+    void move_member_to_members(TJMember* member);
     void free_members();
   };
 
   // A Json object that contain an array of key/value pairs.
-  class TJValueArray : public TJValue
+  class TJValueArray : public TJValue, protected TJNumberedValues
   {
     friend TJHelper;
   public:
@@ -1408,13 +1470,20 @@ namespace TinyJSON
     void set_parse_options(const parse_options& options) override;
 
     /// <summary>
-    /// Get the number of items in this array
+    /// Get the number of items in this array (excluding comments)
     /// </summary>
     /// <returns></returns>
     unsigned int get_number_of_items() const;
 
+    /// <summary>
+    /// Get the number of elements in this array (including comments)
+    /// </summary>
+    /// <returns></returns>
+    unsigned int get_number_of_elements() const;
+
     TJValue* operator [](int idx) const;
     TJValue* at(int idx) const;
+    TJValue* element_at(int idx) const;
 
     bool is_array() const override;
 
@@ -1525,7 +1594,7 @@ namespace TinyJSON
     static TJValueArray* move(TJLIST*& values, const parse_options& options = {});
 
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
-
+    
     virtual int internal_size() const override;
     virtual const TJValue& internal_at(int index) const override;
     virtual TJValue& internal_at(int index) override;
@@ -1703,7 +1772,7 @@ namespace TinyJSON
   class TJValueNumberExponent : public TJValueNumber
   {
   public:
-    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent, bool is_negative, const parse_options& options = {});
+    TJValueNumberExponent(const unsigned long long& number, const unsigned long long& fraction, const unsigned int fraction_exponent, const int exponent,bool is_negative, const parse_options& options = {});
     TJValueNumberExponent(const TJValueNumberExponent& other);
     TJValueNumberExponent(TJValueNumberExponent&& other) noexcept;
     TJValueNumberExponent& operator=(const TJValueNumberExponent& other);
@@ -1729,6 +1798,40 @@ namespace TinyJSON
     int _exponent;
   };
 
+  // A comment JSon
+  class TJValueComment : public TJValue
+  {
+    friend TJHelper;
+  public:
+    TJValueComment(const TJCHAR* value, const parse_options& options = {});
+    TJValueComment(const TJValueComment& other);
+    TJValueComment(TJValueComment&& other) noexcept;
+    TJValueComment& operator=(const TJValueComment& other);
+    TJValueComment& operator=(TJValueComment&& other) noexcept;
+    virtual ~TJValueComment();
+
+    bool is_comment() const override;
+
+    const TJCHAR* raw_value() const;
+
+  protected:
+    /// <summary>
+    /// Clone a comment into an identical comment object
+    /// </summary>
+    TJValue* internal_clone() const override;
+
+    /// <summary>
+    /// Move the value ownership of the comment string.
+    /// </summary>
+    static TJValueComment* move(TJCHAR*& value, const parse_options& options = {});
+
+    void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
+
+  private:
+    TJCHAR* _value;
+    void free_value();
+  };
+
   // user_literals
   inline TJValue* operator ""_tj(const TJCHAR * source, std::size_t)
   {
@@ -1737,7 +1840,7 @@ namespace TinyJSON
     return TJ::parse(source, options);
   }
 
-#if TJ_INCLUDE_STD_STRING == 1
+  #if TJ_INCLUDE_STD_STRING == 1
   inline std::string operator ""_tj_indent(const TJCHAR * source, std::size_t)
   {
     parse_options options = {};
@@ -1751,7 +1854,7 @@ namespace TinyJSON
     std::string json(tj->dump(formating::indented));
     delete tj;
     return json;
-  }
+  }  
 
   inline std::string operator ""_tj_minify(const TJCHAR * source, std::size_t)
   {
@@ -1767,6 +1870,6 @@ namespace TinyJSON
     delete tj;
     return json;
   }
-#endif
+  #endif
 } // TinyJSON
 #endif // !TJ_INCLUDED 
