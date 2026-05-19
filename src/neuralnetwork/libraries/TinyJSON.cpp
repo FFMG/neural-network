@@ -28,6 +28,7 @@
 #include <fstream>
 #include <iostream>
 #include <cctype>
+#include <cstdio>
 
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
@@ -126,7 +127,7 @@ namespace TinyJSON
   struct internal_dump_configuration
   {
     TJCHAR* _buffer;
-    const formating _formating;
+    const formatting _formatting;
     const TJCHAR* _indent;
     int _buffer_pos;
     int _buffer_max_length;
@@ -140,7 +141,7 @@ namespace TinyJSON
     bool _has_error;
 
     internal_dump_configuration(
-      formating formating,
+      formatting formatting,
       const TJCHAR* indent,
       const TJCHAR* item_separator,
       const TJCHAR* key_separator,
@@ -149,7 +150,7 @@ namespace TinyJSON
       const TJCHAR* new_line,
       bool escape_special_characters
     ) :
-      _formating(formating),
+      _formatting(formatting),
       _indent(indent),
       _item_separator(item_separator),
       _key_separator(key_separator),
@@ -490,6 +491,24 @@ namespace TinyJSON
     TJValue* at(unsigned int index) const
     {
       return index < _number_of_items ? _values[index] : nullptr;
+    }
+
+    /// <summary>
+    /// Remove an item at a certain position.
+    /// </summary>
+    /// <param name="index"></param>
+    void remove_at(unsigned int index)
+    {
+      if (index >= _number_of_items)
+      {
+        return;
+      }
+      delete _values[index];
+      if (index < _number_of_items - 1)
+      {
+        memmove(&_values[index], &_values[index + 1], (_number_of_items - index - 1) * sizeof(TJValue*));
+      }
+      --_number_of_items;
     }
   private:
     /// <summary>
@@ -3900,7 +3919,7 @@ namespace TinyJSON
   /// Write a value to a file.
   /// </summary>
   /// <param name="file_path">The path of the file.</param>
-  /// <param name="root">the value we are writting</param>
+  /// <param name="root">the value we are writing</param>
   /// <param name="write_options">The options we will be using to write</param>
   /// <returns></returns>
   bool TJ::write_file(const TJCHAR* file_path, const TJValue& root, const write_options& write_options)
@@ -4154,7 +4173,7 @@ namespace TinyJSON
   /// Write a value to a file.
   /// </summary>
   /// <param name="file_path">The path of the file.</param>
-  /// <param name="root">the value we are writting</param>
+  /// <param name="root">the value we are writing</param>
   /// <param name="write_options">The options we will be using to write</param>
   /// <returns></returns>
   bool TJ::internal_write_file(const TJCHAR* file_path, const TJValue& root, const write_options& write_options)
@@ -4162,7 +4181,7 @@ namespace TinyJSON
     WriteResult write_result(write_options);
 
     //  create the json first before we open anything.
-    auto json = root.dump(write_result.options().write_formating);
+    auto json = root.dump(write_result.options().write_formatting);
     if (nullptr == json)
     {
       write_result.assign_exception_message("Unable to dump the json.");
@@ -4170,11 +4189,21 @@ namespace TinyJSON
       return false;
     }
 
-    //  try and optn the file...
-    std::ofstream outFile(file_path, std::ios::out | std::ios::binary);
+    // Allocate temporary file path
+    auto file_path_length = TJHelper::string_length(file_path);
+    auto journal_suffix = TJCHARPREFIX("-journal");
+    auto journal_length = TJHelper::string_length(journal_suffix);
+    TJCHAR* tmp_file_path = new TJCHAR[file_path_length + journal_length + 1];
+    TJHelper::copy_string(file_path, tmp_file_path, file_path_length);
+    TJHelper::copy_string(journal_suffix, tmp_file_path + file_path_length, journal_length);
+    tmp_file_path[file_path_length + journal_length] = TJ_NULL_TERMINATOR;
+
+    //  try and open the temporary file...
+    std::ofstream outFile((const char*)tmp_file_path, std::ios::out | std::ios::binary);
     if (!outFile)
     {
-      write_result.assign_exception_message("Unable to open file for writting.");
+      write_result.assign_exception_message("Unable to open file for writing.");
+      delete[] tmp_file_path;
       write_result.throw_if_exception();
       return false;
     }
@@ -4186,6 +4215,7 @@ namespace TinyJSON
       if (!outFile)
       {
         write_result.assign_exception_message("Unable to write UTF-8 BOM.");
+        delete[] tmp_file_path;
         write_result.throw_if_exception();
         return false;
       }
@@ -4197,6 +4227,16 @@ namespace TinyJSON
     if (!outFile)
     {
       write_result.assign_exception_message("Unable to write to file.");
+      delete[] tmp_file_path;
+      write_result.throw_if_exception();
+      return false;
+    }
+
+    outFile.flush();
+    if (!outFile)
+    {
+      write_result.assign_exception_message("Unable to flush the file to disk.");
+      delete[] tmp_file_path;
       write_result.throw_if_exception();
       return false;
     }
@@ -4206,9 +4246,22 @@ namespace TinyJSON
     if (!outFile)
     {
       write_result.assign_exception_message("Unable to close the file.");
+      delete[] tmp_file_path;
       write_result.throw_if_exception();
       return false;
     }
+
+    // Atomic replace
+    std::remove((const char*)file_path);
+    if (std::rename((const char*)tmp_file_path, (const char*)file_path) != 0)
+    {
+      write_result.assign_exception_message("Unable to atomically rename the temporary file to the target file path.");
+      delete[] tmp_file_path;
+      write_result.throw_if_exception();
+      return false;
+    }
+
+    delete[] tmp_file_path;
     return true;
   }
 
@@ -4485,14 +4538,14 @@ namespace TinyJSON
     return false;
   }
 
-  const TJCHAR* TJValue::dump(formating formating, const TJCHAR* indent) const
+  const TJCHAR* TJValue::dump(formatting formatting, const TJCHAR* indent) const
   {
     free_last_dump();
-    switch (formating)
+    switch (formatting)
     {
-    case formating::minify:
+    case formatting::minify:
     {
-      internal_dump_configuration configuration(formating, nullptr,
+      internal_dump_configuration configuration(formatting, nullptr,
         TJCHARPREFIX(","),
         TJCHARPREFIX(":"),
         TJCHARPREFIX("\""),
@@ -4506,9 +4559,9 @@ namespace TinyJSON
       _last_dump = configuration._buffer;
     }
     break;
-    case formating::indented:
+    case formatting::indented:
     {
-      internal_dump_configuration configuration(formating, indent,
+      internal_dump_configuration configuration(formatting, indent,
         TJCHARPREFIX(","),
         TJCHARPREFIX(": "),
         TJCHARPREFIX("\""),
@@ -4530,7 +4583,7 @@ namespace TinyJSON
   const TJCHAR* TJValue::dump_string() const
   {
     free_last_dump();
-    internal_dump_configuration configuration(formating::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
+    internal_dump_configuration configuration(formatting::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
     internal_dump(configuration, nullptr);
     if (configuration._has_error)
     {
@@ -5456,7 +5509,7 @@ namespace TinyJSON
     if (number_of_elements > 0)
     {
       // only return if we have data.
-      if (configuration._formating == formating::indented)
+      if (configuration._formatting == formatting::indented)
       {
         if (!TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
         {
@@ -5488,7 +5541,7 @@ namespace TinyJSON
 #endif
         if (member->value()->is_comment())
         {
-          if (configuration._formating == formating::minify)
+          if (configuration._formatting == formatting::minify)
           {
             // skip comments when minifying
             continue;
@@ -5508,7 +5561,7 @@ namespace TinyJSON
             return;
           }
 
-          if (configuration._formating == formating::indented)
+          if (configuration._formatting == formatting::indented)
           {
             if (!TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
             {
@@ -5548,7 +5601,7 @@ namespace TinyJSON
           auto next_it = std::next(it);
           while (next_it != _members->end())
           {
-            if (configuration._formating != formating::minify || !(*next_it)->value()->is_comment())
+            if (configuration._formatting != formatting::minify || !(*next_it)->value()->is_comment())
             {
               more_items = true;
               break;
@@ -5559,7 +5612,7 @@ namespace TinyJSON
 #else
         for (unsigned int next_i = i + 1; next_i < size; ++next_i)
         {
-          if (configuration._formating != formating::minify || !_members->at(next_i)->value()->is_comment())
+          if (configuration._formatting != formatting::minify || !_members->at(next_i)->value()->is_comment())
           {
             more_items = true;
             break;
@@ -5576,7 +5629,7 @@ namespace TinyJSON
             return;
           }
         }
-        if (configuration._formating == formating::indented)
+        if (configuration._formatting == formatting::indented)
         {
           if (!TJHelper::add_char_to_string(TJ_ESCAPE_LINE_FEED, configuration._buffer, configuration._buffer_pos, configuration._buffer_max_length))
           {
@@ -5778,7 +5831,7 @@ namespace TinyJSON
     }
 
     delete[] value->_last_dump;
-    internal_dump_configuration configuration(formating::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
+    internal_dump_configuration configuration(formatting::minify, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false);
     value->internal_dump(configuration, nullptr);
     if (configuration._has_error)
     {
@@ -5941,7 +5994,7 @@ namespace TinyJSON
 #endif
         if (value->is_comment())
         {
-          if (configuration._formating == formating::minify)
+          if (configuration._formatting == formatting::minify)
           {
             // skip comments when minifying
             continue;
@@ -5993,7 +6046,7 @@ namespace TinyJSON
           auto next_it = std::next(it);
           while (next_it != _values->end())
           {
-            if (configuration._formating != formating::minify || !(*next_it)->is_comment())
+            if (configuration._formatting != formatting::minify || !(*next_it)->is_comment())
             {
               more_items = true;
               break;
@@ -6004,7 +6057,7 @@ namespace TinyJSON
 #else
         for (unsigned int next_i = i + 1; next_i < size; ++next_i)
         {
-          if (configuration._formating != formating::minify || !_values->at(next_i)->is_comment())
+          if (configuration._formatting != formatting::minify || !_values->at(next_i)->is_comment())
           {
             more_items = true;
             break;
@@ -6192,10 +6245,17 @@ namespace TinyJSON
 
   std::vector<long double> TJValueArray::get_floats() const
   {
+    const unsigned int count = get_number_of_items();
     std::vector<long double> values = {};
-    for (unsigned int i = 0; i < get_number_of_items(); ++i)
+    values.reserve(count);
+    const unsigned int elements_count = get_number_of_elements();
+    for (unsigned int i = 0; i < elements_count; ++i)
     {
-      auto value = at(i);
+      auto* value = element_at(i);
+      if (value->is_comment())
+      {
+        continue;
+      }
       if (!value->is_number())
       {
         ParseResult _parse_result(_parse_options);
@@ -6210,10 +6270,17 @@ namespace TinyJSON
 
   std::vector<long long> TJValueArray::get_numbers() const
   {
+    const unsigned int count = get_number_of_items();
     std::vector<long long> values = {};
-    for (unsigned int i = 0; i < get_number_of_items(); ++i)
+    values.reserve(count);
+    const unsigned int elements_count = get_number_of_elements();
+    for (unsigned int i = 0; i < elements_count; ++i)
     {
-      auto value = at(i);
+      auto* value = element_at(i);
+      if (value->is_comment())
+      {
+        continue;
+      }
       if (!value->is_number())
       {
         ParseResult _parse_result(_parse_options);
@@ -6296,6 +6363,38 @@ namespace TinyJSON
   {
     auto* objectString = new TJValueString(value, _parse_options);
     add_move(objectString);
+  }
+
+  void TJValueArray::remove_at(unsigned int index)
+  {
+    if (index >= get_number_of_items())
+    {
+      return;
+    }
+
+    unsigned int element_index = 0;
+    unsigned int current_item_index = 0;
+    auto size = _values->size();
+    for (unsigned int i = 0; i < size; ++i)
+    {
+      if (!_values->at(i)->is_comment())
+      {
+        if (current_item_index == index)
+        {
+          element_index = i;
+          break;
+        }
+        current_item_index++;
+      }
+    }
+
+#if TJ_INCLUDE_STDVECTOR == 1
+    delete (*_values)[element_index];
+    _values->erase(_values->begin() + element_index);
+#else
+    _values->remove_at(element_index);
+#endif
+    TJNumberedValues::reset_number_of_items();
   }
 
   ///////////////////////////////////////
@@ -6919,7 +7018,7 @@ namespace TinyJSON
   void TJValueComment::internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const
   {
     // If we are minifying, we don't want comments.
-    if (configuration._formating == formating::minify)
+    if (configuration._formatting == formatting::minify)
     {
       return;
     }
