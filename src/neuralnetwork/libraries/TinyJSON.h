@@ -42,10 +42,13 @@
 // v0.1.3 - added iterator.
 // v0.1.4 - added copy/move constructors and operators.
 // v0.2.0 - Breaking change: get_* methods no longer take throw parameters, use parse_options::strict instead.
+// v0.2.1 - added remove_at to TJValueArray.
+// v0.2.2 - added support for Json5 https://github.com/json5/
+// v0.2.3 - added atomic file saving
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 0;
-static const char TJ_VERSION_STRING[] = "0.2.0";
+static const short TJ_VERSION_PATCH = 3;
+static const char TJ_VERSION_STRING[] = "0.2.3";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -312,8 +315,8 @@ class TJDictionary;
     return rhs != lhs;
   }
 
-  // the various types of formating.
-  enum class formating
+  // the various types of formatting.
+  enum class formatting
   {
     minify,
     indented
@@ -396,9 +399,9 @@ class TJDictionary;
     bool throw_exception = false;
 
     /// <summary>
-    /// The formating type we want to use.
+    /// The formatting type we want to use.
     /// </summary>
-    formating write_formating = formating::indented;
+    formatting write_formatting = formatting::indented;
 
     /// <summary>
     /// The byte order mark we will be using.
@@ -536,7 +539,7 @@ class TJDictionary;
     virtual bool is_null() const;
     virtual bool is_comment() const;
 
-    const TJCHAR* dump(formating formating = formating::indented, const TJCHAR* indent = TJCHARPREFIX("  ")) const;
+    const TJCHAR* dump(formatting formatting = formatting::indented, const TJCHAR* indent = TJCHARPREFIX("  ")) const;
     const TJCHAR* dump_string() const;
 
     /// <summary>
@@ -768,7 +771,7 @@ class TJDictionary;
     /// Write a value to a file.
     /// </summary>
     /// <param name="file_path">The path of the file.</param>
-    /// <param name="root">the value we are writting</param>
+    /// <param name="root">the value we are writing</param>
     /// <param name="write_options">The options we will be using to write</param>
     /// <returns></returns>
     static bool write_file(const TJCHAR* file_path, const TJValue& root, const write_options& write_options = {});
@@ -787,7 +790,7 @@ class TJDictionary;
     /// Write a value to a file.
     /// </summary>
     /// <param name="file_path">The path of the file.</param>
-    /// <param name="root">the value we are writting</param>
+    /// <param name="root">the value we are writing</param>
     /// <param name="write_options">The options we will be using to write</param>
     /// <returns></returns>
     static bool internal_write_file(const TJCHAR* file_path, const TJValue& root, const write_options& write_options);
@@ -1491,6 +1494,12 @@ class TJDictionary;
     void add_boolean(bool value);
     void add_string(const char* value);
 
+    /// <summary>
+    /// Remove an item from the array at a certain location.
+    /// </summary>
+    /// <param name="index"></param>
+    void remove_at(unsigned int index);
+
     // Non-template overload for ambiguous case - default to long long
     inline void add_number(long long value)
     {
@@ -1735,7 +1744,7 @@ class TJDictionary;
     void internal_dump(internal_dump_configuration& configuration, const TJCHAR* current_indent) const override;
 
   private:
-    long long _number;
+    unsigned long long _number;
   };
 
   // A number JSon, float or int
@@ -1851,7 +1860,7 @@ class TJDictionary;
       //  exception will throw.
       return TJCHARPREFIX("");
     }
-    std::string json(tj->dump(formating::indented));
+    std::string json(tj->dump(formatting::indented));
     delete tj;
     return json;
   }  
@@ -1866,7 +1875,7 @@ class TJDictionary;
       //  exception will throw.
       return TJCHARPREFIX("");
     }
-    std::string json(tj->dump(formating::minify));
+    std::string json(tj->dump(formatting::minify));
     delete tj;
     return json;
   }

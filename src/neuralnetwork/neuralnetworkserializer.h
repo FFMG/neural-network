@@ -79,7 +79,7 @@ private:
   static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);
   static void load_weights(Layer& layer, const TinyJSON::TJValueObject& layer_object);
   static void add_options(const NeuralNetworkOptions& options, TinyJSON::TJValueObject& json);
-  static void add_final_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
+  static void add_training_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json);
   static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);
   static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails>& hidden_layers);
   static TinyJSON::TJValueArray* add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details);
