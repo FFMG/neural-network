@@ -22,13 +22,22 @@
   #endif
 #endif
 
-#include <limits>
+#include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <iostream>
-#include <cctype>
-#include <cstdio>
+#include <limits>
+
+
+#if defined(_WIN32)
+  #include <io.h>
+#else
+  #include <unistd.h>
+  #if defined(__APPLE__)
+    #include <fcntl.h>
+  #endif
+#endif
 
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
@@ -4198,8 +4207,8 @@ namespace TinyJSON
     TJHelper::copy_string(journal_suffix, tmp_file_path + file_path_length, journal_length);
     tmp_file_path[file_path_length + journal_length] = TJ_NULL_TERMINATOR;
 
-    //  try and open the temporary file...
-    std::ofstream outFile((const char*)tmp_file_path, std::ios::out | std::ios::binary);
+    //  try and open the temporary file using C-style FILE* for direct OS sync access
+    FILE* outFile = std::fopen((const char*)tmp_file_path, "wb");
     if (!outFile)
     {
       write_result.assign_exception_message("Unable to open file for writing.");
@@ -4211,10 +4220,10 @@ namespace TinyJSON
     if (write_result.options().byte_order_mark == write_options::utf8)
     {
       char utf8_marker[3]{ TJ_UTF8_BOM0, TJ_UTF8_BOM1, TJ_UTF8_BOM2 };
-      outFile.write(utf8_marker, 3);
-      if (!outFile)
+      if (std::fwrite(utf8_marker, 1, 3, outFile) != 3)
       {
         write_result.assign_exception_message("Unable to write UTF-8 BOM.");
+        std::fclose(outFile);
         delete[] tmp_file_path;
         write_result.throw_if_exception();
         return false;
@@ -4222,28 +4231,48 @@ namespace TinyJSON
     }
 
     auto length = TJHelper::string_length(json);
-    outFile.write((const char*)json, length * sizeof(TJCHAR));
-
-    if (!outFile)
+    if (std::fwrite(json, sizeof(TJCHAR), length, outFile) != length)
     {
       write_result.assign_exception_message("Unable to write to file.");
+      std::fclose(outFile);
       delete[] tmp_file_path;
       write_result.throw_if_exception();
       return false;
     }
 
-    outFile.flush();
-    if (!outFile)
+    // Flush C-runtime buffers to the OS
+    if (std::fflush(outFile) != 0)
     {
-      write_result.assign_exception_message("Unable to flush the file to disk.");
+      write_result.assign_exception_message("Unable to flush the C-runtime buffer.");
+      std::fclose(outFile);
       delete[] tmp_file_path;
       write_result.throw_if_exception();
       return false;
     }
 
-    outFile.close();
+    // Force the OS to flush its buffers to physical disk (Hardware Sync)
+    int fd = -1;
+#if defined(_WIN32)
+    fd = _fileno(outFile);
+    if (fd != -1 && _commit(fd) != 0)
+    {
+      // Optional: log error if sync fails
+    }
+#else
+    fd = fileno(outFile);
+    if (fd != -1)
+    {
+#if defined(__APPLE__)
+      // macOS specific: ensures data is physically written to the drive
+      if (fcntl(fd, F_FULLFSYNC) == -1) { /* handle error if critical */ }
+#else
+      // General POSIX
+      if (fsync(fd) == -1) { /* handle error if critical */ }
+#endif
+    }
+#endif
 
-    if (!outFile)
+    if (std::fclose(outFile) != 0)
     {
       write_result.assign_exception_message("Unable to close the file.");
       delete[] tmp_file_path;
