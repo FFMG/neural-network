@@ -45,10 +45,11 @@
 // v0.2.1 - added remove_at to TJValueArray.
 // v0.2.2 - added support for Json5 https://github.com/json5/
 // v0.2.3 - added atomic file saving
+// v0.2.4 - added operator[] and as<T>() accessors to TJValue
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 3;
-static const char TJ_VERSION_STRING[] = "0.2.3";
+static const short TJ_VERSION_PATCH = 4;
+static const char TJ_VERSION_STRING[] = "0.2.4";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -671,6 +672,36 @@ class TJDictionary;
       return get_vector_internal<V>(std::is_integral<V>());
     }
 
+    /// <summary>
+    /// Casting the value to a specific type.
+    /// it behaves exactly as the get() methods.
+    /// </summary>
+    /// <returns></returns>
+    template<typename T>
+    auto as() const -> decltype(this->get<T>())
+    {
+      return get<T>();
+    }
+
+    /// <summary>
+    /// Access a member of an object by its key.
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    const TJValue& operator[](const TJCHAR* key) const;
+
+#if TJ_INCLUDE_STD_STRING == 1
+    /// <summary>
+    /// Access a member of an object by its key.
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    const TJValue& operator[](const std::string& key) const;
+#endif
+
+  public:
+    static const TJValue& null_value();
+
   private:
     template<typename V>
     std::vector<V> get_vector_internal(std::true_type) const
@@ -819,6 +850,19 @@ class TJDictionary;
     const TJCHAR* name() const;
     const TJValue* value() const;
     TJValue* value();
+
+    /// <summary>
+    /// Casting the value to a specific type.
+    /// it behaves exactly as the get() methods.
+    /// </summary>
+    /// <returns></returns>
+    template<typename T>
+    auto as() const -> decltype(this->value()->template as<T>())
+    {
+      return value()->template as<T>();
+    }
+
+    static const TJMember& null_member();
 
   protected:
     /// <summary>
@@ -1227,7 +1271,8 @@ class TJDictionary;
     }
 #endif
 
-    TJMember* operator [](int idx) const;
+    const TJMember& operator [](int idx) const;
+    using TJValue::operator[];
     TJMember* at(int idx) const;
     TJMember* element_at(int idx) const;
 
@@ -1484,7 +1529,8 @@ class TJDictionary;
     /// <returns></returns>
     unsigned int get_number_of_elements() const;
 
-    TJValue* operator [](int idx) const;
+    const TJValue& operator [](int idx) const;
+    using TJValue::operator[];
     TJValue* at(int idx) const;
     TJValue* element_at(int idx) const;
 
