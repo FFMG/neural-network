@@ -508,8 +508,8 @@ public:
   inline static void gemv_add(const double* A, const double* x, double* y, size_t rows, size_t cols) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
-    size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
+    size_t i = 0;
     for (; i < rows; ++i)
     {
       const double* row_ptr = A + i * cols;
