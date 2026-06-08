@@ -905,6 +905,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
 
   double* grad_next_all_ptr = workspace.grad_from_next_all_t.data();
+  const double* next_w_data = next_layer.get_w_values().data();
 
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
@@ -929,18 +930,11 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         if (&next_layer == this)
         {
           // Identity mapping: next_grad_ptr is already dL/dh_{t+1}
-          for (size_t i = 0; i < N_this; ++i)
-          {
-            dest_ptr[i] += next_grad_ptr[i];
-          }
+          simd::add_vectors(next_grad_ptr, dest_ptr, N_this);
         }
         else
         {
-          for (size_t i = 0; i < N_this; ++i)
-          {
-            const double* next_w_row = next_layer.get_w_values().data() + i * N_next;
-            dest_ptr[i] += simd::dot_product(next_grad_ptr, next_w_row, N_next);
-          }
+          simd::gemv_add(next_w_data, next_grad_ptr, dest_ptr, N_this, N_next);
         }
       }
     }
@@ -974,17 +968,22 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       double* d_next_h_ptr = &d_next_h_ptr_all[b_idx * N_this];
 
       // Pre-calculate derivatives
-      std::vector<double> dh_hat_pre_deriv(N_this);
+      double* dh_hat_pre_deriv = &workspace.dh_hat_pre_deriv_buf[b_idx * N_this];
       const auto& act = get_activation();
       for (size_t j = 0; j < N_this; ++j)
       {
-        if (act.get_method() == activation::method::tanh) {
+        if (act.get_method() == activation::method::tanh)
+        {
           double h_hat = h_hat_ptr[j];
           dh_hat_pre_deriv[j] = 1.0 - h_hat * h_hat;
-        } else if (act.get_method() == activation::method::sigmoid) {
+        }
+        else if (act.get_method() == activation::method::sigmoid)
+        {
           double h_hat = h_hat_ptr[j];
           dh_hat_pre_deriv[j] = h_hat * (1.0 - h_hat);
-        } else {
+        }
+        else
+        {
           dh_hat_pre_deriv[j] = act.activate_derivative(h_hat_pre_vals[j]);
         }
       }
@@ -1001,7 +1000,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         &dz_ptr_all[b_idx * N_this],
         &dh_hat_ptr_all[b_idx * N_this],
         &dh_prev_accum_ptr_all[b_idx * N_this],
-        dh_hat_pre_deriv.data()
+        dh_hat_pre_deriv
       );
     }
 
@@ -1010,10 +1009,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
       const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
-      for (size_t k = 0; k < N_this; ++k)
-      {
-        temp_Uh_ptr_all[b_idx * N_this + k] = simd::dot_product(dh_hat_ptr, &_rw_values[k * N_this], N_this);
-      }
+      double* temp_Uh_ptr = &temp_Uh_ptr_all[b_idx * N_this];
+      simd::gemv_add(_rw_values.data(), dh_hat_ptr, temp_Uh_ptr, N_this, N_this);
     }
 
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
@@ -1042,20 +1039,16 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       // Now backpropagate to previous hidden state
       for (size_t k = 0; k < N_this; ++k)
       {
-        double grad_rh = temp_Uh_ptr[k];
-        double r = r_vals[k];
-        dh_next[k] = dh_prev_accum[k] + grad_rh * r +
-          simd::dot_product(dz_ptr, &_z_rw_values[k * N_this], N_this) +
-          simd::dot_product(dr_ptr, &_r_rw_values[k * N_this], N_this);
+        dh_next[k] = dh_prev_accum[k] + temp_Uh_ptr[k] * r_vals[k];
       }
+      simd::gemv_add(_z_rw_values.data(), dz_ptr, dh_next, N_this, N_this);
+      simd::gemv_add(_r_rw_values.data(), dr_ptr, dh_next, N_this, N_this);
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      for (size_t k = 0; k < N_prev; ++k)
-      {
-        dx_t[k] = simd::dot_product(dz_ptr, &_z_w_values[k * N_this], N_this) + 
-                  simd::dot_product(dr_ptr, &_r_w_values[k * N_this], N_this) + 
-                  simd::dot_product(dh_hat_ptr, &_w_values[k * N_this], N_this);
-      }
+      std::fill_n(dx_t, N_prev, 0.0);
+      simd::gemv_add(_z_w_values.data(), dz_ptr, dx_t, N_prev, N_this);
+      simd::gemv_add(_r_w_values.data(), dr_ptr, dx_t, N_prev, N_this);
+      simd::gemv_add(_w_values.data(), dh_hat_ptr, dx_t, N_prev, N_this);
 
       double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);

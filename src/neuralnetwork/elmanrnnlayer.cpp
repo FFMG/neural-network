@@ -588,6 +588,7 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   const size_t N_next = next_layer.get_number_neurons();
   const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
 
+  const double* next_w_data = next_layer.get_w_values().data();
   for (size_t b = start; b < end; ++b)
   {
     const size_t b_idx = b - start;
@@ -602,11 +603,7 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
       }
       const double* g_next_t = next_is_seq ? &next_grads_base[t * N_next] : next_grads_base;
       double* dest_t = &dest_base[t * N_this];
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        const double* next_w_row = next_layer.get_w_values().data() + j * N_next;
-        dest_t[j] += simd::dot_product(g_next_t, next_w_row, N_next);
-      }
+      simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
     }
   }
 
@@ -632,16 +629,11 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
       // Calculate dX_t
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      for (size_t k = 0; k < N_prev; ++k)
-      {
-        dx_t[k] = simd::dot_product(g_this_tick, &get_w_values()[k * N_this], N_this);
-      }
+      std::fill(dx_t, dx_t + N_prev, 0.0);
+      simd::gemv_add(get_w_values().data(), g_this_tick, dx_t, N_prev, N_this);
 
       std::fill(dh_next, dh_next + N_this, 0.0);
-      for (size_t k = 0; k < N_this; ++k)
-      {
-        dh_next[k] = simd::dot_product(g_this_tick, &_rw_values[k * N_this], N_this);
-      }
+      simd::gemv_add(_rw_values.data(), g_this_tick, dh_next, N_this, N_this);
     }
   }
 
