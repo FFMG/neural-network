@@ -553,6 +553,7 @@ private:
     AlignedVector chunk_dh_prev_accum;
     AlignedVector h_hat_vals;
     AlignedVector temp_Uh_T_dh_hat;
+    AlignedVector dh_hat_pre_deriv_buf;
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
@@ -566,6 +567,7 @@ private:
       chunk_dh_prev_accum.assign(batch_chunk_size * n, 0.0);
       h_hat_vals.assign(n, 0.0);
       temp_Uh_T_dh_hat.assign(batch_chunk_size * n, 0.0);
+      dh_hat_pre_deriv_buf.assign(batch_chunk_size * n, 0.0);
     }
   };
 

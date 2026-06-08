@@ -480,3 +480,62 @@ TEST(SimdUtilsTest, VariousSizes) {
     EXPECT_NEAR(actual_dot, expected_dot, EPSILON) << "at size " << n;
   }
 }
+
+TEST(SimdUtilsTest, GemvAdd)
+{
+  std::vector<size_t> rows_list = { 1, 2, 3, 4, 7, 8 };
+  std::vector<size_t> cols_list = { 1, 2, 3, 4, 7, 8, 15, 16 };
+  for (size_t rows : rows_list)
+  {
+    for (size_t cols : cols_list)
+    {
+      std::vector<double> A(rows * cols);
+      for (size_t i = 0; i < A.size(); ++i)
+      {
+        A[i] = static_cast<double>(i) * 0.1;
+      }
+      std::vector<double> x(cols);
+      for (size_t i = 0; i < cols; ++i)
+      {
+        x[i] = static_cast<double>(i) * 0.5 + 1.0;
+      }
+      std::vector<double> y(rows, 2.0);
+      std::vector<double> expected_y = y;
+
+      // Calculate expected
+      for (size_t i = 0; i < rows; ++i)
+      {
+        double sum = 0.0;
+        for (size_t j = 0; j < cols; ++j)
+        {
+          sum += A[i * cols + j] * x[j];
+        }
+        expected_y[i] += sum;
+      }
+
+      simd::gemv_add(A.data(), x.data(), y.data(), rows, cols);
+      expect_vec_near(y, expected_y);
+    }
+  }
+}
+
+TEST(SimdUtilsTest, AddVectors)
+{
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16 };
+  for (size_t n : sizes)
+  {
+    std::vector<double> x(n);
+    std::vector<double> y(n, 5.0);
+    for (size_t i = 0; i < n; ++i)
+    {
+      x[i] = static_cast<double>(i) * 1.5;
+    }
+    std::vector<double> expected_y = y;
+    for (size_t i = 0; i < n; ++i)
+    {
+      expected_y[i] += x[i];
+    }
+    simd::add_vectors(x.data(), y.data(), n);
+    expect_vec_near(y, expected_y);
+  }
+}

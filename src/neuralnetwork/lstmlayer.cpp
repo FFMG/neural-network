@@ -898,15 +898,21 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
   const size_t N_next = next_layer.get_number_neurons();
   const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
 
-  for (size_t b = start; b < end; ++b) {
+  const double* next_w_data = next_layer.get_w_values().data();
+  for (size_t b = start; b < end; ++b)
+  {
     const size_t b_idx = b - start;
     const double* next_grads_base = batch_next_grad_matrix[b].data();
     double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
-    for (int t = t_start; t >= t_end; --t) {
-      if (!next_is_seq && t < t_start) continue;
+    for (int t = t_start; t >= t_end; --t)
+    {
+      if (!next_is_seq && t < t_start)
+      {
+        continue;
+      }
       const double* g_next_t = next_is_seq ? &next_grads_base[t * N_next] : next_grads_base;
       double* dest_t = &dest_base[t * N_this];
-      for (size_t j = 0; j < N_this; ++j) dest_t[j] += simd::dot_product(g_next_t, next_layer.get_w_values().data() + j * N_next, N_next);
+      simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
     }
   }
 
@@ -997,12 +1003,17 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       );
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      for (size_t k = 0; k < N_prev; ++k)
-        dx_t[k] = simd::dot_product(df_chunk, &_f_w_values[k * N_this], N_this) + simd::dot_product(di_chunk, &_i_w_values[k * N_this], N_this) + simd::dot_product(do_chunk, &_o_w_values[k * N_this], N_this) + simd::dot_product(dg_chunk, &_w_values[k * N_this], N_this);
+      std::fill(dx_t, dx_t + N_prev, 0.0);
+      simd::gemv_add(_f_w_values.data(), df_chunk, dx_t, N_prev, N_this);
+      simd::gemv_add(_i_w_values.data(), di_chunk, dx_t, N_prev, N_this);
+      simd::gemv_add(_o_w_values.data(), do_chunk, dx_t, N_prev, N_this);
+      simd::gemv_add(_w_values.data(), dg_chunk, dx_t, N_prev, N_this);
 
       std::fill(dh_next, dh_next + N_this, 0.0);
-      for (size_t k = 0; k < N_this; ++k)
-        dh_next[k] = simd::dot_product(df_chunk, &_f_rw_values[k * N_this], N_this) + simd::dot_product(di_chunk, &_i_rw_values[k * N_this], N_this) + simd::dot_product(do_chunk, &_o_rw_values[k * N_this], N_this) + simd::dot_product(dg_chunk, &_rw_values[k * N_this], N_this);
+      simd::gemv_add(_f_rw_values.data(), df_chunk, dh_next, N_this, N_this);
+      simd::gemv_add(_i_rw_values.data(), di_chunk, dh_next, N_this, N_this);
+      simd::gemv_add(_o_rw_values.data(), do_chunk, dh_next, N_this, N_this);
+      simd::gemv_add(_rw_values.data(), dg_chunk, dh_next, N_this, N_this);
 
       double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);

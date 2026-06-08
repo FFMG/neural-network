@@ -488,4 +488,81 @@ public:
       j
     );
   }
+
+  // Scalar fallback for gemv_add
+  inline static void scalar_gemv_add(const double* A, const double* x, double* y, size_t rows, size_t cols) noexcept
+  {
+    for (size_t i = 0; i < rows; ++i)
+    {
+      const double* row_ptr = A + i * cols;
+      double sum = 0.0;
+      for (size_t j = 0; j < cols; ++j)
+      {
+        sum += row_ptr[j] * x[j];
+      }
+      y[i] += sum;
+    }
+  }
+
+  // Row-major matrix-vector multiplication (y += A * x)
+  inline static void gemv_add(const double* A, const double* x, double* y, size_t rows, size_t cols) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; i < rows; ++i)
+    {
+      const double* row_ptr = A + i * cols;
+      double sum = 0.0;
+      size_t j = 0;
+      __m256d vec_sum = _mm256_setzero_pd();
+      for (; j + 3 < cols; j += 4)
+      {
+        __m256d vec_a = _mm256_loadu_pd(row_ptr + j);
+        __m256d vec_b = _mm256_loadu_pd(x + j);
+#ifdef __FMA__
+        vec_sum = _mm256_fmadd_pd(vec_a, vec_b, vec_sum);
+#else
+        vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_a, vec_b));
+#endif
+      }
+      double sums[4];
+      _mm256_storeu_pd(sums, vec_sum);
+      sum = sums[0] + sums[1] + sums[2] + sums[3];
+      for (; j < cols; ++j)
+      {
+        sum += row_ptr[j] * x[j];
+      }
+      y[i] += sum;
+    }
+#else
+    scalar_gemv_add(A, x, y, rows, cols);
+#endif
+  }
+
+  // Scalar fallback for add_vectors
+  inline static void scalar_add_vectors(const double* x, double* y, size_t n, size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y[j] += x[j];
+    }
+  }
+
+  // Vector-vector addition (y += x)
+  inline static void add_vectors(const double* x, double* y, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_x = _mm256_loadu_pd(x + j);
+      __m256d vec_y = _mm256_loadu_pd(y + j);
+      vec_y = _mm256_add_pd(vec_y, vec_x);
+      _mm256_storeu_pd(y + j, vec_y);
+    }
+#endif
+    scalar_add_vectors(x, y, n, j);
+  }
 };
