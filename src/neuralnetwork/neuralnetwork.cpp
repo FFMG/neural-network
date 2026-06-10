@@ -744,10 +744,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   double per_boost_ratio = 0.0;
   if (boost_ratio > 0.0 && boost_every_percent > 0.0)
   {
-    boost_interval = static_cast<int>(std::round(boost_every_percent * number_of_epoch));
+    boost_interval = static_cast<int>(std::round(boost_every_percent * number_of_epoch_after_decay));
     if (boost_interval > 0)
     {
-      auto total_boosts = number_of_epoch / boost_interval;
+      auto total_boosts = number_of_epoch_after_decay / boost_interval;
       if (total_boosts > 0)
       {
         per_boost_ratio = boost_ratio / total_boosts;
