@@ -399,12 +399,12 @@ TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
   nn.train(inputs, outputs);
 
   auto captured_rates = capture.get_rates();
-  // Ensure that rates persist on intermediate non-update epochs
-  for (int epoch = 6; epoch <= 9; ++epoch)
+  // Ensure that rates persist on intermediate non-update epochs after the first scheduler update is collected
+  for (int epoch = 11; epoch <= 14; ++epoch)
   {
-    if (captured_rates.count(epoch) && captured_rates.count(5))
+    if (captured_rates.count(epoch) && captured_rates.count(10))
     {
-      EXPECT_DOUBLE_EQ(captured_rates[epoch], captured_rates[5])
+      EXPECT_DOUBLE_EQ(captured_rates[epoch], captured_rates[10])
         << "Shortcut failed: intermediate epoch rate mutated from update epoch rate.";
     }
   }
