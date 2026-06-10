@@ -255,6 +255,69 @@ TEST_F(LearningRateTest, BoostAppliedCorrectly) {
   }
 }
 
+TEST_F(LearningRateTest, BoostWithWarmupAppliedCorrectly)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  double start_lr = 0.0;
+  double target_lr = 0.1;
+  double warmup_target = 0.2; // 20% of epochs (epoch 20 out of 100)
+  double restart_rate = 0.5; // Every 50% of progress
+  double restart_boost = 0.2; // Total 20% boost
+  int epochs = 100;
+
+  LrCapture capture;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(target_lr)
+    .with_learning_rate_warmup(start_lr, warmup_target)
+    .with_learning_rate_boost_rate(restart_rate, restart_boost)
+    .with_number_of_epoch(epochs)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& h)
+    {
+      return capture.callback(h);
+    })
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  int warmup_epochs = static_cast<int>(std::round(warmup_target * epochs));
+  int boost_interval = static_cast<int>(std::round(restart_rate * epochs));
+  int total_boosts = epochs / boost_interval;
+  double per_boost_ratio = restart_boost / total_boosts;
+
+  auto captured_rates = capture.get_rates();
+  ASSERT_FALSE(captured_rates.empty());
+
+  for (auto const& [epoch, rate] : captured_rates)
+  {
+    double completed_percent = static_cast<double>(epoch) / epochs;
+    if (completed_percent < warmup_target)
+    {
+      // Warmup phase (linear)
+      double ratio = completed_percent / warmup_target;
+      double expected = start_lr + (target_lr - start_lr) * ratio;
+      EXPECT_NEAR(rate, expected, 1e-7) << "Warmup fail at epoch " << epoch;
+    }
+    else
+    {
+      // Boost phase (should use relative_epoch = epoch - warmup_epochs)
+      int relative_epoch = epoch - warmup_epochs;
+      int cycle_pos = relative_epoch % boost_interval;
+      double progress = static_cast<double>(cycle_pos) / boost_interval;
+      double cosine_multiplier = (1.0 - std::cos(progress * M_PI)) / 2.0;
+      double current_boost = per_boost_ratio * cosine_multiplier;
+      double completed_cycles = relative_epoch / boost_interval;
+      double cumulative_boost = completed_cycles * per_boost_ratio;
+      double expected = target_lr * (1.0 + cumulative_boost + current_boost);
+      EXPECT_NEAR(rate, expected, 1e-7) << "Boost (with Warmup) fail at epoch " << epoch;
+    }
+  }
+}
+
 TEST_F(LearningRateTest, AdaptiveLearningRatePersistsBetweenUpdates) {
   std::vector<std::vector<double>> inputs, outputs;
   get_simple_test_data(inputs, outputs);
