@@ -465,41 +465,52 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     read_lock = std::shared_lock<std::shared_mutex>(_mutex);
   }
 
-  // Use thread_local vectors to reuse allocations across calls and avoid heap overhead
-  thread_local std::vector<GradientsAndOutputs> temp_gradients;
-  thread_local std::vector<HiddenStates> temp_hidden_states;
+  // Use thread_local cache to reuse allocations across calls and avoid heap overhead
+  thread_local struct EvaluationCache
+  {
+    std::vector<unsigned> topology;
+    std::vector<GradientsAndOutputs> gradients;
+    std::vector<HiddenStates> hidden_states;
+  } cache;
 
   const auto& topology = get_topology();
-  if (temp_gradients.size() != prediction_size)
+  if (cache.topology != topology)
   {
-    temp_gradients.resize(prediction_size, GradientsAndOutputs(topology));
+    cache.topology = topology;
+    cache.gradients.clear();
+    cache.hidden_states.clear();
   }
-  if (temp_hidden_states.size() != prediction_size)
+
+  if (cache.gradients.size() != prediction_size)
   {
-    temp_hidden_states.resize(prediction_size, HiddenStates(topology));
+    cache.gradients.resize(prediction_size, GradientsAndOutputs(topology));
+  }
+  if (cache.hidden_states.size() != prediction_size)
+  {
+    cache.hidden_states.resize(prediction_size, HiddenStates(topology));
   }
 
   for (size_t i = 0; i < prediction_size; ++i)
   {
-    temp_gradients[i].zero();
-    temp_hidden_states[i].zero();
+    cache.gradients[i].zero();
+    cache.hidden_states[i].zero();
   }
 
   std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
 
-  calculate_forward_feed_for_forecast_metrics(temp_gradients, training_inputs, sub_indices, target_layers, temp_hidden_states, false);
+  calculate_forward_feed_for_forecast_metrics(cache.gradients, training_inputs, sub_indices, target_layers, cache.hidden_states, false);
 
   for (size_t i = 0; i < prediction_size; ++i)
   {
     const unsigned last_layer_index = static_cast<unsigned>(target_layers.size() - 1);
-    const auto& rnn_out = temp_gradients[i].get_rnn_outputs(last_layer_index);
+    const auto& rnn_out = cache.gradients[i].get_rnn_outputs(last_layer_index);
     if (!rnn_out.empty())
     {
       predictions.push_back(rnn_out);
     }
     else
     {
-      predictions.push_back(temp_gradients[i].output_back());
+      predictions.push_back(cache.gradients[i].output_back());
     }
     checking_outputs.push_back(training_outputs[sub_indices[i]]);
   }
@@ -876,27 +887,38 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
   std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
   calibration_indices.resize(num_samples);
 
-  // Use thread_local vectors to reuse allocations across calls and avoid heap overhead
-  thread_local std::vector<GradientsAndOutputs> temp_grads;
-  thread_local std::vector<HiddenStates> temp_hidden_states;
+  // Use thread_local cache to reuse allocations across calls and avoid heap overhead
+  thread_local struct TempCache
+  {
+    std::vector<unsigned> topology;
+    std::vector<GradientsAndOutputs> grads;
+    std::vector<HiddenStates> hidden_states;
+  } cache;
 
   const auto& topology = get_topology();
-  if (temp_grads.size() != num_samples)
+  if (cache.topology != topology)
   {
-    temp_grads.resize(num_samples, GradientsAndOutputs(topology));
+    cache.topology = topology;
+    cache.grads.clear();
+    cache.hidden_states.clear();
   }
-  if (temp_hidden_states.size() != num_samples)
+
+  if (cache.grads.size() != num_samples)
   {
-    temp_hidden_states.resize(num_samples, HiddenStates(topology));
+    cache.grads.resize(num_samples, GradientsAndOutputs(topology));
+  }
+  if (cache.hidden_states.size() != num_samples)
+  {
+    cache.hidden_states.resize(num_samples, HiddenStates(topology));
   }
 
   for (size_t i = 0; i < num_samples; ++i)
   {
-    temp_grads[i].zero();
-    temp_hidden_states[i].zero();
+    cache.grads[i].zero();
+    cache.hidden_states[i].zero();
   }
 
-  calculate_forward_feed_for_forecast_metrics(temp_grads, training_inputs, calibration_indices, _layers, temp_hidden_states, true);
+  calculate_forward_feed_for_forecast_metrics(cache.grads, training_inputs, calibration_indices, _layers, cache.hidden_states, true);
 
   const unsigned last_layer_index = static_cast<unsigned>(layer_container.size() - 1);
 
@@ -912,7 +934,7 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
 
     for (size_t i = 0; i < num_samples; ++i)
     {
-      const auto& pre_act = temp_hidden_states[i].at(last_layer_index)[0].get_pre_activation_sums();
+      const auto& pre_act = cache.hidden_states[i].at(last_layer_index)[0].get_pre_activation_sums();
       std::vector<double> head_logits(pre_act.begin() + range.start, pre_act.begin() + range.end);
       
       const auto& head_targets = training_outputs[calibration_indices[i]];
