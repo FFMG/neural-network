@@ -491,6 +491,45 @@ void NeuralNetwork::train_single_batch(
 void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+
+  const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
+  const auto& is_shuffled = _options.shuffle_bptt_batches();
+
+  if (!bptt_inputs.empty())
+  {
+    if (bptt_size_option <= 1 || !_options.enable_bptt())
+    {
+      return;
+    }
+    if (is_shuffled)
+    {
+      const size_t n = bptt_inputs.size();
+      std::vector<size_t> indices(n);
+      for (size_t i = 0; i < n; ++i)
+      {
+        indices[i] = i;
+      }
+
+      thread_local std::mt19937 g(std::random_device{}());
+      std::shuffle(indices.begin(), indices.end(), g);
+
+      std::vector<std::vector<double>> shuffled_inputs;
+      shuffled_inputs.reserve(n);
+      std::vector<std::vector<double>> shuffled_outputs;
+      shuffled_outputs.reserve(n);
+
+      for (size_t idx : indices)
+      {
+        shuffled_inputs.push_back(std::move(bptt_inputs[idx]));
+        shuffled_outputs.push_back(std::move(bptt_outputs[idx]));
+      }
+
+      bptt_inputs = std::move(shuffled_inputs);
+      bptt_outputs = std::move(shuffled_outputs);
+    }
+    return;
+  }
+
   bptt_inputs.clear();
   bptt_outputs.clear();
 
@@ -503,8 +542,6 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   {
     Logger::panic("The training input data size does not match the output data size!");
   }
-
-  const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
 
   // If BPTT is disabled or sequence length is 1, return single steps
   if (bptt_size_option <= 1 || !_options.enable_bptt())
@@ -526,7 +563,6 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     bptt_size = total_samples;
   }
 
-  const auto& is_shuffled = _options.shuffle_bptt_batches();
   const size_t input_size = inputs[0].size();
   const size_t output_size = outputs[0].size();
 
@@ -541,8 +577,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   if (is_shuffled)
   {
     std::vector<size_t> shuffled_indices = start_indices;
-    std::random_device rd;
-    std::mt19937 g(rd());
+    thread_local std::mt19937 g(std::random_device{}());
     std::shuffle(shuffled_indices.begin(), shuffled_indices.end(), g);
     start_indices = std::move(shuffled_indices);
   }
