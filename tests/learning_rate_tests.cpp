@@ -159,6 +159,61 @@ TEST_F(LearningRateTest, ExponentialDecayAppliedCorrectly) {
   }
 }
 
+TEST_F(LearningRateTest, ExponentialDecayWithWarmupAppliedCorrectly)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  double start_lr = 0.0;
+  double target_lr = 0.1;
+  double warmup_target = 0.2; // 20% of epochs (epoch 20 out of 100)
+  double decay_rate_opt = 0.5; // End at 50% of target at the end of post-warmup
+  int epochs = 100;
+
+  LrCapture capture;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(target_lr)
+    .with_learning_rate_warmup(start_lr, warmup_target)
+    .with_learning_rate_decay_rate(decay_rate_opt)
+    .with_number_of_epoch(epochs)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& h)
+    {
+      return capture.callback(h);
+    })
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  int warmup_epochs = static_cast<int>(std::round(warmup_target * epochs));
+  int number_of_epoch_after_decay = epochs - warmup_epochs;
+  double lr_decay_rate = std::log(1.0 / decay_rate_opt) / number_of_epoch_after_decay;
+
+  auto captured_rates = capture.get_rates();
+  ASSERT_FALSE(captured_rates.empty());
+
+  for (auto const& [epoch, rate] : captured_rates)
+  {
+    double completed_percent = static_cast<double>(epoch) / epochs;
+    if (completed_percent < warmup_target)
+    {
+      // Warmup phase (linear)
+      double ratio = completed_percent / warmup_target;
+      double expected = start_lr + (target_lr - start_lr) * ratio;
+      EXPECT_NEAR(rate, expected, 1e-7) << "Warmup fail at epoch " << epoch;
+    }
+    else
+    {
+      // Decay phase (should use epoch - warmup_epochs)
+      int relative_epoch = epoch - warmup_epochs;
+      double expected = target_lr * std::exp(-lr_decay_rate * relative_epoch);
+      EXPECT_NEAR(rate, expected, 1e-7) << "Exponential Decay (with Warmup) fail at epoch " << epoch;
+    }
+  }
+}
+
 TEST_F(LearningRateTest, BoostAppliedCorrectly) {
   std::vector<std::vector<double>> inputs, outputs;
   get_simple_test_data(inputs, outputs);

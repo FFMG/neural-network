@@ -1090,7 +1090,9 @@ double NeuralNetwork::calculate_learning_rate(
     // this is done after warmup
     if (learning_rate_decay_rate != 0)
     {
-      learning_rate = learning_rate * std::exp(-learning_rate_decay_rate * epoch);
+      const int warmup_epochs = static_cast<int>(std::round(_options.learning_rate_warmup_target() * number_of_epoch));
+      const int relative_epoch = epoch - warmup_epochs;
+      learning_rate = learning_rate * std::exp(-learning_rate_decay_rate * relative_epoch);
       Logger::trace([=] 
         {
           return Logger::factory("Learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), (double)(completed_percent * 100.0), "%)");
