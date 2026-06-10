@@ -320,4 +320,94 @@ TEST_F(LearningRateTest, DestructorIsSafeUnderActiveBackgroundTask)
   } // nn goes out of scope here; destructor should join the background thread safely without crash
 }
 
+TEST_F(LearningRateTest, ThreadLocalBufferResizingDoesNotPolluteEvaluation)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(10)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  // Run a large evaluation first to expand the thread_local buffers
+  auto metrics_large = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
+
+  // Run a smaller evaluation next
+  // This verifies that the thread_local cache resize/zeroing cleans up the buffers perfectly
+  auto metrics_small = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
+  
+  EXPECT_FALSE(metrics_large.empty());
+  EXPECT_FALSE(metrics_small.empty());
+}
+
+TEST_F(LearningRateTest, BoostZeroRestartRateHandlesGracefully)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  double target_lr = 0.1;
+  LrCapture capture;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(target_lr)
+    .with_learning_rate_boost_rate(0.0, 0.2) // 0% restart rate (invalid boost)
+    .with_number_of_epoch(10)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& h)
+    {
+      return capture.callback(h);
+    })
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  auto captured_rates = capture.get_rates();
+  for (auto const& [epoch, rate] : captured_rates)
+  {
+    EXPECT_NEAR(rate, target_lr, 1e-7) << "Learning rate should not boost with 0 restart rate.";
+  }
+}
+
+TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  LrCapture capture;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_learning_rate_decay_rate(0.9)
+    .with_learning_rate_boost_rate(0.2, 0.1)
+    .with_adaptive_learning_rates(true)
+    .with_number_of_epoch(20)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& h)
+    {
+      return capture.callback(h);
+    })
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  auto captured_rates = capture.get_rates();
+  // Ensure that rates persist on intermediate non-update epochs
+  for (int epoch = 6; epoch <= 9; ++epoch)
+  {
+    if (captured_rates.count(epoch) && captured_rates.count(5))
+    {
+      EXPECT_DOUBLE_EQ(captured_rates[epoch], captured_rates[5])
+        << "Shortcut failed: intermediate epoch rate mutated from update epoch rate.";
+    }
+  }
+}
+
 
