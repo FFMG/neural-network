@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <string>
@@ -75,6 +76,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (this != &src)
   {
+    _adaptive_lr_task.stop();
     // to remain c++99 compliant we will not use std::scoped_lock
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
     std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
@@ -103,6 +105,8 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (this != &src)
   {
+    _adaptive_lr_task.stop();
+    src._adaptive_lr_task.stop();
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
     std::unique_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
     std::lock(lhs_lock, rhs_lock);
@@ -130,6 +134,7 @@ NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
+  _adaptive_lr_task.stop();
   delete _neural_network_helper;
   _neural_network_helper = nullptr;
 }
@@ -377,17 +382,28 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
 
 std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
 {
-  (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto results = calculate_forecast_metrics_all_layers(error_types, false);
-  if (results.empty())
-  {
-    return {};
-  }
-  return results.front();
+  return calculate_forecast_metrics_impl(error_types, final_check, nullptr);
 }
 
 std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return calculate_forecast_metrics_all_layers_impl(error_types, final_check, nullptr);
+}
+
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  auto results = calculate_forecast_metrics_all_layers_impl(error_types, false, layers);
+  if (results.size() > 0)
+  {
+    return results[0];
+  }
+  return {};
+}
+
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const
 {
   (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -441,41 +457,45 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   predictions.reserve(prediction_size);
   checking_outputs.reserve(prediction_size);
 
+  const Layers& target_layers = (layers != nullptr) ? *layers : _layers;
+
+  std::shared_lock<std::shared_mutex> read_lock;
+  if (layers == nullptr)
   {
-    std::shared_lock read(_mutex);
-
-    // Use fresh, local vectors instead of the pool to ensure isolation.
-    std::vector<GradientsAndOutputs> temp_gradients;
-    std::vector<HiddenStates> temp_hidden_states;
-    temp_gradients.reserve(prediction_size);
-    temp_hidden_states.reserve(prediction_size);
-    while (temp_gradients.size() < prediction_size)
-    {
-      temp_gradients.emplace_back(get_topology());
-      temp_hidden_states.emplace_back(get_topology());
-    }
-
-    std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
-
-    calculate_forward_feed_for_forecast_metrics(temp_gradients, training_inputs, sub_indices, _layers, temp_hidden_states, false);
-
-    for (size_t i = 0; i < prediction_size; ++i)
-    {
-      const unsigned last_layer_index = static_cast<unsigned>(_layers.size() - 1);
-      const auto& rnn_out = temp_gradients[i].get_rnn_outputs(last_layer_index);
-      if (!rnn_out.empty())
-      {
-        predictions.push_back(rnn_out);
-      }
-      else
-      {
-        predictions.push_back(temp_gradients[i].output_back());
-      }
-      checking_outputs.push_back(training_outputs[sub_indices[i]]);
-    }
+    read_lock = std::shared_lock<std::shared_mutex>(_mutex);
   }
 
-  return _layers.output_layer().calculate_output_metrics(error_types, checking_outputs, predictions);
+  // Use fresh, local vectors instead of the pool to ensure isolation.
+  std::vector<GradientsAndOutputs> temp_gradients;
+  std::vector<HiddenStates> temp_hidden_states;
+  temp_gradients.reserve(prediction_size);
+  temp_hidden_states.reserve(prediction_size);
+  while (temp_gradients.size() < prediction_size)
+  {
+    temp_gradients.emplace_back(get_topology());
+    temp_hidden_states.emplace_back(get_topology());
+  }
+
+  std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
+
+  calculate_forward_feed_for_forecast_metrics(temp_gradients, training_inputs, sub_indices, target_layers, temp_hidden_states, false);
+
+  for (size_t i = 0; i < prediction_size; ++i)
+  {
+    const unsigned last_layer_index = static_cast<unsigned>(target_layers.size() - 1);
+    const auto& rnn_out = temp_gradients[i].get_rnn_outputs(last_layer_index);
+    if (!rnn_out.empty())
+    {
+      predictions.push_back(rnn_out);
+    }
+    else
+    {
+      predictions.push_back(temp_gradients[i].output_back());
+    }
+    checking_outputs.push_back(training_outputs[sub_indices[i]]);
+  }
+
+  return target_layers.output_layer().calculate_output_metrics(error_types, checking_outputs, predictions);
 }
 
 void NeuralNetwork::train_single_batch(
@@ -485,6 +505,7 @@ void NeuralNetwork::train_single_batch(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
   _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
 
@@ -666,10 +687,13 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // add a log message.
   log_training_info(training_inputs, training_outputs);
 
-  // Reset optimizer state for all layers
-  for (unsigned int i = 0; i < _layers.size(); ++i)
   {
-    _layers[i].reset_optimizer_state();
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    // Reset optimizer state for all layers
+    for (unsigned int i = 0; i < _layers.size(); ++i)
+    {
+      _layers[i].reset_optimizer_state();
+    }
   }
 
   // build the training output batch so we can use it for error calculations
@@ -695,7 +719,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
-  _layers.cache_recurrent_weights();
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    _layers.cache_recurrent_weights();
+  }
 
   std::vector<std::vector<double>> bptt_in;
   std::vector<std::vector<double>> bptt_out;
@@ -788,6 +815,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
   // 1. Identify which heads use softmax
   const auto& layer_container = get_layers();
   const auto& last_layer = layer_container.output_layer();
@@ -1030,9 +1058,14 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
           _last_metrics = _adaptive_lr_task.get();
         }
 
+        // Copy layers to pass to the background task to ensure thread safety
+        std::shared_lock<std::shared_mutex> read_lock(_mutex);
+        auto copied_layers = std::make_shared<Layers>(_layers);
+        read_lock.unlock();
+
         // start a new task
-        _adaptive_lr_task.call([this]() {
-          return calculate_forecast_metrics({ ErrorCalculation::type::rmse }, false);
+        _adaptive_lr_task.call([this, copied_layers]() {
+          return calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, copied_layers.get());
           });
       }
 

@@ -105,6 +105,9 @@ private:
   double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate) const;
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const;
+
   void recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
   bool CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const;
