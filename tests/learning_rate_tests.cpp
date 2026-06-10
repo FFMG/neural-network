@@ -7,6 +7,9 @@
 #include <map>
 #include <cmath>
 #include <mutex>
+#include <thread>
+#include <atomic>
+#include <chrono>
 
 using namespace test_helper;
 
@@ -242,6 +245,79 @@ TEST_F(LearningRateTest, AdaptiveLearningRatePersistsBetweenUpdates) {
             << "Rate reverted to base in epoch " << next_epoch << " after change in " << change_epoch;
     }
   }
+}
+
+TEST_F(LearningRateTest, ConcurrentThinkDuringTrainingIsThreadSafe)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  int epochs = 100;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(epochs)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+
+  std::atomic<bool> training_done(false);
+
+  std::vector<std::thread> readers;
+  for (int i = 0; i < 4; ++i)
+  {
+    readers.emplace_back([&]()
+    {
+      std::vector<double> test_input = { 0.5, 0.5 };
+      while (!training_done.load())
+      {
+        auto result = nn.think(test_input);
+        EXPECT_EQ(result.size(), 1);
+        std::this_thread::yield();
+      }
+    });
+  }
+
+  nn.train(inputs, outputs);
+  training_done.store(true);
+
+  for (auto& reader : readers)
+  {
+    if (reader.joinable())
+    {
+      reader.join();
+    }
+  }
+}
+
+TEST_F(LearningRateTest, DestructorIsSafeUnderActiveBackgroundTask)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  int epochs = 100;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_adaptive_learning_rates(true)
+    .with_learning_rate_warmup(0.01, 0.05) // warmup ends at 5% (epoch 5)
+    .with_number_of_epoch(epochs)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& h)
+    {
+      if (h.epoch() > 5)
+      {
+        return false; // Abort training while background task is running
+      }
+      return true;
+    })
+    .build();
+
+  {
+    NeuralNetwork nn = create_test_nn(options);
+    nn.train(inputs, outputs);
+  } // nn goes out of scope here; destructor should join the background thread safely without crash
 }
 
 
