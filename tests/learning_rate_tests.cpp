@@ -285,8 +285,9 @@ TEST_F(LearningRateTest, BoostWithWarmupAppliedCorrectly)
   nn.train(inputs, outputs);
 
   int warmup_epochs = static_cast<int>(std::round(warmup_target * epochs));
-  int boost_interval = static_cast<int>(std::round(restart_rate * epochs));
-  int total_boosts = epochs / boost_interval;
+  int number_of_epoch_after_decay = epochs - warmup_epochs;
+  int boost_interval = static_cast<int>(std::round(restart_rate * number_of_epoch_after_decay));
+  int total_boosts = number_of_epoch_after_decay / boost_interval;
   double per_boost_ratio = restart_boost / total_boosts;
 
   auto captured_rates = capture.get_rates();
