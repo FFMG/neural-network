@@ -88,8 +88,8 @@ TEST_F(LSTMLayerTest, DropoutStatisticalVerification) {
     double dropout_rate = 0.5;
     LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
 
-    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
-    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_w_values(std::vector<double>(num_outputs * 4, 1.0));
+    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs * 4, 0.0));
     layer.set_b_values(std::vector<double>(num_outputs, 0.0));
     
     layer.set_i_b_values(std::vector<double>(num_outputs, 10.0)); // input gate open
@@ -130,8 +130,8 @@ TEST_F(LSTMLayerTest, DropoutNotInference) {
     double dropout_rate = 0.5;
     LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
 
-    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
-    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+    layer.set_w_values(std::vector<double>(num_outputs * 4, 1.0));
+    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs * 4, 0.0));
     layer.set_b_values(std::vector<double>(num_outputs, 0.0));
     
     layer.set_i_b_values(std::vector<double>(num_outputs, 10.0));

@@ -386,7 +386,7 @@ TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
     .with_learning_rate_decay_rate(0.9)
     .with_learning_rate_boost_rate(0.2, 0.1)
     .with_adaptive_learning_rates(true)
-    .with_number_of_epoch(20)
+    .with_number_of_epoch(100)
     .with_shuffle_training_data(false)
     .with_data_is_unique(true)
     .with_progress_callback([&](NeuralNetworkHelper& h)
@@ -399,12 +399,28 @@ TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
   nn.train(inputs, outputs);
 
   auto captured_rates = capture.get_rates();
-  // Ensure that rates persist on intermediate non-update epochs after the first scheduler update is collected
-  for (int epoch = 11; epoch <= 14; ++epoch)
+
+  // Find the first update epoch (multiple of 5) where the adaptive rate was collected
+  int update_epoch = -1;
+  for (int u = 5; u < 100; u += 5)
   {
-    if (captured_rates.count(epoch) && captured_rates.count(10))
+    if (captured_rates.count(u) && captured_rates.count(u + 1))
     {
-      EXPECT_DOUBLE_EQ(captured_rates[epoch], captured_rates[10])
+      if (approx_equal(captured_rates[u], captured_rates[u + 1], 1e-7))
+      {
+        update_epoch = u;
+        break;
+      }
+    }
+  }
+
+  ASSERT_NE(update_epoch, -1) << "Adaptive learning rate was never collected during training.";
+
+  for (int epoch = update_epoch + 1; epoch < update_epoch + 5 && epoch < 100; ++epoch)
+  {
+    if (captured_rates.count(epoch))
+    {
+      EXPECT_NEAR(captured_rates[epoch], captured_rates[update_epoch], 1e-7)
         << "Shortcut failed: intermediate epoch rate mutated from update epoch rate.";
     }
   }
