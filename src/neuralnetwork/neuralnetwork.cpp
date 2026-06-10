@@ -465,15 +465,24 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     read_lock = std::shared_lock<std::shared_mutex>(_mutex);
   }
 
-  // Use fresh, local vectors instead of the pool to ensure isolation.
-  std::vector<GradientsAndOutputs> temp_gradients;
-  std::vector<HiddenStates> temp_hidden_states;
-  temp_gradients.reserve(prediction_size);
-  temp_hidden_states.reserve(prediction_size);
-  while (temp_gradients.size() < prediction_size)
+  // Use thread_local vectors to reuse allocations across calls and avoid heap overhead
+  thread_local std::vector<GradientsAndOutputs> temp_gradients;
+  thread_local std::vector<HiddenStates> temp_hidden_states;
+
+  const auto& topology = get_topology();
+  if (temp_gradients.size() != prediction_size)
   {
-    temp_gradients.emplace_back(get_topology());
-    temp_hidden_states.emplace_back(get_topology());
+    temp_gradients.resize(prediction_size, GradientsAndOutputs(topology));
+  }
+  if (temp_hidden_states.size() != prediction_size)
+  {
+    temp_hidden_states.resize(prediction_size, HiddenStates(topology));
+  }
+
+  for (size_t i = 0; i < prediction_size; ++i)
+  {
+    temp_gradients[i].zero();
+    temp_hidden_states[i].zero();
   }
 
   std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
@@ -717,6 +726,24 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // because we boost the rate from time to time, the base, (or target rate), we will use is different.
   double learning_rate_base = _options.learning_rate();
 
+  // Precalculate boost parameters once to avoid redundant recalculation
+  const auto& boost_every_percent = _options.learning_rate_restart_rate();
+  const auto& boost_ratio = _options.learning_rate_restart_boost();
+  int boost_interval = 0;
+  double per_boost_ratio = 0.0;
+  if (boost_ratio > 0.0 && boost_every_percent > 0.0)
+  {
+    boost_interval = static_cast<int>(std::round(boost_every_percent * number_of_epoch));
+    if (boost_interval > 0)
+    {
+      auto total_boosts = number_of_epoch / boost_interval;
+      if (total_boosts > 0)
+      {
+        per_boost_ratio = boost_ratio / total_boosts;
+      }
+    }
+  }
+
   AdaptiveLearningRateScheduler learning_rate_scheduler;
 
   {
@@ -729,7 +756,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
-    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, epoch, number_of_epoch, learning_rate_scheduler);
+    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, epoch, number_of_epoch, learning_rate_scheduler);
     _neural_network_helper->set_learning_rate(learning_rate);
 
     // set the values
@@ -801,7 +828,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete callback_task;
 
     // calculate the final learning rate for the final callback.
-    auto final_learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, number_of_epoch, number_of_epoch, learning_rate_scheduler);
+    auto final_learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, number_of_epoch, number_of_epoch, learning_rate_scheduler);
     _neural_network_helper->set_learning_rate(final_learning_rate);
 
     // then do one final call, again, we don't care about the result.
@@ -849,15 +876,24 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
   std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
   calibration_indices.resize(num_samples);
 
-  // 3. Run forward pass to collect logits (pre-activation sums)
-  std::vector<GradientsAndOutputs> temp_grads;
-  std::vector<HiddenStates> temp_hidden_states;
-  temp_grads.reserve(num_samples);
-  temp_hidden_states.reserve(num_samples);
+  // Use thread_local vectors to reuse allocations across calls and avoid heap overhead
+  thread_local std::vector<GradientsAndOutputs> temp_grads;
+  thread_local std::vector<HiddenStates> temp_hidden_states;
+
+  const auto& topology = get_topology();
+  if (temp_grads.size() != num_samples)
+  {
+    temp_grads.resize(num_samples, GradientsAndOutputs(topology));
+  }
+  if (temp_hidden_states.size() != num_samples)
+  {
+    temp_hidden_states.resize(num_samples, HiddenStates(topology));
+  }
+
   for (size_t i = 0; i < num_samples; ++i)
   {
-    temp_grads.emplace_back(get_topology());
-    temp_hidden_states.emplace_back(get_topology());
+    temp_grads[i].zero();
+    temp_hidden_states[i].zero();
   }
 
   calculate_forward_feed_for_forecast_metrics(temp_grads, training_inputs, calibration_indices, _layers, temp_hidden_states, true);
@@ -969,58 +1005,54 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
 double NeuralNetwork::calculate_smooth_learning_rate_boost(
   int epoch,
   int total_epochs,
-  double base_learning_rate) const  // base learning rate
+  double base_learning_rate,
+  int boost_interval,
+  double per_boost_ratio) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  const auto& boost_every_percent = options().learning_rate_restart_rate();  // e.g., 7.5 means every 7.5% progress
-  const auto& boost_ratio = options().learning_rate_restart_boost();         // e.g., 1.10 means +10%
-
-  assert(boost_every_percent >= 0.0 && boost_every_percent <= 1.0);
-  assert(boost_ratio >= 0.0 && boost_ratio <= 1.0);
-  if(boost_ratio == 0 || boost_every_percent == 0)
+  if (boost_interval <= 0 || per_boost_ratio == 0.0)
   {
-    // no boost, return the base learning rate
     return base_learning_rate;
   }
 
-  auto boost_interval = static_cast<int>(std::round(boost_every_percent * total_epochs)); // e.g., 7.5% of 100 epochs is 7.5 epochs
-  if (boost_interval <= 0)
-  {
-    // no boost interval, return the base learning rate
-    return base_learning_rate;
-  }
-  // Calculate the number of boosts that have occurred so far
-  auto total_boosts = total_epochs / boost_interval;
-  if (total_boosts == 0)
-  {
-    // Interval is larger than total epochs, cannot apply boost strategy as defined.
-    return base_learning_rate;
-  }
-
-  auto per_boost_ratio = boost_ratio / total_boosts; // e.g., if 3 boosts, each boost is 1.10^(1/3)
-
-  auto cycle_position = epoch % boost_interval; // e.g., if epoch 8 and interval is 7, position is 1
-  auto progress = static_cast<double>(cycle_position) / boost_interval; // e.g., 1/7 = 0.142857
+  auto cycle_position = epoch % boost_interval;
+  auto progress = static_cast<double>(cycle_position) / boost_interval;
 
   // Apply cosine boost: start at 0, peak at 1 (smooth step up)
   // This creates a smooth staircase effect when combined with cumulative_boost.
   auto cosine_multiplier = (1.0 - std::cos(progress * M_PI)) / 2.0;
   auto current_boost = per_boost_ratio * cosine_multiplier;
 
-  auto completed_cycles = epoch / boost_interval; // e.g., 8/7 = 1 full cycle
+  auto completed_cycles = epoch / boost_interval;
   auto cumulative_boost = completed_cycles * per_boost_ratio;
 
   return base_learning_rate * (1.0 + cumulative_boost + current_boost);
 }
 
-double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const
+double NeuralNetwork::calculate_learning_rate(
+  double learning_rate_base,
+  double learning_rate_decay_rate,
+  int boost_interval,
+  double per_boost_ratio,
+  int epoch,
+  int number_of_epoch,
+  AdaptiveLearningRateScheduler& learning_rate_scheduler) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto learning_rate = learning_rate_base;
 
   // the completed percent
   auto completed_percent = (static_cast<double>(epoch) / number_of_epoch);
+
+  // Shortcut for non-update epochs if adaptive learning rate is active and already initialized
+  if (epoch < number_of_epoch && _options.adaptive_learning_rate() && completed_percent >= _options.learning_rate_warmup_target() && epoch % 5 != 0)
+  {
+    if (learning_rate_scheduler.current_learning_rate() != 0.0)
+    {
+      return learning_rate_scheduler.current_learning_rate();
+    }
+  }
 
   // do warmup first.
   if (completed_percent < _options.learning_rate_warmup_target())
@@ -1030,7 +1062,7 @@ double NeuralNetwork::calculate_learning_rate(double learning_rate_base, double 
   else
   {
     // boost the learning rate base if we need to.
-    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate);
+    learning_rate = calculate_smooth_learning_rate_boost(epoch, number_of_epoch, learning_rate, boost_interval, per_boost_ratio);
 
     // are we decaying the learning rate?
     // this is done after warmup
