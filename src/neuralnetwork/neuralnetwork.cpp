@@ -391,7 +391,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto results = calculate_forecast_metrics_all_layers_impl(error_types, false, layers);
+  auto results = calculate_forecast_metrics_all_layers_impl(error_types, final_check, layers);
   if (results.size() > 0)
   {
     return results[0];
@@ -1078,7 +1078,6 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
 
 double NeuralNetwork::calculate_smooth_learning_rate_boost(
   int epoch,
-  int total_epochs,
   double base_learning_rate,
   int boost_interval,
   double per_boost_ratio) const
@@ -1138,8 +1137,7 @@ double NeuralNetwork::calculate_learning_rate(
     const int warmup_epochs = static_cast<int>(std::round(_options.learning_rate_warmup_target() * number_of_epoch));
     const int relative_epoch = epoch - warmup_epochs;
 
-    // boost the learning rate base if we need to.
-    learning_rate = calculate_smooth_learning_rate_boost(relative_epoch, number_of_epoch - warmup_epochs, learning_rate, boost_interval, per_boost_ratio);
+    learning_rate = calculate_smooth_learning_rate_boost(relative_epoch, learning_rate, boost_interval, per_boost_ratio);
 
     // are we decaying the learning rate?
     // this is done after warmup
