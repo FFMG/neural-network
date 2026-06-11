@@ -103,7 +103,7 @@ private:
   void create_indexes_in_lock(NeuralNetworkHelper& neural_network_helper, bool data_is_unique) const;
 
   double calculate_learning_rate(double learning_rate_base, double learning_rate_decay_rate, int boost_interval, double per_boost_ratio, int epoch, int number_of_epoch, AdaptiveLearningRateScheduler& learning_rate_scheduler) const;
-  double calculate_smooth_learning_rate_boost(int epoch, int total_epochs, double base_learning_rate, int boost_interval, double per_boost_ratio) const;
+  double calculate_smooth_learning_rate_boost(int epoch, double base_learning_rate, int boost_interval, double per_boost_ratio) const;
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const;
