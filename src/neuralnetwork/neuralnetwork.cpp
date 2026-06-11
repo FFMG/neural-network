@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
-#include <memory>
 #include <numeric>
 #include <random>
 #include <string>
@@ -16,8 +15,7 @@
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(options),
-  _options(options),
-  _neural_network_helper(nullptr)
+  _options(options)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
@@ -47,7 +45,6 @@ NeuralNetwork::NeuralNetwork(
   _learning_rate(options.learning_rate()),
   _layers(layers),
   _options(options),
-  _neural_network_helper(nullptr),
   _saved_errors(errors)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -55,8 +52,7 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _layers(src._layers),
-  _options(src._options),
-  _neural_network_helper(nullptr)
+  _options(src._options)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   *this = src;
@@ -64,8 +60,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
 
 NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
   _layers(std::move(src._layers)),
-  _options(std::move(src._options)),
-  _neural_network_helper(nullptr)
+  _options(std::move(src._options))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   *this = std::move(src);
@@ -88,13 +83,15 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _saved_errors = src._saved_errors;
     _last_metrics = src._last_metrics;
 
-    delete _neural_network_helper;
-    _neural_network_helper = nullptr;
-
-    if (src._neural_network_helper != nullptr)
+    _neural_network_helpers.clear();
+    for (const auto& src_helper : src._neural_network_helpers)
     {
-      _neural_network_helper = new NeuralNetworkHelper(*src._neural_network_helper);
-      _neural_network_helper->_neural_network = this;
+      if (src_helper != nullptr)
+      {
+        auto new_helper = std::make_shared<NeuralNetworkHelper>(*src_helper);
+        new_helper->_neural_network = this;
+        _neural_network_helpers.push_back(new_helper);
+      }
     }
   }
   return *this;
@@ -117,14 +114,15 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
     _saved_errors = std::move(src._saved_errors);
     _last_metrics = std::move(src._last_metrics);
 
-    delete _neural_network_helper;
-    _neural_network_helper = src._neural_network_helper;
-    if (_neural_network_helper != nullptr)
+    _neural_network_helpers = std::move(src._neural_network_helpers);
+    for (auto& helper : _neural_network_helpers)
     {
-      _neural_network_helper->_neural_network = this;
+      if (helper != nullptr)
+      {
+        helper->_neural_network = this;
+      }
     }
-
-    src._neural_network_helper = nullptr;
+    src._neural_network_helpers.clear();
     src._learning_rate = 0.0;
   }
   return *this;
@@ -135,8 +133,6 @@ NeuralNetwork::~NeuralNetwork()
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   _adaptive_lr_task.stop();
-  delete _neural_network_helper;
-  _neural_network_helper = nullptr;
 }
 
 [[nodiscard]] const Layer& NeuralNetwork::get_layer(unsigned index) const
@@ -339,17 +335,17 @@ double NeuralNetwork::get_percent_complete() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::shared_lock<std::shared_mutex> read(_mutex);
-  if (nullptr == _neural_network_helper)
+  if (_neural_network_helpers.empty())
   {
     return 1.0;
   }
-  return _neural_network_helper->percent_complete();
+  return _neural_network_helpers.back()->percent_complete();
 }
 
 bool NeuralNetwork::has_training_data() const
 {
   std::shared_lock<std::shared_mutex> read(_mutex);
-  if (nullptr != _neural_network_helper)
+  if (!_neural_network_helpers.empty())
   {
     return true; // we are currently training.
   }
@@ -408,9 +404,10 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
+  std::shared_ptr<NeuralNetworkHelper> helper;
   {
     std::shared_lock read(_mutex);
-    if (nullptr == _neural_network_helper)
+    if (_neural_network_helpers.empty())
     {
       std::vector<std::vector<NeuralNetworkHelperMetrics>> errors;
       errors.reserve(_saved_errors.size());
@@ -438,13 +435,13 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
       }
       return errors;
     }
+    helper = _neural_network_helpers.back();
   }
 
-  const NeuralNetworkHelper& helper = *_neural_network_helper;
-  const auto& training_inputs = helper.training_inputs();
-  const auto& training_outputs = helper.training_outputs();
+  const auto& training_inputs = helper->training_inputs();
+  const auto& training_outputs = helper->training_outputs();
 
-  const std::vector<size_t>* checks_indexes = final_check ? &helper.final_check_indexes() : &helper.checking_indexes();
+  const std::vector<size_t>* checks_indexes = final_check ? &helper->final_check_indexes() : &helper->checking_indexes();
   size_t prediction_size = checks_indexes->size();
 
   if (prediction_size == 0)
@@ -673,18 +670,28 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   Logger::info("Started training with ", training_inputs.size(), " inputs, ", number_of_epoch, " epoch and batch size ", batch_size, ".");
 
-  // create the neural network helper.
-  recreate_neural_network_helper(number_of_epoch, training_inputs, training_outputs);
+  // create the initial neural network helper.
+  auto base_helper = create_initial_neural_network_helper(number_of_epoch, training_inputs, training_outputs);
+
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    _neural_network_helpers.push_back(base_helper);
+  }
 
   // create the callback task if we need one.
   SingleTaskQueue<bool>* callback_task = nullptr;
   if (progress_callback != nullptr)
   {
     callback_task = new SingleTaskQueue<bool>();
-    callback_task->call(progress_callback , std::ref(*_neural_network_helper));
+    callback_task->call(progress_callback , std::ref(*base_helper));
     if (!callback_task->get())
-     {
+    {
       Logger::warning("Progress callback function returned false before training started, closing now!");
+      {
+        std::unique_lock<std::shared_mutex> lock(_mutex);
+        _neural_network_helpers.clear();
+      }
+      delete callback_task;
       return;
     }
   }
@@ -692,17 +699,17 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // with the indexes, create the check training 
   std::vector<std::vector<double>> checking_training_inputs = {};
   std::vector<std::vector<double>> checking_training_outputs = {};
-  create_batch_from_indexes(_neural_network_helper->checking_indexes(), training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
+  create_batch_from_indexes(base_helper->checking_indexes(), training_inputs, training_outputs, checking_training_inputs, checking_training_outputs);
 
   // create the batch training
   std::vector<std::vector<double>> batch_training_inputs = {};
   std::vector<std::vector<double>> batch_training_outputs = {};
-  create_batch_from_indexes(_neural_network_helper->training_indexes(), training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
+  create_batch_from_indexes(base_helper->training_indexes(), training_inputs, training_outputs, batch_training_inputs, batch_training_outputs);
 
   // final error checking
   std::vector<std::vector<double>> final_training_inputs = {};
   std::vector<std::vector<double>> final_training_outputs = {};
-  create_batch_from_indexes(_neural_network_helper->final_check_indexes(), training_inputs, training_outputs, final_training_inputs, final_training_outputs);
+  create_batch_from_indexes(base_helper->final_check_indexes(), training_inputs, training_outputs, final_training_inputs, final_training_outputs);
 
   // add a log message.
   log_training_info(training_inputs, training_outputs);
@@ -717,10 +724,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   // build the training output batch so we can use it for error calculations
-  const auto training_indexes_size = _neural_network_helper->training_indexes().size();
+  const auto training_indexes_size = base_helper->training_indexes().size();
   std::vector<std::vector<double>> training_outputs_batch = {};
   training_outputs_batch.reserve(training_indexes_size);
-  for (const auto& training_index : _neural_network_helper->training_indexes())
+  for (const auto& training_index : base_helper->training_indexes())
   {
     const auto& outputs = training_outputs[training_index];
     training_outputs_batch.push_back(outputs);
@@ -768,11 +775,18 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   {
     // Learning rate
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, epoch, number_of_epoch, learning_rate_scheduler);
-    _neural_network_helper->set_learning_rate(learning_rate);
 
-    // set the values
-    _neural_network_helper->set_epoch(epoch);
-    _learning_rate = _neural_network_helper->learning_rate();
+    // create a new NeuralNetworkHelper for this epoch
+    auto epoch_helper = std::make_shared<NeuralNetworkHelper>(*base_helper);
+    epoch_helper->set_learning_rate(learning_rate);
+    epoch_helper->set_epoch(epoch);
+
+    _learning_rate = epoch_helper->learning_rate();
+
+    {
+      std::unique_lock<std::shared_mutex> lock(_mutex);
+      _neural_network_helpers.push_back(epoch_helper);
+    }
 
     // (re) create the bptt batches (now returns flattened sequences)
     create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
@@ -786,16 +800,28 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
 
     // update the training monitor metrics
-    if (_neural_network_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
+    if (epoch_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
     {
       Logger::trace([=] {
         return Logger::factory("Updating training monitor at epoch #", epoch, " of ", number_of_epoch);
         });
     }
 
+    // Clean up older completed helpers before we potentially start a new callback
+    if (callback_task == nullptr || !callback_task->busy())
+    {
+      std::unique_lock<std::shared_mutex> lock(_mutex);
+      if (_neural_network_helpers.size() > 1)
+      {
+        auto latest = _neural_network_helpers.back();
+        _neural_network_helpers.clear();
+        _neural_network_helpers.push_back(latest);
+      }
+    }
+
     // callback
     // 
-    if (!CallCallback(progress_callback, callback_task))
+    if (!CallCallback(progress_callback, callback_task, *epoch_helper))
     {
       Logger::warning("Progress callback function returned false during training, closing now!");
       break;
@@ -825,12 +851,21 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   }
 
   // finally learning rate
-  Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), _neural_network_helper->learning_rate());
+  double final_lr_value = 0.0;
+  {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    if (!_neural_network_helpers.empty())
+    {
+      final_lr_value = _neural_network_helpers.back()->learning_rate();
+    }
+  }
+  Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), final_lr_value);
 
   // Post-training temperature calibration using the training set
   optimize_inference_temperature(training_inputs, training_outputs);
 
   // final callback to show 100% done.
+  std::shared_ptr<NeuralNetworkHelper> final_helper;
   if (progress_callback != nullptr)
   {
     // wait for the future to complete if running
@@ -840,11 +875,29 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     // calculate the final learning rate for the final callback.
     auto final_learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, number_of_epoch, number_of_epoch, learning_rate_scheduler);
-    _neural_network_helper->set_learning_rate(final_learning_rate);
 
-    // then do one final call, again, we don't care about the result.
-    _neural_network_helper->set_epoch(number_of_epoch);
-    progress_callback(*_neural_network_helper);
+    // create the final helper representing 100% done
+    final_helper = std::make_shared<NeuralNetworkHelper>(*base_helper);
+    final_helper->set_learning_rate(final_learning_rate);
+    final_helper->set_epoch(number_of_epoch);
+
+    progress_callback(*final_helper);
+  }
+
+  // prune the list of helpers to keep only the final helper for post-training queries
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    if (final_helper != nullptr)
+    {
+      _neural_network_helpers.clear();
+      _neural_network_helpers.push_back(final_helper);
+    }
+    else if (_neural_network_helpers.size() > 1)
+    {
+      auto latest = _neural_network_helpers.back();
+      _neural_network_helpers.clear();
+      _neural_network_helpers.push_back(latest);
+    }
   }
 
   MYODDWEB_PROFILE_MARK();
@@ -976,25 +1029,24 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
   }
 }
 
-void NeuralNetwork::recreate_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs)
+std::shared_ptr<NeuralNetworkHelper> NeuralNetwork::create_initial_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  std::unique_lock<std::shared_mutex> lock(_mutex);
-  delete _neural_network_helper;
-  _neural_network_helper = new NeuralNetworkHelper(*this, _learning_rate, number_of_epoch, training_inputs, training_outputs);
+  auto helper = std::make_shared<NeuralNetworkHelper>(const_cast<NeuralNetwork&>(*this), _learning_rate, number_of_epoch, training_inputs, training_outputs);
 
   // set all the indexes in the helper, either shuffled or not.
   if (options().shuffle_training_data())
   {
-    create_shuffled_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+    create_shuffled_indexes_in_lock(*helper, _options.data_is_unique());
   }
   else
   {
-    create_indexes_in_lock(*_neural_network_helper, _options.data_is_unique());
+    create_indexes_in_lock(*helper, _options.data_is_unique());
   }
+  return helper;
 }
 
-bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task) const
+bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>& callback, SingleTaskQueue<bool>* callback_task, NeuralNetworkHelper& epoch_helper) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (callback == nullptr || callback_task == nullptr)
@@ -1012,7 +1064,7 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
     }
 
     // it was not running at all, so we start it.
-    if (!callback_task->call(callback, std::ref(*_neural_network_helper)))
+    if (!callback_task->call(callback, std::ref(epoch_helper)))
     {
       Logger::error("Trying to call Progress callback function but an error was returned.");
     }
@@ -1289,11 +1341,16 @@ void NeuralNetwork::log_training_info(
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   const char* tab = "  ";
-  assert(_neural_network_helper != nullptr);
+  std::shared_ptr<NeuralNetworkHelper> helper;
+  {
+    std::shared_lock<std::shared_mutex> read_lock(_mutex);
+    assert(!_neural_network_helpers.empty());
+    helper = _neural_network_helpers.back();
+  }
   Logger::info("Training will use: ");
-  Logger::info(tab, _neural_network_helper->training_indexes().size(), " training samples.");
-  Logger::info(tab, _neural_network_helper->checking_indexes().size(), " in training error check samples.");
-  Logger::info(tab, _neural_network_helper->final_check_indexes().size(), " final error check samples.");
+  Logger::info(tab, helper->training_indexes().size(), " training samples.");
+  Logger::info(tab, helper->checking_indexes().size(), " in training error check samples.");
+  Logger::info(tab, helper->final_check_indexes().size(), " final error check samples.");
   Logger::info(tab, "Data is shuffled           : ", options().shuffle_training_data() ? "true" : "false");
   Logger::info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
   Logger::info(tab, "  Decay rate               : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
