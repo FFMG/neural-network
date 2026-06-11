@@ -45,11 +45,12 @@
 // v0.2.1 - added remove_at to TJValueArray.
 // v0.2.2 - added support for Json5 https://github.com/json5/
 // v0.2.3 - added atomic file saving
-// v0.2.4 - added operator[] and as<T>() accessors to TJValue
+// v0.2.4 - added operator[] and as<T>() accessor to TJValue
+// v0.2.5 - added raise warning when key is not found.
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 4;
-static const char TJ_VERSION_STRING[] = "0.2.4";
+static const short TJ_VERSION_PATCH = 5;
+static const char TJ_VERSION_STRING[] = "0.2.5";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -1157,6 +1158,7 @@ class TJDictionary;
     }
 
   private:
+    void raise_key_not_found(const TJCHAR* key, bool is_strict) const;
     template<typename V>
     std::vector<V> get_vector_internal(const TJCHAR* key, bool case_sensitive, std::true_type) const
     {

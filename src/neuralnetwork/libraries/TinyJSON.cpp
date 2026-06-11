@@ -5396,16 +5396,68 @@ namespace TinyJSON
     return object;
   }
 
+  void TJValueObject::raise_key_not_found(const TJCHAR* key, bool is_strict) const
+  {
+    if (key == nullptr)
+    {
+      return;
+    }
+    int key_len = 0;
+    while (key[key_len] != 0)
+    {
+      key_len++;
+    }
+    int total_len = 9 + key_len + 17;
+    TJCHAR* msg = new TJCHAR[total_len + 1];
+
+    const TJCHAR* prefix = TJCHARPREFIX("The key '");
+    for (int i = 0; i < 9; ++i)
+    {
+      msg[i] = prefix[i];
+    }
+
+    for (int i = 0; i < key_len; ++i)
+    {
+      msg[9 + i] = key[i];
+    }
+
+    const TJCHAR* suffix = TJCHARPREFIX("' was not found!");
+    for (int i = 0; i < 17; ++i)
+    {
+      msg[9 + key_len + i] = suffix[i];
+    }
+
+    msg[total_len] = 0;
+
+    if (is_strict)
+    {
+      _parse_options.callback_function(parse_options::message_type::fatal, msg);
+      if (_parse_options.throw_exception)
+      {
+#if TJ_USE_CHAR == 1
+        TJParseException ex(msg);
+        delete[] msg;
+        throw ex;
+#else
+        delete[] msg;
+        throw TJParseException("The key was not found!");
+#endif
+      }
+    }
+    else
+    {
+      _parse_options.callback_function(parse_options::message_type::warning, msg);
+    }
+
+    delete[] msg;
+  }
+
   Optional<long double> TJValueObject::get_raw_float(const TJCHAR* key, bool case_sensitive) const
   {
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return Optional<long double>();
     }
     return Optional<long double>(value->get_raw_float());
@@ -5416,11 +5468,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return Optional<long long>();
     }
     return Optional<long long>(value->get_raw_number());
@@ -5431,11 +5479,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return Optional<std::vector<long double>>();
     }
     return Optional<std::vector<long double>>(value->get_raw_floats());
@@ -5446,11 +5490,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return Optional<std::vector<long long>>();
     }
     return Optional<std::vector<long long>>(value->get_raw_numbers());
@@ -5461,11 +5501,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return TJCHARPREFIX("");
     }
     return value->get_string();
@@ -5476,11 +5512,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
-      if (_parse_options.strict)
-      {
-        ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("The key was not found!");
-      }
+      raise_key_not_found(key, _parse_options.strict);
       return false;
     }
     return value->get_boolean();
@@ -5898,6 +5930,7 @@ namespace TinyJSON
     auto value = try_get_value(key, case_sensitive);
     if (nullptr == value)
     {
+      raise_key_not_found(key, false);
       return nullptr;
     }
 
