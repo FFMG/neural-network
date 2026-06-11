@@ -1,15 +1,14 @@
-#include <gtest/gtest.h>
+#include "../src/neuralnetwork/logger.h"
 #include "../src/neuralnetwork/neuralnetwork.h"
 #include "../src/neuralnetwork/neuralnetworkoptions.h"
-#include "../src/neuralnetwork/logger.h"
 #include "test_helper.h"
-#include <vector>
-#include <map>
+#include <atomic>
 #include <cmath>
+#include <gtest/gtest.h>
+#include <map>
 #include <mutex>
 #include <thread>
-#include <atomic>
-#include <chrono>
+#include <vector>
 
 using namespace test_helper;
 
@@ -565,6 +564,75 @@ TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
   }
 
   ASSERT_TRUE(found) << "Adaptive learning rate was never collected or verified during training.";
+}
+
+TEST_F(LearningRateTest, ThreadSafetyConcurrentAccess)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  // Replicate dataset to make training take some time
+  std::vector<std::vector<double>> replicated_inputs;
+  std::vector<std::vector<double>> replicated_outputs;
+  for (int i = 0; i < 100; ++i)
+  {
+    replicated_inputs.insert(replicated_inputs.end(), inputs.begin(), inputs.end());
+    replicated_outputs.insert(replicated_outputs.end(), outputs.begin(), outputs.end());
+  }
+
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+
+  std::atomic<bool> training_done(false);
+  std::thread query_thread([&]()
+  {
+    while (!training_done.load())
+    {
+      nn.get_percent_complete();
+      nn.has_training_data();
+      nn.calculate_forecast_metric(ErrorCalculation::type::rmse);
+      std::this_thread::yield();
+    }
+  });
+
+  nn.train(replicated_inputs, replicated_outputs);
+  training_done.store(true);
+  query_thread.join();
+
+  SUCCEED();
+}
+
+TEST_F(LearningRateTest, ThreadSafetyHelperLifecycle)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  std::atomic<bool> callback_run(false);
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(10)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback([&](NeuralNetworkHelper& helper)
+    {
+      // Simulate heavy calculations inside callback
+      auto metrics = helper.calculate_forecast_metrics({ ErrorCalculation::type::rmse });
+      (void)metrics;
+      callback_run.store(true);
+      return true;
+    })
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+  nn.train(inputs, outputs);
+
+  ASSERT_TRUE(callback_run.load());
 }
 
 
