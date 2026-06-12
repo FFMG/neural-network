@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/ffoutputlayer.h"
+#include "layers/ffoutputlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>

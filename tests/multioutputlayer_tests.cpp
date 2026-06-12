@@ -1,8 +1,8 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/multioutputlayer.h"
-#include "../src/neuralnetwork/multioutputlayerdetails.h"
-#include "../src/neuralnetwork/layerdetails.h"
-#include "../src/neuralnetwork/outputlayerdetails.h"
+#include "layers/multioutputlayer.h"
+#include "layers/multioutputlayerdetails.h"
+#include "layers/layerdetails.h"
+#include "layers/outputlayerdetails.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>

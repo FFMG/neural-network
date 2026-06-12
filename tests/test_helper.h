@@ -2,10 +2,10 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
-#include "../src/neuralnetwork/fflayer.h"
-#include "../src/neuralnetwork/gradientsandoutputs.h"
-#include "../src/neuralnetwork/hiddenstates.h"
-#include "../src/neuralnetwork/layer.h"
+#include "layers/fflayer.h"
+#include "common/gradientsandoutputs.h"
+#include "common/hiddenstates.h"
+#include "layers/layer.h"
 
 
 using namespace myoddweb::nn;

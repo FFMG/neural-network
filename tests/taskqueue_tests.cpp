@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/taskqueue.h"
+#include "common/taskqueue.h"
 #include <atomic>
 #include <thread>
 #include <vector>

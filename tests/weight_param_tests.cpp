@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "weightparam.h"
+#include "common/weightparam.h"
 #include <cmath>
 #include <limits>
 

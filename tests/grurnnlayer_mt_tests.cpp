@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/grurnnlayer.h"
+#include "layers/grurnnlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>

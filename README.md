@@ -269,6 +269,18 @@ To enable these optimizations, ensure your compiler is configured to target the 
 
 For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html) or [Wikipedia](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions).
 
+## Repository Layout
+
+*   `\include\neuralnetwork\`: The stand-alone core neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
+*   `\examples\`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
+*   `\tests\`: Comprehensive unit test suite.
+
+## Building and Running
+
+1.  Open `examples/neuralnetwork.sln` in Visual Studio 2022.
+2.  Select `neuralnetwork` (to run the examples) or `neuralnetwork_tests` (to run unit tests) as the startup project.
+3.  Build and run using the IDE.
+
 ## Technical Stack
 
 * **Language:** C++17/C++20

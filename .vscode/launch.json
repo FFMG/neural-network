@@ -5,7 +5,7 @@
       "name": "Debug NeuralNetwork Main",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/src/neuralnetwork/main",
+      "program": "${workspaceFolder}/examples/main",
       "args": ["-g", "-O0"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

@@ -1,6 +1,6 @@
-﻿#include "../src/neuralnetwork/logger.h"
-#include "../src/neuralnetwork/neuralnetwork.h"
-#include "../src/neuralnetwork/neuralnetworkoptions.h"
+﻿#include "common/logger.h"
+#include "neuralnetwork.h"
+#include "neuralnetworkoptions.h"
 #include "test_helper.h"
 #include <atomic>
 #include <cmath>

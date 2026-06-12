@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "activation.h"
+#include "common/activation.h"
 #include <cmath>
 #include <algorithm>
 #include <vector>
