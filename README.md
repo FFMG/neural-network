@@ -271,9 +271,10 @@ For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel
 
 ## Repository Layout
 
-*   `\include\neuralnetwork\`: The stand-alone core neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
+*   `\include\neuralnetwork\`: The stand-alone core C++ neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
 *   `\examples\`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
 *   `\tests\`: Comprehensive unit test suite.
+*   `\python\`: Pybind11-based Visual Studio 2022 solution (`neuralnetwork_py.sln`) and Python usage examples.
 
 ## Building and Running
 
