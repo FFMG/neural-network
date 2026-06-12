@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/taskqueue.h"
+﻿#include <gtest/gtest.h>
+#include "common/taskqueue.h"
 #include <atomic>
 #include <thread>
 #include <vector>
@@ -8,6 +8,8 @@
 
 // --- TaskQueue<int> Tests ---
 
+
+using namespace myoddweb::nn;
 TEST(TaskQueueTest, BasicIntOutput) {
     TaskQueue<int> queue;
     for (int i = 0; i < 10; ++i) {

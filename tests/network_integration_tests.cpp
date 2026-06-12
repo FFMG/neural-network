@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/fflayer.h"
-#include "../src/neuralnetwork/grurnnlayer.h"
-#include "../src/neuralnetwork/ffoutputlayer.h"
+﻿#include <gtest/gtest.h>
+#include "layers/fflayer.h"
+#include "layers/grurnnlayer.h"
+#include "layers/ffoutputlayer.h"
 #include "test_helper.h"
 #include <vector>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 TEST(NetworkIntegrationTest, CrossLayerGradientPropagation) {

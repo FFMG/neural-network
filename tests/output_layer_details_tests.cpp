@@ -1,6 +1,8 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/outputlayerdetails.h"
+﻿#include <gtest/gtest.h>
+#include "layers/outputlayerdetails.h"
 
+
+using namespace myoddweb::nn;
 TEST(OutputLayerDetailsTest, ConstructorAndGetters) {
   unsigned layer_size = 10;
   activation act(activation::method::softmax, 0.1, 1.2, 0.8);

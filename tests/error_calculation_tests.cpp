@@ -1,5 +1,5 @@
-#include "activation.h"
-#include "errorcalculation.h"
+﻿#include "common/activation.h"
+#include "helpers/errorcalculation.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
 #include <algorithm>
@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 #include <vector>
 
+
+using namespace myoddweb::nn;
 namespace math_expect {
   // --- Basic Formulas ---
 

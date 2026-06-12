@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/taskqueue.h"
+﻿#include <gtest/gtest.h>
+#include "common/taskqueue.h"
 #include <atomic>
 #include <chrono>
 #include <vector>
 #include <thread>
 
+
+using namespace myoddweb::nn;
 class TaskQueueComprehensiveTest : public ::testing::Test 
 {
 protected:

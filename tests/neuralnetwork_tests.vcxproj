@@ -50,7 +50,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>../src/neuralnetwork;../src/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
@@ -67,7 +67,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>../src/neuralnetwork;../src/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
@@ -78,7 +78,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\neuralnetwork\lstmlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
     <ClCompile Include="activation_tests.cpp" />
     <ClCompile Include="adaptive_learning_rate_scheduler_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
@@ -110,31 +110,31 @@
     <ClCompile Include="taskqueue_tests.cpp" />
     <ClCompile Include="taskqueue_comprehensive_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\activation.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\elmanrnnlayer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\fflayer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\ffoutputlayer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\grurnnlayer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\layer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\layers.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\libraries\TinyJSON.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\libraries\tracy\TracyClient.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\neuralnetwork.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\neuralnetworkhelper.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\neuralnetworkserializer.cpp" />
-    <ClCompile Include="..\src\neuralnetwork\neuron.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\elmanrnnlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\fflayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\grurnnlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\layer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\layers.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\libraries\TinyJSON.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\libraries\tracy\TracyClient.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\neuralnetwork.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkhelper.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkserializer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\neuron.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\src\neuralnetwork\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\src\neuralnetwork\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
+    <Import Project="..\examples\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\examples\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/go/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\src\neuralnetwork\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\src\neuralnetwork\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets'))" />
+    <Error Condition="!Exists('..\examples\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\examples\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets'))" />
   </Target>
 </Project>

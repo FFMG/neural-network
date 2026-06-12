@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/elmanrnnlayer.h"
+﻿#include <gtest/gtest.h>
+#include "layers/elmanrnnlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class ElmanRNNLayerMTTest : public ::testing::Test 
