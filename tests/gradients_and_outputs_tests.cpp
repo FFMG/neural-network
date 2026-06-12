@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "gradientsandoutputs.h"
 #include <vector>
 #include <stdexcept>
 
+
+using namespace myoddweb::nn;
 class GradientsAndOutputsTest : public ::testing::Test {
 protected:
     std::vector<unsigned> topology = {3, 5, 2}; // 3 layers

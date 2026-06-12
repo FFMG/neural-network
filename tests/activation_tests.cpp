@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "activation.h"
 #include <cmath>
 #include <algorithm>
@@ -10,6 +10,8 @@
 #endif
 
 // Helper function to calculate exact mathematical expectations independently
+
+using namespace myoddweb::nn;
 namespace math_expect {
   double linear(double x, double) { return x; }
   double linear_deriv(double, double) { return 1.0; }

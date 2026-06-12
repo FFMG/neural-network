@@ -1,9 +1,11 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/simd_utils.h"
 #include <vector>
 #include <thread>
 #include <atomic>
 
+
+using namespace myoddweb::nn;
 namespace {
   constexpr size_t NUM_THREADS = 8;
   constexpr size_t NUM_ITERATIONS = 1000;

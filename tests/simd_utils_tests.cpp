@@ -1,9 +1,11 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/simd_utils.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 namespace {
   constexpr double EPSILON = 1e-9;
 

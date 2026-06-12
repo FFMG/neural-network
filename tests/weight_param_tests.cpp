@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "weightparam.h"
 #include <cmath>
 #include <limits>
 
+
+using namespace myoddweb::nn;
 TEST(WeightParamTest, ConstructorInitialization) {
     // Test the full constructor
     WeightParam wp(1.5, 0.1, 0.01, 0.001, 0.0001, 42, 0.05);

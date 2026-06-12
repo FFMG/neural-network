@@ -1,4 +1,4 @@
-#include "../src/neuralnetwork/logger.h"
+﻿#include "../src/neuralnetwork/logger.h"
 #include "../src/neuralnetwork/neuralnetwork.h"
 #include "../src/neuralnetwork/neuralnetworkoptions.h"
 #include "test_helper.h"
@@ -10,6 +10,8 @@
 #include <thread>
 #include <vector>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 #ifndef M_PI
