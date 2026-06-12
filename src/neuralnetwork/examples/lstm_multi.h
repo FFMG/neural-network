@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "../neuralnetwork.h"
 #include "../neuralnetworkoptions.h"
 #include "../logger.h"
@@ -13,6 +13,8 @@
  * 
  * It is used to verify the integration of LSTM with Multi-Output functionality.
  */
+
+using namespace myoddweb::nn;
 class ExampleLstmMulti
 {
 private:

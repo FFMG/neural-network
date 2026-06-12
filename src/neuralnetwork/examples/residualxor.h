@@ -1,9 +1,11 @@
-#include "../neuralnetworkserializer.h"
+﻿#include "../neuralnetworkserializer.h"
 #include "helper.h"
 #include "../logger.h"
 
 #include <iomanip>
 
+
+using namespace myoddweb::nn;
 class ExampleResidualXor
 {
 public:

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "helper.h"
 #include "../errorcalculation.h"
@@ -10,6 +10,8 @@
 #include <string>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 class ExampleSyntheticSentiment
 {
 public:

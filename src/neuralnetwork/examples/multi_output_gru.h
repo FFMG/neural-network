@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "../errorcalculation.h"
 #include "../logger.h"
 #include "../neuralnetwork.h"
@@ -18,6 +18,8 @@
  * 1. Sigmoid Output: Is the LAST value in the sequence positive?
  * 2. Tanh Output: What is the average value of the sequence?
  */
+
+using namespace myoddweb::nn;
 class ExampleMultiOutputGru
 {
 private:

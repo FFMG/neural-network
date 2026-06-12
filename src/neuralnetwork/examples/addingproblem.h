@@ -8,6 +8,8 @@
 #include <random>
 #include <iomanip>
 
+
+using namespace myoddweb::nn;
 class ExampleAddingProblem
 {
 public:

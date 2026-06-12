@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "../errorcalculation.h"
 #include "../logger.h"
 #include "../neuralnetwork.h"
@@ -18,6 +18,8 @@
  * - Output 0: 1 neuron, MSE (Regression)
  * - Output 1: 5 neurons, Softmax + Cross Entropy (Classification)
  */
+
+using namespace myoddweb::nn;
 class ExampleReproIssue
 {
 private:
