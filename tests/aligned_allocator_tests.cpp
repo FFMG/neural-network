@@ -1,9 +1,11 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "aligned_allocator.h"
 #include <vector>
 #include <cstdint>
 
 // A dummy class to test construct/destroy
+
+using namespace myoddweb::nn;
 class LifecycleTracker {
 public:
     static int constructions;

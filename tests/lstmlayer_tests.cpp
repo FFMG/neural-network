@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/lstmlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class LSTMLayerTest : public ::testing::Test {

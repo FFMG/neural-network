@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/layer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 TEST(LayerTest, ArchitectureToString) {

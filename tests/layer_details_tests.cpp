@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/layerdetails.h"
 #include "../src/neuralnetwork/outputlayerdetails.h"
 #include "../src/neuralnetwork/multioutputlayerdetails.h"
@@ -12,6 +12,8 @@
 #include <cmath>
 #include <stdexcept>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class LayerDetailsTest : public ::testing::Test {

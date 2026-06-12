@@ -1,9 +1,11 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/ffoutputlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class FFOutputLayerTest : public ::testing::Test {

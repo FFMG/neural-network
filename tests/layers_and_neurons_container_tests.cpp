@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "../src/neuralnetwork/layersandneuronscontainer.h"
 #include <vector>
 #include <numeric>
 
+
+using namespace myoddweb::nn;
 TEST(LayersAndNeuronsContainerTest, ConstructorInitializesTopologyAndOffsets)
 {
   std::vector<unsigned> topology = { 3, 5, 2 };
