@@ -7,6 +7,9 @@
 #include "lstmlayer.h"
 #include "multioutputlayer.h"
 
+
+namespace myoddweb::nn
+{
 Layers::Layers(const NeuralNetworkOptions& options) noexcept :
   _update_weights_pool(nullptr)
 {
@@ -754,3 +757,5 @@ void Layers::cache_recurrent_weights()
     layer->cache_recurrent_weights();
   }
 }
+
+} // namespace myoddweb::nn

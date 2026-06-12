@@ -5,6 +5,9 @@
 #include <vector>
 #include <span>
 
+
+namespace myoddweb::nn
+{
 class HiddenState
 {
 public:
@@ -126,3 +129,5 @@ private:
   std::span<double> _cell_state_values;
   double _dummy = 0.0;
 };
+
+} // namespace myoddweb::nn

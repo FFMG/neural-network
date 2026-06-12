@@ -8,6 +8,9 @@
 #include "neuralnetworkserializer.h"
 #include "optimiser.h"
 
+
+namespace myoddweb::nn
+{
 NeuralNetworkSerializer::NeuralNetworkSerializer()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -2488,3 +2491,5 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     layer.set_residual_projector(projector);
   }
 }
+
+} // namespace myoddweb::nn

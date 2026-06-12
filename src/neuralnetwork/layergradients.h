@@ -2,6 +2,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 struct LayerGradients {
   // For FFLayer weights or ElmanRNNLayer input-to-hidden
   std::vector<double> weights;
@@ -12,3 +15,5 @@ struct LayerGradients {
   // For residual weights
   std::vector<double> residual_weights;
 };
+
+} // namespace myoddweb::nn

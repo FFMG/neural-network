@@ -5,6 +5,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class FFLayer : public Layer
 {
 public:
@@ -193,3 +196,4 @@ private:
     std::vector<double>& local_w_grads,
     std::vector<double>& local_b_grads) const;
 };
+} // namespace myoddweb::nn

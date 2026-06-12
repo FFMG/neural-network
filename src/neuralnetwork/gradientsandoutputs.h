@@ -7,6 +7,9 @@
 #include <span>
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class GradientsAndOutputs
 {
 public:
@@ -236,3 +239,5 @@ private:
   std::vector<std::vector<double>> _rnn_gradients;
   std::vector<std::vector<double>> _rnn_gate_gradients;
 };
+
+} // namespace myoddweb::nn

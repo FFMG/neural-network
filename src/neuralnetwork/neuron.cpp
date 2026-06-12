@@ -3,6 +3,9 @@
 #include "logger.h"
 #include "./libraries/instrumentor.h"
 
+
+namespace myoddweb::nn
+{
 Neuron::Neuron(
   unsigned index,
   const Type& type,
@@ -121,3 +124,5 @@ const Neuron::Type& Neuron::get_type() const noexcept
   MYODDWEB_PROFILE_FUNCTION("Neuron");
   return _type;
 }
+
+} // namespace myoddweb::nn

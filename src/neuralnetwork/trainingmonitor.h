@@ -5,6 +5,9 @@
 #include "logger.h"
 #include "libraries/instrumentor.h"
 
+
+namespace myoddweb::nn
+{
 class TrainingMonitor
 {
 public:
@@ -143,3 +146,4 @@ private:
   double _da_threshold;
   double _rmse_tolerance;
 };
+} // namespace myoddweb::nn

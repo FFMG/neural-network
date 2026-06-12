@@ -14,6 +14,9 @@
 #include "optimiser.h"
 #include "outputlayerdetails.h"
 
+
+namespace myoddweb::nn
+{
 class NeuralNetworkHelper;
 class NeuralNetworkOptions
 {
@@ -558,3 +561,4 @@ private:
   double _update_training_monitor_percent;
   bool _has_bias;
 };
+} // namespace myoddweb::nn

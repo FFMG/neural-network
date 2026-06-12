@@ -9,6 +9,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class MultiOutputLayerDetails
 {
 
@@ -89,3 +92,4 @@ private:
   std::vector<LayerDetails> _hidden_layers;
   OutputLayerDetails _output_details;
 };
+} // namespace myoddweb::nn

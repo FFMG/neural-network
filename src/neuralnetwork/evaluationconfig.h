@@ -2,6 +2,9 @@
 
 #include "./libraries/instrumentor.h"
 
+
+namespace myoddweb::nn
+{
 class EvaluationConfig final
 {
 public:
@@ -102,3 +105,5 @@ private:
   double _cross_entropy_lambda;
   double _epsilon = 1e-8;
 };
+
+} // namespace myoddweb::nn

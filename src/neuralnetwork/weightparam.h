@@ -4,6 +4,9 @@
 
 #include <cmath>
 
+
+namespace myoddweb::nn
+{
 class WeightParam
 {
 public:
@@ -205,3 +208,4 @@ private:
   long long _time_step = 0;
   double _weight_decay = 0.0;
 };
+} // namespace myoddweb::nn

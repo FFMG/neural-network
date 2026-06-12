@@ -3,6 +3,9 @@
 #include "./libraries/instrumentor.h"
 #include "errorcalculation.h"
 
+
+namespace myoddweb::nn
+{
 class NeuralNetworkHelperMetrics final
 {
 public:
@@ -66,3 +69,5 @@ protected:
   double _error;
   ErrorCalculation::type _error_type;
 };
+
+} // namespace myoddweb::nn

@@ -7,6 +7,9 @@
 #include "hiddenstate.h"
 #include "logger.h"
 
+
+namespace myoddweb::nn
+{
 class HiddenStates 
 {
 public:
@@ -173,3 +176,5 @@ private:
   std::vector<std::vector<double>> _cell_state_values;
   std::vector<std::vector<HiddenState>> _layer_views;   // [layer][time]
 };
+
+} // namespace myoddweb::nn

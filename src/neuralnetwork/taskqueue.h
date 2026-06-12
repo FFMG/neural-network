@@ -10,6 +10,9 @@
 #include "./libraries/instrumentor.h"
 #include "logger.h"
 
+
+namespace myoddweb::nn
+{
 template <typename R>
 class TaskQueue
 {
@@ -1099,3 +1102,5 @@ private:
   std::atomic<unsigned int> _threads_index;
   std::once_flag _start_flag;
 };
+
+} // namespace myoddweb::nn

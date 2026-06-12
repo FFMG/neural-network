@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <cmath>
 
+
+namespace myoddweb::nn
+{
 LSTMLayer::LSTMLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
@@ -1409,3 +1412,5 @@ void LSTMLayer::set_rw_decays(const std::vector<double>& v)
     _rw_decays = v;
   }
 }
+
+} // namespace myoddweb::nn

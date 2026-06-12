@@ -6,6 +6,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class LSTMLayer final : public Layer
 {
 protected:
@@ -1066,3 +1069,5 @@ private:
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
 };
 
+
+} // namespace myoddweb::nn

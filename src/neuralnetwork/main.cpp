@@ -26,6 +26,8 @@
 #include "./examples/xor.h"
 #include "./libraries/instrumentor.h"
 
+using namespace myoddweb::nn;
+
 int main()
 {
   MYODDWEB_PROFILE_BEGIN_SESSION( "Monitor Global", "Profile-Global.json" );

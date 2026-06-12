@@ -19,6 +19,9 @@
 #include <span>
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class layer_activation_helper
 {
 public:
@@ -1306,3 +1309,5 @@ protected:
   layer_activation_helper _layer_activation_helper;
   double _momentum;
 };
+
+} // namespace myoddweb::nn

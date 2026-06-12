@@ -1,9 +1,12 @@
-﻿#pragma once
+#pragma once
 #include "logger.h"
 
 #include <algorithm>
 #include <string>
 
+
+namespace myoddweb::nn
+{
 enum class OptimiserType
 {
   SGD,
@@ -111,3 +114,4 @@ inline OptimiserType string_to_optimiser_type(const std::string& str)
   // If no match is found after checking all possibilities, throw an exception
   Logger::panic("Unknown optimiser type: ", str);
 }
+} // namespace myoddweb::nn

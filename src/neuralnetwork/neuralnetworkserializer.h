@@ -23,6 +23,9 @@
 
 #include "libraries/TinyJSON.h"
 
+
+namespace myoddweb::nn
+{
 class NeuralNetworkSerializer
 {
 public:
@@ -84,3 +87,4 @@ private:
   static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails>& hidden_layers);
   static TinyJSON::TJValueArray* add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details);
 };
+} // namespace myoddweb::nn

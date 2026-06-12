@@ -3,6 +3,9 @@
 #include <chrono>
 #include <random>    // For std::mt19937 and std::random_device
 
+
+namespace myoddweb::nn
+{
 class Rng
 {
 private:
@@ -54,3 +57,4 @@ private:
   seed_type _seed;
   std::mt19937 _engine;
 };
+} // namespace myoddweb::nn

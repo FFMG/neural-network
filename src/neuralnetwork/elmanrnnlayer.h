@@ -5,6 +5,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class ElmanRNNLayer final : public Layer
 {
 protected:
@@ -280,3 +283,5 @@ private:
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
 };
+
+} // namespace myoddweb::nn

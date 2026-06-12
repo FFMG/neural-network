@@ -5,6 +5,9 @@
 
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class FFOutputLayer final : public FFLayer, public OutputLayer
 {
 public:
@@ -116,3 +119,4 @@ private:
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs) const;
 };
+} // namespace myoddweb::nn

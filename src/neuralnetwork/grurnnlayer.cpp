@@ -5,6 +5,9 @@
 #include "simd_utils.h"
 #include <numeric>
 
+
+namespace myoddweb::nn
+{
 GRURNNLayer::GRURNNLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer, 
@@ -1779,3 +1782,5 @@ void GRURNNLayer::set_rw_decays(const std::vector<double>& v)
     _rw_decays = v;
   }
 }
+
+} // namespace myoddweb::nn

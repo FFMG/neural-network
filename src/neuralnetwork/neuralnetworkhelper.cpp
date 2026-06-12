@@ -1,6 +1,9 @@
 #include "neuralnetworkhelper.h"
 #include "neuralnetwork.h"
 
+
+namespace myoddweb::nn
+{
 NeuralNetworkHelper::NeuralNetworkHelper(
   NeuralNetwork& neural_network,
   double learning_rate,
@@ -30,3 +33,5 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetworkHelper::calcul
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
   return _neural_network->calculate_forecast_metrics_all_layers(error_types);
 }
+
+} // namespace myoddweb::nn
