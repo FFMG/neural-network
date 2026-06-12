@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "aligned_allocator.h"
+#include "common/aligned_allocator.h"
 #include <vector>
 #include <cstdint>
 

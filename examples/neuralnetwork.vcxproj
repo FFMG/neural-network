@@ -1,0 +1,221 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{b0d2b8f3-6b23-4f26-990c-26cc4c33be4b}</ProjectGuid>
+    <RootNamespace>neuralnetwork</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>VALIDATE_DATA=1;TRACY_ENABLE;MYODDWEB_PROFILE=0;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <AdditionalIncludeDirectories>../include/neuralnetwork/</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\elmanrnnlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\fflayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\grurnnlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\layer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\layers.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\libraries\TinyJSON.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\libraries\tracy\TracyClient.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\neuralnetwork.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkhelper.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkserializer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\neuron.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\neuralnetwork\common\activation.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\adaptivelearningratescheduler.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\aligned_allocator.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\evaluationconfig.h" />
+    <ClInclude Include="addingproblem.h" />
+    <ClInclude Include="branched_output.h" />
+    <ClInclude Include="compound_output_sandwich.h" />
+    <ClInclude Include="compound_softmax.h" />
+    <ClInclude Include="compound_trivial_softmax.h" />
+    <ClInclude Include="lstm_multi.h" />
+    <ClInclude Include="multi_output.h" />
+    <ClInclude Include="multi_output_gru.h" />
+    <ClInclude Include="repro_issue.h" />
+    <ClInclude Include="repro_issue_softmax.h" />
+    <ClInclude Include="syntheticsentiment.h" />
+    <ClInclude Include="trivial_softmax.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\ffoutputlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\grurnnlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\lstmlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\layer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\elmanrnnlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\errorcalculation.h" />
+    <ClInclude Include="copymemory.h" />
+    <ClInclude Include="lstm.h" />
+    <ClInclude Include="helper.h" />
+    <ClInclude Include="residualxor.h" />
+    <ClInclude Include="spiral.h" />
+    <ClInclude Include="threebitparity.h" />
+    <ClInclude Include="twomoon.h" />
+    <ClInclude Include="xor.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\fflayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\gradientsandoutputs.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\hiddenstate.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\hiddenstates.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\layerdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\layers.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\layersandneuronscontainer.h" />
+    <ClInclude Include="..\include\neuralnetwork\libraries\instrumentor.h" />
+    <ClInclude Include="..\include\neuralnetwork\libraries\TinyJSON.h" />
+    <ClInclude Include="..\include\neuralnetwork\libraries\tracy\tracy\Tracy.hpp" />
+    <ClInclude Include="..\include\neuralnetwork\common\logger.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\multioutputlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\multioutputlayerdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\neuralnetwork.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\neuralnetworkhelper.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\neuralnetworkhelpermetrics.h" />
+    <ClInclude Include="..\include\neuralnetwork\neuralnetworkoptions.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\neuralnetworkserializer.h" />
+    <ClInclude Include="..\include\neuralnetwork\neuron.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\optimiser.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\outputlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\outputlayerdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\residualprojector.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\rng.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\simd_utils.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\taskqueue.h" />
+    <ClInclude Include="..\include\neuralnetwork\helpers\trainingmonitor.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\weightparam.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

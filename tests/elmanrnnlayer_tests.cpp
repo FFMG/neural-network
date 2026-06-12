@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/elmanrnnlayer.h"
+#include "layers/elmanrnnlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>

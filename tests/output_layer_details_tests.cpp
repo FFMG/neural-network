@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/outputlayerdetails.h"
+#include "layers/outputlayerdetails.h"
 
 
 using namespace myoddweb::nn;

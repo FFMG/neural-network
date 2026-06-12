@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+﻿cmake_minimum_required(VERSION 3.14)
 project(NeuralNetworkTests CXX)
 
 # Set C++ standard
@@ -19,21 +19,21 @@ FetchContent_MakeAvailable(googletest)
 option(ENABLE_TRACY "Enable Tracy Profiler" OFF)
 
 # Define source files from the main project (relative to this directory)
-set(NN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src/neuralnetwork")
+set(NN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../include/neuralnetwork")
 
 set(NN_SOURCES
-    "${NN_SOURCE_DIR}/activation.cpp"
-    "${NN_SOURCE_DIR}/elmanrnnlayer.cpp"
-    "${NN_SOURCE_DIR}/fflayer.cpp"
-    "${NN_SOURCE_DIR}/ffoutputlayer.cpp"
-    "${NN_SOURCE_DIR}/grurnnlayer.cpp"
-    "${NN_SOURCE_DIR}/layer.cpp"
-    "${NN_SOURCE_DIR}/layers.cpp"
+    "${NN_SOURCE_DIR}/common/activation.cpp"
+    "${NN_SOURCE_DIR}/layers/elmanrnnlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/fflayer.cpp"
+    "${NN_SOURCE_DIR}/layers/ffoutputlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/grurnnlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/layer.cpp"
+    "${NN_SOURCE_DIR}/layers/layers.cpp"
     "${NN_SOURCE_DIR}/libraries/TinyJSON.cpp"
-    "${NN_SOURCE_DIR}/lstmlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/lstmlayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
-    "${NN_SOURCE_DIR}/neuralnetworkhelper.cpp"
-    "${NN_SOURCE_DIR}/neuralnetworkserializer.cpp"
+    "${NN_SOURCE_DIR}/helpers/neuralnetworkhelper.cpp"
+    "${NN_SOURCE_DIR}/helpers/neuralnetworkserializer.cpp"
     "${NN_SOURCE_DIR}/neuron.cpp"
 )
 

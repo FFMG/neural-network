@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/hiddenstate.h"
+#include "common/hiddenstate.h"
 #include <vector>
 #include <algorithm>
 

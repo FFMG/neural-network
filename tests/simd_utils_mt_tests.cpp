@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/simd_utils.h"
+#include "common/simd_utils.h"
 #include <vector>
 #include <thread>
 #include <atomic>

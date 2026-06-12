@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "gradientsandoutputs.h"
+#include "common/gradientsandoutputs.h"
 #include <vector>
 #include <stdexcept>
 

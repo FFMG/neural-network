@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "../src/neuralnetwork/layersandneuronscontainer.h"
+#include "common/layersandneuronscontainer.h"
 #include <vector>
 #include <numeric>
 
