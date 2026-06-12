@@ -8,6 +8,23 @@ While not focused on high performance, it provides a clean implementation of the
 
 ## How to use
 
+### Namespace
+
+All classes, structures, and functions of the core neural network library are wrapped in the `myoddweb::nn` namespace. 
+
+To use the library, you can import the namespace:
+
+```cpp
+using namespace myoddweb::nn;
+```
+
+Or reference the types explicitly:
+
+```cpp
+myoddweb::nn::NeuralNetworkOptions options = ...
+myoddweb::nn::NeuralNetwork nn(options);
+```
+
 ### Activation methods
 
 * linear
