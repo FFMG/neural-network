@@ -1,7 +1,9 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "neuron.h"
 #include <vector>
 
+
+using namespace myoddweb::nn;
 TEST(NeuronTest, NormalNeuronInitialization)
 {
   Neuron n(42, Neuron::Type::Normal, 0.0);

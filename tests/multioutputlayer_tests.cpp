@@ -1,12 +1,14 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/multioutputlayer.h"
-#include "../src/neuralnetwork/multioutputlayerdetails.h"
-#include "../src/neuralnetwork/layerdetails.h"
-#include "../src/neuralnetwork/outputlayerdetails.h"
+﻿#include <gtest/gtest.h>
+#include "layers/multioutputlayer.h"
+#include "layers/multioutputlayerdetails.h"
+#include "layers/layerdetails.h"
+#include "layers/outputlayerdetails.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class MultiOutputLayerTest : public ::testing::Test {

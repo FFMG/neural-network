@@ -1,12 +1,14 @@
-#pragma once
+﻿#pragma once
 #include <vector>
 #include <memory>
 #include <algorithm>
-#include "../src/neuralnetwork/fflayer.h"
-#include "../src/neuralnetwork/gradientsandoutputs.h"
-#include "../src/neuralnetwork/hiddenstates.h"
-#include "../src/neuralnetwork/layer.h"
+#include "layers/fflayer.h"
+#include "common/gradientsandoutputs.h"
+#include "common/hiddenstates.h"
+#include "layers/layer.h"
 
+
+using namespace myoddweb::nn;
 namespace test_helper {
   inline std::vector<GradientsAndOutputs> create_batch_gradients_and_outputs(const std::vector<unsigned>& topology, size_t batch_size) {
     std::vector<GradientsAndOutputs> batch;

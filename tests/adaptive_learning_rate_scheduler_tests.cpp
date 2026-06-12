@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/adaptivelearningratescheduler.h"
-#include "../src/neuralnetwork/logger.h"
+﻿#include <gtest/gtest.h>
+#include "helpers/adaptivelearningratescheduler.h"
+#include "common/logger.h"
 #include <vector>
 
+
+using namespace myoddweb::nn;
 class AdaptiveLearningRateSchedulerTest : public ::testing::Test {
 protected:
   void SetUp() override {

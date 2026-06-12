@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/grurnnlayer.h"
+﻿#include <gtest/gtest.h>
+#include "layers/grurnnlayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class GRURNNLayerTest : public ::testing::Test {

@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/hiddenstate.h"
+﻿#include <gtest/gtest.h>
+#include "common/hiddenstate.h"
 #include <vector>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 TEST(HiddenStateTest, ConstructorInitializesCorrectly)
 {
   unsigned num_neurons = 5;

@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include "../src/neuralnetwork/fflayer.h"
+﻿#include <gtest/gtest.h>
+#include "layers/fflayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
+
+using namespace myoddweb::nn;
 using namespace test_helper;
 
 class FFLayerMTTest : public ::testing::Test 
