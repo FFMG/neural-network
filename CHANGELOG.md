@@ -8,6 +8,9 @@ All notable changes to the `neural-network` library will be documented in this f
 - Created the `myoddweb::nn` namespace.
 - Wrapped all core neural network library classes, structures, and helper functions in the new `myoddweb::nn` namespace (including `NeuralNetwork`, `Layer`, `Neuron`, `activation`, `NeuralNetworkOptions`, etc.).
 - Added explicit documentation in the `README.md` explaining how to import and use the new namespace.
+- Created a new `/python/` subdirectory containing a C++ binding toolchain (using `pybind11` and NuGet package restore) to compile the C++ library into a Python extension module (`neuralnetwork.pyd`).
+- Added a Python test script `example.py` demonstrating how to train and use the neural network from Python.
+- Added explicit documentation in `python/README.md` explaining how to build and call the Python module.
 
 ### Changed
 - Updated all stand-alone example header files in `src/neuralnetwork/examples/` to use the `myoddweb::nn` namespace.
