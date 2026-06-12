@@ -21,6 +21,8 @@
  * This confirms that Softmax, compound slicing, multi-head hidden layers,
  * recurrent states, residual jumps, and persistence all work in perfect harmony.
  */
+
+using namespace myoddweb::nn;
 class ExampleCompoundOutputSandwich
 {
 private:

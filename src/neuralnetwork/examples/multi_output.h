@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "../errorcalculation.h"
 #include "../logger.h"
 #include "../neuralnetwork.h"
@@ -19,6 +19,8 @@
  * - Output ~1.0 if x > 0, ~0.0 if x < 0 (Sigmoid)
  * - Output tanh(x) as a regression value (Tanh)
  */
+
+using namespace myoddweb::nn;
 class ExampleMultiOutput
 {
 private:

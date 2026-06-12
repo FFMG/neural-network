@@ -21,6 +21,8 @@
  *    - Bucket 3: 0.4 <= x < 1.2
  *    - Bucket 4: x >= 1.2
  */
+
+using namespace myoddweb::nn;
 class ExampleCompoundSoftmax
 {
 private:

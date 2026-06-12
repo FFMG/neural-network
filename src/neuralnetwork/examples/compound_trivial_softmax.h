@@ -6,6 +6,8 @@
 #include <iomanip>
 
 // Compound 
+
+using namespace myoddweb::nn;
 class ExampleCompoundTrivialSoftmax
 {
 private:

@@ -5,6 +5,8 @@
 #include "helper.h"
 #include <vector>
 
+
+using namespace myoddweb::nn;
 class ExampleLstm
 {
 private:

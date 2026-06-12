@@ -1,9 +1,11 @@
-#include <vector>
+﻿#include <vector>
 
 #include "../logger.h"
 #include "../neuralnetwork.h"
 #include "helper.h"
 
+
+using namespace myoddweb::nn;
 class ExampleThreebitParity
 {
 public:

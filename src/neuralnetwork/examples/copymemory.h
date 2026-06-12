@@ -5,6 +5,8 @@
 #include "../neuralnetwork.h"
 #include "helper.h"
 
+
+using namespace myoddweb::nn;
 class ExampleCopyMemory
 {
 public:

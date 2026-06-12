@@ -1,8 +1,10 @@
-#include "../errorcalculation.h"
+﻿#include "../errorcalculation.h"
 #include "../logger.h"
 #include "../neuralnetworkserializer.h"
 #include "helper.h"
 
+
+using namespace myoddweb::nn;
 class ExampleXor
 {
 private:

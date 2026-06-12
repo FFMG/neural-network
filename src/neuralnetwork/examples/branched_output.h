@@ -7,6 +7,8 @@
 #include "../neuralnetworkserializer.h"
 #include "../logger.h"
 
+
+using namespace myoddweb::nn;
 class ExampleBranchedOutput
 {
 public:

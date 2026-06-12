@@ -1,4 +1,4 @@
-#include "../errorcalculation.h"
+﻿#include "../errorcalculation.h"
 #include "../logger.h"
 #include "../neuralnetworkserializer.h"
 
@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iomanip>
 
+
+using namespace myoddweb::nn;
 class SpiralLoader 
 {
 public:
