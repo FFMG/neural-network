@@ -17,6 +17,9 @@
  * A minimal layer implementation to act as a source for branch layers.
  * Branch layers expect their input from index 0 of the branch's internal buffers.
  */
+
+namespace myoddweb::nn
+{
 class MultiInputProxyLayer final : public Layer
 {
 public:
@@ -876,3 +879,4 @@ private:
   std::vector<Branch> _branches;
   mutable std::mutex _mutex;
 };
+} // namespace myoddweb::nn

@@ -15,6 +15,9 @@
   #undef new
 #endif
 
+
+namespace myoddweb::nn
+{
 template <typename T, size_t Alignment>
 class AlignedAllocator 
 {
@@ -108,3 +111,4 @@ bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&
 #if defined(_MSC_VER)
 #pragma pop_macro("new")
 #endif
+} // namespace myoddweb::nn

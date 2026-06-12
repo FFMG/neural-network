@@ -9,6 +9,9 @@
 
 #include "logger.h"
 
+
+namespace myoddweb::nn
+{
 class AdaptiveLearningRateScheduler 
 {
 private:
@@ -283,3 +286,4 @@ private:
     return current_learning_rate * (1.0 - static_cast<double>(epoch) / number_of_epoch);
   }
 };
+} // namespace myoddweb::nn

@@ -10,6 +10,9 @@
 #include "outputlayerdetails.h"
 #include <string>
 
+
+namespace myoddweb::nn
+{
 class LayerDetails
 {
 public:
@@ -142,3 +145,4 @@ private:
   OptimiserType _optimiser_type;
   double _momentum;
 };
+} // namespace myoddweb::nn

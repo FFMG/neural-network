@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <cmath>
 
+
+namespace myoddweb::nn
+{
 ElmanRNNLayer::ElmanRNNLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer,
@@ -857,3 +860,5 @@ void ElmanRNNLayer::cache_recurrent_weights()
     }
   }
 }
+
+} // namespace myoddweb::nn

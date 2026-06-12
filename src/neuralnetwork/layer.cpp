@@ -8,6 +8,9 @@
 #include "grurnnlayer.h"
 #include "lstmlayer.h"
 
+
+namespace myoddweb::nn
+{
 std::unique_ptr<Layer> Layer::create_hidden_layer(
   unsigned layer_index,
   unsigned number_input_neurons,
@@ -753,3 +756,5 @@ void Layer::apply_weight_gradient(double gradient, double learning_rate, bool is
         apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, gradient, learning_rate, clipping_scale, optimiser_type, neuron_number);
     }
 }
+
+} // namespace myoddweb::nn

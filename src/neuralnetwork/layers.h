@@ -12,6 +12,9 @@
 #include "residualprojector.h"
 #include "taskqueue.h"
 
+
+namespace myoddweb::nn
+{
 class Layers
 {
 public:
@@ -155,3 +158,4 @@ private:
   mutable std::shared_mutex _mutex;
   TaskQueuePool<void>* _update_weights_pool;
 };
+} // namespace myoddweb::nn

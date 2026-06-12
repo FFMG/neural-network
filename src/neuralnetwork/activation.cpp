@@ -12,6 +12,9 @@
 #define SELU_LAMBDA 1.0507
 #define SELU_ALPHA 1.67326
 
+
+namespace myoddweb::nn
+{
 activation::activation(const method method, double alpha, double temperature, double inference_temperature) :
   _method(method),
   _alpha(alpha),
@@ -627,3 +630,5 @@ std::string activation::method_to_string(method m)
     Logger::panic("Unknown or unsupported 'method' enum value.");
   }
 }
+
+} // namespace myoddweb::nn

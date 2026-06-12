@@ -27,6 +27,9 @@
 #include "rng.h"
 #include "taskqueue.h"
 
+
+namespace myoddweb::nn
+{
 class NeuralNetwork
 {
 public:
@@ -133,3 +136,4 @@ private:
   mutable SingleTaskQueue<std::vector<NeuralNetworkHelperMetrics>> _adaptive_lr_task;
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
 };
+} // namespace myoddweb::nn

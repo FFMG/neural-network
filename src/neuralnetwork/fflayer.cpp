@@ -4,6 +4,9 @@
 #include "logger.h"
 #include <numeric>
 
+
+namespace myoddweb::nn
+{
 FFLayer::FFLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer,
@@ -758,3 +761,5 @@ void FFLayer::calculate_and_store_gradients_chunk(
     }
   }
 }
+
+} // namespace myoddweb::nn

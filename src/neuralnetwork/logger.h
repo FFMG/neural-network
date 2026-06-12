@@ -23,6 +23,9 @@
 #include <utility>
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class Logger
 {
 public:
@@ -411,3 +414,4 @@ private:
     }
   }
 };
+} // namespace myoddweb::nn

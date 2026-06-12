@@ -7,6 +7,9 @@
 #include "activation.h"
 #include "weightparam.h"
 
+
+namespace myoddweb::nn
+{
 class ResidualProjector
 {
 public:
@@ -314,3 +317,4 @@ private:
   mutable std::vector<std::vector<WeightParam>> _cached_weights;
   mutable bool _weights_cache_dirty;
 };
+} // namespace myoddweb::nn

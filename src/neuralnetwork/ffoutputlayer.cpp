@@ -3,6 +3,9 @@
 #include "logger.h"
 #include "neuralnetworkhelpermetrics.h"
 
+
+namespace myoddweb::nn
+{
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
   const std::vector<OutputLayerDetails>& output_layer_details,
@@ -631,3 +634,5 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
   std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
 }
+
+} // namespace myoddweb::nn

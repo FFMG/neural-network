@@ -5,6 +5,9 @@
 #include <span>
 #include <vector>
 
+
+namespace myoddweb::nn
+{
 class LayersAndNeuronsContainer
 {
 public:
@@ -187,3 +190,5 @@ private:
   std::vector<double, AlignedAllocator<double, 32>> _data;
   std::vector<unsigned> _topology;
 };
+
+} // namespace myoddweb::nn

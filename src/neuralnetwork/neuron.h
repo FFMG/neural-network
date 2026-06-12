@@ -1,4 +1,7 @@
 #pragma once
+
+namespace myoddweb::nn
+{
 class Neuron
 {
 public:
@@ -37,3 +40,4 @@ private:
   Type _type;
   double _dropout_rate;
 };
+} // namespace myoddweb::nn

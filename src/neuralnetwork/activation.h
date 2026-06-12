@@ -4,6 +4,9 @@
 #include <optional>
 #include <string>
 
+
+namespace myoddweb::nn
+{
 class activation
 {
 private:
@@ -123,3 +126,4 @@ private:
   activation_function _activate_ptr;
   activation_function _derivative_ptr;
 };
+} // namespace myoddweb::nn

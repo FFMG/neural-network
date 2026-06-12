@@ -11,6 +11,9 @@
 #include "evaluationconfig.h"
 #include "logger.h"
 
+
+namespace myoddweb::nn
+{
 class ErrorCalculation
 {
 public:
@@ -1008,3 +1011,4 @@ public:
     return (total == 0) ? 0.0 : static_cast<double>(predicted) / total;
   }
 };
+} // namespace myoddweb::nn

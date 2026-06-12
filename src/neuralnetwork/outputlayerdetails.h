@@ -7,6 +7,9 @@
 #include "evaluationconfig.h"
 #include "optimiser.h"
 
+
+namespace myoddweb::nn
+{
 class OutputLayerDetails
 {
 public:
@@ -144,3 +147,4 @@ private:
   OptimiserType _optimiser_type;
   double _momentum;
 };
+} // namespace myoddweb::nn

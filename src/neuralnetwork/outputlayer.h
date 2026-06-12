@@ -5,6 +5,9 @@
 #include "evaluationconfig.h"
 #include "outputlayerdetails.h"
 
+
+namespace myoddweb::nn
+{
 class OutputLayer
 {
 public:
@@ -150,3 +153,4 @@ private:
   std::vector<bounds> _bounds;
   unsigned _number_output_layers;
 };
+} // namespace myoddweb::nn

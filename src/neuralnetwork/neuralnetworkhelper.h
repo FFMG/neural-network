@@ -6,6 +6,9 @@
 #include "neuralnetworkhelpermetrics.h"
 #include "trainingmonitor.h"
 
+
+namespace myoddweb::nn
+{
 class NeuralNetwork;
 class NeuralNetworkHelper
 {
@@ -186,3 +189,5 @@ private:
   std::vector<size_t> _final_check_indexes;
   TrainingMonitor _training_monitor;
 };
+
+} // namespace myoddweb::nn

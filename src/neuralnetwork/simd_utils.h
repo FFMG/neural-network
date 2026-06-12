@@ -11,6 +11,9 @@
 #define SIMD_AVX2_ENABLED
 #endif
 
+
+namespace myoddweb::nn
+{
 class simd
 {
 public:
@@ -566,3 +569,4 @@ public:
     scalar_add_vectors(x, y, n, j);
   }
 };
+} // namespace myoddweb::nn
