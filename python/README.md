@@ -11,6 +11,7 @@ This subdirectory contains the Visual Studio 2022 C++ project and code necessary
 *   `neuralnetwork_py.vcxproj.filters`: Project filters mapping for Solution Explorer organization.
 *   `neuralnetwork_py.sln`: Main Visual Studio solution.
 *   `example.py`: Python script illustrating options configuration, model instantiation, callback monitoring, training, inference, and serialization.
+*   `import_check.py`: A lightweight validation script that verifies the binary module loads, initializes enums, and starts up correctly (used in CI).
 
 ---
 
