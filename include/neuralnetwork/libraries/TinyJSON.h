@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 // Licensed to Florent Guelfucci under one or more agreements.
 // Florent Guelfucci licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
@@ -47,10 +47,11 @@
 // v0.2.3 - added atomic file saving
 // v0.2.4 - added operator[] and as<T>() accessor to TJValue
 // v0.2.5 - added raise warning when key is not found.
+// v0.2.6 - fixed a bug in the resizing of string buffers.
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 5;
-static const char TJ_VERSION_STRING[] = "0.2.5";
+static const short TJ_VERSION_PATCH = 6;
+static const char TJ_VERSION_STRING[] = "0.2.6";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
