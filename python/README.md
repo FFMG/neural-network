@@ -59,8 +59,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 
 ### Enums
 *   `nn.ActivationMethod`: `Linear`, `Sigmoid`, `Tanh`, `Relu`, `LeakyRelu`, `PRelu`, `Selu`, `Swish`, `Mish`, `Gelu`, `Elu`, `Softmax`.
-*   `nn.OptimiserType`: `SGD`, `Momentum`, `Nesterov`, `RMSProp`, `Adam`, `AdamW`, `AdaGrad`, `AdaDelta`, `Nadam`, `NadamW`, `AMSGrad`, `LAMB`, `Lion`, `None`.
-*   `nn.ErrorCalculationType`: `None`, `HuberLoss`, `HuberDirectionLoss`, `MAE`, `MSE`, `RMSE`, `BCELoss`, `CrossEntropy`, etc.
+*   `nn.OptimiserType`: `SGD`, `Momentum`, `Nesterov`, `RMSProp`, `Adam`, `AdamW`, `AdaGrad`, `AdaDelta`, `Nadam`, `NadamW`, `AMSGrad`, `LAMB`, `Lion`, `None_`.
+*   `nn.ErrorCalculationType`: `None_`, `HuberLoss`, `HuberDirectionLoss`, `MAE`, `MSE`, `RMSE`, `BCELoss`, `CrossEntropy`, etc.
 
 ### Core Classes & Properties
 *   `nn.Activation(method, alpha, temperature=1.0)`: Represents the activation configuration.
