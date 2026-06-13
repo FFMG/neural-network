@@ -189,10 +189,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   auto layer_role_number = layer_object.get<int>("layer-role");
   auto layer_role = (Layer::Role)layer_role_number;
 
-  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
-
-  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+  auto lah = get_activation_helper(layer_object);
 
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
@@ -279,10 +276,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto layer_role_number = layer_object.get<int>("layer-role");
   auto layer_role = (Layer::Role)layer_role_number;
 
-  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
-
-  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+  auto lah = get_activation_helper(layer_object);
 
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
@@ -461,10 +455,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   auto layer_role_number = layer_object.get<int>("layer-role");
   auto layer_role = (Layer::Role)layer_role_number;
 
-  auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
-  auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
-
-  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
+  auto lah = get_activation_helper(layer_object);
 
   // Cell Candidate weights
   auto w_values = layer_object.get<std::vector<double>>("w-values");
@@ -639,11 +630,10 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto layer_role_number = layer_object.get<int>("layer-role");
   auto layer_role = (Layer::Role)layer_role_number;
 
+  auto lah = get_activation_helper(layer_object);
+
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
-
-  auto lah = get_activation_helper(layer_object, number_input_neurons, number_output_neurons);
-
   auto w_values = layer_object.get<std::vector<double>>("w-values");
   auto w_grads = layer_object.get<std::vector<double>>("w-grads");
   auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
@@ -958,8 +948,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto number_of_threads = options_object->get_or<int>("number-of-threads", 0);
   const auto learning_rate_decay_rate = options_object->get_or<double>("learning-rate-decay-rate", 0.0);
   const auto adaptive_learning_rate = options_object->get_or<bool>("adaptive-learning-rate", false);
-  const auto optimiser_type_string = options_object->try_get_string("optimiser-type");
-  (void)optimiser_type_string;
 
   const auto learning_rate_restart_rate = options_object->get_or<double>("learning-rate-restart-rate", 0.0);
   const auto learning_rate_restart_boost = options_object->get_or<double>("learning-rate-restart-boost", 0.0);
@@ -974,9 +962,6 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto bptt_max_ticks = options_object->get_or<int>("bptt-max-ticks", 0);
   const auto shuffle_bptt_batches = options_object->get_or<bool>("shuffle-bptt-batches", true);
   const auto has_bias = options_object->get_or<bool>("has-bias", true);
-
-  const auto output_error_calculation_type_string = options_object->try_get_string("output-error-calculation-type");
-  (void)output_error_calculation_type_string;
 
   const auto update_training_monitor_percent = options_object->get_or<double>("update-training-monitor-percent", 0.0);
 
@@ -1162,9 +1147,12 @@ int NeuralNetworkSerializer::get_number_of_layers(const TinyJSON::TJValue& json)
   return array->get_number_of_items();
 }
 
-layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const TinyJSON::TJValueObject& layer_object, unsigned num_inputs, unsigned num_outputs)
+layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const TinyJSON::TJValueObject& layer_object)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+
+  const auto num_inputs = layer_object.get<unsigned>("number-input-neurons");
+  const auto num_outputs = layer_object.get<unsigned>("number-output-neurons");
   
   const auto method_str = layer_object.try_get_string("activation-method");
   const auto method = activation::string_to_method(method_str == nullptr ? "sigmoid" : method_str);
@@ -1187,7 +1175,7 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
         const auto r_start = r_obj->get<unsigned>("start");
         const auto r_end = r_obj->get<unsigned>("end");
         const auto r_method_str = r_obj->get_string("activation-method");
-        const auto r_alpha = (double)r_obj->get_float("activation-alpha");
+        const auto r_alpha = r_obj->get<double>("activation-alpha");
         const auto r_temperature = r_obj->get_or<double>("activation-temperature", 1.0);
         const auto r_inference_temperature = r_obj->get_or<double>("activation-inference-temperature", r_temperature);
         lah.set_bounds(activation(activation::string_to_method(r_method_str), r_alpha, r_temperature, r_inference_temperature), r_start, r_end);
@@ -1383,11 +1371,9 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
-  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
-  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_floats("w-values", layer.get_w_values());
   layer_object->set_floats("w-grads", layer.get_w_grads());
   layer_object->set_floats("w-velocities", layer.get_w_velocities());
@@ -1441,11 +1427,9 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
-  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
-  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_floats("w-values", layer.get_w_values());
   layer_object->set_floats("w-grads", layer.get_w_grads());
   layer_object->set_floats("w-velocities", layer.get_w_velocities());
@@ -1548,11 +1532,8 @@ void NeuralNetworkSerializer::add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJ
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
-
-  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
-  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   
   // Candidate Gate (g) - uses standard w/rw/b
   layer_object->set_floats("w-values", layer.get_w_values());
@@ -1683,10 +1664,8 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set("neurons", layer_array);
   layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
-  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
-  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
-  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_floats("w-values", layer.get_w_values());
   layer_object->set_floats("w-grads", layer.get_w_grads());
   layer_object->set_floats("w-velocities", layer.get_w_velocities());
@@ -1946,9 +1925,34 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
   delete tj_errors_array;
 }
 
-void NeuralNetworkSerializer::add_activation_helper(const layer_activation_helper& lah, TinyJSON::TJValueObject& json)
+void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON::TJValueObject& json)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+
+  const auto num_inputs = layer.get_number_input_neurons();
+  const auto num_outputs = layer.get_number_output_neurons();
+
+  const auto& lha = layer.get_activation_helper();
+  if (lha.ranges().size() > 0)
+  {
+    const auto& default_range = lha.ranges().front();
+    json.set("activation-method", default_range.activation_method.method_to_string().c_str());
+    json.set("activation-alpha", default_range.activation_method.get_alpha());
+    json.set("activation-temperature", default_range.activation_method.get_temperature());
+    json.set("activation-inference-temperature", default_range.activation_method.get_inference_temperature());
+  }
+  else
+  {
+    // this is not possible.
+    Logger::panic("This layer does not have a default range!");
+  }
+
+  json.set("number-input-neurons", num_inputs);
+  json.set("number-output-neurons", num_outputs);
+
+  // add the default (global) range
+  
+  const layer_activation_helper& lah = layer.get_activation_helper();
   auto* ranges_array = new TinyJSON::TJValueArray();
   for (const auto& r : lah.ranges())
   {
@@ -2057,8 +2061,6 @@ void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer
   auto layer_object = new TinyJSON::TJValueObject();
   layer_object->set_string("layer-name", "multioutputlayer");
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
-  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
-  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   
   auto branches_array = new TinyJSON::TJValueArray();
   for (const auto& branch : layer.get_branches())
@@ -2074,7 +2076,7 @@ void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer
   layer_object->set("branches", branches_array);
   delete branches_array;
 
-  add_activation_helper(layer.get_activation_helper(), *layer_object);
+  add_activation_helper(layer, *layer_object);
 
   layers.add(layer_object);
   delete layer_object;
