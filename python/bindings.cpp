@@ -12,6 +12,7 @@
 #include "layers/multioutputlayerdetails.h"
 #include "helpers/errorcalculation.h"
 #include "helpers/neuralnetworkserializer.h"
+#include "common/logger.h"
 
 namespace py = pybind11;
 using namespace myoddweb::nn;
@@ -49,11 +50,11 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("AMSGrad", OptimiserType::AMSGrad)
         .value("LAMB", OptimiserType::LAMB)
         .value("Lion", OptimiserType::Lion)
-        .value("None", OptimiserType::None)
+        .value("None_", OptimiserType::None)
         .export_values();
 
     py::enum_<ErrorCalculation::type>(m, "ErrorCalculationType")
-        .value("None", ErrorCalculation::type::none)
+        .value("None_", ErrorCalculation::type::none)
         .value("HuberLoss", ErrorCalculation::type::huber_loss)
         .value("HuberDirectionLoss", ErrorCalculation::type::huber_direction_loss)
         .value("MAE", ErrorCalculation::type::mae)
@@ -72,7 +73,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .export_values();
 
     py::enum_<Layer::Architecture>(m, "LayerArchitecture")
-        .value("None", Layer::Architecture::None)
+        .value("None_", Layer::Architecture::None)
         .value("FF", Layer::Architecture::FF)
         .value("Elman", Layer::Architecture::Elman)
         .value("Gru", Layer::Architecture::Gru)
@@ -86,6 +87,50 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("Output", Layer::Role::Output)
         .value("MultiOutput", Layer::Role::MultiOutput)
         .export_values();
+
+    py::enum_<Logger::LogLevel>(m, "LogLevel")
+        .value("Trace", Logger::LogLevel::Trace)
+        .value("Debug", Logger::LogLevel::Debug)
+        .value("Info", Logger::LogLevel::Information)
+        .value("Warning", Logger::LogLevel::Warning)
+        .value("Error", Logger::LogLevel::Error)
+        .value("Panic", Logger::LogLevel::Panic)
+        .value("None_", Logger::LogLevel::None)
+        .export_values();
+
+    py::class_<Logger, std::unique_ptr<Logger, py::nodelete>>(m, "Logger")
+        .def_static("set_level", &Logger::set_level)
+        .def_static("get_level", &Logger::get_level)
+        .def_static("trace", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::trace(oss.str());
+        })
+        .def_static("debug", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::debug(oss.str());
+        })
+        .def_static("info", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::info(oss.str());
+        })
+        .def_static("warning", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::warning(oss.str());
+        })
+        .def_static("error", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::error(oss.str());
+        })
+        .def_static("panic", [](py::args args) {
+            std::ostringstream oss;
+            for (auto item : args) oss << py::str(item).cast<std::string>();
+            Logger::panic(oss.str());
+        });
 
     // 2. Structs / Helper Classes
     py::class_<activation>(m, "Activation")
@@ -182,13 +227,15 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_enable_bptt", &NeuralNetworkOptions::with_enable_bptt)
         .def("with_bptt_max_ticks", &NeuralNetworkOptions::with_bptt_max_ticks)
         .def("with_update_training_monitor_percent", &NeuralNetworkOptions::with_update_training_monitor_percent)
-        .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types);
+        .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
+        .def("with_log_level", &NeuralNetworkOptions::with_log_level)
+        .def("build", &NeuralNetworkOptions::build);
 
     // 4. NeuralNetwork
     py::class_<NeuralNetwork>(m, "NeuralNetwork")
         .def(py::init<const NeuralNetworkOptions&>())
         .def(py::init<const std::vector<unsigned>&, const activation::method&, const activation::method&>())
-        .def("train", &NeuralNetwork::train)
+        .def("train", &NeuralNetwork::train, py::call_guard<py::gil_scoped_release>())
         .def("think", py::overload_cast<const std::vector<std::vector<double>>&>(&NeuralNetwork::think, py::const_))
         .def("think", py::overload_cast<const std::vector<double>&>(&NeuralNetwork::think, py::const_))
         .def("get_topology", &NeuralNetwork::get_topology)
