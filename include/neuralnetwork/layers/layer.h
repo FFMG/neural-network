@@ -19,7 +19,6 @@
 #include <span>
 #include <vector>
 
-
 namespace myoddweb::nn
 {
 class layer_activation_helper
