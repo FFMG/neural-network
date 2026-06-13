@@ -1,4 +1,4 @@
-﻿// Licensed to Florent Guelfucci under one or more agreements.
+// Licensed to Florent Guelfucci under one or more agreements.
 // Florent Guelfucci licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 #include "TinyJSON.h"
@@ -1937,15 +1937,10 @@ namespace TinyJSON
         return 0;
       }
 
-      unsigned int resize_length = 0;
-      if (current_length < needed_length)
+      unsigned int resize_length = current_length << 1;
+      if (resize_length < needed_length)
       {
         resize_length = needed_length + TJ_DEFAULT_STRING_READ_SIZE;
-      }
-      else
-      {
-        //  multiply our capacity by 2
-        resize_length = current_length << 1;
       }
 
       if (resize_length > TJ_DEFAULT_STRING_MAX_READ_SIZE)
