@@ -137,6 +137,7 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_decays(src._r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -193,6 +194,9 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
   _r_b_decays(std::move(src._r_b_decays)),
+  _rw_values_T(std::move(src._rw_values_T)),
+  _z_rw_values_T(std::move(src._z_rw_values_T)),
+  _r_rw_values_T(std::move(src._r_rw_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -351,6 +355,7 @@ GRURNNLayer::GRURNNLayer(
     _r_b_decays(r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -414,6 +419,7 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
     allocate_workspace();
+    cache_recurrent_weights();
   }
   return *this;
 }
@@ -476,6 +482,9 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
+    _rw_values_T = std::move(src._rw_values_T);
+    _z_rw_values_T = std::move(src._z_rw_values_T);
+    _r_rw_values_T = std::move(src._r_rw_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -566,6 +575,7 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
   {
     init_bias(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays);
   }
+  cache_recurrent_weights();
 }
 
 void GRURNNLayer::calculate_forward_feed(
@@ -710,7 +720,7 @@ void GRURNNLayer::run_forward_pass(
   bool is_training
 ) const
 {
-  std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this);
+  std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this), gated_h(N_this);
   std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
 
   const double* W_z = _z_w_values.data();
@@ -755,13 +765,8 @@ void GRURNNLayer::run_forward_pass(
 
       // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
       const double* h_prev_ptr = prev_h.data();
-      for (size_t i = 0; i < N_this; ++i)
-      {
-        const double h_val = h_prev_ptr[i];
-        if (h_val == 0.0) continue;
-        simd::mul_add(h_val, &U_z[i * N_this], z_pre.data(), N_this);
-        simd::mul_add(h_val, &U_r[i * N_this], r_pre.data(), N_this);
-      }
+      simd::gemv_add(_z_rw_values_T.data(), h_prev_ptr, z_pre.data(), N_this, N_this);
+      simd::gemv_add(_r_rw_values_T.data(), h_prev_ptr, r_pre.data(), N_this, N_this);
 
       // d. Calculate Gates
       for (size_t j = 0; j < N_this; ++j)
@@ -775,10 +780,9 @@ void GRURNNLayer::run_forward_pass(
       // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
       for (size_t i = 0; i < N_this; ++i)
       {
-        const double gated_h = packed_bptt_states[N_this + i] * h_prev_ptr[i];
-        if (gated_h == 0.0) continue;
-        simd::mul_add(gated_h, &U_h[i * N_this], h_hat_pre.data(), N_this);
+        gated_h[i] = packed_bptt_states[N_this + i] * h_prev_ptr[i];
       }
+      simd::gemv_add(_rw_values_T.data(), gated_h.data(), h_hat_pre.data(), N_this, N_this);
 
       // f. Residuals and Candidate Activation
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -1434,6 +1438,7 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
   app(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, false);
   if (has_bias()) app(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, true);
 
+  cache_recurrent_weights();
   zero_gradients();
 }
 
@@ -1714,6 +1719,7 @@ void GRURNNLayer::set_rw_values(const std::vector<double>& v)
   {
     _rw_values = v;
   }
+  cache_recurrent_weights();
 }
 
 void GRURNNLayer::set_rw_grads(const std::vector<double>& v)

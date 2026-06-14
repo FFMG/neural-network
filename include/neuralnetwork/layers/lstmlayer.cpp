@@ -205,6 +205,7 @@ _o_rw_values(o_rw_values), _o_rw_grads(o_rw_grads), _o_rw_velocities(o_rw_veloci
 _o_b_values(o_b_values), _o_b_grads(o_b_grads), _o_b_velocities(o_b_velocities), _o_b_m1(o_b_m1), _o_b_m2(o_b_m2), _o_b_decays(o_b_decays), _o_b_timesteps(o_b_timesteps)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -222,6 +223,7 @@ LSTMLayer::LSTMLayer(const LSTMLayer& src) noexcept :
   _o_b_values(src._o_b_values), _o_b_grads(src._o_b_grads), _o_b_velocities(src._o_b_velocities), _o_b_m1(src._o_b_m1), _o_b_m2(src._o_b_m2), _o_b_decays(src._o_b_decays), _o_b_timesteps(src._o_b_timesteps)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  cache_recurrent_weights();
 }
 
 LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
@@ -236,6 +238,10 @@ LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
   _o_w_values(std::move(src._o_w_values)), _o_w_grads(std::move(src._o_w_grads)), _o_w_velocities(std::move(src._o_w_velocities)), _o_w_m1(std::move(src._o_w_m1)), _o_w_m2(std::move(src._o_w_m2)), _o_w_decays(std::move(src._o_w_decays)), _o_w_timesteps(std::move(src._o_w_timesteps)),
   _o_rw_values(std::move(src._o_rw_values)), _o_rw_grads(std::move(src._o_rw_grads)), _o_rw_velocities(std::move(src._o_rw_velocities)), _o_rw_m1(std::move(src._o_rw_m1)), _o_rw_m2(std::move(src._o_rw_m2)), _o_rw_decays(std::move(src._o_rw_decays)), _o_rw_timesteps(std::move(src._o_rw_timesteps)),
   _o_b_values(std::move(src._o_b_values)), _o_b_grads(std::move(src._o_b_grads)), _o_b_velocities(std::move(src._o_b_velocities)), _o_b_m1(std::move(src._o_b_m1)), _o_b_m2(std::move(src._o_b_m2)), _o_b_decays(std::move(src._o_b_decays)), _o_b_timesteps(std::move(src._o_b_timesteps)),
+  _rw_values_T(std::move(src._rw_values_T)),
+  _f_rw_values_T(std::move(src._f_rw_values_T)),
+  _i_rw_values_T(std::move(src._i_rw_values_T)),
+  _o_rw_values_T(std::move(src._o_rw_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
@@ -258,6 +264,7 @@ LSTMLayer& LSTMLayer::operator=(const LSTMLayer& src) noexcept
     _o_rw_values = src._o_rw_values; _o_rw_grads = src._o_rw_grads; _o_rw_velocities = src._o_rw_velocities; _o_rw_m1 = src._o_rw_m1; _o_rw_m2 = src._o_rw_m2; _o_rw_decays = src._o_rw_decays; _o_rw_timesteps = src._o_rw_timesteps;
     _o_b_values = src._o_b_values; _o_b_grads = src._o_b_grads; _o_b_velocities = src._o_b_velocities; _o_b_m1 = src._o_b_m1; _o_b_m2 = src._o_b_m2; _o_b_decays = src._o_b_decays; _o_b_timesteps = src._o_b_timesteps;
     allocate_workspace();
+    cache_recurrent_weights();
   }
   return *this;
 }
@@ -278,6 +285,10 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
     _o_w_values = std::move(src._o_w_values); _o_w_grads = std::move(src._o_w_grads); _o_w_velocities = std::move(src._o_w_velocities); _o_w_m1 = std::move(src._o_w_m1); _o_w_m2 = std::move(src._o_w_m2); _o_w_decays = std::move(src._o_w_decays); _o_w_timesteps = std::move(src._o_w_timesteps);
     _o_rw_values = std::move(src._o_rw_values); _o_rw_grads = std::move(src._o_rw_grads); _o_rw_velocities = std::move(src._o_rw_velocities); _o_rw_m1 = std::move(src._o_rw_m1); _o_rw_m2 = std::move(src._o_rw_m2); _o_rw_decays = std::move(src._o_rw_decays); _o_rw_timesteps = std::move(src._o_rw_timesteps);
     _o_b_values = std::move(src._o_b_values); _o_b_grads = std::move(src._o_b_grads); _o_b_velocities = std::move(src._o_b_velocities); _o_b_m1 = std::move(src._o_b_m1); _o_b_m2 = std::move(src._o_b_m2); _o_b_decays = std::move(src._o_b_decays); _o_b_timesteps = std::move(src._o_b_timesteps);
+    _rw_values_T = std::move(src._rw_values_T);
+    _f_rw_values_T = std::move(src._f_rw_values_T);
+    _i_rw_values_T = std::move(src._i_rw_values_T);
+    _o_rw_values_T = std::move(src._o_rw_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -313,6 +324,7 @@ void LSTMLayer::initialize_recurrent_weights(double weight_decay)
   if (num_inputs > 0) init_weights(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, num_inp_weights, true, weight_decay);
   init_weights(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, num_rec_weights, false, weight_decay);
   if (has_bias()) init_bias(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays);
+  cache_recurrent_weights();
 }
 
 void LSTMLayer::init_weights(std::vector<double>& values, std::vector<double>& grads, std::vector<double>& velocities, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& timesteps, std::vector<double>& decays, size_t size, bool is_input, double weight_decay) const
@@ -463,15 +475,10 @@ void LSTMLayer::calculate_forward_feed(
         double* g_pre = pre_t + 3 * N_this;
 
         // Recurrent-to-Gates
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          const double hi = current_h[i];
-          if (hi == 0.0) continue;
-          simd::mul_add(hi, &_f_rw_values[i * N_this], f_pre, N_this);
-          simd::mul_add(hi, &_i_rw_values[i * N_this], i_pre, N_this);
-          simd::mul_add(hi, &_o_rw_values[i * N_this], o_pre, N_this);
-          simd::mul_add(hi, &_rw_values[i * N_this], g_pre, N_this);
-        }
+        simd::gemv_add(_f_rw_values_T.data(), current_h.data(), f_pre, N_this, N_this);
+        simd::gemv_add(_i_rw_values_T.data(), current_h.data(), i_pre, N_this, N_this);
+        simd::gemv_add(_o_rw_values_T.data(), current_h.data(), o_pre, N_this, N_this);
+        simd::gemv_add(_rw_values_T.data(), current_h.data(), g_pre, N_this, N_this);
 
         // Residuals (on candidate gate g)
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -885,6 +892,7 @@ void LSTMLayer::apply_stored_gradients(double learning_rate, double clipping_sca
   app(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, false);
   app(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays, true);
   app(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, false);
+  cache_recurrent_weights();
   zero_gradients();
 }
 
@@ -1366,6 +1374,7 @@ void LSTMLayer::set_rw_values(const std::vector<double>& v)
   {
     _rw_values = v;
   }
+  cache_recurrent_weights();
 }
 
 void LSTMLayer::set_rw_grads(const std::vector<double>& v)

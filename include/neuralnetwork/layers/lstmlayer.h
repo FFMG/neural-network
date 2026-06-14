@@ -651,6 +651,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
     _f_rw_values = v;
+    cache_recurrent_weights();
   }
   void set_f_rw_grads(const std::vector<double>& v)
   {
@@ -759,6 +760,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
     _i_rw_values = v;
+    cache_recurrent_weights();
   }
   void set_i_rw_grads(const std::vector<double>& v)
   {
@@ -867,6 +869,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
     _o_rw_values = v;
+    cache_recurrent_weights();
   }
   void set_o_rw_grads(const std::vector<double>& v)
   {

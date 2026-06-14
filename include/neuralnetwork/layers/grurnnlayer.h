@@ -352,6 +352,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     _z_rw_values = v;
+    cache_recurrent_weights();
   }
   void set_z_rw_grads(const std::vector<double>& v)
   {
@@ -460,6 +461,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     _r_rw_values = v;
+    cache_recurrent_weights();
   }
   void set_r_rw_grads(const std::vector<double>& v)
   {

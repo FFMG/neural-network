@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/elmanrnnlayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -201,4 +201,38 @@ TEST_F(ElmanRNNLayerTest, LearningRateRobustness) {
         EXPECT_NEAR(layer.get_rw_values()[0], 1.0 - lr * 0.1, 1e-9);
         EXPECT_NEAR(layer.get_b_values()[0], 0.5 - lr * 0.05, 1e-9);
     }
+}
+
+TEST_F(ElmanRNNLayerTest, ApplyStoredGradientsCacheUpdate)
+{
+  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+
+  layer.set_w_values({ 1.0 });
+  layer.set_rw_values({ 0.5 });
+
+  MockLayer prev_layer(0, 1);
+  std::vector<unsigned> topology = { 1, 1 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 2); 
+
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  auto rnn_out = batch_go[0].get_rnn_outputs(1);
+  EXPECT_NEAR(rnn_out[0], 1.0, 1e-9);
+  EXPECT_NEAR(rnn_out[1], 1.5, 1e-9);
+
+  layer.set_rw_grads({ 0.2 });
+  layer.apply_stored_gradients(1.0, 1.0);
+
+  EXPECT_NEAR(layer.get_rw_values()[0], 0.3, 1e-9);
+
+  auto batch_hs2 = create_batch_hidden_states(topology, 1, 2); 
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs2, 1, true);
+
+  auto rnn_out2 = batch_go[0].get_rnn_outputs(1);
+  EXPECT_NEAR(rnn_out2[0], 1.0, 1e-9);
+  EXPECT_NEAR(rnn_out2[1], 1.3, 1e-9);
 }

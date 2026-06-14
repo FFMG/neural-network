@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/lstmlayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -255,4 +255,50 @@ TEST_F(LSTMLayerTest, BPTTRobustness) {
     EXPECT_NEAR(layer.get_i_rw_grads()[0],0.01419121, 1e-6);
     EXPECT_NEAR(layer.get_o_w_grads()[0], 0.11594396, 1e-6);
     EXPECT_NEAR(layer.get_o_rw_grads()[0],0.02277115, 1e-6);
+}
+
+TEST_F(LSTMLayerTest, ApplyStoredGradientsCacheUpdate)
+{
+    LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.5 });
+    layer.set_f_w_values({ 0.0 }); layer.set_f_rw_values({ 0.0 });
+    layer.set_i_w_values({ 0.0 }); layer.set_i_rw_values({ 0.0 });
+    layer.set_o_w_values({ 0.0 }); layer.set_o_rw_values({ 0.0 });
+
+    layer.set_f_b_values({ 10.0 });
+    layer.set_i_b_values({ 10.0 });
+    layer.set_o_b_values({ 10.0 });
+    layer.set_b_values({ 0.0 });
+
+    MockLayer prev_layer(0, 1);
+    std::vector<unsigned> topology = { 1, 1 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2, LSTMLayer::Multiplier); 
+
+    batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    auto outputs = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs[0], 0.999909, 1e-4);
+    EXPECT_NEAR(outputs[1], 2.49968, 1e-4);
+
+    layer.set_f_rw_grads({ 0.1 });
+    layer.set_i_rw_grads({ 0.1 });
+    layer.set_o_rw_grads({ 0.1 });
+    layer.set_rw_grads({ 0.1 });
+    layer.apply_stored_gradients(1.0, 1.0);
+
+    EXPECT_NEAR(layer.get_f_rw_values()[0], -0.1, 1e-9);
+    EXPECT_NEAR(layer.get_i_rw_values()[0], -0.1, 1e-9);
+    EXPECT_NEAR(layer.get_o_rw_values()[0], -0.1, 1e-9);
+    EXPECT_NEAR(layer.get_rw_values()[0], 0.4, 1e-9);
+
+    auto batch_hs2 = create_batch_hidden_states(topology, 1, 2, LSTMLayer::Multiplier); 
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs2, 1, false);
+
+    auto outputs2 = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs2[0], 0.999909, 1e-4);
+    EXPECT_NEAR(outputs2[1], 2.39968, 1e-4);
 }
