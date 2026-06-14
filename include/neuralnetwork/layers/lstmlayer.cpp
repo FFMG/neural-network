@@ -436,7 +436,11 @@ void LSTMLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1) precalc_gates(0, batch_size);
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
+  {
+    precalc_gates(0, batch_size);
+  }
   else
   {
     size_t start = 0;
@@ -444,7 +448,10 @@ void LSTMLayer::calculate_forward_feed(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([&precalc_gates, start, end]() { precalc_gates(start, end); });
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([&precalc_gates, start, end]() { precalc_gates(start, end); });
+      }
       start = end;
     }
     _task_queue_pool->get();
@@ -546,7 +553,10 @@ void LSTMLayer::calculate_forward_feed(
     }
   };
 
-  if (num_threads <= 1) recurrent_pass(0, batch_size);
+  if (!use_multithreading)
+  {
+    recurrent_pass(0, batch_size);
+  }
   else
   {
     size_t start = 0;
@@ -554,7 +564,10 @@ void LSTMLayer::calculate_forward_feed(
     {
       size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
       size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([&recurrent_pass, start, end]() { recurrent_pass(start, end); });
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([&recurrent_pass, start, end]() { recurrent_pass(start, end); });
+      }
       start = end;
     }
     _task_queue_pool->get();
@@ -611,7 +624,8 @@ void LSTMLayer::calculate_hidden_gradients(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0 || N_this == 0) return;
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     auto& workspace = get_workspace(0);
     calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _f_rw_values_T, _i_rw_values_T, _o_rw_values_T);
@@ -791,7 +805,8 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   };
 
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     run_chunk(0, batch_size, 0);
   }

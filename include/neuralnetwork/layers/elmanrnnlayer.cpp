@@ -309,7 +309,8 @@ void ElmanRNNLayer::calculate_forward_feed(
   std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this, 0.0);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
   }
@@ -389,7 +390,7 @@ void ElmanRNNLayer::calculate_forward_feed(
     }
   };
 
-  if (num_threads <= 1)
+  if (!use_multithreading)
   {
     recurrent_pass(0, batch_size);
   }
@@ -511,8 +512,9 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   }
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
 
-  if (num_threads <= 1)
+  if (!use_multithreading)
   {
     auto& workspace = get_workspace(0);
     calculate_bptt_batch_chunk(0, batch_size, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T);
@@ -746,7 +748,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
     }
   };
 
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     run_chunk(0, batch_size, 0);
   }

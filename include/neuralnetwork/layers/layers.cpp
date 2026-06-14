@@ -1,4 +1,4 @@
-﻿#include "elmanrnnlayer.h"
+#include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "ffoutputlayer.h"
 #include "grurnnlayer.h"
@@ -578,53 +578,19 @@ void Layers::update_weights(
     return;
   }
 
-  const auto& num_threads = _update_weights_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  // 1. Have each layer calculate and store its own gradients sequentially
+  for (unsigned i = 1; i < size(); ++i)
   {
-    // 1. Have each layer calculate and store its own gradients
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers.at(i);
-      auto& layer_b = *_layers.at(i - 1);
-      layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-    }
-  }
-  else
-  {
-    // 1. Have each layer calculate and store its own gradients
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      _update_weights_pool->enqueue(
-        [i, &batch_gradients, &hidden_states, batch_size, &options, this]()
-        {
-          auto& layer_a = *_layers.at(i);
-          auto& layer_b = *_layers.at(i - 1);
-          layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-        });
-    }
-    _update_weights_pool->get();
+    auto& layer_a = *_layers.at(i);
+    auto& layer_b = *_layers.at(i - 1);
+    layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
   }
 
-  // 2. Calculate global gradient norm for clipping
+  // 2. Calculate global gradient norm for clipping sequentially
   std::vector<double> layer_norms(size(), 0.0);
-  if (num_threads <= 1)
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      layer_norms[i] = _layers[i]->get_gradient_norm_sq();
-    }
-  }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      _update_weights_pool->enqueue(
-        [i, &layer_norms, this]()
-        {
-          layer_norms[i] = _layers[i]->get_gradient_norm_sq();
-        });
-    }
-    _update_weights_pool->get();
+    layer_norms[i] = _layers[i]->get_gradient_norm_sq();
   }
 
   double total_norm_sq = 0.0;
@@ -646,30 +612,15 @@ void Layers::update_weights(
 
   if (!std::isfinite(total_norm)) 
   {
-      Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
+    Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
   }
 
-  // 3. Apply the stored (and now clipped) gradients
+  // 3. Apply the stored (and now clipped) gradients sequentially
   std::unique_lock<std::shared_mutex> write(_mutex);
-  if (num_threads <= 1)
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-    }
-  }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      _update_weights_pool->enqueue([i, learning_rate, clipping_scale, this]()
-        {
-          auto& layer_a = *_layers[i];
-          layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-        });
-    }
-    _update_weights_pool->get();
+    auto& layer_a = *_layers[i];
+    layer_a.apply_stored_gradients(learning_rate, clipping_scale);
   }
 }
 
