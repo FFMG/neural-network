@@ -536,7 +536,6 @@ private:
     const size_t start,
     const size_t end,
     const size_t N_this,
-    const size_t N_prev,
     const size_t num_time_steps,
     const std::vector<double>& batch_pre_act,
     const std::vector<std::vector<double>>& batch_residual_output_values,
