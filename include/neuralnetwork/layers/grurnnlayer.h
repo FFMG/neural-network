@@ -538,12 +538,23 @@ private:
     const size_t N_this,
     const size_t N_prev,
     const size_t num_time_steps,
-    const std::vector<double>& flattened_batch_inputs,
+    const std::vector<double>& batch_pre_act,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<double>& batch_output_sequences,
     std::vector<HiddenStates>& batch_hidden_states,
     bool is_training
   ) const;
+
+  void pre_calculate_gates(
+    const size_t b_start,
+    const size_t b_end,
+    const size_t N_this,
+    const size_t N_prev,
+    const size_t num_time_steps,
+    const std::vector<double>& flattened_batch_inputs,
+    std::vector<double>& batch_pre_act
+  ) const;
+
 
   struct BPTTWorkspace 
   {

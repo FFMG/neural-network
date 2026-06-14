@@ -636,11 +636,38 @@ void GRURNNLayer::calculate_forward_feed(
     return;
   }
 
-  // 2. Output sequence buffer
-  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
+  // 2. Pre-calculate Input-to-Gates (all 3 gates) for all ticks
+  // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this, 0.0);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
+  {
+    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs, &batch_pre_act, this]()
+          {
+            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+          });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+
+  // 3. Output sequence buffer and sequential recurrent pass
+  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
+
   if (!use_multithreading)
   {
     run_forward_pass(
@@ -649,7 +676,7 @@ void GRURNNLayer::calculate_forward_feed(
       N_this,
       N_prev,
       num_time_steps,
-      flattened_batch_inputs,
+      batch_pre_act,
       batch_residual_output_values,
       batch_output_sequences,
       batch_hidden_states,
@@ -669,7 +696,7 @@ void GRURNNLayer::calculate_forward_feed(
           start, 
           end, 
           N_this,
-          &flattened_batch_inputs,
+          &batch_pre_act,
           &batch_residual_output_values,
           &batch_output_sequences,
           &batch_hidden_states,
@@ -684,7 +711,7 @@ void GRURNNLayer::calculate_forward_feed(
               N_this,
               N_prev,
               num_time_steps,
-              flattened_batch_inputs,
+              batch_pre_act,
               batch_residual_output_values,
               batch_output_sequences,
               batch_hidden_states,
@@ -708,13 +735,65 @@ void GRURNNLayer::calculate_forward_feed(
   }
 }
 
+void GRURNNLayer::pre_calculate_gates(
+  const size_t b_start, 
+  const size_t b_end,
+  const size_t N_this,
+  const size_t N_prev,
+  const size_t num_time_steps,
+  const std::vector<double>& flattened_batch_inputs,
+  std::vector<double>& batch_pre_act
+) const
+{
+  const double* W_z = _z_w_values.data();
+  const double* W_r = _r_w_values.data();
+  const double* W_h = get_w_values().data();
+
+  for (size_t b = b_start; b < b_end; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
+      double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+      double* z_pre = pre_t;
+      double* r_pre = pre_t + N_this;
+      double* h_hat_pre = pre_t + 2 * N_this;
+
+      if (has_bias())
+      {
+        std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre);
+        std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre);
+        std::copy(_b_values.begin(), _b_values.end(), h_hat_pre);
+      }
+      else
+      {
+        std::fill(z_pre, z_pre + N_this, 0.0);
+        std::fill(r_pre, r_pre + N_this, 0.0);
+        std::fill(h_hat_pre, h_hat_pre + N_this, 0.0);
+      }
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double x_val = x_t[i];
+        if (x_val == 0.0)
+        {
+          continue;
+        }
+        simd::mul_add(x_val, &W_z[i * N_this], z_pre, N_this);
+        simd::mul_add(x_val, &W_r[i * N_this], r_pre, N_this);
+        simd::mul_add(x_val, &W_h[i * N_this], h_hat_pre, N_this);
+      }
+    }
+  }
+}
+
 void GRURNNLayer::run_forward_pass(
   const size_t start,
   const size_t end,
   const size_t N_this,
   const size_t N_prev,
   const size_t num_time_steps,
-  const std::vector<double>& flattened_batch_inputs,
+  const std::vector<double>& batch_pre_act,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<double>& batch_output_sequences,
   std::vector<HiddenStates>& batch_hidden_states,
@@ -724,10 +803,6 @@ void GRURNNLayer::run_forward_pass(
   std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this), gated_h(N_this);
   std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
 
-  const double* W_z = _z_w_values.data();
-  const double* W_r = _r_w_values.data();
-  const double* W_h = get_w_values().data();
-
   for (size_t b = start; b < end; ++b)
   {
     // Reset hidden state for each sample in the batch!
@@ -736,30 +811,11 @@ void GRURNNLayer::run_forward_pass(
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      // a. Initialize with bias
-      if (has_bias())
-      {
-        std::copy(_z_b_values.begin(), _z_b_values.end(), z_pre.begin());
-        std::copy(_r_b_values.begin(), _r_b_values.end(), r_pre.begin());
-        std::copy(_b_values.begin(), _b_values.end(), h_hat_pre.begin());
-      }
-      else
-      {
-        std::fill(z_pre.begin(), z_pre.end(), 0.0);
-        std::fill(r_pre.begin(), r_pre.end(), 0.0);
-        std::fill(h_hat_pre.begin(), h_hat_pre.end(), 0.0);
-      }
-
-      // b. Input-to-Gates (W * x_t) - Tiled
-      const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
-      for (size_t i = 0; i < N_prev; ++i)
-      {
-        const double x_val = x_t[i];
-        if (x_val == 0.0) continue;
-        simd::mul_add(x_val, &W_z[i * N_this], z_pre.data(), N_this);
-        simd::mul_add(x_val, &W_r[i * N_this], r_pre.data(), N_this);
-        simd::mul_add(x_val, &W_h[i * N_this], h_hat_pre.data(), N_this);
-      }
+      // a. Retrieve precalculated Input-to-Gates (W * x_t + bias)
+      const double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+      std::copy(pre_t, pre_t + N_this, z_pre.begin());
+      std::copy(pre_t + N_this, pre_t + 2 * N_this, r_pre.begin());
+      std::copy(pre_t + 2 * N_this, pre_t + 3 * N_this, h_hat_pre.begin());
 
       // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
       const double* h_prev_ptr = prev_h.data();
