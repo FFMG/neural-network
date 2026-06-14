@@ -701,7 +701,6 @@ void GRURNNLayer::calculate_forward_feed(
           &batch_hidden_states,
           is_training,
           num_time_steps,
-          N_prev,
           this]()
           {
             run_forward_pass(
