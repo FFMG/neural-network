@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../helpers/errorcalculation.h"
 #include "../common/hiddenstate.h"
 #include "layer.h"
@@ -282,6 +282,10 @@ private:
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+
+  std::vector<std::vector<double>> _thread_w_grads;
+  std::vector<std::vector<double>> _thread_rw_grads;
+  std::vector<std::vector<double>> _thread_b_grads;
 };
 
 } // namespace myoddweb::nn

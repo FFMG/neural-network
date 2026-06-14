@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "grurnnlayer.h"
 #include "fflayer.h"
 #include "../common/logger.h"
@@ -1174,27 +1174,50 @@ void GRURNNLayer::calculate_and_store_gradients(
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_z_w_grads(num_threads, std::vector<double>(_z_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_z_rw_grads(num_threads, std::vector<double>(_z_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_r_w_grads(num_threads, std::vector<double>(_r_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_r_rw_grads(num_threads, std::vector<double>(_r_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
-  std::vector<std::vector<double>> thread_z_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
-  std::vector<std::vector<double>> thread_r_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
+  _thread_w_grads.resize(num_threads);
+  _thread_rw_grads.resize(num_threads);
+  _thread_z_w_grads.resize(num_threads);
+  _thread_z_rw_grads.resize(num_threads);
+  _thread_r_w_grads.resize(num_threads);
+  _thread_r_rw_grads.resize(num_threads);
+  _thread_b_grads.resize(num_threads);
+  _thread_z_b_grads.resize(num_threads);
+  _thread_r_b_grads.resize(num_threads);
+
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    _thread_w_grads[t].resize(_w_grads.size());
+    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+    _thread_rw_grads[t].resize(_rw_grads.size());
+    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+    _thread_z_w_grads[t].resize(_z_w_grads.size());
+    std::fill(_thread_z_w_grads[t].begin(), _thread_z_w_grads[t].end(), 0.0);
+    _thread_z_rw_grads[t].resize(_z_rw_grads.size());
+    std::fill(_thread_z_rw_grads[t].begin(), _thread_z_rw_grads[t].end(), 0.0);
+    _thread_r_w_grads[t].resize(_r_w_grads.size());
+    std::fill(_thread_r_w_grads[t].begin(), _thread_r_w_grads[t].end(), 0.0);
+    _thread_r_rw_grads[t].resize(_r_rw_grads.size());
+    std::fill(_thread_r_rw_grads[t].begin(), _thread_r_rw_grads[t].end(), 0.0);
+
+    _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
+    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+    _thread_z_b_grads[t].resize(has_bias() ? num_outputs : 0);
+    std::fill(_thread_z_b_grads[t].begin(), _thread_z_b_grads[t].end(), 0.0);
+    _thread_r_b_grads[t].resize(has_bias() ? num_outputs : 0);
+    std::fill(_thread_r_b_grads[t].begin(), _thread_r_b_grads[t].end(), 0.0);
+  }
 
   auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    auto& local_w_grads = thread_w_grads[thread_idx];
-    auto& local_rw_grads = thread_rw_grads[thread_idx];
-    auto& local_z_w_grads = thread_z_w_grads[thread_idx];
-    auto& local_z_rw_grads = thread_z_rw_grads[thread_idx];
-    auto& local_r_w_grads = thread_r_w_grads[thread_idx];
-    auto& local_r_rw_grads = thread_r_rw_grads[thread_idx];
-    auto& local_b_grads = thread_b_grads[thread_idx];
-    auto& local_z_b_grads = thread_z_b_grads[thread_idx];
-    auto& local_r_b_grads = thread_r_b_grads[thread_idx];
+    auto& local_w_grads = _thread_w_grads[thread_idx];
+    auto& local_rw_grads = _thread_rw_grads[thread_idx];
+    auto& local_z_w_grads = _thread_z_w_grads[thread_idx];
+    auto& local_z_rw_grads = _thread_z_rw_grads[thread_idx];
+    auto& local_r_w_grads = _thread_r_w_grads[thread_idx];
+    auto& local_r_rw_grads = _thread_r_rw_grads[thread_idx];
+    auto& local_b_grads = _thread_b_grads[thread_idx];
+    auto& local_z_b_grads = _thread_z_b_grads[thread_idx];
+    auto& local_r_b_grads = _thread_r_b_grads[thread_idx];
 
     for (size_t b = start; b < end; ++b)
     {
@@ -1203,7 +1226,10 @@ void GRURNNLayer::calculate_and_store_gradients(
       const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(previous_layer.get_layer_index());
       const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
 
-      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs) continue;
+      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
+      {
+        continue;
+      }
 
       for (int t = t_start; t >= t_end; --t)
       {
@@ -1247,7 +1273,10 @@ void GRURNNLayer::calculate_and_store_gradients(
           for (unsigned i = 0; i < num_inputs; ++i)
           {
             double x = prev_input_ptr[i];
-            if (std::abs(x) < 1e-15) continue;
+            if (std::abs(x) < 1e-15)
+            {
+              continue;
+            }
             simd::mul_add(x, gh, &local_w_grads[i * num_outputs], num_outputs);
             simd::mul_add(x, gz, &local_z_w_grads[i * num_outputs], num_outputs);
             simd::mul_add(x, gr, &local_r_w_grads[i * num_outputs], num_outputs);
@@ -1261,7 +1290,10 @@ void GRURNNLayer::calculate_and_store_gradients(
           for (unsigned k = 0; k < num_outputs; ++k)
           {
             double h_prev = prev_hidden_ptr[k];
-            if (std::abs(h_prev) < 1e-15) continue;
+            if (std::abs(h_prev) < 1e-15)
+            {
+              continue;
+            }
             
             // gh * (r_val * h_prev) is specific to the candidate recurrent state
             double r_val = r_vals[k];
@@ -1304,23 +1336,23 @@ void GRURNNLayer::calculate_and_store_gradients(
   {
     for (size_t i = 0; i < _w_grads.size(); ++i)
     {
-      _w_grads[i] += thread_w_grads[t][i];
-      _z_w_grads[i] += thread_z_w_grads[t][i];
-      _r_w_grads[i] += thread_r_w_grads[t][i];
+      _w_grads[i] += _thread_w_grads[t][i];
+      _z_w_grads[i] += _thread_z_w_grads[t][i];
+      _r_w_grads[i] += _thread_r_w_grads[t][i];
     }
     for (size_t i = 0; i < _rw_grads.size(); ++i)
     {
-      _rw_grads[i] += thread_rw_grads[t][i];
-      _z_rw_grads[i] += thread_z_rw_grads[t][i];
-      _r_rw_grads[i] += thread_r_rw_grads[t][i];
+      _rw_grads[i] += _thread_rw_grads[t][i];
+      _z_rw_grads[i] += _thread_z_rw_grads[t][i];
+      _r_rw_grads[i] += _thread_r_rw_grads[t][i];
     }
     if (has_bias())
     {
       for (size_t i = 0; i < _b_grads.size(); ++i)
       {
-        _b_grads[i] += thread_b_grads[t][i];
-        _z_b_grads[i] += thread_z_b_grads[t][i];
-        _r_b_grads[i] += thread_r_b_grads[t][i];
+        _b_grads[i] += _thread_b_grads[t][i];
+        _z_b_grads[i] += _thread_z_b_grads[t][i];
+        _r_b_grads[i] += _thread_r_b_grads[t][i];
       }
     }
   }
@@ -1329,7 +1361,10 @@ void GRURNNLayer::calculate_and_store_gradients(
   
   const auto normalize = [&denom](std::vector<double>& grads)
   {
-    for (double& g : grads) g /= denom;
+    for (double& g : grads)
+    {
+      g /= denom;
+    }
   };
 
   normalize(_w_grads);

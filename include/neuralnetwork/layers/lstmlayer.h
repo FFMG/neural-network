@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../common/aligned_allocator.h"
 #include "../helpers/errorcalculation.h"
 #include "../common/hiddenstate.h"
@@ -1067,6 +1067,19 @@ private:
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+
+  std::vector<std::vector<double>> _thread_w_grads;
+  std::vector<std::vector<double>> _thread_b_grads;
+  std::vector<std::vector<double>> _thread_rw_grads;
+  std::vector<std::vector<double>> _thread_f_w_grads;
+  std::vector<std::vector<double>> _thread_f_b_grads;
+  std::vector<std::vector<double>> _thread_f_rw_grads;
+  std::vector<std::vector<double>> _thread_i_w_grads;
+  std::vector<std::vector<double>> _thread_i_b_grads;
+  std::vector<std::vector<double>> _thread_i_rw_grads;
+  std::vector<std::vector<double>> _thread_o_w_grads;
+  std::vector<std::vector<double>> _thread_o_b_grads;
+  std::vector<std::vector<double>> _thread_o_rw_grads;
 };
 
 
