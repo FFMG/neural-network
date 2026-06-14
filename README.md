@@ -59,6 +59,40 @@ myoddweb::nn::NeuralNetwork nn(options);
 * LAMB
 * Lion
 
+## Python Bindings
+
+Python bindings are available for the `myoddweb::nn` library, allowing you to configure, train, and run models natively in Python. The bindings are powered by `pybind11`.
+
+For detailed API documentation, prerequisites, and instructions on how to build and run the module, see the [python/README.md](python/README.md).
+
+### Python Pseudo-Code Example
+
+```python
+import neuralnetwork as nn
+
+# 1. Configure the network architecture
+topology = [2, 2, 1]
+
+# 2. Set options (learning rate, epochs, etc.)
+options = nn.NeuralNetworkOptions.create(topology) \
+    .with_batch_size(1) \
+    .with_learning_rate(0.1) \
+    .with_number_of_epoch(1000) \
+    .build()
+
+# 3. Create the model
+net = nn.NeuralNetwork(options)
+
+# 4. Train the network
+inputs = [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]
+outputs = [[0.0], [1.0], [1.0], [0.0]]
+net.train(inputs, outputs)
+
+# 5. Predict
+prediction = net.think([1.0, 0.0])
+print(f"Prediction: {prediction[0]}")
+```
+
 ## Options
 
 The following sections describe the various configuration options available when building a network using `NeuralNetworkOptions`.
