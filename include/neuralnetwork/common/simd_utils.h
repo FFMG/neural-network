@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 #include <algorithm>
@@ -9,8 +9,8 @@
 #if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && defined(__AVX2__)
 #include <immintrin.h>
 #define SIMD_AVX2_ENABLED
+#define SIMD_FMA_ENABLED
 #endif
-
 
 namespace myoddweb::nn
 {
@@ -42,7 +42,7 @@ public:
     {
       __m256d vec_w = _mm256_loadu_pd(&w[j]);
       __m256d vec_y = _mm256_loadu_pd(&y[j]);
-#ifdef __FMA__
+#ifdef SIMD_FMA_ENABLED
       vec_y = _mm256_fmadd_pd(vec_x, vec_w, vec_y);
 #else
       vec_y = _mm256_add_pd(vec_y, _mm256_mul_pd(vec_x, vec_w));
@@ -77,7 +77,7 @@ public:
     {
       __m256d vec_a = _mm256_loadu_pd(&a[j]);
       __m256d vec_b = _mm256_loadu_pd(&b[j]);
-#ifdef __FMA__
+#ifdef SIMD_FMA_ENABLED
       vec_sum = _mm256_fmadd_pd(vec_a, vec_b, vec_sum);
 #else
       vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_a, vec_b));
@@ -523,7 +523,7 @@ public:
       {
         __m256d vec_a = _mm256_loadu_pd(row_ptr + j);
         __m256d vec_b = _mm256_loadu_pd(x + j);
-#ifdef __FMA__
+#ifdef SIMD_FMA_ENABLED
         vec_sum = _mm256_fmadd_pd(vec_a, vec_b, vec_sum);
 #else
         vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_a, vec_b));
