@@ -356,3 +356,56 @@ TEST_F(GRURNNLayerTest, ApplyStoredGradientsCacheUpdate)
     EXPECT_NEAR(outputs2[0], 0.5, 1e-4);
     EXPECT_NEAR(outputs2[1], 0.8412518, 1e-4);
 }
+
+TEST_F(GRURNNLayerTest, InputGatesPrecalculationConsistency)
+{
+    // Test that our pre-calculate input gates optimization matches sequential reference mathematical expectations.
+    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    
+    // Set weights and biases to deterministic values
+    layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
+    layer.set_z_rw_values({ 0.15, 0.25, 0.35, 0.45 });
+    layer.set_z_b_values({ 0.05, 0.15 });
+
+    layer.set_r_w_values({ 0.2, 0.3, 0.4, 0.5 });
+    layer.set_r_rw_values({ 0.25, 0.35, 0.45, 0.55 });
+    layer.set_r_b_values({ 0.15, 0.25 });
+
+    layer.set_w_values({ 0.3, 0.4, 0.5, 0.6 });
+    layer.set_rw_values({ 0.35, 0.45, 0.55, 0.65 });
+    layer.set_b_values({ 0.25, 0.35 });
+
+    MockLayer prev_layer(0, 2);
+    std::vector<unsigned> topology = { 2, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 2, 5); 
+
+    // Input sequence: [[1.0, 0.5], [-0.5, 1.0]]
+    batch_go[0].set_rnn_outputs(0, { 1.0, 0.5, -0.5, 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& outputs = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(outputs.size(), 4);
+
+    // Verify mathematical output values at t = 0
+    // x_0 = [1.0, 0.5], prev_h = [0.0, 0.0]
+    // z_pre[0] = 1.0 * 0.1 + 0.5 * 0.3 + 0.05 = 0.3
+    // z_pre[1] = 1.0 * 0.2 + 0.5 * 0.4 + 0.15 = 0.55
+    // z[0] = 1 / (1 + exp(-0.3)) = 0.5744425
+    // z[1] = 1 / (1 + exp(-0.55)) = 0.63413559
+    // r_pre[0] = 1.0 * 0.2 + 0.5 * 0.4 + 0.15 = 0.55
+    // r_pre[1] = 1.0 * 0.3 + 0.5 * 0.5 + 0.25 = 0.8
+    // r[0] = 1 / (1 + exp(-0.55)) = 0.63413559
+    // r[1] = 1 / (1 + exp(-0.8)) = 0.68997448
+    // h_hat_pre[0] = 1.0 * 0.3 + 0.5 * 0.5 + 0.25 = 0.8
+    // h_hat_pre[1] = 1.0 * 0.4 + 0.5 * 0.6 + 0.35 = 1.05
+    // gated_h = [0.0, 0.0] -> U_h * gated_h = [0.0, 0.0] -> h_hat_pre stays [0.8, 1.05]
+    // h_hat_activated = tanh(h_hat_pre) = [tanh(0.8), tanh(1.05)] = [0.6640367, 0.7818055]
+    // final h_0[0] = (1 - z[0]) * 0 + z[0] * h_hat_activated[0] = 0.5744425 * 0.6640367 = 0.381451
+    // final h_0[1] = (1 - z[1]) * 0 + z[1] * h_hat_activated[1] = 0.6341356 * 0.7818055 = 0.495772
+
+    EXPECT_NEAR(outputs[0], 0.381451, 1e-5);
+    EXPECT_NEAR(outputs[1], 0.495772, 1e-5);
+}
+
