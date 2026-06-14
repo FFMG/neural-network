@@ -726,9 +726,6 @@ void GRURNNLayer::run_forward_pass(
   const double* W_z = _z_w_values.data();
   const double* W_r = _r_w_values.data();
   const double* W_h = get_w_values().data();
-  const double* U_z = _z_rw_values.data();
-  const double* U_r = _r_rw_values.data();
-  const double* U_h = _rw_values.data();
 
   for (size_t b = start; b < end; ++b)
   {
