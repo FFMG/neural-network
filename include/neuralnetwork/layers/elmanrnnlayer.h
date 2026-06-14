@@ -189,6 +189,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     _rw_values = v;
+    cache_recurrent_weights();
   }
   void set_rw_grads(const std::vector<double>& v) override
   {

@@ -77,6 +77,7 @@ ElmanRNNLayer::ElmanRNNLayer(
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -91,6 +92,7 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -103,6 +105,7 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_m2(std::move(src._rw_m2)),
   _rw_timesteps(std::move(src._rw_timesteps)),
   _rw_decays(std::move(src._rw_decays)),
+  _rw_values_T(std::move(src._rw_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -174,6 +177,7 @@ ElmanRNNLayer::ElmanRNNLayer(
   _rw_decays(rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  cache_recurrent_weights();
   allocate_workspace();
 }
 
@@ -191,6 +195,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
     allocate_workspace();
+    cache_recurrent_weights();
   }
   return *this;
 }
@@ -208,6 +213,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_m2 = std::move(src._rw_m2);
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
+    _rw_values_T = std::move(src._rw_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -238,6 +244,7 @@ void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
   _rw_m2.assign(num_weights, 0.0);
   _rw_timesteps.assign(num_weights, 0);
   _rw_decays.assign(num_weights, weight_decay);
+  cache_recurrent_weights();
 }
 
 void ElmanRNNLayer::calculate_forward_feed(
@@ -339,16 +346,7 @@ void ElmanRNNLayer::calculate_forward_feed(
         double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
 
         // Recurrent-to-Hidden (U * h_{t-1})
-        for (size_t i = 0; i < N_this; ++i)
-        {
-          const double hi = current_h[i];
-          if (hi == 0.0)
-          {
-            continue;
-          }
-          const double* u_row = &_rw_values[i * N_this];
-          simd::mul_add(hi, u_row, pre_t, N_this);
-        }
+        simd::gemv_add(_rw_values_T.data(), current_h.data(), pre_t, N_this, N_this);
 
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
@@ -823,6 +821,7 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
   {
     apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, get_optimiser_type());
   }
+  cache_recurrent_weights();
   zero_gradients();
 }
 
