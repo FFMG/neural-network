@@ -260,7 +260,8 @@ void FFLayer::calculate_forward_feed(
 
   // 3. Batched Matrix-Matrix multiplication (GEMM)
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  const bool use_gemm_mt = (num_threads > 1) && (effective_batch_size >= num_threads * 2);
+  if (!use_gemm_mt)
   {
     run_gemm(0, effective_batch_size, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
   }
@@ -284,7 +285,8 @@ void FFLayer::calculate_forward_feed(
   }
 
   // 4. Residuals, Activation and Dropout
-  if (num_threads <= 1)
+  const bool use_post_mt = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_post_mt)
   {
     run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
   }
@@ -460,32 +462,49 @@ void FFLayer::calculate_hidden_gradients(
   const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  const bool use_gemm_mt = (num_threads > 1) && (effective_batch_size >= num_threads * 2);
+  const bool use_post_mt = (num_threads > 1) && (batch_size >= num_threads * 2);
+
+  if (!use_gemm_mt && !use_post_mt)
   {
     run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
     run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
   }
   else
   {
-    size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    if (!use_gemm_mt)
     {
-      size_t size = (effective_batch_size / num_threads) + (t < (effective_batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() { run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer); });
-      start = end;
+      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
     }
-    _task_queue_pool->get();
+    else
+    {
+      size_t start = 0;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+        size_t size = (effective_batch_size / num_threads) + (t < (effective_batch_size % num_threads) ? 1 : 0);
+        size_t end = start + size;
+        if (start < end) _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() { run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer); });
+        start = end;
+      }
+      _task_queue_pool->get();
+    }
 
-    start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    if (!use_post_mt)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
-      size_t end = start + size;
-      if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
-      start = end;
+      run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
     }
-    _task_queue_pool->get();
+    else
+    {
+      size_t start = 0;
+      for (unsigned int t = 0; t < num_threads; ++t)
+      {
+        size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+        size_t end = start + size;
+        if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
+        start = end;
+      }
+      _task_queue_pool->get();
+    }
   }
 }
 
@@ -521,7 +540,8 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
   }
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
   }
@@ -577,7 +597,8 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
   }
 
-  if (num_threads <= 1)
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  if (!use_multithreading)
   {
     calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, _thread_w_grads[0], _thread_b_grads[0]);
   }
