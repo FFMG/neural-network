@@ -5,6 +5,8 @@
       "label": "C/C++: g++ build perfomance",
       "command": "/usr/bin/g++",
       "args": [
+        "-std=c++20",
+        "-I${workspaceFolder}/include/neuralnetwork",
         "-Wall",
         "-Wextra",
         "-Wpedantic",
@@ -41,6 +43,8 @@
       "label": "C/C++: g++ build main",
       "command": "/usr/bin/g++",
       "args": [
+        "-std=c++20",
+        "-I${workspaceFolder}/include/neuralnetwork",
         "-g",
         "-Wall",
         "-Wextra",
