@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "lstmlayer.h"
 #include "fflayer.h"
 #include "../common/simd_utils.h"
@@ -661,38 +661,72 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(_b_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_f_w_grads(num_threads, std::vector<double>(_f_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_f_b_grads(num_threads, std::vector<double>(_f_b_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_f_rw_grads(num_threads, std::vector<double>(_f_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_i_w_grads(num_threads, std::vector<double>(_i_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_i_b_grads(num_threads, std::vector<double>(_i_b_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_i_rw_grads(num_threads, std::vector<double>(_i_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_o_w_grads(num_threads, std::vector<double>(_o_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_o_b_grads(num_threads, std::vector<double>(_o_b_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_o_rw_grads(num_threads, std::vector<double>(_o_rw_grads.size(), 0.0));
+  _thread_w_grads.resize(num_threads);
+  _thread_b_grads.resize(num_threads);
+  _thread_rw_grads.resize(num_threads);
+  _thread_f_w_grads.resize(num_threads);
+  _thread_f_b_grads.resize(num_threads);
+  _thread_f_rw_grads.resize(num_threads);
+  _thread_i_w_grads.resize(num_threads);
+  _thread_i_b_grads.resize(num_threads);
+  _thread_i_rw_grads.resize(num_threads);
+  _thread_o_w_grads.resize(num_threads);
+  _thread_o_b_grads.resize(num_threads);
+  _thread_o_rw_grads.resize(num_threads);
+
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    _thread_w_grads[t].resize(_w_grads.size());
+    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+    _thread_b_grads[t].resize(_b_grads.size());
+    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+    _thread_rw_grads[t].resize(_rw_grads.size());
+    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+
+    _thread_f_w_grads[t].resize(_f_w_grads.size());
+    std::fill(_thread_f_w_grads[t].begin(), _thread_f_w_grads[t].end(), 0.0);
+    _thread_f_b_grads[t].resize(_f_b_grads.size());
+    std::fill(_thread_f_b_grads[t].begin(), _thread_f_b_grads[t].end(), 0.0);
+    _thread_f_rw_grads[t].resize(_f_rw_grads.size());
+    std::fill(_thread_f_rw_grads[t].begin(), _thread_f_rw_grads[t].end(), 0.0);
+
+    _thread_i_w_grads[t].resize(_i_w_grads.size());
+    std::fill(_thread_i_w_grads[t].begin(), _thread_i_w_grads[t].end(), 0.0);
+    _thread_i_b_grads[t].resize(_i_b_grads.size());
+    std::fill(_thread_i_b_grads[t].begin(), _thread_i_b_grads[t].end(), 0.0);
+    _thread_i_rw_grads[t].resize(_i_rw_grads.size());
+    std::fill(_thread_i_rw_grads[t].begin(), _thread_i_rw_grads[t].end(), 0.0);
+
+    _thread_o_w_grads[t].resize(_o_w_grads.size());
+    std::fill(_thread_o_w_grads[t].begin(), _thread_o_w_grads[t].end(), 0.0);
+    _thread_o_b_grads[t].resize(_o_b_grads.size());
+    std::fill(_thread_o_b_grads[t].begin(), _thread_o_b_grads[t].end(), 0.0);
+    _thread_o_rw_grads[t].resize(_o_rw_grads.size());
+    std::fill(_thread_o_rw_grads[t].begin(), _thread_o_rw_grads[t].end(), 0.0);
+  }
 
   auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    auto& local_w_grads = thread_w_grads[thread_idx];
-    auto& local_b_grads = thread_b_grads[thread_idx];
-    auto& local_rw_grads = thread_rw_grads[thread_idx];
-    auto& local_f_w_grads = thread_f_w_grads[thread_idx];
-    auto& local_f_b_grads = thread_f_b_grads[thread_idx];
-    auto& local_f_rw_grads = thread_f_rw_grads[thread_idx];
-    auto& local_i_w_grads = thread_i_w_grads[thread_idx];
-    auto& local_i_b_grads = thread_i_b_grads[thread_idx];
-    auto& local_i_rw_grads = thread_i_rw_grads[thread_idx];
-    auto& local_o_w_grads = thread_o_w_grads[thread_idx];
-    auto& local_o_b_grads = thread_o_b_grads[thread_idx];
-    auto& local_o_rw_grads = thread_o_rw_grads[thread_idx];
+    auto& local_w_grads = _thread_w_grads[thread_idx];
+    auto& local_b_grads = _thread_b_grads[thread_idx];
+    auto& local_rw_grads = _thread_rw_grads[thread_idx];
+    auto& local_f_w_grads = _thread_f_w_grads[thread_idx];
+    auto& local_f_b_grads = _thread_f_b_grads[thread_idx];
+    auto& local_f_rw_grads = _thread_f_rw_grads[thread_idx];
+    auto& local_i_w_grads = _thread_i_w_grads[thread_idx];
+    auto& local_i_b_grads = _thread_i_b_grads[thread_idx];
+    auto& local_i_rw_grads = _thread_i_rw_grads[thread_idx];
+    auto& local_o_w_grads = _thread_o_w_grads[thread_idx];
+    auto& local_o_b_grads = _thread_o_b_grads[thread_idx];
+    auto& local_o_rw_grads = _thread_o_rw_grads[thread_idx];
 
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (packed_grads.empty()) continue;
+      if (packed_grads.empty())
+      {
+        continue;
+      }
       const auto& layer_states = hidden_states[b].at(get_layer_index());
       const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
       const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
@@ -720,7 +754,10 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         for (size_t k = 0; k < N_prev; ++k)
         {
           const double xk = x_t[k];
-          if (std::abs(xk) < 1e-15) continue;
+          if (std::abs(xk) < 1e-15)
+          {
+            continue;
+          }
           simd::mul_add(xk, df, &local_f_w_grads[k * N_this], N_this);
           simd::mul_add(xk, di, &local_i_w_grads[k * N_this], N_this);
           simd::mul_add(xk, do_gate, &local_o_w_grads[k * N_this], N_this);
@@ -733,7 +770,10 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
           for (size_t k = 0; k < N_this; ++k)
           {
             const double hk = h_prev[k];
-            if (std::abs(hk) < 1e-15) continue;
+            if (std::abs(hk) < 1e-15)
+            {
+              continue;
+            }
             simd::mul_add(hk, df, &local_f_rw_grads[k * N_this], N_this);
             simd::mul_add(hk, di, &local_i_rw_grads[k * N_this], N_this);
             simd::mul_add(hk, do_gate, &local_o_rw_grads[k * N_this], N_this);
@@ -768,26 +808,49 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   zero_gradients();
   for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t i = 0; i < _w_grads.size(); ++i) {
-      _w_grads[i] += thread_w_grads[t][i]; _f_w_grads[i] += thread_f_w_grads[t][i];
-      _i_w_grads[i] += thread_i_w_grads[t][i]; _o_w_grads[i] += thread_o_w_grads[t][i];
+    for (size_t i = 0; i < _w_grads.size(); ++i)
+    {
+      _w_grads[i] += _thread_w_grads[t][i];
+      _f_w_grads[i] += _thread_f_w_grads[t][i];
+      _i_w_grads[i] += _thread_i_w_grads[t][i];
+      _o_w_grads[i] += _thread_o_w_grads[t][i];
     }
-    for (size_t i = 0; i < _rw_grads.size(); ++i) {
-      _rw_grads[i] += thread_rw_grads[t][i]; _f_rw_grads[i] += thread_f_rw_grads[t][i];
-      _i_rw_grads[i] += thread_i_rw_grads[t][i]; _o_rw_grads[i] += thread_o_rw_grads[t][i];
+    for (size_t i = 0; i < _rw_grads.size(); ++i)
+    {
+      _rw_grads[i] += _thread_rw_grads[t][i];
+      _f_rw_grads[i] += _thread_f_rw_grads[t][i];
+      _i_rw_grads[i] += _thread_i_rw_grads[t][i];
+      _o_rw_grads[i] += _thread_o_rw_grads[t][i];
     }
-    for (size_t i = 0; i < _b_grads.size(); ++i) {
-      _b_grads[i] += thread_b_grads[t][i]; _f_b_grads[i] += thread_f_b_grads[t][i];
-      _i_b_grads[i] += thread_i_b_grads[t][i]; _o_b_grads[i] += thread_o_b_grads[t][i];
+    for (size_t i = 0; i < _b_grads.size(); ++i)
+    {
+      _b_grads[i] += _thread_b_grads[t][i];
+      _f_b_grads[i] += _thread_f_b_grads[t][i];
+      _i_b_grads[i] += _thread_i_b_grads[t][i];
+      _o_b_grads[i] += _thread_o_b_grads[t][i];
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  auto norm = [&](std::vector<double>& v) { for (double& x : v) x *= inv_batch; };
-  norm(_w_grads); norm(_b_grads); norm(_rw_grads);
-  norm(_f_w_grads); norm(_f_b_grads); norm(_f_rw_grads);
-  norm(_i_w_grads); norm(_i_b_grads); norm(_i_rw_grads);
-  norm(_o_w_grads); norm(_o_b_grads); norm(_o_rw_grads);
+  auto norm = [&inv_batch](std::vector<double>& v)
+  {
+    for (double& x : v)
+    {
+      x *= inv_batch;
+    }
+  };
+  norm(_w_grads);
+  norm(_b_grads);
+  norm(_rw_grads);
+  norm(_f_w_grads);
+  norm(_f_b_grads);
+  norm(_f_rw_grads);
+  norm(_i_w_grads);
+  norm(_i_b_grads);
+  norm(_i_rw_grads);
+  norm(_o_w_grads);
+  norm(_o_b_grads);
+  norm(_o_rw_grads);
 }
 
 double LSTMLayer::get_gradient_norm_sq() const

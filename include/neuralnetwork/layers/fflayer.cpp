@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
@@ -550,22 +550,36 @@ Layer* FFLayer::clone() const { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return new
 void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const unsigned this_layer_index = get_layer_index();
 
   const size_t num_time_steps = hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0) return;
+  if (num_time_steps == 0)
+  {
+    return;
+  }
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? num_outputs : 0, 0.0));
+  _thread_w_grads.resize(num_threads);
+  _thread_b_grads.resize(num_threads);
+
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    _thread_w_grads[t].resize(_w_grads.size());
+    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+    _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
+    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+  }
 
   if (num_threads <= 1)
   {
-    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, thread_w_grads[0], thread_b_grads[0]);
+    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, _thread_w_grads[0], _thread_b_grads[0]);
   }
   else
   {
@@ -576,19 +590,19 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
       size_t end = start + size;
       if (start < end)
       {
-        auto& thread_w_grads_t = thread_w_grads[t];
-        auto& thread_b_grads_t = thread_b_grads[t];
+        auto& thread_w_grads_t = _thread_w_grads[t];
+        auto& thread_b_grads_t = _thread_b_grads[t];
         _task_queue_pool->enqueue(
           [
             this,
-            start, 
-            end, 
-            &batch_gradients_and_outputs, 
-            prev_layer_index, 
-            this_layer_index, 
-            num_inputs, 
-            num_outputs, 
-            num_time_steps, 
+            start,
+            end,
+            &batch_gradients_and_outputs,
+            prev_layer_index,
+            this_layer_index,
+            num_inputs,
+            num_outputs,
+            num_time_steps,
             &thread_w_grads_t,
             &thread_b_grads_t
           ]()
@@ -612,20 +626,29 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   {
     for (size_t i = 0; i < _w_grads.size(); ++i)
     {
-      _w_grads[i] += thread_w_grads[t][i];
+      _w_grads[i] += _thread_w_grads[t][i];
     }
     if (has_bias())
     {
       for (size_t i = 0; i < _b_grads.size(); ++i)
       {
-        _b_grads[i] += thread_b_grads[t][i];
+        _b_grads[i] += _thread_b_grads[t][i];
       }
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  for (double& grad : _w_grads) grad *= inv_batch;
-  if (has_bias()) for (double& grad : _b_grads) grad *= inv_batch;
+  for (double& grad : _w_grads)
+  {
+    grad *= inv_batch;
+  }
+  if (has_bias())
+  {
+    for (double& grad : _b_grads)
+    {
+      grad *= inv_batch;
+    }
+  }
 }
 
 double FFLayer::get_gradient_norm_sq() const

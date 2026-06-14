@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../common/aligned_allocator.h"
 #include "../helpers/errorcalculation.h"
 #include "../common/hiddenstate.h"
@@ -674,6 +674,16 @@ private:
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
+
+  std::vector<std::vector<double>> _thread_w_grads;
+  std::vector<std::vector<double>> _thread_rw_grads;
+  std::vector<std::vector<double>> _thread_z_w_grads;
+  std::vector<std::vector<double>> _thread_z_rw_grads;
+  std::vector<std::vector<double>> _thread_r_w_grads;
+  std::vector<std::vector<double>> _thread_r_rw_grads;
+  std::vector<std::vector<double>> _thread_b_grads;
+  std::vector<std::vector<double>> _thread_z_b_grads;
+  std::vector<std::vector<double>> _thread_r_b_grads;
 };
 
 } // namespace myoddweb::nn

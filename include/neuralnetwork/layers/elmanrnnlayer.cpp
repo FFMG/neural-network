@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
 #include "../common/logger.h"
@@ -651,6 +651,21 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   }
 }
 
+double ElmanRNNLayer::get_gradient_norm_sq() const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  auto ssq = [](const std::vector<double>& v)
+  {
+    double s = 0;
+    for (double x : v)
+    {
+      s += x * x;
+    }
+    return s;
+  };
+  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads);
+}
+
 void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -665,20 +680,33 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  std::vector<std::vector<double>> thread_w_grads(num_threads, std::vector<double>(_w_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_rw_grads(num_threads, std::vector<double>(_rw_grads.size(), 0.0));
-  std::vector<std::vector<double>> thread_b_grads(num_threads, std::vector<double>(has_bias() ? N_this : 0, 0.0));
+  _thread_w_grads.resize(num_threads);
+  _thread_rw_grads.resize(num_threads);
+  _thread_b_grads.resize(num_threads);
+
+  for (unsigned int t = 0; t < num_threads; ++t)
+  {
+    _thread_w_grads[t].resize(_w_grads.size());
+    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+    _thread_rw_grads[t].resize(_rw_grads.size());
+    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+    _thread_b_grads[t].resize(has_bias() ? N_this : 0);
+    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+  }
 
   auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
   {
-    auto& local_w_grads = thread_w_grads[thread_idx];
-    auto& local_rw_grads = thread_rw_grads[thread_idx];
-    auto& local_b_grads = thread_b_grads[thread_idx];
+    auto& local_w_grads = _thread_w_grads[thread_idx];
+    auto& local_rw_grads = _thread_rw_grads[thread_idx];
+    auto& local_b_grads = _thread_b_grads[thread_idx];
 
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (packed_grads.empty()) continue;
+      if (packed_grads.empty())
+      {
+        continue;
+      }
 
       const auto& layer_states = hidden_states[b].at(get_layer_index());
       const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -746,36 +774,37 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   {
     for (size_t i = 0; i < _w_grads.size(); ++i)
     {
-      _w_grads[i] += thread_w_grads[t][i];
+      _w_grads[i] += _thread_w_grads[t][i];
     }
     for (size_t i = 0; i < _rw_grads.size(); ++i)
     {
-      _rw_grads[i] += thread_rw_grads[t][i];
+      _rw_grads[i] += _thread_rw_grads[t][i];
     }
     if (has_bias())
     {
-      for (size_t i = 0; i < _b_grads.size(); ++i) _b_grads[i] += thread_b_grads[t][i];
+      for (size_t i = 0; i < _b_grads.size(); ++i)
+      {
+        _b_grads[i] += _thread_b_grads[t][i];
+      }
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  for (double& x : _w_grads) x *= inv_batch;
-  for (double& x : _rw_grads) x *= inv_batch;
-  if (has_bias()) for (double& x : _b_grads) x *= inv_batch;
-}
-
-double ElmanRNNLayer::get_gradient_norm_sq() const
-{
-  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  auto ssq = [](const std::vector<double>& v)
+  for (double& x : _w_grads)
   {
-    double s = 0; for (double x : v)
+    x *= inv_batch;
+  }
+  for (double& x : _rw_grads)
+  {
+    x *= inv_batch;
+  }
+  if (has_bias())
+  {
+    for (double& x : _b_grads)
     {
-      s += x * x;
+      x *= inv_batch;
     }
-    return s;
-  };
-  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads);
+  }
 }
 
 void ElmanRNNLayer::zero_gradients()

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../helpers/errorcalculation.h"
 #include "../common/hiddenstate.h"
 #include "layer.h"
@@ -195,5 +195,8 @@ private:
     size_t num_time_steps,
     std::vector<double>& local_w_grads,
     std::vector<double>& local_b_grads) const;
+
+  std::vector<std::vector<double>> _thread_w_grads;
+  std::vector<std::vector<double>> _thread_b_grads;
 };
 } // namespace myoddweb::nn
