@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../libraries/instrumentor.h"
 #include "logger.h"
 
@@ -32,6 +32,13 @@ public:
     const auto size = std::min<size_t>(sums.size(), _pre_activation_sums.size());
     std::copy(sums.begin(), sums.begin() + size, _pre_activation_sums.begin());
   }
+
+  inline void set_pre_activation_sums(const double* data, size_t size) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    const auto copy_size = std::min<size_t>(size, _pre_activation_sums.size());
+    std::copy(data, data + copy_size, _pre_activation_sums.begin());
+  }
     
   inline void set_hidden_state_value(unsigned index, double value) noexcept
   {
@@ -49,6 +56,13 @@ public:
     std::copy(values.begin(), values.begin() + size, _hidden_state_values.begin());
   }
 
+  inline void set_hidden_state_values(const double* data, size_t size) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    const auto copy_size = std::min<size_t>(size, _hidden_state_values.size());
+    std::copy(data, data + copy_size, _hidden_state_values.begin());
+  }
+
   inline void set_cell_state_value(unsigned index, double value) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
@@ -63,6 +77,13 @@ public:
     MYODDWEB_PROFILE_FUNCTION("HiddenState");
     const auto size = std::min<size_t>(values.size(), _cell_state_values.size());
     std::copy(values.begin(), values.begin() + size, _cell_state_values.begin());
+  }
+
+  inline void set_cell_state_values(const double* data, size_t size) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    const auto copy_size = std::min<size_t>(size, _cell_state_values.size());
+    std::copy(data, data + copy_size, _cell_state_values.begin());
   }
 
   [[nodiscard]] inline double get_pre_activation_sum_at_neuron(unsigned neuron_index) const

@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/hiddenstate.h"
 #include <vector>
 #include <algorithm>
@@ -165,4 +165,32 @@ TEST(HiddenStateTest, ShallowMoveConstructorAndAssignment)
   state3 = std::move(state2);
   EXPECT_EQ(state3.get_pre_activation_sums().data(), original_pre_ptr);
   EXPECT_EQ(state3.get_hidden_state_values().data(), original_hid_ptr);
+}
+
+TEST(HiddenStateTest, SetWithRawPointers)
+{
+  unsigned num_neurons = 3;
+  std::vector<double> pre_sums(num_neurons, 0.0);
+  std::vector<double> hidden_values(num_neurons, 0.0);
+  std::vector<double> cell_values(num_neurons, 0.0);
+  HiddenState state(pre_sums.data(), hidden_values.data(), cell_values.data(), num_neurons, num_neurons);
+
+  std::vector<double> new_sums = { 1.5, 2.5, 3.5 };
+  std::vector<double> new_hidden = { 4.5, 5.5, 6.5 };
+  std::vector<double> new_cell = { 7.5, 8.5, 9.5 };
+
+  state.set_pre_activation_sums(new_sums.data(), new_sums.size());
+  state.set_hidden_state_values(new_hidden.data(), new_hidden.size());
+  state.set_cell_state_values(new_cell.data(), new_cell.size());
+
+  auto sums = state.get_pre_activation_sums();
+  auto hidden = state.get_hidden_state_values();
+  auto cell = state.get_cell_state_values();
+
+  for (size_t i = 0; i < num_neurons; ++i)
+  {
+    EXPECT_DOUBLE_EQ(sums[i], new_sums[i]);
+    EXPECT_DOUBLE_EQ(hidden[i], new_hidden[i]);
+    EXPECT_DOUBLE_EQ(cell[i], new_cell[i]);
+  }
 }

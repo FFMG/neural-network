@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "aligned_allocator.h"
 #include "logger.h"
 #include <algorithm>
@@ -106,6 +106,18 @@ public:
     }
 #endif
     std::copy(data.begin(), data.end(), _data.begin() + _offsets[layer]);
+  }
+
+  inline void set(unsigned layer, const double* data, size_t size)
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayersAndNeuronsContainer");
+#if VALIDATE_DATA == 1
+    if (number_neurons(layer) != size)
+    {
+      Logger::panic("The number of neurons in the layer does not match the data size: ", layer);
+    }
+#endif
+    std::copy(data, data + size, _data.begin() + _offsets[layer]);
   }
   
   [[nodiscard]] inline const double& get(unsigned layer, unsigned neuron) const
