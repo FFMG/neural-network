@@ -512,31 +512,36 @@ void Layers::calculate_back_propagation_hidden_layers(
   const std::vector<HiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
+  if (_batch_next_gradients_buffer.size() < batch_size)
+  {
+    _batch_next_gradients_buffer.resize(batch_size);
+  }
+
   // we are going backward from output to input
   for (auto layer_number = (int)size() - 2; layer_number > 0; --layer_number)
   {
     auto& hidden_0 = layer(static_cast<unsigned>(layer_number));
     const auto& hidden_1 = layer(static_cast<unsigned>(layer_number + 1));
 
-    std::vector<std::vector<double>> batch_next_gradients;
-    
     // Check if next layer is Branched
-    if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1)) {
+    if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1))
+    {
        // Only call backprop_branches if it's NOT the output layer, 
        // because calculate_back_propagation_output_layer already did it.
        if (static_cast<unsigned>(layer_number + 1) != size() - 1)
        {
          branched->backprop_branches(batch_size, options.bptt_max_ticks());
        }
-       batch_next_gradients = branched->get_trunk_gradients(batch_size);
+       std::vector<std::vector<double>> batch_next_gradients = branched->get_trunk_gradients(batch_size);
        hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
-    } else {
+    }
+    else
+    {
        bool next_is_recurrent = false;
-       batch_next_gradients.reserve(batch_size);
        for (size_t b = 0; b < batch_size; ++b)
        {
          const auto& g = gradients[b];
-         std::vector<double> grad;
+         auto& grad = _batch_next_gradients_buffer[b];
          
          const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
          if (!rnn_span.empty())
@@ -544,21 +549,19 @@ void Layers::calculate_back_propagation_hidden_layers(
            grad.assign(rnn_span.begin(), rnn_span.end());
            next_is_recurrent = true;
          }
-         
-         if (grad.empty())
+         else
          {
            const auto std_span = g.get_gradients(static_cast<unsigned>(layer_number + 1));
            grad.assign(std_span.begin(), std_span.end());
          }
-         batch_next_gradients.emplace_back(std::move(grad));
        }
        if (next_is_recurrent)
        {
-         hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
+         hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, _batch_next_gradients_buffer, hidden_states, batch_size, options.bptt_max_ticks());
        }
        else
        {
-         hidden_0.calculate_hidden_gradients(gradients, hidden_1, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
+         hidden_0.calculate_hidden_gradients(gradients, hidden_1, _batch_next_gradients_buffer, hidden_states, batch_size, options.bptt_max_ticks());
        }
     }
   }
