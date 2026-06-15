@@ -1,6 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-enable_language(CXX)
 project(NeuralNetworkTests LANGUAGES CXX)
+enable_language(CXX)
+
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
