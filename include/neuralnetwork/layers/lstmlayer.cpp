@@ -424,12 +424,12 @@ void LSTMLayer::calculate_forward_feed(
         for (size_t i = 0; i < N_prev; ++i)
         {
           const double xi = x_t[i];
-          if (xi == 0.0) continue;
+          if (xi == 0.0)
+          {
+            continue;
+          }
 
-          simd::mul_add(xi, &_f_w_values[i * N_this], f_pre, N_this);
-          simd::mul_add(xi, &_i_w_values[i * N_this], i_pre, N_this);
-          simd::mul_add(xi, &_o_w_values[i * N_this], o_pre, N_this);
-          simd::mul_add(xi, &get_w_values()[i * N_this], g_pre, N_this);
+          simd::mul_add_four(xi, &_f_w_values[i * N_this], &_i_w_values[i * N_this], &_o_w_values[i * N_this], &get_w_values()[i * N_this], f_pre, i_pre, o_pre, g_pre, N_this);
         }
       }
     }
@@ -482,10 +482,7 @@ void LSTMLayer::calculate_forward_feed(
         double* g_pre = pre_t + 3 * N_this;
 
         // Recurrent-to-Gates
-        simd::gemv_add(_f_rw_values_T.data(), current_h.data(), f_pre, N_this, N_this);
-        simd::gemv_add(_i_rw_values_T.data(), current_h.data(), i_pre, N_this, N_this);
-        simd::gemv_add(_o_rw_values_T.data(), current_h.data(), o_pre, N_this, N_this);
-        simd::gemv_add(_rw_values_T.data(), current_h.data(), g_pre, N_this, N_this);
+        simd::gemv_add_four(_f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(), current_h.data(), f_pre, i_pre, o_pre, g_pre, N_this, N_this);
 
         // Residuals (on candidate gate g)
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)

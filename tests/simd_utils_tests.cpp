@@ -628,3 +628,97 @@ TEST(SimdUtilsTest, MulAddTwoThreeFourVariousSizes)
   }
 }
 
+TEST(SimdUtilsTest, GemvAddTwoFour)
+{
+  std::vector<size_t> rows_list = { 1, 2, 3, 4, 7, 8 };
+  std::vector<size_t> cols_list = { 1, 2, 3, 4, 7, 8, 15, 16 };
+  for (size_t rows : rows_list)
+  {
+    for (size_t cols : cols_list)
+    {
+      std::vector<double> A0(rows * cols);
+      std::vector<double> A1(rows * cols);
+      std::vector<double> A2(rows * cols);
+      std::vector<double> A3(rows * cols);
+      for (size_t i = 0; i < A0.size(); ++i)
+      {
+        A0[i] = static_cast<double>(i) * 0.1;
+        A1[i] = static_cast<double>(i) * 0.2 + 0.5;
+        A2[i] = static_cast<double>(i) * 0.3 - 0.2;
+        A3[i] = static_cast<double>(i) * 0.05 + 1.2;
+      }
+      std::vector<double> x(cols);
+      for (size_t i = 0; i < cols; ++i)
+      {
+        x[i] = static_cast<double>(i) * 0.5 + 1.0;
+      }
+
+      std::vector<double> y0(rows, 2.0);
+      std::vector<double> y1(rows, 3.0);
+      std::vector<double> y2(rows, 4.0);
+      std::vector<double> y3(rows, 5.0);
+
+      std::vector<double> expected_y0 = y0;
+      std::vector<double> expected_y1 = y1;
+      std::vector<double> expected_y2 = y2;
+      std::vector<double> expected_y3 = y3;
+
+      for (size_t i = 0; i < rows; ++i)
+      {
+        double sum0 = 0.0;
+        double sum1 = 0.0;
+        double sum2 = 0.0;
+        double sum3 = 0.0;
+        for (size_t j = 0; j < cols; ++j)
+        {
+          sum0 += A0[i * cols + j] * x[j];
+          sum1 += A1[i * cols + j] * x[j];
+          sum2 += A2[i * cols + j] * x[j];
+          sum3 += A3[i * cols + j] * x[j];
+        }
+        expected_y0[i] += sum0;
+        expected_y1[i] += sum1;
+        expected_y2[i] += sum2;
+        expected_y3[i] += sum3;
+      }
+
+      // Test gemv_add_two
+      std::vector<double> test_y0 = y0;
+      std::vector<double> test_y1 = y1;
+      simd::gemv_add_two(A0.data(), A1.data(), x.data(), test_y0.data(), test_y1.data(), rows, cols);
+      expect_vec_near(test_y0, expected_y0);
+      expect_vec_near(test_y1, expected_y1);
+
+      // Test scalar_gemv_add_two
+      test_y0 = y0;
+      test_y1 = y1;
+      simd::scalar_gemv_add_two(A0.data(), A1.data(), x.data(), test_y0.data(), test_y1.data(), rows, cols);
+      expect_vec_near(test_y0, expected_y0);
+      expect_vec_near(test_y1, expected_y1);
+
+      // Test gemv_add_four
+      test_y0 = y0;
+      test_y1 = y1;
+      std::vector<double> test_y2 = y2;
+      std::vector<double> test_y3 = y3;
+      simd::gemv_add_four(A0.data(), A1.data(), A2.data(), A3.data(), x.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), rows, cols);
+      expect_vec_near(test_y0, expected_y0);
+      expect_vec_near(test_y1, expected_y1);
+      expect_vec_near(test_y2, expected_y2);
+      expect_vec_near(test_y3, expected_y3);
+
+      // Test scalar_gemv_add_four
+      test_y0 = y0;
+      test_y1 = y1;
+      test_y2 = y2;
+      test_y3 = y3;
+      simd::scalar_gemv_add_four(A0.data(), A1.data(), A2.data(), A3.data(), x.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), rows, cols);
+      expect_vec_near(test_y0, expected_y0);
+      expect_vec_near(test_y1, expected_y1);
+      expect_vec_near(test_y2, expected_y2);
+      expect_vec_near(test_y3, expected_y3);
+    }
+  }
+}
+
+

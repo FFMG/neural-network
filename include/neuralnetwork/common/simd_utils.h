@@ -760,6 +760,184 @@ public:
 #endif
   }
 
+  // Scalar fallback for gemv_add_two
+  inline static void scalar_gemv_add_two(
+    const double* A0, const double* A1,
+    const double* x,
+    double* y0, double* y1,
+    size_t rows, size_t cols) noexcept
+  {
+    for (size_t i = 0; i < rows; ++i)
+    {
+      const double* row0 = A0 + i * cols;
+      const double* row1 = A1 + i * cols;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      for (size_t j = 0; j < cols; ++j)
+      {
+        sum0 += row0[j] * x[j];
+        sum1 += row1[j] * x[j];
+      }
+      y0[i] += sum0;
+      y1[i] += sum1;
+    }
+  }
+
+  // Row-major matrix-vector multiplication for two gates (y0 += A0 * x, y1 += A1 * x)
+  inline static void gemv_add_two(
+    const double* A0, const double* A1,
+    const double* x,
+    double* y0, double* y1,
+    size_t rows, size_t cols) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+#ifdef SIMD_AVX2_ENABLED
+    size_t i = 0;
+    for (; i < rows; ++i)
+    {
+      const double* row0 = A0 + i * cols;
+      const double* row1 = A1 + i * cols;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      size_t j = 0;
+      __m256d vec_sum0 = _mm256_setzero_pd();
+      __m256d vec_sum1 = _mm256_setzero_pd();
+      for (; j + 3 < cols; j += 4)
+      {
+        __m256d vec_x = _mm256_loadu_pd(x + j);
+        __m256d vec_a0 = _mm256_loadu_pd(row0 + j);
+        __m256d vec_a1 = _mm256_loadu_pd(row1 + j);
+#ifdef SIMD_FMA_ENABLED
+        vec_sum0 = _mm256_fmadd_pd(vec_a0, vec_x, vec_sum0);
+        vec_sum1 = _mm256_fmadd_pd(vec_a1, vec_x, vec_sum1);
+#else
+        vec_sum0 = _mm256_add_pd(vec_sum0, _mm256_mul_pd(vec_a0, vec_x));
+        vec_sum1 = _mm256_add_pd(vec_sum1, _mm256_mul_pd(vec_a1, vec_x));
+#endif
+      }
+      double sums0[4];
+      double sums1[4];
+      _mm256_storeu_pd(sums0, vec_sum0);
+      _mm256_storeu_pd(sums1, vec_sum1);
+      sum0 = sums0[0] + sums0[1] + sums0[2] + sums0[3];
+      sum1 = sums1[0] + sums1[1] + sums1[2] + sums1[3];
+      for (; j < cols; ++j)
+      {
+        sum0 += row0[j] * x[j];
+        sum1 += row1[j] * x[j];
+      }
+      y0[i] += sum0;
+      y1[i] += sum1;
+    }
+#else
+    scalar_gemv_add_two(A0, A1, x, y0, y1, rows, cols);
+#endif
+  }
+
+  // Scalar fallback for gemv_add_four
+  inline static void scalar_gemv_add_four(
+    const double* A0, const double* A1, const double* A2, const double* A3,
+    const double* x,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t rows, size_t cols) noexcept
+  {
+    for (size_t i = 0; i < rows; ++i)
+    {
+      const double* row0 = A0 + i * cols;
+      const double* row1 = A1 + i * cols;
+      const double* row2 = A2 + i * cols;
+      const double* row3 = A3 + i * cols;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      double sum2 = 0.0;
+      double sum3 = 0.0;
+      for (size_t j = 0; j < cols; ++j)
+      {
+        sum0 += row0[j] * x[j];
+        sum1 += row1[j] * x[j];
+        sum2 += row2[j] * x[j];
+        sum3 += row3[j] * x[j];
+      }
+      y0[i] += sum0;
+      y1[i] += sum1;
+      y2[i] += sum2;
+      y3[i] += sum3;
+    }
+  }
+
+  // Row-major matrix-vector multiplication for four gates
+  inline static void gemv_add_four(
+    const double* A0, const double* A1, const double* A2, const double* A3,
+    const double* x,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t rows, size_t cols) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+#ifdef SIMD_AVX2_ENABLED
+    size_t i = 0;
+    for (; i < rows; ++i)
+    {
+      const double* row0 = A0 + i * cols;
+      const double* row1 = A1 + i * cols;
+      const double* row2 = A2 + i * cols;
+      const double* row3 = A3 + i * cols;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      double sum2 = 0.0;
+      double sum3 = 0.0;
+      size_t j = 0;
+      __m256d vec_sum0 = _mm256_setzero_pd();
+      __m256d vec_sum1 = _mm256_setzero_pd();
+      __m256d vec_sum2 = _mm256_setzero_pd();
+      __m256d vec_sum3 = _mm256_setzero_pd();
+      for (; j + 3 < cols; j += 4)
+      {
+        __m256d vec_x = _mm256_loadu_pd(x + j);
+        __m256d vec_a0 = _mm256_loadu_pd(row0 + j);
+        __m256d vec_a1 = _mm256_loadu_pd(row1 + j);
+        __m256d vec_a2 = _mm256_loadu_pd(row2 + j);
+        __m256d vec_a3 = _mm256_loadu_pd(row3 + j);
+#ifdef SIMD_FMA_ENABLED
+        vec_sum0 = _mm256_fmadd_pd(vec_a0, vec_x, vec_sum0);
+        vec_sum1 = _mm256_fmadd_pd(vec_a1, vec_x, vec_sum1);
+        vec_sum2 = _mm256_fmadd_pd(vec_a2, vec_x, vec_sum2);
+        vec_sum3 = _mm256_fmadd_pd(vec_a3, vec_x, vec_sum3);
+#else
+        vec_sum0 = _mm256_add_pd(vec_sum0, _mm256_mul_pd(vec_a0, vec_x));
+        vec_sum1 = _mm256_add_pd(vec_sum1, _mm256_mul_pd(vec_a1, vec_x));
+        vec_sum2 = _mm256_add_pd(vec_sum2, _mm256_mul_pd(vec_a2, vec_x));
+        vec_sum3 = _mm256_add_pd(vec_sum3, _mm256_mul_pd(vec_a3, vec_x));
+#endif
+      }
+      double sums0[4];
+      double sums1[4];
+      double sums2[4];
+      double sums3[4];
+      _mm256_storeu_pd(sums0, vec_sum0);
+      _mm256_storeu_pd(sums1, vec_sum1);
+      _mm256_storeu_pd(sums2, vec_sum2);
+      _mm256_storeu_pd(sums3, vec_sum3);
+      sum0 = sums0[0] + sums0[1] + sums0[2] + sums0[3];
+      sum1 = sums1[0] + sums1[1] + sums1[2] + sums1[3];
+      sum2 = sums2[0] + sums2[1] + sums2[2] + sums2[3];
+      sum3 = sums3[0] + sums3[1] + sums3[2] + sums3[3];
+      for (; j < cols; ++j)
+      {
+        sum0 += row0[j] * x[j];
+        sum1 += row1[j] * x[j];
+        sum2 += row2[j] * x[j];
+        sum3 += row3[j] * x[j];
+      }
+      y0[i] += sum0;
+      y1[i] += sum1;
+      y2[i] += sum2;
+      y3[i] += sum3;
+    }
+#else
+    scalar_gemv_add_four(A0, A1, A2, A3, x, y0, y1, y2, y3, rows, cols);
+#endif
+  }
+
   // Scalar fallback for add_vectors
   inline static void scalar_add_vectors(const double* x, double* y, size_t n, size_t start = 0) noexcept
   {
