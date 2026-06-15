@@ -1332,9 +1332,7 @@ void GRURNNLayer::calculate_and_store_gradients(
             {
               continue;
             }
-            simd::mul_add(x, gh, &local_w_grads[i * num_outputs], num_outputs);
-            simd::mul_add(x, gz, &local_z_w_grads[i * num_outputs], num_outputs);
-            simd::mul_add(x, gr, &local_r_w_grads[i * num_outputs], num_outputs);
+            simd::mul_add_three(x, gh, gz, gr, &local_w_grads[i * num_outputs], &local_z_w_grads[i * num_outputs], &local_r_w_grads[i * num_outputs], num_outputs);
           }
         }
 
@@ -1355,8 +1353,7 @@ void GRURNNLayer::calculate_and_store_gradients(
             simd::mul_add(r_val * h_prev, gh, &local_rw_grads[k * num_outputs], num_outputs);
             
             // Update and Reset gates use simple h_prev
-            simd::mul_add(h_prev, gz, &local_z_rw_grads[k * num_outputs], num_outputs);
-            simd::mul_add(h_prev, gr, &local_r_rw_grads[k * num_outputs], num_outputs);
+            simd::mul_add_two(h_prev, gz, gr, &local_z_rw_grads[k * num_outputs], &local_r_rw_grads[k * num_outputs], num_outputs);
           }
         }
       }

@@ -53,6 +53,223 @@ public:
     scalar_mul_add(x, w, y, n, j);
   }
 
+  // Scalar fallback for mul_add_two
+  inline static void scalar_mul_add_two(
+    const double x,
+    const double* w0,
+    const double* w1,
+    double* y0,
+    double* y1,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y0[j] += x * w0[j];
+      y1[j] += x * w1[j];
+    }
+  }
+
+  // A vectorized mul_add for two targets (y0 += x * w0, y1 += x * w1)
+  inline static void mul_add_two(
+    const double x,
+    const double* w0,
+    const double* w1,
+    double* y0,
+    double* y1,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+
+#ifdef SIMD_AVX2_ENABLED
+    // Broadcast x into a 4-double vector
+    __m256d vec_x = _mm256_set1_pd(x);
+
+    // Process 4 doubles at a time
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_w0 = _mm256_loadu_pd(&w0[j]);
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y0 = _mm256_fmadd_pd(vec_x, vec_w0, vec_y0);
+#else
+      vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_x, vec_w0));
+#endif
+      _mm256_storeu_pd(&y0[j], vec_y0);
+
+      __m256d vec_w1 = _mm256_loadu_pd(&w1[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y1 = _mm256_fmadd_pd(vec_x, vec_w1, vec_y1);
+#else
+      vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_x, vec_w1));
+#endif
+      _mm256_storeu_pd(&y1[j], vec_y1);
+    }
+#endif
+    scalar_mul_add_two(x, w0, w1, y0, y1, n, j);
+  }
+
+  // Scalar fallback for mul_add_three
+  inline static void scalar_mul_add_three(
+    const double x,
+    const double* w0,
+    const double* w1,
+    const double* w2,
+    double* y0,
+    double* y1,
+    double* y2,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y0[j] += x * w0[j];
+      y1[j] += x * w1[j];
+      y2[j] += x * w2[j];
+    }
+  }
+
+  // A vectorized mul_add for three targets (y0 += x * w0, y1 += x * w1, y2 += x * w2)
+  inline static void mul_add_three(
+    const double x,
+    const double* w0,
+    const double* w1,
+    const double* w2,
+    double* y0,
+    double* y1,
+    double* y2,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+
+#ifdef SIMD_AVX2_ENABLED
+    // Broadcast x into a 4-double vector
+    __m256d vec_x = _mm256_set1_pd(x);
+
+    // Process 4 doubles at a time
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_w0 = _mm256_loadu_pd(&w0[j]);
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y0 = _mm256_fmadd_pd(vec_x, vec_w0, vec_y0);
+#else
+      vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_x, vec_w0));
+#endif
+      _mm256_storeu_pd(&y0[j], vec_y0);
+
+      __m256d vec_w1 = _mm256_loadu_pd(&w1[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y1 = _mm256_fmadd_pd(vec_x, vec_w1, vec_y1);
+#else
+      vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_x, vec_w1));
+#endif
+      _mm256_storeu_pd(&y1[j], vec_y1);
+
+      __m256d vec_w2 = _mm256_loadu_pd(&w2[j]);
+      __m256d vec_y2 = _mm256_loadu_pd(&y2[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y2 = _mm256_fmadd_pd(vec_x, vec_w2, vec_y2);
+#else
+      vec_y2 = _mm256_add_pd(vec_y2, _mm256_mul_pd(vec_x, vec_w2));
+#endif
+      _mm256_storeu_pd(&y2[j], vec_y2);
+    }
+#endif
+    scalar_mul_add_three(x, w0, w1, w2, y0, y1, y2, n, j);
+  }
+
+  // Scalar fallback for mul_add_four
+  inline static void scalar_mul_add_four(
+    const double x,
+    const double* w0,
+    const double* w1,
+    const double* w2,
+    const double* w3,
+    double* y0,
+    double* y1,
+    double* y2,
+    double* y3,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y0[j] += x * w0[j];
+      y1[j] += x * w1[j];
+      y2[j] += x * w2[j];
+      y3[j] += x * w3[j];
+    }
+  }
+
+  // A vectorized mul_add for four targets (y0 += x * w0, y1 += x * w1, y2 += x * w2, y3 += x * w3)
+  inline static void mul_add_four(
+    const double x,
+    const double* w0,
+    const double* w1,
+    const double* w2,
+    const double* w3,
+    double* y0,
+    double* y1,
+    double* y2,
+    double* y3,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+
+#ifdef SIMD_AVX2_ENABLED
+    // Broadcast x into a 4-double vector
+    __m256d vec_x = _mm256_set1_pd(x);
+
+    // Process 4 doubles at a time
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_w0 = _mm256_loadu_pd(&w0[j]);
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y0 = _mm256_fmadd_pd(vec_x, vec_w0, vec_y0);
+#else
+      vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_x, vec_w0));
+#endif
+      _mm256_storeu_pd(&y0[j], vec_y0);
+
+      __m256d vec_w1 = _mm256_loadu_pd(&w1[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y1 = _mm256_fmadd_pd(vec_x, vec_w1, vec_y1);
+#else
+      vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_x, vec_w1));
+#endif
+      _mm256_storeu_pd(&y1[j], vec_y1);
+
+      __m256d vec_w2 = _mm256_loadu_pd(&w2[j]);
+      __m256d vec_y2 = _mm256_loadu_pd(&y2[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y2 = _mm256_fmadd_pd(vec_x, vec_w2, vec_y2);
+#else
+      vec_y2 = _mm256_add_pd(vec_y2, _mm256_mul_pd(vec_x, vec_w2));
+#endif
+      _mm256_storeu_pd(&y2[j], vec_y2);
+
+      __m256d vec_w3 = _mm256_loadu_pd(&w3[j]);
+      __m256d vec_y3 = _mm256_loadu_pd(&y3[j]);
+#ifdef SIMD_FMA_ENABLED
+      vec_y3 = _mm256_fmadd_pd(vec_x, vec_w3, vec_y3);
+#else
+      vec_y3 = _mm256_add_pd(vec_y3, _mm256_mul_pd(vec_x, vec_w3));
+#endif
+      _mm256_storeu_pd(&y3[j], vec_y3);
+    }
+#endif
+    scalar_mul_add_four(x, w0, w1, w2, w3, y0, y1, y2, y3, n, j);
+  }
+
+
   // Scalar fallback for dot_product
   [[nodiscard]] inline static double scalar_dot_product(const double* a, const double* b, size_t n, size_t start = 0) noexcept
   {

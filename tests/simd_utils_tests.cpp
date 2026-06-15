@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/simd_utils.h"
 #include <vector>
 #include <cmath>
@@ -541,3 +541,63 @@ TEST(SimdUtilsTest, AddVectors)
     expect_vec_near(y, expected_y);
   }
 }
+
+TEST(SimdUtilsTest, MulAddTwoThreeFourVariousSizes)
+{
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16 };
+  for (size_t n : sizes)
+  {
+    std::vector<double> w0(n, 1.1);
+    std::vector<double> w1(n, 2.2);
+    std::vector<double> w2(n, 3.3);
+    std::vector<double> w3(n, 4.4);
+
+    std::vector<double> y0(n, 10.0);
+    std::vector<double> y1(n, 20.0);
+    std::vector<double> y2(n, 30.0);
+    std::vector<double> y3(n, 40.0);
+
+    double x = 2.5;
+
+    std::vector<double> expected_y0(n);
+    std::vector<double> expected_y1(n);
+    std::vector<double> expected_y2(n);
+    std::vector<double> expected_y3(n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      expected_y0[i] = y0[i] + x * w0[i];
+      expected_y1[i] = y1[i] + x * w1[i];
+      expected_y2[i] = y2[i] + x * w2[i];
+      expected_y3[i] = y3[i] + x * w3[i];
+    }
+
+    // Test mul_add_two
+    std::vector<double> test_y0 = y0;
+    std::vector<double> test_y1 = y1;
+    simd::mul_add_two(x, w0.data(), w1.data(), test_y0.data(), test_y1.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+
+    // Test mul_add_three
+    test_y0 = y0;
+    test_y1 = y1;
+    std::vector<double> test_y2 = y2;
+    simd::mul_add_three(x, w0.data(), w1.data(), w2.data(), test_y0.data(), test_y1.data(), test_y2.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+    expect_vec_near(test_y2, expected_y2);
+
+    // Test mul_add_four
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    std::vector<double> test_y3 = y3;
+    simd::mul_add_four(x, w0.data(), w1.data(), w2.data(), w3.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+    expect_vec_near(test_y2, expected_y2);
+    expect_vec_near(test_y3, expected_y3);
+  }
+}
+

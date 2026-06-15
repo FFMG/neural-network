@@ -779,10 +779,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
           {
             continue;
           }
-          simd::mul_add(xk, df, &local_f_w_grads[k * N_this], N_this);
-          simd::mul_add(xk, di, &local_i_w_grads[k * N_this], N_this);
-          simd::mul_add(xk, do_gate, &local_o_w_grads[k * N_this], N_this);
-          simd::mul_add(xk, dg, &local_w_grads[k * N_this], N_this);
+          simd::mul_add_four(xk, df, di, do_gate, dg, &local_f_w_grads[k * N_this], &local_i_w_grads[k * N_this], &local_o_w_grads[k * N_this], &local_w_grads[k * N_this], N_this);
         }
 
         // Recurrent Weight Gradients (Outer Product) - Vectorized over N_this
@@ -795,10 +792,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
             {
               continue;
             }
-            simd::mul_add(hk, df, &local_f_rw_grads[k * N_this], N_this);
-            simd::mul_add(hk, di, &local_i_rw_grads[k * N_this], N_this);
-            simd::mul_add(hk, do_gate, &local_o_rw_grads[k * N_this], N_this);
-            simd::mul_add(hk, dg, &local_rw_grads[k * N_this], N_this);
+            simd::mul_add_four(hk, df, di, do_gate, dg, &local_f_rw_grads[k * N_this], &local_i_rw_grads[k * N_this], &local_o_rw_grads[k * N_this], &local_rw_grads[k * N_this], N_this);
           }
         }
       }

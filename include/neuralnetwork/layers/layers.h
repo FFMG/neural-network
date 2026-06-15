@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <memory>
 #include <shared_mutex>
 
@@ -154,6 +154,7 @@ private:
 
   std::vector<GradientsAndOutputs> _training_gradients_buffer;
   std::vector<HiddenStates> _training_hidden_states_buffer;
+  mutable std::vector<std::vector<double>> _batch_next_gradients_buffer;
 
   mutable std::shared_mutex _mutex;
   TaskQueuePool<void>* _update_weights_pool;
