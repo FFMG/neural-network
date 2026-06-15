@@ -386,30 +386,30 @@ void Layers::calculate_forward_feed(
 
     if (current_input.size() == input_size)
     {
-      gradients_and_output[b].set_outputs(0, current_input);
+      gradients_and_output[b].set_outputs(0, current_input.data(), input_size);
       if (options.enable_bptt() && options.bptt_max_ticks() > 1)
       {
-        std::vector<double> expanded;
         const int ticks = options.bptt_max_ticks();
-        expanded.reserve(input_size * ticks);
-        for (int t = 0; t < ticks; ++t) expanded.insert(expanded.end(), current_input.begin(), current_input.end());
-        gradients_and_output[b].set_rnn_outputs(0, expanded);
+        double* dest = gradients_and_output[b].get_rnn_outputs_raw(0, input_size * ticks);
+        for (int t = 0; t < ticks; ++t)
+        {
+          std::copy(current_input.begin(), current_input.end(), dest + t * input_size);
+        }
       }
     }
     else if (options.enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
     {
       // Sequence input provided!
       // Set the standard output to the LAST time step (so strict topology checks pass)
-      std::vector<double> last_step(current_input.end() - input_size, current_input.end());
-      gradients_and_output[b].set_outputs(0, last_step);
+      gradients_and_output[b].set_outputs(0, current_input.data() + current_input.size() - input_size, input_size);
 
       // Set the full sequence for RNN layers to consume
-      gradients_and_output[b].set_rnn_outputs(0, current_input);
+      gradients_and_output[b].set_rnn_outputs(0, current_input.data(), current_input.size());
     }
     else
     {
       // Fallback (will likely assert if size mismatch)
-      gradients_and_output[b].set_outputs(0, current_input);
+      gradients_and_output[b].set_outputs(0, current_input.data(), current_input.size());
     }
   }
 

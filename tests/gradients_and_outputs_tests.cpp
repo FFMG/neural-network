@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/gradientsandoutputs.h"
 #include <vector>
 #include <stdexcept>
@@ -146,4 +146,49 @@ TEST_F(GradientsAndOutputsTest, Exceptions) {
     // Invalid layer for raw pointer
     EXPECT_THROW((void)gao.get_outputs_raw(5), std::runtime_error);
 #endif
+}
+
+TEST_F(GradientsAndOutputsTest, PointerOverloadsAndRawBuffers)
+{
+    GradientsAndOutputs gao(topology);
+    
+    // Test set_outputs pointer overload
+    std::vector<double> out_vals = {1.2, 3.4, 5.6};
+    gao.set_outputs(0, out_vals.data(), out_vals.size());
+    EXPECT_DOUBLE_EQ(gao.get_output(0, 0), 1.2);
+    EXPECT_DOUBLE_EQ(gao.get_output(0, 1), 3.4);
+    EXPECT_DOUBLE_EQ(gao.get_output(0, 2), 5.6);
+    
+    // Test set_gradients pointer overload
+    std::vector<double> grad_vals = {7.8, 9.0};
+    gao.set_gradients(2, grad_vals.data(), grad_vals.size());
+    EXPECT_DOUBLE_EQ(gao.get_gradients(2)[0], 7.8);
+    EXPECT_DOUBLE_EQ(gao.get_gradients(2)[1], 9.0);
+    
+    // Test get_rnn_outputs_raw resize and pointer usage
+    double* rnn_out_ptr = gao.get_rnn_outputs_raw(1, 3);
+    rnn_out_ptr[0] = 0.11;
+    rnn_out_ptr[1] = 0.22;
+    rnn_out_ptr[2] = 0.33;
+    
+    auto retrieved_rnn_out = gao.get_rnn_outputs(1);
+    ASSERT_EQ(retrieved_rnn_out.size(), 3);
+    EXPECT_DOUBLE_EQ(retrieved_rnn_out[0], 0.11);
+    EXPECT_DOUBLE_EQ(retrieved_rnn_out[1], 0.22);
+    EXPECT_DOUBLE_EQ(retrieved_rnn_out[2], 0.33);
+    
+    // Test set_rnn_outputs pointer overload
+    std::vector<double> rnn_out_vals = {0.44, 0.55};
+    gao.set_rnn_outputs(2, rnn_out_vals.data(), rnn_out_vals.size());
+    EXPECT_EQ(gao.get_rnn_outputs(2), rnn_out_vals);
+    
+    // Test set_rnn_gradients pointer overload
+    std::vector<double> rnn_grad_vals = {0.66, 0.77};
+    gao.set_rnn_gradients(2, rnn_grad_vals.data(), rnn_grad_vals.size());
+    EXPECT_EQ(gao.get_rnn_gradients(2), rnn_grad_vals);
+    
+    // Test set_rnn_gate_gradients pointer overload
+    std::vector<double> rnn_gate_vals = {0.88, 0.99};
+    gao.set_rnn_gate_gradients(2, rnn_gate_vals.data(), rnn_gate_vals.size());
+    EXPECT_EQ(gao.get_rnn_gate_gradients(2), rnn_gate_vals);
 }

@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/layersandneuronscontainer.h"
 #include <vector>
 #include <numeric>
@@ -154,4 +154,18 @@ TEST(LayersAndNeuronsContainerTest, ValidationLogic)
   // It should fail if we try to set less data than the layer has (incomplete)
   EXPECT_THROW(container.set(0, too_little_data), std::runtime_error);
 #endif
+}
+
+TEST(LayersAndNeuronsContainerTest, SetLayerWithRawPointer)
+{
+  std::vector<unsigned> topology = { 3, 3 };
+  LayersAndNeuronsContainer container(topology);
+
+  std::vector<double> layer_data = { 4.4, 5.5, 6.6 };
+  container.set(1, layer_data.data(), layer_data.size());
+
+  EXPECT_DOUBLE_EQ(container.get(1, 0), 4.4);
+  EXPECT_DOUBLE_EQ(container.get(1, 1), 5.5);
+  EXPECT_DOUBLE_EQ(container.get(1, 2), 6.6);
+  EXPECT_DOUBLE_EQ(container.get(0, 0), 0.0);
 }

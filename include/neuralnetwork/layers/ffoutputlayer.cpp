@@ -404,6 +404,7 @@ void FFOutputLayer::run_post_gemm(
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   
+  std::vector<double> mask(N_this, 1.0);
   for (size_t b = start; b < end; b++)
   {
     std::vector<double> output_row_seq(num_time_steps * N_this);
@@ -415,50 +416,54 @@ void FFOutputLayer::run_post_gemm(
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-        double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
-        double* current_output_row = &output_row_seq[t * N_this];
+      double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
+      double* current_output_row = &output_row_seq[t * N_this];
 
-        if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+      {
+        if (num_time_steps == 1 || t == num_time_steps - 1)
         {
-          if (num_time_steps == 1 || t == num_time_steps - 1)
-            for (size_t j = 0; j < N_this; j++) current_pre_act[j] += batch_residual_output_values[b][j];
-        }
-
-        layer_states_ref[t].set_pre_activation_sums(std::vector<double>(current_pre_act, current_pre_act + N_this));
-
-        std::vector<double> mask(N_this, 1.0);
-        for (const auto& r : _layer_activation_helper.ranges())
-        {
-          r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-          for (size_t j = r.start; j < r.end; j++)
+          for (size_t j = 0; j < N_this; j++)
           {
-            const auto& neuron = get_neuron((unsigned)j);
-            double output = current_pre_act[j];
-            if (is_training && neuron.is_dropout())
-            {
-              if (neuron.must_randomly_drop())
-              {
-                output = 0.0;
-                mask[j] = 0.0;
-              }
-              else
-              {
-                double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
-                output *= scale;
-                mask[j] = scale;
-              }
-            }
-            current_output_row[j] = output;
+            current_pre_act[j] += batch_residual_output_values[b][j];
           }
         }
-        layer_states_ref[t].set_cell_state_values(mask);
-        layer_states_ref[t].set_hidden_state_values(std::vector<double>(current_output_row, current_output_row + N_this));
+      }
+
+      layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
+
+      std::fill(mask.begin(), mask.end(), 1.0);
+      for (const auto& r : _layer_activation_helper.ranges())
+      {
+        r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
+        for (size_t j = r.start; j < r.end; j++)
+        {
+          const auto& neuron = get_neuron((unsigned)j);
+          double output = current_pre_act[j];
+          if (is_training && neuron.is_dropout())
+          {
+            if (neuron.must_randomly_drop())
+            {
+              output = 0.0;
+              mask[j] = 0.0;
+            }
+            else
+            {
+              double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
+              output *= scale;
+              mask[j] = scale;
+            }
+          }
+          current_output_row[j] = output;
+        }
+      }
+      layer_states_ref[t].set_cell_state_values(mask.data(), N_this);
+      layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
     }
 
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq);
-    std::vector<double> last_step_output(N_this);
-    std::copy(output_row_seq.end() - N_this, output_row_seq.end(), last_step_output.begin());
-    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), last_step_output);
+    double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+    std::copy(output_row_seq.end() - N_this, output_row_seq.end(), dest_ptr);
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::move(output_row_seq));
   }
 }
 

@@ -725,10 +725,11 @@ void GRURNNLayer::calculate_forward_feed(
   for (size_t b = 0; b < batch_size; ++b)
   {
     const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::vector<double>(seq_ptr, seq_ptr + num_time_steps * N_this));
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
     
     const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
-    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(last_ptr, last_ptr + N_this));
+    double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
+    std::copy(last_ptr, last_ptr + N_this, dest_ptr);
   }
 }
 
@@ -872,8 +873,8 @@ void GRURNNLayer::run_forward_pass(
         batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
       }
 
-      batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states);
-      batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h);
+      batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
+      batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
       prev_h = current_h;
     }
   }
@@ -1115,10 +1116,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   {
     const size_t b_idx = b - start;
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::vector<double>(dX_src, dX_src + num_time_steps * N_prev));
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), dX_src, num_time_steps * N_prev);
 
     const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this];
-    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), std::vector<double>(gates_src, gates_src + num_time_steps * GateCount * N_this));
+    batch_gradients_and_outputs[b].set_rnn_gate_gradients(get_layer_index(), gates_src, num_time_steps * GateCount * N_this);
   }
 }
 
