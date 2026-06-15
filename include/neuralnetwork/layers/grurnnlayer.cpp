@@ -776,9 +776,7 @@ void GRURNNLayer::pre_calculate_gates(
         {
           continue;
         }
-        simd::mul_add(x_val, &W_z[i * N_this], z_pre, N_this);
-        simd::mul_add(x_val, &W_r[i * N_this], r_pre, N_this);
-        simd::mul_add(x_val, &W_h[i * N_this], h_hat_pre, N_this);
+        simd::mul_add_three(x_val, &W_z[i * N_this], &W_r[i * N_this], &W_h[i * N_this], z_pre, r_pre, h_hat_pre, N_this);
       }
     }
   }
@@ -815,8 +813,7 @@ void GRURNNLayer::run_forward_pass(
 
       // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
       const double* h_prev_ptr = prev_h.data();
-      simd::gemv_add(_z_rw_values_T.data(), h_prev_ptr, z_pre.data(), N_this, N_this);
-      simd::gemv_add(_r_rw_values_T.data(), h_prev_ptr, r_pre.data(), N_this, N_this);
+      simd::gemv_add_two(_z_rw_values_T.data(), _r_rw_values_T.data(), h_prev_ptr, z_pre.data(), r_pre.data(), N_this, N_this);
 
       // d. Calculate Gates
       for (size_t j = 0; j < N_this; ++j)
