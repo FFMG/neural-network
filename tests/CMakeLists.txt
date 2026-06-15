@@ -1,4 +1,5 @@
-﻿cmake_minimum_required(VERSION 3.21)
+﻿cmake_minimum_required(VERSION 3.24)
+enable_language(CXX)
 project(NeuralNetworkTests LANGUAGES CXX)
 
 # Set C++ standard
