@@ -579,11 +579,27 @@ TEST(SimdUtilsTest, MulAddTwoThreeFourVariousSizes)
     expect_vec_near(test_y0, expected_y0);
     expect_vec_near(test_y1, expected_y1);
 
+    // Test scalar_mul_add_two
+    test_y0 = y0;
+    test_y1 = y1;
+    simd::scalar_mul_add_two(x, w0.data(), w1.data(), test_y0.data(), test_y1.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+
     // Test mul_add_three
     test_y0 = y0;
     test_y1 = y1;
     std::vector<double> test_y2 = y2;
     simd::mul_add_three(x, w0.data(), w1.data(), w2.data(), test_y0.data(), test_y1.data(), test_y2.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+    expect_vec_near(test_y2, expected_y2);
+
+    // Test scalar_mul_add_three
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    simd::scalar_mul_add_three(x, w0.data(), w1.data(), w2.data(), test_y0.data(), test_y1.data(), test_y2.data(), n);
     expect_vec_near(test_y0, expected_y0);
     expect_vec_near(test_y1, expected_y1);
     expect_vec_near(test_y2, expected_y2);
@@ -594,6 +610,17 @@ TEST(SimdUtilsTest, MulAddTwoThreeFourVariousSizes)
     test_y2 = y2;
     std::vector<double> test_y3 = y3;
     simd::mul_add_four(x, w0.data(), w1.data(), w2.data(), w3.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), n);
+    expect_vec_near(test_y0, expected_y0);
+    expect_vec_near(test_y1, expected_y1);
+    expect_vec_near(test_y2, expected_y2);
+    expect_vec_near(test_y3, expected_y3);
+
+    // Test scalar_mul_add_four
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    test_y3 = y3;
+    simd::scalar_mul_add_four(x, w0.data(), w1.data(), w2.data(), w3.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), n);
     expect_vec_near(test_y0, expected_y0);
     expect_vec_near(test_y1, expected_y1);
     expect_vec_near(test_y2, expected_y2);
