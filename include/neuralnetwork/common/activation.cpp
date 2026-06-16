@@ -1,4 +1,4 @@
-﻿#include "activation.h"
+#include "activation.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -153,13 +153,206 @@ void activation::activate(double* begin, double* end, bool is_training) const
   if (_method == method::softmax)
   {
     calculate_softmax(begin, end, is_training ? _temperature : _inference_temperature);
+    return;
   }
-  else
+
+  const size_t size = end - begin;
+  switch (_method)
   {
+  case method::linear:
+    break; // Nothing to do
+  case method::relu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      begin[i] = begin[i] > 0.0 ? begin[i] : 0.0;
+    }
+    break;
+  case method::leakyRelu:
+  case method::PRelu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      begin[i] = begin[i] > 0.0 ? begin[i] : _alpha * begin[i];
+    }
+    break;
+  case method::tanh:
+    for (size_t i = 0; i < size; ++i)
+    {
+      begin[i] = std::tanh(begin[i]);
+    }
+    break;
+  case method::sigmoid:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      const double z = _alpha * x;
+      if (z >= 0.0)
+      {
+        const double exp_neg = std::exp(-z);
+        begin[i] = 1.0 / (1.0 + exp_neg);
+      }
+      else
+      {
+        const double exp_pos = std::exp(z);
+        begin[i] = exp_pos / (1.0 + exp_pos);
+      }
+    }
+    break;
+  case method::selu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      begin[i] = SELU_LAMBDA * (x > 0.0 ? x : SELU_ALPHA * (std::exp(x) - 1.0));
+    }
+    break;
+  case method::elu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      begin[i] = x > 0.0 ? x : _alpha * (std::exp(x) - 1.0);
+    }
+    break;
+  case method::swish:
+    {
+      constexpr double MAX_EXP_INPUT = 60.0;
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double x = begin[i];
+        const double z = _alpha * x;
+        const double exp_term = std::exp(std::clamp(-z, -MAX_EXP_INPUT, MAX_EXP_INPUT));
+        begin[i] = x / (1.0 + exp_term);
+      }
+    }
+    break;
+  case method::mish:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      const double sp = std::log1p(std::exp(x));
+      begin[i] = x * std::tanh(sp);
+    }
+    break;
+  case method::gelu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      begin[i] = 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
+    }
+    break;
+  default:
     for (double* it = begin; it != end; ++it)
     {
-      *it = activate(*it);
+      *it = _activate_ptr(*it, _alpha);
     }
+    break;
+  }
+}
+
+void activation::activate_derivative(const double* begin, const double* end, const double* y_begin, double* out) const
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  const size_t size = end - begin;
+  switch (_method)
+  {
+  case method::linear:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = 1.0;
+    }
+    break;
+  case method::relu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = begin[i] > 0.0 ? 1.0 : 0.0;
+    }
+    break;
+  case method::leakyRelu:
+  case method::PRelu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = begin[i] > 0.0 ? 1.0 : _alpha;
+    }
+    break;
+  case method::tanh:
+    if (y_begin != nullptr)
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        out[i] = 1.0 - y_begin[i] * y_begin[i];
+      }
+    }
+    else
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double t = std::tanh(begin[i]);
+        out[i] = 1.0 - t * t;
+      }
+    }
+    break;
+  case method::sigmoid:
+    if (y_begin != nullptr)
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        out[i] = y_begin[i] * (1.0 - y_begin[i]);
+      }
+    }
+    else
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double s = calculate_sigmoid(begin[i], _alpha);
+        out[i] = _alpha * s * (1.0 - s);
+      }
+    }
+    break;
+  case method::selu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = SELU_LAMBDA * (begin[i] > 0.0 ? 1.0 : SELU_ALPHA * std::exp(begin[i]));
+    }
+    break;
+  case method::elu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = begin[i] > 0.0 ? 1.0 : _alpha * std::exp(begin[i]);
+    }
+    break;
+  case method::swish:
+    {
+      constexpr double MAX_EXP_INPUT = 60.0;
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double x = begin[i];
+        const double z = _alpha * x;
+        const double clamped_z = std::clamp(z, -MAX_EXP_INPUT, MAX_EXP_INPUT);
+        const double sigmoid = 1.0 / (1.0 + std::exp(-clamped_z));
+        out[i] = sigmoid + _alpha * x * sigmoid * (1.0 - sigmoid);
+      }
+    }
+    break;
+  case method::mish:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = _derivative_ptr(begin[i], _alpha);
+    }
+    break;
+  case method::gelu:
+    for (size_t i = 0; i < size; ++i)
+    {
+      const double x = begin[i];
+      const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
+      out[i] = 0.5 + 0.5 * tanh_term +
+        (0.5 * x * (1.0 - tanh_term * tanh_term) *
+          std::sqrt(2.0 / M_PI) * (1.0 + 3.0 * 0.044715 * x * x));
+    }
+    break;
+  default:
+    for (size_t i = 0; i < size; ++i)
+    {
+      out[i] = _derivative_ptr(begin[i], _alpha);
+    }
+    break;
   }
 }
 

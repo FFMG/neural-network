@@ -512,33 +512,50 @@ void LSTMLayer::calculate_forward_feed(
         c_act_vec = current_c;
         get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
 
-        for (size_t j = 0; j < N_this; ++j)
+        if (is_training)
         {
-          double o = packed_bptt[2 * N_this + j];
-          double activated_c = c_act_vec[j];
-          double out = o * activated_c;
-
-          // Dropout
-          double mask = 1.0;
-          if (is_training && get_neuron((unsigned)j).is_dropout())
+          const auto& neurons = get_neurons();
+          for (size_t j = 0; j < N_this; ++j)
           {
-            const auto& neuron = get_neuron((unsigned)j);
-            const double dropout_rate = neuron.get_dropout_rate();
-            if (neuron.must_randomly_drop())
-            {
-              out = 0.0;
-              mask = 0.0;
-            }
-            else
-            {
-              mask = 1.0 / (1.0 - dropout_rate);
-              out *= mask;
-            }
-          }
-          packed_bptt[GateCount * N_this + j] = mask;
+            double o = packed_bptt[2 * N_this + j];
+            double activated_c = c_act_vec[j];
+            double out = o * activated_c;
 
-          current_h[j] = out;
-          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+            double mask = 1.0;
+            const auto& neuron = neurons[j];
+            if (neuron.is_dropout())
+            {
+              const double dropout_rate = neuron.get_dropout_rate();
+              if (neuron.must_randomly_drop())
+              {
+                out = 0.0;
+                mask = 0.0;
+              }
+              else
+              {
+                mask = 1.0 / (1.0 - dropout_rate);
+                out *= mask;
+              }
+            }
+            packed_bptt[GateCount * N_this + j] = mask;
+
+            current_h[j] = out;
+            batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+          }
+        }
+        else
+        {
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            double o = packed_bptt[2 * N_this + j];
+            double activated_c = c_act_vec[j];
+            double out = o * activated_c;
+
+            packed_bptt[GateCount * N_this + j] = 1.0;
+
+            current_h[j] = out;
+            batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+          }
         }
 
         // Store states
@@ -1037,29 +1054,18 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       double* activated_c_chunk = &workspace.tanh_c_vals[b_idx * N_this];
       double* activated_g_chunk = &workspace.g_vals[b_idx * N_this]; // Reuse g_vals for activated g
 
-      for (size_t j = 0; j < N_this; ++j) {
-        activated_c_chunk[j] = get_activation().activate(c_curr[j]);
-        activated_g_chunk[j] = get_activation().activate(g_pre_ptr[j]);
-      }
+      std::copy(c_curr.begin(), c_curr.end(), activated_c_chunk);
+      get_activation().activate(activated_c_chunk, activated_c_chunk + N_this);
+
+      std::copy(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk);
+      get_activation().activate(activated_g_chunk, activated_g_chunk + N_this);
 
       // Pre-calculate derivatives
       double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
       double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
       const auto& act = get_activation();
-      for (size_t j = 0; j < N_this; ++j) {
-        double act_c = activated_c_chunk[j];
-        double act_g = activated_g_chunk[j];
-        if (act.get_method() == activation::method::tanh) {
-          dc_act_deriv[j] = 1.0 - act_c * act_c;
-          dg_act_deriv[j] = 1.0 - act_g * act_g;
-        } else if (act.get_method() == activation::method::sigmoid) {
-          dc_act_deriv[j] = act_c * (1.0 - act_c);
-          dg_act_deriv[j] = act_g * (1.0 - act_g);
-        } else {
-          dc_act_deriv[j] = act.activate_derivative(c_curr[j]);
-          dg_act_deriv[j] = act.activate_derivative(g_pre_ptr[j]);
-        }
-      }
+      act.activate_derivative(c_curr.data(), c_curr.data() + N_this, activated_c_chunk, dc_act_deriv);
+      act.activate_derivative(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk, dg_act_deriv);
 
       simd::lstm_bptt_gate_step(
         N_this, 

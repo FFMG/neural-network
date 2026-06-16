@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/activation.h"
 #include <cmath>
 #include <algorithm>
@@ -245,3 +245,85 @@ TEST_F(ActivationTest, DeterministicInitialization) {
   double actual_selu = act_selu.weight_initialization(fan_in, fan_out, seed);
   EXPECT_DOUBLE_EQ(expected_selu, actual_selu);
 }
+
+TEST_F(ActivationTest, VectorizedActivateAndDerivative)
+{
+  std::vector<activation::method> methods = {
+    activation::method::linear,
+    activation::method::sigmoid,
+    activation::method::tanh,
+    activation::method::relu,
+    activation::method::leakyRelu,
+    activation::method::PRelu,
+    activation::method::selu,
+    activation::method::elu,
+    activation::method::swish,
+    activation::method::gelu
+  };
+
+  for (auto method : methods)
+  {
+    activation act(method, 0.5);
+
+    // Vectorized activate test
+    std::vector<double> input = test_values;
+    act.activate(input.data(), input.data() + input.size(), true);
+
+    std::vector<double> expected_act(test_values.size());
+    for (size_t i = 0; i < test_values.size(); ++i)
+    {
+      expected_act[i] = act.activate(test_values[i]);
+    }
+
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+      EXPECT_NEAR(expected_act[i], input[i], tolerance)
+        << "Vectorized activate mismatch for " << activation::method_to_string(method) << " at index " << i;
+    }
+
+    // Vectorized activate_derivative test (without y_begin)
+    std::vector<double> deriv_out(test_values.size());
+    act.activate_derivative(test_values.data(), test_values.data() + test_values.size(), nullptr, deriv_out.data());
+
+    std::vector<double> expected_deriv(test_values.size());
+    for (size_t i = 0; i < test_values.size(); ++i)
+    {
+      expected_deriv[i] = act.activate_derivative(test_values[i]);
+    }
+
+    for (size_t i = 0; i < deriv_out.size(); ++i)
+    {
+      EXPECT_NEAR(expected_deriv[i], deriv_out[i], tolerance)
+        << "Vectorized activate_derivative mismatch for " << activation::method_to_string(method) << " at index " << i;
+    }
+
+    // Vectorized activate_derivative test (with y_begin for tanh/sigmoid)
+    if (method == activation::method::tanh || method == activation::method::sigmoid)
+    {
+      std::vector<double> y_vals(test_values.size());
+      for (size_t i = 0; i < test_values.size(); ++i)
+      {
+        y_vals[i] = act.activate(test_values[i]);
+      }
+
+      std::vector<double> deriv_out_y(test_values.size());
+      act.activate_derivative(test_values.data(), test_values.data() + test_values.size(), y_vals.data(), deriv_out_y.data());
+
+      for (size_t i = 0; i < deriv_out_y.size(); ++i)
+      {
+        double expected_y_deriv;
+        if (method == activation::method::tanh)
+        {
+          expected_y_deriv = 1.0 - y_vals[i] * y_vals[i];
+        }
+        else
+        {
+          expected_y_deriv = y_vals[i] * (1.0 - y_vals[i]);
+        }
+        EXPECT_NEAR(expected_y_deriv, deriv_out_y[i], tolerance)
+          << "Vectorized activate_derivative with y mismatch for " << activation::method_to_string(method) << " at index " << i;
+      }
+    }
+  }
+}
+

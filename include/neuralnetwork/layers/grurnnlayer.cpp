@@ -844,33 +844,50 @@ void GRURNNLayer::run_forward_pass(
       std::vector<double> h_hat_vec = h_hat_pre;
       get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
 
-      // g. Final State Update and Dropout
-      for (size_t j = 0; j < N_this; ++j)
+      if (is_training)
       {
-        packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
-
-        double h_hat_activated = h_hat_vec[j];
-        packed_bptt_states[3 * N_this + j] = h_hat_activated; // Store activated h_hat before dropout
-
-        double mask = 1.0;
-        double h_hat_final = h_hat_activated;
-        if (is_training && get_neuron((unsigned)j).is_dropout())
+        const auto& neurons = get_neurons();
+        for (size_t j = 0; j < N_this; ++j)
         {
-          const auto& neuron = get_neuron((unsigned)j);
-          if (neuron.must_randomly_drop())
+          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+
+          double h_hat_activated = h_hat_vec[j];
+          packed_bptt_states[3 * N_this + j] = h_hat_activated; // Store activated h_hat before dropout
+
+          double mask = 1.0;
+          double h_hat_final = h_hat_activated;
+          const auto& neuron = neurons[j];
+          if (neuron.is_dropout())
           {
-            mask = 0.0;
-            h_hat_final = 0.0;
+            if (neuron.must_randomly_drop())
+            {
+              mask = 0.0;
+              h_hat_final = 0.0;
+            }
+            else
+            {
+              mask = 1.0 / (1.0 - neuron.get_dropout_rate());
+              h_hat_final *= mask;
+            }
           }
-          else
-          {
-            mask = 1.0 / (1.0 - neuron.get_dropout_rate());
-            h_hat_final *= mask;
-          }
+          packed_bptt_states[4 * N_this + j] = mask;
+          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_final;
+          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
-        packed_bptt_states[4 * N_this + j] = mask;
-        current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_final;
-        batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
+      }
+      else
+      {
+        for (size_t j = 0; j < N_this; ++j)
+        {
+          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+
+          double h_hat_activated = h_hat_vec[j];
+          packed_bptt_states[3 * N_this + j] = h_hat_activated;
+
+          packed_bptt_states[4 * N_this + j] = 1.0;
+          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_activated;
+          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
+        }
       }
 
       batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
@@ -1025,23 +1042,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       // Pre-calculate derivatives
       double* dh_hat_pre_deriv = &workspace.dh_hat_pre_deriv_buf[b_idx * N_this];
       const auto& act = get_activation();
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        if (act.get_method() == activation::method::tanh)
-        {
-          double h_hat = h_hat_ptr[j];
-          dh_hat_pre_deriv[j] = 1.0 - h_hat * h_hat;
-        }
-        else if (act.get_method() == activation::method::sigmoid)
-        {
-          double h_hat = h_hat_ptr[j];
-          dh_hat_pre_deriv[j] = h_hat * (1.0 - h_hat);
-        }
-        else
-        {
-          dh_hat_pre_deriv[j] = act.activate_derivative(h_hat_pre_vals[j]);
-        }
-      }
+      act.activate_derivative(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_ptr, dh_hat_pre_deriv);
 
       simd::gru_bptt_gate_step(
         N_this,

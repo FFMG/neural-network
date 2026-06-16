@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../libraries/instrumentor.h"
 
 #include <optional>
@@ -43,6 +43,7 @@ public:
     return _activate_ptr(x, _alpha); 
   }
   void activate(double* begin, double* end, bool is_training = false) const;
+  void activate_derivative(const double* begin, const double* end, const double* y_begin, double* out) const;
 
   [[nodiscard]] inline double activate_derivative(double x) const noexcept 
   {
