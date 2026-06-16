@@ -548,8 +548,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
       thread_local std::mt19937 g(std::random_device{}());
       for (size_t i = n - 1; i > 0; --i)
       {
-        std::uniform_int_distribution<size_t> d(0, i);
-        size_t j = d(g);
+        size_t j = g() % (i + 1);
         if (i != j)
         {
           std::swap(bptt_inputs[i], bptt_inputs[j]);

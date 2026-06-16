@@ -842,4 +842,62 @@ TEST(SimdUtilsTest, SumSq)
   }
 }
 
+TEST(SimdUtilsTest, AdamNadamStepBoundaryConditions)
+{
+  const size_t n = 8;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8 };
+  std::vector<double> m1_init = { 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08 };
+  std::vector<double> m2_init = { 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  // Case 1: p1 = 0.0, p2 = 0.0 (below safety threshold)
+  {
+    double p1 = 0.0;
+    double p2 = 0.0;
+
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1_init;
+    std::vector<double> m2_simd = m2_init;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1_init;
+    std::vector<double> m2_scalar = m2_init;
+
+    simd::adam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+    simd::scalar_adam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(m2_simd, m2_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+
+  // Case 2: p1 = 1e-16, p2 = 1e-16 (extremely small, also below threshold)
+  {
+    double p1 = 1e-16;
+    double p2 = 1e-16;
+
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1_init;
+    std::vector<double> m2_simd = m2_init;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1_init;
+    std::vector<double> m2_scalar = m2_init;
+
+    simd::nadam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+    simd::scalar_nadam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(m2_simd, m2_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+}
+
+
 
