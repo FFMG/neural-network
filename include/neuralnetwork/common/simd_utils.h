@@ -883,6 +883,34 @@ public:
     );
   }
 
+  // Calculate sum of squares (sum(x_i^2))
+  inline static double sum_sq(const double* x, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+    double total = 0.0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_total = _mm256_setzero_pd();
+    for (; i + 3 < n; i += 4)
+    {
+      __m256d vec_x = _mm256_loadu_pd(x + i);
+#ifdef SIMD_FMA_ENABLED
+      vec_total = _mm256_fmadd_pd(vec_x, vec_x, vec_total);
+#else
+      vec_total = _mm256_add_pd(vec_total, _mm256_mul_pd(vec_x, vec_x));
+#endif
+    }
+    double sums[4];
+    _mm256_storeu_pd(sums, vec_total);
+    total = sums[0] + sums[1] + sums[2] + sums[3];
+#endif
+    for (; i < n; ++i)
+    {
+      total += x[i] * x[i];
+    }
+    return total;
+  }
+
   // Scalar fallback for gemv_add
   inline static void scalar_gemv_add(const double* A, const double* x, double* y, size_t rows, size_t cols) noexcept
   {

@@ -494,19 +494,20 @@ void LSTMLayer::calculate_forward_feed(
         std::copy(g_pre, g_pre + N_this, g_act_vec.begin());
         get_activation().activate(g_act_vec.data(), g_act_vec.data() + N_this, is_training);
 
+        std::copy(f_pre, f_pre + N_this, packed_bptt.begin());
+        std::copy(i_pre, i_pre + N_this, packed_bptt.begin() + N_this);
+        std::copy(o_pre, o_pre + N_this, packed_bptt.begin() + 2 * N_this);
+
+        static const activation sigmoid_act(activation::method::sigmoid, 1.0);
+        sigmoid_act.activate(packed_bptt.data(), packed_bptt.data() + 3 * N_this);
+
+        std::copy(g_pre, g_pre + N_this, packed_bptt.begin() + 3 * N_this);
+
         for (size_t j = 0; j < N_this; ++j)
         {
-          double f = 1.0 / (1.0 + std::exp(-f_pre[j]));
-          double i = 1.0 / (1.0 + std::exp(-i_pre[j]));
-          double o = 1.0 / (1.0 + std::exp(-o_pre[j]));
-          double g_activated = g_act_vec[j];
-
-          packed_bptt[j] = f;
-          packed_bptt[N_this + j] = i;
-          packed_bptt[2 * N_this + j] = o;
-          packed_bptt[3 * N_this + j] = g_pre[j]; // Store PRE-ACTIVATION g
-
-          current_c[j] = f * current_c[j] + i * g_activated;
+          double f = packed_bptt[j];
+          double i = packed_bptt[N_this + j];
+          current_c[j] = f * current_c[j] + i * g_act_vec[j];
         }
 
         c_act_vec = current_c;
@@ -885,8 +886,23 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
 
 double LSTMLayer::get_gradient_norm_sq() const
 {
-  auto ssq = [](const std::vector<double>& v) { double s = 0; for (double x : v) s += x * x; return s; };
-  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads) + ssq(_f_w_grads) + ssq(_f_b_grads) + ssq(_f_rw_grads) + ssq(_i_w_grads) + ssq(_i_b_grads) + ssq(_i_rw_grads) + ssq(_o_w_grads) + ssq(_o_b_grads) + ssq(_o_rw_grads);
+  double norm_sq = 0.0;
+  norm_sq += simd::sum_sq(_w_grads.data(), _w_grads.size());
+  norm_sq += simd::sum_sq(_rw_grads.data(), _rw_grads.size());
+  norm_sq += simd::sum_sq(_f_w_grads.data(), _f_w_grads.size());
+  norm_sq += simd::sum_sq(_f_rw_grads.data(), _f_rw_grads.size());
+  norm_sq += simd::sum_sq(_i_w_grads.data(), _i_w_grads.size());
+  norm_sq += simd::sum_sq(_i_rw_grads.data(), _i_rw_grads.size());
+  norm_sq += simd::sum_sq(_o_w_grads.data(), _o_w_grads.size());
+  norm_sq += simd::sum_sq(_o_rw_grads.data(), _o_rw_grads.size());
+  if (has_bias())
+  {
+    norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
+    norm_sq += simd::sum_sq(_f_b_grads.data(), _f_b_grads.size());
+    norm_sq += simd::sum_sq(_i_b_grads.data(), _i_b_grads.size());
+    norm_sq += simd::sum_sq(_o_b_grads.data(), _o_b_grads.size());
+  }
+  return norm_sq;
 }
 
 void LSTMLayer::zero_gradients()

@@ -672,16 +672,13 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 double ElmanRNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  auto ssq = [](const std::vector<double>& v)
+  double norm_sq = simd::sum_sq(_w_grads.data(), _w_grads.size()) +
+                   simd::sum_sq(_rw_grads.data(), _rw_grads.size());
+  if (has_bias())
   {
-    double s = 0;
-    for (double x : v)
-    {
-      s += x * x;
-    }
-    return s;
-  };
-  return ssq(_w_grads) + ssq(_b_grads) + ssq(_rw_grads);
+    norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
+  }
+  return norm_sq;
 }
 
 void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
