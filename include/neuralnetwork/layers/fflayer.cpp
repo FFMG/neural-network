@@ -443,25 +443,33 @@ void FFLayer::run_post_gemm(
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-        for (size_t j = r.start; j < r.end; j++)
+        if (is_training)
         {
-          const auto& neuron = get_neuron((unsigned)j);
-          double output = current_pre_act[j];
-          if (is_training && neuron.is_dropout())
+          const auto& neurons = get_neurons();
+          for (size_t j = r.start; j < r.end; j++)
           {
-            if (neuron.must_randomly_drop())
+            const auto& neuron = neurons[j];
+            double output = current_pre_act[j];
+            if (neuron.is_dropout())
             {
-              output = 0.0;
-              mask[j] = 0.0;
+              if (neuron.must_randomly_drop())
+              {
+                output = 0.0;
+                mask[j] = 0.0;
+              }
+              else
+              {
+                double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
+                output *= scale;
+                mask[j] = scale;
+              }
             }
-            else
-            {
-              double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
-              output *= scale;
-              mask[j] = scale;
-            }
+            current_output_row[j] = output;
           }
-          current_output_row[j] = output;
+        }
+        else
+        {
+          std::copy(current_pre_act + r.start, current_pre_act + r.end, current_output_row + r.start);
         }
       }
       layer_states_ref[t].set_cell_state_values(mask.data(), N_this);
@@ -801,19 +809,26 @@ void FFLayer::run_post_gemm_backward(
     if (num_time_steps == 0) continue;
 
     std::vector<double> rnn_grads_row(num_time_steps * N_this, 0.0);
+    std::vector<double> deriv_buf(N_this);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
       const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
       const auto& current_hidden_state = layer_states[t];
+      const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
+      const double* mask_vals = current_hidden_state.get_cell_state_values().data();
 
       for (const auto& r : _layer_activation_helper.ranges())
       {
+        r.activation_method.activate_derivative(
+          pre_act + r.start,
+          pre_act + r.end,
+          nullptr,
+          deriv_buf.data() + r.start
+        );
         for (size_t i = r.start; i < r.end; i++)
         {
-          double deriv = r.activation_method.activate_derivative(current_hidden_state.get_pre_activation_sum_at_neuron((unsigned)i));
-          double mask = current_hidden_state.get_cell_state_value_at_neuron((unsigned)i);
-          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv * mask;
+          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv_buf[i] * mask_vals[i];
         }
       }
     }

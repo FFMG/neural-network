@@ -1,4 +1,4 @@
-﻿#include "neuron.h"
+#include "neuron.h"
 #include <random>
 #include "common/logger.h"
 #include "libraries/instrumentor.h"
@@ -109,8 +109,8 @@ bool Neuron::must_randomly_drop() const
   }
 #endif
   static thread_local std::mt19937 rng(std::random_device{}());
-  std::bernoulli_distribution drop(1.0 - get_dropout_rate());
-  return !drop(rng);  // true means keep, false means drop
+  static thread_local std::uniform_real_distribution<double> dist(0.0, 1.0);
+  return dist(rng) < get_dropout_rate();
 }
 
 bool Neuron::is_dropout() const noexcept
