@@ -259,7 +259,7 @@ TEST_F(GRURNNLayerMTTest, SmallBatchSizeThresholdFallback)
 {
     const unsigned num_inputs = 8;
     const unsigned num_neurons = 16;
-    // Set batch size to be smaller than num_threads * 2 to trigger the sequential fallback
+    // Set batch size to be smaller than num_threads * 16 to trigger the sequential fallback
     const unsigned num_threads = 8;
     const unsigned batch_size = 4; 
     const unsigned num_timesteps = 10;

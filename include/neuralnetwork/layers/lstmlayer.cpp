@@ -436,7 +436,7 @@ void LSTMLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
   if (!use_multithreading)
   {
     precalc_gates(0, batch_size);
@@ -621,7 +621,7 @@ void LSTMLayer::calculate_hidden_gradients(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0 || N_this == 0) return;
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
   if (!use_multithreading)
   {
     auto& workspace = get_workspace(0);
@@ -796,7 +796,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   };
 
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
   if (!use_multithreading)
   {
     run_chunk(0, batch_size, 0);
