@@ -817,13 +817,11 @@ void GRURNNLayer::run_forward_pass(
       simd::gemv_add_two(_z_rw_values_T.data(), _r_rw_values_T.data(), h_prev_ptr, z_pre.data(), r_pre.data(), N_this, N_this);
 
       // d. Calculate Gates
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        double z = 1.0 / (1.0 + std::exp(-z_pre[j]));
-        double r = 1.0 / (1.0 + std::exp(-r_pre[j]));
-        packed_bptt_states[j] = z;
-        packed_bptt_states[N_this + j] = r;
-      }
+      std::copy(z_pre.begin(), z_pre.end(), packed_bptt_states.begin());
+      std::copy(r_pre.begin(), r_pre.end(), packed_bptt_states.begin() + N_this);
+
+      static const activation sigmoid_act(activation::method::sigmoid, 1.0);
+      sigmoid_act.activate(packed_bptt_states.data(), packed_bptt_states.data() + 2 * N_this);
 
       // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
       for (size_t i = 0; i < N_this; ++i)
@@ -1442,15 +1440,18 @@ double GRURNNLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   double norm_sq = 0.0;
-  norm_sq += std::inner_product(_w_grads.begin(), _w_grads.end(), _w_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_b_grads.begin(), _b_grads.end(), _b_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_rw_grads.begin(), _rw_grads.end(), _rw_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_z_w_grads.begin(), _z_w_grads.end(), _z_w_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_z_rw_grads.begin(), _z_rw_grads.end(), _z_rw_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_z_b_grads.begin(), _z_b_grads.end(), _z_b_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_r_w_grads.begin(), _r_w_grads.end(), _r_w_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_r_rw_grads.begin(), _r_rw_grads.end(), _r_rw_grads.begin(), 0.0);
-  norm_sq += std::inner_product(_r_b_grads.begin(), _r_b_grads.end(), _r_b_grads.begin(), 0.0);
+  norm_sq += simd::sum_sq(_w_grads.data(), _w_grads.size());
+  norm_sq += simd::sum_sq(_rw_grads.data(), _rw_grads.size());
+  norm_sq += simd::sum_sq(_z_w_grads.data(), _z_w_grads.size());
+  norm_sq += simd::sum_sq(_z_rw_grads.data(), _z_rw_grads.size());
+  norm_sq += simd::sum_sq(_r_w_grads.data(), _r_w_grads.size());
+  norm_sq += simd::sum_sq(_r_rw_grads.data(), _r_rw_grads.size());
+  if (has_bias())
+  {
+    norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
+    norm_sq += simd::sum_sq(_z_b_grads.data(), _z_b_grads.size());
+    norm_sq += simd::sum_sq(_r_b_grads.data(), _r_b_grads.size());
+  }
 
   return norm_sq;
 }

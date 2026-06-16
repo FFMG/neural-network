@@ -825,4 +825,21 @@ TEST(SimdUtilsTest, MulAddScalarsVariousSizes)
   }
 }
 
+TEST(SimdUtilsTest, SumSq)
+{
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 31, 32, 127, 128 };
+  for (size_t n : sizes)
+  {
+    std::vector<double> x(n);
+    double expected = 0.0;
+    for (size_t i = 0; i < n; ++i)
+    {
+      x[i] = static_cast<double>(i) * 0.1;
+      expected += x[i] * x[i];
+    }
+    double actual = simd::sum_sq(x.data(), n);
+    EXPECT_NEAR(expected, actual, 1e-12) << "sum_sq failed for size " << n;
+  }
+}
+
 

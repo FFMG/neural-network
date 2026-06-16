@@ -753,9 +753,11 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
 double FFLayer::get_gradient_norm_sq() const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  double norm_sq = 0.0;
-  for (const double grad : _w_grads) norm_sq += grad * grad;
-  if (has_bias()) for (const double grad : _b_grads) norm_sq += grad * grad;
+  double norm_sq = simd::sum_sq(_w_grads.data(), _w_grads.size());
+  if (has_bias())
+  {
+    norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
+  }
   return norm_sq;
 }
 
