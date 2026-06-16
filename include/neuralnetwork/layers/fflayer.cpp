@@ -320,14 +320,79 @@ void FFLayer::run_gemm(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const double* W = get_w_values().data();
-  for (size_t b = b_start; b < b_end; ++b)
+  size_t b = b_start;
+  for (; b + 3 < b_end; b += 4)
+  {
+    const double* x0 = &batch_inputs_buffer[b * N_prev];
+    const double* x1 = &batch_inputs_buffer[(b + 1) * N_prev];
+    const double* x2 = &batch_inputs_buffer[(b + 2) * N_prev];
+    const double* x3 = &batch_inputs_buffer[(b + 3) * N_prev];
+
+    double* y0 = &batch_pre_activation_sums_buffer[b * N_this];
+    double* y1 = &batch_pre_activation_sums_buffer[(b + 1) * N_this];
+    double* y2 = &batch_pre_activation_sums_buffer[(b + 2) * N_this];
+    double* y3 = &batch_pre_activation_sums_buffer[(b + 3) * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
+    {
+      const double x0_val = x0[i];
+      const double x1_val = x1[i];
+      const double x2_val = x2[i];
+      const double x3_val = x3[i];
+
+      if (x0_val == 0.0 && x1_val == 0.0 && x2_val == 0.0 && x3_val == 0.0)
+      {
+        continue;
+      }
+
+      simd::mul_add_four_scalars(
+        x0_val, x1_val, x2_val, x3_val,
+        &W[i * N_this],
+        y0, y1, y2, y3,
+        N_this
+      );
+    }
+  }
+
+  // Cleanup loops
+  for (; b + 1 < b_end; b += 2)
+  {
+    const double* x0 = &batch_inputs_buffer[b * N_prev];
+    const double* x1 = &batch_inputs_buffer[(b + 1) * N_prev];
+
+    double* y0 = &batch_pre_activation_sums_buffer[b * N_this];
+    double* y1 = &batch_pre_activation_sums_buffer[(b + 1) * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
+    {
+      const double x0_val = x0[i];
+      const double x1_val = x1[i];
+
+      if (x0_val == 0.0 && x1_val == 0.0)
+      {
+        continue;
+      }
+
+      simd::mul_add_two_scalars(
+        x0_val, x1_val,
+        &W[i * N_this],
+        y0, y1,
+        N_this
+      );
+    }
+  }
+
+  for (; b < b_end; ++b)
   {
     const double* x_row = &batch_inputs_buffer[b * N_prev];
     double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
     for (size_t i = 0; i < N_prev; ++i)
     {
       const double x_val = x_row[i];
-      if (x_val == 0.0) continue;
+      if (x_val == 0.0)
+      {
+        continue;
+      }
       simd::mul_add(x_val, &W[i * N_this], y_row, N_this);
     }
   }

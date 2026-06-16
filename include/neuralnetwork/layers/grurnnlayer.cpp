@@ -1346,12 +1346,17 @@ void GRURNNLayer::calculate_and_store_gradients(
               continue;
             }
             
-            // gh * (r_val * h_prev) is specific to the candidate recurrent state
+            // Candidate recurrent state uses gh * (r_val * h_prev)
+            // Update and Reset gates use gz * h_prev and gr * h_prev
             double r_val = r_vals[k];
-            simd::mul_add(r_val * h_prev, gh, &local_rw_grads[k * num_outputs], num_outputs);
-            
-            // Update and Reset gates use simple h_prev
-            simd::mul_add_two(h_prev, gz, gr, &local_z_rw_grads[k * num_outputs], &local_r_rw_grads[k * num_outputs], num_outputs);
+            simd::mul_add_three_scalars(
+              r_val * h_prev, h_prev, h_prev,
+              gh, gz, gr,
+              &local_rw_grads[k * num_outputs],
+              &local_z_rw_grads[k * num_outputs],
+              &local_r_rw_grads[k * num_outputs],
+              num_outputs
+            );
           }
         }
       }

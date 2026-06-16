@@ -721,4 +721,108 @@ TEST(SimdUtilsTest, GemvAddTwoFour)
   }
 }
 
+TEST(SimdUtilsTest, MulAddScalarsVariousSizes)
+{
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 31, 32 };
+  for (size_t n : sizes)
+  {
+    std::vector<double> w0(n, 1.1);
+    std::vector<double> w1(n, 2.2);
+    std::vector<double> w2(n, 3.3);
+    std::vector<double> w3(n, 4.4);
+
+    std::vector<double> y0(n, 10.0);
+    std::vector<double> y1(n, 20.0);
+    std::vector<double> y2(n, 30.0);
+    std::vector<double> y3(n, 40.0);
+
+    double x0 = 1.5;
+    double x1 = 2.5;
+    double x2 = 3.5;
+    double x3 = 4.5;
+
+    std::vector<double> expected_y0_three(n);
+    std::vector<double> expected_y1_three(n);
+    std::vector<double> expected_y2_three(n);
+
+    std::vector<double> expected_y0_four(n);
+    std::vector<double> expected_y1_four(n);
+    std::vector<double> expected_y2_four(n);
+    std::vector<double> expected_y3_four(n);
+
+    std::vector<double> expected_y0_two(n);
+    std::vector<double> expected_y1_two(n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      expected_y0_three[i] = y0[i] + x0 * w0[i];
+      expected_y1_three[i] = y1[i] + x1 * w1[i];
+      expected_y2_three[i] = y2[i] + x2 * w2[i];
+
+      double w0_val = w0[i];
+      expected_y0_four[i] = y0[i] + x0 * w0_val;
+      expected_y1_four[i] = y1[i] + x1 * w0_val;
+      expected_y2_four[i] = y2[i] + x2 * w0_val;
+      expected_y3_four[i] = y3[i] + x3 * w0_val;
+
+      expected_y0_two[i] = y0[i] + x0 * w0_val;
+      expected_y1_two[i] = y1[i] + x1 * w0_val;
+    }
+
+    // Test mul_add_three_scalars
+    std::vector<double> test_y0 = y0;
+    std::vector<double> test_y1 = y1;
+    std::vector<double> test_y2 = y2;
+    simd::mul_add_three_scalars(x0, x1, x2, w0.data(), w1.data(), w2.data(), test_y0.data(), test_y1.data(), test_y2.data(), n);
+    expect_vec_near(test_y0, expected_y0_three);
+    expect_vec_near(test_y1, expected_y1_three);
+    expect_vec_near(test_y2, expected_y2_three);
+
+    // Test scalar_mul_add_three_scalars
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    simd::scalar_mul_add_three_scalars(x0, x1, x2, w0.data(), w1.data(), w2.data(), test_y0.data(), test_y1.data(), test_y2.data(), n);
+    expect_vec_near(test_y0, expected_y0_three);
+    expect_vec_near(test_y1, expected_y1_three);
+    expect_vec_near(test_y2, expected_y2_three);
+
+    // Test mul_add_four_scalars
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    std::vector<double> test_y3 = y3;
+    simd::mul_add_four_scalars(x0, x1, x2, x3, w0.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), n);
+    expect_vec_near(test_y0, expected_y0_four);
+    expect_vec_near(test_y1, expected_y1_four);
+    expect_vec_near(test_y2, expected_y2_four);
+    expect_vec_near(test_y3, expected_y3_four);
+
+    // Test scalar_mul_add_four_scalars
+    test_y0 = y0;
+    test_y1 = y1;
+    test_y2 = y2;
+    test_y3 = y3;
+    simd::scalar_mul_add_four_scalars(x0, x1, x2, x3, w0.data(), test_y0.data(), test_y1.data(), test_y2.data(), test_y3.data(), n);
+    expect_vec_near(test_y0, expected_y0_four);
+    expect_vec_near(test_y1, expected_y1_four);
+    expect_vec_near(test_y2, expected_y2_four);
+    expect_vec_near(test_y3, expected_y3_four);
+
+    // Test mul_add_two_scalars
+    test_y0 = y0;
+    test_y1 = y1;
+    simd::mul_add_two_scalars(x0, x1, w0.data(), test_y0.data(), test_y1.data(), n);
+    expect_vec_near(test_y0, expected_y0_two);
+    expect_vec_near(test_y1, expected_y1_two);
+
+    // Test scalar_mul_add_two_scalars
+    test_y0 = y0;
+    test_y1 = y1;
+    simd::scalar_mul_add_two_scalars(x0, x1, w0.data(), test_y0.data(), test_y1.data(), n);
+    expect_vec_near(test_y0, expected_y0_two);
+    expect_vec_near(test_y1, expected_y1_two);
+  }
+}
+
 
