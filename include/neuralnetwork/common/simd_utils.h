@@ -498,12 +498,14 @@ public:
     const double* decays = nullptr,
     size_t start = 0) noexcept
   {
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     for (size_t j = start; j < n; ++j)
     {
       m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
       m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
-      double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
-      double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
+      double m_hat = m1[j] * inv_p1;
+      double v_hat = m2[j] * inv_p2;
       double update = m_hat / (std::sqrt(v_hat) + epsilon);
       double w = values[j];
       if (decays != nullptr)
@@ -532,12 +534,15 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
+
     __m256d vec_b1 = _mm256_set1_pd(b1);
     __m256d vec_one_minus_b1 = _mm256_set1_pd(1.0 - b1);
     __m256d vec_b2 = _mm256_set1_pd(b2);
     __m256d vec_one_minus_b2 = _mm256_set1_pd(1.0 - b2);
-    __m256d vec_p1 = _mm256_set1_pd(p1);
-    __m256d vec_p2 = _mm256_set1_pd(p2);
+    __m256d vec_inv_p1 = _mm256_set1_pd(inv_p1);
+    __m256d vec_inv_p2 = _mm256_set1_pd(inv_p2);
     __m256d vec_lr = _mm256_set1_pd(lr);
     __m256d vec_eps = _mm256_set1_pd(epsilon);
 
@@ -555,14 +560,14 @@ public:
       _mm256_storeu_pd(&m2[j], next_m2);
 
       // Adam scaling
-      // Safety: p1 and p2 should be > 0. If not (e.g. t=0), skip scaling.
-      __m256d m_hat = (p1 > 1e-15) ? _mm256_div_pd(next_m1, vec_p1) : next_m1;
-      __m256d v_hat = (p2 > 1e-15) ? _mm256_div_pd(next_m2, vec_p2) : next_m2;
+      __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+      __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
 
       __m256d update = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
 
       // Optional AdamW weight decay
-      if (decays != nullptr) {
+      if (decays != nullptr)
+      {
         __m256d d = _mm256_loadu_pd(&decays[j]);
         cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(_mm256_set1_pd(1.0), _mm256_mul_pd(vec_lr, d)));
       }
@@ -592,13 +597,15 @@ public:
     const double* decays = nullptr,
     size_t start = 0) noexcept
   {
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     for (size_t j = start; j < n; ++j)
     {
       m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
       m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
-      double m_hat = (p1 > 1e-15) ? m1[j] / p1 : m1[j];
-      double v_hat = (p2 > 1e-15) ? m2[j] / p2 : m2[j];
-      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) / p1;
+      double m_hat = m1[j] * inv_p1;
+      double v_hat = m2[j] * inv_p2;
+      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) * inv_p1;
       double update = m_nadam / (std::sqrt(v_hat) + epsilon);
       double w = values[j];
       if (decays != nullptr)
@@ -627,12 +634,15 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
+
     __m256d vec_b1 = _mm256_set1_pd(b1);
     __m256d vec_one_minus_b1 = _mm256_set1_pd(1.0 - b1);
     __m256d vec_b2 = _mm256_set1_pd(b2);
     __m256d vec_one_minus_b2 = _mm256_set1_pd(1.0 - b2);
-    __m256d vec_p1 = _mm256_set1_pd(p1);
-    __m256d vec_p2 = _mm256_set1_pd(p2);
+    __m256d vec_inv_p1 = _mm256_set1_pd(inv_p1);
+    __m256d vec_inv_p2 = _mm256_set1_pd(inv_p2);
     __m256d vec_lr = _mm256_set1_pd(lr);
     __m256d vec_eps = _mm256_set1_pd(epsilon);
 
@@ -650,11 +660,11 @@ public:
       _mm256_storeu_pd(&m2[j], next_m2);
 
       // Nadam scaling
-      __m256d m_hat = (p1 > 1e-15) ? _mm256_div_pd(next_m1, vec_p1) : next_m1;
-      __m256d v_hat = (p2 > 1e-15) ? _mm256_div_pd(next_m2, vec_p2) : next_m2;
+      __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+      __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
 
       // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
-      __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_div_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_p1));
+      __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_mul_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_inv_p1));
       __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
 
       // Optional NadamW weight decay
