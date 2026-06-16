@@ -215,7 +215,7 @@ void FFOutputLayer::calculate_output_gradients(
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const size_t N_total = get_number_neurons();
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 2);
+  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
   if (!use_multithreading)
   {
     run_output_gradients(

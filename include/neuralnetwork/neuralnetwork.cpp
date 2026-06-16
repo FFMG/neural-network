@@ -1,4 +1,4 @@
-﻿#include "common/logger.h"
+#include "common/logger.h"
 #include "neuralnetwork.h"
 
 #include <algorithm>
@@ -545,28 +545,17 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     if (is_shuffled)
     {
       const size_t n = bptt_inputs.size();
-      std::vector<size_t> indices(n);
-      for (size_t i = 0; i < n; ++i)
-      {
-        indices[i] = i;
-      }
-
       thread_local std::mt19937 g(std::random_device{}());
-      std::shuffle(indices.begin(), indices.end(), g);
-
-      std::vector<std::vector<double>> shuffled_inputs;
-      shuffled_inputs.reserve(n);
-      std::vector<std::vector<double>> shuffled_outputs;
-      shuffled_outputs.reserve(n);
-
-      for (size_t idx : indices)
+      for (size_t i = n - 1; i > 0; --i)
       {
-        shuffled_inputs.push_back(std::move(bptt_inputs[idx]));
-        shuffled_outputs.push_back(std::move(bptt_outputs[idx]));
+        std::uniform_int_distribution<size_t> d(0, i);
+        size_t j = d(g);
+        if (i != j)
+        {
+          std::swap(bptt_inputs[i], bptt_inputs[j]);
+          std::swap(bptt_outputs[i], bptt_outputs[j]);
+        }
       }
-
-      bptt_inputs = std::move(shuffled_inputs);
-      bptt_outputs = std::move(shuffled_outputs);
     }
     return;
   }
@@ -779,17 +768,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     // Learning rate
     auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, epoch, number_of_epoch, learning_rate_scheduler);
 
-    // create a new NeuralNetworkHelper for this epoch
-    auto epoch_helper = std::make_shared<NeuralNetworkHelper>(*base_helper);
-    epoch_helper->set_learning_rate(learning_rate);
-    epoch_helper->set_epoch(epoch);
+    base_helper->set_learning_rate(learning_rate);
+    base_helper->set_epoch(epoch);
 
-    _learning_rate = epoch_helper->learning_rate();
-
-    {
-      std::unique_lock<std::shared_mutex> lock(_mutex);
-      _neural_network_helpers.push_back(epoch_helper);
-    }
+    _learning_rate = base_helper->learning_rate();
 
     // (re) create the bptt batches (now returns flattened sequences)
     create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
@@ -803,7 +785,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     MYODDWEB_PROFILE_MARK();
 
     // update the training monitor metrics
-    if (epoch_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
+    if (base_helper->is_at_epoch_interval(_options.update_training_monitor_percent()))
     {
       Logger::trace([=] {
         return Logger::factory("Updating training monitor at epoch #", epoch, " of ", number_of_epoch);
@@ -824,7 +806,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     // callback
     // 
-    if (!CallCallback(progress_callback, callback_task, *epoch_helper))
+    if (!CallCallback(progress_callback, callback_task, *base_helper))
     {
       Logger::warning("Progress callback function returned false during training, closing now!");
       break;
@@ -1066,8 +1048,12 @@ bool NeuralNetwork::CallCallback(const std::function<bool(NeuralNetworkHelper&)>
       return false; // stop training if the callback returns false.
     }
 
-    // it was not running at all, so we start it.
-    if (!callback_task->call(callback, std::ref(epoch_helper)))
+    // it was not running at all, so we start it with a local copy helper
+    auto copy_helper = std::make_shared<NeuralNetworkHelper>(epoch_helper);
+    if (!callback_task->call([callback, copy_helper]()
+      {
+        return callback(*copy_helper);
+      }))
     {
       Logger::error("Trying to call Progress callback function but an error was returned.");
     }

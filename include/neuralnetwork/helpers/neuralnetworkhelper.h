@@ -1,5 +1,6 @@
-﻿#pragma once
+#pragma once
 #include <vector>
+#include <memory>
 
 #include "../libraries/instrumentor.h"
 #include "errorcalculation.h"
@@ -54,8 +55,8 @@ public:
       _number_of_epoch = src._number_of_epoch;
       _epoch = src._epoch;
       _percent_complete = src._percent_complete;
-      _training_inputs = std::move(src._training_inputs);
-      _training_outputs = std::move(src._training_outputs);
+      _training_inputs = src._training_inputs;
+      _training_outputs = src._training_outputs;
       _training_indexes = std::move(src._training_indexes);
       _checking_indexes = std::move(src._checking_indexes);
       _final_check_indexes = std::move(src._final_check_indexes);
@@ -65,6 +66,8 @@ public:
       src._number_of_epoch = 0;
       src._epoch = 0;
       src._percent_complete = 0;
+      src._training_inputs = nullptr;
+      src._training_outputs = nullptr;
     }
     return *this;
   }
@@ -108,7 +111,7 @@ public:
   [[nodiscard]] inline size_t sample_size() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_inputs.size();
+    return _training_inputs != nullptr ? _training_inputs->size() : 0;
   }
   [[nodiscard]] inline const TrainingMonitor& training_monitor() const noexcept
   {
@@ -143,35 +146,35 @@ public:
   )
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    _training_indexes = std::move(training_indexes);
-    _checking_indexes = std::move(checking_indexes);
-    _final_check_indexes = std::move(final_check_indexes);
+    _training_indexes = std::make_shared<std::vector<size_t>>(std::move(training_indexes));
+    _checking_indexes = std::make_shared<std::vector<size_t>>(std::move(checking_indexes));
+    _final_check_indexes = std::make_shared<std::vector<size_t>>(std::move(final_check_indexes));
   }
 
   void move_training_indexes(std::vector<size_t>&& training_indexes)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    _training_indexes = std::move(training_indexes);
+    _training_indexes = std::make_shared<std::vector<size_t>>(std::move(training_indexes));
   }
   [[nodiscard]] const std::vector<size_t>& training_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_indexes; 
+    return *_training_indexes; 
   }
   [[nodiscard]] const std::vector<size_t>& checking_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _checking_indexes; 
+    return *_checking_indexes; 
   }
   [[nodiscard]] const std::vector<size_t>& final_check_indexes() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _final_check_indexes; 
+    return *_final_check_indexes; 
   }
   [[nodiscard]] const std::vector<std::vector<double>>& training_inputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_inputs; 
+    return *_training_inputs; 
   }
   [[nodiscard]] const std::vector<std::vector<double>>& training_outputs() const noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_outputs; 
+    return *_training_outputs; 
   }
 
   friend class NeuralNetwork;
@@ -182,11 +185,11 @@ private:
   unsigned _number_of_epoch;
   unsigned _epoch;
   double _percent_complete;
-  std::vector<std::vector<double>> _training_inputs;
-  std::vector<std::vector<double>> _training_outputs;
-  std::vector<size_t> _training_indexes;
-  std::vector<size_t> _checking_indexes;
-  std::vector<size_t> _final_check_indexes;
+  const std::vector<std::vector<double>>* _training_inputs;
+  const std::vector<std::vector<double>>* _training_outputs;
+  std::shared_ptr<std::vector<size_t>> _training_indexes;
+  std::shared_ptr<std::vector<size_t>> _checking_indexes;
+  std::shared_ptr<std::vector<size_t>> _final_check_indexes;
   TrainingMonitor _training_monitor;
 };
 

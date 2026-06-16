@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -34,7 +34,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
       }
     };
 
-  auto* tj = TinyJSON::TJ::parse_file(path.c_str(), options_parse);
+  std::unique_ptr<TinyJSON::TJValue> tj(TinyJSON::TJ::parse_file(path.c_str(), options_parse));
   if(nullptr == tj)
   {
     Logger::warning("Could not load Neural Network from file (", path, ").");
@@ -45,7 +45,7 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   auto options = get_and_build_options(*tj);
 
   // if we have a final learning rate we want to use that.
-  auto json_object = dynamic_cast<const TinyJSON::TJValueObject*>(tj);
+  auto json_object = dynamic_cast<const TinyJSON::TJValueObject*>(tj.get());
   if (nullptr != json_object)
   {
     auto final_learning_rate = json_object->get<double>("final-learning-rate");
@@ -74,7 +74,6 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   if(layers.size() == 0 )
   {
     Logger::error("Found no valid layers to load!");
-    delete tj;
     return nullptr;
   }
 
@@ -83,8 +82,6 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
   auto nn = new NeuralNetwork(layers, options, errors);
   Logger::info("Created Neural Network.");
 
-  // cleanup
-  delete tj;
   return nn;
 }
 
@@ -884,6 +881,9 @@ ResidualProjector* NeuralNetworkSerializer::get_residual_projector(const TinyJSO
 void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& path)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+
+  Logger::debug("Preparing data to save to :", path);
+
   // create the object.
   auto tj = new TinyJSON::TJValueObject();
   add_basic(*tj);
@@ -892,11 +892,15 @@ void NeuralNetworkSerializer::save(const NeuralNetwork& nn, const std::string& p
   add_errors(nn, *tj);
   add_layers(nn, *tj);
   
+  Logger::debug("Done preparing data to save to :", path);
+
   // save it.
   TinyJSON::TJ::write_file(path.c_str(), *tj);
   
   // cleanup
   delete tj;
+
+  Logger::debug("File ", path, " saved.");
 }
 
 NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJSON::TJValue& json)
