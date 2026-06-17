@@ -137,7 +137,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def(py::init<const activation::method, double, double, double>())
         .def(py::init<const activation::method, double, double>(), py::arg("method"), py::arg("alpha"), py::arg("temperature") = 1.0)
         .def("activate", py::overload_cast<double>(&activation::activate, py::const_))
-        .def("activate_derivative", &activation::activate_derivative)
+        .def("activate_derivative", py::overload_cast<double>(&activation::activate_derivative, py::const_))
         .def("method_to_string", py::overload_cast<>(&activation::method_to_string, py::const_))
         .def_property_readonly("method", &activation::get_method)
         .def_property_readonly("alpha", &activation::get_alpha)
