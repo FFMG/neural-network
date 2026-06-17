@@ -17,6 +17,16 @@ namespace myoddweb::nn
 class simd
 {
 public:
+#ifdef SIMD_AVX2_ENABLED
+  inline static double horizontal_sum(__m256d v) noexcept
+  {
+    __m128d lo = _mm256_castpd256_pd128(v);
+    __m128d hi = _mm256_extractf128_pd(v, 1);
+    __m128d sum128 = _mm_add_pd(lo, hi);
+    return _mm_cvtsd_f64(_mm_hadd_pd(sum128, sum128));
+  }
+#endif
+
   // Scalar fallback for mul_add
   inline static void scalar_mul_add(const double x, const double* w, double* y, size_t n, size_t start = 0) noexcept
   {
@@ -474,9 +484,7 @@ public:
       vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_a, vec_b));
 #endif
     }
-    double sums[4];
-    _mm256_storeu_pd(sums, vec_sum);
-    total_sum = sums[0] + sums[1] + sums[2] + sums[3];
+    total_sum = horizontal_sum(vec_sum);
 #endif
     total_sum += scalar_dot_product(a, b, n, j);
     return total_sum;
@@ -910,9 +918,7 @@ public:
       vec_total = _mm256_add_pd(vec_total, _mm256_mul_pd(vec_x, vec_x));
 #endif
     }
-    double sums[4];
-    _mm256_storeu_pd(sums, vec_total);
-    total = sums[0] + sums[1] + sums[2] + sums[3];
+    total = horizontal_sum(vec_total);
 #endif
     for (; i < n; ++i)
     {
@@ -976,16 +982,10 @@ public:
 #endif
       }
 
-      double sums0[4], sums1[4], sums2[4], sums3[4];
-      _mm256_storeu_pd(sums0, vec_sum0);
-      _mm256_storeu_pd(sums1, vec_sum1);
-      _mm256_storeu_pd(sums2, vec_sum2);
-      _mm256_storeu_pd(sums3, vec_sum3);
-
-      double sum0 = sums0[0] + sums0[1] + sums0[2] + sums0[3];
-      double sum1 = sums1[0] + sums1[1] + sums1[2] + sums1[3];
-      double sum2 = sums2[0] + sums2[1] + sums2[2] + sums2[3];
-      double sum3 = sums3[0] + sums3[1] + sums3[2] + sums3[3];
+      double sum0 = horizontal_sum(vec_sum0);
+      double sum1 = horizontal_sum(vec_sum1);
+      double sum2 = horizontal_sum(vec_sum2);
+      double sum3 = horizontal_sum(vec_sum3);
 
       for (; j < cols; ++j)
       {
@@ -1017,9 +1017,7 @@ public:
         vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_a, vec_b));
 #endif
       }
-      double sums[4];
-      _mm256_storeu_pd(sums, vec_sum);
-      sum = sums[0] + sums[1] + sums[2] + sums[3];
+      sum = horizontal_sum(vec_sum);
       for (; j < cols; ++j)
       {
         sum += row_ptr[j] * x[j];
@@ -1100,16 +1098,10 @@ public:
 #endif
       }
 
-      double sums0_0[4], sums0_1[4], sums1_0[4], sums1_1[4];
-      _mm256_storeu_pd(sums0_0, vec_sum0_0);
-      _mm256_storeu_pd(sums0_1, vec_sum0_1);
-      _mm256_storeu_pd(sums1_0, vec_sum1_0);
-      _mm256_storeu_pd(sums1_1, vec_sum1_1);
-
-      double sum0_0 = sums0_0[0] + sums0_0[1] + sums0_0[2] + sums0_0[3];
-      double sum0_1 = sums0_1[0] + sums0_1[1] + sums0_1[2] + sums0_1[3];
-      double sum1_0 = sums1_0[0] + sums1_0[1] + sums1_0[2] + sums1_0[3];
-      double sum1_1 = sums1_1[0] + sums1_1[1] + sums1_1[2] + sums1_1[3];
+      double sum0_0 = horizontal_sum(vec_sum0_0);
+      double sum0_1 = horizontal_sum(vec_sum0_1);
+      double sum1_0 = horizontal_sum(vec_sum1_0);
+      double sum1_1 = horizontal_sum(vec_sum1_1);
 
       for (; j < cols; ++j)
       {
@@ -1147,12 +1139,8 @@ public:
         vec_sum1 = _mm256_add_pd(vec_sum1, _mm256_mul_pd(vec_a1, vec_x));
 #endif
       }
-      double sums0[4];
-      double sums1[4];
-      _mm256_storeu_pd(sums0, vec_sum0);
-      _mm256_storeu_pd(sums1, vec_sum1);
-      sum0 = sums0[0] + sums0[1] + sums0[2] + sums0[3];
-      sum1 = sums1[0] + sums1[1] + sums1[2] + sums1[3];
+      sum0 = horizontal_sum(vec_sum0);
+      sum1 = horizontal_sum(vec_sum1);
       for (; j < cols; ++j)
       {
         sum0 += row0[j] * x[j];
@@ -1265,25 +1253,14 @@ public:
 #endif
       }
 
-      double sums0_0[4], sums0_1[4], sums1_0[4], sums1_1[4];
-      double sums2_0[4], sums2_1[4], sums3_0[4], sums3_1[4];
-      _mm256_storeu_pd(sums0_0, vec_sum0_0);
-      _mm256_storeu_pd(sums0_1, vec_sum0_1);
-      _mm256_storeu_pd(sums1_0, vec_sum1_0);
-      _mm256_storeu_pd(sums1_1, vec_sum1_1);
-      _mm256_storeu_pd(sums2_0, vec_sum2_0);
-      _mm256_storeu_pd(sums2_1, vec_sum2_1);
-      _mm256_storeu_pd(sums3_0, vec_sum3_0);
-      _mm256_storeu_pd(sums3_1, vec_sum3_1);
-
-      double sum0_0 = sums0_0[0] + sums0_0[1] + sums0_0[2] + sums0_0[3];
-      double sum0_1 = sums0_1[0] + sums0_1[1] + sums0_1[2] + sums0_1[3];
-      double sum1_0 = sums1_0[0] + sums1_0[1] + sums1_0[2] + sums1_0[3];
-      double sum1_1 = sums1_1[0] + sums1_1[1] + sums1_1[2] + sums1_1[3];
-      double sum2_0 = sums2_0[0] + sums2_0[1] + sums2_0[2] + sums2_0[3];
-      double sum2_1 = sums2_1[0] + sums2_1[1] + sums2_1[2] + sums2_1[3];
-      double sum3_0 = sums3_0[0] + sums3_0[1] + sums3_0[2] + sums3_0[3];
-      double sum3_1 = sums3_1[0] + sums3_1[1] + sums3_1[2] + sums3_1[3];
+      double sum0_0 = horizontal_sum(vec_sum0_0);
+      double sum0_1 = horizontal_sum(vec_sum0_1);
+      double sum1_0 = horizontal_sum(vec_sum1_0);
+      double sum1_1 = horizontal_sum(vec_sum1_1);
+      double sum2_0 = horizontal_sum(vec_sum2_0);
+      double sum2_1 = horizontal_sum(vec_sum2_1);
+      double sum3_0 = horizontal_sum(vec_sum3_0);
+      double sum3_1 = horizontal_sum(vec_sum3_1);
 
       for (; j < cols; ++j)
       {
@@ -1341,18 +1318,10 @@ public:
         vec_sum3 = _mm256_add_pd(vec_sum3, _mm256_mul_pd(vec_a3, vec_x));
 #endif
       }
-      double sums0[4];
-      double sums1[4];
-      double sums2[4];
-      double sums3[4];
-      _mm256_storeu_pd(sums0, vec_sum0);
-      _mm256_storeu_pd(sums1, vec_sum1);
-      _mm256_storeu_pd(sums2, vec_sum2);
-      _mm256_storeu_pd(sums3, vec_sum3);
-      sum0 = sums0[0] + sums0[1] + sums0[2] + sums0[3];
-      sum1 = sums1[0] + sums1[1] + sums1[2] + sums1[3];
-      sum2 = sums2[0] + sums2[1] + sums2[2] + sums2[3];
-      sum3 = sums3[0] + sums3[1] + sums3[2] + sums3[3];
+      sum0 = horizontal_sum(vec_sum0);
+      sum1 = horizontal_sum(vec_sum1);
+      sum2 = horizontal_sum(vec_sum2);
+      sum3 = horizontal_sum(vec_sum3);
       for (; j < cols; ++j)
       {
         sum0 += row0[j] * x[j];
