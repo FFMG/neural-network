@@ -335,18 +335,8 @@ void FFLayer::run_gemm(
 
     for (size_t i = 0; i < N_prev; ++i)
     {
-      const double x0_val = x0[i];
-      const double x1_val = x1[i];
-      const double x2_val = x2[i];
-      const double x3_val = x3[i];
-
-      if (x0_val == 0.0 && x1_val == 0.0 && x2_val == 0.0 && x3_val == 0.0)
-      {
-        continue;
-      }
-
       simd::mul_add_four_scalars(
-        x0_val, x1_val, x2_val, x3_val,
+        x0[i], x1[i], x2[i], x3[i],
         &W[i * N_this],
         y0, y1, y2, y3,
         N_this
@@ -365,16 +355,8 @@ void FFLayer::run_gemm(
 
     for (size_t i = 0; i < N_prev; ++i)
     {
-      const double x0_val = x0[i];
-      const double x1_val = x1[i];
-
-      if (x0_val == 0.0 && x1_val == 0.0)
-      {
-        continue;
-      }
-
       simd::mul_add_two_scalars(
-        x0_val, x1_val,
+        x0[i], x1[i],
         &W[i * N_this],
         y0, y1,
         N_this
@@ -388,12 +370,7 @@ void FFLayer::run_gemm(
     double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
     for (size_t i = 0; i < N_prev; ++i)
     {
-      const double x_val = x_row[i];
-      if (x_val == 0.0)
-      {
-        continue;
-      }
-      simd::mul_add(x_val, &W[i * N_this], y_row, N_this);
+      simd::mul_add(x_row[i], &W[i * N_this], y_row, N_this);
     }
   }
 }
@@ -875,12 +852,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
       const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
       for (size_t i = 0; i < num_inputs; ++i)
       {
-        const double xi = x_t[i];
-        if (std::abs(xi) < 1e-15)
-        {
-          continue;
-        }
-        simd::mul_add(xi, g_t, &local_w_grads[i * num_outputs], num_outputs);
+        simd::mul_add(x_t[i], g_t, &local_w_grads[i * num_outputs], num_outputs);
       }
       if (has_bias())
       {

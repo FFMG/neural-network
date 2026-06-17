@@ -461,13 +461,8 @@ void ElmanRNNLayer::pre_calculate_gates(
 
       for (size_t i = 0; i < N_prev; ++i)
       {
-        const double xi = x_t[i];
-        if (xi == 0.0)
-        {
-          continue;
-        }
         const double* w_row = &get_w_values()[i * N_this];
-        simd::mul_add(xi, w_row, pre_t, N_this);
+        simd::mul_add(x_t[i], w_row, pre_t, N_this);
       }
     }
   }
@@ -735,28 +730,24 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
         const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
         const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
-        for (size_t j = 0; j < N_this; ++j)
+        if (has_bias())
         {
-          const auto gj = g_t[j];
-          if (std::abs(gj) < 1e-15)
+          for (size_t j = 0; j < N_this; ++j)
           {
-            continue;
+            local_b_grads[j] += g_t[j];
           }
+        }
 
-          if (has_bias())
+        for (size_t k = 0; k < N_prev; ++k)
+        {
+          simd::mul_add(x_t[k], g_t, &local_w_grads[k * N_this], N_this);
+        }
+
+        if (h_prev)
+        {
+          for (size_t k = 0; k < N_this; ++k)
           {
-            local_b_grads[j] += gj;
-          }
-          for (size_t k = 0; k < N_prev; ++k)
-          {
-            local_w_grads[k * N_this + j] += gj * x_t[k];
-          }
-          if (h_prev)
-          {
-            for (size_t k = 0; k < N_this; ++k)
-            {
-              local_rw_grads[k * N_this + j] += gj * h_prev[k];
-            }
+            simd::mul_add(h_prev[k], g_t, &local_rw_grads[k * N_this], N_this);
           }
         }
       }

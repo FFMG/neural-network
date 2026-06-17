@@ -423,13 +423,7 @@ void LSTMLayer::calculate_forward_feed(
         // Input-to-Gates GEMV (vectorized)
         for (size_t i = 0; i < N_prev; ++i)
         {
-          const double xi = x_t[i];
-          if (xi == 0.0)
-          {
-            continue;
-          }
-
-          simd::mul_add_four(xi, &_f_w_values[i * N_this], &_i_w_values[i * N_this], &_o_w_values[i * N_this], &get_w_values()[i * N_this], f_pre, i_pre, o_pre, g_pre, N_this);
+          simd::mul_add_four(x_t[i], &_f_w_values[i * N_this], &_i_w_values[i * N_this], &_o_w_values[i * N_this], &get_w_values()[i * N_this], f_pre, i_pre, o_pre, g_pre, N_this);
         }
       }
     }
@@ -789,12 +783,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         // Weight Gradients (Outer Product) - Vectorized over N_this
         for (size_t k = 0; k < N_prev; ++k)
         {
-          const double xk = x_t[k];
-          if (std::abs(xk) < 1e-15)
-          {
-            continue;
-          }
-          simd::mul_add_four(xk, df, di, do_gate, dg, &local_f_w_grads[k * N_this], &local_i_w_grads[k * N_this], &local_o_w_grads[k * N_this], &local_w_grads[k * N_this], N_this);
+          simd::mul_add_four(x_t[k], df, di, do_gate, dg, &local_f_w_grads[k * N_this], &local_i_w_grads[k * N_this], &local_o_w_grads[k * N_this], &local_w_grads[k * N_this], N_this);
         }
 
         // Recurrent Weight Gradients (Outer Product) - Vectorized over N_this
@@ -802,12 +791,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         {
           for (size_t k = 0; k < N_this; ++k)
           {
-            const double hk = h_prev[k];
-            if (std::abs(hk) < 1e-15)
-            {
-              continue;
-            }
-            simd::mul_add_four(hk, df, di, do_gate, dg, &local_f_rw_grads[k * N_this], &local_i_rw_grads[k * N_this], &local_o_rw_grads[k * N_this], &local_rw_grads[k * N_this], N_this);
+            simd::mul_add_four(h_prev[k], df, di, do_gate, dg, &local_f_rw_grads[k * N_this], &local_i_rw_grads[k * N_this], &local_o_rw_grads[k * N_this], &local_rw_grads[k * N_this], N_this);
           }
         }
       }

@@ -772,12 +772,7 @@ void GRURNNLayer::pre_calculate_gates(
 
       for (size_t i = 0; i < N_prev; ++i)
       {
-        const double x_val = x_t[i];
-        if (x_val == 0.0)
-        {
-          continue;
-        }
-        simd::mul_add_three(x_val, &W_z[i * N_this], &W_r[i * N_this], &W_h[i * N_this], z_pre, r_pre, h_hat_pre, N_this);
+        simd::mul_add_three(x_t[i], &W_z[i * N_this], &W_r[i * N_this], &W_h[i * N_this], z_pre, r_pre, h_hat_pre, N_this);
       }
     }
   }
@@ -1324,12 +1319,7 @@ void GRURNNLayer::calculate_and_store_gradients(
         {
           for (unsigned i = 0; i < num_inputs; ++i)
           {
-            double x = prev_input_ptr[i];
-            if (std::abs(x) < 1e-15)
-            {
-              continue;
-            }
-            simd::mul_add_three(x, gh, gz, gr, &local_w_grads[i * num_outputs], &local_z_w_grads[i * num_outputs], &local_r_w_grads[i * num_outputs], num_outputs);
+            simd::mul_add_three(prev_input_ptr[i], gh, gz, gr, &local_w_grads[i * num_outputs], &local_z_w_grads[i * num_outputs], &local_r_w_grads[i * num_outputs], num_outputs);
           }
         }
 
@@ -1339,15 +1329,8 @@ void GRURNNLayer::calculate_and_store_gradients(
           const double* r_vals = &packed[num_outputs];
           for (unsigned k = 0; k < num_outputs; ++k)
           {
-            double h_prev = prev_hidden_ptr[k];
-            if (std::abs(h_prev) < 1e-15)
-            {
-              continue;
-            }
-            
-            // Candidate recurrent state uses gh * (r_val * h_prev)
-            // Update and Reset gates use gz * h_prev and gr * h_prev
-            double r_val = r_vals[k];
+            const double h_prev = prev_hidden_ptr[k];
+            const double r_val = r_vals[k];
             simd::mul_add_three_scalars(
               r_val * h_prev, h_prev, h_prev,
               gh, gz, gr,

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/simd_utils.h"
+#include "layers/residualprojector.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -908,6 +909,82 @@ TEST(SimdUtilsTest, HorizontalSum)
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 #endif
+
+TEST(ResidualProjectorTest, Correctness)
+{
+  const unsigned input_size = 4;
+  const unsigned output_size = 3;
+  std::vector<double> w_values = {
+    0.1, 0.2, 0.3,
+    0.4, 0.5, 0.6,
+    0.7, 0.8, 0.9,
+    1.0, 1.1, 1.2
+  };
+  std::vector<double> w_grads(12, 0.0);
+  std::vector<double> w_velocities(12, 0.0);
+  std::vector<double> w_m1(12, 0.0);
+  std::vector<double> w_m2(12, 0.0);
+  std::vector<long long> w_timesteps(12, 0);
+  std::vector<double> w_decays(12, 0.0);
+
+  ResidualProjector proj(
+    input_size,
+    output_size,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays
+  );
+
+  // Test project
+  std::vector<double> inputs = { 0.5, 1.5, 0.0, -1.0 };
+  std::vector<double> expected(output_size, 0.0);
+  for (size_t in = 0; in < input_size; ++in)
+  {
+    for (size_t out = 0; out < output_size; ++out)
+    {
+      expected[out] += w_values[in * output_size + out] * inputs[in];
+    }
+  }
+
+  std::vector<double> actual = proj.project(inputs);
+  ASSERT_EQ(actual.size(), expected.size());
+  for (size_t i = 0; i < actual.size(); ++i)
+  {
+    EXPECT_NEAR(actual[i], expected[i], 1e-12);
+  }
+
+  // Test project_batch
+  std::vector<std::vector<double>> batch_inputs = {
+    { 0.5, 1.5, 0.0, -1.0 },
+    { 1.0, -2.0, 0.5, 0.0 }
+  };
+  std::vector<std::vector<double>> expected_batch(batch_inputs.size(), std::vector<double>(output_size, 0.0));
+  for (size_t b = 0; b < batch_inputs.size(); ++b)
+  {
+    for (size_t in = 0; in < input_size; ++in)
+    {
+      for (size_t out = 0; out < output_size; ++out)
+      {
+        expected_batch[b][out] += w_values[in * output_size + out] * batch_inputs[b][in];
+      }
+    }
+  }
+
+  std::vector<std::vector<double>> actual_batch = proj.project_batch(batch_inputs);
+  ASSERT_EQ(actual_batch.size(), expected_batch.size());
+  for (size_t b = 0; b < actual_batch.size(); ++b)
+  {
+    ASSERT_EQ(actual_batch[b].size(), expected_batch[b].size());
+    for (size_t i = 0; i < actual_batch[b].size(); ++i)
+    {
+      EXPECT_NEAR(actual_batch[b][i], expected_batch[b][i], 1e-12);
+    }
+  }
+}
 
 
 
