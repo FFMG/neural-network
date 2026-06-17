@@ -899,5 +899,16 @@ TEST(SimdUtilsTest, AdamNadamStepBoundaryConditions)
   }
 }
 
+#ifdef SIMD_AVX2_ENABLED
+TEST(SimdUtilsTest, HorizontalSum)
+{
+  __m256d vec = _mm256_set_pd(4.0, 3.0, 2.0, 1.0);
+  double expected = 1.0 + 2.0 + 3.0 + 4.0;
+  double actual = simd::horizontal_sum(vec);
+  EXPECT_DOUBLE_EQ(expected, actual);
+}
+#endif
+
+
 
 
