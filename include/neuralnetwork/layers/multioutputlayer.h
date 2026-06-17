@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "elmanrnnlayer.h"
 #include "fflayer.h"
@@ -342,10 +342,10 @@ public:
                return Logger::factory("  Branch ", i, " input topology[0]=", branch.topology[0]);
              });
          }
-         if (!trunk_rnn_output_span.empty())
-         {
-           branch.gradients_and_outputs[b].set_rnn_outputs(0, std::vector<double>(trunk_rnn_output_span.begin(), trunk_rnn_output_span.end()));
-         }
+          if (!trunk_rnn_output_span.empty())
+          {
+            branch.gradients_and_outputs[b].set_rnn_outputs(0, trunk_rnn_output_span.data(), trunk_rnn_output_span.size());
+          }
          branch.gradients_and_outputs[b].set_outputs(0, trunk_output);
        }
     }
@@ -408,40 +408,38 @@ public:
          }
        }
 
-       batch_gradients_and_outputs[b].set_rnn_outputs(this_layer_index, concatenated_output_seq);
-       
-       std::vector<double> last_step_output(get_number_neurons());
-       std::copy(concatenated_output_seq.end() - get_number_neurons(), concatenated_output_seq.end(), last_step_output.begin());
-       batch_gradients_and_outputs[b].set_outputs(this_layer_index, last_step_output);
+        if (!concatenated_output_seq.empty())
+        {
+          batch_gradients_and_outputs[b].set_outputs(this_layer_index, concatenated_output_seq.data() + concatenated_output_seq.size() - get_number_neurons(), get_number_neurons());
+        }
 
-       if (!batch_hidden_states.empty())
-       {
-         // We must concatenate pre-activations for each time step if we want full BPTT support in following layers
-         // but since this is usually the output layer, we might only need the views to be correctly sized.
-         if (batch_hidden_states[b].at(this_layer_index).size() != num_time_steps)
-         {
-           batch_hidden_states[b].assign(this_layer_index, num_time_steps, HiddenState());
-         }
-         
-         for (size_t t = 0; t < num_time_steps; ++t)
-         {
-           std::vector<double> concatenated_pre_act;
-           concatenated_pre_act.reserve(get_number_neurons());
-           for (size_t i = 0; i < _branches.size(); ++i)
-           {
-             const auto& branch = _branches[i];
-             const auto branch_out_layer_idx = branch.layers.back()->get_layer_index();
-             const auto b_pre_act = branch.hidden_states[b].at(branch_out_layer_idx)[t].get_pre_activation_sums();
-             concatenated_pre_act.insert(concatenated_pre_act.end(), b_pre_act.begin(), b_pre_act.end());
-           }
-           batch_hidden_states[b].at(this_layer_index)[t].set_pre_activation_sums(concatenated_pre_act);
-           // Hidden state values are already set via set_outputs/set_rnn_outputs above for the last step,
-           // but we should set them for all steps in the hidden state object too.
-           std::vector<double> step_output(get_number_neurons());
-           std::copy(concatenated_output_seq.begin() + t * get_number_neurons(), concatenated_output_seq.begin() + (t+1) * get_number_neurons(), step_output.begin());
-           batch_hidden_states[b].at(this_layer_index)[t].set_hidden_state_values(step_output);
-         }
-       }
+        if (!batch_hidden_states.empty())
+        {
+          // We must concatenate pre-activations for each time step if we want full BPTT support in following layers
+          // but since this is usually the output layer, we might only need the views to be correctly sized.
+          if (batch_hidden_states[b].at(this_layer_index).size() != num_time_steps)
+          {
+            batch_hidden_states[b].assign(this_layer_index, num_time_steps, HiddenState());
+          }
+          
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            std::vector<double> concatenated_pre_act;
+            concatenated_pre_act.reserve(get_number_neurons());
+            for (size_t i = 0; i < _branches.size(); ++i)
+            {
+              const auto& branch = _branches[i];
+              const auto branch_out_layer_idx = branch.layers.back()->get_layer_index();
+              const auto b_pre_act = branch.hidden_states[b].at(branch_out_layer_idx)[t].get_pre_activation_sums();
+              concatenated_pre_act.insert(concatenated_pre_act.end(), b_pre_act.begin(), b_pre_act.end());
+            }
+            batch_hidden_states[b].at(this_layer_index)[t].set_pre_activation_sums(concatenated_pre_act);
+            // Hidden state values are already set via set_outputs/set_rnn_outputs above for the last step,
+            // but we should set them for all steps in the hidden state object too.
+            batch_hidden_states[b].at(this_layer_index)[t].set_hidden_state_values(concatenated_output_seq.data() + t * get_number_neurons(), get_number_neurons());
+          }
+        }
+        batch_gradients_and_outputs[b].set_rnn_outputs(this_layer_index, std::move(concatenated_output_seq));
     }
   }
 
