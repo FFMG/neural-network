@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <vector>
 
@@ -6,6 +6,7 @@
 
 #include "../common/activation.h"
 #include "../common/weightparam.h"
+#include "../common/simd_utils.h"
 
 
 namespace myoddweb::nn
@@ -149,12 +150,7 @@ public:
     std::vector<double> projected(_output_size, 0.0);
     for (size_t in = 0; in < _input_size; ++in)
     {
-      const double val = residual_layer_outputs[in];
-      if (val == 0.0) continue;
-      for (size_t out = 0; out < _output_size; ++out)
-      {
-        projected[out] += _w_values[in * _output_size + out] * val;
-      }
+      simd::mul_add(residual_layer_outputs[in], &_w_values[in * _output_size], projected.data(), _output_size);
     }
     return projected;
   }
@@ -169,12 +165,7 @@ public:
     {
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const double val = batch_residual_layer_outputs[b][in];
-        if (val == 0.0) continue;
-        for (size_t out = 0; out < _output_size; ++out)
-        {
-          batch_projected[b][out] += _w_values[in * _output_size + out] * val;
-        }
+        simd::mul_add(batch_residual_layer_outputs[b][in], &_w_values[in * _output_size], batch_projected[b].data(), _output_size);
       }
     }
     return batch_projected;
