@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include "layer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"

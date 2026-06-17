@@ -400,31 +400,114 @@ void LSTMLayer::calculate_forward_feed(
 
   auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
-    for (size_t b = b_start; b < b_end; ++b)
+    const double* W_f = _f_w_values.data();
+    const double* W_i = _i_w_values.data();
+    const double* W_o = _o_w_values.data();
+    const double* W_g = get_w_values().data();
+
+    const size_t step_start = b_start * num_time_steps;
+    const size_t step_end = b_end * num_time_steps;
+
+    if (has_bias())
     {
-      for (size_t t = 0; t < num_time_steps; ++t)
+      for (size_t step = step_start; step < step_end; ++step)
       {
-        const double* x_t = &flattened_inputs[(b * num_time_steps + t) * N_prev];
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-        double* f_pre = pre_t;
-        double* i_pre = pre_t + N_this;
-        double* o_pre = pre_t + 2 * N_this;
-        double* g_pre = pre_t + 3 * N_this;
+        double* pre_t = &batch_pre_act[step * GateCount * N_this];
+        std::copy(_f_b_values.begin(), _f_b_values.end(), pre_t);
+        std::copy(_i_b_values.begin(), _i_b_values.end(), pre_t + N_this);
+        std::copy(_o_b_values.begin(), _o_b_values.end(), pre_t + 2 * N_this);
+        std::copy(_b_values.begin(), _b_values.end(), pre_t + 3 * N_this);
+      }
+    }
+    else
+    {
+      std::fill(batch_pre_act.begin() + step_start * GateCount * N_this, batch_pre_act.begin() + step_end * GateCount * N_this, 0.0);
+    }
 
-        // Bias initialization
-        if (has_bias())
-        {
-          std::copy(_f_b_values.begin(), _f_b_values.end(), f_pre);
-          std::copy(_i_b_values.begin(), _i_b_values.end(), i_pre);
-          std::copy(_o_b_values.begin(), _o_b_values.end(), o_pre);
-          std::copy(_b_values.begin(), _b_values.end(), g_pre);
-        }
+    size_t step = step_start;
+    for (; step + 3 < step_end; step += 4)
+    {
+      const double* x0 = &flattened_inputs[step * N_prev];
+      const double* x1 = &flattened_inputs[(step + 1) * N_prev];
+      const double* x2 = &flattened_inputs[(step + 2) * N_prev];
+      const double* x3 = &flattened_inputs[(step + 3) * N_prev];
 
-        // Input-to-Gates GEMV (vectorized)
-        for (size_t i = 0; i < N_prev; ++i)
-        {
-          simd::mul_add_four(x_t[i], &_f_w_values[i * N_this], &_i_w_values[i * N_this], &_o_w_values[i * N_this], &get_w_values()[i * N_this], f_pre, i_pre, o_pre, g_pre, N_this);
-        }
+      double* y0_f = &batch_pre_act[step * GateCount * N_this];
+      double* y0_i = y0_f + N_this;
+      double* y0_o = y0_f + 2 * N_this;
+      double* y0_g = y0_f + 3 * N_this;
+
+      double* y1_f = &batch_pre_act[(step + 1) * GateCount * N_this];
+      double* y1_i = y1_f + N_this;
+      double* y1_o = y1_f + 2 * N_this;
+      double* y1_g = y1_f + 3 * N_this;
+
+      double* y2_f = &batch_pre_act[(step + 2) * GateCount * N_this];
+      double* y2_i = y2_f + N_this;
+      double* y2_o = y2_f + 2 * N_this;
+      double* y2_g = y2_f + 3 * N_this;
+
+      double* y3_f = &batch_pre_act[(step + 3) * GateCount * N_this];
+      double* y3_i = y3_f + N_this;
+      double* y3_o = y3_f + 2 * N_this;
+      double* y3_g = y3_f + 3 * N_this;
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double x0_val = x0[i];
+        const double x1_val = x1[i];
+        const double x2_val = x2[i];
+        const double x3_val = x3[i];
+
+        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_f[i * N_this], y0_f, y1_f, y2_f, y3_f, N_this);
+        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_i[i * N_this], y0_i, y1_i, y2_i, y3_i, N_this);
+        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_o[i * N_this], y0_o, y1_o, y2_o, y3_o, N_this);
+        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_g[i * N_this], y0_g, y1_g, y2_g, y3_g, N_this);
+      }
+    }
+
+    for (; step + 1 < step_end; step += 2)
+    {
+      const double* x0 = &flattened_inputs[step * N_prev];
+      const double* x1 = &flattened_inputs[(step + 1) * N_prev];
+
+      double* y0_f = &batch_pre_act[step * GateCount * N_this];
+      double* y0_i = y0_f + N_this;
+      double* y0_o = y0_f + 2 * N_this;
+      double* y0_g = y0_f + 3 * N_this;
+
+      double* y1_f = &batch_pre_act[(step + 1) * GateCount * N_this];
+      double* y1_i = y1_f + N_this;
+      double* y1_o = y1_f + 2 * N_this;
+      double* y1_g = y1_f + 3 * N_this;
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double x0_val = x0[i];
+        const double x1_val = x1[i];
+
+        simd::mul_add_two_scalars(x0_val, x1_val, &W_f[i * N_this], y0_f, y1_f, N_this);
+        simd::mul_add_two_scalars(x0_val, x1_val, &W_i[i * N_this], y0_i, y1_i, N_this);
+        simd::mul_add_two_scalars(x0_val, x1_val, &W_o[i * N_this], y0_o, y1_o, N_this);
+        simd::mul_add_two_scalars(x0_val, x1_val, &W_g[i * N_this], y0_g, y1_g, N_this);
+      }
+    }
+
+    for (; step < step_end; ++step)
+    {
+      const double* x_row = &flattened_inputs[step * N_prev];
+      double* y_f = &batch_pre_act[step * GateCount * N_this];
+      double* y_i = y_f + N_this;
+      double* y_o = y_f + 2 * N_this;
+      double* y_g = y_f + 3 * N_this;
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double x_val = x_row[i];
+        simd::mul_add(x_val, &W_f[i * N_this], y_f, N_this);
+        simd::mul_add(x_val, &W_i[i * N_this], y_i, N_this);
+        simd::mul_add(x_val, &W_o[i * N_this], y_o, N_this);
+        simd::mul_add(x_val, &W_g[i * N_this], y_g, N_this);
       }
     }
   };
@@ -781,7 +864,30 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         }
 
         // Weight Gradients (Outer Product) - Vectorized over N_this
-        for (size_t k = 0; k < N_prev; ++k)
+        size_t k = 0;
+        for (; k + 3 < N_prev; k += 4)
+        {
+          const double x0 = x_t[k];
+          const double x1 = x_t[k + 1];
+          const double x2 = x_t[k + 2];
+          const double x3 = x_t[k + 3];
+
+          simd::mul_add_four_scalars(x0, x1, x2, x3, df, &local_f_w_grads[k * N_this], &local_f_w_grads[(k + 1) * N_this], &local_f_w_grads[(k + 2) * N_this], &local_f_w_grads[(k + 3) * N_this], N_this);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, di, &local_i_w_grads[k * N_this], &local_i_w_grads[(k + 1) * N_this], &local_i_w_grads[(k + 2) * N_this], &local_i_w_grads[(k + 3) * N_this], N_this);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, do_gate, &local_o_w_grads[k * N_this], &local_o_w_grads[(k + 1) * N_this], &local_o_w_grads[(k + 2) * N_this], &local_o_w_grads[(k + 3) * N_this], N_this);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, dg, &local_w_grads[k * N_this], &local_w_grads[(k + 1) * N_this], &local_w_grads[(k + 2) * N_this], &local_w_grads[(k + 3) * N_this], N_this);
+        }
+        for (; k + 1 < N_prev; k += 2)
+        {
+          const double x0 = x_t[k];
+          const double x1 = x_t[k + 1];
+
+          simd::mul_add_two_scalars(x0, x1, df, &local_f_w_grads[k * N_this], &local_f_w_grads[(k + 1) * N_this], N_this);
+          simd::mul_add_two_scalars(x0, x1, di, &local_i_w_grads[k * N_this], &local_i_w_grads[(k + 1) * N_this], N_this);
+          simd::mul_add_two_scalars(x0, x1, do_gate, &local_o_w_grads[k * N_this], &local_o_w_grads[(k + 1) * N_this], N_this);
+          simd::mul_add_two_scalars(x0, x1, dg, &local_w_grads[k * N_this], &local_w_grads[(k + 1) * N_this], N_this);
+        }
+        for (; k < N_prev; ++k)
         {
           simd::mul_add_four(x_t[k], df, di, do_gate, dg, &local_f_w_grads[k * N_this], &local_i_w_grads[k * N_this], &local_o_w_grads[k * N_this], &local_w_grads[k * N_this], N_this);
         }
@@ -789,9 +895,32 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         // Recurrent Weight Gradients (Outer Product) - Vectorized over N_this
         if (h_prev)
         {
-          for (size_t k = 0; k < N_this; ++k)
+          size_t rk = 0;
+          for (; rk + 3 < N_this; rk += 4)
           {
-            simd::mul_add_four(h_prev[k], df, di, do_gate, dg, &local_f_rw_grads[k * N_this], &local_i_rw_grads[k * N_this], &local_o_rw_grads[k * N_this], &local_rw_grads[k * N_this], N_this);
+            const double hp0 = h_prev[rk];
+            const double hp1 = h_prev[rk + 1];
+            const double hp2 = h_prev[rk + 2];
+            const double hp3 = h_prev[rk + 3];
+
+            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, df, &local_f_rw_grads[rk * N_this], &local_f_rw_grads[(rk + 1) * N_this], &local_f_rw_grads[(rk + 2) * N_this], &local_f_rw_grads[(rk + 3) * N_this], N_this);
+            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, di, &local_i_rw_grads[rk * N_this], &local_i_rw_grads[(rk + 1) * N_this], &local_i_rw_grads[(rk + 2) * N_this], &local_i_rw_grads[(rk + 3) * N_this], N_this);
+            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, do_gate, &local_o_rw_grads[rk * N_this], &local_o_rw_grads[(rk + 1) * N_this], &local_o_rw_grads[(rk + 2) * N_this], &local_o_rw_grads[(rk + 3) * N_this], N_this);
+            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, dg, &local_rw_grads[rk * N_this], &local_rw_grads[(rk + 1) * N_this], &local_rw_grads[(rk + 2) * N_this], &local_rw_grads[(rk + 3) * N_this], N_this);
+          }
+          for (; rk + 1 < N_this; rk += 2)
+          {
+            const double hp0 = h_prev[rk];
+            const double hp1 = h_prev[rk + 1];
+
+            simd::mul_add_two_scalars(hp0, hp1, df, &local_f_rw_grads[rk * N_this], &local_f_rw_grads[(rk + 1) * N_this], N_this);
+            simd::mul_add_two_scalars(hp0, hp1, di, &local_i_rw_grads[rk * N_this], &local_i_rw_grads[(rk + 1) * N_this], N_this);
+            simd::mul_add_two_scalars(hp0, hp1, do_gate, &local_o_rw_grads[rk * N_this], &local_o_rw_grads[(rk + 1) * N_this], N_this);
+            simd::mul_add_two_scalars(hp0, hp1, dg, &local_rw_grads[rk * N_this], &local_rw_grads[(rk + 1) * N_this], N_this);
+          }
+          for (; rk < N_this; ++rk)
+          {
+            simd::mul_add_four(h_prev[rk], df, di, do_gate, dg, &local_f_rw_grads[rk * N_this], &local_i_rw_grads[rk * N_this], &local_o_rw_grads[rk * N_this], &local_rw_grads[rk * N_this], N_this);
           }
         }
       }

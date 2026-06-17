@@ -850,7 +850,30 @@ void FFLayer::calculate_and_store_gradients_chunk(
     {
       const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
       const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
-      for (size_t i = 0; i < num_inputs; ++i)
+      size_t i = 0;
+      for (; i + 3 < num_inputs; i += 4)
+      {
+        simd::mul_add_four_scalars(
+          x_t[i], x_t[i + 1], x_t[i + 2], x_t[i + 3],
+          g_t,
+          &local_w_grads[i * num_outputs],
+          &local_w_grads[(i + 1) * num_outputs],
+          &local_w_grads[(i + 2) * num_outputs],
+          &local_w_grads[(i + 3) * num_outputs],
+          num_outputs
+        );
+      }
+      for (; i + 1 < num_inputs; i += 2)
+      {
+        simd::mul_add_two_scalars(
+          x_t[i], x_t[i + 1],
+          g_t,
+          &local_w_grads[i * num_outputs],
+          &local_w_grads[(i + 1) * num_outputs],
+          num_outputs
+        );
+      }
+      for (; i < num_inputs; ++i)
       {
         simd::mul_add(x_t[i], g_t, &local_w_grads[i * num_outputs], num_outputs);
       }

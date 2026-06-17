@@ -447,23 +447,73 @@ void ElmanRNNLayer::pre_calculate_gates(
   std::vector<double>& batch_pre_act
 ) const
 {
-  for (size_t b = b_start; b < b_end; ++b)
+  const double* W = get_w_values().data();
+  const size_t step_start = b_start * num_time_steps;
+  const size_t step_end = b_end * num_time_steps;
+
+  if (has_bias())
   {
-    for (size_t t = 0; t < num_time_steps; ++t)
+    for (size_t step = step_start; step < step_end; ++step)
     {
-      const double* x_t = &flattened_batch_inputs[(b * num_time_steps + t) * N_prev];
-      double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
+      std::copy(get_b_values().begin(), get_b_values().end(), &batch_pre_act[step * N_this]);
+    }
+  }
+  else
+  {
+    std::fill(batch_pre_act.begin() + step_start * N_this, batch_pre_act.begin() + step_end * N_this, 0.0);
+  }
 
-      if (has_bias())
-      {
-        std::copy(get_b_values().begin(), get_b_values().end(), pre_t);
-      }
+  size_t step = step_start;
+  for (; step + 3 < step_end; step += 4)
+  {
+    const double* x0 = &flattened_batch_inputs[step * N_prev];
+    const double* x1 = &flattened_batch_inputs[(step + 1) * N_prev];
+    const double* x2 = &flattened_batch_inputs[(step + 2) * N_prev];
+    const double* x3 = &flattened_batch_inputs[(step + 3) * N_prev];
 
-      for (size_t i = 0; i < N_prev; ++i)
-      {
-        const double* w_row = &get_w_values()[i * N_this];
-        simd::mul_add(x_t[i], w_row, pre_t, N_this);
-      }
+    double* y0 = &batch_pre_act[step * N_this];
+    double* y1 = &batch_pre_act[(step + 1) * N_this];
+    double* y2 = &batch_pre_act[(step + 2) * N_this];
+    double* y3 = &batch_pre_act[(step + 3) * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
+    {
+      simd::mul_add_four_scalars(
+        x0[i], x1[i], x2[i], x3[i],
+        &W[i * N_this],
+        y0, y1, y2, y3,
+        N_this
+      );
+    }
+  }
+
+  for (; step + 1 < step_end; step += 2)
+  {
+    const double* x0 = &flattened_batch_inputs[step * N_prev];
+    const double* x1 = &flattened_batch_inputs[(step + 1) * N_prev];
+
+    double* y0 = &batch_pre_act[step * N_this];
+    double* y1 = &batch_pre_act[(step + 1) * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
+    {
+      simd::mul_add_two_scalars(
+        x0[i], x1[i],
+        &W[i * N_this],
+        y0, y1,
+        N_this
+      );
+    }
+  }
+
+  for (; step < step_end; ++step)
+  {
+    const double* x_row = &flattened_batch_inputs[step * N_prev];
+    double* y_row = &batch_pre_act[step * N_this];
+
+    for (size_t i = 0; i < N_prev; ++i)
+    {
+      simd::mul_add(x_row[i], &W[i * N_this], y_row, N_this);
     }
   }
 }
@@ -738,16 +788,62 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
           }
         }
 
-        for (size_t k = 0; k < N_prev; ++k)
+        size_t k = 0;
+        for (; k + 3 < N_prev; k += 4)
+        {
+          simd::mul_add_four_scalars(
+            x_t[k], x_t[k + 1], x_t[k + 2], x_t[k + 3],
+            g_t,
+            &local_w_grads[k * N_this],
+            &local_w_grads[(k + 1) * N_this],
+            &local_w_grads[(k + 2) * N_this],
+            &local_w_grads[(k + 3) * N_this],
+            N_this
+          );
+        }
+        for (; k + 1 < N_prev; k += 2)
+        {
+          simd::mul_add_two_scalars(
+            x_t[k], x_t[k + 1],
+            g_t,
+            &local_w_grads[k * N_this],
+            &local_w_grads[(k + 1) * N_this],
+            N_this
+          );
+        }
+        for (; k < N_prev; ++k)
         {
           simd::mul_add(x_t[k], g_t, &local_w_grads[k * N_this], N_this);
         }
 
         if (h_prev)
         {
-          for (size_t k = 0; k < N_this; ++k)
+          size_t rk = 0;
+          for (; rk + 3 < N_this; rk += 4)
           {
-            simd::mul_add(h_prev[k], g_t, &local_rw_grads[k * N_this], N_this);
+            simd::mul_add_four_scalars(
+              h_prev[rk], h_prev[rk + 1], h_prev[rk + 2], h_prev[rk + 3],
+              g_t,
+              &local_rw_grads[rk * N_this],
+              &local_rw_grads[(rk + 1) * N_this],
+              &local_rw_grads[(rk + 2) * N_this],
+              &local_rw_grads[(rk + 3) * N_this],
+              N_this
+            );
+          }
+          for (; rk + 1 < N_this; rk += 2)
+          {
+            simd::mul_add_two_scalars(
+              h_prev[rk], h_prev[rk + 1],
+              g_t,
+              &local_rw_grads[rk * N_this],
+              &local_rw_grads[(rk + 1) * N_this],
+              N_this
+            );
+          }
+          for (; rk < N_this; ++rk)
+          {
+            simd::mul_add(h_prev[rk], g_t, &local_rw_grads[rk * N_this], N_this);
           }
         }
       }
