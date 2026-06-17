@@ -137,13 +137,15 @@ TEST(LayersAndNeuronsContainerTest, ValidationLogic)
   LayersAndNeuronsContainer container(topology);
 
   // Layer out of bounds
-  EXPECT_THROW(container.set(2, 0, 1.0), std::runtime_error);
-  EXPECT_THROW((void)container.get_raw_ptr(2), std::runtime_error);
-  EXPECT_THROW((void)container.get_span(2), std::runtime_error);
+  volatile unsigned invalid_layer = 2;
+  EXPECT_THROW(container.set(invalid_layer, 0, 1.0), std::runtime_error);
+  EXPECT_THROW((void)container.get_raw_ptr(invalid_layer), std::runtime_error);
+  EXPECT_THROW((void)container.get_span(invalid_layer), std::runtime_error);
 
   // Neuron out of bounds
-  EXPECT_THROW(container.set(0, 2, 1.0), std::runtime_error);
-  EXPECT_THROW((void)container.get(0, 2), std::runtime_error);
+  volatile unsigned invalid_neuron = 2;
+  EXPECT_THROW(container.set(0, invalid_neuron, 1.0), std::runtime_error);
+  EXPECT_THROW((void)container.get(0, invalid_neuron), std::runtime_error);
   
   // Data size mismatch
   std::vector<double> too_much_data = { 1.0, 2.0, 3.0 };
