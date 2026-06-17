@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // C headers
 #include <cassert>
@@ -248,7 +248,7 @@ private:
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     struct tm local_tm;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     localtime_s(&local_tm, &in_time_t);
 #else
     localtime_r(&in_time_t, &local_tm);
