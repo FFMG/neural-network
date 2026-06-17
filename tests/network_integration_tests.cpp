@@ -321,3 +321,65 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
   EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
   EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
 }
+
+TEST(NetworkIntegrationTest, GRUSequenceConvergence)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.0))
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  GRURNNLayer& gru = static_cast<GRURNNLayer&>(layers[1]);
+  gru.set_w_values({ 1.0, 1.0 });
+  gru.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_b_values({ 0.0, 0.0 });
+
+  gru.set_z_w_values({ 0.0, 0.0 });
+  gru.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_z_b_values({ 10.0, 10.0 });
+
+  gru.set_r_w_values({ 0.0, 0.0 });
+  gru.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_r_b_values({ 10.0, 10.0 });
+
+  layers[2].set_w_values({ 0.5, 0.5 });
+  layers[2].set_b_values({ 0.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {}, {}, {0.3},
+    {}, {}, {0.6},
+    {}, {}, {0.9}
+  };
+
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
+}
