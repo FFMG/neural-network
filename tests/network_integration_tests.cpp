@@ -1,7 +1,11 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/fflayer.h"
 #include "layers/grurnnlayer.h"
+#include "layers/elmanrnnlayer.h"
+#include "layers/lstmlayer.h"
 #include "layers/ffoutputlayer.h"
+#include "neuralnetwork.h"
+#include "neuralnetworkoptions.h"
 #include "test_helper.h"
 #include <vector>
 
@@ -74,4 +78,246 @@ TEST(NetworkIntegrationTest, CrossLayerGradientPropagation) {
     layer1.calculate_and_store_gradients(batch_go, batch_hs, MockLayer(0, 1, 1), 1, 0);
     // dL/dW1 = dL/dz1 * x = 1.0 * 1.0 = 1.0
     EXPECT_NEAR(layer1.get_w_grads()[0], 1.0, 1e-9);
+}
+
+TEST(NetworkIntegrationTest, LinearRegressionNoBiasConvergence)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(100)
+    .with_shuffle_training_data(true)
+    .with_has_bias(false)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .build();
+
+  NeuralNetwork nn(options);
+  
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({ 0.0, 0.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1, 0.2},
+    {0.3, 0.4},
+    {0.5, 0.6},
+    {0.7, 0.8}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.3},
+    {0.7},
+    {1.1},
+    {1.5}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(inputs);
+
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.7, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 1.1, 1e-2);
+  EXPECT_NEAR(predictions[3][0], 1.5, 1e-2);
+}
+
+TEST(NetworkIntegrationTest, LinearRegressionWithBiasConvergence)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(100)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({ 2.0 });
+  layers[1].set_b_values({ 1.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.0},
+    {1.0},
+    {2.0},
+    {3.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {1.0},
+    {3.0},
+    {5.0},
+    {7.0}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(inputs);
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 1.0, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 3.0, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 5.0, 1e-2);
+  EXPECT_NEAR(predictions[3][0], 7.0, 1e-2);
+}
+
+TEST(NetworkIntegrationTest, XorFFConvergence)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({
+    10.0, 10.0, 0.0, 0.0,
+    10.0, 10.0, 0.0, 0.0
+  });
+  layers[1].set_b_values({ -5.0, -15.0, 0.0, 0.0 });
+  layers[2].set_w_values({ 10.0, -20.0, 0.0, 0.0 });
+  layers[2].set_b_values({ -5.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0},
+    {0.0, 1.0},
+    {1.0, 0.0},
+    {1.0, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0},
+    {1.0},
+    {1.0},
+    {0.0}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(inputs);
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 0.0, 0.15);
+  EXPECT_NEAR(predictions[1][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[2][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[3][0], 0.0, 0.15);
+}
+
+TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({ 1.0, 1.0 });
+  layers[1].set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  layers[1].set_b_values({ 0.0, 0.0 });
+  layers[2].set_w_values({ 0.5, 0.5 });
+  layers[2].set_b_values({ 0.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+
+  nn.train(inputs, outputs);
+
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
+}
+
+TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.0))
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  LSTMLayer& lstm = static_cast<LSTMLayer&>(layers[1]);
+  lstm.set_w_values({ 1.0, 1.0 });
+  lstm.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  lstm.set_b_values({ 0.0, 0.0 });
+
+  lstm.set_f_w_values({ 0.0, 0.0 });
+  lstm.set_f_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  lstm.set_f_b_values({ 10.0, 10.0 });
+
+  lstm.set_i_w_values({ 0.0, 0.0 });
+  lstm.set_i_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  lstm.set_i_b_values({ 10.0, 10.0 });
+
+  lstm.set_o_w_values({ 0.0, 0.0 });
+  lstm.set_o_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  lstm.set_o_b_values({ 10.0, 10.0 });
+
+  layers[2].set_w_values({ 0.16666666666666666, 0.16666666666666666 });
+  layers[2].set_b_values({ 0.1 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {}, {}, {0.3},
+    {}, {}, {0.6},
+    {}, {}, {0.9}
+  };
+
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
 }
