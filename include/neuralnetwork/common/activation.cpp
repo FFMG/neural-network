@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <immintrin.h>
 
 #include "logger.h"
 
@@ -162,16 +163,43 @@ void activation::activate(double* begin, double* end, bool is_training) const
   case method::linear:
     break; // Nothing to do
   case method::relu:
-    for (size_t i = 0; i < size; ++i)
     {
-      begin[i] = begin[i] > 0.0 ? begin[i] : 0.0;
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d res = _mm256_max_pd(v, vec_zero);
+        _mm256_storeu_pd(begin + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        begin[i] = begin[i] > 0.0 ? begin[i] : 0.0;
+      }
     }
     break;
   case method::leakyRelu:
   case method::PRelu:
-    for (size_t i = 0; i < size; ++i)
     {
-      begin[i] = begin[i] > 0.0 ? begin[i] : _alpha * begin[i];
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      __m256d vec_alpha = _mm256_set1_pd(_alpha);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
+        __m256d val_alpha = _mm256_mul_pd(vec_alpha, v);
+        __m256d res = _mm256_blendv_pd(val_alpha, v, mask);
+        _mm256_storeu_pd(begin + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        begin[i] = begin[i] > 0.0 ? begin[i] : _alpha * begin[i];
+      }
     }
     break;
   case method::tanh:
@@ -260,22 +288,61 @@ void activation::activate_derivative(const double* begin, const double* end, con
     }
     break;
   case method::relu:
-    for (size_t i = 0; i < size; ++i)
     {
-      out[i] = begin[i] > 0.0 ? 1.0 : 0.0;
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
+        __m256d res = _mm256_blendv_pd(vec_zero, vec_one, mask);
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        out[i] = begin[i] > 0.0 ? 1.0 : 0.0;
+      }
     }
     break;
   case method::leakyRelu:
   case method::PRelu:
-    for (size_t i = 0; i < size; ++i)
     {
-      out[i] = begin[i] > 0.0 ? 1.0 : _alpha;
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      __m256d vec_alpha = _mm256_set1_pd(_alpha);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
+        __m256d res = _mm256_blendv_pd(vec_alpha, vec_one, mask);
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        out[i] = begin[i] > 0.0 ? 1.0 : _alpha;
+      }
     }
     break;
   case method::tanh:
     if (y_begin != nullptr)
     {
-      for (size_t i = 0; i < size; ++i)
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d y = _mm256_loadu_pd(y_begin + i);
+        __m256d res = _mm256_sub_pd(vec_one, _mm256_mul_pd(y, y));
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
       {
         out[i] = 1.0 - y_begin[i] * y_begin[i];
       }
@@ -292,7 +359,17 @@ void activation::activate_derivative(const double* begin, const double* end, con
   case method::sigmoid:
     if (y_begin != nullptr)
     {
-      for (size_t i = 0; i < size; ++i)
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d y = _mm256_loadu_pd(y_begin + i);
+        __m256d res = _mm256_mul_pd(y, _mm256_sub_pd(vec_one, y));
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
       {
         out[i] = y_begin[i] * (1.0 - y_begin[i]);
       }
