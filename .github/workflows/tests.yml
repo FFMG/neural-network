@@ -19,9 +19,12 @@ jobs:
       with:
         vs-version: '17.0'
 
+    - name: Install Ninja
+      run: choco install ninja
+      
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/tests/build -S ${{github.workspace}}/tests -G "Visual Studio 17 2022" -A x64
-
+      run: cmake -B tests/build -S tests -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+      
     - name: Build
       run: cmake --build ${{github.workspace}}/tests/build --config Release
 
