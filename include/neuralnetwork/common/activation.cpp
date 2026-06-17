@@ -2,7 +2,11 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+// Check if AVX2 is available on x86/x64 architectures
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && defined(__AVX2__)
 #include <immintrin.h>
+#define SIMD_AVX2_ENABLED
+#endif
 
 #include "logger.h"
 
