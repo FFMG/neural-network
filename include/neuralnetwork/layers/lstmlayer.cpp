@@ -952,36 +952,26 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   zero_gradients();
   for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t i = 0; i < _w_grads.size(); ++i)
-    {
-      _w_grads[i] += _thread_w_grads[t][i];
-      _f_w_grads[i] += _thread_f_w_grads[t][i];
-      _i_w_grads[i] += _thread_i_w_grads[t][i];
-      _o_w_grads[i] += _thread_o_w_grads[t][i];
-    }
-    for (size_t i = 0; i < _rw_grads.size(); ++i)
-    {
-      _rw_grads[i] += _thread_rw_grads[t][i];
-      _f_rw_grads[i] += _thread_f_rw_grads[t][i];
-      _i_rw_grads[i] += _thread_i_rw_grads[t][i];
-      _o_rw_grads[i] += _thread_o_rw_grads[t][i];
-    }
-    for (size_t i = 0; i < _b_grads.size(); ++i)
-    {
-      _b_grads[i] += _thread_b_grads[t][i];
-      _f_b_grads[i] += _thread_f_b_grads[t][i];
-      _i_b_grads[i] += _thread_i_b_grads[t][i];
-      _o_b_grads[i] += _thread_o_b_grads[t][i];
-    }
+    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+    simd::add_vectors(_thread_f_w_grads[t].data(), _f_w_grads.data(), _f_w_grads.size());
+    simd::add_vectors(_thread_i_w_grads[t].data(), _i_w_grads.data(), _i_w_grads.size());
+    simd::add_vectors(_thread_o_w_grads[t].data(), _o_w_grads.data(), _o_w_grads.size());
+
+    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+    simd::add_vectors(_thread_f_rw_grads[t].data(), _f_rw_grads.data(), _f_rw_grads.size());
+    simd::add_vectors(_thread_i_rw_grads[t].data(), _i_rw_grads.data(), _i_rw_grads.size());
+    simd::add_vectors(_thread_o_rw_grads[t].data(), _o_rw_grads.data(), _o_rw_grads.size());
+
+    simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+    simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
+    simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
+    simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  auto norm = [&inv_batch](std::vector<double>& v)
+  auto norm = [inv_batch](std::vector<double>& v)
   {
-    for (double& x : v)
-    {
-      x *= inv_batch;
-    }
+    simd::scale_vector(v.data(), inv_batch, v.size());
   };
   norm(_w_grads);
   norm(_b_grads);

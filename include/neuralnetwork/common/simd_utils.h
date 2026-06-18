@@ -1364,5 +1364,157 @@ public:
 #endif
     scalar_add_vectors(x, y, n, j);
   }
+
+  // Scalar fallback for scale_vector
+  inline static void scalar_scale_vector(double* y, const double scale, size_t n, size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y[j] *= scale;
+    }
+  }
+
+  // Vector-scalar multiplication (y *= scale)
+  inline static void scale_vector(double* y, const double scale, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_scale = _mm256_set1_pd(scale);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_y = _mm256_loadu_pd(y + j);
+      vec_y = _mm256_mul_pd(vec_y, vec_scale);
+      _mm256_storeu_pd(y + j, vec_y);
+    }
+#endif
+    scalar_scale_vector(y, scale, n, j);
+  }
+
+  // Scalar fallback for sgd_step
+  inline static void scalar_sgd_step(
+    double* values,
+    double* grads,
+    double* velocities,
+    const double* decays,
+    double momentum,
+    double lr,
+    double clipping_scale,
+    bool is_bias,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t i = start; i < n; ++i)
+    {
+      double grad = grads[i] * clipping_scale;
+      if (!is_bias && decays != nullptr && decays[i] > 0.0)
+      {
+        grad += decays[i] * values[i];
+      }
+      double v = momentum * velocities[i] + grad;
+      values[i] -= lr * v;
+      velocities[i] = v;
+      grads[i] = grad;
+    }
+  }
+
+  // Vectorized SGD step
+  inline static void sgd_step(
+    double* values,
+    double* grads,
+    double* velocities,
+    const double* decays,
+    double momentum,
+    double lr,
+    double clipping_scale,
+    bool is_bias,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
+    __m256d vec_momentum = _mm256_set1_pd(momentum);
+    __m256d vec_lr = _mm256_set1_pd(lr);
+
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d g = _mm256_loadu_pd(&grads[j]);
+      __m256d cur_w = _mm256_loadu_pd(&values[j]);
+      __m256d cur_v = _mm256_loadu_pd(&velocities[j]);
+
+      __m256d grad = _mm256_mul_pd(g, vec_clip);
+
+      if (!is_bias && decays != nullptr)
+      {
+        __m256d d = _mm256_loadu_pd(&decays[j]);
+#ifdef SIMD_FMA_ENABLED
+        grad = _mm256_fmadd_pd(d, cur_w, grad);
+#else
+        grad = _mm256_add_pd(grad, _mm256_mul_pd(d, cur_w));
+#endif
+      }
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d next_v = _mm256_fmadd_pd(vec_momentum, cur_v, grad);
+#else
+      __m256d next_v = _mm256_add_pd(_mm256_mul_pd(vec_momentum, cur_v), grad);
+#endif
+
+      __m256d next_w = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, next_v));
+
+      _mm256_storeu_pd(&velocities[j], next_v);
+      _mm256_storeu_pd(&values[j], next_w);
+      _mm256_storeu_pd(&grads[j], grad);
+    }
+#endif
+    scalar_sgd_step(values, grads, velocities, decays, momentum, lr, clipping_scale, is_bias, n, j);
+  }
+
+  // Scalar fallback for none_step
+  inline static void scalar_none_step(
+    double* values,
+    double* grads,
+    double lr,
+    double clipping_scale,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t i = start; i < n; ++i)
+    {
+      double grad = grads[i] * clipping_scale;
+      values[i] -= lr * grad;
+      grads[i] = grad;
+    }
+  }
+
+  // Vectorized None step (plain SGD without momentum)
+  inline static void none_step(
+    double* values,
+    double* grads,
+    double lr,
+    double clipping_scale,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
+    __m256d vec_lr = _mm256_set1_pd(lr);
+
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d g = _mm256_loadu_pd(&grads[j]);
+      __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+      __m256d grad = _mm256_mul_pd(g, vec_clip);
+      __m256d next_w = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, grad));
+
+      _mm256_storeu_pd(&values[j], next_w);
+      _mm256_storeu_pd(&grads[j], grad);
+    }
+#endif
+    scalar_none_step(values, grads, lr, clipping_scale, n, j);
+  }
 };
 } // namespace myoddweb::nn

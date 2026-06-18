@@ -531,28 +531,14 @@ void Layer::apply_update_to_vector(
   switch (optimiser_type)
   {
   case OptimiserType::None:
-    for (size_t i = 0; i < n; ++i)
-    {
-      double grad = grads[i] * clipping_scale;
-      values[i] -= learning_rate * grad;
-      grads[i] = grad;
-    }
+    simd::none_step(values.data(), grads.data(), learning_rate, clipping_scale, n);
     break;
 
   case OptimiserType::SGD:
   {
-    const auto& momentum = get_momentum();
-    for (size_t i = 0; i < n; ++i)
-    {
-      double grad = grads[i] * clipping_scale;
-      if (!is_bias && i < decays.size() && decays[i] > 0.0)
-      {
-        grad += decays[i] * values[i];
-      }
-      velocities[i] = momentum * velocities[i] + grad;
-      values[i] -= learning_rate * velocities[i];
-      grads[i] = grad;
-    }
+    const double momentum = get_momentum();
+    const double* decay_ptr = (!is_bias && decays.size() >= n) ? decays.data() : nullptr;
+    simd::sgd_step(values.data(), grads.data(), velocities.data(), decay_ptr, momentum, learning_rate, clipping_scale, is_bias, n);
   }
   break;
 
