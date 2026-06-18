@@ -875,38 +875,20 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   zero_gradients();
   for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t i = 0; i < _w_grads.size(); ++i)
-    {
-      _w_grads[i] += _thread_w_grads[t][i];
-    }
-    for (size_t i = 0; i < _rw_grads.size(); ++i)
-    {
-      _rw_grads[i] += _thread_rw_grads[t][i];
-    }
+    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
     if (has_bias())
     {
-      for (size_t i = 0; i < _b_grads.size(); ++i)
-      {
-        _b_grads[i] += _thread_b_grads[t][i];
-      }
+      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  for (double& x : _w_grads)
-  {
-    x *= inv_batch;
-  }
-  for (double& x : _rw_grads)
-  {
-    x *= inv_batch;
-  }
+  simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
+  simd::scale_vector(_rw_grads.data(), inv_batch, _rw_grads.size());
   if (has_bias())
   {
-    for (double& x : _b_grads)
-    {
-      x *= inv_batch;
-    }
+    simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
   }
 }
 

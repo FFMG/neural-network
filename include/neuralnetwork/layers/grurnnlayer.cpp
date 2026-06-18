@@ -1487,37 +1487,28 @@ void GRURNNLayer::calculate_and_store_gradients(
   zero_gradients();
   for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t i = 0; i < _w_grads.size(); ++i)
-    {
-      _w_grads[i] += _thread_w_grads[t][i];
-      _z_w_grads[i] += _thread_z_w_grads[t][i];
-      _r_w_grads[i] += _thread_r_w_grads[t][i];
-    }
-    for (size_t i = 0; i < _rw_grads.size(); ++i)
-    {
-      _rw_grads[i] += _thread_rw_grads[t][i];
-      _z_rw_grads[i] += _thread_z_rw_grads[t][i];
-      _r_rw_grads[i] += _thread_r_rw_grads[t][i];
-    }
+    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+    simd::add_vectors(_thread_z_w_grads[t].data(), _z_w_grads.data(), _z_w_grads.size());
+    simd::add_vectors(_thread_r_w_grads[t].data(), _r_w_grads.data(), _r_w_grads.size());
+
+    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+    simd::add_vectors(_thread_z_rw_grads[t].data(), _z_rw_grads.data(), _z_rw_grads.size());
+    simd::add_vectors(_thread_r_rw_grads[t].data(), _r_rw_grads.data(), _r_rw_grads.size());
+
     if (has_bias())
     {
-      for (size_t i = 0; i < _b_grads.size(); ++i)
-      {
-        _b_grads[i] += _thread_b_grads[t][i];
-        _z_b_grads[i] += _thread_z_b_grads[t][i];
-        _r_b_grads[i] += _thread_r_b_grads[t][i];
-      }
+      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      simd::add_vectors(_thread_z_b_grads[t].data(), _z_b_grads.data(), _z_b_grads.size());
+      simd::add_vectors(_thread_r_b_grads[t].data(), _r_b_grads.data(), _r_b_grads.size());
     }
   }
 
   const double denom = static_cast<double>(batch_size);
+  const double inv_batch = 1.0 / denom;
   
-  const auto normalize = [&denom](std::vector<double>& grads)
+  const auto normalize = [inv_batch](std::vector<double>& grads)
   {
-    for (double& g : grads)
-    {
-      g /= denom;
-    }
+    simd::scale_vector(grads.data(), inv_batch, grads.size());
   };
 
   normalize(_w_grads);

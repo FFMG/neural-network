@@ -700,30 +700,18 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
 
   for (unsigned int t = 0; t < num_threads; ++t)
   {
-    for (size_t i = 0; i < _w_grads.size(); ++i)
-    {
-      _w_grads[i] += _thread_w_grads[t][i];
-    }
+    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
     if (has_bias())
     {
-      for (size_t i = 0; i < _b_grads.size(); ++i)
-      {
-        _b_grads[i] += _thread_b_grads[t][i];
-      }
+      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
     }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  for (double& grad : _w_grads)
-  {
-    grad *= inv_batch;
-  }
+  simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
   if (has_bias())
   {
-    for (double& grad : _b_grads)
-    {
-      grad *= inv_batch;
-    }
+    simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
   }
 }
 
