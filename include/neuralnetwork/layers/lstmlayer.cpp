@@ -1209,16 +1209,18 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       std::fill(dx_t, dx_t + N_prev, 0.0);
-      simd::gemv_add(_f_w_values.data(), df_chunk, dx_t, N_prev, N_this);
-      simd::gemv_add(_i_w_values.data(), di_chunk, dx_t, N_prev, N_this);
-      simd::gemv_add(_o_w_values.data(), do_chunk, dx_t, N_prev, N_this);
-      simd::gemv_add(_w_values.data(), dg_chunk, dx_t, N_prev, N_this);
+      simd::gemv_accumulate_four(
+        _f_w_values.data(), _i_w_values.data(), _o_w_values.data(), _w_values.data(),
+        df_chunk, di_chunk, do_chunk, dg_chunk,
+        dx_t, N_prev, N_this
+      );
 
       std::fill(dh_next, dh_next + N_this, 0.0);
-      simd::gemv_add(_f_rw_values.data(), df_chunk, dh_next, N_this, N_this);
-      simd::gemv_add(_i_rw_values.data(), di_chunk, dh_next, N_this, N_this);
-      simd::gemv_add(_o_rw_values.data(), do_chunk, dh_next, N_this, N_this);
-      simd::gemv_add(_rw_values.data(), dg_chunk, dh_next, N_this, N_this);
+      simd::gemv_accumulate_four(
+        _f_rw_values.data(), _i_rw_values.data(), _o_rw_values.data(), _rw_values.data(),
+        df_chunk, di_chunk, do_chunk, dg_chunk,
+        dh_next, N_this, N_this
+      );
 
       double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);
