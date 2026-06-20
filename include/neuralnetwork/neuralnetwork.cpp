@@ -1,5 +1,6 @@
 #include "common/logger.h"
 #include "neuralnetwork.h"
+#include "common/simd_utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1337,6 +1338,15 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, helper->training_indexes().size(), " training samples.");
   Logger::info(tab, helper->checking_indexes().size(), " in training error check samples.");
   Logger::info(tab, helper->final_check_indexes().size(), " final error check samples.");
+#ifdef SIMD_AVX2_ENABLED
+  #ifdef SIMD_FMA_ENABLED
+  Logger::info(tab, "SIMD support               : AVX2 and FMA enabled");
+  #else
+  Logger::info(tab, "SIMD support               : AVX2 enabled");
+  #endif
+#else
+  Logger::info(tab, "SIMD support               : none (scalar fallback)");
+#endif
   Logger::info(tab, "Data is shuffled           : ", options().shuffle_training_data() ? "true" : "false");
   Logger::info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
   Logger::info(tab, "  Decay rate               : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
