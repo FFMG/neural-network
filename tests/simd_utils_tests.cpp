@@ -592,6 +592,144 @@ TEST(SimdUtilsTest, GemvAdd)
   }
 }
 
+TEST(SimdUtilsTest, GemvAccumulateTwo)
+{
+  std::vector<size_t> rows_list = { 1, 2, 3, 4, 7, 8 };
+  std::vector<size_t> cols_list = { 1, 2, 3, 4, 7, 8, 15, 16 };
+  for (size_t rows : rows_list)
+  {
+    for (size_t cols : cols_list)
+    {
+      std::vector<double> A0(rows * cols);
+      std::vector<double> A1(rows * cols);
+      for (size_t i = 0; i < A0.size(); ++i)
+      {
+        A0[i] = static_cast<double>(i) * 0.1;
+        A1[i] = static_cast<double>(i) * -0.05 + 0.2;
+      }
+      std::vector<double> x0(cols);
+      std::vector<double> x1(cols);
+      for (size_t i = 0; i < cols; ++i)
+      {
+        x0[i] = static_cast<double>(i) * 0.5 + 1.0;
+        x1[i] = static_cast<double>(i) * -0.3 + 0.8;
+      }
+      std::vector<double> y(rows, 2.0);
+      std::vector<double> expected_y = y;
+
+      // Calculate expected
+      for (size_t i = 0; i < rows; ++i)
+      {
+        double sum = 0.0;
+        for (size_t j = 0; j < cols; ++j)
+        {
+          sum += A0[i * cols + j] * x0[j] + A1[i * cols + j] * x1[j];
+        }
+        expected_y[i] += sum;
+      }
+
+      simd::gemv_accumulate_two(A0.data(), A1.data(), x0.data(), x1.data(), y.data(), rows, cols);
+      expect_vec_near(y, expected_y);
+    }
+  }
+}
+
+TEST(SimdUtilsTest, GemvAccumulateThree)
+{
+  std::vector<size_t> rows_list = { 1, 2, 3, 4, 7, 8 };
+  std::vector<size_t> cols_list = { 1, 2, 3, 4, 7, 8, 15, 16 };
+  for (size_t rows : rows_list)
+  {
+    for (size_t cols : cols_list)
+    {
+      std::vector<double> A0(rows * cols);
+      std::vector<double> A1(rows * cols);
+      std::vector<double> A2(rows * cols);
+      for (size_t i = 0; i < A0.size(); ++i)
+      {
+        A0[i] = static_cast<double>(i) * 0.1;
+        A1[i] = static_cast<double>(i) * -0.05 + 0.2;
+        A2[i] = static_cast<double>(i) * 0.08 - 0.1;
+      }
+      std::vector<double> x0(cols);
+      std::vector<double> x1(cols);
+      std::vector<double> x2(cols);
+      for (size_t i = 0; i < cols; ++i)
+      {
+        x0[i] = static_cast<double>(i) * 0.5 + 1.0;
+        x1[i] = static_cast<double>(i) * -0.3 + 0.8;
+        x2[i] = static_cast<double>(i) * 0.25 - 0.4;
+      }
+      std::vector<double> y(rows, 2.0);
+      std::vector<double> expected_y = y;
+
+      // Calculate expected
+      for (size_t i = 0; i < rows; ++i)
+      {
+        double sum = 0.0;
+        for (size_t j = 0; j < cols; ++j)
+        {
+          sum += A0[i * cols + j] * x0[j] + A1[i * cols + j] * x1[j] + A2[i * cols + j] * x2[j];
+        }
+        expected_y[i] += sum;
+      }
+
+      simd::gemv_accumulate_three(A0.data(), A1.data(), A2.data(), x0.data(), x1.data(), x2.data(), y.data(), rows, cols);
+      expect_vec_near(y, expected_y);
+    }
+  }
+}
+
+TEST(SimdUtilsTest, GemvAccumulateFour)
+{
+  std::vector<size_t> rows_list = { 1, 2, 3, 4, 7, 8 };
+  std::vector<size_t> cols_list = { 1, 2, 3, 4, 7, 8, 15, 16 };
+  for (size_t rows : rows_list)
+  {
+    for (size_t cols : cols_list)
+    {
+      std::vector<double> A0(rows * cols);
+      std::vector<double> A1(rows * cols);
+      std::vector<double> A2(rows * cols);
+      std::vector<double> A3(rows * cols);
+      for (size_t i = 0; i < A0.size(); ++i)
+      {
+        A0[i] = static_cast<double>(i) * 0.1;
+        A1[i] = static_cast<double>(i) * -0.05 + 0.2;
+        A2[i] = static_cast<double>(i) * 0.08 - 0.1;
+        A3[i] = static_cast<double>(i) * -0.12 + 0.15;
+      }
+      std::vector<double> x0(cols);
+      std::vector<double> x1(cols);
+      std::vector<double> x2(cols);
+      std::vector<double> x3(cols);
+      for (size_t i = 0; i < cols; ++i)
+      {
+        x0[i] = static_cast<double>(i) * 0.5 + 1.0;
+        x1[i] = static_cast<double>(i) * -0.3 + 0.8;
+        x2[i] = static_cast<double>(i) * 0.25 - 0.4;
+        x3[i] = static_cast<double>(i) * -0.15 + 0.5;
+      }
+      std::vector<double> y(rows, 2.0);
+      std::vector<double> expected_y = y;
+
+      // Calculate expected
+      for (size_t i = 0; i < rows; ++i)
+      {
+        double sum = 0.0;
+        for (size_t j = 0; j < cols; ++j)
+        {
+          sum += A0[i * cols + j] * x0[j] + A1[i * cols + j] * x1[j] + A2[i * cols + j] * x2[j] + A3[i * cols + j] * x3[j];
+        }
+        expected_y[i] += sum;
+      }
+
+      simd::gemv_accumulate_four(A0.data(), A1.data(), A2.data(), A3.data(), x0.data(), x1.data(), x2.data(), x3.data(), y.data(), rows, cols);
+      expect_vec_near(y, expected_y);
+    }
+  }
+}
+
 TEST(SimdUtilsTest, AddVectors)
 {
   std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16 };

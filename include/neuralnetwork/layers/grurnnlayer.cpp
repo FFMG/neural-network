@@ -1143,14 +1143,11 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
       // Calculate Reset gate gradients and backpropagate to previous hidden state
       simd::gru_bptt_reset_step(N_this, temp_Uh_ptr, h_prev_vals, r_vals, dh_prev_accum, dr_ptr, dh_next);
-      simd::gemv_add(_z_rw_values.data(), dz_ptr, dh_next, N_this, N_this);
-      simd::gemv_add(_r_rw_values.data(), dr_ptr, dh_next, N_this, N_this);
+      simd::gemv_accumulate_two(_z_rw_values.data(), _r_rw_values.data(), dz_ptr, dr_ptr, dh_next, N_this, N_this);
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       std::fill_n(dx_t, N_prev, 0.0);
-      simd::gemv_add(_z_w_values.data(), dz_ptr, dx_t, N_prev, N_this);
-      simd::gemv_add(_r_w_values.data(), dr_ptr, dx_t, N_prev, N_this);
-      simd::gemv_add(_w_values.data(), dh_hat_ptr, dx_t, N_prev, N_this);
+      simd::gemv_accumulate_three(_z_w_values.data(), _r_w_values.data(), _w_values.data(), dz_ptr, dr_ptr, dh_hat_ptr, dx_t, N_prev, N_this);
 
       double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);
