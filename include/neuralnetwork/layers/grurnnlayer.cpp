@@ -1141,20 +1141,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       double* dh_prev_accum = &dh_prev_accum_ptr_all[b_idx * N_this];
       double* dh_next = &d_next_h_ptr_all[b_idx * N_this];
 
-      // Calculate Reset gate gradients for all neurons first
-      for (size_t k = 0; k < N_this; ++k)
-      {
-        double grad_rh = temp_Uh_ptr[k];
-        double h_prev = (h_prev_vals) ? h_prev_vals[k] : 0.0;
-        double r = r_vals[k];
-        dr_ptr[k] = grad_rh * h_prev * r * (1.0 - r);
-      }
-
-      // Now backpropagate to previous hidden state
-      for (size_t k = 0; k < N_this; ++k)
-      {
-        dh_next[k] = dh_prev_accum[k] + temp_Uh_ptr[k] * r_vals[k];
-      }
+      // Calculate Reset gate gradients and backpropagate to previous hidden state
+      simd::gru_bptt_reset_step(N_this, temp_Uh_ptr, h_prev_vals, r_vals, dh_prev_accum, dr_ptr, dh_next);
       simd::gemv_add(_z_rw_values.data(), dz_ptr, dh_next, N_this, N_this);
       simd::gemv_add(_r_rw_values.data(), dr_ptr, dh_next, N_this, N_this);
 

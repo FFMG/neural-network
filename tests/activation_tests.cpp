@@ -297,8 +297,9 @@ TEST_F(ActivationTest, VectorizedActivateAndDerivative)
         << "Vectorized activate_derivative mismatch for " << activation::method_to_string(method) << " at index " << i;
     }
 
-    // Vectorized activate_derivative test (with y_begin for tanh/sigmoid)
-    if (method == activation::method::tanh || method == activation::method::sigmoid)
+    // Vectorized activate_derivative test (with y_begin for tanh/sigmoid/elu/selu)
+    if (method == activation::method::tanh || method == activation::method::sigmoid ||
+        method == activation::method::elu || method == activation::method::selu)
     {
       std::vector<double> y_vals(test_values.size());
       for (size_t i = 0; i < test_values.size(); ++i)
@@ -311,14 +312,22 @@ TEST_F(ActivationTest, VectorizedActivateAndDerivative)
 
       for (size_t i = 0; i < deriv_out_y.size(); ++i)
       {
-        double expected_y_deriv;
+        double expected_y_deriv = 0.0;
         if (method == activation::method::tanh)
         {
           expected_y_deriv = 1.0 - y_vals[i] * y_vals[i];
         }
-        else
+        else if (method == activation::method::sigmoid)
         {
           expected_y_deriv = y_vals[i] * (1.0 - y_vals[i]);
+        }
+        else if (method == activation::method::elu)
+        {
+          expected_y_deriv = test_values[i] > 0.0 ? 1.0 : y_vals[i] + 0.5;
+        }
+        else if (method == activation::method::selu)
+        {
+          expected_y_deriv = test_values[i] > 0.0 ? 1.0507 : y_vals[i] + (1.0507 * 1.67326);
         }
         EXPECT_NEAR(expected_y_deriv, deriv_out_y[i], tolerance)
           << "Vectorized activate_derivative with y mismatch for " << activation::method_to_string(method) << " at index " << i;

@@ -300,6 +300,7 @@ void FFOutputLayer::run_output_gradients(
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
+      const double* y_vals = current_hidden_state.get_hidden_state_values().data();
 
       for (size_t h = 0; h < ranges.size(); ++h)
       {
@@ -322,7 +323,7 @@ void FFOutputLayer::run_output_gradients(
           activation.activate_derivative(
             pre_act + r.start,
             pre_act + r.end,
-            nullptr,
+            y_vals + r.start,
             deriv_buf.data() + r.start
           );
           for (unsigned i = r.start; i < r.end; ++i)

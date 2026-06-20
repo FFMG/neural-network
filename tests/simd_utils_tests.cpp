@@ -163,6 +163,30 @@ TEST(SimdUtilsTest, ScalarGruBpttGateStep) {
   expect_vec_near(dh_prev_accum_out, expected_dh_prev);
 }
 
+TEST(SimdUtilsTest, ScalarGruBpttResetStep) {
+  const size_t n = 5;
+  std::vector<double> temp_Uh = { 0.1, 0.2, 0.3, 0.4, 0.5 };
+  std::vector<double> h_prev_vals = { 0.15, 0.25, 0.35, 0.45, 0.55 };
+  std::vector<double> r_vals = { 0.6, 0.7, 0.8, 0.9, 1.0 };
+  std::vector<double> dh_prev_accum = { 0.05, 0.06, 0.07, 0.08, 0.09 };
+
+  std::vector<double> dr_out(n);
+  std::vector<double> dh_next_out(n);
+
+  std::vector<double> expected_dr(n);
+  std::vector<double> expected_dh_next(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    expected_dr[i] = temp_Uh[i] * h_prev_vals[i] * r_vals[i] * (1.0 - r_vals[i]);
+    expected_dh_next[i] = dh_prev_accum[i] + temp_Uh[i] * r_vals[i];
+  }
+
+  simd::scalar_gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_out.data(), dh_next_out.data());
+
+  expect_vec_near(dr_out, expected_dr);
+  expect_vec_near(dh_next_out, expected_dh_next);
+}
+
 TEST(SimdUtilsTest, ScalarLstmBpttGateStep) {
   const size_t n = 5;
   std::vector<double> dh_curr = { 0.1, 0.2, 0.3, 0.4, 0.5 };
@@ -382,6 +406,52 @@ TEST(SimdUtilsTest, GruBpttGateStep) {
   expect_vec_near(dz_out, expected_dz);
   expect_vec_near(dh_hat_out, expected_dh_hat);
   expect_vec_near(dh_prev_accum_out, expected_dh_prev);
+}
+
+TEST(SimdUtilsTest, GruBpttResetStep) {
+  const size_t n = 5;
+  std::vector<double> temp_Uh = { 0.1, 0.2, 0.3, 0.4, 0.5 };
+  std::vector<double> h_prev_vals = { 0.15, 0.25, 0.35, 0.45, 0.55 };
+  std::vector<double> r_vals = { 0.6, 0.7, 0.8, 0.9, 1.0 };
+  std::vector<double> dh_prev_accum = { 0.05, 0.06, 0.07, 0.08, 0.09 };
+
+  std::vector<double> dr_out(n);
+  std::vector<double> dh_next_out(n);
+
+  std::vector<double> expected_dr(n);
+  std::vector<double> expected_dh_next(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    expected_dr[i] = temp_Uh[i] * h_prev_vals[i] * r_vals[i] * (1.0 - r_vals[i]);
+    expected_dh_next[i] = dh_prev_accum[i] + temp_Uh[i] * r_vals[i];
+  }
+
+  simd::gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_out.data(), dh_next_out.data());
+
+  expect_vec_near(dr_out, expected_dr);
+  expect_vec_near(dh_next_out, expected_dh_next);
+}
+
+TEST(SimdUtilsTest, GruBpttResetStepNullPrev) {
+  const size_t n = 5;
+  std::vector<double> temp_Uh = { 0.1, 0.2, 0.3, 0.4, 0.5 };
+  std::vector<double> r_vals = { 0.6, 0.7, 0.8, 0.9, 1.0 };
+  std::vector<double> dh_prev_accum = { 0.05, 0.06, 0.07, 0.08, 0.09 };
+
+  std::vector<double> dr_out(n);
+  std::vector<double> dh_next_out(n);
+
+  std::vector<double> expected_dr(n, 0.0);
+  std::vector<double> expected_dh_next(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    expected_dh_next[i] = dh_prev_accum[i] + temp_Uh[i] * r_vals[i];
+  }
+
+  simd::gru_bptt_reset_step(n, temp_Uh.data(), nullptr, r_vals.data(), dh_prev_accum.data(), dr_out.data(), dh_next_out.data());
+
+  expect_vec_near(dr_out, expected_dr);
+  expect_vec_near(dh_next_out, expected_dh_next);
 }
 
 TEST(SimdUtilsTest, LstmBpttGateStep) {

@@ -388,15 +388,65 @@ void activation::activate_derivative(const double* begin, const double* end, con
     }
     break;
   case method::selu:
-    for (size_t i = 0; i < size; ++i)
+    if (y_begin != nullptr)
     {
-      out[i] = SELU_LAMBDA * (begin[i] > 0.0 ? 1.0 : SELU_ALPHA * std::exp(begin[i]));
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      __m256d vec_lambda = _mm256_set1_pd(SELU_LAMBDA);
+      __m256d vec_lambda_alpha = _mm256_set1_pd(SELU_LAMBDA * SELU_ALPHA);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d y = _mm256_loadu_pd(y_begin + i);
+        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
+        __m256d res_neg = _mm256_add_pd(y, vec_lambda_alpha);
+        __m256d res = _mm256_blendv_pd(res_neg, vec_lambda, mask);
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        out[i] = begin[i] > 0.0 ? SELU_LAMBDA : y_begin[i] + (SELU_LAMBDA * SELU_ALPHA);
+      }
+    }
+    else
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        out[i] = SELU_LAMBDA * (begin[i] > 0.0 ? 1.0 : SELU_ALPHA * std::exp(begin[i]));
+      }
     }
     break;
   case method::elu:
-    for (size_t i = 0; i < size; ++i)
+    if (y_begin != nullptr)
     {
-      out[i] = begin[i] > 0.0 ? 1.0 : _alpha * std::exp(begin[i]);
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_zero = _mm256_setzero_pd();
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      __m256d vec_alpha = _mm256_set1_pd(_alpha);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d v = _mm256_loadu_pd(begin + i);
+        __m256d y = _mm256_loadu_pd(y_begin + i);
+        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
+        __m256d res_neg = _mm256_add_pd(y, vec_alpha);
+        __m256d res = _mm256_blendv_pd(res_neg, vec_one, mask);
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
+      for (; i < size; ++i)
+      {
+        out[i] = begin[i] > 0.0 ? 1.0 : y_begin[i] + _alpha;
+      }
+    }
+    else
+    {
+      for (size_t i = 0; i < size; ++i)
+      {
+        out[i] = begin[i] > 0.0 ? 1.0 : _alpha * std::exp(begin[i]);
+      }
     }
     break;
   case method::swish:
