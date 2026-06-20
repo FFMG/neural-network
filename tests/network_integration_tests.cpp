@@ -383,3 +383,18 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergence)
   EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
   EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
 }
+
+TEST(NetworkIntegrationTest, LogTrainingInfo)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { {0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+
+  nn.train(inputs, outputs);
+}
