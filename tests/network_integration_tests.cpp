@@ -6,6 +6,7 @@
 #include "layers/ffoutputlayer.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
+#include "helpers/neuralnetworkserializer.h"
 #include "test_helper.h"
 #include <vector>
 
@@ -398,3 +399,31 @@ TEST(NetworkIntegrationTest, LogTrainingInfo)
 
   nn.train(inputs, outputs);
 }
+
+TEST(NetworkIntegrationTest, LogTrainingInfoOptionAndSerialization)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(1)
+    .with_log_training_info(false)
+    .build();
+
+  EXPECT_FALSE(options.log_training_info());
+
+  NeuralNetwork nn(options);
+  
+  std::vector<std::vector<double>> inputs = { {0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_nn_log_option.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_FALSE(loaded_nn->options().log_training_info());
+
+  std::remove(test_path.c_str());
+}
+

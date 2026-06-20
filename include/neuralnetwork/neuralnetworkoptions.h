@@ -1,17 +1,17 @@
-﻿#pragma once
+#pragma once
 #include <functional>
 #include <vector>
 
 #include "libraries/instrumentor.h"
 
 #include "common/activation.h"
+#include "common/logger.h"
+#include "common/optimiser.h"
 #include "helpers/errorcalculation.h"
+#include "helpers/neuralnetworkhelper.h"
 #include "layers/layer.h"
 #include "layers/layerdetails.h"
-#include "common/logger.h"
-#include "helpers/neuralnetworkhelper.h"
 #include "layers/multioutputlayerdetails.h"
-#include "common/optimiser.h"
 #include "layers/outputlayerdetails.h"
 
 
@@ -44,7 +44,8 @@ private:
     _enable_bptt(true),
     _bptt_max_ticks(0),
     _update_training_monitor_percent(0.0),
-    _has_bias(true)
+    _has_bias(true),
+    _log_training_info(true)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -121,6 +122,7 @@ public:
       _final_error_calculation_types = nno._final_error_calculation_types;
       _has_bias = nno._has_bias;
       _multi_output_layer_details = nno._multi_output_layer_details;
+      _log_training_info = nno._log_training_info;
     }
     return *this;
   }
@@ -156,6 +158,7 @@ public:
       _update_training_monitor_percent = nno._update_training_monitor_percent;
       _has_bias = nno._has_bias;
       _multi_output_layer_details = std::move(nno._multi_output_layer_details);
+      _log_training_info = nno._log_training_info;
       
       nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
@@ -173,6 +176,7 @@ public:
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
       nno._has_bias = true;
+      nno._log_training_info = true;
       nno._learning_rate_decay_rate = 0;
       nno._adaptive_learning_rate = false;
       nno._learning_rate_restart_rate = 0;
@@ -185,6 +189,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _has_bias = has_bias;
+    return *this;
+  }
+  NeuralNetworkOptions& with_log_training_info(bool log_training_info)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _log_training_info = log_training_info;
     return *this;
   }
   NeuralNetworkOptions& with_output_layer_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
@@ -502,7 +512,8 @@ public:
       .with_shuffle_bptt_batches(true)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(0)
-      .with_update_training_monitor_percent(0.0);
+      .with_update_training_monitor_percent(0.0)
+      .with_log_training_info(true);
   }
 
   [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -530,6 +541,7 @@ public:
   [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
   [[nodiscard]] inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
   [[nodiscard]] inline bool has_bias() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _has_bias; }
+  [[nodiscard]] inline bool log_training_info() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_training_info; }
   [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
 
@@ -560,5 +572,6 @@ private:
   int _bptt_max_ticks;
   double _update_training_monitor_percent;
   bool _has_bias;
+  bool _log_training_info;
 };
 } // namespace myoddweb::nn
