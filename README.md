@@ -238,6 +238,7 @@ These options control the overall execution of the training process:
 *   **`number_of_threads`:** Controls multi-threaded execution for GEMM and layer operations.
 *   **`progress_callback`:** A lambda or function called after each epoch to monitor error metrics and progress.
 *   **`has_bias`:** Global toggle to enable or disable bias neurons for all layers.
+*   **`log_training_info`:** Toggle to enable or disable printing training statistics/configurations to the log output at the start of training (defaults to `true`).
 
 ```cpp
     auto options = NeuralNetworkOptions::create(topology)
@@ -245,6 +246,7 @@ These options control the overall execution of the training process:
       .with_batch_size(32)
       .with_number_of_threads(8)
       .with_has_bias(true)
+      .with_log_training_info(true)
       .with_progress_callback([](NeuralNetworkHelper& helper) {
           Logger::info("Epoch: ", helper.epoch(), " Error: ", helper.error());
           return true; // Return false to stop training early

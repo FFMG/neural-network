@@ -1327,6 +1327,10 @@ void NeuralNetwork::log_training_info(
   const std::vector<std::vector<double>>& training_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (!_options.log_training_info())
+  {
+    return;
+  }
   const char* tab = "  ";
   std::shared_ptr<NeuralNetworkHelper> helper;
   {
