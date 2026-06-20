@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/layer.h"
 #include "test_helper.h"
 #include <vector>
@@ -157,3 +157,39 @@ TEST_F(LayerOptimizerTest, ClippingRobustness) {
     // Non-finite gradient should panic
     EXPECT_ANY_THROW(layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, std::nan(""), 0.01, 1.0, OptimiserType::SGD, 0));
 }
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorSlice) {
+    MockOptimizerLayer layer(10, 1);
+    std::vector<double> values = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
+    std::vector<double> grads = { 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2 };
+    std::vector<double> velocities = { 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5 };
+    std::vector<double> m1, m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
+    
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::SGD, 3, 4);
+    
+    for (size_t i = 0; i < 3; ++i)
+    {
+      EXPECT_NEAR(values[i], 1.0, 1e-9);
+      EXPECT_NEAR(grads[i], 0.2, 1e-9);
+      EXPECT_NEAR(velocities[i], 0.5, 1e-9);
+    }
+    for (size_t i = 7; i < 10; ++i)
+    {
+      EXPECT_NEAR(values[i], 1.0, 1e-9);
+      EXPECT_NEAR(grads[i], 0.2, 1e-9);
+      EXPECT_NEAR(velocities[i], 0.5, 1e-9);
+    }
+    
+    for (size_t i = 3; i < 7; ++i)
+    {
+      EXPECT_NEAR(values[i], 0.997, 1e-9);
+      EXPECT_NEAR(grads[i], 0.3, 1e-9);
+      EXPECT_NEAR(velocities[i], 0.3, 1e-9);
+    }
+}
+

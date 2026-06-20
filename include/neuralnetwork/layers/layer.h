@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 
@@ -699,7 +699,9 @@ public:
     double learning_rate,
     double clipping_scale,
     bool is_bias,
-    OptimiserType optimiser_type);
+    OptimiserType optimiser_type,
+    size_t start = 0,
+    size_t count = 0);
 
   void apply_update_to_weight(
     std::vector<double>& values,
