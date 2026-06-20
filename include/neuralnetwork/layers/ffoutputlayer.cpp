@@ -629,24 +629,14 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
     // 1. Update weights for this head
     for (unsigned i = 0; i < num_inputs; ++i)
     {
-      for (unsigned s = 0; s < section_size; ++s)
-      {
-        const unsigned neuron_number = current_output_neuron + s;
-        const unsigned weight_index = i * num_outputs + neuron_number;
-
-        // Use the Layer base class method, passing the head-specific optimizer and state vectors
-        apply_update_to_weight(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, weight_index, _w_grads[weight_index], learning_rate, clipping_scale, optimiser_type, neuron_number);
-      }
+      const unsigned start_weight_index = i * num_outputs + current_output_neuron;
+      apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, optimiser_type, start_weight_index, section_size);
     }
 
     // 2. Update biases for this head (if they exist)
     if (has_bias())
     {
-      for (unsigned s = 0; s < section_size; ++s)
-      {
-        const unsigned neuron_number = current_output_neuron + s;
-        apply_update_to_weight(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, neuron_number, _b_grads[neuron_number], learning_rate, clipping_scale, optimiser_type, neuron_number);
-      }
+      apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, optimiser_type, current_output_neuron, section_size);
     }
 
     current_output_neuron += section_size;
