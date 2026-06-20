@@ -5393,6 +5393,18 @@ namespace TinyJSON
 
   void TJValueObject::raise_key_not_found(const TJCHAR* key, bool is_strict) const
   {
+    if (is_strict)
+    {
+      raise_key_not_found(key, parse_options::message_type::fatal);
+    }
+    else
+    {
+      raise_key_not_found(key, parse_options::message_type::warning);
+    }
+  }
+
+  void TJValueObject::raise_key_not_found(const TJCHAR* key, parse_options::message_type type) const
+  {
     if (key == nullptr)
     {
       return;
@@ -5424,7 +5436,7 @@ namespace TinyJSON
 
     msg[total_len] = 0;
 
-    if (is_strict)
+    if (type == parse_options::message_type::fatal)
     {
       _parse_options.callback_function(parse_options::message_type::fatal, msg);
       if (_parse_options.throw_exception)
@@ -5441,7 +5453,7 @@ namespace TinyJSON
     }
     else
     {
-      _parse_options.callback_function(parse_options::message_type::warning, msg);
+      _parse_options.callback_function(type, msg);
     }
 
     delete[] msg;

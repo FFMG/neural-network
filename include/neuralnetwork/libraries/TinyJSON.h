@@ -1145,12 +1145,16 @@ class TJDictionary;
     }
 
     template<typename T>
-    T get_or(const TJCHAR* key, const T& if_has_no_value) const noexcept
+    T get_or(const TJCHAR* key, const T& if_has_no_value, bool case_sensitive = true) const noexcept
     {
+      if (!has_key(key, case_sensitive))
+      {
+        raise_key_not_found(key, parse_options::message_type::trace);
+        return if_has_no_value;
+      }
       try
       {
-        auto value = get<T>(key);
-        return value;
+        return get<T>(key, case_sensitive);
       }
       catch (...)
       {
@@ -1160,6 +1164,7 @@ class TJDictionary;
 
   private:
     void raise_key_not_found(const TJCHAR* key, bool is_strict) const;
+    void raise_key_not_found(const TJCHAR* key, parse_options::message_type type) const;
     template<typename V>
     std::vector<V> get_vector_internal(const TJCHAR* key, bool case_sensitive, std::true_type) const
     {
@@ -1271,6 +1276,12 @@ class TJDictionary;
     void set_numbers(const std::string& key, const std::vector<T>& values)
     {
       set_numbers(key.c_str(), values);
+    }
+
+    template<typename T>
+    T get_or(const std::string& key, const T& if_has_no_value, bool case_sensitive = true) const noexcept
+    {
+      return get_or<T>(key.c_str(), if_has_no_value, case_sensitive);
     }
 #endif
 
