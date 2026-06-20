@@ -779,6 +779,61 @@ public:
     scalar_gru_bptt_gate_step(n, grad_next, d_next_h, z_vals, h_hat_vals, h_prev_vals, h_hat_pre_vals, mask_vals, dz_out, dh_hat_out, dh_prev_accum_out, h_hat_pre_deriv_vals, j);
   }
 
+  // Scalar fallback for gru_bptt_reset_step
+  inline static void scalar_gru_bptt_reset_step(
+    size_t n,
+    const double* temp_Uh,
+    const double* h_prev_vals,
+    const double* r_vals,
+    const double* dh_prev_accum,
+    double* dr_out,
+    double* dh_next_out,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      double grad_rh = temp_Uh[j];
+      double h_prev = (h_prev_vals != nullptr) ? h_prev_vals[j] : 0.0;
+      double r = r_vals[j];
+      dr_out[j] = grad_rh * h_prev * r * (1.0 - r);
+      dh_next_out[j] = dh_prev_accum[j] + grad_rh * r;
+    }
+  }
+
+  // GRU BPTT Reset Gate Step
+  inline static void gru_bptt_reset_step(
+    size_t n,
+    const double* temp_Uh,
+    const double* h_prev_vals,
+    const double* r_vals,
+    const double* dh_prev_accum,
+    double* dr_out,
+    double* dh_next_out) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d grad_rh = _mm256_loadu_pd(&temp_Uh[j]);
+      __m256d h_prev = (h_prev_vals != nullptr) ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
+      __m256d r = _mm256_loadu_pd(&r_vals[j]);
+      __m256d dh_prev = _mm256_loadu_pd(&dh_prev_accum[j]);
+
+      // dr = grad_rh * h_prev * r * (1.0 - r)
+      __m256d dr = _mm256_mul_pd(_mm256_mul_pd(grad_rh, h_prev), _mm256_mul_pd(r, _mm256_sub_pd(one, r)));
+      
+      // dh_next = dh_prev + grad_rh * r
+      __m256d dh_next = _mm256_add_pd(dh_prev, _mm256_mul_pd(grad_rh, r));
+
+      _mm256_storeu_pd(&dr_out[j], dr);
+      _mm256_storeu_pd(&dh_next_out[j], dh_next);
+    }
+#endif
+    scalar_gru_bptt_reset_step(n, temp_Uh, h_prev_vals, r_vals, dh_prev_accum, dr_out, dh_next_out, j);
+  }
+
   // Scalar fallback for lstm_bptt_gate_step
   inline static void scalar_lstm_bptt_gate_step(
     size_t n,

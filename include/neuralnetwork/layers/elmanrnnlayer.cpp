@@ -685,7 +685,7 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
       const double* pre_act = state.get_pre_activation_sums().data();
       double* deriv_buf = &workspace.deriv_buf[b_idx * N_this];
 
-      get_activation().activate_derivative(pre_act, pre_act + N_this, nullptr, deriv_buf);
+      get_activation().activate_derivative(pre_act, pre_act + N_this, state.get_hidden_state_values().data(), deriv_buf);
 
       for (size_t j = 0; j < N_this; ++j)
       {
