@@ -788,8 +788,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       for (size_t i = 0; i < total_sequences; i += batch_size)
       {
         const size_t current_batch_size = std::min(static_cast<size_t>(batch_size), total_sequences - i);
-        auto inputs_it = bptt_in.begin() + i;
-        auto outputs_it = bptt_out.begin() + i;
+        std::vector<std::vector<double>>::const_iterator inputs_it = bptt_in.cbegin() + i;
+        std::vector<std::vector<double>>::const_iterator outputs_it = bptt_out.cbegin() + i;
         _layers.train(_options, _learning_rate, inputs_it, outputs_it, current_batch_size);
       }
     }
