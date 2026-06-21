@@ -797,10 +797,13 @@ void FFLayer::run_post_gemm_backward(
           y_vals + r.start,
           deriv_buf.data() + r.start
         );
-        for (size_t i = r.start; i < r.end; i++)
-        {
-          rnn_grads_row[t * N_this + i] = g_this_row[i] * deriv_buf[i] * mask_vals[i];
-        }
+        simd::mul_three_vectors(
+          g_this_row + r.start,
+          deriv_buf.data() + r.start,
+          mask_vals + r.start,
+          rnn_grads_row.data() + t * N_this + r.start,
+          r.end - r.start
+        );
       }
     }
 

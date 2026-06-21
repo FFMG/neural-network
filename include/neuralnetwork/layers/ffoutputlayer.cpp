@@ -313,10 +313,12 @@ void FFOutputLayer::run_output_gradients(
 
         if (skip_derivative)
         {
-          for (unsigned i = r.start; i < r.end; ++i)
-          {
-            rnn_grads_row[t * num_neurons + i] = deltas[i] * mask_vals[i];
-          }
+          simd::mul_vectors(
+            deltas.data() + r.start,
+            mask_vals + r.start,
+            rnn_grads_row.data() + t * num_neurons + r.start,
+            r.end - r.start
+          );
         }
         else
         {
@@ -326,10 +328,13 @@ void FFOutputLayer::run_output_gradients(
             y_vals + r.start,
             deriv_buf.data() + r.start
           );
-          for (unsigned i = r.start; i < r.end; ++i)
-          {
-            rnn_grads_row[t * num_neurons + i] = deltas[i] * deriv_buf[i] * mask_vals[i];
-          }
+          simd::mul_three_vectors(
+            deltas.data() + r.start,
+            deriv_buf.data() + r.start,
+            mask_vals + r.start,
+            rnn_grads_row.data() + t * num_neurons + r.start,
+            r.end - r.start
+          );
         }
       }
     }

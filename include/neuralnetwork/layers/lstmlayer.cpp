@@ -1152,12 +1152,8 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       }
 #endif
 
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        // Apply dropout mask stored during forward feed
-        const double mask = packed[GateCount * N_this + j];
-        dh_curr[j] = std::clamp((upstream_grads[j] + dh_next[j]) * mask, -50.0, 50.0);
-      }
+      // Apply dropout mask stored during forward feed and compute clamped dh_curr
+      simd::lstm_bptt_upstream_step(upstream_grads, dh_next, &packed[GateCount * N_this], dh_curr, N_this);
 
       const double* df_ptr = &packed[0];
       const double* di_ptr = &packed[N_this];
