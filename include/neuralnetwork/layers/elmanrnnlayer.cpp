@@ -364,7 +364,7 @@ void ElmanRNNLayer::calculate_forward_feed(
         get_activation().activate(pre_t, pre_t + N_this, is_training);
 
         std::fill(mask.begin(), mask.end(), 1.0);
-        if (is_training)
+        if (is_training && get_dropout() > 0.0)
         {
           const auto& neurons = get_neurons();
           for (size_t j = 0; j < N_this; ++j)
@@ -391,12 +391,8 @@ void ElmanRNNLayer::calculate_forward_feed(
         }
         else
         {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            double out = pre_t[j];
-            current_h[j] = out;
-            batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
-          }
+          std::copy(pre_t, pre_t + N_this, current_h.data());
+          std::copy(pre_t, pre_t + N_this, &batch_output_sequences[(b * num_time_steps + t) * N_this]);
         }
         state.set_cell_state_values(mask.data(), N_this);
         state.set_hidden_state_values(current_h.data(), N_this);

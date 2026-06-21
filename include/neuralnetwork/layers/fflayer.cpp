@@ -420,7 +420,7 @@ void FFLayer::run_post_gemm(
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-        if (is_training)
+        if (is_training && get_dropout() > 0.0)
         {
           const auto& neurons = get_neurons();
           for (size_t j = r.start; j < r.end; j++)
