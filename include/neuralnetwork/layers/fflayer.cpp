@@ -252,10 +252,15 @@ void FFLayer::calculate_forward_feed(
   if (has_bias())
   {
     const auto& biases = get_b_values();
+    const size_t copy_size = std::min<size_t>(biases.size(), N_this);
     for (size_t eb = 0; eb < effective_batch_size; eb++)
     {
       double* dest = &batch_pre_activation_sums_buffer[eb * N_this];
-      std::copy(biases.begin(), biases.end(), dest);
+      std::copy(biases.begin(), biases.begin() + copy_size, dest);
+      if (copy_size < N_this)
+      {
+        std::fill(dest + copy_size, dest + N_this, 0.0);
+      }
     }
   }
 

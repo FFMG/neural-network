@@ -449,9 +449,16 @@ void ElmanRNNLayer::pre_calculate_gates(
 
   if (has_bias())
   {
+    const auto& biases = get_b_values();
+    const size_t copy_size = std::min<size_t>(biases.size(), N_this);
     for (size_t step = step_start; step < step_end; ++step)
     {
-      std::copy(get_b_values().begin(), get_b_values().end(), &batch_pre_act[step * N_this]);
+      double* dest = &batch_pre_act[step * N_this];
+      std::copy(biases.begin(), biases.begin() + copy_size, dest);
+      if (copy_size < N_this)
+      {
+        std::fill(dest + copy_size, dest + N_this, 0.0);
+      }
     }
   }
   else

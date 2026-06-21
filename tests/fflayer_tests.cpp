@@ -413,3 +413,28 @@ TEST_F(FFLayerTest, ForwardFeedAndGradientsBiasBehaviour)
   EXPECT_NEAR(layer_with_bias.get_b_grads()[0], 0.5, 1e-9);
   EXPECT_NEAR(layer_with_bias.get_b_grads()[1], -0.2, 1e-9);
 }
+
+TEST_F(FFLayerTest, OversizedBiasVectorSafety)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 1;
+  
+  // Create layer with bias
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  layer.set_w_values({ 1.0, 0.5 });
+  
+  // Set oversized bias vector (size 3, whereas output size is 1)
+  layer.set_b_values({ 0.3, 0.9, -1.2 });
+  
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+  batch_go[0].set_outputs(0, { 1.5, 2.0 });
+  
+  // Verify that it doesn't crash and only uses the first bias value (0.3)
+  EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
+  // Expected output: 1.5 * 1.0 + 2.0 * 0.5 + 0.3 = 1.5 + 1.0 + 0.3 = 2.8
+  EXPECT_NEAR(batch_go[0].get_output(1, 0), 2.8, 1e-9);
+}
