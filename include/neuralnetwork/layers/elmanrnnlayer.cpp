@@ -683,11 +683,8 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
       get_activation().activate_derivative(pre_act, pre_act + N_this, state.get_hidden_state_values().data(), deriv_buf);
 
-      for (size_t j = 0; j < N_this; ++j)
-      {
-        double dh = std::clamp(upstream_grads[j] + dh_next[j], -50.0, 50.0);
-        g_this_tick[j] = dh * deriv_buf[j] * mask[j];
-      }
+      // Calculate gate gradients using SIMD helper
+      simd::elman_bptt_gate_step(upstream_grads, dh_next, deriv_buf, mask.data(), g_this_tick, N_this);
 
       // Calculate dX_t
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];

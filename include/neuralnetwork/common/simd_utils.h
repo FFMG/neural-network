@@ -1910,6 +1910,134 @@ public:
     scalar_mul_vectors(x, y, z, n, j);
   }
 
+  // Scalar fallback for mul_three_vectors
+  inline static void scalar_mul_three_vectors(
+    const double* x,
+    const double* y,
+    const double* z,
+    double* w,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      w[j] = x[j] * y[j] * z[j];
+    }
+  }
+
+  // Vectorised multiplication of three vectors (w = x * y * z)
+  inline static void mul_three_vectors(
+    const double* x,
+    const double* y,
+    const double* z,
+    double* w,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_x = _mm256_loadu_pd(x + j);
+      __m256d vec_y = _mm256_loadu_pd(y + j);
+      __m256d vec_z = _mm256_loadu_pd(z + j);
+      __m256d vec_w = _mm256_mul_pd(_mm256_mul_pd(vec_x, vec_y), vec_z);
+      _mm256_storeu_pd(w + j, vec_w);
+    }
+#endif
+    scalar_mul_three_vectors(x, y, z, w, n, j);
+  }
+
+  // Scalar fallback for lstm_bptt_upstream_step
+  inline static void scalar_lstm_bptt_upstream_step(
+    const double* upstream,
+    const double* dh_next,
+    const double* mask,
+    double* dh_curr,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
+    }
+  }
+
+  // Vectorised LSTM BPTT upstream step: dh_curr[j] = clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0)
+  inline static void lstm_bptt_upstream_step(
+    const double* upstream,
+    const double* dh_next,
+    const double* mask,
+    double* dh_curr,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d clip_limit = _mm256_set1_pd(50.0);
+    const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_up = _mm256_loadu_pd(upstream + j);
+      __m256d vec_next = _mm256_loadu_pd(dh_next + j);
+      __m256d vec_mask = _mm256_loadu_pd(mask + j);
+
+      __m256d val = _mm256_mul_pd(_mm256_add_pd(vec_up, vec_next), vec_mask);
+      __m256d clamped = _mm256_max_pd(_mm256_min_pd(val, clip_limit), neg_clip_limit);
+      _mm256_storeu_pd(dh_curr + j, clamped);
+    }
+#endif
+    scalar_lstm_bptt_upstream_step(upstream, dh_next, mask, dh_curr, n, j);
+  }
+
+  // Scalar fallback for elman_bptt_gate_step
+  inline static void scalar_elman_bptt_gate_step(
+    const double* upstream,
+    const double* dh_next,
+    const double* deriv,
+    const double* mask,
+    double* g_this_tick,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
+      g_this_tick[j] = dh * deriv[j] * mask[j];
+    }
+  }
+
+  // Vectorised Elman RNN BPTT gate step: g_this_tick[j] = clamp(upstream[j] + dh_next[j], -50.0, 50.0) * deriv[j] * mask[j]
+  inline static void elman_bptt_gate_step(
+    const double* upstream,
+    const double* dh_next,
+    const double* deriv,
+    const double* mask,
+    double* g_this_tick,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d clip_limit = _mm256_set1_pd(50.0);
+    const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_up = _mm256_loadu_pd(upstream + j);
+      __m256d vec_next = _mm256_loadu_pd(dh_next + j);
+      __m256d vec_deriv = _mm256_loadu_pd(deriv + j);
+      __m256d vec_mask = _mm256_loadu_pd(mask + j);
+
+      __m256d dh_raw = _mm256_add_pd(vec_up, vec_next);
+      __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, clip_limit), neg_clip_limit);
+
+      __m256d res = _mm256_mul_pd(_mm256_mul_pd(dh, vec_deriv), vec_mask);
+      _mm256_storeu_pd(g_this_tick + j, res);
+    }
+#endif
+    scalar_elman_bptt_gate_step(upstream, dh_next, deriv, mask, g_this_tick, n, j);
+  }
+
   // Scalar fallback for gru_output_step
   inline static void scalar_gru_output_step(
     const double* z,

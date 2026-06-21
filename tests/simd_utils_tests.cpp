@@ -1243,6 +1243,57 @@ TEST(SimdUtilsTest, LstmCellStep) {
   expect_vec_near(current_c, expected);
 }
 
+TEST(SimdUtilsTest, MulThreeVectors) {
+  std::vector<double> x = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+  std::vector<double> y = { 0.5, 1.5, 2.5, 3.5, 4.5, 5.5 };
+  std::vector<double> z = { 2.0, 0.5, 4.0, 0.25, 8.0, 0.125 };
+  std::vector<double> expected(x.size());
+  for (size_t i = 0; i < x.size(); ++i)
+  {
+    expected[i] = x[i] * y[i] * z[i];
+  }
+
+  std::vector<double> actual(x.size(), 0.0);
+  simd::mul_three_vectors(x.data(), y.data(), z.data(), actual.data(), x.size());
+
+  expect_vec_near(actual, expected);
+}
+
+TEST(SimdUtilsTest, LstmBpttUpstreamStep) {
+  std::vector<double> upstream = { 1.0, -2.0, 3.0, -4.0, 5.0, -6.0 };
+  std::vector<double> dh_next = { 0.5, 1.5, -2.5, 3.5, -4.5, 5.5 };
+  std::vector<double> mask = { 1.0, 0.0, 1.0, 1.0, 0.0, 1.0 };
+  std::vector<double> expected(upstream.size());
+  for (size_t i = 0; i < upstream.size(); ++i)
+  {
+    expected[i] = std::clamp((upstream[i] + dh_next[i]) * mask[i], -50.0, 50.0);
+  }
+
+  std::vector<double> actual(upstream.size(), 0.0);
+  simd::lstm_bptt_upstream_step(upstream.data(), dh_next.data(), mask.data(), actual.data(), upstream.size());
+
+  expect_vec_near(actual, expected);
+}
+
+TEST(SimdUtilsTest, ElmanBpttGateStep) {
+  std::vector<double> upstream = { 1.0, 10.0, 100.0, -10.0, -100.0, 0.0 };
+  std::vector<double> dh_next = { 2.0, 20.0, 200.0, -20.0, -200.0, 1.0 };
+  std::vector<double> deriv = { 0.5, 0.25, 0.125, 0.2, 0.1, 0.5 };
+  std::vector<double> mask = { 1.0, 0.0, 1.0, 0.0, 1.0, 1.0 };
+  std::vector<double> expected(upstream.size());
+  for (size_t i = 0; i < upstream.size(); ++i)
+  {
+    double dh = std::clamp(upstream[i] + dh_next[i], -50.0, 50.0);
+    expected[i] = dh * deriv[i] * mask[i];
+  }
+
+  std::vector<double> actual(upstream.size(), 0.0);
+  simd::elman_bptt_gate_step(upstream.data(), dh_next.data(), deriv.data(), mask.data(), actual.data(), upstream.size());
+
+  expect_vec_near(actual, expected);
+}
+
+
 
 
 

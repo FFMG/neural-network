@@ -554,10 +554,7 @@ void Layer::apply_update_to_vector(
 
     if (clipping_scale != 1.0)
     {
-      for (size_t i = start; i < start + n; ++i)
-      {
-        grads[i] *= clipping_scale;
-      }
+      simd::scale_vector(grads.data() + start, clipping_scale, n);
     }
 
     for (size_t i = start; i < start + n; ++i)
@@ -581,10 +578,7 @@ void Layer::apply_update_to_vector(
 
     if (clipping_scale != 1.0)
     {
-      for (size_t i = start; i < start + n; ++i)
-      {
-        grads[i] *= clipping_scale;
-      }
+      simd::scale_vector(grads.data() + start, clipping_scale, n);
     }
 
     for (size_t i = start; i < start + n; ++i)

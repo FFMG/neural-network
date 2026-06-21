@@ -1,4 +1,4 @@
-﻿#include "common/logger.h"
+#include "common/logger.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
 #include "test_helper.h"
@@ -503,7 +503,7 @@ TEST_F(LearningRateTest, CoexistingDecayBoostAndAdaptiveLRShortcutBehavior)
   // Replicate dataset to make training epochs take long enough for background thread scheduling
   std::vector<std::vector<double>> replicated_inputs;
   std::vector<std::vector<double>> replicated_outputs;
-  for (int i = 0; i < 50; ++i)
+  for (int i = 0; i < 1500; ++i)
   {
     replicated_inputs.insert(replicated_inputs.end(), inputs.begin(), inputs.end());
     replicated_outputs.insert(replicated_outputs.end(), outputs.begin(), outputs.end());
