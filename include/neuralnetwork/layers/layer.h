@@ -630,7 +630,12 @@ public:
     {
       return 0.0;
     }
-    return get_neuron(0).get_dropout_rate();
+    const auto& n = get_neuron(0);
+    if (!n.is_dropout())
+    {
+      return 0.0;
+    }
+    return n.get_dropout_rate();
   }
 
   virtual void calculate_hidden_gradients(

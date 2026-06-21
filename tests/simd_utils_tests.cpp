@@ -1194,6 +1194,56 @@ TEST(ResidualProjectorTest, Correctness)
   }
 }
 
+TEST(SimdUtilsTest, MulVectors) {
+  std::vector<double> x = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> y = { 0.5, 1.5, 2.5, 3.5, 4.5 };
+  std::vector<double> expected(x.size());
+  for (size_t i = 0; i < x.size(); ++i)
+  {
+    expected[i] = x[i] * y[i];
+  }
+
+  std::vector<double> actual(x.size(), 0.0);
+  simd::mul_vectors(x.data(), y.data(), actual.data(), x.size());
+
+  expect_vec_near(actual, expected);
+}
+
+TEST(SimdUtilsTest, GruOutputStep) {
+  std::vector<double> z = { 0.1, 0.5, 0.9, 0.0, 1.0 };
+  std::vector<double> prev_h = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> h_hat = { -1.0, -2.0, -3.0, -4.0, -5.0 };
+  std::vector<double> expected(z.size());
+  for (size_t i = 0; i < z.size(); ++i)
+  {
+    expected[i] = (1.0 - z[i]) * prev_h[i] + z[i] * h_hat[i];
+  }
+
+  std::vector<double> actual_h(z.size(), 0.0);
+  std::vector<double> actual_seq(z.size(), 0.0);
+  simd::gru_output_step(z.data(), prev_h.data(), h_hat.data(), actual_h.data(), actual_seq.data(), z.size());
+
+  expect_vec_near(actual_h, expected);
+  expect_vec_near(actual_seq, expected);
+}
+
+TEST(SimdUtilsTest, LstmCellStep) {
+  std::vector<double> f = { 0.9, 0.8, 0.7, 0.6, 0.5 };
+  std::vector<double> i = { 0.1, 0.2, 0.3, 0.4, 0.5 };
+  std::vector<double> g_act = { 1.5, -1.5, 2.5, -2.5, 3.5 };
+  std::vector<double> current_c = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> expected(f.size());
+  for (size_t j = 0; j < f.size(); ++j)
+  {
+    expected[j] = f[j] * current_c[j] + i[j] * g_act[j];
+  }
+
+  simd::lstm_cell_step(f.data(), i.data(), g_act.data(), current_c.data(), f.size());
+
+  expect_vec_near(current_c, expected);
+}
+
+
 
 
 

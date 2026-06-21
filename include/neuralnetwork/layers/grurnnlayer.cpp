@@ -884,10 +884,7 @@ void GRURNNLayer::run_forward_pass(
       sigmoid_act.activate(packed_bptt_states.data(), packed_bptt_states.data() + 2 * N_this);
 
       // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
-      for (size_t i = 0; i < N_this; ++i)
-      {
-        gated_h[i] = packed_bptt_states[N_this + i] * h_prev_ptr[i];
-      }
+      simd::mul_vectors(packed_bptt_states.data() + N_this, h_prev_ptr, gated_h.data(), N_this);
       simd::gemv_add(_rw_values_T.data(), gated_h.data(), h_hat_pre.data(), N_this, N_this);
 
       // f. Residuals and Candidate Activation
@@ -902,7 +899,7 @@ void GRURNNLayer::run_forward_pass(
       std::vector<double> h_hat_vec = h_hat_pre;
       get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
 
-      if (is_training)
+      if (is_training && get_dropout() > 0.0)
       {
         const auto& neurons = get_neurons();
         for (size_t j = 0; j < N_this; ++j)
@@ -935,17 +932,18 @@ void GRURNNLayer::run_forward_pass(
       }
       else
       {
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
+        std::copy(h_hat_pre.begin(), h_hat_pre.end(), packed_bptt_states.begin() + 2 * N_this);
+        std::copy(h_hat_vec.begin(), h_hat_vec.end(), packed_bptt_states.begin() + 3 * N_this);
+        std::fill_n(packed_bptt_states.begin() + 4 * N_this, N_this, 1.0);
 
-          double h_hat_activated = h_hat_vec[j];
-          packed_bptt_states[3 * N_this + j] = h_hat_activated;
-
-          packed_bptt_states[4 * N_this + j] = 1.0;
-          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_activated;
-          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
-        }
+        simd::gru_output_step(
+          packed_bptt_states.data(),
+          prev_h.data(),
+          h_hat_vec.data(),
+          current_h.data(),
+          &batch_output_sequences[(b * num_time_steps + t) * N_this],
+          N_this
+        );
       }
 
       batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());

@@ -580,17 +580,18 @@ void LSTMLayer::calculate_forward_feed(
 
         std::copy(g_pre, g_pre + N_this, packed_bptt.begin() + 3 * N_this);
 
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          double f = packed_bptt[j];
-          double i = packed_bptt[N_this + j];
-          current_c[j] = f * current_c[j] + i * g_act_vec[j];
-        }
+        simd::lstm_cell_step(
+          packed_bptt.data(),
+          packed_bptt.data() + N_this,
+          g_act_vec.data(),
+          current_c.data(),
+          N_this
+        );
 
         c_act_vec = current_c;
         get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
 
-        if (is_training)
+        if (is_training && get_dropout() > 0.0)
         {
           const auto& neurons = get_neurons();
           for (size_t j = 0; j < N_this; ++j)
@@ -623,17 +624,14 @@ void LSTMLayer::calculate_forward_feed(
         }
         else
         {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            double o = packed_bptt[2 * N_this + j];
-            double activated_c = c_act_vec[j];
-            double out = o * activated_c;
-
-            packed_bptt[GateCount * N_this + j] = 1.0;
-
-            current_h[j] = out;
-            batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
-          }
+          std::fill_n(packed_bptt.data() + GateCount * N_this, N_this, 1.0);
+          simd::mul_vectors(
+            packed_bptt.data() + 2 * N_this,
+            c_act_vec.data(),
+            current_h.data(),
+            N_this
+          );
+          std::copy(current_h.begin(), current_h.end(), &batch_output_sequences[(b * num_time_steps + t) * N_this]);
         }
 
         // Store states

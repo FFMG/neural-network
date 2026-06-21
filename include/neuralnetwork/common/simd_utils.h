@@ -1884,6 +1884,126 @@ public:
     scalar_scale_vector(y, scale, n, j);
   }
 
+  // Scalar fallback for mul_vectors
+  inline static void scalar_mul_vectors(const double* x, const double* y, double* z, size_t n, size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      z[j] = x[j] * y[j];
+    }
+  }
+
+  // Vector-vector multiplication (z = x * y)
+  inline static void mul_vectors(const double* x, const double* y, double* z, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_x = _mm256_loadu_pd(x + j);
+      __m256d vec_y = _mm256_loadu_pd(y + j);
+      __m256d vec_z = _mm256_mul_pd(vec_x, vec_y);
+      _mm256_storeu_pd(z + j, vec_z);
+    }
+#endif
+    scalar_mul_vectors(x, y, z, n, j);
+  }
+
+  // Scalar fallback for gru_output_step
+  inline static void scalar_gru_output_step(
+    const double* z,
+    const double* prev_h,
+    const double* h_hat,
+    double* current_h,
+    double* batch_output_seq,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      double val = (1.0 - z[j]) * prev_h[j] + z[j] * h_hat[j];
+      current_h[j] = val;
+      batch_output_seq[j] = val;
+    }
+  }
+
+  // Vectorized GRU output step (current_h = (1 - z) * prev_h + z * h_hat)
+  inline static void gru_output_step(
+    const double* z,
+    const double* prev_h,
+    const double* h_hat,
+    double* current_h,
+    double* batch_output_seq,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_z = _mm256_loadu_pd(z + j);
+      __m256d vec_prev = _mm256_loadu_pd(prev_h + j);
+      __m256d vec_h_hat = _mm256_loadu_pd(h_hat + j);
+
+      __m256d vec_one_minus_z = _mm256_sub_pd(one, vec_z);
+#ifdef SIMD_FMA_ENABLED
+      __m256d vec_res = _mm256_fmadd_pd(vec_z, vec_h_hat, _mm256_mul_pd(vec_one_minus_z, vec_prev));
+#else
+      __m256d vec_res = _mm256_add_pd(_mm256_mul_pd(vec_one_minus_z, vec_prev), _mm256_mul_pd(vec_z, vec_h_hat));
+#endif
+      _mm256_storeu_pd(current_h + j, vec_res);
+      _mm256_storeu_pd(batch_output_seq + j, vec_res);
+    }
+#endif
+    scalar_gru_output_step(z, prev_h, h_hat, current_h, batch_output_seq, n, j);
+  }
+
+  // Scalar fallback for lstm_cell_step
+  inline static void scalar_lstm_cell_step(
+    const double* f,
+    const double* i,
+    const double* g_act,
+    double* current_c,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      current_c[j] = f[j] * current_c[j] + i[j] * g_act[j];
+    }
+  }
+
+  // Vectorized LSTM cell step (current_c = f * current_c + i * g_act)
+  inline static void lstm_cell_step(
+    const double* f,
+    const double* i,
+    const double* g_act,
+    double* current_c,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_f = _mm256_loadu_pd(f + j);
+      __m256d vec_i = _mm256_loadu_pd(i + j);
+      __m256d vec_g = _mm256_loadu_pd(g_act + j);
+      __m256d vec_c = _mm256_loadu_pd(current_c + j);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d vec_res = _mm256_fmadd_pd(vec_f, vec_c, _mm256_mul_pd(vec_i, vec_g));
+#else
+      __m256d vec_res = _mm256_add_pd(_mm256_mul_pd(vec_f, vec_c), _mm256_mul_pd(vec_i, vec_g));
+#endif
+      _mm256_storeu_pd(current_c + j, vec_res);
+    }
+#endif
+    scalar_lstm_cell_step(f, i, g_act, current_c, n, j);
+  }
+
   // Scalar fallback for sgd_step
   inline static void scalar_sgd_step(
     double* values,
