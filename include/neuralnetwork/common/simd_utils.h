@@ -553,6 +553,9 @@ public:
     __m256d vec_inv_p2 = _mm256_set1_pd(inv_p2);
     __m256d vec_lr = _mm256_set1_pd(lr);
     __m256d vec_eps = _mm256_set1_pd(epsilon);
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
+    __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
 
     for (; j + 3 < n; j += 4) 
     {
@@ -562,8 +565,14 @@ public:
       __m256d cur_w = _mm256_loadu_pd(&values[j]);
 
       // Moments update
+#ifdef SIMD_FMA_ENABLED
+      __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+      __m256d g_sq = _mm256_mul_pd(g, g);
+      __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
       __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
       __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
       _mm256_storeu_pd(&m1[j], next_m1);
       _mm256_storeu_pd(&m2[j], next_m2);
 
@@ -577,13 +586,21 @@ public:
       if (decays != nullptr)
       {
         __m256d d = _mm256_loadu_pd(&decays[j]);
-        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(_mm256_set1_pd(1.0), _mm256_mul_pd(vec_lr, d)));
+#ifdef SIMD_FMA_ENABLED
+        cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+#else
+        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+#endif
       }
 
+#ifdef SIMD_FMA_ENABLED
+      __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+#else
       __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+#endif
 
       // Hard clamp weights to prevent catastrophic numerical explosion (+/- 1 million)
-      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, _mm256_set1_pd(100000.0)), _mm256_set1_pd(-100000.0));
+      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
@@ -653,6 +670,14 @@ public:
     __m256d vec_inv_p2 = _mm256_set1_pd(inv_p2);
     __m256d vec_lr = _mm256_set1_pd(lr);
     __m256d vec_eps = _mm256_set1_pd(epsilon);
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
+    __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
+
+#ifdef SIMD_FMA_ENABLED
+    // Precomputed constant term for Nadam update
+    __m256d vec_one_minus_b1_inv_p1 = _mm256_set1_pd((1.0 - b1) * inv_p1);
+#endif
 
     for (; j + 3 < n; j += 4)
     {
@@ -662,8 +687,14 @@ public:
       __m256d cur_w = _mm256_loadu_pd(&values[j]);
 
       // Moments update
+#ifdef SIMD_FMA_ENABLED
+      __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+      __m256d g_sq = _mm256_mul_pd(g, g);
+      __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
       __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
       __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
       _mm256_storeu_pd(&m1[j], next_m1);
       _mm256_storeu_pd(&m2[j], next_m2);
 
@@ -672,20 +703,33 @@ public:
       __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
 
       // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
+#ifdef SIMD_FMA_ENABLED
+      __m256d term2 = _mm256_mul_pd(vec_one_minus_b1_inv_p1, g);
+      __m256d m_nadam = _mm256_fmadd_pd(vec_b1, m_hat, term2);
+#else
       __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_mul_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_inv_p1));
+#endif
       __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
 
       // Optional NadamW weight decay
       if (decays != nullptr) 
       {
         __m256d d = _mm256_loadu_pd(&decays[j]);
-        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(_mm256_set1_pd(1.0), _mm256_mul_pd(vec_lr, d)));
+#ifdef SIMD_FMA_ENABLED
+        cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+#else
+        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+#endif
       }
 
+#ifdef SIMD_FMA_ENABLED
+      __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+#else
       __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+#endif
 
       // Hard clamp weights to prevent catastrophic numerical explosion
-      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, _mm256_set1_pd(100000.0)), _mm256_set1_pd(-100000.0));
+      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
@@ -769,7 +813,11 @@ public:
       // dh_hat_pre = dh * z * activation_derivative(h_hat_pre) * mask
       __m256d d_h_hat_pre = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(dh, z), deriv), mask);
       
+#ifdef SIMD_FMA_ENABLED
+      __m256d d_h_prev_direct = _mm256_fnmadd_pd(dh, z, dh);
+#else
       __m256d d_h_prev_direct = _mm256_mul_pd(dh, _mm256_sub_pd(one, z));
+#endif
 
       _mm256_storeu_pd(&dz_out[j], d_z_pre);
       _mm256_storeu_pd(&dh_hat_out[j], d_h_hat_pre);
@@ -825,7 +873,11 @@ public:
       __m256d dr = _mm256_mul_pd(_mm256_mul_pd(grad_rh, h_prev), _mm256_mul_pd(r, _mm256_sub_pd(one, r)));
       
       // dh_next = dh_prev + grad_rh * r
+#ifdef SIMD_FMA_ENABLED
+      __m256d dh_next = _mm256_fmadd_pd(grad_rh, r, dh_prev);
+#else
       __m256d dh_next = _mm256_add_pd(dh_prev, _mm256_mul_pd(grad_rh, r));
+#endif
 
       _mm256_storeu_pd(&dr_out[j], dr);
       _mm256_storeu_pd(&dh_next_out[j], dh_next);
@@ -914,7 +966,11 @@ public:
       __m256d do_gate_v = _mm256_mul_pd(_mm256_mul_pd(dh, act_c), _mm256_mul_pd(o_gate, _mm256_sub_pd(one, o_gate)));
       
       __m256d dc_deriv = _mm256_loadu_pd(&dc_act_deriv_vals[j]);
+#ifdef SIMD_FMA_ENABLED
+      __m256d dc = _mm256_fmadd_pd(_mm256_mul_pd(dh, o_gate), dc_deriv, dc_nxt);
+#else
       __m256d dc = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh, o_gate), dc_deriv), dc_nxt);
+#endif
 
       __m256d f_gate = _mm256_loadu_pd(&f[j]);
       __m256d i_gate = _mm256_loadu_pd(&i[j]);
@@ -1982,7 +2038,11 @@ public:
       __m256d vec_next = _mm256_loadu_pd(dh_next + j);
       __m256d vec_mask = _mm256_loadu_pd(mask + j);
 
+#ifdef SIMD_FMA_ENABLED
+      __m256d val = _mm256_fmadd_pd(vec_up, vec_mask, _mm256_mul_pd(vec_next, vec_mask));
+#else
       __m256d val = _mm256_mul_pd(_mm256_add_pd(vec_up, vec_next), vec_mask);
+#endif
       __m256d clamped = _mm256_max_pd(_mm256_min_pd(val, clip_limit), neg_clip_limit);
       _mm256_storeu_pd(dh_curr + j, clamped);
     }

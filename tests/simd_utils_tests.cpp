@@ -1293,6 +1293,207 @@ TEST(SimdUtilsTest, ElmanBpttGateStep) {
   expect_vec_near(actual, expected);
 }
 
+TEST(SimdUtilsTest, FmaEquivalenceVerify)
+{
+  // Test case to verify all the optimised FMA/AVX2 steps against their scalar fallbacks with larger arrays (n = 100)
+  const size_t n = 100;
+  
+  // Initialize inputs
+  std::vector<double> values(n);
+  std::vector<double> grads(n);
+  std::vector<double> m1(n);
+  std::vector<double> m2(n);
+  std::vector<double> decays(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    values[i] = 1.0 + 0.1 * static_cast<double>(i);
+    grads[i] = -0.5 + 0.01 * static_cast<double>(i);
+    m1[i] = 0.01 * static_cast<double>(i);
+    m2[i] = 0.002 * static_cast<double>(i);
+    decays[i] = 0.005;
+  }
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.8;
+  double p2 = 0.7;
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  // 1. Adam Step Verify
+  {
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1;
+    std::vector<double> m2_simd = m2;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1;
+    std::vector<double> m2_scalar = m2;
+
+    simd::adam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+    simd::scalar_adam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(m2_simd, m2_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+
+  // 2. Nadam Step Verify
+  {
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1;
+    std::vector<double> m2_simd = m2;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1;
+    std::vector<double> m2_scalar = m2;
+
+    simd::nadam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+    simd::scalar_nadam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), b1, b2, p1, p2, lr, eps, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(m2_simd, m2_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+
+  // 3. GRU BPTT Gate Step Verify
+  {
+    std::vector<double> grad_next(n);
+    std::vector<double> d_next_h(n);
+    std::vector<double> z_vals(n);
+    std::vector<double> h_hat_vals(n);
+    std::vector<double> h_prev_vals(n);
+    std::vector<double> h_hat_pre_vals(n);
+    std::vector<double> mask_vals(n);
+    std::vector<double> h_hat_pre_deriv(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      grad_next[i] = 0.1 * static_cast<double>(i);
+      d_next_h[i] = -0.05 * static_cast<double>(i);
+      z_vals[i] = 0.5;
+      h_hat_vals[i] = 0.2;
+      h_prev_vals[i] = 0.1;
+      h_hat_pre_vals[i] = 0.3;
+      mask_vals[i] = 1.0;
+      h_hat_pre_deriv[i] = 0.4;
+    }
+
+    std::vector<double> dz_simd(n, 0.0);
+    std::vector<double> dh_hat_simd(n, 0.0);
+    std::vector<double> dh_prev_accum_simd(n, 0.0);
+
+    std::vector<double> dz_scalar(n, 0.0);
+    std::vector<double> dh_hat_scalar(n, 0.0);
+    std::vector<double> dh_prev_accum_scalar(n, 0.0);
+
+    simd::gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), mask_vals.data(), dz_simd.data(), dh_hat_simd.data(), dh_prev_accum_simd.data(), h_hat_pre_deriv.data());
+    simd::scalar_gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), mask_vals.data(), dz_scalar.data(), dh_hat_scalar.data(), dh_prev_accum_scalar.data(), h_hat_pre_deriv.data());
+
+    expect_vec_near(dz_simd, dz_scalar);
+    expect_vec_near(dh_hat_simd, dh_hat_scalar);
+    expect_vec_near(dh_prev_accum_simd, dh_prev_accum_scalar);
+  }
+
+  // 4. GRU BPTT Reset Step Verify
+  {
+    std::vector<double> temp_Uh(n);
+    std::vector<double> h_prev_vals(n);
+    std::vector<double> r_vals(n);
+    std::vector<double> dh_prev_accum(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      temp_Uh[i] = 0.25 * static_cast<double>(i);
+      h_prev_vals[i] = 0.12 * static_cast<double>(i);
+      r_vals[i] = 0.33 * static_cast<double>(i);
+      dh_prev_accum[i] = 0.05 * static_cast<double>(i);
+    }
+
+    std::vector<double> dr_simd(n, 0.0);
+    std::vector<double> dh_next_simd(n, 0.0);
+
+    std::vector<double> dr_scalar(n, 0.0);
+    std::vector<double> dh_next_scalar(n, 0.0);
+
+    simd::gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_simd.data(), dh_next_simd.data());
+    simd::scalar_gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_scalar.data(), dh_next_scalar.data());
+
+    expect_vec_near(dr_simd, dr_scalar);
+    expect_vec_near(dh_next_simd, dh_next_scalar);
+  }
+
+  // 5. LSTM BPTT Gate Step Verify
+  {
+    std::vector<double> dh_curr(n);
+    std::vector<double> dc_next_in(n);
+    std::vector<double> f(n);
+    std::vector<double> i_gate(n);
+    std::vector<double> o(n);
+    std::vector<double> g_pre_vals(n);
+    std::vector<double> activated_g_vals(n);
+    std::vector<double> activated_c_vals(n);
+    std::vector<double> c_prev(n);
+    std::vector<double> dc_act_deriv_vals(n);
+    std::vector<double> dg_act_deriv_vals(n);
+    for (size_t idx = 0; idx < n; ++idx)
+    {
+      dh_curr[idx] = 1.25 * static_cast<double>(idx);
+      dc_next_in[idx] = 0.5 * static_cast<double>(idx);
+      f[idx] = 0.8;
+      i_gate[idx] = 0.2;
+      o[idx] = 0.7;
+      g_pre_vals[idx] = 0.1 * static_cast<double>(idx);
+      activated_g_vals[idx] = 0.9;
+      activated_c_vals[idx] = 0.3;
+      c_prev[idx] = 0.4;
+      dc_act_deriv_vals[idx] = 0.6;
+      dg_act_deriv_vals[idx] = 0.5;
+    }
+
+    std::vector<double> df_simd(n, 0.0);
+    std::vector<double> di_simd(n, 0.0);
+    std::vector<double> do_simd(n, 0.0);
+    std::vector<double> dg_simd(n, 0.0);
+    std::vector<double> dc_next_simd(n, 0.0);
+
+    std::vector<double> df_scalar(n, 0.0);
+    std::vector<double> di_scalar(n, 0.0);
+    std::vector<double> do_scalar(n, 0.0);
+    std::vector<double> dg_scalar(n, 0.0);
+    std::vector<double> dc_next_scalar(n, 0.0);
+
+    simd::lstm_bptt_gate_step(n, dh_curr.data(), dc_next_in.data(), f.data(), i_gate.data(), o.data(), g_pre_vals.data(), activated_g_vals.data(), activated_c_vals.data(), c_prev.data(), true, df_simd.data(), di_simd.data(), do_simd.data(), dg_simd.data(), dc_next_simd.data(), dc_act_deriv_vals.data(), dg_act_deriv_vals.data());
+    simd::scalar_lstm_bptt_gate_step(n, dh_curr.data(), dc_next_in.data(), f.data(), i_gate.data(), o.data(), g_pre_vals.data(), activated_g_vals.data(), activated_c_vals.data(), c_prev.data(), true, df_scalar.data(), di_scalar.data(), do_scalar.data(), dg_scalar.data(), dc_next_scalar.data(), dc_act_deriv_vals.data(), dg_act_deriv_vals.data());
+
+    expect_vec_near(df_simd, df_scalar);
+    expect_vec_near(di_simd, di_scalar);
+    expect_vec_near(do_simd, do_scalar);
+    expect_vec_near(dg_simd, dg_scalar);
+    expect_vec_near(dc_next_simd, dc_next_scalar);
+  }
+
+  // 6. LSTM BPTT Upstream Step Verify
+  {
+    std::vector<double> upstream(n);
+    std::vector<double> dh_next(n);
+    std::vector<double> mask(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      upstream[i] = 1.2 * static_cast<double>(i);
+      dh_next[i] = -0.8 * static_cast<double>(i);
+      mask[i] = (i % 2 == 0) ? 1.0 : 0.0;
+    }
+
+    std::vector<double> dh_curr_simd(n, 0.0);
+    std::vector<double> dh_curr_scalar(n, 0.0);
+
+    simd::lstm_bptt_upstream_step(upstream.data(), dh_next.data(), mask.data(), dh_curr_simd.data(), n);
+    simd::scalar_lstm_bptt_upstream_step(upstream.data(), dh_next.data(), mask.data(), dh_curr_scalar.data(), n);
+
+    expect_vec_near(dh_curr_simd, dh_curr_scalar);
+  }
+}
+
+
 
 
 
