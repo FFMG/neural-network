@@ -763,6 +763,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   std::vector<std::vector<double>> bptt_in;
   std::vector<std::vector<double>> bptt_out;
+  // Initial creation of BPTT batches before the epoch loop
+  create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
+
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
@@ -773,8 +776,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     _learning_rate = base_helper->learning_rate();
 
-    // (re) create the bptt batches (now returns flattened sequences)
-    create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
+    // Only recreate/shuffle BPTT batches if shuffle is enabled
+    if (_options.shuffle_bptt_batches())
+    {
+      create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
+    }
 
     const size_t total_sequences = bptt_in.size();
     for (size_t i = 0; i < total_sequences; i += batch_size)
