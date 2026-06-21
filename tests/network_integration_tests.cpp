@@ -461,4 +461,25 @@ TEST(NetworkIntegrationTest, ShuffleBpttBatchesBehavior)
   SUCCEED();
 }
 
+TEST(NetworkIntegrationTest, LockOptimizationConvergenceTest)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(10)
+    .with_batch_size(2)
+    .with_enable_bptt(false)
+    .build();
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.0, 0.0 }, { 0.0, 1.0 }, { 1.0, 0.0 }, { 1.0, 1.0 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 0.0 }, { 1.0 }, { 1.0 }, { 0.0 }
+  };
+
+  NeuralNetwork nn(options);
+  // Verify that the network trains successfully with the lock optimisation
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+}
+
 
