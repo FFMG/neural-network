@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/fflayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -364,4 +364,52 @@ TEST_F(FFLayerTest, SequentialGradientsBatch2) {
 
     EXPECT_NEAR(layer.get_w_grads()[0], 0.9, 1e-9);
     EXPECT_NEAR(layer.get_b_grads()[0], 0.7, 1e-9);
+}
+
+TEST_F(FFLayerTest, ForwardFeedAndGradientsBiasBehaviour)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 2;
+  
+  // Create layer with bias
+  FFLayer layer_with_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  layer_with_bias.set_w_values({ 1.0, 0.5, 0.2, 1.5 });
+  layer_with_bias.set_b_values({ 0.3, -0.4 });
+  
+  // Create layer without bias
+  FFLayer layer_no_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  layer_no_bias.set_w_values({ 1.0, 0.5, 0.2, 1.5 });
+  
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  
+  // Verify forward pass with bias
+  auto batch_go_wb = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs_wb = create_batch_hidden_states(topology, 1, 1);
+  batch_go_wb[0].set_outputs(0, { 1.5, 2.0 });
+  
+  layer_with_bias.calculate_forward_feed(batch_go_wb, prev_layer, {}, batch_hs_wb, 1, false);
+  // Expected outputs: 
+  // out0 = 1.5 * 1.0 + 2.0 * 0.2 + 0.3 = 1.5 + 0.4 + 0.3 = 2.2
+  // out1 = 1.5 * 0.5 + 2.0 * 1.5 - 0.4 = 0.75 + 3.0 - 0.4 = 3.35
+  EXPECT_NEAR(batch_go_wb[0].get_output(1, 0), 2.2, 1e-9);
+  EXPECT_NEAR(batch_go_wb[0].get_output(1, 1), 3.35, 1e-9);
+  
+  // Verify forward pass without bias
+  auto batch_go_nb = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs_nb = create_batch_hidden_states(topology, 1, 1);
+  batch_go_nb[0].set_outputs(0, { 1.5, 2.0 });
+  
+  layer_no_bias.calculate_forward_feed(batch_go_nb, prev_layer, {}, batch_hs_nb, 1, false);
+  // Expected outputs: 
+  // out0 = 1.5 * 1.0 + 2.0 * 0.2 = 1.9
+  // out1 = 1.5 * 0.5 + 2.0 * 1.5 = 3.75
+  EXPECT_NEAR(batch_go_nb[0].get_output(1, 0), 1.9, 1e-9);
+  EXPECT_NEAR(batch_go_nb[0].get_output(1, 1), 3.75, 1e-9);
+
+  // Verify backward pass gradient accumulation with bias
+  batch_go_wb[0].set_gradients(1, { 0.5, -0.2 });
+  layer_with_bias.calculate_and_store_gradients(batch_go_wb, batch_hs_wb, prev_layer, 1, 0);
+  EXPECT_NEAR(layer_with_bias.get_b_grads()[0], 0.5, 1e-9);
+  EXPECT_NEAR(layer_with_bias.get_b_grads()[1], -0.2, 1e-9);
 }

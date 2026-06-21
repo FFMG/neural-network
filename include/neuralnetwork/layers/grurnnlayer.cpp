@@ -1354,12 +1354,9 @@ void GRURNNLayer::calculate_and_store_gradients(
         // Bias Gradients
         if (has_bias())
         {
-          for (unsigned j = 0; j < num_outputs; ++j)
-          {
-            local_b_grads[j] += gh[j];
-            local_z_b_grads[j] += gz[j];
-            local_r_b_grads[j] += gr[j];
-          }
+          simd::add_vectors(gh, local_b_grads.data(), num_outputs);
+          simd::add_vectors(gz, local_z_b_grads.data(), num_outputs);
+          simd::add_vectors(gr, local_r_b_grads.data(), num_outputs);
         }
 
         // Weight Gradients (Outer Product) - Vectorized over num_outputs

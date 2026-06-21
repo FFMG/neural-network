@@ -853,12 +853,12 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
         const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
         const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
 
-        for (size_t j = 0; j < N_this; ++j)
+        if (has_bias())
         {
-          local_f_b_grads[j] += df[j];
-          local_i_b_grads[j] += di[j];
-          local_o_b_grads[j] += do_gate[j];
-          local_b_grads[j] += dg[j];
+          simd::add_vectors(df, local_f_b_grads.data(), N_this);
+          simd::add_vectors(di, local_i_b_grads.data(), N_this);
+          simd::add_vectors(do_gate, local_o_b_grads.data(), N_this);
+          simd::add_vectors(dg, local_b_grads.data(), N_this);
         }
 
         // Weight Gradients (Outer Product) - Vectorized over N_this

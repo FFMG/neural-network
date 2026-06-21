@@ -389,10 +389,11 @@ void FFOutputLayer::calculate_forward_feed(
   // 2. Initialize with bias values
   if (has_bias())
   {
+    const auto& biases = get_b_values();
     for (size_t eb = 0; eb < effective_batch_size; eb++)
     {
       double* dest = &batch_pre_activation_sums_buffer[eb * N_this];
-      for (size_t j = 0; j < N_this; j++) dest[j] = get_bias_value((unsigned)j);
+      std::copy(biases.begin(), biases.end(), dest);
     }
   }
 
