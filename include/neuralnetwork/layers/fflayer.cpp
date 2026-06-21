@@ -251,10 +251,11 @@ void FFLayer::calculate_forward_feed(
   // 2. Initialize with bias values
   if (has_bias())
   {
+    const auto& biases = get_b_values();
     for (size_t eb = 0; eb < effective_batch_size; eb++)
     {
       double* dest = &batch_pre_activation_sums_buffer[eb * N_this];
-      for (size_t j = 0; j < N_this; j++) dest[j] = get_bias_value((unsigned)j);
+      std::copy(biases.begin(), biases.end(), dest);
     }
   }
 
@@ -871,10 +872,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
       }
       if (has_bias())
       {
-        for (unsigned j = 0; j < num_outputs; ++j)
-        {
-          local_b_grads[j] += g_t[j];
-        }
+        simd::add_vectors(g_t, local_b_grads.data(), num_outputs);
       }
     }
   }

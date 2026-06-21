@@ -775,10 +775,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
 
         if (has_bias())
         {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            local_b_grads[j] += g_t[j];
-          }
+          simd::add_vectors(g_t, local_b_grads.data(), N_this);
         }
 
         size_t k = 0;
