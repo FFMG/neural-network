@@ -783,10 +783,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
 
     const size_t total_sequences = bptt_in.size();
-    for (size_t i = 0; i < total_sequences; i += batch_size)
     {
-      const size_t current_batch_size = std::min(static_cast<size_t>(batch_size), total_sequences - i);
-      train_single_batch(bptt_in.begin() + i, bptt_out.begin() + i, current_batch_size);
+      std::unique_lock<std::shared_mutex> lock(_mutex);
+      for (size_t i = 0; i < total_sequences; i += batch_size)
+      {
+        const size_t current_batch_size = std::min(static_cast<size_t>(batch_size), total_sequences - i);
+        auto inputs_it = bptt_in.begin() + i;
+        auto outputs_it = bptt_out.begin() + i;
+        _layers.train(_options, _learning_rate, inputs_it, outputs_it, current_batch_size);
+      }
     }
     MYODDWEB_PROFILE_MARK();
 
