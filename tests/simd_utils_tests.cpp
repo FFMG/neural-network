@@ -1493,6 +1493,92 @@ TEST(SimdUtilsTest, FmaEquivalenceVerify)
   }
 }
 
+TEST(SimdUtilsTest, GemmBatchesVerify)
+{
+  const size_t n_prev = 64;
+  const size_t n_this = 32;
+
+  // Initialize input vectors and matrix
+  std::vector<double> x0(n_prev);
+  std::vector<double> x1(n_prev);
+  std::vector<double> x2(n_prev);
+  std::vector<double> x3(n_prev);
+  std::vector<double> W(n_prev * n_this);
+
+  for (size_t i = 0; i < n_prev; ++i)
+  {
+    x0[i] = 0.1 * static_cast<double>(i);
+    x1[i] = -0.05 * static_cast<double>(i);
+    x2[i] = 0.02 * static_cast<double>(i);
+    x3[i] = -0.01 * static_cast<double>(i);
+    for (size_t j = 0; j < n_this; ++j)
+    {
+      W[i * n_this + j] = 0.001 * static_cast<double>(i * j);
+    }
+  }
+
+  // 1. Verify gemm_four_batches
+  {
+    std::vector<double> y0_simd(n_this, 1.0);
+    std::vector<double> y1_simd(n_this, 2.0);
+    std::vector<double> y2_simd(n_this, 3.0);
+    std::vector<double> y3_simd(n_this, 4.0);
+
+    std::vector<double> y0_expected(n_this, 1.0);
+    std::vector<double> y1_expected(n_this, 2.0);
+    std::vector<double> y2_expected(n_this, 3.0);
+    std::vector<double> y3_expected(n_this, 4.0);
+
+    // Compute expected results using original scalar loop
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      simd::scalar_mul_add_four_scalars(x0[i], x1[i], x2[i], x3[i], &W[i * n_this], y0_expected.data(), y1_expected.data(), y2_expected.data(), y3_expected.data(), n_this);
+    }
+
+    simd::gemm_four_batches(x0.data(), x1.data(), x2.data(), x3.data(), W.data(), y0_simd.data(), y1_simd.data(), y2_simd.data(), y3_simd.data(), n_prev, n_this);
+
+    expect_vec_near(y0_simd, y0_expected);
+    expect_vec_near(y1_simd, y1_expected);
+    expect_vec_near(y2_simd, y2_expected);
+    expect_vec_near(y3_simd, y3_expected);
+  }
+
+  // 2. Verify gemm_two_batches
+  {
+    std::vector<double> y0_simd(n_this, 1.0);
+    std::vector<double> y1_simd(n_this, 2.0);
+
+    std::vector<double> y0_expected(n_this, 1.0);
+    std::vector<double> y1_expected(n_this, 2.0);
+
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      simd::scalar_mul_add_two_scalars(x0[i], x1[i], &W[i * n_this], y0_expected.data(), y1_expected.data(), n_this);
+    }
+
+    simd::gemm_two_batches(x0.data(), x1.data(), W.data(), y0_simd.data(), y1_simd.data(), n_prev, n_this);
+
+    expect_vec_near(y0_simd, y0_expected);
+    expect_vec_near(y1_simd, y1_expected);
+  }
+
+  // 3. Verify gemm_one_batch
+  {
+    std::vector<double> y_simd(n_this, 1.0);
+    std::vector<double> y_expected(n_this, 1.0);
+
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      simd::scalar_mul_add(x0[i], &W[i * n_this], y_expected.data(), n_this);
+    }
+
+    simd::gemm_one_batch(x0.data(), W.data(), y_simd.data(), n_prev, n_this);
+
+    expect_vec_near(y_simd, y_expected);
+  }
+}
+
+
 
 
 

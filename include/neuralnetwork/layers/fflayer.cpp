@@ -339,15 +339,12 @@ void FFLayer::run_gemm(
     double* y2 = &batch_pre_activation_sums_buffer[(b + 2) * N_this];
     double* y3 = &batch_pre_activation_sums_buffer[(b + 3) * N_this];
 
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      simd::mul_add_four_scalars(
-        x0[i], x1[i], x2[i], x3[i],
-        &W[i * N_this],
-        y0, y1, y2, y3,
-        N_this
-      );
-    }
+    simd::gemm_four_batches(
+      x0, x1, x2, x3,
+      W,
+      y0, y1, y2, y3,
+      N_prev, N_this
+    );
   }
 
   // Cleanup loops
@@ -359,25 +356,25 @@ void FFLayer::run_gemm(
     double* y0 = &batch_pre_activation_sums_buffer[b * N_this];
     double* y1 = &batch_pre_activation_sums_buffer[(b + 1) * N_this];
 
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      simd::mul_add_two_scalars(
-        x0[i], x1[i],
-        &W[i * N_this],
-        y0, y1,
-        N_this
-      );
-    }
+    simd::gemm_two_batches(
+      x0, x1,
+      W,
+      y0, y1,
+      N_prev, N_this
+    );
   }
 
   for (; b < b_end; ++b)
   {
     const double* x_row = &batch_inputs_buffer[b * N_prev];
     double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      simd::mul_add(x_row[i], &W[i * N_this], y_row, N_this);
-    }
+
+    simd::gemm_one_batch(
+      x_row,
+      W,
+      y_row,
+      N_prev, N_this
+    );
   }
 }
 

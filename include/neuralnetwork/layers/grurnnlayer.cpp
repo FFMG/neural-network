@@ -789,17 +789,9 @@ void GRURNNLayer::pre_calculate_gates(
     double* y3_r = y3_z + N_this;
     double* y3_h = y3_z + 2 * N_this;
 
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      const double x0_val = x0[i];
-      const double x1_val = x1[i];
-      const double x2_val = x2[i];
-      const double x3_val = x3[i];
-
-      simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_z[i * N_this], y0_z, y1_z, y2_z, y3_z, N_this);
-      simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_r[i * N_this], y0_r, y1_r, y2_r, y3_r, N_this);
-      simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_h[i * N_this], y0_h, y1_h, y2_h, y3_h, N_this);
-    }
+    simd::gemm_four_batches(x0, x1, x2, x3, W_z, y0_z, y1_z, y2_z, y3_z, N_prev, N_this);
+    simd::gemm_four_batches(x0, x1, x2, x3, W_r, y0_r, y1_r, y2_r, y3_r, N_prev, N_this);
+    simd::gemm_four_batches(x0, x1, x2, x3, W_h, y0_h, y1_h, y2_h, y3_h, N_prev, N_this);
   }
 
   for (; step + 1 < step_end; step += 2)
@@ -815,15 +807,9 @@ void GRURNNLayer::pre_calculate_gates(
     double* y1_r = y1_z + N_this;
     double* y1_h = y1_z + 2 * N_this;
 
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      const double x0_val = x0[i];
-      const double x1_val = x1[i];
-
-      simd::mul_add_two_scalars(x0_val, x1_val, &W_z[i * N_this], y0_z, y1_z, N_this);
-      simd::mul_add_two_scalars(x0_val, x1_val, &W_r[i * N_this], y0_r, y1_r, N_this);
-      simd::mul_add_two_scalars(x0_val, x1_val, &W_h[i * N_this], y0_h, y1_h, N_this);
-    }
+    simd::gemm_two_batches(x0, x1, W_z, y0_z, y1_z, N_prev, N_this);
+    simd::gemm_two_batches(x0, x1, W_r, y0_r, y1_r, N_prev, N_this);
+    simd::gemm_two_batches(x0, x1, W_h, y0_h, y1_h, N_prev, N_this);
   }
 
   for (; step < step_end; ++step)
@@ -833,13 +819,9 @@ void GRURNNLayer::pre_calculate_gates(
     double* y_r = y_z + N_this;
     double* y_h = y_z + 2 * N_this;
 
-    for (size_t i = 0; i < N_prev; ++i)
-    {
-      const double x_val = x_row[i];
-      simd::mul_add(x_val, &W_z[i * N_this], y_z, N_this);
-      simd::mul_add(x_val, &W_r[i * N_this], y_r, N_this);
-      simd::mul_add(x_val, &W_h[i * N_this], y_h, N_this);
-    }
+    simd::gemm_one_batch(x_row, W_z, y_z, N_prev, N_this);
+    simd::gemm_one_batch(x_row, W_r, y_r, N_prev, N_this);
+    simd::gemm_one_batch(x_row, W_h, y_h, N_prev, N_this);
   }
 }
 
