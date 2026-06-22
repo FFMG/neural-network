@@ -452,18 +452,10 @@ void LSTMLayer::calculate_forward_feed(
       double* y3_o = y3_f + 2 * N_this;
       double* y3_g = y3_f + 3 * N_this;
 
-      for (size_t i = 0; i < N_prev; ++i)
-      {
-        const double x0_val = x0[i];
-        const double x1_val = x1[i];
-        const double x2_val = x2[i];
-        const double x3_val = x3[i];
-
-        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_f[i * N_this], y0_f, y1_f, y2_f, y3_f, N_this);
-        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_i[i * N_this], y0_i, y1_i, y2_i, y3_i, N_this);
-        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_o[i * N_this], y0_o, y1_o, y2_o, y3_o, N_this);
-        simd::mul_add_four_scalars(x0_val, x1_val, x2_val, x3_val, &W_g[i * N_this], y0_g, y1_g, y2_g, y3_g, N_this);
-      }
+      simd::gemm_four_batches(x0, x1, x2, x3, W_f, y0_f, y1_f, y2_f, y3_f, N_prev, N_this);
+      simd::gemm_four_batches(x0, x1, x2, x3, W_i, y0_i, y1_i, y2_i, y3_i, N_prev, N_this);
+      simd::gemm_four_batches(x0, x1, x2, x3, W_o, y0_o, y1_o, y2_o, y3_o, N_prev, N_this);
+      simd::gemm_four_batches(x0, x1, x2, x3, W_g, y0_g, y1_g, y2_g, y3_g, N_prev, N_this);
     }
 
     for (; step + 1 < step_end; step += 2)
@@ -481,16 +473,10 @@ void LSTMLayer::calculate_forward_feed(
       double* y1_o = y1_f + 2 * N_this;
       double* y1_g = y1_f + 3 * N_this;
 
-      for (size_t i = 0; i < N_prev; ++i)
-      {
-        const double x0_val = x0[i];
-        const double x1_val = x1[i];
-
-        simd::mul_add_two_scalars(x0_val, x1_val, &W_f[i * N_this], y0_f, y1_f, N_this);
-        simd::mul_add_two_scalars(x0_val, x1_val, &W_i[i * N_this], y0_i, y1_i, N_this);
-        simd::mul_add_two_scalars(x0_val, x1_val, &W_o[i * N_this], y0_o, y1_o, N_this);
-        simd::mul_add_two_scalars(x0_val, x1_val, &W_g[i * N_this], y0_g, y1_g, N_this);
-      }
+      simd::gemm_two_batches(x0, x1, W_f, y0_f, y1_f, N_prev, N_this);
+      simd::gemm_two_batches(x0, x1, W_i, y0_i, y1_i, N_prev, N_this);
+      simd::gemm_two_batches(x0, x1, W_o, y0_o, y1_o, N_prev, N_this);
+      simd::gemm_two_batches(x0, x1, W_g, y0_g, y1_g, N_prev, N_this);
     }
 
     for (; step < step_end; ++step)
@@ -501,14 +487,10 @@ void LSTMLayer::calculate_forward_feed(
       double* y_o = y_f + 2 * N_this;
       double* y_g = y_f + 3 * N_this;
 
-      for (size_t i = 0; i < N_prev; ++i)
-      {
-        const double x_val = x_row[i];
-        simd::mul_add(x_val, &W_f[i * N_this], y_f, N_this);
-        simd::mul_add(x_val, &W_i[i * N_this], y_i, N_this);
-        simd::mul_add(x_val, &W_o[i * N_this], y_o, N_this);
-        simd::mul_add(x_val, &W_g[i * N_this], y_g, N_this);
-      }
+      simd::gemm_one_batch(x_row, W_f, y_f, N_prev, N_this);
+      simd::gemm_one_batch(x_row, W_i, y_i, N_prev, N_this);
+      simd::gemm_one_batch(x_row, W_o, y_o, N_prev, N_this);
+      simd::gemm_one_batch(x_row, W_g, y_g, N_prev, N_this);
     }
   };
 

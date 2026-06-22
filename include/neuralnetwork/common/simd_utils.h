@@ -454,6 +454,165 @@ public:
   }
 
 
+  // A vectorized GEMM for four batches (y0 += x0 * W, y1 += x1 * W, y2 += x2 * W, y3 += x3 * W)
+  // This interchanged loop minimises memory loads/stores of y0..y3.
+  inline static void gemm_four_batches(
+    const double* x0, const double* x1, const double* x2, const double* x3,
+    const double* W,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+      __m256d vec_y2 = _mm256_loadu_pd(&y2[j]);
+      __m256d vec_y3 = _mm256_loadu_pd(&y3[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        __m256d vec_w = _mm256_loadu_pd(&W[i * N_this + j]);
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+        __m256d vec_x2 = _mm256_set1_pd(x2[i]);
+        __m256d vec_x3 = _mm256_set1_pd(x3[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w, vec_x0, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w, vec_x1, vec_y1);
+        vec_y2 = _mm256_fmadd_pd(vec_w, vec_x2, vec_y2);
+        vec_y3 = _mm256_fmadd_pd(vec_w, vec_x3, vec_y3);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w, vec_x0));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w, vec_x1));
+        vec_y2 = _mm256_add_pd(vec_y2, _mm256_mul_pd(vec_w, vec_x2));
+        vec_y3 = _mm256_add_pd(vec_y3, _mm256_mul_pd(vec_w, vec_x3));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0);
+      _mm256_storeu_pd(&y1[j], vec_y1);
+      _mm256_storeu_pd(&y2[j], vec_y2);
+      _mm256_storeu_pd(&y3[j], vec_y3);
+    }
+#endif
+    // Scalar cleanup
+    for (; j < N_this; ++j)
+    {
+      double sum0 = y0[j];
+      double sum1 = y1[j];
+      double sum2 = y2[j];
+      double sum3 = y3[j];
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        double w_val = W[i * N_this + j];
+        sum0 += x0[i] * w_val;
+        sum1 += x1[i] * w_val;
+        sum2 += x2[i] * w_val;
+        sum3 += x3[i] * w_val;
+      }
+      y0[j] = sum0;
+      y1[j] = sum1;
+      y2[j] = sum2;
+      y3[j] = sum3;
+    }
+  }
+
+  // A vectorized GEMM for two batches (y0 += x0 * W, y1 += x1 * W)
+  inline static void gemm_two_batches(
+    const double* x0, const double* x1,
+    const double* W,
+    double* y0, double* y1,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        __m256d vec_w = _mm256_loadu_pd(&W[i * N_this + j]);
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w, vec_x0, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w, vec_x1, vec_y1);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w, vec_x0));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0);
+      _mm256_storeu_pd(&y1[j], vec_y1);
+    }
+#endif
+    // Scalar cleanup
+    for (; j < N_this; ++j)
+    {
+      double sum0 = y0[j];
+      double sum1 = y1[j];
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        double w_val = W[i * N_this + j];
+        sum0 += x0[i] * w_val;
+        sum1 += x1[i] * w_val;
+      }
+      y0[j] = sum0;
+      y1[j] = sum1;
+    }
+  }
+
+  // A vectorized GEMM for one batch (y += x * W)
+  inline static void gemm_one_batch(
+    const double* x,
+    const double* W,
+    double* y,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y = _mm256_loadu_pd(&y[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        __m256d vec_w = _mm256_loadu_pd(&W[i * N_this + j]);
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y = _mm256_fmadd_pd(vec_w, vec_x, vec_y);
+#else
+        vec_y = _mm256_add_pd(vec_y, _mm256_mul_pd(vec_w, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y);
+    }
+#endif
+    // Scalar cleanup
+    for (; j < N_this; ++j)
+    {
+      double sum = y[j];
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        sum += x[i] * W[i * N_this + j];
+      }
+      y[j] = sum;
+    }
+  }
+
+
   // Scalar fallback for dot_product
   [[nodiscard]] inline static double scalar_dot_product(const double* a, const double* b, size_t n, size_t start = 0) noexcept
   {
