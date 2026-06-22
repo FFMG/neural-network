@@ -107,7 +107,7 @@ public:
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::debug("Cooldown set to ", _cool_down);
+      Logger::debug("Rate state is decreasing. Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -123,7 +123,7 @@ public:
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::debug("Cooldown set to ", _cool_down);
+      Logger::debug("Rate state is plateauing. Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -139,7 +139,7 @@ public:
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::debug("Cooldown set to ", _cool_down);
+      Logger::debug("Rate state is increasing. Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
@@ -155,7 +155,7 @@ public:
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
-      Logger::debug("Cooldown set to ", _cool_down);
+      Logger::warning("Rate state is exploding. Cooldown set to ", _cool_down);
       return new_learning_rate;
     }
 
