@@ -109,8 +109,8 @@ bool Neuron::must_randomly_drop() const
   }
 #endif
   static thread_local std::mt19937 rng(std::random_device{}());
-  std::bernoulli_distribution drop(get_dropout_rate());
-  return drop(rng);
+  static thread_local std::uniform_real_distribution<double> dist(0.0, 1.0);
+  return dist(rng) < _dropout_rate;
 }
 
 bool Neuron::is_dropout() const noexcept

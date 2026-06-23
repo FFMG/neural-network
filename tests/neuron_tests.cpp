@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "neuron.h"
 #include <vector>
 
@@ -70,3 +70,21 @@ TEST(NeuronTest, ValidationLogic)
   EXPECT_THROW((void)n.must_randomly_drop(), std::runtime_error);
 }
 #endif
+
+TEST(NeuronTest, DropoutStatisticalDistribution)
+{
+  Neuron n(3, Neuron::Type::Dropout, 0.5);
+  int drop_count = 0;
+  const int total = 10000;
+  for (int i = 0; i < total; ++i)
+  {
+    if (n.must_randomly_drop())
+    {
+      ++drop_count;
+    }
+  }
+  // Expected value is 5000, standard deviation is sqrt(10000 * 0.5 * 0.5) = 50.
+  // Within 4 standard deviations (99.993% confidence): [4800, 5200]
+  EXPECT_GE(drop_count, 4700);
+  EXPECT_LE(drop_count, 5300);
+}

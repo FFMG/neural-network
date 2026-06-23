@@ -2448,6 +2448,27 @@ public:
     }
   }
 
+  // Vectorised increment values for timesteps
+  inline static void increment_values(long long* values, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    // Process 4 long longs at a time using AVX2
+    __m256i vec_one = _mm256_set1_epi64x(1);
+    for (; i + 3 < n; i += 4)
+    {
+      __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&values[i]));
+      v = _mm256_add_epi64(v, vec_one);
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(&values[i]), v);
+    }
+#endif
+    for (; i < n; ++i)
+    {
+      ++values[i];
+    }
+  }
+
   // Vectorized None step (plain SGD without momentum)
   inline static void none_step(
     double* values,
