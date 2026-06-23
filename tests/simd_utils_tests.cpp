@@ -1578,10 +1578,26 @@ TEST(SimdUtilsTest, GemmBatchesVerify)
   }
 }
 
+TEST(SimdUtilsTest, IncrementValues)
+{
+  const size_t sizes[] = { 1, 3, 4, 7, 8, 15, 16, 100 };
+  for (size_t n : sizes)
+  {
+    std::vector<long long> values(n);
+    std::vector<long long> expected(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      values[i] = static_cast<long long>(i) * 10;
+      expected[i] = values[i] + 1;
+    }
 
+    simd::increment_values(values.data(), n);
 
-
-
-
+    for (size_t i = 0; i < n; ++i)
+    {
+      EXPECT_EQ(values[i], expected[i]) << "Mismatch at index " << i << " for size " << n;
+    }
+  }
+}
 
 
