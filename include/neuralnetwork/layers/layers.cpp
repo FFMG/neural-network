@@ -478,14 +478,11 @@ void Layers::calculate_back_propagation_input_layer(
   size_t batch_size) const
 {
   (void)options;
+  (void)gradients;
+  (void)batch_size;
   MYODDWEB_PROFILE_FUNCTION("Layers");
-
-  // input layer is all 0, (bias is included)
-  const auto& input_gradients = std::vector<double>(input_layer().get_number_neurons(), 0.0);
-  for (size_t i = 0; i < batch_size; ++i)
-  {
-    gradients[i].set_gradients(0, input_gradients);
-  }
+  // The input layer has no weights/biases and does not propagate gradients.
+  // The gradients are already zero-initialized at the start of the batch.
 }
 
 void Layers::calculate_back_propagation_output_layer(
@@ -512,10 +509,6 @@ void Layers::calculate_back_propagation_hidden_layers(
   const std::vector<HiddenStates>& hidden_states) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  if (_batch_next_gradients_buffer.size() < batch_size)
-  {
-    _batch_next_gradients_buffer.resize(batch_size);
-  }
 
   // we are going backward from output to input
   for (auto layer_number = (int)size() - 2; layer_number > 0; --layer_number)
@@ -537,31 +530,23 @@ void Layers::calculate_back_propagation_hidden_layers(
     }
     else
     {
+       static const std::vector<std::vector<double>> empty_matrix;
        bool next_is_recurrent = false;
        for (size_t b = 0; b < batch_size; ++b)
        {
-         const auto& g = gradients[b];
-         auto& grad = _batch_next_gradients_buffer[b];
-         
-         const auto rnn_span = g.get_rnn_gradients(static_cast<unsigned>(layer_number + 1));
-         if (!rnn_span.empty())
+         if (!gradients[b].get_rnn_gradients(static_cast<unsigned>(layer_number + 1)).empty())
          {
-           grad.assign(rnn_span.begin(), rnn_span.end());
            next_is_recurrent = true;
-         }
-         else
-         {
-           const auto std_span = g.get_gradients(static_cast<unsigned>(layer_number + 1));
-           grad.assign(std_span.begin(), std_span.end());
+           break;
          }
        }
        if (next_is_recurrent)
        {
-         hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, _batch_next_gradients_buffer, hidden_states, batch_size, options.bptt_max_ticks());
+         hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, empty_matrix, hidden_states, batch_size, options.bptt_max_ticks());
        }
        else
        {
-         hidden_0.calculate_hidden_gradients(gradients, hidden_1, _batch_next_gradients_buffer, hidden_states, batch_size, options.bptt_max_ticks());
+         hidden_0.calculate_hidden_gradients(gradients, hidden_1, empty_matrix, hidden_states, batch_size, options.bptt_max_ticks());
        }
     }
   }

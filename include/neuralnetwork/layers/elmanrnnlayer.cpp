@@ -647,13 +647,47 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   workspace.resize(N_this, N_prev, end - start, num_time_steps);
 
   const size_t N_next = next_layer.get_number_neurons();
-  const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+  const bool use_direct_gradients = batch_next_grad_matrix.empty();
+
+  bool next_is_seq = false;
+  if (use_direct_gradients)
+  {
+    if (end > start)
+    {
+      const auto next_grads = batch_gradients_and_outputs[start].get_gradients(next_layer.get_layer_index());
+      next_is_seq = (next_grads.size() == num_time_steps * N_next);
+    }
+  }
+  else
+  {
+    if (!batch_next_grad_matrix.empty())
+    {
+      next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+    }
+  }
 
   const double* next_w_data = next_layer.get_w_values().data();
   for (size_t b = start; b < end; ++b)
   {
     const size_t b_idx = b - start;
-    const double* next_grads_base = batch_next_grad_matrix[b].data();
+    const double* next_grads_base = nullptr;
+    if (use_direct_gradients)
+    {
+      next_grads_base = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index()).data();
+    }
+    else
+    {
+      if (b < batch_next_grad_matrix.size())
+      {
+        next_grads_base = batch_next_grad_matrix[b].data();
+      }
+    }
+
+    if (next_grads_base == nullptr)
+    {
+      continue;
+    }
+
     double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
 
     for (int t = t_start; t >= t_end; --t)

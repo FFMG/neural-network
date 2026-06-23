@@ -489,10 +489,25 @@ void FFLayer::calculate_hidden_gradients(
   if (num_time_steps == 0) return;
 
   std::vector<double> flattened_next_grads_buffer(batch_size * num_time_steps * N_next, 0.0);
+  const bool use_direct_gradients = batch_next_grad_matrix.empty();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& next_grads = batch_next_grad_matrix[b];
-    if (next_grads.empty()) continue;
+    std::span<const double> next_grads;
+    if (use_direct_gradients)
+    {
+      next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+    }
+    else
+    {
+      if (b < batch_next_grad_matrix.size())
+      {
+        next_grads = batch_next_grad_matrix[b];
+      }
+    }
+    if (next_grads.empty())
+    {
+      continue;
+    }
 
     if (next_grads.size() == N_next)
     {
@@ -577,23 +592,41 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
 
   const size_t effective_batch_size = batch_size * num_time_steps;
   std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this, 0.0);
+  const bool use_direct_gradients = batch_output_gradients.empty();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& next_grads = batch_output_gradients[b];
-    if (next_grads.empty()) continue;
-
-    if (next_grads.size() == N_this)
+    std::span<const double> next_grads;
+    if (use_direct_gradients)
     {
-       for(size_t t=0; t<num_time_steps; ++t) std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + (b * num_time_steps + t) * N_this);
-    }
-    else if (next_grads.size() == num_time_steps * N_this)
-    {
-       std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+      next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
     }
     else
     {
-       const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
-       std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+      if (b < batch_output_gradients.size())
+      {
+        next_grads = batch_output_gradients[b];
+      }
+    }
+    if (next_grads.empty())
+    {
+      continue;
+    }
+
+    if (next_grads.size() == N_this)
+    {
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + (b * num_time_steps + t) * N_this);
+      }
+    }
+    else if (next_grads.size() == num_time_steps * N_this)
+    {
+      std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
+    }
+    else
+    {
+      const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
+      std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_this_grads_buffer.begin() + b * num_time_steps * N_this);
     }
   }
 

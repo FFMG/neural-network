@@ -586,35 +586,44 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
   // --- End warning addition ---
 
   // Exponentiate and accumulate in higher precision
-  long double sum = 0.0L;
+  double sum = 0.0;
   constexpr double LOGIT_CLAMP = 30.0;
 
   for (double* it = begin; it != end; ++it)
   {
     // Apply temperature scaling and clamp the exponent to prevent explosion
     double val = (static_cast<double>(*it) - static_cast<double>(max_val)) / temperature;
-    if (val < -LOGIT_CLAMP) val = -LOGIT_CLAMP;
+    if (val < -LOGIT_CLAMP)
+    {
+      val = -LOGIT_CLAMP;
+    }
     
-    long double v = std::exp(static_cast<long double>(val));
-    *it = static_cast<double>(v);
+    double v = std::exp(val);
+    *it = v;
     sum += v;
   }
 
   // If sum is zero or not finite (extremely rare), fall back:
-  if (sum == 0.0L || !std::isfinite(static_cast<double>(sum)))
+  if (sum == 0.0 || !std::isfinite(sum))
   {
     // After exp(* - max) the max entries are 1.0 (or very close). Distribute mass
     // evenly among entries that equal 1.0, set others to 0.
     int count_max = 0;
     for (const double* it = begin; it != end; ++it)
     {
-      if (*it == 1.0) ++count_max;
+      if (*it == 1.0)
+      {
+        ++count_max;
+      }
     }
 
     if (count_max == 0)
     {
       // Defensive: set first element to 1
-      for (double* it = begin; it != end; ++it) *it = 0.0;
+      for (double* it = begin; it != end; ++it)
+      {
+        *it = 0.0;
+      }
       *begin = 1.0;
     }
     else
@@ -628,10 +637,10 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
     return;
   }
 
-  const long double inv_sum = 1.0L / sum;
+  const double inv_sum = 1.0 / sum;
   for (double* it = begin; it != end; ++it)
   {
-    *it = static_cast<double>(static_cast<long double>(*it) * inv_sum);
+    *it = *it * inv_sum;
   }
 }
 

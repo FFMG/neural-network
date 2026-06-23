@@ -438,3 +438,67 @@ TEST_F(FFLayerTest, OversizedBiasVectorSafety)
   // Expected output: 1.5 * 1.0 + 2.0 * 0.5 + 0.3 = 1.5 + 1.0 + 0.3 = 2.8
   EXPECT_NEAR(batch_go[0].get_output(1, 0), 2.8, 1e-9);
 }
+
+TEST_F(FFLayerTest, DirectNextGradientsRetrieval)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 2;
+  unsigned next_outputs = 1;
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  MockLayer next_layer(2, next_outputs);
+
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  next_layer.set_w_values({ 0.5, 0.8 });
+  next_layer.set_b_values({ 0.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, next_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+  batch_hs[0].at(1, 0).set_pre_activation_sum(0, 0.5);
+  batch_hs[0].at(1, 0).set_pre_activation_sum(1, 0.5);
+  batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+  // Store the next gradients directly in the GradientsAndOutputs object
+  batch_go[0].set_gradients(2, { 1.0 });
+
+  // Pass an empty vector to trigger the direct next gradient retrieval path
+  std::vector<std::vector<double>> empty_next_grads = {};
+  layer.calculate_hidden_gradients(batch_go, next_layer, empty_next_grads, batch_hs, 1, 0);
+
+  const auto grads = batch_go[0].get_gradients(1);
+  EXPECT_NEAR(grads[0], 0.5, 1e-9);
+  EXPECT_NEAR(grads[1], 0.8, 1e-9);
+}
+
+TEST_F(FFLayerTest, DirectOutputGradientsRetrieval)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 2;
+  unsigned next_outputs = 2;
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, next_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+  batch_hs[0].at(1, 0).set_pre_activation_sum(0, 0.5);
+  batch_hs[0].at(1, 0).set_pre_activation_sum(1, 0.5);
+  batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+  // Store the output layer's input gradients directly (at layer index 2)
+  batch_go[0].set_gradients(2, { 0.5, 0.8 });
+
+  // Pass an empty vector to trigger the direct retrieval path
+  std::vector<std::vector<double>> empty_output_grads = {};
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, empty_output_grads, batch_hs, 1, 0);
+
+  const auto grads = batch_go[0].get_gradients(1);
+  EXPECT_NEAR(grads[0], 0.5, 1e-9);
+  EXPECT_NEAR(grads[1], 0.8, 1e-9);
+}
