@@ -61,9 +61,21 @@ public:
     const size_t N_this = get_number_neurons();
     const size_t N_next = next_layer.get_number_neurons();
 
+    const bool use_direct_gradients = batch_next_grad_matrix.empty();
     for (size_t b = 0; b < batch_size; ++b)
     {
-      const auto& next_grads = batch_next_grad_matrix[b];
+      std::span<const double> next_grads;
+      if (use_direct_gradients)
+      {
+        next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+      }
+      else
+      {
+        if (b < batch_next_grad_matrix.size())
+        {
+          next_grads = batch_next_grad_matrix[b];
+        }
+      }
       const size_t num_time_steps = next_grads.empty() ? 0 : next_grads.size() / N_next;
       
       std::vector<double> gradients_seq(num_time_steps * N_this, 0.0);

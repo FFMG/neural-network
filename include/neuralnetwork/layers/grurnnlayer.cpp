@@ -1012,7 +1012,24 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
   // Step 1: Pre-calculate upstream gradients from next layer
   const size_t N_next = next_layer.get_number_neurons();
-  const bool next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+  const bool use_direct_gradients = batch_next_grad_matrix.empty();
+
+  bool next_is_seq = false;
+  if (use_direct_gradients)
+  {
+    if (end > start)
+    {
+      const auto next_grads = batch_gradients_and_outputs[start].get_gradients(next_layer.get_layer_index());
+      next_is_seq = (next_grads.size() == num_time_steps * N_next);
+    }
+  }
+  else
+  {
+    if (!batch_next_grad_matrix.empty())
+    {
+      next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
+    }
+  }
 
   double* grad_next_all_ptr = workspace.grad_from_next_all_t.data();
   const double* next_w_data = next_layer.get_w_values().data();
@@ -1020,7 +1037,27 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
     size_t b = start + b_idx;
-    const double* next_grad_matrix = batch_next_grad_matrix[b].data();
+    const double* next_grad_matrix = nullptr;
+    size_t next_grad_size = 0;
+    if (use_direct_gradients)
+    {
+      const auto next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+      next_grad_matrix = next_grads.data();
+      next_grad_size = next_grads.size();
+    }
+    else
+    {
+      if (b < batch_next_grad_matrix.size())
+      {
+        next_grad_matrix = batch_next_grad_matrix[b].data();
+        next_grad_size = batch_next_grad_matrix[b].size();
+      }
+    }
+
+    if (next_grad_matrix == nullptr)
+    {
+      continue;
+    }
 
     for (int t = t_start; t >= t_end; --t)
     {
@@ -1029,12 +1066,12 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       {
         next_grad_ptr = &next_grad_matrix[t * N_next];
       }
-      else if (t == t_start && batch_next_grad_matrix[b].size() == N_next)
+      else if (t == t_start && next_grad_size == N_next)
       {
         next_grad_ptr = next_grad_matrix;
       }
 
-      if (next_grad_ptr)
+      if (next_grad_ptr != nullptr)
       {
         double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
         if (&next_layer == this)
