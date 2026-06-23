@@ -309,7 +309,8 @@ void ElmanRNNLayer::calculate_forward_feed(
   std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this, 0.0);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
@@ -317,9 +318,9 @@ void ElmanRNNLayer::calculate_forward_feed(
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
@@ -570,7 +571,8 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   }
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
 
   if (!use_multithreading)
   {
@@ -580,9 +582,9 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
@@ -877,7 +879,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
     }
   };
 
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     run_chunk(0, batch_size, 0);
@@ -885,9 +888,9 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {

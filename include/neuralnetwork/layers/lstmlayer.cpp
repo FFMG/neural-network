@@ -495,7 +495,8 @@ void LSTMLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     precalc_gates(0, batch_size);
@@ -503,13 +504,16 @@ void LSTMLayer::calculate_forward_feed(
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([&precalc_gates, start, end]() { precalc_gates(start, end); });
+        _task_queue_pool->enqueue([&precalc_gates, start, end]()
+          {
+            precalc_gates(start, end);
+          });
       }
       start = end;
     }
@@ -632,13 +636,16 @@ void LSTMLayer::calculate_forward_feed(
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([&recurrent_pass, start, end]() { recurrent_pass(start, end); });
+        _task_queue_pool->enqueue([&recurrent_pass, start, end]()
+          {
+            recurrent_pass(start, end);
+          });
       }
       start = end;
     }
@@ -696,7 +703,8 @@ void LSTMLayer::calculate_hidden_gradients(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0 || N_this == 0) return;
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     auto& workspace = get_workspace(0);
@@ -705,9 +713,9 @@ void LSTMLayer::calculate_hidden_gradients(
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
@@ -907,7 +915,8 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   };
 
-  const bool use_multithreading = (num_threads > 1) && (batch_size >= num_threads * 16);
+  const unsigned int active_threads = (num_threads > 1) ? std::min(num_threads, static_cast<unsigned int>(batch_size / 16)) : 1;
+  const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     run_chunk(0, batch_size, 0);
@@ -915,13 +924,16 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   else
   {
     size_t start = 0;
-    for (unsigned int t = 0; t < num_threads; ++t)
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      size_t size = (batch_size / num_threads) + (t < (batch_size % num_threads) ? 1 : 0);
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
+        _task_queue_pool->enqueue([start, end, t, &run_chunk]()
+          { 
+            run_chunk(start, end, t); 
+          });
       }
       start = end;
     }
