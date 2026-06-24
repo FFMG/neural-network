@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 namespace myoddweb::nn
 {
@@ -25,9 +25,21 @@ public:
 
   virtual ~Neuron();
 
-  [[nodiscard]] unsigned get_index() const;
-  [[nodiscard]] const Type& get_type() const noexcept;
-  [[nodiscard]] bool is_dropout() const noexcept;
+  [[nodiscard]] inline unsigned get_index() const
+  {
+    return _index;
+  }
+
+  [[nodiscard]] inline const Type& get_type() const noexcept
+  {
+    return _type;
+  }
+
+  [[nodiscard]] inline bool is_dropout() const noexcept
+  {
+    return _type == Type::Dropout;
+  }
+
   [[nodiscard]] double get_dropout_rate() const;
 
   [[nodiscard]] bool must_randomly_drop() const;

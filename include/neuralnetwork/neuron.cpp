@@ -81,11 +81,7 @@ void Neuron::Clean()
   MYODDWEB_PROFILE_FUNCTION("Neuron");
 }
 
-unsigned Neuron::get_index() const
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _index;
-}
+
 
 double Neuron::get_dropout_rate() const
 {
@@ -113,16 +109,6 @@ bool Neuron::must_randomly_drop() const
   return dist(rng) < _dropout_rate;
 }
 
-bool Neuron::is_dropout() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _type == Neuron::Type::Dropout;
-}
 
-const Neuron::Type& Neuron::get_type() const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("Neuron");
-  return _type;
-}
 
 } // namespace myoddweb::nn

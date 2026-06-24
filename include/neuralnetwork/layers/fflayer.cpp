@@ -779,27 +779,25 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
 }
 
-void FFLayer::run_gemm_backward(size_t b_start, size_t b_end, size_t N_next, size_t N_this, const double* W_next, const std::vector<double>& flattened_next_grads_buffer, std::vector<double>& flattened_this_grads_buffer) const
+void FFLayer::run_gemm_backward(
+  size_t b_start,
+  size_t b_end,
+  size_t N_next,
+  size_t N_this,
+  const double* W_next,
+  const std::vector<double>& flattened_next_grads_buffer,
+  std::vector<double>& flattened_this_grads_buffer) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  constexpr size_t BLOCK_SIZE = 64;
-  for (size_t j0 = 0; j0 < N_next; j0 += BLOCK_SIZE)
+  for (size_t b = b_start; b < b_end; ++b)
   {
-    size_t j_limit = std::min(j0 + BLOCK_SIZE, N_next);
-    for (size_t b0 = b_start; b0 < b_end; b0 += BLOCK_SIZE)
-    {
-      size_t b_limit = std::min(b0 + BLOCK_SIZE, b_end);
-      for (size_t i0 = 0; i0 < N_this; i0 += BLOCK_SIZE)
-      {
-        size_t i_limit = std::min(i0 + BLOCK_SIZE, N_this);
-        for (size_t b = b0; b < b_limit; ++b)
-        {
-          const double* g_next_row = &flattened_next_grads_buffer[b * N_next];
-          double* g_this_row = &flattened_this_grads_buffer[b * N_this];
-          for (size_t i = i0; i < i_limit; ++i) g_this_row[i] += simd::dot_product(g_next_row + j0, &W_next[i * N_next + j0], j_limit - j0);
-        }
-      }
-    }
+    simd::gemv_add(
+      W_next,
+      &flattened_next_grads_buffer[b * N_next],
+      &flattened_this_grads_buffer[b * N_this],
+      N_this,
+      N_next
+    );
   }
 }
 
