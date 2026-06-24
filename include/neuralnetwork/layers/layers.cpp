@@ -566,29 +566,12 @@ void Layers::update_weights(
     return;
   }
 
-  // 1. Have each layer calculate and store its own gradients (in parallel if threads available)
-  const auto update_threads = _update_weights_pool ? _update_weights_pool->get_number_of_threads() : 0;
-  if (update_threads > 1)
+  // 1. Have each layer calculate and store its own gradients sequentially (each layer parallelises internally)
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers.at(i);
-      auto& layer_b = *_layers.at(i - 1);
-      _update_weights_pool->enqueue([&layer_a, &layer_b, &batch_gradients, &hidden_states, batch_size, &options]()
-      {
-        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-      });
-    }
-    _update_weights_pool->get();
-  }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers.at(i);
-      auto& layer_b = *_layers.at(i - 1);
-      layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-    }
+    auto& layer_a = *_layers.at(i);
+    auto& layer_b = *_layers.at(i - 1);
+    layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
   }
 
   // 2. Calculate global gradient norm for clipping sequentially
@@ -620,27 +603,12 @@ void Layers::update_weights(
     Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
   }
 
-  // 3. Apply the stored (and now clipped) gradients (in parallel if threads available)
+  // 3. Apply the stored (and now clipped) gradients sequentially
   std::unique_lock<std::shared_mutex> write(_mutex);
-  if (update_threads > 1)
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      _update_weights_pool->enqueue([&layer_a, learning_rate, clipping_scale]()
-      {
-        layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-      });
-    }
-    _update_weights_pool->get();
-  }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-    }
+    auto& layer_a = *_layers[i];
+    layer_a.apply_stored_gradients(learning_rate, clipping_scale);
   }
 }
 
