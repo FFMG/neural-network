@@ -495,7 +495,8 @@ void LSTMLayer::calculate_forward_feed(
   };
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(num_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this * 4) / 100000))) : 1;
+  const unsigned int max_layer_threads = std::min(num_threads, 4U);
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this * 4) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
@@ -704,7 +705,8 @@ void LSTMLayer::calculate_hidden_gradients(
   if (num_time_steps == 0 || N_this == 0) return;
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(num_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 4) / 100000))) : 1;
+  const unsigned int max_layer_threads = std::min(num_threads, 4U);
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 4) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
@@ -763,20 +765,23 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
-  _thread_w_grads.resize(num_threads);
-  _thread_b_grads.resize(num_threads);
-  _thread_rw_grads.resize(num_threads);
-  _thread_f_w_grads.resize(num_threads);
-  _thread_f_b_grads.resize(num_threads);
-  _thread_f_rw_grads.resize(num_threads);
-  _thread_i_w_grads.resize(num_threads);
-  _thread_i_b_grads.resize(num_threads);
-  _thread_i_rw_grads.resize(num_threads);
-  _thread_o_w_grads.resize(num_threads);
-  _thread_o_b_grads.resize(num_threads);
-  _thread_o_rw_grads.resize(num_threads);
+  const unsigned int max_layer_threads = std::min(num_threads, 4U);
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 4) / 100000))) : 1;
 
-  for (unsigned int t = 0; t < num_threads; ++t)
+  _thread_w_grads.resize(active_threads);
+  _thread_b_grads.resize(active_threads);
+  _thread_rw_grads.resize(active_threads);
+  _thread_f_w_grads.resize(active_threads);
+  _thread_f_b_grads.resize(active_threads);
+  _thread_f_rw_grads.resize(active_threads);
+  _thread_i_w_grads.resize(active_threads);
+  _thread_i_b_grads.resize(active_threads);
+  _thread_i_rw_grads.resize(active_threads);
+  _thread_o_w_grads.resize(active_threads);
+  _thread_o_b_grads.resize(active_threads);
+  _thread_o_rw_grads.resize(active_threads);
+
+  for (unsigned int t = 0; t < active_threads; ++t)
   {
     _thread_w_grads[t].resize(_w_grads.size());
     std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
@@ -916,7 +921,6 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     }
   };
 
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(num_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 4) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
@@ -943,7 +947,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
 
   // Merge
   zero_gradients();
-  for (unsigned int t = 0; t < num_threads; ++t)
+  for (unsigned int t = 0; t < active_threads; ++t)
   {
     simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
     simd::add_vectors(_thread_f_w_grads[t].data(), _f_w_grads.data(), _f_w_grads.size());

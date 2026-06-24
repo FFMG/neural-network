@@ -216,7 +216,8 @@ void FFOutputLayer::calculate_output_gradients(
   const size_t N_total = get_number_neurons();
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const size_t num_time_steps = batch_hidden_states.empty() ? 1 : batch_hidden_states[0].at(get_layer_index()).size();
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(num_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 10000))) : 1;
+  const unsigned int max_layer_threads = std::min(num_threads, 4U);
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 10000))) : 1;
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
