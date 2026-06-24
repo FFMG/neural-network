@@ -259,15 +259,30 @@ void activation::activate(double* begin, double* end, bool is_training) const
     for (size_t i = 0; i < size; ++i)
     {
       const double x = begin[i];
-      const double sp = std::log1p(std::exp(x));
-      begin[i] = x * std::tanh(sp);
+      if (x > 20.0)
+      {
+        begin[i] = x;
+      }
+      else if (x < -20.0)
+      {
+        begin[i] = 0.0;
+      }
+      else
+      {
+        const double sp = std::log1p(std::exp(x));
+        begin[i] = x * std::tanh(sp);
+      }
     }
     break;
   case method::gelu:
-    for (size_t i = 0; i < size; ++i)
     {
-      const double x = begin[i];
-      begin[i] = 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
+      const double sqrt_2_over_pi = 0.7978845608028654;
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double x = begin[i];
+        const double x3 = x * x * x;
+        begin[i] = 0.5 * x * (1.0 + std::tanh(sqrt_2_over_pi * (x + 0.044715 * x3)));
+      }
     }
     break;
   default:
@@ -469,13 +484,17 @@ void activation::activate_derivative(const double* begin, const double* end, con
     }
     break;
   case method::gelu:
-    for (size_t i = 0; i < size; ++i)
     {
-      const double x = begin[i];
-      const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
-      out[i] = 0.5 + 0.5 * tanh_term +
-        (0.5 * x * (1.0 - tanh_term * tanh_term) *
-          std::sqrt(2.0 / M_PI) * (1.0 + 3.0 * 0.044715 * x * x));
+      const double sqrt_2_over_pi = 0.7978845608028654;
+      for (size_t i = 0; i < size; ++i)
+      {
+        const double x = begin[i];
+        const double x3 = x * x * x;
+        const double tanh_term = std::tanh(sqrt_2_over_pi * (x + 0.044715 * x3));
+        out[i] = 0.5 + 0.5 * tanh_term +
+          (0.5 * x * (1.0 - tanh_term * tanh_term) *
+            sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
+      }
     }
     break;
   default:
@@ -717,16 +736,38 @@ double activation::calculate_PReLU_derivative(double x, double alpha) noexcept
 double activation::calculate_mish(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return x * std::tanh(std::log1p(std::exp(x)));
+  if (x > 20.0)
+  {
+    return x;
+  }
+  else if (x < -20.0)
+  {
+    return 0.0;
+  }
+  else
+  {
+    return x * std::tanh(std::log1p(std::exp(x)));
+  }
 }
 
 double activation::calculate_mish_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  double sp = std::log1p(std::exp(x)); // softplus
-  double tanh_sp = std::tanh(sp);
-  double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
-  return tanh_sp + x * sigmoid_x * (1 - tanh_sp * tanh_sp);
+  if (x > 20.0)
+  {
+    return 1.0;
+  }
+  else if (x < -20.0)
+  {
+    return 0.0;
+  }
+  else
+  {
+    double sp = std::log1p(std::exp(x)); // softplus
+    double tanh_sp = std::tanh(sp);
+    double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
+    return tanh_sp + x * sigmoid_x * (1.0 - tanh_sp * tanh_sp);
+  }
 }
 
 double activation::calculate_swish(double x, double alpha) noexcept
@@ -751,16 +792,18 @@ double activation::calculate_swish_derivative(double x, double alpha) noexcept
 double activation::calculate_gelu(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  return 0.5 * x * (1.0 + std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3))));
+  const double sqrt_2_over_pi = 0.7978845608028654;
+  return 0.5 * x * (1.0 + std::tanh(sqrt_2_over_pi * (x + 0.044715 * x * x * x)));
 }
 
 double activation::calculate_gelu_derivative(double x, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  const double tanh_term = std::tanh(std::sqrt(2.0 / M_PI) * (x + 0.044715 * std::pow(x, 3)));
+  const double sqrt_2_over_pi = 0.7978845608028654;
+  const double tanh_term = std::tanh(sqrt_2_over_pi * (x + 0.044715 * x * x * x));
   return 0.5 + 0.5 * tanh_term +
-    (0.5 * x * (1 - tanh_term * tanh_term) *
-      std::sqrt(2.0 / M_PI) * (1 + 3 * 0.044715 * x * x));
+    (0.5 * x * (1.0 - tanh_term * tanh_term) *
+      sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
 }
 
 double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const

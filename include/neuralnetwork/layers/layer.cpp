@@ -264,7 +264,11 @@ void Layer::calculate_cross_entropy_error_deltas(
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  
+  if (neurons.empty())
+  {
+    return;
+  }
+
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
@@ -272,10 +276,8 @@ void Layer::calculate_cross_entropy_error_deltas(
   // --- Optional directional boost ---
   int pred_dir = 0;
   int gt_dir = 0;
-  if (use_dir && activation_method == activation::method::softmax && !neurons.empty())
+  if (use_dir && activation_method == activation::method::softmax)
   {
-    // For multiclass (Softmax), we use a midpoint to define direction.
-    // In composite layers, we must only consider the current span of neurons.
     const size_t num_classes = neurons.size();
     const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
 
@@ -294,47 +296,59 @@ void Layer::calculate_cross_entropy_error_deltas(
     gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
   }
 
-  // This delta calculation assumes Softmax activation is used at the output layer.
-  // dL/dz = y_pred - y_true
-  for (const auto& neuron : neurons)
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+
+  if (activation_method == activation::method::softmax)
   {
-    const unsigned neuron_index = neuron.get_index();
-    const double target = target_outputs[neuron_index];
-    const double output = given_outputs[neuron_index];
-
-    double grad;
-    if (activation_method == activation::method::softmax)
+    // Avoid range search inside loop; pull temperature out
+    const double temperature = get_activation(start_idx).get_temperature();
+    double multiplier = ce_lambda / temperature;
+    if (use_dir && gt_dir != 0 && pred_dir != gt_dir)
     {
-      // Standard Cross-Entropy + Softmax gradient: (given - target)
-      grad = (output - target);
-
-      // If softmax is used, temperature scaling applies to the gradient
-      double temperature = get_activation(neuron_index).get_temperature();
-      grad /= temperature;
+      multiplier *= (1.0 + dir_lambda);
     }
-    else
+
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_mult = _mm256_set1_pd(multiplier);
+    for (; i + 3 < count; i += 4)
     {
-      // For non-softmax activation, the raw derivative dL/da = -target/output.
-      // This will then be multiplied by f'(z) later because skip_derivative is false for non-softmax CE.
+      const size_t idx = static_cast<size_t>(start_idx) + i;
+      __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+      __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+      __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+      __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+      _mm256_storeu_pd(deltas.data() + idx, vec_res);
+    }
+#endif
+    for (; i < count; ++i)
+    {
+      const size_t idx = start_idx + i;
+      deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
+    }
+  }
+  else
+  {
+    // For non-softmax activation, the raw derivative dL/da = -target/output.
+    for (size_t i = 0; i < count; ++i)
+    {
+      const size_t idx = start_idx + i;
+      const double target = target_outputs[idx];
+      const double output = given_outputs[idx];
       const double eps = 1e-12;
-      double clamped_output = std::max(eps, std::min(1.0 - eps, output));
-      grad = -target / clamped_output;
+      const double clamped_output = std::max(eps, std::min(1.0 - eps, output));
+      double grad = -target / clamped_output;
+
+      grad *= ce_lambda;
+
+      if (!std::isfinite(grad))
+      {
+        Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", idx);
+      }
+
+      deltas[idx] = grad;
     }
-
-    if (use_dir && activation_method == activation::method::softmax && gt_dir != 0 && pred_dir != gt_dir)
-    {
-      grad *= (1.0 + dir_lambda);
-    }
-
-    // Apply Cross Entropy scaling
-    grad *= ce_lambda;
-
-    if (!std::isfinite(grad))
-    {
-        Logger::panic("CRITICAL: Non-finite gradient detected at neuron ", neuron_index);
-    }
-
-    deltas[neuron_index] = grad;
   }
 }
 
@@ -348,19 +362,21 @@ void Layer::calculate_bce_error_deltas(
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
+  if (neurons.empty())
+  {
+    return;
+  }
 
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
-  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+  const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
 
   // --- Optional directional boost ---
   int pred_dir = 0;
   int gt_dir = 0;
-  if (use_dir && activation_method == activation::method::softmax && !neurons.empty())
+  if (use_dir && activation_method == activation::method::softmax)
   {
-    // For multiclass (Softmax), we use a midpoint to define direction.
-    // In composite layers, we must only consider the current span of neurons.
     const size_t num_classes = neurons.size();
     const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
 
@@ -379,56 +395,78 @@ void Layer::calculate_bce_error_deltas(
     gt_dir = (static_cast<double>(gt_idx) > mid) ? 1 : (static_cast<double>(gt_idx) < mid ? -1 : 0);
   }
 
-  for (const auto& neuron : neurons)
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+
+  if (activation_method == activation::method::sigmoid && !use_dir)
   {
-    const unsigned idx = neuron.get_index();
-
-    const double target = target_outputs[idx];
-    const double output = given_outputs[idx];
-
-    // --- BCE gradient ---
-    double grad;
-    if (activation_method == activation::method::sigmoid)
+    // Standard BCE + Sigmoid gradient: (given - target) * ce_lambda * inv_num_neurons
+    const double multiplier = ce_lambda * inv_num_neurons;
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_mult = _mm256_set1_pd(multiplier);
+    for (; i + 3 < count; i += 4)
     {
-      // Standard BCE + Sigmoid gradient: (given - target)
-      grad = (output - target);
+      const size_t idx = start_idx + i;
+      __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+      __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+      __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+      __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+      _mm256_storeu_pd(deltas.data() + idx, vec_res);
     }
-    else
+#endif
+    for (; i < count; ++i)
     {
-      // For non-sigmoid activation, the raw derivative dL/da = (a - y) / (a * (1 - a)).
-      // This will then be multiplied by f'(z) later because skip_derivative is false for non-sigmoid BCE.
-      const double eps = 1e-12;
-      double clamped_output = std::max(eps, std::min(1.0 - eps, output));
-      grad = (clamped_output - target) / (clamped_output * (1.0 - clamped_output));
+      const size_t idx = start_idx + i;
+      deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
     }
-
-    // --- Optional directional boost ---
-    if (use_dir)
+  }
+  else
+  {
+    for (size_t i = 0; i < count; ++i)
     {
-      if (activation_method == activation::method::softmax)
+      const size_t idx = start_idx + i;
+      const double target = target_outputs[idx];
+      const double output = given_outputs[idx];
+
+      // --- BCE gradient ---
+      double grad;
+      if (activation_method == activation::method::sigmoid)
       {
-        if (gt_dir != 0 && pred_dir != gt_dir)
-        {
-          grad *= (1.0 + dir_lambda);
-        }
+        grad = (output - target);
       }
       else
       {
-        const int direction = (target > 0.5) ? 1 : -1;
-        const int predicted_dir = (output > 0.5) ? 1 : -1;
+        const double eps = 1e-12;
+        const double clamped_output = std::max(eps, std::min(1.0 - eps, output));
+        grad = (clamped_output - target) / (clamped_output * (1.0 - clamped_output));
+      }
 
-        if (direction != predicted_dir)
+      // --- Optional directional boost ---
+      if (use_dir)
+      {
+        if (activation_method == activation::method::softmax)
         {
-          grad *= (1.0 + dir_lambda);
+          if (gt_dir != 0 && pred_dir != gt_dir)
+          {
+            grad *= (1.0 + dir_lambda);
+          }
+        }
+        else
+        {
+          const int direction = (target > 0.5) ? 1 : -1;
+          const int predicted_dir = (output > 0.5) ? 1 : -1;
+
+          if (direction != predicted_dir)
+          {
+            grad *= (1.0 + dir_lambda);
+          }
         }
       }
+
+      grad *= ce_lambda;
+      deltas[idx] = grad * inv_num_neurons;
     }
-
-    // --- Apply Cross Entropy scaling ---
-    grad *= ce_lambda;
-
-    // --- Normalize ---
-    deltas[idx] = grad * inv_num_neurons;
   }
 }
 
@@ -441,12 +479,32 @@ void Layer::calculate_mse_error_deltas(
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
-
-  for (const auto& neuron : neurons)
+  if (neurons.empty())
   {
-    const unsigned neuron_index = neuron.get_index();
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * inv_num_neurons;
+    return;
+  }
+
+  const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+
+  size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+  __m256d vec_inv = _mm256_set1_pd(inv_num_neurons);
+  for (; i + 3 < count; i += 4)
+  {
+    const size_t idx = start_idx + i;
+    __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+    __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+    __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+    __m256d vec_res = _mm256_mul_pd(vec_diff, vec_inv);
+    _mm256_storeu_pd(deltas.data() + idx, vec_res);
+  }
+#endif
+  for (; i < count; ++i)
+  {
+    const size_t idx = start_idx + i;
+    deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * inv_num_neurons;
   }
 }
 
@@ -459,32 +517,63 @@ void Layer::calculate_rmse_error_deltas(
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
-
-  // 1. Calculate MSE sum
-  double sum_squared_error = 0.0;
-  for (const auto& neuron : neurons)
+  if (neurons.empty())
   {
-    const unsigned i = neuron.get_index();
-    const double diff = given_outputs[i] - target_outputs[i];
+    return;
+  }
+
+  const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+  double sum_squared_error = 0.0;
+
+  size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+  __m256d vec_sum = _mm256_setzero_pd();
+  for (; i + 3 < count; i += 4)
+  {
+    const size_t idx = start_idx + i;
+    __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+    __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+    __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+#ifdef SIMD_FMA_ENABLED
+    vec_sum = _mm256_fmadd_pd(vec_diff, vec_diff, vec_sum);
+#else
+    vec_sum = _mm256_add_pd(vec_sum, _mm256_mul_pd(vec_diff, vec_diff));
+#endif
+  }
+  sum_squared_error = simd::horizontal_sum(vec_sum);
+#endif
+  for (; i < count; ++i)
+  {
+    const size_t idx = start_idx + i;
+    const double diff = given_outputs[idx] - target_outputs[idx];
     sum_squared_error += diff * diff;
   }
 
-  // 2. Calculate RMSE
-  // Avoid division by zero if RMSE is 0 (perfect prediction)
   const double mse = sum_squared_error * inv_num_neurons;
   const double rmse = std::sqrt(mse);
   const double epsilon = 1e-12;
   const double divisor = (rmse < epsilon) ? epsilon : rmse;
-
-  // 3. Calculate deltas
-  // dE/dy = (1 / (N * RMSE)) * (y - t)
   const double factor = inv_num_neurons / divisor;
 
-  for (const auto& neuron : neurons)
+  i = 0;
+#ifdef SIMD_AVX2_ENABLED
+  __m256d vec_factor = _mm256_set1_pd(factor);
+  for (; i + 3 < count; i += 4)
   {
-    const unsigned neuron_index = neuron.get_index();
-    deltas[neuron_index] = (given_outputs[neuron_index] - target_outputs[neuron_index]) * factor;
+    const size_t idx = start_idx + i;
+    __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+    __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+    __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+    __m256d vec_res = _mm256_mul_pd(vec_diff, vec_factor);
+    _mm256_storeu_pd(deltas.data() + idx, vec_res);
+  }
+#endif
+  for (; i < count; ++i)
+  {
+    const size_t idx = start_idx + i;
+    deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * factor;
   }
 }
 
@@ -497,14 +586,20 @@ void Layer::calculate_log_cosh_error_deltas(
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
-  const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
-
-  for (const auto& neuron : neurons)
+  if (neurons.empty())
   {
-    const unsigned neuron_index = neuron.get_index();
-    const double x = given_outputs[neuron_index] - target_outputs[neuron_index];
-    // d/dx log(cosh(x)) = tanh(x)
-    deltas[neuron_index] = std::tanh(x) * inv_num_neurons;
+    return;
+  }
+
+  const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+
+  for (size_t i = 0; i < count; ++i)
+  {
+    const size_t idx = start_idx + i;
+    const double x = given_outputs[idx] - target_outputs[idx];
+    deltas[idx] = std::tanh(x) * inv_num_neurons;
   }
 }
 
