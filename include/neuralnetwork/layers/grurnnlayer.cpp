@@ -874,10 +874,7 @@ void GRURNNLayer::run_forward_pass(
       // f. Residuals and Candidate Activation
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
       {
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          h_hat_pre[j] += batch_residual_output_values[b][j];
-        }
+        simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre.data(), N_this);
       }
 
       std::vector<double> h_hat_vec = h_hat_pre;

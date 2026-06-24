@@ -588,11 +588,12 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
   // Exponentiate and accumulate in higher precision
   double sum = 0.0;
   constexpr double LOGIT_CLAMP = 30.0;
+  const double inv_temperature = 1.0 / temperature;
 
   for (double* it = begin; it != end; ++it)
   {
     // Apply temperature scaling and clamp the exponent to prevent explosion
-    double val = (static_cast<double>(*it) - static_cast<double>(max_val)) / temperature;
+    double val = (static_cast<double>(*it) - static_cast<double>(max_val)) * inv_temperature;
     if (val < -LOGIT_CLAMP)
     {
       val = -LOGIT_CLAMP;
