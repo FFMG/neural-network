@@ -445,10 +445,7 @@ void FFOutputLayer::run_post_gemm(
       {
         if (num_time_steps == 1 || t == num_time_steps - 1)
         {
-          for (size_t j = 0; j < N_this; j++)
-          {
-            current_pre_act[j] += batch_residual_output_values[b][j];
-          }
+          simd::add_vectors(batch_residual_output_values[b].data(), current_pre_act, N_this);
         }
       }
 

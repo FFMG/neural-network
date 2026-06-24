@@ -551,7 +551,7 @@ void LSTMLayer::calculate_forward_feed(
         // Residuals (on candidate gate g)
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-          for (size_t j = 0; j < N_this; ++j) g_pre[j] += batch_residual_output_values[b][j];
+          simd::add_vectors(batch_residual_output_values[b].data(), g_pre, N_this);
         }
 
         // Activations

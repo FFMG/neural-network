@@ -354,10 +354,7 @@ void ElmanRNNLayer::calculate_forward_feed(
 
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-          for (size_t j = 0; j < N_this; ++j)
-          {
-            pre_t[j] += batch_residual_output_values[b][j];
-          }
+          simd::add_vectors(batch_residual_output_values[b].data(), pre_t, N_this);
         }
 
         auto& state = batch_hidden_states[b].at(get_layer_index())[t];
