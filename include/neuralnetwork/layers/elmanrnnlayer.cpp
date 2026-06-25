@@ -310,7 +310,7 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 2000000))) : 1;
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
@@ -572,7 +572,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this)) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this)) / 2000000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
   if (!use_multithreading)
@@ -774,7 +774,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this)) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this)) / 2000000))) : 1;
 
   if (_thread_w_grads.size() < active_threads)
   {

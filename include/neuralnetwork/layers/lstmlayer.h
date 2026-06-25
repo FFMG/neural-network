@@ -252,6 +252,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_rw_timesteps.empty())
+    {
+      std::fill(_rw_timesteps.begin(), _rw_timesteps.end(), _rw_timesteps[0]);
+    }
     return _rw_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_rw_decays() const noexcept
@@ -289,6 +293,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_f_w_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_f_w_timesteps.empty())
+    {
+      std::fill(_f_w_timesteps.begin(), _f_w_timesteps.end(), _f_w_timesteps[0]);
+    }
     return _f_w_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_f_w_decays() const noexcept
@@ -325,6 +333,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_f_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_f_rw_timesteps.empty())
+    {
+      std::fill(_f_rw_timesteps.begin(), _f_rw_timesteps.end(), _f_rw_timesteps[0]);
+    }
     return _f_rw_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_f_rw_decays() const noexcept
@@ -361,6 +373,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_f_b_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_f_b_timesteps.empty())
+    {
+      std::fill(_f_b_timesteps.begin(), _f_b_timesteps.end(), _f_b_timesteps[0]);
+    }
     return _f_b_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_f_b_decays() const noexcept
@@ -398,6 +414,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_i_w_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_i_w_timesteps.empty())
+    {
+      std::fill(_i_w_timesteps.begin(), _i_w_timesteps.end(), _i_w_timesteps[0]);
+    }
     return _i_w_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_i_w_decays() const noexcept
@@ -434,6 +454,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_i_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_i_rw_timesteps.empty())
+    {
+      std::fill(_i_rw_timesteps.begin(), _i_rw_timesteps.end(), _i_rw_timesteps[0]);
+    }
     return _i_rw_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_i_rw_decays() const noexcept
@@ -470,6 +494,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_i_b_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_i_b_timesteps.empty())
+    {
+      std::fill(_i_b_timesteps.begin(), _i_b_timesteps.end(), _i_b_timesteps[0]);
+    }
     return _i_b_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_i_b_decays() const noexcept
@@ -507,6 +535,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_o_w_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_o_w_timesteps.empty())
+    {
+      std::fill(_o_w_timesteps.begin(), _o_w_timesteps.end(), _o_w_timesteps[0]);
+    }
     return _o_w_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_o_w_decays() const noexcept
@@ -543,6 +575,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_o_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_o_rw_timesteps.empty())
+    {
+      std::fill(_o_rw_timesteps.begin(), _o_rw_timesteps.end(), _o_rw_timesteps[0]);
+    }
     return _o_rw_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_o_rw_decays() const noexcept
@@ -579,6 +615,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_o_b_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    if (!_o_b_timesteps.empty())
+    {
+      std::fill(_o_b_timesteps.begin(), _o_b_timesteps.end(), _o_b_timesteps[0]);
+    }
     return _o_b_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_o_b_decays() const noexcept
@@ -1035,32 +1075,32 @@ private:
   std::vector<double> _rw_velocities;
   std::vector<double> _rw_m1;
   std::vector<double> _rw_m2;
-  std::vector<long long> _rw_timesteps;
+  mutable std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
 
   // --- Forget Gate (f) ---
   std::vector<double> _f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_decays;
-  std::vector<long long> _f_w_timesteps;
+  mutable std::vector<long long> _f_w_timesteps;
   std::vector<double> _f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_decays;
-  std::vector<long long> _f_rw_timesteps;
+  mutable std::vector<long long> _f_rw_timesteps;
   std::vector<double> _f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_decays;
-  std::vector<long long> _f_b_timesteps;
+  mutable std::vector<long long> _f_b_timesteps;
 
   // --- Input Gate (i) ---
   std::vector<double> _i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_decays;
-  std::vector<long long> _i_w_timesteps;
+  mutable std::vector<long long> _i_w_timesteps;
   std::vector<double> _i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_decays;
-  std::vector<long long> _i_rw_timesteps;
+  mutable std::vector<long long> _i_rw_timesteps;
   std::vector<double> _i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_decays;
-  std::vector<long long> _i_b_timesteps;
+  mutable std::vector<long long> _i_b_timesteps;
 
   // --- Output Gate (o) ---
   std::vector<double> _o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_decays;
-  std::vector<long long> _o_w_timesteps;
+  mutable std::vector<long long> _o_w_timesteps;
   std::vector<double> _o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_decays;
-  std::vector<long long> _o_rw_timesteps;
+  mutable std::vector<long long> _o_rw_timesteps;
   std::vector<double> _o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_decays;
-  std::vector<long long> _o_b_timesteps;
+  mutable std::vector<long long> _o_b_timesteps;
 
   // Cached transposed recurrent weights
   BPTTWorkspace::AlignedVector _rw_values_T;

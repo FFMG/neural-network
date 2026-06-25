@@ -782,6 +782,7 @@ public:
   [[nodiscard]] const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    (void)get_w_timesteps();
     static thread_local std::vector<std::vector<WeightParam>> thread_local_weights;
     thread_local_weights.assign(get_number_input_neurons(), std::vector<WeightParam>(get_number_output_neurons(), WeightParam(0, 0, 0, 0)));
     for (unsigned i = 0; i < get_number_input_neurons(); ++i) 
@@ -801,6 +802,7 @@ public:
   [[nodiscard]] const std::vector<WeightParam>& get_bias_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
+    (void)get_b_timesteps();
     static thread_local std::vector<WeightParam> thread_local_bias_weights;
     thread_local_bias_weights.resize(get_number_output_neurons(), WeightParam(0, 0, 0, 0));
     for (unsigned j = 0; j < get_number_output_neurons(); ++j)
@@ -861,14 +863,30 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_m1; }
   [[nodiscard]] inline const std::vector<double>& get_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (!_w_timesteps.empty())
+    {
+      std::fill(_w_timesteps.begin(), _w_timesteps.end(), _w_timesteps[0]);
+    }
+    return _w_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _w_decays; }
   [[nodiscard]] inline const std::vector<double>& get_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_values; }
   [[nodiscard]] inline const std::vector<double>& get_b_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_grads; }
   [[nodiscard]] inline const std::vector<double>& get_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_m1; }
   [[nodiscard]] inline const std::vector<double>& get_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    if (!_b_timesteps.empty())
+    {
+      std::fill(_b_timesteps.begin(), _b_timesteps.end(), _b_timesteps[0]);
+    }
+    return _b_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("Layer"); return _b_decays; }
   
   virtual void set_w_values(const std::vector<double>& v)
@@ -1305,10 +1323,10 @@ protected:
   int _residual_layer_number;
   std::vector<Neuron> _neurons;
   std::vector<double> _w_values, _w_grads, _w_velocities, _w_m1, _w_m2;
-  std::vector<long long> _w_timesteps;
+  mutable std::vector<long long> _w_timesteps;
   std::vector<double> _w_decays;
   std::vector<double> _b_values, _b_grads, _b_velocities, _b_m1, _b_m2;
-  std::vector<long long> _b_timesteps;
+  mutable std::vector<long long> _b_timesteps;
   std::vector<double> _b_decays;
   ResidualProjector* _residual_projector;
   std::unique_ptr<TaskQueuePool<void>> _task_queue_pool;
