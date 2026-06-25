@@ -269,20 +269,24 @@ void FFOutputLayer::run_output_gradients(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
 
   std::vector<double> deriv_buf(num_neurons);
+  std::vector<double> rnn_grads_row;
+  std::vector<double> given_outputs_vec;
+  std::vector<double> current_target;
+  std::vector<double> deltas;
+
   for (size_t b = start; b < end; b++)
   {
     const auto& target_outputs = *(target_outputs_begin + b);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-    std::vector<double> rnn_grads_row(num_time_steps * num_neurons, 0.0);
+    rnn_grads_row.assign(num_time_steps * num_neurons, 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      std::vector<double> given_outputs_vec(given_outputs.begin(), given_outputs.end());
+      given_outputs_vec.assign(given_outputs.begin(), given_outputs.end());
       
       // Determine target for this time step
-      std::vector<double> current_target;
       if (target_outputs.size() == num_time_steps * num_neurons)
       {
         current_target.assign(target_outputs.begin() + t * num_neurons, target_outputs.begin() + (t + 1) * num_neurons);
@@ -290,7 +294,7 @@ void FFOutputLayer::run_output_gradients(
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        current_target = target_outputs;
+        current_target.assign(target_outputs.begin(), target_outputs.end());
       }
       else
       {
@@ -298,7 +302,7 @@ void FFOutputLayer::run_output_gradients(
         continue;
       }
 
-      std::vector<double> deltas(num_neurons, 0.0);
+      deltas.assign(num_neurons, 0.0);
       calculate_error_deltas(deltas, current_target, given_outputs_vec);
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
@@ -346,7 +350,7 @@ void FFOutputLayer::run_output_gradients(
     {
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - num_neurons, num_neurons);
     }
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::move(rnn_grads_row));
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
   }
 }
 

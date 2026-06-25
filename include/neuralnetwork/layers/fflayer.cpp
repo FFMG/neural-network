@@ -818,6 +818,7 @@ void FFLayer::run_post_gemm_backward(
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
   std::vector<double> deriv_buf(N_this);
+  std::vector<double> rnn_grads_row;
   for (size_t b = start; b < end; b++)
   {
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
@@ -827,7 +828,7 @@ void FFLayer::run_post_gemm_backward(
       continue;
     }
 
-    std::vector<double> rnn_grads_row(num_time_steps * N_this, 0.0);
+    rnn_grads_row.assign(num_time_steps * N_this, 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -859,7 +860,7 @@ void FFLayer::run_post_gemm_backward(
     {
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - N_this, N_this);
     }
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::move(rnn_grads_row));
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
   }
 }
 
