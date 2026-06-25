@@ -768,18 +768,54 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 4) / 100000))) : 1;
 
-  _thread_w_grads.resize(active_threads);
-  _thread_b_grads.resize(active_threads);
-  _thread_rw_grads.resize(active_threads);
-  _thread_f_w_grads.resize(active_threads);
-  _thread_f_b_grads.resize(active_threads);
-  _thread_f_rw_grads.resize(active_threads);
-  _thread_i_w_grads.resize(active_threads);
-  _thread_i_b_grads.resize(active_threads);
-  _thread_i_rw_grads.resize(active_threads);
-  _thread_o_w_grads.resize(active_threads);
-  _thread_o_b_grads.resize(active_threads);
-  _thread_o_rw_grads.resize(active_threads);
+  if (_thread_w_grads.size() < active_threads)
+  {
+    _thread_w_grads.resize(active_threads);
+  }
+  if (_thread_b_grads.size() < active_threads)
+  {
+    _thread_b_grads.resize(active_threads);
+  }
+  if (_thread_rw_grads.size() < active_threads)
+  {
+    _thread_rw_grads.resize(active_threads);
+  }
+  if (_thread_f_w_grads.size() < active_threads)
+  {
+    _thread_f_w_grads.resize(active_threads);
+  }
+  if (_thread_f_b_grads.size() < active_threads)
+  {
+    _thread_f_b_grads.resize(active_threads);
+  }
+  if (_thread_f_rw_grads.size() < active_threads)
+  {
+    _thread_f_rw_grads.resize(active_threads);
+  }
+  if (_thread_i_w_grads.size() < active_threads)
+  {
+    _thread_i_w_grads.resize(active_threads);
+  }
+  if (_thread_i_b_grads.size() < active_threads)
+  {
+    _thread_i_b_grads.resize(active_threads);
+  }
+  if (_thread_i_rw_grads.size() < active_threads)
+  {
+    _thread_i_rw_grads.resize(active_threads);
+  }
+  if (_thread_o_w_grads.size() < active_threads)
+  {
+    _thread_o_w_grads.resize(active_threads);
+  }
+  if (_thread_o_b_grads.size() < active_threads)
+  {
+    _thread_o_b_grads.resize(active_threads);
+  }
+  if (_thread_o_rw_grads.size() < active_threads)
+  {
+    _thread_o_rw_grads.resize(active_threads);
+  }
 
   for (unsigned int t = 0; t < active_threads; ++t)
   {
