@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 #include "errorcalculation.h"
@@ -21,7 +21,7 @@ public:
     return _error_type;
   }
 
-  virtual ~NeuralNetworkHelperMetrics() = default;
+  ~NeuralNetworkHelperMetrics() = default;
 
   NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src) noexcept
   {
