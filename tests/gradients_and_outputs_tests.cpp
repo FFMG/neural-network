@@ -192,3 +192,25 @@ TEST_F(GradientsAndOutputsTest, PointerOverloadsAndRawBuffers)
     gao.set_rnn_gate_gradients(2, rnn_gate_vals.data(), rnn_gate_vals.size());
     EXPECT_EQ(gao.get_rnn_gate_gradients(2), rnn_gate_vals);
 }
+
+TEST_F(GradientsAndOutputsTest, RnnGradientsReusesCapacity) {
+    GradientsAndOutputs gao(topology);
+    std::vector<double> rnn_grad_vals = {0.66, 0.77, 0.88, 0.99};
+    
+    // First assignment
+    gao.set_rnn_gradients(2, rnn_grad_vals.data(), rnn_grad_vals.size());
+    const auto& vec_ref = gao.get_rnn_gradients(2);
+    size_t initial_capacity = vec_ref.capacity();
+    EXPECT_GE(initial_capacity, 4);
+    
+    // Clear/zero
+    gao.zero();
+    EXPECT_TRUE(vec_ref.empty());
+    size_t capacity_after_clear = vec_ref.capacity();
+    EXPECT_EQ(capacity_after_clear, initial_capacity); // Capacity must be preserved by clear()
+    
+    // Re-assign (smaller size)
+    std::vector<double> new_vals = {1.1, 2.2};
+    gao.set_rnn_gradients(2, new_vals.data(), new_vals.size());
+    EXPECT_EQ(vec_ref.capacity(), capacity_after_clear); // Capacity must not change
+}

@@ -668,11 +668,12 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t N_this = get_number_neurons();
+  std::vector<double> deltas;
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& states = batch_hidden_states[b].at(get_layer_index());
     const size_t T = states.size();
-    std::vector<double> deltas(T * N_this);
+    deltas.resize(T * N_this);
     const std::vector<double>& targets = *(target_outputs_begin + b);
     for (size_t t = 0; t < T; ++t)
     {
@@ -680,13 +681,19 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
       for (size_t j = 0; j < N_this; ++j)
       {
         size_t idx = t * N_this + j;
-        if (idx < targets.size()) deltas[idx] = given[j] - targets[idx];
-        else deltas[idx] = 0.0;
+        if (idx < targets.size())
+        {
+          deltas[idx] = given[j] - targets[idx];
+        }
+        else
+        {
+          deltas[idx] = 0.0;
+        }
       }
     }
     double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
     std::copy(deltas.end() - N_this, deltas.end(), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), std::move(deltas));
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas.data(), deltas.size());
   }
 }
 
