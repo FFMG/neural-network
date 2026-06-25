@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.24)
 project(NeuralNetworkTests LANGUAGES CXX)
 
 # Set C++ standard
@@ -100,9 +100,10 @@ if(MSVC)
         /WX 
         /permissive-
         /w15038 # Enable C5038: member initialization order as a Level 1 warning
+        /arch:AVX2
     )
 else()
-    target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+    target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter -mavx2 -mfma)
 endif()
 
 # Add preprocessor definitions to match the main project

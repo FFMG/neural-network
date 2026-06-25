@@ -193,3 +193,33 @@ TEST_F(LayerOptimizerTest, ApplyUpdateToVectorSlice) {
     }
 }
 
+TEST_F(LayerOptimizerTest, LazyTimestepSynchronization) {
+    MockOptimizerLayer layer(5, 1);
+    std::vector<double> values = { 1.0, 1.0, 1.0, 1.0, 1.0 };
+    std::vector<double> grads = { 0.2, 0.2, 0.2, 0.2, 0.2 };
+    std::vector<double> velocities = { 0.5, 0.5, 0.5, 0.5, 0.5 };
+    std::vector<double> m1 = { 0.1, 0.1, 0.1, 0.1, 0.1 };
+    std::vector<double> m2 = { 0.1, 0.1, 0.1, 0.1, 0.1 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.1, 0.1, 0.1, 0.1, 0.1 };
+    
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::Adam, 0, 5);
+    
+    EXPECT_EQ(timesteps[0], 1);
+    for (size_t i = 1; i < 5; ++i)
+    {
+      EXPECT_EQ(timesteps[i], 0);
+    }
+    
+    layer.set_w_timesteps(timesteps);
+    
+    const auto& synchronized = layer.get_w_timesteps();
+    for (size_t i = 0; i < 5; ++i)
+    {
+      EXPECT_EQ(synchronized[i], 1);
+    }
+}
+

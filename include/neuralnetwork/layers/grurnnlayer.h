@@ -230,6 +230,10 @@ public:
   [[nodiscard]] inline const std::vector<long long>& get_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_rw_timesteps.empty())
+    {
+      std::fill(_rw_timesteps.begin(), _rw_timesteps.end(), _rw_timesteps[0]);
+    }
     return _rw_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_rw_decays() const noexcept
@@ -244,7 +248,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_z_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_w_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_z_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_w_m1; }
   [[nodiscard]] inline const std::vector<double>& get_z_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_z_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_w_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_z_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_z_w_timesteps.empty())
+    {
+      std::fill(_z_w_timesteps.begin(), _z_w_timesteps.end(), _z_w_timesteps[0]);
+    }
+    return _z_w_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_z_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_w_decays; }
 
   [[nodiscard]] inline const std::vector<double>& get_z_rw_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_values; }
@@ -252,7 +264,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_z_rw_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_z_rw_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_m1; }
   [[nodiscard]] inline const std::vector<double>& get_z_rw_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_z_rw_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_z_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_z_rw_timesteps.empty())
+    {
+      std::fill(_z_rw_timesteps.begin(), _z_rw_timesteps.end(), _z_rw_timesteps[0]);
+    }
+    return _z_rw_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_z_rw_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_rw_decays; }
 
   [[nodiscard]] inline const std::vector<double>& get_z_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_values; }
@@ -260,7 +280,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_z_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_z_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_m1; }
   [[nodiscard]] inline const std::vector<double>& get_z_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_z_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_z_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_z_b_timesteps.empty())
+    {
+      std::fill(_z_b_timesteps.begin(), _z_b_timesteps.end(), _z_b_timesteps[0]);
+    }
+    return _z_b_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_z_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _z_b_decays; }
 
   // Reset Gate Accessor
@@ -269,7 +297,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_r_w_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_w_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_r_w_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_w_m1; }
   [[nodiscard]] inline const std::vector<double>& get_r_w_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_w_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_r_w_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_w_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_r_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_r_w_timesteps.empty())
+    {
+      std::fill(_r_w_timesteps.begin(), _r_w_timesteps.end(), _r_w_timesteps[0]);
+    }
+    return _r_w_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_r_w_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_w_decays; }
 
   [[nodiscard]] inline const std::vector<double>& get_r_rw_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_values; }
@@ -277,7 +313,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_r_rw_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_r_rw_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_m1; }
   [[nodiscard]] inline const std::vector<double>& get_r_rw_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_r_rw_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_r_rw_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_r_rw_timesteps.empty())
+    {
+      std::fill(_r_rw_timesteps.begin(), _r_rw_timesteps.end(), _r_rw_timesteps[0]);
+    }
+    return _r_rw_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_r_rw_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_rw_decays; }
 
   [[nodiscard]] inline const std::vector<double>& get_r_b_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_values; }
@@ -285,7 +329,15 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_r_b_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_velocities; }
   [[nodiscard]] inline const std::vector<double>& get_r_b_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_m1; }
   [[nodiscard]] inline const std::vector<double>& get_r_b_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_m2; }
-  [[nodiscard]] inline const std::vector<long long>& get_r_b_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_timesteps; }
+  [[nodiscard]] inline const std::vector<long long>& get_r_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    if (!_r_b_timesteps.empty())
+    {
+      std::fill(_r_b_timesteps.begin(), _r_b_timesteps.end(), _r_b_timesteps[0]);
+    }
+    return _r_b_timesteps;
+  }
   [[nodiscard]] inline const std::vector<double>& get_r_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_decays; }
 
   void set_w_values(const std::vector<double>& v) override;
@@ -624,7 +676,7 @@ private:
   std::vector<double> _rw_velocities;
   std::vector<double> _rw_m1;
   std::vector<double> _rw_m2;
-  std::vector<long long> _rw_timesteps;
+  mutable std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
 
   // --- Update Gate (z) ---
@@ -634,7 +686,7 @@ private:
   std::vector<double> _z_w_velocities;
   std::vector<double> _z_w_m1;
   std::vector<double> _z_w_m2;
-  std::vector<long long> _z_w_timesteps;
+  mutable std::vector<long long> _z_w_timesteps;
   std::vector<double> _z_w_decays;
   // Recurrent weights
   std::vector<double> _z_rw_values;
@@ -642,7 +694,7 @@ private:
   std::vector<double> _z_rw_velocities;
   std::vector<double> _z_rw_m1;
   std::vector<double> _z_rw_m2;
-  std::vector<long long> _z_rw_timesteps;
+  mutable std::vector<long long> _z_rw_timesteps;
   std::vector<double> _z_rw_decays;
   // Biases
   std::vector<double> _z_b_values;
@@ -650,7 +702,7 @@ private:
   std::vector<double> _z_b_velocities;
   std::vector<double> _z_b_m1;
   std::vector<double> _z_b_m2;
-  std::vector<long long> _z_b_timesteps;
+  mutable std::vector<long long> _z_b_timesteps;
   std::vector<double> _z_b_decays;
 
   // --- Reset Gate (r) ---
@@ -660,7 +712,7 @@ private:
   std::vector<double> _r_w_velocities;
   std::vector<double> _r_w_m1;
   std::vector<double> _r_w_m2;
-  std::vector<long long> _r_w_timesteps;
+  mutable std::vector<long long> _r_w_timesteps;
   std::vector<double> _r_w_decays;
   // Recurrent weights
   std::vector<double> _r_rw_values;
@@ -668,7 +720,7 @@ private:
   std::vector<double> _r_rw_velocities;
   std::vector<double> _r_rw_m1;
   std::vector<double> _r_rw_m2;
-  std::vector<long long> _r_rw_timesteps;
+  mutable std::vector<long long> _r_rw_timesteps;
   std::vector<double> _r_rw_decays;
   // Biases
   std::vector<double> _r_b_values;
@@ -676,7 +728,7 @@ private:
   std::vector<double> _r_b_velocities;
   std::vector<double> _r_b_m1;
   std::vector<double> _r_b_m2;
-  std::vector<long long> _r_b_timesteps;
+  mutable std::vector<long long> _r_b_timesteps;
   std::vector<double> _r_b_decays;
 
   // Cached transposed recurrent weights

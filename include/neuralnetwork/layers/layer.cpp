@@ -652,7 +652,10 @@ void Layer::apply_update_to_vector(
       simd::scale_vector(grads.data() + start, clipping_scale, n);
     }
 
-    simd::increment_values(timesteps.data() + start, n);
+    if (!timesteps.empty() && start < timesteps.size())
+    {
+      ++timesteps[start];
+    }
     const double p1 = 1.0 - std::pow(beta1, timesteps[start]);
     const double p2 = 1.0 - std::pow(beta2, timesteps[start]);
     const double* decay_ptr = (optimiser_type == OptimiserType::AdamW && !is_bias && decays.size() >= start + n) ? (decays.data() + start) : nullptr;
@@ -673,7 +676,10 @@ void Layer::apply_update_to_vector(
       simd::scale_vector(grads.data() + start, clipping_scale, n);
     }
 
-    simd::increment_values(timesteps.data() + start, n);
+    if (!timesteps.empty() && start < timesteps.size())
+    {
+      ++timesteps[start];
+    }
     const double p1 = 1.0 - std::pow(beta1, timesteps[start]);
     const double p2 = 1.0 - std::pow(beta2, timesteps[start]);
     const double* decay_ptr = (optimiser_type == OptimiserType::NadamW && !is_bias && decays.size() >= start + n) ? (decays.data() + start) : nullptr;

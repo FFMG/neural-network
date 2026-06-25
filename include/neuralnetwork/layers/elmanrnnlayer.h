@@ -177,6 +177,10 @@ public:
   inline const std::vector<long long>& get_rw_timesteps() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    if (!_rw_timesteps.empty())
+    {
+      std::fill(_rw_timesteps.begin(), _rw_timesteps.end(), _rw_timesteps[0]);
+    }
     return _rw_timesteps;
   }
   inline const std::vector<double>& get_rw_decays() const noexcept
@@ -277,7 +281,7 @@ private:
   std::vector<double> _rw_velocities;
   std::vector<double> _rw_m1;
   std::vector<double> _rw_m2;
-  std::vector<long long> _rw_timesteps;
+  mutable std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
 
   // Cached transposed recurrent weights
