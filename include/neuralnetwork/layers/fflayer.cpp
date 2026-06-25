@@ -685,8 +685,14 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * num_inputs * num_outputs) / 100000))) : 1;
 
-  _thread_w_grads.resize(active_threads);
-  _thread_b_grads.resize(active_threads);
+  if (_thread_w_grads.size() < active_threads)
+  {
+    _thread_w_grads.resize(active_threads);
+  }
+  if (_thread_b_grads.size() < active_threads)
+  {
+    _thread_b_grads.resize(active_threads);
+  }
 
   for (unsigned int t = 0; t < active_threads; ++t)
   {
