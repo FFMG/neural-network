@@ -954,6 +954,13 @@ void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping
   zero_gradients();
 }
 
+void ElmanRNNLayer::set_number_of_threads(int number_of_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  Layer::set_number_of_threads(number_of_threads);
+  allocate_workspace();
+}
+
 void ElmanRNNLayer::allocate_workspace()
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");

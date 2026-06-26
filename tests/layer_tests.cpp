@@ -1,9 +1,11 @@
-﻿#include <gtest/gtest.h>
 #include "layers/layer.h"
+#include "layers/layers.h"
+#include "neuralnetworkoptions.h"
 #include "test_helper.h"
-#include <vector>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <gtest/gtest.h>
+#include <vector>
 
 
 using namespace myoddweb::nn;
@@ -240,4 +242,22 @@ TEST(LayerTest, DropoutStatisticalVerification) {
     
     double actual_rate = static_cast<double>(dropped) / num_neurons;
     EXPECT_NEAR(actual_rate, dropout_rate, 0.05); // 5% tolerance for 10k samples
+}
+
+TEST(LayerTest, SetNumberOfThreads) {
+    MockLayer layer(1, 10);
+    EXPECT_NO_THROW(layer.set_number_of_threads(4));
+    
+    FFLayer ff_layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    EXPECT_NO_THROW(ff_layer.set_number_of_threads(2));
+}
+
+TEST(LayerTest, LayersSetNumberOfThreads) {
+    std::vector<unsigned> topology = {3, 2, 1};
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_number_of_threads(4)
+      .build();
+    Layers layers(options);
+    
+    EXPECT_NO_THROW(layers.set_number_of_threads(1));
 }

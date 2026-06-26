@@ -224,6 +224,8 @@ public:
 
   void cache_recurrent_weights() override;
 
+  void set_number_of_threads(int number_of_threads) override;
+
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");

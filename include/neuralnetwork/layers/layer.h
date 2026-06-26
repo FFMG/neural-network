@@ -693,6 +693,12 @@ public:
     _layer_activation_helper.set_inference_temperature(range_index, t);
   }
 
+  virtual void set_number_of_threads(int number_of_threads)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    _task_queue_pool = std::make_unique<TaskQueuePool<void>>(number_of_threads);
+  }
+
   void apply_update_to_vector(
     std::vector<double>& values,
     std::vector<double>& grads,

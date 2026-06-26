@@ -728,4 +728,16 @@ void Layers::cache_recurrent_weights()
   }
 }
 
+void Layers::set_number_of_threads(int number_of_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  delete _update_weights_pool;
+  _update_weights_pool = new TaskQueuePool<void>(number_of_threads);
+  for (auto& layer : _layers)
+  {
+    layer->set_number_of_threads(number_of_threads);
+  }
+}
+
 } // namespace myoddweb::nn

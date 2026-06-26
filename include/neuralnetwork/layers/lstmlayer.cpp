@@ -1078,6 +1078,13 @@ void LSTMLayer::apply_stored_gradients(double learning_rate, double clipping_sca
   zero_gradients();
 }
 
+void LSTMLayer::set_number_of_threads(int number_of_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  Layer::set_number_of_threads(number_of_threads);
+  allocate_workspace();
+}
+
 void LSTMLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");

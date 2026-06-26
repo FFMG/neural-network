@@ -149,6 +149,8 @@ public:
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
+  void set_number_of_threads(int number_of_threads) override;
+
   inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
