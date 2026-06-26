@@ -1272,18 +1272,15 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
     const auto& previous_layer = layers_container[static_cast<unsigned>(layer_number - 1)];
     const auto& current_layer = layers_container[static_cast<unsigned>(layer_number)];
 
-    // Prepare batched residual outputs
     std::vector<std::vector<double>> batch_residual_values;
     const auto* residual_projector = layers_container.get_residual_layer_projector(static_cast<unsigned>(layer_number));
     if (residual_projector != nullptr)
     {
       auto residual_layer_number = layers_container.get_residual_layer_number(static_cast<unsigned>(layer_number));
-      std::vector<std::vector<double>> batch_residual_inputs;
-      batch_residual_inputs.reserve(batch_size);
+      std::vector<const double*> batch_residual_inputs(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto src_span = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
-        batch_residual_inputs.emplace_back(src_span.begin(), src_span.end());
+        batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
       }
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }

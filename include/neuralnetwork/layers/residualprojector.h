@@ -171,6 +171,22 @@ public:
     return batch_projected;
   }
 
+  std::vector<std::vector<double>> project_batch(const std::vector<const double*>& batch_residual_layer_outputs) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    const size_t batch_size = batch_residual_layer_outputs.size();
+    std::vector<std::vector<double>> batch_projected(batch_size, std::vector<double>(_output_size, 0.0));
+    
+    for (size_t in = 0; in < _input_size; ++in)
+    {
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        simd::mul_add(batch_residual_layer_outputs[b][in], &_w_values[in * _output_size], batch_projected[b].data(), _output_size);
+      }
+    }
+    return batch_projected;
+  }
+
   void apply_weight_gradient(double gradient, double learning_rate, unsigned in, unsigned out, double clipping_scale)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
