@@ -1170,6 +1170,8 @@ double NeuralNetwork::calculate_learning_rate(
         auto copied_layers = std::make_shared<Layers>(_layers);
         read_lock.unlock();
 
+        copied_layers->set_number_of_threads(1);
+
         // start a new task
         _adaptive_lr_task.call([this, copied_layers]() {
           return calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, copied_layers.get());

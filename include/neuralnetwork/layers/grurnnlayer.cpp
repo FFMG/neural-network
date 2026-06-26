@@ -1620,6 +1620,13 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
   zero_gradients();
 }
 
+void GRURNNLayer::set_number_of_threads(int number_of_threads)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  Layer::set_number_of_threads(number_of_threads);
+  allocate_workspace();
+}
+
 void GRURNNLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");

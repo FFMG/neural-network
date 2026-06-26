@@ -764,6 +764,19 @@ public:
     _branches[range_index].layers.back()->set_inference_temperature(0, t);
   }
 
+  void set_number_of_threads(int number_of_threads) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    Layer::set_number_of_threads(number_of_threads);
+    for (auto& branch : _branches)
+    {
+      for (auto& layer : branch.layers)
+      {
+        layer->set_number_of_threads(number_of_threads);
+      }
+    }
+  }
+
   [[nodiscard]] const std::vector<Branch>& get_branches() const
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");

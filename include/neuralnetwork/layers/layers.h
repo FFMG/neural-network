@@ -86,6 +86,7 @@ public:
     std::vector<std::vector<double>>::const_iterator& training_outputs,
     const size_t batch_size);
   void cache_recurrent_weights();
+  void set_number_of_threads(int number_of_threads);
   std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
 
