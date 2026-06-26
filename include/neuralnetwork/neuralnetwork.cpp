@@ -75,7 +75,6 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (this != &src)
   {
-    _adaptive_lr_task.stop();
     // to remain c++99 compliant we will not use std::scoped_lock
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
     std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
@@ -106,8 +105,6 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   if (this != &src)
   {
-    _adaptive_lr_task.stop();
-    src._adaptive_lr_task.stop();
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
     std::unique_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
     std::lock(lhs_lock, rhs_lock);
@@ -135,8 +132,6 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
 NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-
-  _adaptive_lr_task.stop();
 }
 
 [[nodiscard]] const Layer& NeuralNetwork::get_layer(unsigned index) const
@@ -1158,25 +1153,7 @@ double NeuralNetwork::calculate_learning_rate(
   {
     if (epoch % 5 == 0)
     {
-      if (!_adaptive_lr_task.busy())
-      {
-        if (_adaptive_lr_task.has_result())
-        {
-          _last_metrics = _adaptive_lr_task.get();
-        }
-
-        // Copy layers to pass to the background task to ensure thread safety
-        std::shared_lock<std::shared_mutex> read_lock(_mutex);
-        auto copied_layers = std::make_shared<Layers>(_layers);
-        read_lock.unlock();
-
-        copied_layers->set_number_of_threads(1);
-
-        // start a new task
-        _adaptive_lr_task.call([this, copied_layers]() {
-          return calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, copied_layers.get());
-          });
-      }
+      _last_metrics = calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, nullptr);
 
       if (!_last_metrics.empty())
       {

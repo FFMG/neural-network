@@ -410,8 +410,7 @@ TEST_F(LearningRateTest, ConcurrentThinkDuringTrainingIsThreadSafe)
     }
   }
 }
-
-TEST_F(LearningRateTest, DestructorIsSafeUnderActiveBackgroundTask)
+TEST_F(LearningRateTest, DestructorIsSafeAfterAbortedTraining)
 {
   std::vector<std::vector<double>> inputs, outputs;
   get_simple_test_data(inputs, outputs);
@@ -428,7 +427,7 @@ TEST_F(LearningRateTest, DestructorIsSafeUnderActiveBackgroundTask)
     {
       if (h.epoch() > 5)
       {
-        return false; // Abort training while background task is running
+        return false; // Abort training
       }
       return true;
     })
@@ -437,7 +436,70 @@ TEST_F(LearningRateTest, DestructorIsSafeUnderActiveBackgroundTask)
   {
     NeuralNetwork nn = create_test_nn(options);
     nn.train(inputs, outputs);
-  } // nn goes out of scope here; destructor should join the background thread safely without crash
+  } // nn goes out of scope here; destructor should clean up safely without crash
+}
+
+TEST_F(LearningRateTest, SynchronousAdaptiveLearningRateThreadSafety)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  // Replicate dataset to make training take some time and trigger adaptive LR calculations
+  std::vector<std::vector<double>> replicated_inputs;
+  std::vector<std::vector<double>> replicated_outputs;
+  for (int i = 0; i < 50; ++i)
+  {
+    replicated_inputs.insert(replicated_inputs.end(), inputs.begin(), inputs.end());
+    replicated_outputs.insert(replicated_outputs.end(), outputs.begin(), outputs.end());
+  }
+
+  // Set up options with adaptive learning rate enabled
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_adaptive_learning_rates(true)
+    .with_learning_rate_warmup(0.0, 0.05) // start adaptive learning rate immediately
+    .with_number_of_epoch(30)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .build();
+
+  NeuralNetwork nn = create_test_nn(options);
+
+  std::atomic<bool> training_done(false);
+  std::vector<std::thread> reader_threads;
+
+  // Launch reader threads executing const methods concurrently with training
+  for (int i = 0; i < 4; ++i)
+  {
+    reader_threads.emplace_back([&]()
+    {
+      std::vector<double> test_input = { 0.5, 0.5 };
+      while (!training_done.load())
+      {
+        auto result = nn.think(test_input);
+        EXPECT_EQ(result.size(), 1);
+        nn.get_percent_complete();
+        nn.has_training_data();
+        nn.calculate_forecast_metric(ErrorCalculation::type::rmse);
+        std::this_thread::yield();
+      }
+    });
+  }
+
+  // Train the network. The training thread will call calculate_learning_rate synchronously,
+  // which executes calculate_forecast_metrics_impl holding a shared_lock.
+  nn.train(replicated_inputs, replicated_outputs);
+  training_done.store(true);
+
+  for (auto& reader : reader_threads)
+  {
+    if (reader.joinable())
+    {
+      reader.join();
+    }
+  }
+
+  SUCCEED();
 }
 
 TEST_F(LearningRateTest, ThreadLocalBufferResizingDoesNotPolluteEvaluation)
