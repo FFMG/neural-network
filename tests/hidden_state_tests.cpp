@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/hiddenstate.h"
+#include "common/hiddenstates.h"
 #include <vector>
 #include <algorithm>
 
@@ -193,4 +194,33 @@ TEST(HiddenStateTest, SetWithRawPointers)
     EXPECT_DOUBLE_EQ(hidden[i], new_hidden[i]);
     EXPECT_DOUBLE_EQ(cell[i], new_cell[i]);
   }
+}
+
+TEST(HiddenStatesTest, CachingOptimizationCorrectness)
+{
+  std::vector<unsigned> topology = { 3, 4, 2 };
+  HiddenStates hs(topology);
+
+  // 1. Initial assign for layer 1 (4 neurons, 2 time steps, multiplier 1)
+  hs.assign(1, 2, HiddenState(), 1);
+  auto& views1 = hs.at(1);
+  ASSERT_EQ(views1.size(), 2);
+  const double* original_pre_ptr = views1[0].get_pre_activation_sums().data();
+  const double* original_hid_ptr = views1[0].get_hidden_state_values().data();
+
+  // 2. Call assign again with the exact same dimensions.
+  // It should NOT rebuild views, so pointer addresses of views and their underlying elements must remain identical.
+  hs.assign(1, 2, HiddenState(), 1);
+  auto& views2 = hs.at(1);
+  ASSERT_EQ(views2.size(), 2);
+  EXPECT_EQ(views2[0].get_pre_activation_sums().data(), original_pre_ptr);
+  EXPECT_EQ(views2[0].get_hidden_state_values().data(), original_hid_ptr);
+
+  // 3. Call assign with a different number of time steps (e.g. 5 time steps)
+  // This must trigger a rebuild.
+  hs.assign(1, 5, HiddenState(), 1);
+  auto& views3 = hs.at(1);
+  ASSERT_EQ(views3.size(), 5);
+  // Pointer addresses will change because vectors were reassigned and reallocated.
+  EXPECT_NE(views3[0].get_pre_activation_sums().data(), original_pre_ptr);
 }

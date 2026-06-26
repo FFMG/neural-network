@@ -419,18 +419,15 @@ void Layers::calculate_forward_feed(
     const auto& previous_layer = layer(static_cast<unsigned>(layer_number - 1));
     const auto& current_layer = layer(static_cast<unsigned>(layer_number));
 
-    // Prepare batched residual outputs if needed
     std::vector<std::vector<double>> batch_residual_values;
     const auto* residual_projector = get_residual_layer_projector(static_cast<unsigned>(layer_number));
     if (residual_projector != nullptr)
     {
       auto residual_layer_number = get_residual_layer_number(static_cast<unsigned>(layer_number));
-      std::vector<std::vector<double>> batch_residual_inputs;
-      batch_residual_inputs.reserve(batch_size);
+      std::vector<const double*> batch_residual_inputs(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto src_span = gradients_and_output[b].get_outputs(static_cast<unsigned>(residual_layer_number));
-        batch_residual_inputs.emplace_back(src_span.begin(), src_span.end());
+        batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
       }
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
@@ -591,16 +588,10 @@ void Layers::update_weights(
   }
 
   // 2. Calculate global gradient norm for clipping sequentially
-  std::vector<double> layer_norms(size(), 0.0);
+  double total_norm_sq = 0.0;
   for (unsigned i = 1; i < size(); ++i)
   {
-    layer_norms[i] = _layers[i]->get_gradient_norm_sq();
-  }
-
-  double total_norm_sq = 0.0;
-  for (double norm : layer_norms)
-  {
-    total_norm_sq += norm;
+    total_norm_sq += _layers[i]->get_gradient_norm_sq();
   }
   const double total_norm = std::sqrt(total_norm_sq);
 

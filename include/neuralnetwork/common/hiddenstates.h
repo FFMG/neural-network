@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../libraries/instrumentor.h"
 #include <vector>
 #include <deque>
@@ -120,28 +120,39 @@ public:
     const size_t total_size = num_time_steps * n;
     const size_t pre_total_size = num_time_steps * n * multiplier;
 
+    bool needs_rebuild = false;
+
     if (_pre_activation_sums[layer_number].size() != pre_total_size)
     {
       _pre_activation_sums[layer_number].assign(pre_total_size, 0.0);
+      needs_rebuild = true;
     }
     if (_hidden_state_values[layer_number].size() != total_size)
     {
       _hidden_state_values[layer_number].assign(total_size, 0.0);
       _cell_state_values[layer_number].assign(total_size, 0.0);
+      needs_rebuild = true;
     }
 
-    // Rebuild views for this layer
     auto& views = _layer_views[layer_number];
-    views.clear();
-    views.reserve(num_time_steps);
-    
-    double* p_pre = _pre_activation_sums[layer_number].data();
-    double* p_hid = _hidden_state_values[layer_number].data();
-    double* p_cel = _cell_state_values[layer_number].data();
-
-    for (size_t t = 0; t < num_time_steps; ++t)
+    if (views.size() != num_time_steps)
     {
-      views.emplace_back(&p_pre[t * n * multiplier], &p_hid[t * n], &p_cel[t * n], static_cast<unsigned>(n), static_cast<unsigned>(n * multiplier));
+      needs_rebuild = true;
+    }
+
+    if (needs_rebuild)
+    {
+      views.clear();
+      views.reserve(num_time_steps);
+      
+      double* p_pre = _pre_activation_sums[layer_number].data();
+      double* p_hid = _hidden_state_values[layer_number].data();
+      double* p_cel = _cell_state_values[layer_number].data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        views.emplace_back(&p_pre[t * n * multiplier], &p_hid[t * n], &p_cel[t * n], static_cast<unsigned>(n), static_cast<unsigned>(n * multiplier));
+      }
     }
   }
 

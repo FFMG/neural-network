@@ -1192,6 +1192,22 @@ TEST(ResidualProjectorTest, Correctness)
       EXPECT_NEAR(actual_batch[b][i], expected_batch[b][i], 1e-12);
     }
   }
+
+  // Test project_batch with const double*
+  std::vector<const double*> pointer_batch = {
+    batch_inputs[0].data(),
+    batch_inputs[1].data()
+  };
+  std::vector<std::vector<double>> actual_ptr_batch = proj.project_batch(pointer_batch);
+  ASSERT_EQ(actual_ptr_batch.size(), expected_batch.size());
+  for (size_t b = 0; b < actual_ptr_batch.size(); ++b)
+  {
+    ASSERT_EQ(actual_ptr_batch[b].size(), expected_batch[b].size());
+    for (size_t i = 0; i < actual_ptr_batch[b].size(); ++i)
+    {
+      EXPECT_NEAR(actual_ptr_batch[b][i], expected_batch[b][i], 1e-12);
+    }
+  }
 }
 
 TEST(SimdUtilsTest, MulVectors) {
