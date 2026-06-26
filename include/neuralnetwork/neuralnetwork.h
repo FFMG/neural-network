@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #ifndef VALIDATE_DATA
   #if !defined(NDEBUG)
     #define VALIDATE_DATA 1
@@ -133,7 +133,6 @@ private:
   
   Rng _rng;
 
-  mutable SingleTaskQueue<std::vector<NeuralNetworkHelperMetrics>> _adaptive_lr_task;
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
 };
 } // namespace myoddweb::nn
