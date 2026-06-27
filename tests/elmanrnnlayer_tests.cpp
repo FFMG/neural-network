@@ -236,3 +236,38 @@ TEST_F(ElmanRNNLayerTest, ApplyStoredGradientsCacheUpdate)
   EXPECT_NEAR(rnn_out2[0], 1.0, 1e-9);
   EXPECT_NEAR(rnn_out2[1], 1.3, 1e-9);
 }
+
+TEST_F(ElmanRNNLayerTest, IdentityProxyCachingAndLifecycle)
+{
+  ElmanRNNLayer layer1(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  
+  std::vector<unsigned> topology = { 2, 3 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs = create_batch_hidden_states(topology, 2, 2);
+  
+  std::vector<std::vector<double>> batch_output_grads = { { 0.1, 0.2, 0.3 }, { 0.4, 0.5, 0.6 } };
+
+  // First call to trigger lazy proxy initialization
+  EXPECT_NO_THROW(layer1.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+
+  // Second call to use the cached proxy
+  EXPECT_NO_THROW(layer1.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+
+  // Test copy constructor
+  ElmanRNNLayer layer2(layer1);
+  EXPECT_NO_THROW(layer2.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+
+  // Test copy assignment
+  ElmanRNNLayer layer3(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  layer3 = layer1;
+  EXPECT_NO_THROW(layer3.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+
+  // Test move constructor
+  ElmanRNNLayer layer4(std::move(layer2));
+  EXPECT_NO_THROW(layer4.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+
+  // Test move assignment
+  ElmanRNNLayer layer5(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  layer5 = std::move(layer4);
+  EXPECT_NO_THROW(layer5.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
+}

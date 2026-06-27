@@ -137,6 +137,7 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_decays(src._r_b_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  _identity_proxy = nullptr;
   cache_recurrent_weights();
   allocate_workspace();
 }
@@ -200,6 +201,8 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  _identity_proxy = src._identity_proxy;
+  src._identity_proxy = nullptr;
 }
 
 GRURNNLayer::GRURNNLayer(
@@ -418,6 +421,8 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
+    delete _identity_proxy;
+    _identity_proxy = nullptr;
     allocate_workspace();
     cache_recurrent_weights();
   }
@@ -484,6 +489,9 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_decays = std::move(src._r_b_decays);
     _rw_values_T = std::move(src._rw_values_T);
     _z_rw_values_T = std::move(src._z_rw_values_T);
+    delete _identity_proxy;
+    _identity_proxy = src._identity_proxy;
+    src._identity_proxy = nullptr;
     _r_rw_values_T = std::move(src._r_rw_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
@@ -493,6 +501,7 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
 GRURNNLayer::~GRURNNLayer()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  delete _identity_proxy;
 }
 
 void GRURNNLayer::init_bias(
@@ -596,7 +605,7 @@ void GRURNNLayer::calculate_forward_feed(
   const size_t N_this = get_number_neurons();
 
   // 1. Flatten inputs [BatchSize x T x N_prev]
-  std::vector<double> flattened_batch_inputs;
+  thread_local std::vector<double> flattened_batch_inputs;
   size_t num_time_steps = 0;
 
   const unsigned prev_layer_index = previous_layer.get_layer_index();
@@ -638,7 +647,8 @@ void GRURNNLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 3 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this, 0.0);
+  thread_local std::vector<double> batch_pre_act;
+  batch_pre_act.assign(batch_size * num_time_steps * GateCount * N_this, 0.0);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
@@ -650,6 +660,8 @@ void GRURNNLayer::calculate_forward_feed(
   }
   else
   {
+    auto& flattened_batch_inputs_ref = flattened_batch_inputs;
+    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -657,9 +669,9 @@ void GRURNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs, &batch_pre_act, this]()
+        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs_ref, &batch_pre_act_ref, this]()
           {
-            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs_ref, batch_pre_act_ref);
           });
       }
       start = end;
@@ -686,6 +698,7 @@ void GRURNNLayer::calculate_forward_feed(
   }
   else
   {
+    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -697,7 +710,7 @@ void GRURNNLayer::calculate_forward_feed(
           start, 
           end, 
           N_this,
-          &batch_pre_act,
+          &batch_pre_act_ref,
           &batch_residual_output_values,
           &batch_output_sequences,
           &batch_hidden_states,
@@ -710,7 +723,7 @@ void GRURNNLayer::calculate_forward_feed(
               end, 
               N_this,
               num_time_steps,
-              batch_pre_act,
+              batch_pre_act_ref,
               batch_residual_output_values,
               batch_output_sequences,
               batch_hidden_states,
@@ -1246,16 +1259,23 @@ void GRURNNLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const auto N_this = get_number_neurons();
-  if (N_this == 0 || batch_size == 0) return;
+  if (N_this == 0 || batch_size == 0)
+  {
+    return;
+  }
 
-  // Use a local FFLayer as a proxy for an identity connection.
-  // This avoids duplicating the complex BPTT logic while correctly handling the MultiOutputLayer trunk gradients.
-  FFLayer proxy(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
-  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
-  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
-  proxy.set_w_values(id);
+  if (_identity_proxy == nullptr)
+  {
+    _identity_proxy = new FFLayer(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+    std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+    for (unsigned i = 0; i < N_this; ++i)
+    {
+      id[i * N_this + i] = 1.0;
+    }
+    _identity_proxy->set_w_values(id);
+  }
 
-  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
+  calculate_hidden_gradients(batch_gradients_and_outputs, *_identity_proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
 double GRURNNLayer::get_recurrent_weight_value(unsigned from_neuron, unsigned to_neuron) const

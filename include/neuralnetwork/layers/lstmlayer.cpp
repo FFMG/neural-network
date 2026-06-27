@@ -223,6 +223,7 @@ LSTMLayer::LSTMLayer(const LSTMLayer& src) noexcept :
   _o_b_values(src._o_b_values), _o_b_grads(src._o_b_grads), _o_b_velocities(src._o_b_velocities), _o_b_m1(src._o_b_m1), _o_b_m2(src._o_b_m2), _o_b_decays(src._o_b_decays), _o_b_timesteps(src._o_b_timesteps)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  _identity_proxy = nullptr;
   cache_recurrent_weights();
 }
 
@@ -245,6 +246,8 @@ LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  _identity_proxy = src._identity_proxy;
+  src._identity_proxy = nullptr;
 }
 
 LSTMLayer& LSTMLayer::operator=(const LSTMLayer& src) noexcept
@@ -263,6 +266,8 @@ LSTMLayer& LSTMLayer::operator=(const LSTMLayer& src) noexcept
     _o_w_values = src._o_w_values; _o_w_grads = src._o_w_grads; _o_w_velocities = src._o_w_velocities; _o_w_m1 = src._o_w_m1; _o_w_m2 = src._o_w_m2; _o_w_decays = src._o_w_decays; _o_w_timesteps = src._o_w_timesteps;
     _o_rw_values = src._o_rw_values; _o_rw_grads = src._o_rw_grads; _o_rw_velocities = src._o_rw_velocities; _o_rw_m1 = src._o_rw_m1; _o_rw_m2 = src._o_rw_m2; _o_rw_decays = src._o_rw_decays; _o_rw_timesteps = src._o_rw_timesteps;
     _o_b_values = src._o_b_values; _o_b_grads = src._o_b_grads; _o_b_velocities = src._o_b_velocities; _o_b_m1 = src._o_b_m1; _o_b_m2 = src._o_b_m2; _o_b_decays = src._o_b_decays; _o_b_timesteps = src._o_b_timesteps;
+    delete _identity_proxy;
+    _identity_proxy = nullptr;
     allocate_workspace();
     cache_recurrent_weights();
   }
@@ -285,6 +290,9 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
     _o_w_values = std::move(src._o_w_values); _o_w_grads = std::move(src._o_w_grads); _o_w_velocities = std::move(src._o_w_velocities); _o_w_m1 = std::move(src._o_w_m1); _o_w_m2 = std::move(src._o_w_m2); _o_w_decays = std::move(src._o_w_decays); _o_w_timesteps = std::move(src._o_w_timesteps);
     _o_rw_values = std::move(src._o_rw_values); _o_rw_grads = std::move(src._o_rw_grads); _o_rw_velocities = std::move(src._o_rw_velocities); _o_rw_m1 = std::move(src._o_rw_m1); _o_rw_m2 = std::move(src._o_rw_m2); _o_rw_decays = std::move(src._o_rw_decays); _o_rw_timesteps = std::move(src._o_rw_timesteps);
     _o_b_values = std::move(src._o_b_values); _o_b_grads = std::move(src._o_b_grads); _o_b_velocities = std::move(src._o_b_velocities); _o_b_m1 = std::move(src._o_b_m1); _o_b_m2 = std::move(src._o_b_m2); _o_b_decays = std::move(src._o_b_decays); _o_b_timesteps = std::move(src._o_b_timesteps);
+    delete _identity_proxy;
+    _identity_proxy = src._identity_proxy;
+    src._identity_proxy = nullptr;
     _rw_values_T = std::move(src._rw_values_T);
     _f_rw_values_T = std::move(src._f_rw_values_T);
     _i_rw_values_T = std::move(src._i_rw_values_T);
@@ -297,6 +305,7 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
 LSTMLayer::~LSTMLayer() 
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  delete _identity_proxy;
 }
 
 Layer* LSTMLayer::clone() const 
@@ -382,7 +391,8 @@ void LSTMLayer::calculate_forward_feed(
   }
   if (num_time_steps == 0) return;
 
-  std::vector<double> flattened_inputs(batch_size * num_time_steps * N_prev);
+  thread_local std::vector<double> flattened_inputs;
+  flattened_inputs.resize(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -396,7 +406,8 @@ void LSTMLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 4 x N_this]
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this, 0.0);
+  thread_local std::vector<double> batch_pre_act;
+  batch_pre_act.assign(batch_size * num_time_steps * GateCount * N_this, 0.0);
 
   auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
@@ -750,12 +761,23 @@ void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const auto N_this = get_number_neurons();
-  if (N_this == 0 || batch_size == 0) return;
-  FFLayer proxy(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
-  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
-  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
-  proxy.set_w_values(id);
-  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
+  if (N_this == 0 || batch_size == 0)
+  {
+    return;
+  }
+
+  if (_identity_proxy == nullptr)
+  {
+    _identity_proxy = new FFLayer(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+    std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+    for (unsigned i = 0; i < N_this; ++i)
+    {
+      id[i * N_this + i] = 1.0;
+    }
+    _identity_proxy->set_w_values(id);
+  }
+
+  calculate_hidden_gradients(batch_gradients_and_outputs, *_identity_proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
 void LSTMLayer::calculate_and_store_gradients(
