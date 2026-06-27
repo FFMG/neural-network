@@ -409,3 +409,34 @@ TEST_F(GRURNNLayerTest, InputGatesPrecalculationConsistency)
     EXPECT_NEAR(outputs[1], 0.495772, 1e-5);
 }
 
+TEST_F(GRURNNLayerTest, BiasCachingCorrectness)
+{
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    
+    layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.0 });
+    layer.set_z_w_values({ 0.0 }); layer.set_z_rw_values({ 0.0 });
+    layer.set_r_w_values({ 0.0 }); layer.set_r_rw_values({ 0.0 });
+
+    layer.set_z_b_values({ 0.0 });
+    layer.set_r_b_values({ 10.0 });
+    layer.set_b_values({ 0.0 });
+
+    MockLayer prev_layer(0, 1);
+    std::vector<unsigned> topology = { 1, 1 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
+
+    batch_go[0].set_rnn_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+    auto outputs1 = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs1[0], 0.5, 1e-4);
+
+    layer.set_b_values({ 10.0, 10.0, 2.0 });
+
+    auto batch_hs2 = create_batch_hidden_states(topology, 1, 1, 5);
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs2, 1, false);
+    auto outputs2 = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs2[0], 3.0, 1e-3);
+}
+

@@ -421,13 +421,24 @@ void LSTMLayer::calculate_forward_feed(
 
     if (has_bias())
     {
-      for (size_t step = step_start; step < step_end; ++step)
+      if (!_bias_cached.empty())
       {
-        double* pre_t = &batch_pre_act[step * GateCount * N_this];
-        std::copy(_f_b_values.begin(), _f_b_values.end(), pre_t);
-        std::copy(_i_b_values.begin(), _i_b_values.end(), pre_t + N_this);
-        std::copy(_o_b_values.begin(), _o_b_values.end(), pre_t + 2 * N_this);
-        std::copy(_b_values.begin(), _b_values.end(), pre_t + 3 * N_this);
+        for (size_t step = step_start; step < step_end; ++step)
+        {
+          double* pre_t = &batch_pre_act[step * GateCount * N_this];
+          std::copy(_bias_cached.begin(), _bias_cached.end(), pre_t);
+        }
+      }
+      else
+      {
+        for (size_t step = step_start; step < step_end; ++step)
+        {
+          double* pre_t = &batch_pre_act[step * GateCount * N_this];
+          std::copy(_f_b_values.begin(), _f_b_values.end(), pre_t);
+          std::copy(_i_b_values.begin(), _i_b_values.end(), pre_t + N_this);
+          std::copy(_o_b_values.begin(), _o_b_values.end(), pre_t + 2 * N_this);
+          std::copy(_b_values.begin(), _b_values.end(), pre_t + 3 * N_this);
+        }
       }
     }
     else
@@ -1111,15 +1122,30 @@ void LSTMLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t n = get_number_neurons();
-  if (n == 0) return;
+  if (n == 0)
+  {
+    return;
+  }
   _rw_values_T.resize(n * n); _f_rw_values_T.resize(n * n); _i_rw_values_T.resize(n * n); _o_rw_values_T.resize(n * n);
   for (size_t i = 0; i < n; ++i)
-    for (size_t j = 0; j < n; ++j) {
+  {
+    for (size_t j = 0; j < n; ++j)
+    {
       _rw_values_T[j * n + i] = _rw_values[i * n + j];
       _f_rw_values_T[j * n + i] = _f_rw_values[i * n + j];
       _i_rw_values_T[j * n + i] = _i_rw_values[i * n + j];
       _o_rw_values_T[j * n + i] = _o_rw_values[i * n + j];
     }
+  }
+
+  if (has_bias() && !_f_b_values.empty() && !_i_b_values.empty() && !_o_b_values.empty() && !get_b_values().empty())
+  {
+    _bias_cached.resize(4 * n);
+    std::copy(_f_b_values.begin(), _f_b_values.end(), _bias_cached.begin());
+    std::copy(_i_b_values.begin(), _i_b_values.end(), _bias_cached.begin() + n);
+    std::copy(_o_b_values.begin(), _o_b_values.end(), _bias_cached.begin() + 2 * n);
+    std::copy(get_b_values().begin(), get_b_values().end(), _bias_cached.begin() + 3 * n);
+  }
 }
 
 void LSTMLayer::allocate_workspace()
@@ -1487,6 +1513,7 @@ void LSTMLayer::set_b_values(const std::vector<double>& v)
   {
     Layer::set_b_values(v);
   }
+  cache_recurrent_weights();
 }
 
 void LSTMLayer::set_b_grads(const std::vector<double>& v)

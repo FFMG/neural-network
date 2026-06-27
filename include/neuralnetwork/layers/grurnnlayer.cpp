@@ -767,12 +767,23 @@ void GRURNNLayer::pre_calculate_gates(
 
   if (has_bias())
   {
-    for (size_t step = step_start; step < step_end; ++step)
+    if (!_bias_cached.empty())
     {
-      double* pre_t = &batch_pre_act[step * GateCount * N_this];
-      std::copy(_z_b_values.begin(), _z_b_values.end(), pre_t);
-      std::copy(_r_b_values.begin(), _r_b_values.end(), pre_t + N_this);
-      std::copy(_b_values.begin(), _b_values.end(), pre_t + 2 * N_this);
+      for (size_t step = step_start; step < step_end; ++step)
+      {
+        double* pre_t = &batch_pre_act[step * GateCount * N_this];
+        std::copy(_bias_cached.begin(), _bias_cached.end(), pre_t);
+      }
+    }
+    else
+    {
+      for (size_t step = step_start; step < step_end; ++step)
+      {
+        double* pre_t = &batch_pre_act[step * GateCount * N_this];
+        std::copy(_z_b_values.begin(), _z_b_values.end(), pre_t);
+        std::copy(_r_b_values.begin(), _r_b_values.end(), pre_t + N_this);
+        std::copy(get_b_values().begin(), get_b_values().end(), pre_t + 2 * N_this);
+      }
     }
   }
   else
@@ -1669,6 +1680,14 @@ void GRURNNLayer::cache_recurrent_weights()
       _r_rw_values_T[j * n + i] = _r_rw_values[i * n + j];
     }
   }
+
+  if (has_bias() && !_z_b_values.empty() && !_r_b_values.empty() && !get_b_values().empty())
+  {
+    _bias_cached.resize(3 * n);
+    std::copy(_z_b_values.begin(), _z_b_values.end(), _bias_cached.begin());
+    std::copy(_r_b_values.begin(), _r_b_values.end(), _bias_cached.begin() + n);
+    std::copy(get_b_values().begin(), get_b_values().end(), _bias_cached.begin() + 2 * n);
+  }
 }
 
 void GRURNNLayer::set_w_values(const std::vector<double>& v)
@@ -1811,6 +1830,7 @@ void GRURNNLayer::set_b_values(const std::vector<double>& v)
   {
     Layer::set_b_values(v);
   }
+  cache_recurrent_weights();
 }
 
 void GRURNNLayer::set_b_grads(const std::vector<double>& v)

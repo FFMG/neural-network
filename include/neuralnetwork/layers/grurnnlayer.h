@@ -444,6 +444,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     _z_b_values = v;
+    cache_recurrent_weights();
   }
   void set_z_b_grads(const std::vector<double>& v)
   {
@@ -553,6 +554,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
     _r_b_values = v;
+    cache_recurrent_weights();
   }
   void set_r_b_grads(const std::vector<double>& v)
   {
@@ -753,6 +755,7 @@ private:
   std::vector<std::vector<double>> _thread_r_b_grads;
 
   mutable FFLayer* _identity_proxy = nullptr;
+  mutable std::vector<double> _bias_cached;
 };
 
 } // namespace myoddweb::nn
