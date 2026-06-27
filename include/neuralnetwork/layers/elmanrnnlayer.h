@@ -8,6 +8,7 @@
 
 namespace myoddweb::nn
 {
+class FFLayer;
 class ElmanRNNLayer final : public Layer
 {
 protected:
@@ -295,6 +296,8 @@ private:
   std::vector<std::vector<double>> _thread_w_grads;
   std::vector<std::vector<double>> _thread_rw_grads;
   std::vector<std::vector<double>> _thread_b_grads;
+
+  mutable FFLayer* _identity_proxy = nullptr;
 };
 
 } // namespace myoddweb::nn

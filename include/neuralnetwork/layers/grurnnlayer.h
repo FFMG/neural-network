@@ -9,6 +9,7 @@
 
 namespace myoddweb::nn
 {
+class FFLayer;
 class GRURNNLayer final : public Layer
 {
 protected:
@@ -750,6 +751,8 @@ private:
   std::vector<std::vector<double>> _thread_b_grads;
   std::vector<std::vector<double>> _thread_z_b_grads;
   std::vector<std::vector<double>> _thread_r_b_grads;
+
+  mutable FFLayer* _identity_proxy = nullptr;
 };
 
 } // namespace myoddweb::nn

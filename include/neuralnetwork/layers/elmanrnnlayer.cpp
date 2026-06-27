@@ -92,6 +92,7 @@ ElmanRNNLayer::ElmanRNNLayer(const ElmanRNNLayer& src) noexcept :
   _rw_decays(src._rw_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  _identity_proxy = nullptr;
   cache_recurrent_weights();
   allocate_workspace();
 }
@@ -109,6 +110,8 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  _identity_proxy = src._identity_proxy;
+  src._identity_proxy = nullptr;
 }
 
 ElmanRNNLayer::ElmanRNNLayer(
@@ -186,6 +189,8 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (this != &src)
   {
+    delete _identity_proxy;
+    _identity_proxy = nullptr;
     Layer::operator=(src);
     _rw_values = src._rw_values;
     _rw_grads = src._rw_grads;
@@ -205,6 +210,9 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (this != &src)
   {
+    delete _identity_proxy;
+    _identity_proxy = src._identity_proxy;
+    src._identity_proxy = nullptr;
     Layer::operator=(std::move(src));
     _rw_values = std::move(src._rw_values);
     _rw_grads = std::move(src._rw_grads);
@@ -221,6 +229,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
 
 ElmanRNNLayer::~ElmanRNNLayer()
 {
+  delete _identity_proxy;
 }
 
 void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
@@ -287,7 +296,8 @@ void ElmanRNNLayer::calculate_forward_feed(
     return;
   }
 
-  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
+  thread_local std::vector<double> flattened_batch_inputs;
+  flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -306,7 +316,8 @@ void ElmanRNNLayer::calculate_forward_feed(
   }
 
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this, 0.0);
+  thread_local std::vector<double> batch_pre_act;
+  batch_pre_act.assign(batch_size * num_time_steps * N_this, 0.0);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
@@ -318,6 +329,8 @@ void ElmanRNNLayer::calculate_forward_feed(
   }
   else
   {
+    auto& flattened_batch_inputs_ref = flattened_batch_inputs;
+    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -325,9 +338,9 @@ void ElmanRNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs, &batch_pre_act, this]()
+        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs_ref, &batch_pre_act_ref, this]()
           {
-            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs_ref, batch_pre_act_ref);
           });
       }
       start = end;
@@ -620,13 +633,18 @@ void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
     return;
   }
 
-  // Use local FFLayer proxy
-  FFLayer proxy(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
-  std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
-  for (unsigned i = 0; i < N_this; ++i) id[i * N_this + i] = 1.0;
-  proxy.set_w_values(id);
+  if (_identity_proxy == nullptr)
+  {
+    _identity_proxy = new FFLayer(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+    std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
+    for (unsigned i = 0; i < N_this; ++i)
+    {
+      id[i * N_this + i] = 1.0;
+    }
+    _identity_proxy->set_w_values(id);
+  }
 
-  calculate_hidden_gradients(batch_gradients_and_outputs, proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
+  calculate_hidden_gradients(batch_gradients_and_outputs, *_identity_proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
 void ElmanRNNLayer::calculate_bptt_batch_chunk(

@@ -9,6 +9,7 @@
 
 namespace myoddweb::nn
 {
+class FFLayer;
 class LSTMLayer final : public Layer
 {
 protected:
@@ -1125,6 +1126,8 @@ private:
   std::vector<std::vector<double>> _thread_o_w_grads;
   std::vector<std::vector<double>> _thread_o_b_grads;
   std::vector<std::vector<double>> _thread_o_rw_grads;
+
+  mutable FFLayer* _identity_proxy = nullptr;
 };
 
 
