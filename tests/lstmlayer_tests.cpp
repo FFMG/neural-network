@@ -302,3 +302,38 @@ TEST_F(LSTMLayerTest, ApplyStoredGradientsCacheUpdate)
     EXPECT_NEAR(outputs2[0], 0.999909, 1e-4);
     EXPECT_NEAR(outputs2[1], 2.39968, 1e-4);
 }
+
+TEST_F(LSTMLayerTest, BiasCachingCorrectness)
+{
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.0 });
+    layer.set_f_w_values({ 0.0 }); layer.set_f_rw_values({ 0.0 });
+    layer.set_i_w_values({ 0.0 }); layer.set_i_rw_values({ 0.0 });
+    layer.set_o_w_values({ 0.0 }); layer.set_o_rw_values({ 0.0 });
+
+    layer.set_f_b_values({ 10.0 });
+    layer.set_i_b_values({ 10.0 });
+    layer.set_o_b_values({ 10.0 });
+    layer.set_b_values({ 0.0 });
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
+
+    batch_go[0].set_rnn_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+    auto outputs1 = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs1[0], 1.0, 1e-3);
+
+    layer.set_b_values({ 10.0, 10.0, 10.0, 2.0 });
+
+    auto batch_hs2 = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs2, 1, false);
+    auto outputs2 = batch_go[0].get_rnn_outputs(1);
+    EXPECT_NEAR(outputs2[0], 3.0, 1e-3);
+}
