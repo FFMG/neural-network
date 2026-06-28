@@ -38,6 +38,8 @@
     #include <fcntl.h>
   #endif
 #endif
+#include <sys/types.h>
+#include <sys/stat.h>
 
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
@@ -4009,6 +4011,20 @@ namespace TinyJSON
       parse_result.assign_exception_message_and_throw("The given file path is null!");
       return nullptr;
     }
+
+#if TJ_USE_CHAR == 1
+#if defined(_WIN32)
+    struct _stat path_stat;
+    if (_stat(file_path, &path_stat) == 0 && (path_stat.st_mode & _S_IFDIR) != 0)
+#else
+    struct stat path_stat;
+    if (stat(file_path, &path_stat) == 0 && S_ISDIR(path_stat.st_mode))
+#endif
+    {
+      report_file_open_error(file_path, EISDIR, parse_options);
+      return nullptr;
+    }
+#endif
 
     std::ifstream file(file_path, std::ios::binary | std::ios::ate);
     if (!file.is_open())
