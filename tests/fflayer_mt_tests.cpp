@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/fflayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -230,5 +230,69 @@ TEST_F(FFLayerMTTest, GradientStorageMTConsistency)
     for (size_t i = 0; i < b_grads_st.size(); ++i) 
     {
         EXPECT_NEAR(b_grads_st[i], b_grads_mt[i], 1e-12) << "Bias grad mismatch at index " << i;
+    }
+}
+
+TEST_F(FFLayerMTTest, ThreadLocalBufferCorrectnessAndStress) 
+{
+    const unsigned num_inputs = 8;
+    const unsigned num_neurons = 16;
+    const unsigned next_neurons = 8;
+    const unsigned num_threads = get_test_threads();
+
+    FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    init_layer_weights(layer);
+
+    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    std::vector<double> next_w(num_neurons * next_neurons, 0.1);
+    next_layer.set_w_values(next_w);
+
+    std::vector<unsigned> topology = { num_inputs, num_neurons, next_neurons };
+    MockLayer prev_layer(0, num_inputs);
+
+    std::vector<unsigned> batch_sizes = { 10, 50, 5, 100 };
+    for (unsigned batch_size : batch_sizes)
+    {
+        auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+        auto batch_hs = create_batch_hidden_states(topology, batch_size, 1, 1);
+
+        for (size_t b = 0; b < batch_size; ++b) 
+        {
+            std::vector<double> inputs(num_inputs);
+            for (size_t i = 0; i < inputs.size(); ++i) 
+            {
+              inputs[i] = std::sin(static_cast<double>(b + i + batch_size));
+            }
+            batch_go[b].set_outputs(0, inputs);
+        }
+
+        layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            const auto& outputs = batch_go[b].get_outputs(1);
+            ASSERT_EQ(outputs.size(), num_neurons);
+            for (double out : outputs)
+            {
+                EXPECT_TRUE(out >= -1.0 && out <= 1.0);
+            }
+        }
+
+        std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(next_neurons));
+        for (size_t b = 0; b < batch_size; ++b) 
+        {
+            for (size_t i = 0; i < next_neurons; ++i) 
+            {
+              batch_next_grads[b][i] = std::cos(static_cast<double>(b * i + batch_size));
+            }
+        }
+
+        layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, 0);
+
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            const auto& in_grads = batch_go[b].get_gradients(1);
+            ASSERT_EQ(in_grads.size(), num_neurons);
+        }
     }
 }
