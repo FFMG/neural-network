@@ -103,7 +103,11 @@ if(MSVC)
         /arch:AVX2
     )
 else()
-    target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter -mavx2 -mfma)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|AMD64|x86_64|x64|X64|i386|i686|x86")
+        target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter -mavx2 -mfma)
+    else()
+        target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+    endif()
 endif()
 
 # Add preprocessor definitions to match the main project
