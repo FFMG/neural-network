@@ -26,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cerrno>
 #include <fstream>
 #include <limits>
 
@@ -132,6 +133,69 @@ static constexpr TJCHAR TJ_ESCAPE_TAB = static_cast<TJCHAR>(0x009);             
 
 namespace TinyJSON
 {
+  static int tjchar_strlen(const TJCHAR* str)
+  {
+    int len = 0;
+    while (str[len] != TJ_NULL_TERMINATOR)
+    {
+      len++;
+    }
+    return len;
+  }
+
+  static void report_file_open_error(const TJCHAR* file_path, int err_code, const parse_options& options)
+  {
+    const TJCHAR* prefix = nullptr;
+    const TJCHAR* suffix = nullptr;
+    if (err_code == ENOENT)
+    {
+      prefix = TJCHARPREFIX("File '");
+      suffix = TJCHARPREFIX("' could not be found!");
+    }
+    else if (err_code == EACCES || err_code == EPERM)
+    {
+      prefix = TJCHARPREFIX("Access denied to file '");
+      suffix = TJCHARPREFIX("'!");
+    }
+#ifdef EISDIR
+    else if (err_code == EISDIR)
+    {
+      prefix = TJCHARPREFIX("File '");
+      suffix = TJCHARPREFIX("' is a directory!");
+    }
+#endif
+    else
+    {
+      prefix = TJCHARPREFIX("File '");
+      suffix = TJCHARPREFIX("' could not be opened!");
+    }
+
+    int prefix_len = tjchar_strlen(prefix);
+    int path_len = tjchar_strlen(file_path);
+    int suffix_len = tjchar_strlen(suffix);
+    int total_len = prefix_len + path_len + suffix_len;
+
+    TJCHAR* msg = new TJCHAR[total_len + 1];
+
+    for (int i = 0; i < prefix_len; ++i)
+    {
+      msg[i] = prefix[i];
+    }
+    for (int i = 0; i < path_len; ++i)
+    {
+      msg[prefix_len + i] = file_path[i];
+    }
+    for (int i = 0; i < suffix_len; ++i)
+    {
+      msg[prefix_len + path_len + i] = suffix[i];
+    }
+    msg[total_len] = TJ_NULL_TERMINATOR;
+
+    options.callback_function(parse_options::message_type::error, msg);
+
+    delete[] msg;
+  }
+
   struct internal_dump_configuration
   {
     TJCHAR* _buffer;
@@ -3950,7 +4014,7 @@ namespace TinyJSON
     if (!file.is_open())
     {
       // ERROR: Could not open the file
-      parse_options.callback_function(parse_options::message_type::error, TJCHARPREFIX("File could not be found!"));
+      report_file_open_error(file_path, errno, parse_options);
       return nullptr;
     }
 

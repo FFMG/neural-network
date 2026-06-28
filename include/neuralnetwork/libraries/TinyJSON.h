@@ -48,10 +48,11 @@
 // v0.2.4 - added operator[] and as<T>() accessor to TJValue
 // v0.2.5 - added raise warning when key is not found.
 // v0.2.6 - fixed a bug in the resizing of string buffers.
+// v0.2.7 - improved parse_file error reporting with specific system errors and file name.
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 6;
-static const char TJ_VERSION_STRING[] = "0.2.6";
+static const short TJ_VERSION_PATCH = 7;
+static const char TJ_VERSION_STRING[] = "0.2.7";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
