@@ -227,7 +227,8 @@ void FFLayer::calculate_forward_feed(
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  std::vector<double> batch_inputs_buffer(effective_batch_size * N_prev);
+  thread_local std::vector<double> batch_inputs_buffer;
+  batch_inputs_buffer.resize(effective_batch_size * N_prev);
   
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -246,7 +247,8 @@ void FFLayer::calculate_forward_feed(
     }
   }
 
-  std::vector<double> batch_pre_activation_sums_buffer(effective_batch_size * N_this, 0.0);
+  thread_local std::vector<double> batch_pre_activation_sums_buffer;
+  batch_pre_activation_sums_buffer.assign(effective_batch_size * N_this, 0.0);
 
   // 2. Initialize with bias values
   if (has_bias())
@@ -275,6 +277,8 @@ void FFLayer::calculate_forward_feed(
   }
   else
   {
+    auto& batch_inputs_buffer_ref = batch_inputs_buffer;
+    auto& batch_pre_activation_sums_buffer_ref = batch_pre_activation_sums_buffer;
     size_t start = 0;
     for (unsigned int t = 0; t < active_gemm_threads; ++t)
     {
@@ -282,9 +286,9 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_prev, N_this, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, this]()
+        _task_queue_pool->enqueue([start, end, N_prev, N_this, &batch_inputs_buffer_ref, &batch_pre_activation_sums_buffer_ref, this]()
         {
-          run_gemm(start, end, N_prev, N_this, batch_inputs_buffer, batch_pre_activation_sums_buffer);
+          run_gemm(start, end, N_prev, N_this, batch_inputs_buffer_ref, batch_pre_activation_sums_buffer_ref);
         });
       }
       start = end;
@@ -301,6 +305,8 @@ void FFLayer::calculate_forward_feed(
   }
   else
   {
+    auto& batch_inputs_buffer_ref = batch_inputs_buffer;
+    auto& batch_pre_activation_sums_buffer_ref = batch_pre_activation_sums_buffer;
     size_t start = 0;
     for (unsigned int t = 0; t < active_post_threads; ++t)
     {
@@ -308,9 +314,9 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, num_time_steps, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, is_training, this]()
+        _task_queue_pool->enqueue([start, end, num_time_steps, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, &batch_inputs_buffer_ref, &batch_pre_activation_sums_buffer_ref, is_training, this]()
         {
-          run_post_gemm(start, end, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer, batch_pre_activation_sums_buffer, is_training);
+          run_post_gemm(start, end, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer_ref, batch_pre_activation_sums_buffer_ref, is_training);
         });
       }
       start = end;
@@ -488,7 +494,8 @@ void FFLayer::calculate_hidden_gradients(
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   if (num_time_steps == 0) return;
 
-  std::vector<double> flattened_next_grads_buffer(batch_size * num_time_steps * N_next, 0.0);
+  thread_local std::vector<double> flattened_next_grads_buffer;
+  flattened_next_grads_buffer.assign(batch_size * num_time_steps * N_next, 0.0);
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -531,7 +538,8 @@ void FFLayer::calculate_hidden_gradients(
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this, 0.0);
+  thread_local std::vector<double> flattened_this_grads_buffer;
+  flattened_this_grads_buffer.assign(effective_batch_size * N_this, 0.0);
   const double* W_next = next_layer.get_w_values().data();
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
@@ -548,9 +556,11 @@ void FFLayer::calculate_hidden_gradients(
   }
   else
   {
+    auto& flattened_next_grads_buffer_ref = flattened_next_grads_buffer;
+    auto& flattened_this_grads_buffer_ref = flattened_this_grads_buffer;
     if (!use_gemm_mt)
     {
-      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer);
+      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer_ref, flattened_this_grads_buffer_ref);
     }
     else
     {
@@ -559,7 +569,7 @@ void FFLayer::calculate_hidden_gradients(
       {
         size_t size = (effective_batch_size / active_gemm_threads) + (t < (effective_batch_size % active_gemm_threads) ? 1 : 0);
         size_t end = start + size;
-        if (start < end) _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() { run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer, flattened_this_grads_buffer); });
+        if (start < end) _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer_ref, &flattened_this_grads_buffer_ref, this]() { run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer_ref, flattened_this_grads_buffer_ref); });
         start = end;
       }
       _task_queue_pool->get();
@@ -567,7 +577,7 @@ void FFLayer::calculate_hidden_gradients(
 
     if (!use_post_mt)
     {
-      run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer);
+      run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer_ref);
     }
     else
     {
@@ -576,7 +586,7 @@ void FFLayer::calculate_hidden_gradients(
       {
         size_t size = (batch_size / active_post_threads) + (t < (batch_size % active_post_threads) ? 1 : 0);
         size_t end = start + size;
-        if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); });
+        if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer_ref, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer_ref); });
         start = end;
       }
       _task_queue_pool->get();
@@ -594,7 +604,8 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
   if (num_time_steps == 0) return;
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  std::vector<double> flattened_this_grads_buffer(effective_batch_size * N_this, 0.0);
+  thread_local std::vector<double> flattened_this_grads_buffer;
+  flattened_this_grads_buffer.assign(effective_batch_size * N_this, 0.0);
   const bool use_direct_gradients = batch_output_gradients.empty();
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -643,6 +654,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
   }
   else
   {
+    auto& flattened_this_grads_buffer_ref = flattened_this_grads_buffer;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -650,9 +662,9 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() 
+        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer_ref, this]() 
           { 
-            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer); 
+            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer_ref); 
           });
       }
       start = end;
@@ -817,8 +829,9 @@ void FFLayer::run_post_gemm_backward(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
-  std::vector<double> deriv_buf(N_this);
-  std::vector<double> rnn_grads_row;
+  thread_local std::vector<double> deriv_buf;
+  deriv_buf.resize(N_this);
+  thread_local std::vector<double> rnn_grads_row;
   for (size_t b = start; b < end; b++)
   {
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
