@@ -113,6 +113,13 @@ public:
     for (auto& layer : _cell_state_values) std::fill(layer.begin(), layer.end(), 0.0);
   }
   
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#if __GNUC__ >= 12
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+#endif
   void assign(size_t layer_number, size_t num_time_steps, const HiddenState& /*ignored_proto*/, unsigned multiplier = 1)
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenStates");
@@ -155,6 +162,9 @@ public:
       }
     }
   }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
   std::vector<HiddenState>& at(size_t layer_number)
   {
