@@ -1,6 +1,7 @@
 #include "layers/layer.h"
 #include "layers/layers.h"
 #include "neuralnetworkoptions.h"
+#include "common/tempbuffer.h"
 #include "test_helper.h"
 #include <algorithm>
 #include <cmath>
@@ -260,4 +261,60 @@ TEST(LayerTest, LayersSetNumberOfThreads) {
     Layers layers(options);
     
     EXPECT_NO_THROW(layers.set_number_of_threads(1));
+}
+
+TEST(LayerTest, TempBufferCorrectness)
+{
+  // 1. Basic properties and zero initialization
+  {
+    TempBuffer<double, 100> buf(10, true);
+    EXPECT_EQ(buf.size(), 10);
+    EXPECT_FALSE(buf.empty());
+    EXPECT_NE(buf.data(), nullptr);
+    for (size_t i = 0; i < 10; ++i)
+    {
+      EXPECT_DOUBLE_EQ(buf.data()[i], 0.0);
+    }
+  }
+
+  // 2. Caching behaviour for small sizes
+  {
+    TempBuffer<double, 101> buf1(100);
+    EXPECT_EQ(buf1.size(), 100);
+  }
+  {
+    TempBuffer<double, 101> buf2(200);
+    EXPECT_EQ(buf2.size(), 200);
+  }
+  {
+    TempBuffer<double, 101> buf3(50);
+    EXPECT_EQ(buf3.size(), 50);
+    EXPECT_GE(buf3.vec().size(), 200);
+  }
+
+  // 3. Tag isolation
+  {
+    TempBuffer<double, 102> buf_tag1(10);
+    TempBuffer<double, 103> buf_tag2(10);
+    EXPECT_NE(buf_tag1.data(), buf_tag2.data());
+  }
+
+  // 4. Large size fallback
+  {
+    TempBuffer<double, 104> large_buf(1500000);
+    EXPECT_EQ(large_buf.size(), 1500000);
+    TempBuffer<double, 104> small_buf(10);
+    EXPECT_NE(large_buf.data(), small_buf.data());
+  }
+
+  // 5. Re-assignment
+  {
+    TempBuffer<double, 105> buf(5);
+    buf.assign(15, 3.14);
+    EXPECT_EQ(buf.size(), 15);
+    for (size_t i = 0; i < 15; ++i)
+    {
+      EXPECT_DOUBLE_EQ(buf.data()[i], 3.14);
+    }
+  }
 }
