@@ -500,24 +500,23 @@ public:
     }
 #endif
     // Scalar cleanup
-    for (; j < N_this; ++j)
+    if (j < N_this)
     {
-      double sum0 = y0[j];
-      double sum1 = y1[j];
-      double sum2 = y2[j];
-      double sum3 = y3[j];
       for (size_t i = 0; i < N_prev; ++i)
       {
-        double w_val = W[i * N_this + j];
-        sum0 += x0[i] * w_val;
-        sum1 += x1[i] * w_val;
-        sum2 += x2[i] * w_val;
-        sum3 += x3[i] * w_val;
+        double val0 = x0[i];
+        double val1 = x1[i];
+        double val2 = x2[i];
+        double val3 = x3[i];
+        const double* w_row = W + i * N_this;
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y0[col] += val0 * w_row[col];
+          y1[col] += val1 * w_row[col];
+          y2[col] += val2 * w_row[col];
+          y3[col] += val3 * w_row[col];
+        }
       }
-      y0[j] = sum0;
-      y1[j] = sum1;
-      y2[j] = sum2;
-      y3[j] = sum3;
     }
   }
 
@@ -556,18 +555,19 @@ public:
     }
 #endif
     // Scalar cleanup
-    for (; j < N_this; ++j)
+    if (j < N_this)
     {
-      double sum0 = y0[j];
-      double sum1 = y1[j];
       for (size_t i = 0; i < N_prev; ++i)
       {
-        double w_val = W[i * N_this + j];
-        sum0 += x0[i] * w_val;
-        sum1 += x1[i] * w_val;
+        double val0 = x0[i];
+        double val1 = x1[i];
+        const double* w_row = W + i * N_this;
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y0[col] += val0 * w_row[col];
+          y1[col] += val1 * w_row[col];
+        }
       }
-      y0[j] = sum0;
-      y1[j] = sum1;
     }
   }
 
@@ -601,14 +601,17 @@ public:
     }
 #endif
     // Scalar cleanup
-    for (; j < N_this; ++j)
+    if (j < N_this)
     {
-      double sum = y[j];
       for (size_t i = 0; i < N_prev; ++i)
       {
-        sum += x[i] * W[i * N_this + j];
+        double val = x[i];
+        const double* w_row = W + i * N_this;
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y[col] += val * w_row[col];
+        }
       }
-      y[j] = sum;
     }
   }
 
