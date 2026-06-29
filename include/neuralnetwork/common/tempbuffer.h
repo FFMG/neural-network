@@ -4,6 +4,17 @@
 
 namespace myoddweb::nn
 {
+struct ThreadBufferCache
+{
+  std::vector<double> caches[10];
+};
+
+inline ThreadBufferCache& get_thread_buffer_cache() noexcept
+{
+  static thread_local ThreadBufferCache instance;
+  return instance;
+}
+
 template <typename T, int Tag = 0>
 class TempBuffer
 {
@@ -16,7 +27,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      static thread_local std::vector<T> cache;
+      auto& cache = get_thread_buffer_cache().caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -47,7 +58,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      static thread_local std::vector<T> cache;
+      auto& cache = get_thread_buffer_cache().caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
