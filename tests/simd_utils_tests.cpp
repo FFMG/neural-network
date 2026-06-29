@@ -1512,7 +1512,7 @@ TEST(SimdUtilsTest, FmaEquivalenceVerify)
 TEST(SimdUtilsTest, GemmBatchesVerify)
 {
   const size_t n_prev = 64;
-  const size_t n_this = 32;
+  const size_t n_this = 35;
 
   // Initialize input vectors and matrix
   std::vector<double> x0(n_prev);
