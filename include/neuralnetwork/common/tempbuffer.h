@@ -1,20 +1,10 @@
 #pragma once
 #include <vector>
 #include <algorithm>
+#include "../libraries/instrumentor.h"
 
 namespace myoddweb::nn
 {
-struct ThreadBufferCache
-{
-  std::vector<double> caches[10];
-};
-
-inline ThreadBufferCache& get_thread_buffer_cache() noexcept
-{
-  static thread_local ThreadBufferCache instance;
-  return instance;
-}
-
 template <typename T, int Tag = 0>
 class TempBuffer
 {
@@ -24,10 +14,11 @@ public:
     _temp(),
     _ptr(nullptr)
   {
+    MYODDWEB_PROFILE_FUNCTION("TempBuffer");
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& cache = get_thread_buffer_cache().caches[Tag];
+      std::vector<T>& cache = get_cache();
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -54,11 +45,12 @@ public:
 
   inline void assign(size_t size, const T& val)
   {
+    MYODDWEB_PROFILE_FUNCTION("TempBuffer");
     _size = size;
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& cache = get_thread_buffer_cache().caches[Tag];
+      std::vector<T>& cache = get_cache();
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -104,6 +96,13 @@ public:
   }
 
 private:
+  static std::vector<T>& get_cache() noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("TempBuffer");
+    static thread_local std::vector<T> cache;
+    return cache;
+  }
+
   size_t _size;
   std::vector<T> _temp;
   std::vector<T>* _ptr;
