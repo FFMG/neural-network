@@ -440,3 +440,50 @@ TEST_F(GRURNNLayerTest, BiasCachingCorrectness)
     EXPECT_NEAR(outputs2[0], 3.0, 1e-3);
 }
 
+TEST_F(GRURNNLayerTest, StateAndMemoryAllocationOptimizationVerification)
+{
+    // A 2-input, 2-neuron GRU with 2 batches and 3 time steps
+    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
+    layer.set_z_rw_values({ 0.15, 0.25, 0.35, 0.45 });
+    layer.set_z_b_values({ 0.05, 0.15 });
+
+    layer.set_r_w_values({ 0.2, 0.3, 0.4, 0.5 });
+    layer.set_r_rw_values({ 0.25, 0.35, 0.45, 0.55 });
+    layer.set_r_b_values({ 0.15, 0.25 });
+
+    layer.set_w_values({ 0.3, 0.4, 0.5, 0.6 });
+    layer.set_rw_values({ 0.35, 0.45, 0.55, 0.65 });
+    layer.set_b_values({ 0.25, 0.35 });
+
+    MockLayer prev_layer(0, 2);
+    std::vector<unsigned> topology = { 2, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 3, 5); 
+
+    // Batch 0: [[1.0, 0.5], [-0.5, 1.0], [0.0, 0.0]]
+    // Batch 1: [[0.5, -0.5], [1.0, 1.0], [-1.0, 0.5]]
+    batch_go[0].set_rnn_outputs(0, { 1.0, 0.5, -0.5, 1.0, 0.0, 0.0 });
+    batch_go[1].set_rnn_outputs(0, { 0.5, -0.5, 1.0, 1.0, -1.0, 0.5 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, false);
+
+    // Verify outputs size and correct state retention across batches/time-steps
+    const auto& outputs_0 = batch_go[0].get_rnn_outputs(1);
+    const auto& outputs_1 = batch_go[1].get_rnn_outputs(1);
+
+    ASSERT_EQ(outputs_0.size(), 6);
+    ASSERT_EQ(outputs_1.size(), 6);
+
+    // For Batch 0, t=0, the outputs should match the single batch results exactly
+    EXPECT_NEAR(outputs_0[0], 0.381451, 1e-5);
+    EXPECT_NEAR(outputs_0[1], 0.495772, 1e-5);
+
+    // Verify we have non-zero results that propagate correctly
+    EXPECT_NE(outputs_0[2], 0.0);
+    EXPECT_NE(outputs_0[3], 0.0);
+    EXPECT_NE(outputs_1[4], 0.0);
+    EXPECT_NE(outputs_1[5], 0.0);
+}
+

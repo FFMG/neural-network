@@ -864,13 +864,16 @@ void GRURNNLayer::run_forward_pass(
 ) const
 {
   std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this), gated_h(N_this);
+  std::vector<double> prev_h(N_this, 0.0);
+  std::vector<double> current_h(N_this, 0.0);
+  std::vector<double> h_hat_vec(N_this);
   std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
 
   for (size_t b = start; b < end; ++b)
   {
     // Reset hidden state for each sample in the batch!
-    std::vector<double> prev_h(N_this, 0.0);
-    std::vector<double> current_h(N_this, 0.0);
+    std::fill(prev_h.begin(), prev_h.end(), 0.0);
+    std::fill(current_h.begin(), current_h.end(), 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -901,7 +904,7 @@ void GRURNNLayer::run_forward_pass(
         simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre.data(), N_this);
       }
 
-      std::vector<double> h_hat_vec = h_hat_pre;
+      std::copy(h_hat_pre.begin(), h_hat_pre.end(), h_hat_vec.begin());
       get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
 
       if (is_training && get_dropout() > 0.0)
@@ -953,7 +956,7 @@ void GRURNNLayer::run_forward_pass(
 
       batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
       batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
-      prev_h = current_h;
+      std::swap(prev_h, current_h);
     }
   }
 }

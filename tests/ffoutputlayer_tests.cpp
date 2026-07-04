@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/ffoutputlayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -481,4 +481,46 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
     std::vector<std::vector<double>> final_predictions = { final_outputs };
     auto final_metrics = layer.calculate_output_metrics({ ErrorCalculation::type::cross_entropy }, targets, final_predictions);
     EXPECT_LT(final_metrics[0][0].error(), initial_error);
+}
+
+TEST_F(FFOutputLayerTest, StateAndMemoryAllocationOptimizationVerification) {
+    unsigned num_inputs = 2;
+    unsigned num_outputs = 2;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::relu, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+    
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+
+    layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
+    layer.set_b_values({ 0.05, 0.15 });
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 3); // 3 steps
+
+    // Batch 0: [[1.0, 0.5], [-0.5, 1.0], [0.0, 0.0]]
+    // Batch 1: [[0.5, -0.5], [1.0, 1.0], [-1.0, 0.5]]
+    batch_go[0].set_rnn_outputs(0, { 1.0, 0.5, -0.5, 1.0, 0.0, 0.0 });
+    batch_go[1].set_rnn_outputs(0, { 0.5, -0.5, 1.0, 1.0, -1.0, 0.5 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, false);
+
+    // Verify outputs
+    const auto& outputs_0 = batch_go[0].get_rnn_outputs(1);
+    const auto& outputs_1 = batch_go[1].get_rnn_outputs(1);
+
+    ASSERT_EQ(outputs_0.size(), 6);
+    ASSERT_EQ(outputs_1.size(), 6);
+
+    // t=0, Batch 0:
+    // pre_act[0] = 1.0 * 0.1 + 0.5 * 0.3 + 0.05 = 0.3 -> relu -> 0.3
+    // pre_act[1] = 1.0 * 0.2 + 0.5 * 0.4 + 0.15 = 0.55 -> relu -> 0.55
+    EXPECT_NEAR(outputs_0[0], 0.3, 1e-9);
+    EXPECT_NEAR(outputs_0[1], 0.55, 1e-9);
+
+    // Verify non-zero/retention propagate correctly
+    EXPECT_NEAR(outputs_0[4], 0.05, 1e-9); // relu(0.0 * 0.1 + 0.0 * 0.3 + 0.05) = 0.05
+    EXPECT_NEAR(outputs_0[5], 0.15, 1e-9); // relu(0.0 * 0.2 + 0.0 * 0.4 + 0.15) = 0.15
 }

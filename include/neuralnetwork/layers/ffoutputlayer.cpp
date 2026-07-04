@@ -431,9 +431,9 @@ void FFOutputLayer::run_post_gemm(
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   
   std::vector<double> mask(N_this, 1.0);
+  std::vector<double> output_row_seq(num_time_steps * N_this);
   for (size_t b = start; b < end; b++)
   {
-    std::vector<double> output_row_seq(num_time_steps * N_this);
     if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
     {
       batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
@@ -494,7 +494,7 @@ void FFOutputLayer::run_post_gemm(
 
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     std::copy(output_row_seq.end() - N_this, output_row_seq.end(), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), std::move(output_row_seq));
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq.data(), output_row_seq.size());
   }
 }
 
