@@ -434,6 +434,7 @@ void FFOutputLayer::run_post_gemm(
   std::vector<double> output_row_seq(num_time_steps * N_this);
   for (size_t b = start; b < end; b++)
   {
+    std::fill(mask.begin(), mask.end(), 1.0);
     if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
     {
       batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
@@ -455,7 +456,6 @@ void FFOutputLayer::run_post_gemm(
 
       layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
 
-      std::fill(mask.begin(), mask.end(), 1.0);
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
