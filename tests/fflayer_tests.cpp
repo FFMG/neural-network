@@ -502,3 +502,41 @@ TEST_F(FFLayerTest, DirectOutputGradientsRetrieval)
   EXPECT_NEAR(grads[0], 0.5, 1e-9);
   EXPECT_NEAR(grads[1], 0.8, 1e-9);
 }
+
+TEST_F(FFLayerTest, StateAndMemoryAllocationOptimizationVerification)
+{
+  // A 2-input, 2-neuron FFLayer with 2 batches and 3 time steps
+  FFLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+  layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
+  layer.set_b_values({ 0.05, 0.15 });
+
+  MockLayer prev_layer(0, 2);
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs = create_batch_hidden_states(topology, 2, 3); // 3 steps
+
+  // Batch 0: [[1.0, 0.5], [-0.5, 1.0], [0.0, 0.0]]
+  // Batch 1: [[0.5, -0.5], [1.0, 1.0], [-1.0, 0.5]]
+  batch_go[0].set_rnn_outputs(0, { 1.0, 0.5, -0.5, 1.0, 0.0, 0.0 });
+  batch_go[1].set_rnn_outputs(0, { 0.5, -0.5, 1.0, 1.0, -1.0, 0.5 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, false);
+
+  // Verify outputs
+  const auto& outputs_0 = batch_go[0].get_rnn_outputs(1);
+  const auto& outputs_1 = batch_go[1].get_rnn_outputs(1);
+
+  ASSERT_EQ(outputs_0.size(), 6);
+  ASSERT_EQ(outputs_1.size(), 6);
+
+  // t=0, Batch 0:
+  // pre_act[0] = 1.0 * 0.1 + 0.5 * 0.3 + 0.05 = 0.3 -> relu -> 0.3
+  // pre_act[1] = 1.0 * 0.2 + 0.5 * 0.4 + 0.15 = 0.55 -> relu -> 0.55
+  EXPECT_NEAR(outputs_0[0], 0.3, 1e-9);
+  EXPECT_NEAR(outputs_0[1], 0.55, 1e-9);
+
+  // Verify non-zero/retention propagate correctly
+  EXPECT_NEAR(outputs_0[4], 0.05, 1e-9); // relu(0.0 * 0.1 + 0.0 * 0.3 + 0.05) = 0.05
+  EXPECT_NEAR(outputs_0[5], 0.15, 1e-9); // relu(0.0 * 0.2 + 0.0 * 0.4 + 0.15) = 0.15
+}
