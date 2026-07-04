@@ -152,6 +152,42 @@ double activation::calculate_linear_derivative(double, double) noexcept
   return 1.0;
 }
 
+#ifdef SIMD_AVX2_ENABLED
+inline static __m256d simd_exp_pd(__m256d x) noexcept
+{
+  const __m256d vec_max = _mm256_set1_pd(60.0);
+  const __m256d vec_min = _mm256_set1_pd(-60.0);
+  __m256d vx = _mm256_max_pd(_mm256_min_pd(x, vec_max), vec_min);
+
+  const __m256d log2e = _mm256_set1_pd(1.4426950408889634074);
+  __m256d vk = _mm256_round_pd(_mm256_mul_pd(vx, log2e), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+
+  const __m256d c1 = _mm256_set1_pd(-0.6931471805599453);
+  const __m256d c2 = _mm256_set1_pd(-2.3190468138462996e-17);
+  __m256d vf = _mm256_fmadd_pd(vk, c1, vx);
+  vf = _mm256_fmadd_pd(vk, c2, vf);
+
+  // Polynomial approximation of exp(f) on [-0.5*ln(2), 0.5*ln(2)]
+  __m256d p = _mm256_set1_pd(1.38888888888888889e-3); // 1/720
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(8.33333333333333333e-3)); // 1/120
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(4.16666666666666667e-2)); // 1/24
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.66666666666666667e-1)); // 1/6
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(0.5));
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.0));
+  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.0));
+
+  // Reconstruct 2^k
+  __m128i k_int = _mm256_cvtpd_epi32(vk);
+  __m128i bias = _mm_set1_epi32(1023);
+  __m128i k_biased = _mm_add_epi32(k_int, bias);
+  __m256i k_64 = _mm256_cvtepi32_epi64(k_biased);
+  __m256i k_exp = _mm256_slli_epi64(k_64, 52);
+  __m256d vec_2k = _mm256_castsi256_pd(k_exp);
+
+  return _mm256_mul_pd(p, vec_2k);
+}
+#endif
+
 void activation::activate(double* begin, double* end, bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -245,8 +281,22 @@ void activation::activate(double* begin, double* end, bool is_training) const
     break;
   case method::swish:
     {
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_alpha = _mm256_set1_pd(_alpha);
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d vx = _mm256_loadu_pd(begin + i);
+        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
+        __m256d exp_neg_z = simd_exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
+        __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
+        __m256d res = _mm256_div_pd(vx, denom);
+        _mm256_storeu_pd(begin + i, res);
+      }
+#endif
       constexpr double MAX_EXP_INPUT = 60.0;
-      for (size_t i = 0; i < size; ++i)
+      for (; i < size; ++i)
       {
         const double x = begin[i];
         const double z = _alpha * x;
@@ -466,8 +516,25 @@ void activation::activate_derivative(const double* begin, const double* end, con
     break;
   case method::swish:
     {
+      size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+      __m256d vec_alpha = _mm256_set1_pd(_alpha);
+      __m256d vec_one = _mm256_set1_pd(1.0);
+      for (; i + 3 < size; i += 4)
+      {
+        __m256d vx = _mm256_loadu_pd(begin + i);
+        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
+        __m256d exp_neg_z = simd_exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
+        __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
+        __m256d sigmoid = _mm256_div_pd(vec_one, denom);
+        __m256d one_minus_sig = _mm256_sub_pd(vec_one, sigmoid);
+        __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vz, sigmoid), one_minus_sig);
+        __m256d res = _mm256_add_pd(sigmoid, term2);
+        _mm256_storeu_pd(out + i, res);
+      }
+#endif
       constexpr double MAX_EXP_INPUT = 60.0;
-      for (size_t i = 0; i < size; ++i)
+      for (; i < size; ++i)
       {
         const double x = begin[i];
         const double z = _alpha * x;
