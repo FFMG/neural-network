@@ -336,3 +336,34 @@ TEST_F(ActivationTest, VectorizedActivateAndDerivative)
   }
 }
 
+TEST_F(ActivationTest, SwishAVX2Correctness)
+{
+  const double beta = 1.5;
+  activation act(activation::method::swish, beta);
+
+  // Use a vector size of 17 (not a multiple of 4, to verify both SIMD loop and cleanup loop)
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7; // Mix of negative, zero, and positive values
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::swish(input[i], beta);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 Swish mismatch at index " << i;
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::swish_deriv(input[i], beta);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 Swish derivative mismatch at index " << i;
+  }
+}
+
