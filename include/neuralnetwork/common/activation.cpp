@@ -1,4 +1,5 @@
 #include "activation.h"
+#include "simd_utils.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -152,59 +153,6 @@ double activation::calculate_linear_derivative(double, double) noexcept
   return 1.0;
 }
 
-#ifdef SIMD_AVX2_ENABLED
-inline static __m256d simd_exp_pd(__m256d x) noexcept
-{
-  const __m256d vec_max = _mm256_set1_pd(60.0);
-  const __m256d vec_min = _mm256_set1_pd(-60.0);
-  __m256d vx = _mm256_max_pd(_mm256_min_pd(x, vec_max), vec_min);
-
-  const __m256d log2e = _mm256_set1_pd(1.4426950408889634074);
-  __m256d vk = _mm256_round_pd(_mm256_mul_pd(vx, log2e), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-
-  const __m256d c1 = _mm256_set1_pd(-0.6931471805599453);
-  const __m256d c2 = _mm256_set1_pd(-2.3190468138462996e-17);
-  __m256d vf = _mm256_fmadd_pd(vk, c1, vx);
-  vf = _mm256_fmadd_pd(vk, c2, vf);
-
-  // Polynomial approximation of exp(f) on [-0.5*ln(2), 0.5*ln(2)]
-  __m256d p = _mm256_set1_pd(1.38888888888888889e-3); // 1/720
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(8.33333333333333333e-3)); // 1/120
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(4.16666666666666667e-2)); // 1/24
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.66666666666666667e-1)); // 1/6
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(0.5));
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.0));
-  p = _mm256_fmadd_pd(p, vf, _mm256_set1_pd(1.0));
-
-  // Reconstruct 2^k
-  __m128i k_int = _mm256_cvtpd_epi32(vk);
-  __m128i bias = _mm_set1_epi32(1023);
-  __m128i k_biased = _mm_add_epi32(k_int, bias);
-  __m256i k_64 = _mm256_cvtepi32_epi64(k_biased);
-  __m256i k_exp = _mm256_slli_epi64(k_64, 52);
-  __m256d vec_2k = _mm256_castsi256_pd(k_exp);
-
-  return _mm256_mul_pd(p, vec_2k);
-}
-
-inline static __m256d simd_tanh_pd(__m256d x) noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("simd");
-  const __m256d vec_one = _mm256_set1_pd(1.0);
-  const __m256d vec_two = _mm256_set1_pd(2.0);
-  const __m256d sign_mask = _mm256_set1_pd(-0.0);
-
-  __m256d abs_x = _mm256_andnot_pd(sign_mask, x);
-  __m256d u = _mm256_mul_pd(_mm256_set1_pd(-2.0), abs_x);
-  __m256d exp_u = simd_exp_pd(u);
-  __m256d denom = _mm256_add_pd(exp_u, vec_one);
-  __m256d term = _mm256_div_pd(vec_two, denom);
-  __m256d val = _mm256_sub_pd(term, vec_one);
-  __m256d x_sign = _mm256_and_pd(x, sign_mask);
-  return _mm256_xor_pd(val, x_sign);
-}
-#endif
-
 void activation::activate(double* begin, double* end, bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -220,175 +168,29 @@ void activation::activate(double* begin, double* end, bool is_training) const
   case method::linear:
     break; // Nothing to do
   case method::relu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d res = _mm256_max_pd(v, vec_zero);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        begin[i] = begin[i] > 0.0 ? begin[i] : 0.0;
-      }
-    }
+    simd::relu_activate(begin, size);
     break;
   case method::leakyRelu:
   case method::PRelu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
-        __m256d val_alpha = _mm256_mul_pd(vec_alpha, v);
-        __m256d res = _mm256_blendv_pd(val_alpha, v, mask);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        begin[i] = begin[i] > 0.0 ? begin[i] : _alpha * begin[i];
-      }
-    }
+    simd::leaky_relu_activate(begin, size, _alpha);
     break;
   case method::tanh:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d res = simd_tanh_pd(vx);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        begin[i] = std::tanh(begin[i]);
-      }
-    }
+    simd::tanh_activate(begin, size);
     break;
   case method::sigmoid:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
-        __m256d abs_z = _mm256_andnot_pd(_mm256_set1_pd(-0.0), vz);
-        __m256d u = _mm256_sub_pd(_mm256_setzero_pd(), abs_z);
-        __m256d exp_u = simd_exp_pd(u);
-        __m256d denom = _mm256_add_pd(vec_one, exp_u);
-        __m256d v = _mm256_div_pd(vec_one, denom);
-        __m256d one_minus_v = _mm256_sub_pd(vec_one, v);
-        __m256d mask = _mm256_cmp_pd(vz, _mm256_setzero_pd(), _CMP_GE_OQ);
-        __m256d res = _mm256_blendv_pd(one_minus_v, v, mask);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        const double z = _alpha * x;
-        if (z >= 0.0)
-        {
-          const double exp_neg = std::exp(-z);
-          begin[i] = 1.0 / (1.0 + exp_neg);
-        }
-        else
-        {
-          const double exp_pos = std::exp(z);
-          begin[i] = exp_pos / (1.0 + exp_pos);
-        }
-      }
-    }
+    simd::sigmoid_activate(begin, size, _alpha);
     break;
   case method::selu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_lambda = _mm256_set1_pd(SELU_LAMBDA);
-      __m256d vec_lambda_alpha = _mm256_set1_pd(SELU_LAMBDA * SELU_ALPHA);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = simd_exp_pd(vx);
-        __m256d val_pos = _mm256_mul_pd(vec_lambda, vx);
-        __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, _mm256_sub_pd(exp_x, vec_one));
-        __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, val_pos, mask);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        begin[i] = SELU_LAMBDA * (x > 0.0 ? x : SELU_ALPHA * (std::exp(x) - 1.0));
-      }
-    }
+    simd::selu_activate(begin, size);
     break;
   case method::elu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = simd_exp_pd(vx);
-        __m256d val_neg = _mm256_mul_pd(vec_alpha, _mm256_sub_pd(exp_x, vec_one));
-        __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, vx, mask);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        begin[i] = x > 0.0 ? x : _alpha * (std::exp(x) - 1.0);
-      }
-    }
+    simd::elu_activate(begin, size, _alpha);
     break;
   case method::swish:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
-        __m256d exp_neg_z = simd_exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
-        __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-        __m256d res = _mm256_div_pd(vx, denom);
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      constexpr double MAX_EXP_INPUT = 60.0;
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        const double z = _alpha * x;
-        const double exp_term = std::exp(std::clamp(-z, -MAX_EXP_INPUT, MAX_EXP_INPUT));
-        begin[i] = x / (1.0 + exp_term);
-      }
-    }
+    simd::swish_activate(begin, size, _alpha);
+    break;
+  case method::gelu:
+    simd::gelu_activate(begin, size);
     break;
   case method::mish:
     for (size_t i = 0; i < size; ++i)
@@ -409,38 +211,6 @@ void activation::activate(double* begin, double* end, bool is_training) const
       }
     }
     break;
-  case method::gelu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_half = _mm256_set1_pd(0.5);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
-      __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vx3 = _mm256_mul_pd(_mm256_mul_pd(vx, vx), vx);
-#ifdef SIMD_FMA_ENABLED
-        __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, vx);
-#else
-        __m256d inner = _mm256_add_pd(vx, _mm256_mul_pd(vec_coeff2, vx3));
-#endif
-        __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
-        __m256d tanh_val = simd_tanh_pd(arg);
-        __m256d res = _mm256_mul_pd(_mm256_mul_pd(vec_half, vx), _mm256_add_pd(vec_one, tanh_val));
-        _mm256_storeu_pd(begin + i, res);
-      }
-#endif
-      const double sqrt_2_over_pi = 0.7978845608028654;
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        const double x3 = x * x * x;
-        begin[i] = 0.5 * x * (1.0 + std::tanh(sqrt_2_over_pi * (x + 0.044715 * x3)));
-      }
-    }
-    break;
   default:
     for (double* it = begin; it != end; ++it)
     {
@@ -457,314 +227,37 @@ void activation::activate_derivative(const double* begin, const double* end, con
   switch (_method)
   {
   case method::linear:
-    for (size_t i = 0; i < size; ++i)
-    {
-      out[i] = 1.0;
-    }
+    simd::linear_derivative(out, size);
     break;
   case method::relu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(vec_zero, vec_one, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = begin[i] > 0.0 ? 1.0 : 0.0;
-      }
-    }
+    simd::relu_derivative(begin, size, out);
     break;
   case method::leakyRelu:
   case method::PRelu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(vec_alpha, vec_one, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = begin[i] > 0.0 ? 1.0 : _alpha;
-      }
-    }
+    simd::leaky_relu_derivative(begin, size, out, _alpha);
     break;
   case method::tanh:
-    if (y_begin != nullptr)
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d y = _mm256_loadu_pd(y_begin + i);
-        __m256d res = _mm256_sub_pd(vec_one, _mm256_mul_pd(y, y));
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = 1.0 - y_begin[i] * y_begin[i];
-      }
-    }
-    else
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d val = simd_tanh_pd(vx);
-        __m256d t2 = _mm256_mul_pd(val, val);
-        __m256d res = _mm256_sub_pd(vec_one, t2);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        const double t = std::tanh(begin[i]);
-        out[i] = 1.0 - t * t;
-      }
-    }
+    simd::tanh_derivative(begin, size, y_begin, out);
     break;
   case method::sigmoid:
-    if (y_begin != nullptr)
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d y = _mm256_loadu_pd(y_begin + i);
-        __m256d res = _mm256_mul_pd(y, _mm256_sub_pd(vec_one, y));
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = y_begin[i] * (1.0 - y_begin[i]);
-      }
-    }
-    else
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
-        __m256d abs_z = _mm256_andnot_pd(_mm256_set1_pd(-0.0), vz);
-        __m256d u = _mm256_sub_pd(_mm256_setzero_pd(), abs_z);
-        __m256d exp_u = simd_exp_pd(u);
-        __m256d denom = _mm256_add_pd(vec_one, exp_u);
-        __m256d v = _mm256_div_pd(vec_one, denom);
-        __m256d one_minus_v = _mm256_sub_pd(vec_one, v);
-        __m256d mask = _mm256_cmp_pd(vz, _mm256_setzero_pd(), _CMP_GE_OQ);
-        __m256d s = _mm256_blendv_pd(one_minus_v, v, mask);
-        __m256d res = _mm256_mul_pd(vec_alpha, _mm256_mul_pd(s, _mm256_sub_pd(vec_one, s)));
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        const double s = calculate_sigmoid(begin[i], _alpha);
-        out[i] = _alpha * s * (1.0 - s);
-      }
-    }
+    simd::sigmoid_derivative(begin, size, y_begin, out, _alpha);
     break;
   case method::selu:
-    if (y_begin != nullptr)
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_lambda = _mm256_set1_pd(SELU_LAMBDA);
-      __m256d vec_lambda_alpha = _mm256_set1_pd(SELU_LAMBDA * SELU_ALPHA);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d y = _mm256_loadu_pd(y_begin + i);
-        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
-        __m256d res_neg = _mm256_add_pd(y, vec_lambda_alpha);
-        __m256d res = _mm256_blendv_pd(res_neg, vec_lambda, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = begin[i] > 0.0 ? SELU_LAMBDA : y_begin[i] + (SELU_LAMBDA * SELU_ALPHA);
-      }
-    }
-    else
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_lambda = _mm256_set1_pd(SELU_LAMBDA);
-      __m256d vec_lambda_alpha = _mm256_set1_pd(SELU_LAMBDA * SELU_ALPHA);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = simd_exp_pd(vx);
-        __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, exp_x);
-        __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, vec_lambda, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = SELU_LAMBDA * (begin[i] > 0.0 ? 1.0 : SELU_ALPHA * std::exp(begin[i]));
-      }
-    }
+    simd::selu_derivative(begin, size, y_begin, out);
     break;
   case method::elu:
-    if (y_begin != nullptr)
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d v = _mm256_loadu_pd(begin + i);
-        __m256d y = _mm256_loadu_pd(y_begin + i);
-        __m256d mask = _mm256_cmp_pd(v, vec_zero, _CMP_GT_OQ);
-        __m256d res_neg = _mm256_add_pd(y, vec_alpha);
-        __m256d res = _mm256_blendv_pd(res_neg, vec_one, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = begin[i] > 0.0 ? 1.0 : y_begin[i] + _alpha;
-      }
-    }
-    else
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_zero = _mm256_setzero_pd();
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = simd_exp_pd(vx);
-        __m256d val_neg = _mm256_mul_pd(vec_alpha, exp_x);
-        __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, vec_one, mask);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      for (; i < size; ++i)
-      {
-        out[i] = begin[i] > 0.0 ? 1.0 : _alpha * std::exp(begin[i]);
-      }
-    }
+    simd::elu_derivative(begin, size, y_begin, out, _alpha);
     break;
   case method::swish:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_alpha = _mm256_set1_pd(_alpha);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vz = _mm256_mul_pd(vec_alpha, vx);
-        __m256d exp_neg_z = simd_exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
-        __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-        __m256d sigmoid = _mm256_div_pd(vec_one, denom);
-        __m256d one_minus_sig = _mm256_sub_pd(vec_one, sigmoid);
-        __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vz, sigmoid), one_minus_sig);
-        __m256d res = _mm256_add_pd(sigmoid, term2);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      constexpr double MAX_EXP_INPUT = 60.0;
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        const double z = _alpha * x;
-        const double clamped_z = std::clamp(z, -MAX_EXP_INPUT, MAX_EXP_INPUT);
-        const double sigmoid = 1.0 / (1.0 + std::exp(-clamped_z));
-        out[i] = sigmoid + _alpha * x * sigmoid * (1.0 - sigmoid);
-      }
-    }
+    simd::swish_derivative(begin, size, out, _alpha);
+    break;
+  case method::gelu:
+    simd::gelu_derivative(begin, size, out);
     break;
   case method::mish:
     for (size_t i = 0; i < size; ++i)
     {
       out[i] = _derivative_ptr(begin[i], _alpha);
-    }
-    break;
-  case method::gelu:
-    {
-      size_t i = 0;
-#ifdef SIMD_AVX2_ENABLED
-      __m256d vec_half = _mm256_set1_pd(0.5);
-      __m256d vec_one = _mm256_set1_pd(1.0);
-      __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
-      __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
-      __m256d vec_coeff3 = _mm256_set1_pd(3.0 * 0.044715);
-      for (; i + 3 < size; i += 4)
-      {
-        __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d vx2 = _mm256_mul_pd(vx, vx);
-        __m256d vx3 = _mm256_mul_pd(vx2, vx);
-#ifdef SIMD_FMA_ENABLED
-        __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, vx);
-#else
-        __m256d inner = _mm256_add_pd(vx, _mm256_mul_pd(vec_coeff2, vx3));
-#endif
-        __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
-        __m256d tanh_term = simd_tanh_pd(arg);
-
-        __m256d term1 = _mm256_fmadd_pd(vec_half, tanh_term, vec_half); // 0.5 + 0.5 * tanh_term
-        
-        __m256d one_minus_t2 = _mm256_sub_pd(vec_one, _mm256_mul_pd(tanh_term, tanh_term));
-        __m256d half_x = _mm256_mul_pd(vec_half, vx);
-        
-#ifdef SIMD_FMA_ENABLED
-        __m256d factor = _mm256_fmadd_pd(vec_coeff3, vx2, vec_one); // 1.0 + 3.0 * 0.044715 * x^2
-#else
-        __m256d factor = _mm256_add_pd(vec_one, _mm256_mul_pd(vec_coeff3, vx2));
-#endif
-        __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(half_x, one_minus_t2), vec_coeff1), factor);
-        __m256d res = _mm256_add_pd(term1, term2);
-        _mm256_storeu_pd(out + i, res);
-      }
-#endif
-      const double sqrt_2_over_pi = 0.7978845608028654;
-      for (; i < size; ++i)
-      {
-        const double x = begin[i];
-        const double x3 = x * x * x;
-        const double tanh_term = std::tanh(sqrt_2_over_pi * (x + 0.044715 * x3));
-        out[i] = 0.5 + 0.5 * tanh_term +
-          (0.5 * x * (1.0 - tanh_term * tanh_term) *
-            sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
-      }
     }
     break;
   default:
