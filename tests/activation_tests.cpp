@@ -319,7 +319,7 @@ TEST_F(ActivationTest, VectorizedActivateAndDerivative)
         }
         else if (method == activation::method::sigmoid)
         {
-          expected_y_deriv = y_vals[i] * (1.0 - y_vals[i]);
+          expected_y_deriv = act.get_alpha() * y_vals[i] * (1.0 - y_vals[i]);
         }
         else if (method == activation::method::elu)
         {
