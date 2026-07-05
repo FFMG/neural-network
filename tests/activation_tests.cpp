@@ -367,3 +367,185 @@ TEST_F(ActivationTest, SwishAVX2Correctness)
   }
 }
 
+TEST_F(ActivationTest, SigmoidAVX2Correctness)
+{
+  const double beta = 0.5;
+  activation act(activation::method::sigmoid, beta);
+
+  // Use a vector size of 17 (not a multiple of 4, to verify both SIMD loop and cleanup loop)
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7; // Mix of negative, zero, and positive values
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::sigmoid(input[i], beta);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 Sigmoid mismatch at index " << i;
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::sigmoid_deriv(input[i], beta);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 Sigmoid derivative mismatch at index " << i;
+  }
+}
+
+TEST_F(ActivationTest, TanhAVX2Correctness)
+{
+  activation act(activation::method::tanh, 1.0);
+
+  // Use a vector size of 17 (not a multiple of 4, to verify both SIMD loop and cleanup loop)
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7; // Mix of negative, zero, and positive values
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::tanh(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 Tanh mismatch at index " << i;
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::tanh_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 Tanh derivative mismatch at index " << i;
+  }
+}
+
+TEST_F(ActivationTest, GELUAVX2Correctness)
+{
+  activation act(activation::method::gelu, 1.0);
+
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7;
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::gelu(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 GELU mismatch at index " << i;
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::gelu_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 GELU derivative mismatch at index " << i;
+  }
+}
+
+TEST_F(ActivationTest, ELUAVX2Correctness)
+{
+  const double alpha_val = 0.5;
+  activation act(activation::method::elu, alpha_val);
+
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7;
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::elu(input[i], alpha_val);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 ELU mismatch at index " << i;
+  }
+
+  // Without y_begin
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::elu_deriv(input[i], alpha_val);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 ELU derivative (without y) mismatch at index " << i;
+  }
+
+  // With y_begin
+  std::vector<double> y_vals(input.size());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    y_vals[i] = math_expect::elu(input[i], alpha_val);
+  }
+  std::vector<double> deriv_out_y(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), y_vals.data(), deriv_out_y.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_y_deriv = input[i] > 0.0 ? 1.0 : y_vals[i] + alpha_val;
+    EXPECT_NEAR(expected_y_deriv, deriv_out_y[i], tolerance) << "AVX2 ELU derivative (with y) mismatch at index " << i;
+  }
+}
+
+TEST_F(ActivationTest, SELUAVX2Correctness)
+{
+  activation act(activation::method::selu, 1.0);
+
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -5.0 + i * 0.7;
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::selu(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 SELU mismatch at index " << i;
+  }
+
+  // Without y_begin
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::selu_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 SELU derivative (without y) mismatch at index " << i;
+  }
+
+  // With y_begin
+  std::vector<double> y_vals(input.size());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    y_vals[i] = math_expect::selu(input[i], 1.0);
+  }
+  std::vector<double> deriv_out_y(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), y_vals.data(), deriv_out_y.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_y_deriv = input[i] > 0.0 ? 1.0507 : y_vals[i] + (1.0507 * 1.67326);
+    EXPECT_NEAR(expected_y_deriv, deriv_out_y[i], tolerance) << "AVX2 SELU derivative (with y) mismatch at index " << i;
+  }
+}
+
+
