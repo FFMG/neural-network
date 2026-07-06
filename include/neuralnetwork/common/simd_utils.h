@@ -673,14 +673,16 @@ public:
     double epsilon,
     size_t n,
     const double* decays = nullptr,
-    size_t start = 0) noexcept
+    size_t start = 0,
+    double clipping_scale = 1.0) noexcept
   {
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     for (size_t j = start; j < n; ++j)
     {
-      m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
-      m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
+      double g = grads[j] * clipping_scale;
+      m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+      m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
       double m_hat = m1[j] * inv_p1;
       double v_hat = m2[j] * inv_p2;
       double update = m_hat / (std::sqrt(v_hat) + epsilon);
@@ -706,7 +708,8 @@ public:
     double lr,
     double epsilon,
     size_t n,
-    const double* decays = nullptr) noexcept
+    const double* decays = nullptr,
+    double clipping_scale = 1.0) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
@@ -725,10 +728,12 @@ public:
     __m256d vec_one = _mm256_set1_pd(1.0);
     __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
     __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
 
     for (; j + 3 < n; j += 4) 
     {
-      __m256d g = _mm256_loadu_pd(&grads[j]);
+      __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+      __m256d g = _mm256_mul_pd(raw_g, vec_clip);
       __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
       __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
       __m256d cur_w = _mm256_loadu_pd(&values[j]);
@@ -773,8 +778,9 @@ public:
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
-    scalar_adam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j);
+    scalar_adam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);
   }
+
   // Scalar fallback for nadam_step
   inline static void scalar_nadam_step(
     double* values,
@@ -789,17 +795,19 @@ public:
     double epsilon,
     size_t n,
     const double* decays = nullptr,
-    size_t start = 0) noexcept
+    size_t start = 0,
+    double clipping_scale = 1.0) noexcept
   {
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     for (size_t j = start; j < n; ++j)
     {
-      m1[j] = b1 * m1[j] + (1.0 - b1) * grads[j];
-      m2[j] = b2 * m2[j] + (1.0 - b2) * (grads[j] * grads[j]);
+      double g = grads[j] * clipping_scale;
+      m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+      m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
       double m_hat = m1[j] * inv_p1;
       double v_hat = m2[j] * inv_p2;
-      double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[j]) * inv_p1;
+      double m_nadam = b1 * m_hat + ((1.0 - b1) * g) * inv_p1;
       double update = m_nadam / (std::sqrt(v_hat) + epsilon);
       double w = values[j];
       if (decays != nullptr)
@@ -823,7 +831,8 @@ public:
     double lr,
     double epsilon,
     size_t n,
-    const double* decays = nullptr) noexcept
+    const double* decays = nullptr,
+    double clipping_scale = 1.0) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
@@ -842,6 +851,7 @@ public:
     __m256d vec_one = _mm256_set1_pd(1.0);
     __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
     __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
 
 #ifdef SIMD_FMA_ENABLED
     // Precomputed constant term for Nadam update
@@ -850,7 +860,8 @@ public:
 
     for (; j + 3 < n; j += 4)
     {
-      __m256d g = _mm256_loadu_pd(&grads[j]);
+      __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+      __m256d g = _mm256_mul_pd(raw_g, vec_clip);
       __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
       __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
       __m256d cur_w = _mm256_loadu_pd(&values[j]);
@@ -902,7 +913,7 @@ public:
       _mm256_storeu_pd(&values[j], next_w);
     }
 #endif
-    scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j);
+    scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);
   }
 
   // Scalar fallback for gru_bptt_gate_step

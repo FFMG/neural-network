@@ -1263,6 +1263,22 @@ protected:
   }
 
 private:
+  void apply_update_to_vector_internal(
+    std::vector<double>& values,
+    std::vector<double>& grads,
+    std::vector<double>& velocities,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    const std::vector<double>& decays,
+    double learning_rate,
+    double clipping_scale,
+    bool is_bias,
+    OptimiserType optimiser_type,
+    size_t start,
+    size_t count,
+    double p1,
+    double p2);
+
   [[nodiscard]] inline bool is_bias_index(const std::vector<double>& values) const noexcept
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer");
