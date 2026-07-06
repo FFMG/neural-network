@@ -626,17 +626,75 @@ void Layer::apply_update_to_vector(
     return;
   }
 
+  double p1 = 1.0;
+  double p2 = 1.0;
+  if (optimiser_type == OptimiserType::Adam || optimiser_type == OptimiserType::AdamW ||
+      optimiser_type == OptimiserType::Nadam || optimiser_type == OptimiserType::NadamW)
+  {
+    if (!timesteps.empty() && start < timesteps.size())
+    {
+      ++timesteps[start];
+    }
+    const double beta1 = get_momentum();
+    const double beta2 = 0.999;
+    const double ts = (!timesteps.empty() && start < timesteps.size()) ? static_cast<double>(timesteps[start]) : 1.0;
+    p1 = 1.0 - std::pow(beta1, ts);
+    p2 = 1.0 - std::pow(beta2, ts);
+  }
+
+  if (count == 0 && _task_queue_pool != nullptr && _task_queue_pool->get_number_of_threads() > 1 && n >= 4096)
+  {
+    const unsigned int num_threads = _task_queue_pool->get_number_of_threads();
+    const size_t chunk_size = (n + num_threads - 1) / num_threads;
+    for (unsigned int t = 0; t < num_threads; ++t)
+    {
+      size_t chunk_start = start + t * chunk_size;
+      size_t chunk_end = std::min(chunk_start + chunk_size, start + n);
+      if (chunk_start < chunk_end)
+      {
+        _task_queue_pool->enqueue([&values, &grads, &velocities, &m1, &m2, &decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end, p1, p2, this]()
+        {
+          apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end - chunk_start, p1, p2);
+        });
+      }
+    }
+    _task_queue_pool->get();
+  }
+  else
+  {
+    apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, start, n, p1, p2);
+  }
+}
+
+void Layer::apply_update_to_vector_internal(
+    std::vector<double>& values,
+    std::vector<double>& grads,
+    std::vector<double>& velocities,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    const std::vector<double>& decays,
+    double learning_rate,
+    double clipping_scale,
+    bool is_bias,
+    OptimiserType optimiser_type,
+    size_t start,
+    size_t count,
+    double p1,
+    double p2)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+
   switch (optimiser_type)
   {
   case OptimiserType::None:
-    simd::none_step(values.data() + start, grads.data() + start, learning_rate, clipping_scale, n);
+    simd::none_step(values.data() + start, grads.data() + start, learning_rate, clipping_scale, count);
     break;
 
   case OptimiserType::SGD:
   {
     const double momentum = get_momentum();
-    const double* decay_ptr = (!is_bias && decays.size() >= start + n) ? (decays.data() + start) : nullptr;
-    simd::sgd_step(values.data() + start, grads.data() + start, velocities.data() + start, decay_ptr, momentum, learning_rate, clipping_scale, is_bias, n);
+    const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
+    simd::sgd_step(values.data() + start, grads.data() + start, velocities.data() + start, decay_ptr, momentum, learning_rate, clipping_scale, is_bias, count);
   }
   break;
 
@@ -646,21 +704,9 @@ void Layer::apply_update_to_vector(
     const double beta1 = get_momentum();
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
+    const double* decay_ptr = (optimiser_type == OptimiserType::AdamW && !is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
 
-    if (clipping_scale != 1.0)
-    {
-      simd::scale_vector(grads.data() + start, clipping_scale, n);
-    }
-
-    if (!timesteps.empty() && start < timesteps.size())
-    {
-      ++timesteps[start];
-    }
-    const double p1 = 1.0 - std::pow(beta1, timesteps[start]);
-    const double p2 = 1.0 - std::pow(beta2, timesteps[start]);
-    const double* decay_ptr = (optimiser_type == OptimiserType::AdamW && !is_bias && decays.size() >= start + n) ? (decays.data() + start) : nullptr;
-
-    simd::adam_step(values.data() + start, grads.data() + start, m1.data() + start, m2.data() + start, beta1, beta2, p1, p2, learning_rate, epsilon, n, decay_ptr);
+    simd::adam_step(values.data() + start, grads.data() + start, m1.data() + start, m2.data() + start, beta1, beta2, p1, p2, learning_rate, epsilon, count, decay_ptr, clipping_scale);
   }
   break;
 
@@ -670,21 +716,9 @@ void Layer::apply_update_to_vector(
     const double beta1 = get_momentum();
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
+    const double* decay_ptr = (optimiser_type == OptimiserType::NadamW && !is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
 
-    if (clipping_scale != 1.0)
-    {
-      simd::scale_vector(grads.data() + start, clipping_scale, n);
-    }
-
-    if (!timesteps.empty() && start < timesteps.size())
-    {
-      ++timesteps[start];
-    }
-    const double p1 = 1.0 - std::pow(beta1, timesteps[start]);
-    const double p2 = 1.0 - std::pow(beta2, timesteps[start]);
-    const double* decay_ptr = (optimiser_type == OptimiserType::NadamW && !is_bias && decays.size() >= start + n) ? (decays.data() + start) : nullptr;
-
-    simd::nadam_step(values.data() + start, grads.data() + start, m1.data() + start, m2.data() + start, beta1, beta2, p1, p2, learning_rate, epsilon, n, decay_ptr);
+    simd::nadam_step(values.data() + start, grads.data() + start, m1.data() + start, m2.data() + start, beta1, beta2, p1, p2, learning_rate, epsilon, count, decay_ptr, clipping_scale);
   }
   break;
 
