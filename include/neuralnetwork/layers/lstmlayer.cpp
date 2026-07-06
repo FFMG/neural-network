@@ -562,50 +562,47 @@ void LSTMLayer::calculate_forward_feed(
       for (size_t t = 0; t < num_time_steps; ++t)
       {
         double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-        double* f_pre = pre_t;
-        double* i_pre = pre_t + N_this;
-        double* o_pre = pre_t + 2 * N_this;
-        double* g_pre = pre_t + 3 * N_this;
+        std::copy(pre_t, pre_t + 4 * N_this, packed_bptt.begin());
+
+        double* f_ptr = packed_bptt.data();
+        double* i_ptr = packed_bptt.data() + N_this;
+        double* o_ptr = packed_bptt.data() + 2 * N_this;
+        double* g_ptr = packed_bptt.data() + 3 * N_this;
 
         // Recurrent-to-Gates
-        simd::gemv_add_four(_f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(), current_h.data(), f_pre, i_pre, o_pre, g_pre, N_this, N_this);
+        simd::gemv_add_four(_f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(), current_h.data(), f_ptr, i_ptr, o_ptr, g_ptr, N_this, N_this);
 
         // Residuals (on candidate gate g)
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
-          simd::add_vectors(batch_residual_output_values[b].data(), g_pre, N_this);
+          simd::add_vectors(batch_residual_output_values[b].data(), g_ptr, N_this);
         }
 
         // Activations
-        std::copy(g_pre, g_pre + N_this, g_act_vec.begin());
+        std::copy(g_ptr, g_ptr + N_this, g_act_vec.begin());
         get_activation().activate(g_act_vec.data(), g_act_vec.data() + N_this, is_training);
 
-        std::copy(f_pre, f_pre + N_this, packed_bptt.begin());
-        std::copy(i_pre, i_pre + N_this, packed_bptt.begin() + N_this);
-        std::copy(o_pre, o_pre + N_this, packed_bptt.begin() + 2 * N_this);
-
         static const activation sigmoid_act(activation::method::sigmoid, 1.0);
-        sigmoid_act.activate(packed_bptt.data(), packed_bptt.data() + 3 * N_this);
-
-        std::copy(g_pre, g_pre + N_this, packed_bptt.begin() + 3 * N_this);
+        sigmoid_act.activate(f_ptr, f_ptr + 3 * N_this);
 
         simd::lstm_cell_step(
-          packed_bptt.data(),
-          packed_bptt.data() + N_this,
+          f_ptr,
+          i_ptr,
           g_act_vec.data(),
           current_c.data(),
           N_this
         );
 
-        c_act_vec = current_c;
+        std::copy(current_c.begin(), current_c.end(), c_act_vec.begin());
         get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
 
         if (is_training && get_dropout() > 0.0)
         {
           const auto& neurons = get_neurons();
+          double* mask_ptr = packed_bptt.data() + 4 * N_this;
           for (size_t j = 0; j < N_this; ++j)
           {
-            double o = packed_bptt[2 * N_this + j];
+            double o = o_ptr[j];
             double activated_c = c_act_vec[j];
             double out = o * activated_c;
 
@@ -625,7 +622,7 @@ void LSTMLayer::calculate_forward_feed(
                 out *= mask;
               }
             }
-            packed_bptt[GateCount * N_this + j] = mask;
+            mask_ptr[j] = mask;
 
             current_h[j] = out;
             batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
@@ -635,7 +632,7 @@ void LSTMLayer::calculate_forward_feed(
         {
           std::fill_n(packed_bptt.data() + GateCount * N_this, N_this, 1.0);
           simd::mul_vectors(
-            packed_bptt.data() + 2 * N_this,
+            o_ptr,
             c_act_vec.data(),
             current_h.data(),
             N_this
