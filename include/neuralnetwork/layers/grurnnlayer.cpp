@@ -863,10 +863,10 @@ void GRURNNLayer::run_forward_pass(
   bool is_training
 ) const
 {
-  std::vector<double> z_pre(N_this), r_pre(N_this), h_hat_pre(N_this), gated_h(N_this);
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  std::vector<double> gated_h(N_this);
   std::vector<double> prev_h(N_this, 0.0);
   std::vector<double> current_h(N_this, 0.0);
-  std::vector<double> h_hat_vec(N_this);
   std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
 
   for (size_t b = start; b < end; ++b)
@@ -877,48 +877,45 @@ void GRURNNLayer::run_forward_pass(
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      // a. Retrieve precalculated Input-to-Gates (W * x_t + bias)
+      // a. Retrieve precalculated Input-to-Gates (W * x_t + bias) and copy directly to packed_bptt_states
       const double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-      std::copy(pre_t, pre_t + N_this, z_pre.begin());
-      std::copy(pre_t + N_this, pre_t + 2 * N_this, r_pre.begin());
-      std::copy(pre_t + 2 * N_this, pre_t + 3 * N_this, h_hat_pre.begin());
+      std::copy(pre_t, pre_t + 3 * N_this, packed_bptt_states.begin());
+
+      double* z_ptr = packed_bptt_states.data();
+      double* r_ptr = packed_bptt_states.data() + N_this;
+      double* h_hat_pre_ptr = packed_bptt_states.data() + 2 * N_this;
+      double* h_hat_activated_ptr = packed_bptt_states.data() + 3 * N_this;
 
       // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
       const double* h_prev_ptr = prev_h.data();
-      simd::gemv_add_two(_z_rw_values_T.data(), _r_rw_values_T.data(), h_prev_ptr, z_pre.data(), r_pre.data(), N_this, N_this);
+      simd::gemv_add_two(_z_rw_values_T.data(), _r_rw_values_T.data(), h_prev_ptr, z_ptr, r_ptr, N_this, N_this);
 
       // d. Calculate Gates
-      std::copy(z_pre.begin(), z_pre.end(), packed_bptt_states.begin());
-      std::copy(r_pre.begin(), r_pre.end(), packed_bptt_states.begin() + N_this);
-
       static const activation sigmoid_act(activation::method::sigmoid, 1.0);
-      sigmoid_act.activate(packed_bptt_states.data(), packed_bptt_states.data() + 2 * N_this);
+      sigmoid_act.activate(z_ptr, z_ptr + 2 * N_this);
 
       // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
-      simd::mul_vectors(packed_bptt_states.data() + N_this, h_prev_ptr, gated_h.data(), N_this);
-      simd::gemv_add(_rw_values_T.data(), gated_h.data(), h_hat_pre.data(), N_this, N_this);
+      simd::mul_vectors(r_ptr, h_prev_ptr, gated_h.data(), N_this);
+      simd::gemv_add(_rw_values_T.data(), gated_h.data(), h_hat_pre_ptr, N_this, N_this);
 
       // f. Residuals and Candidate Activation
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
       {
-        simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre.data(), N_this);
+        simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre_ptr, N_this);
       }
 
-      std::copy(h_hat_pre.begin(), h_hat_pre.end(), h_hat_vec.begin());
-      get_activation().activate(h_hat_vec.data(), h_hat_vec.data() + N_this, is_training);
+      std::copy(h_hat_pre_ptr, h_hat_pre_ptr + N_this, h_hat_activated_ptr);
+      get_activation().activate(h_hat_activated_ptr, h_hat_activated_ptr + N_this, is_training);
 
       if (is_training && get_dropout() > 0.0)
       {
         const auto& neurons = get_neurons();
+        double* mask_ptr = packed_bptt_states.data() + 4 * N_this;
         for (size_t j = 0; j < N_this; ++j)
         {
-          packed_bptt_states[2 * N_this + j] = h_hat_pre[j];
-
-          double h_hat_activated = h_hat_vec[j];
-          packed_bptt_states[3 * N_this + j] = h_hat_activated; // Store activated h_hat before dropout
-
+          double h_hat_activated_val = h_hat_activated_ptr[j];
           double mask = 1.0;
-          double h_hat_final = h_hat_activated;
+          double h_hat_final = h_hat_activated_val;
           const auto& neuron = neurons[j];
           if (neuron.is_dropout())
           {
@@ -933,21 +930,19 @@ void GRURNNLayer::run_forward_pass(
               h_hat_final *= mask;
             }
           }
-          packed_bptt_states[4 * N_this + j] = mask;
-          current_h[j] = (1.0 - packed_bptt_states[j]) * prev_h[j] + packed_bptt_states[j] * h_hat_final;
+          mask_ptr[j] = mask;
+          current_h[j] = (1.0 - z_ptr[j]) * prev_h[j] + z_ptr[j] * h_hat_final;
           batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
         }
       }
       else
       {
-        std::copy(h_hat_pre.begin(), h_hat_pre.end(), packed_bptt_states.begin() + 2 * N_this);
-        std::copy(h_hat_vec.begin(), h_hat_vec.end(), packed_bptt_states.begin() + 3 * N_this);
         std::fill_n(packed_bptt_states.begin() + 4 * N_this, N_this, 1.0);
 
         simd::gru_output_step(
           packed_bptt_states.data(),
           prev_h.data(),
-          h_hat_vec.data(),
+          h_hat_activated_ptr,
           current_h.data(),
           &batch_output_sequences[(b * num_time_steps + t) * N_this],
           N_this
