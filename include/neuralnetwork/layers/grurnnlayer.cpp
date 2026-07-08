@@ -1428,78 +1428,19 @@ void GRURNNLayer::calculate_and_store_gradients(
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 3) / 2000000))) : 1;
 
-  if (_thread_w_grads.size() < active_threads)
+  auto run_chunk = [&](
+    size_t start,
+    size_t end,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_rw_grads,
+    std::vector<double>& local_z_w_grads,
+    std::vector<double>& local_z_rw_grads,
+    std::vector<double>& local_r_w_grads,
+    std::vector<double>& local_r_rw_grads,
+    std::vector<double>& local_b_grads,
+    std::vector<double>& local_z_b_grads,
+    std::vector<double>& local_r_b_grads)
   {
-    _thread_w_grads.resize(active_threads);
-  }
-  if (_thread_rw_grads.size() < active_threads)
-  {
-    _thread_rw_grads.resize(active_threads);
-  }
-  if (_thread_z_w_grads.size() < active_threads)
-  {
-    _thread_z_w_grads.resize(active_threads);
-  }
-  if (_thread_z_rw_grads.size() < active_threads)
-  {
-    _thread_z_rw_grads.resize(active_threads);
-  }
-  if (_thread_r_w_grads.size() < active_threads)
-  {
-    _thread_r_w_grads.resize(active_threads);
-  }
-  if (_thread_r_rw_grads.size() < active_threads)
-  {
-    _thread_r_rw_grads.resize(active_threads);
-  }
-  if (_thread_b_grads.size() < active_threads)
-  {
-    _thread_b_grads.resize(active_threads);
-  }
-  if (_thread_z_b_grads.size() < active_threads)
-  {
-    _thread_z_b_grads.resize(active_threads);
-  }
-  if (_thread_r_b_grads.size() < active_threads)
-  {
-    _thread_r_b_grads.resize(active_threads);
-  }
-
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    _thread_w_grads[t].resize(_w_grads.size());
-    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-    _thread_rw_grads[t].resize(_rw_grads.size());
-    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
-    _thread_z_w_grads[t].resize(_z_w_grads.size());
-    std::fill(_thread_z_w_grads[t].begin(), _thread_z_w_grads[t].end(), 0.0);
-    _thread_z_rw_grads[t].resize(_z_rw_grads.size());
-    std::fill(_thread_z_rw_grads[t].begin(), _thread_z_rw_grads[t].end(), 0.0);
-    _thread_r_w_grads[t].resize(_r_w_grads.size());
-    std::fill(_thread_r_w_grads[t].begin(), _thread_r_w_grads[t].end(), 0.0);
-    _thread_r_rw_grads[t].resize(_r_rw_grads.size());
-    std::fill(_thread_r_rw_grads[t].begin(), _thread_r_rw_grads[t].end(), 0.0);
-
-    _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
-    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
-    _thread_z_b_grads[t].resize(has_bias() ? num_outputs : 0);
-    std::fill(_thread_z_b_grads[t].begin(), _thread_z_b_grads[t].end(), 0.0);
-    _thread_r_b_grads[t].resize(has_bias() ? num_outputs : 0);
-    std::fill(_thread_r_b_grads[t].begin(), _thread_r_b_grads[t].end(), 0.0);
-  }
-
-  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
-  {
-    auto& local_w_grads = _thread_w_grads[thread_idx];
-    auto& local_rw_grads = _thread_rw_grads[thread_idx];
-    auto& local_z_w_grads = _thread_z_w_grads[thread_idx];
-    auto& local_z_rw_grads = _thread_z_rw_grads[thread_idx];
-    auto& local_r_w_grads = _thread_r_w_grads[thread_idx];
-    auto& local_r_rw_grads = _thread_r_rw_grads[thread_idx];
-    auto& local_b_grads = _thread_b_grads[thread_idx];
-    auto& local_z_b_grads = _thread_z_b_grads[thread_idx];
-    auto& local_r_b_grads = _thread_r_b_grads[thread_idx];
-
     for (size_t b = start; b < end; ++b)
     {
       const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -1629,10 +1570,77 @@ void GRURNNLayer::calculate_and_store_gradients(
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
-    run_chunk(0, batch_size, 0);
+    zero_gradients();
+    run_chunk(
+      0, batch_size,
+      _w_grads, _rw_grads,
+      _z_w_grads, _z_rw_grads,
+      _r_w_grads, _r_rw_grads,
+      _b_grads, _z_b_grads, _r_b_grads
+    );
   }
   else
   {
+    if (_thread_w_grads.size() < active_threads)
+    {
+      _thread_w_grads.resize(active_threads);
+    }
+    if (_thread_rw_grads.size() < active_threads)
+    {
+      _thread_rw_grads.resize(active_threads);
+    }
+    if (_thread_z_w_grads.size() < active_threads)
+    {
+      _thread_z_w_grads.resize(active_threads);
+    }
+    if (_thread_z_rw_grads.size() < active_threads)
+    {
+      _thread_z_rw_grads.resize(active_threads);
+    }
+    if (_thread_r_w_grads.size() < active_threads)
+    {
+      _thread_r_w_grads.resize(active_threads);
+    }
+    if (_thread_r_rw_grads.size() < active_threads)
+    {
+      _thread_r_rw_grads.resize(active_threads);
+    }
+    if (_thread_b_grads.size() < active_threads)
+    {
+      _thread_b_grads.resize(active_threads);
+    }
+    if (_thread_z_b_grads.size() < active_threads)
+    {
+      _thread_z_b_grads.resize(active_threads);
+    }
+    if (_thread_r_b_grads.size() < active_threads)
+    {
+      _thread_r_b_grads.resize(active_threads);
+    }
+
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      _thread_w_grads[t].resize(_w_grads.size());
+      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+      _thread_rw_grads[t].resize(_rw_grads.size());
+      std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+      _thread_z_w_grads[t].resize(_z_w_grads.size());
+      std::fill(_thread_z_w_grads[t].begin(), _thread_z_w_grads[t].end(), 0.0);
+      _thread_z_rw_grads[t].resize(_z_rw_grads.size());
+      std::fill(_thread_z_rw_grads[t].begin(), _thread_z_rw_grads[t].end(), 0.0);
+      _thread_r_w_grads[t].resize(_r_w_grads.size());
+      std::fill(_thread_r_w_grads[t].begin(), _thread_r_w_grads[t].end(), 0.0);
+      _thread_r_rw_grads[t].resize(_r_rw_grads.size());
+      std::fill(_thread_r_rw_grads[t].begin(), _thread_r_rw_grads[t].end(), 0.0);
+
+      _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
+      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+      _thread_z_b_grads[t].resize(has_bias() ? num_outputs : 0);
+      std::fill(_thread_z_b_grads[t].begin(), _thread_z_b_grads[t].end(), 0.0);
+      _thread_r_b_grads[t].resize(has_bias() ? num_outputs : 0);
+      std::fill(_thread_r_b_grads[t].begin(), _thread_r_b_grads[t].end(), 0.0);
+    }
+
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -1640,33 +1648,39 @@ void GRURNNLayer::calculate_and_store_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk]()
+        _task_queue_pool->enqueue([this, start, end, t, &run_chunk]()
           { 
-            run_chunk(start, end, t); 
+            run_chunk(
+              start, end,
+              _thread_w_grads[t], _thread_rw_grads[t],
+              _thread_z_w_grads[t], _thread_z_rw_grads[t],
+              _thread_r_w_grads[t], _thread_r_rw_grads[t],
+              _thread_b_grads[t], _thread_z_b_grads[t], _thread_r_b_grads[t]
+            ); 
           });
       }
       start = end;
     }
     _task_queue_pool->get();
-  }
 
-  // Merge
-  zero_gradients();
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
-    simd::add_vectors(_thread_z_w_grads[t].data(), _z_w_grads.data(), _z_w_grads.size());
-    simd::add_vectors(_thread_r_w_grads[t].data(), _r_w_grads.data(), _r_w_grads.size());
-
-    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
-    simd::add_vectors(_thread_z_rw_grads[t].data(), _z_rw_grads.data(), _z_rw_grads.size());
-    simd::add_vectors(_thread_r_rw_grads[t].data(), _r_rw_grads.data(), _r_rw_grads.size());
-
-    if (has_bias())
+    // Merge
+    zero_gradients();
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
-      simd::add_vectors(_thread_z_b_grads[t].data(), _z_b_grads.data(), _z_b_grads.size());
-      simd::add_vectors(_thread_r_b_grads[t].data(), _r_b_grads.data(), _r_b_grads.size());
+      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+      simd::add_vectors(_thread_z_w_grads[t].data(), _z_w_grads.data(), _z_w_grads.size());
+      simd::add_vectors(_thread_r_w_grads[t].data(), _r_w_grads.data(), _r_w_grads.size());
+
+      simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+      simd::add_vectors(_thread_z_rw_grads[t].data(), _z_rw_grads.data(), _z_rw_grads.size());
+      simd::add_vectors(_thread_r_rw_grads[t].data(), _r_rw_grads.data(), _r_rw_grads.size());
+
+      if (has_bias())
+      {
+        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+        simd::add_vectors(_thread_z_b_grads[t].data(), _z_b_grads.data(), _z_b_grads.size());
+        simd::add_vectors(_thread_r_b_grads[t].data(), _r_b_grads.data(), _r_b_grads.size());
+      }
     }
   }
 

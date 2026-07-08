@@ -725,30 +725,34 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * num_inputs * num_outputs) / 2000000))) : 1;
 
-  if (_thread_w_grads.size() < active_threads)
+  if (active_threads == 1)
   {
-    _thread_w_grads.resize(active_threads);
-  }
-  if (_thread_b_grads.size() < active_threads)
-  {
-    _thread_b_grads.resize(active_threads);
-  }
-
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    _thread_w_grads[t].resize(_w_grads.size());
-    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-    _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
-    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
-  }
-
-  const bool use_multithreading = (active_threads > 1);
-  if (!use_multithreading)
-  {
-    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, _thread_w_grads[0], _thread_b_grads[0]);
+    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
+    if (has_bias())
+    {
+      std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+    }
+    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, _w_grads, _b_grads);
   }
   else
   {
+    if (_thread_w_grads.size() < active_threads)
+    {
+      _thread_w_grads.resize(active_threads);
+    }
+    if (_thread_b_grads.size() < active_threads)
+    {
+      _thread_b_grads.resize(active_threads);
+    }
+
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      _thread_w_grads[t].resize(_w_grads.size());
+      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+      _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
+      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+    }
+
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -779,21 +783,21 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
       start = end;
     }
     _task_queue_pool->get();
-  }
 
-  // Merge results
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  if (has_bias())
-  {
-    std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
-  }
-
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+    // Merge results
+    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
     if (has_bias())
     {
-      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+    }
+
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+      if (has_bias())
+      {
+        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      }
     }
   }
 
