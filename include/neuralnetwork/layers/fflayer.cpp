@@ -102,10 +102,12 @@ FFLayer::FFLayer(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  cache_recurrent_weights();
 }
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
-  Layer(src)
+  Layer(src),
+  _w_values_T(src._w_values_T)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -167,10 +169,12 @@ FFLayer::FFLayer(
   (void)number_input_neurons;
   (void)number_output_neurons;
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  cache_recurrent_weights();
 }
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
-  Layer(std::move(src))
+  Layer(std::move(src)),
+  _w_values_T(std::move(src._w_values_T))
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -181,6 +185,7 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   if (this != &src)
   {
     Layer::operator=(src);
+    _w_values_T = src._w_values_T;
   }
   return *this;
 }
@@ -191,6 +196,7 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   if (this != &src)
   {
     Layer::operator=(std::move(src));
+    _w_values_T = std::move(src._w_values_T);
   }
   return *this;
 }
@@ -533,7 +539,10 @@ void FFLayer::calculate_hidden_gradients(
 
   const size_t effective_batch_size = batch_size * num_time_steps;
   TempBuffer<double, 3> flattened_this_grads_buffer(effective_batch_size * N_this, true);
-  const double* W_next = next_layer.get_w_values().data();
+
+  const auto* ff_next = dynamic_cast<const FFLayer*>(&next_layer);
+  const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
+  const double* W_next = (W_next_T == nullptr) ? next_layer.get_w_values().data() : nullptr;
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
@@ -544,14 +553,28 @@ void FFLayer::calculate_hidden_gradients(
 
   if (!use_gemm_mt && !use_post_mt)
   {
-    run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+    if (W_next_T != nullptr)
+    {
+      run_gemm_backward_fast(0, effective_batch_size, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+    }
+    else
+    {
+      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+    }
     run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec());
   }
   else
   {
     if (!use_gemm_mt)
     {
-      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+      if (W_next_T != nullptr)
+      {
+        run_gemm_backward_fast(0, effective_batch_size, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+      }
+      else
+      {
+        run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+      }
     }
     else
     {
@@ -560,7 +583,23 @@ void FFLayer::calculate_hidden_gradients(
       {
         size_t size = (effective_batch_size / active_gemm_threads) + (t < (effective_batch_size % active_gemm_threads) ? 1 : 0);
         size_t end = start + size;
-        if (start < end) _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]() { run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec()); });
+        if (start < end)
+        {
+          if (W_next_T != nullptr)
+          {
+            _task_queue_pool->enqueue([start, end, N_next, N_this, W_next_T, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]()
+            {
+              run_gemm_backward_fast(start, end, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+            });
+          }
+          else
+          {
+            _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]()
+            {
+              run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+            });
+          }
+        }
         start = end;
       }
       _task_queue_pool->get();
@@ -784,6 +823,7 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   if (has_bias()) apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, _optimiser_type);
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
   if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  cache_recurrent_weights();
 }
 
 void FFLayer::run_gemm_backward(
@@ -960,6 +1000,87 @@ void FFLayer::calculate_and_store_gradients_chunk(
         simd::add_vectors(g_t, local_b_grads.data(), num_outputs);
       }
     }
+  }
+}
+
+void FFLayer::cache_recurrent_weights()
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const size_t n_prev = get_number_input_neurons();
+  const size_t n_this = get_number_neurons();
+  const auto& w_vals = get_w_values();
+  if (w_vals.empty() || n_prev == 0 || n_this == 0)
+  {
+    return;
+  }
+  _w_values_T.resize(n_this * n_prev);
+  for (size_t i = 0; i < n_prev; ++i)
+  {
+    for (size_t j = 0; j < n_this; ++j)
+    {
+      _w_values_T[j * n_prev + i] = w_vals[i * n_this + j];
+    }
+  }
+}
+
+void FFLayer::run_gemm_backward_fast(
+  size_t b_start,
+  size_t b_end,
+  size_t N_next,
+  size_t N_this,
+  const double* W_next_T,
+  const std::vector<double>& flattened_next_grads_buffer,
+  std::vector<double>& flattened_this_grads_buffer) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  size_t b = b_start;
+  for (; b + 3 < b_end; b += 4)
+  {
+    const double* x0 = &flattened_next_grads_buffer[b * N_next];
+    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+    const double* x2 = &flattened_next_grads_buffer[(b + 2) * N_next];
+    const double* x3 = &flattened_next_grads_buffer[(b + 3) * N_next];
+
+    double* y0 = &flattened_this_grads_buffer[b * N_this];
+    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+    double* y2 = &flattened_this_grads_buffer[(b + 2) * N_this];
+    double* y3 = &flattened_this_grads_buffer[(b + 3) * N_this];
+
+    simd::gemm_four_batches(
+      x0, x1, x2, x3,
+      W_next_T,
+      y0, y1, y2, y3,
+      N_next, N_this
+    );
+  }
+
+  for (; b + 1 < b_end; b += 2)
+  {
+    const double* x0 = &flattened_next_grads_buffer[b * N_next];
+    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+
+    double* y0 = &flattened_this_grads_buffer[b * N_this];
+    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+
+    simd::gemm_two_batches(
+      x0, x1,
+      W_next_T,
+      y0, y1,
+      N_next, N_this
+    );
+  }
+
+  for (; b < b_end; ++b)
+  {
+    const double* x_row = &flattened_next_grads_buffer[b * N_next];
+    double* y_row = &flattened_this_grads_buffer[b * N_this];
+
+    simd::gemm_one_batch(
+      x_row,
+      W_next_T,
+      y_row,
+      N_next, N_this
+    );
   }
 }
 
