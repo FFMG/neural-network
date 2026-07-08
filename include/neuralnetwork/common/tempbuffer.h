@@ -1,13 +1,28 @@
 #pragma once
 #include <vector>
 #include <algorithm>
+#include <type_traits>
 #include "../libraries/instrumentor.h"
 
 namespace myoddweb::nn
 {
+struct ThreadBufferCache
+{
+  std::vector<std::vector<double>> caches;
+};
+
+inline ThreadBufferCache& get_thread_buffer_cache() noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("ThreadBufferCache");
+  static thread_local ThreadBufferCache instance;
+  return instance;
+}
+
 template <typename T, int Tag = 0>
 class TempBuffer
 {
+  static_assert(std::is_same_v<T, double>, "TempBuffer only supports double type for thread-local caching.");
+
 public:
   TempBuffer(size_t size, bool zero_init = false) :
     _size(size),
@@ -18,7 +33,12 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      std::vector<T>& cache = get_cache();
+      auto& thread_cache = get_thread_buffer_cache();
+      if (static_cast<size_t>(Tag) >= thread_cache.caches.size())
+      {
+        thread_cache.caches.resize(Tag + 1);
+      }
+      std::vector<T>& cache = thread_cache.caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -50,7 +70,12 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      std::vector<T>& cache = get_cache();
+      auto& thread_cache = get_thread_buffer_cache();
+      if (static_cast<size_t>(Tag) >= thread_cache.caches.size())
+      {
+        thread_cache.caches.resize(Tag + 1);
+      }
+      std::vector<T>& cache = thread_cache.caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -96,13 +121,6 @@ public:
   }
 
 private:
-  static std::vector<T>& get_cache() noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("TempBuffer");
-    static thread_local std::vector<T> cache;
-    return cache;
-  }
-
   size_t _size;
   std::vector<T> _temp;
   std::vector<T>* _ptr;
