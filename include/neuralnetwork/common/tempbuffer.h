@@ -2,13 +2,14 @@
 #include <vector>
 #include <algorithm>
 #include <type_traits>
+#include <memory>
 #include "../libraries/instrumentor.h"
 
 namespace myoddweb::nn
 {
 struct ThreadBufferCache
 {
-  std::vector<std::vector<double>> caches;
+  std::vector<std::unique_ptr<std::vector<double>>> caches;
 };
 
 inline ThreadBufferCache& get_thread_buffer_cache() noexcept
@@ -38,7 +39,11 @@ public:
       {
         thread_cache.caches.resize(Tag + 1);
       }
-      std::vector<T>& cache = thread_cache.caches[Tag];
+      if (!thread_cache.caches[Tag])
+      {
+        thread_cache.caches[Tag] = std::make_unique<std::vector<double>>();
+      }
+      std::vector<T>& cache = *thread_cache.caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -75,7 +80,11 @@ public:
       {
         thread_cache.caches.resize(Tag + 1);
       }
-      std::vector<T>& cache = thread_cache.caches[Tag];
+      if (!thread_cache.caches[Tag])
+      {
+        thread_cache.caches[Tag] = std::make_unique<std::vector<double>>();
+      }
+      std::vector<T>& cache = *thread_cache.caches[Tag];
       if (cache.size() < size)
       {
         cache.resize(size);
