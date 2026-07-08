@@ -813,101 +813,22 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 4) / 2000000))) : 1;
 
-  if (_thread_w_grads.size() < active_threads)
+  auto run_chunk = [&](
+    size_t start,
+    size_t end,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_b_grads,
+    std::vector<double>& local_rw_grads,
+    std::vector<double>& local_f_w_grads,
+    std::vector<double>& local_f_b_grads,
+    std::vector<double>& local_f_rw_grads,
+    std::vector<double>& local_i_w_grads,
+    std::vector<double>& local_i_b_grads,
+    std::vector<double>& local_i_rw_grads,
+    std::vector<double>& local_o_w_grads,
+    std::vector<double>& local_o_b_grads,
+    std::vector<double>& local_o_rw_grads)
   {
-    _thread_w_grads.resize(active_threads);
-  }
-  if (_thread_b_grads.size() < active_threads)
-  {
-    _thread_b_grads.resize(active_threads);
-  }
-  if (_thread_rw_grads.size() < active_threads)
-  {
-    _thread_rw_grads.resize(active_threads);
-  }
-  if (_thread_f_w_grads.size() < active_threads)
-  {
-    _thread_f_w_grads.resize(active_threads);
-  }
-  if (_thread_f_b_grads.size() < active_threads)
-  {
-    _thread_f_b_grads.resize(active_threads);
-  }
-  if (_thread_f_rw_grads.size() < active_threads)
-  {
-    _thread_f_rw_grads.resize(active_threads);
-  }
-  if (_thread_i_w_grads.size() < active_threads)
-  {
-    _thread_i_w_grads.resize(active_threads);
-  }
-  if (_thread_i_b_grads.size() < active_threads)
-  {
-    _thread_i_b_grads.resize(active_threads);
-  }
-  if (_thread_i_rw_grads.size() < active_threads)
-  {
-    _thread_i_rw_grads.resize(active_threads);
-  }
-  if (_thread_o_w_grads.size() < active_threads)
-  {
-    _thread_o_w_grads.resize(active_threads);
-  }
-  if (_thread_o_b_grads.size() < active_threads)
-  {
-    _thread_o_b_grads.resize(active_threads);
-  }
-  if (_thread_o_rw_grads.size() < active_threads)
-  {
-    _thread_o_rw_grads.resize(active_threads);
-  }
-
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    _thread_w_grads[t].resize(_w_grads.size());
-    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-    _thread_b_grads[t].resize(_b_grads.size());
-    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
-    _thread_rw_grads[t].resize(_rw_grads.size());
-    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
-
-    _thread_f_w_grads[t].resize(_f_w_grads.size());
-    std::fill(_thread_f_w_grads[t].begin(), _thread_f_w_grads[t].end(), 0.0);
-    _thread_f_b_grads[t].resize(_f_b_grads.size());
-    std::fill(_thread_f_b_grads[t].begin(), _thread_f_b_grads[t].end(), 0.0);
-    _thread_f_rw_grads[t].resize(_f_rw_grads.size());
-    std::fill(_thread_f_rw_grads[t].begin(), _thread_f_rw_grads[t].end(), 0.0);
-
-    _thread_i_w_grads[t].resize(_i_w_grads.size());
-    std::fill(_thread_i_w_grads[t].begin(), _thread_i_w_grads[t].end(), 0.0);
-    _thread_i_b_grads[t].resize(_i_b_grads.size());
-    std::fill(_thread_i_b_grads[t].begin(), _thread_i_b_grads[t].end(), 0.0);
-    _thread_i_rw_grads[t].resize(_i_rw_grads.size());
-    std::fill(_thread_i_rw_grads[t].begin(), _thread_i_rw_grads[t].end(), 0.0);
-
-    _thread_o_w_grads[t].resize(_o_w_grads.size());
-    std::fill(_thread_o_w_grads[t].begin(), _thread_o_w_grads[t].end(), 0.0);
-    _thread_o_b_grads[t].resize(_o_b_grads.size());
-    std::fill(_thread_o_b_grads[t].begin(), _thread_o_b_grads[t].end(), 0.0);
-    _thread_o_rw_grads[t].resize(_o_rw_grads.size());
-    std::fill(_thread_o_rw_grads[t].begin(), _thread_o_rw_grads[t].end(), 0.0);
-  }
-
-  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
-  {
-    auto& local_w_grads = _thread_w_grads[thread_idx];
-    auto& local_b_grads = _thread_b_grads[thread_idx];
-    auto& local_rw_grads = _thread_rw_grads[thread_idx];
-    auto& local_f_w_grads = _thread_f_w_grads[thread_idx];
-    auto& local_f_b_grads = _thread_f_b_grads[thread_idx];
-    auto& local_f_rw_grads = _thread_f_rw_grads[thread_idx];
-    auto& local_i_w_grads = _thread_i_w_grads[thread_idx];
-    auto& local_i_b_grads = _thread_i_b_grads[thread_idx];
-    auto& local_i_rw_grads = _thread_i_rw_grads[thread_idx];
-    auto& local_o_w_grads = _thread_o_w_grads[thread_idx];
-    auto& local_o_b_grads = _thread_o_b_grads[thread_idx];
-    auto& local_o_rw_grads = _thread_o_rw_grads[thread_idx];
-
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -1005,10 +926,97 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
-    run_chunk(0, batch_size, 0);
+    zero_gradients();
+    run_chunk(
+      0, batch_size,
+      _w_grads, _b_grads, _rw_grads,
+      _f_w_grads, _f_b_grads, _f_rw_grads,
+      _i_w_grads, _i_b_grads, _i_rw_grads,
+      _o_w_grads, _o_b_grads, _o_rw_grads
+    );
   }
   else
   {
+    if (_thread_w_grads.size() < active_threads)
+    {
+      _thread_w_grads.resize(active_threads);
+    }
+    if (_thread_b_grads.size() < active_threads)
+    {
+      _thread_b_grads.resize(active_threads);
+    }
+    if (_thread_rw_grads.size() < active_threads)
+    {
+      _thread_rw_grads.resize(active_threads);
+    }
+    if (_thread_f_w_grads.size() < active_threads)
+    {
+      _thread_f_w_grads.resize(active_threads);
+    }
+    if (_thread_f_b_grads.size() < active_threads)
+    {
+      _thread_f_b_grads.resize(active_threads);
+    }
+    if (_thread_f_rw_grads.size() < active_threads)
+    {
+      _thread_f_rw_grads.resize(active_threads);
+    }
+    if (_thread_i_w_grads.size() < active_threads)
+    {
+      _thread_i_w_grads.resize(active_threads);
+    }
+    if (_thread_i_b_grads.size() < active_threads)
+    {
+      _thread_i_b_grads.resize(active_threads);
+    }
+    if (_thread_i_rw_grads.size() < active_threads)
+    {
+      _thread_i_rw_grads.resize(active_threads);
+    }
+    if (_thread_o_w_grads.size() < active_threads)
+    {
+      _thread_o_w_grads.resize(active_threads);
+    }
+    if (_thread_o_b_grads.size() < active_threads)
+    {
+      _thread_o_b_grads.resize(active_threads);
+    }
+    if (_thread_o_rw_grads.size() < active_threads)
+    {
+      _thread_o_rw_grads.resize(active_threads);
+    }
+
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      _thread_w_grads[t].resize(_w_grads.size());
+      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+      _thread_b_grads[t].resize(_b_grads.size());
+      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+      _thread_rw_grads[t].resize(_rw_grads.size());
+      std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+
+      _thread_f_w_grads[t].resize(_f_w_grads.size());
+      std::fill(_thread_f_w_grads[t].begin(), _thread_f_w_grads[t].end(), 0.0);
+      _thread_f_b_grads[t].resize(_f_b_grads.size());
+      std::fill(_thread_f_b_grads[t].begin(), _thread_f_b_grads[t].end(), 0.0);
+      _thread_f_rw_grads[t].resize(_f_rw_grads.size());
+      std::fill(_thread_f_rw_grads[t].begin(), _thread_f_rw_grads[t].end(), 0.0);
+
+      _thread_i_w_grads[t].resize(_i_w_grads.size());
+      std::fill(_thread_i_w_grads[t].begin(), _thread_i_w_grads[t].end(), 0.0);
+      _thread_i_b_grads[t].resize(_i_b_grads.size());
+      std::fill(_thread_i_b_grads[t].begin(), _thread_i_b_grads[t].end(), 0.0);
+      _thread_i_rw_grads[t].resize(_i_rw_grads.size());
+      std::fill(_thread_i_rw_grads[t].begin(), _thread_i_rw_grads[t].end(), 0.0);
+
+      _thread_o_w_grads[t].resize(_o_w_grads.size());
+      std::fill(_thread_o_w_grads[t].begin(), _thread_o_w_grads[t].end(), 0.0);
+      _thread_o_b_grads[t].resize(_o_b_grads.size());
+      std::fill(_thread_o_b_grads[t].begin(), _thread_o_b_grads[t].end(), 0.0);
+      _thread_o_rw_grads[t].resize(_o_rw_grads.size());
+      std::fill(_thread_o_rw_grads[t].begin(), _thread_o_rw_grads[t].end(), 0.0);
+    }
+
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -1016,34 +1024,40 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk]()
+        _task_queue_pool->enqueue([this, start, end, t, &run_chunk]()
           { 
-            run_chunk(start, end, t); 
+            run_chunk(
+              start, end,
+              _thread_w_grads[t], _thread_b_grads[t], _thread_rw_grads[t],
+              _thread_f_w_grads[t], _thread_f_b_grads[t], _thread_f_rw_grads[t],
+              _thread_i_w_grads[t], _thread_i_b_grads[t], _thread_i_rw_grads[t],
+              _thread_o_w_grads[t], _thread_o_b_grads[t], _thread_o_rw_grads[t]
+            ); 
           });
       }
       start = end;
     }
     _task_queue_pool->get();
-  }
 
-  // Merge
-  zero_gradients();
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
-    simd::add_vectors(_thread_f_w_grads[t].data(), _f_w_grads.data(), _f_w_grads.size());
-    simd::add_vectors(_thread_i_w_grads[t].data(), _i_w_grads.data(), _i_w_grads.size());
-    simd::add_vectors(_thread_o_w_grads[t].data(), _o_w_grads.data(), _o_w_grads.size());
+    // Merge
+    zero_gradients();
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+      simd::add_vectors(_thread_f_w_grads[t].data(), _f_w_grads.data(), _f_w_grads.size());
+      simd::add_vectors(_thread_i_w_grads[t].data(), _i_w_grads.data(), _i_w_grads.size());
+      simd::add_vectors(_thread_o_w_grads[t].data(), _o_w_grads.data(), _o_w_grads.size());
 
-    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
-    simd::add_vectors(_thread_f_rw_grads[t].data(), _f_rw_grads.data(), _f_rw_grads.size());
-    simd::add_vectors(_thread_i_rw_grads[t].data(), _i_rw_grads.data(), _i_rw_grads.size());
-    simd::add_vectors(_thread_o_rw_grads[t].data(), _o_rw_grads.data(), _o_rw_grads.size());
+      simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+      simd::add_vectors(_thread_f_rw_grads[t].data(), _f_rw_grads.data(), _f_rw_grads.size());
+      simd::add_vectors(_thread_i_rw_grads[t].data(), _i_rw_grads.data(), _i_rw_grads.size());
+      simd::add_vectors(_thread_o_rw_grads[t].data(), _o_rw_grads.data(), _o_rw_grads.size());
 
-    simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
-    simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
-    simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
-    simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
+      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
+      simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
+      simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
+    }
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
