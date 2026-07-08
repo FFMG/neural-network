@@ -633,8 +633,8 @@ public:
     size_t N_this, size_t N_next) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
-    size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
+    size_t i = 0;
     for (; i < N_this; ++i)
     {
       const double* row = W + i * N_next;
