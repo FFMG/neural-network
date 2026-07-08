@@ -243,6 +243,10 @@ LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
   _f_rw_values_T(std::move(src._f_rw_values_T)),
   _i_rw_values_T(std::move(src._i_rw_values_T)),
   _o_rw_values_T(std::move(src._o_rw_values_T)),
+  _w_values_T(std::move(src._w_values_T)),
+  _f_w_values_T(std::move(src._f_w_values_T)),
+  _i_w_values_T(std::move(src._i_w_values_T)),
+  _o_w_values_T(std::move(src._o_w_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
@@ -297,6 +301,10 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
     _f_rw_values_T = std::move(src._f_rw_values_T);
     _i_rw_values_T = std::move(src._i_rw_values_T);
     _o_rw_values_T = std::move(src._o_rw_values_T);
+    _w_values_T = std::move(src._w_values_T);
+    _f_w_values_T = std::move(src._f_w_values_T);
+    _i_w_values_T = std::move(src._i_w_values_T);
+    _o_w_values_T = std::move(src._o_w_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -1119,11 +1127,15 @@ void LSTMLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t n = get_number_neurons();
+  const size_t n_prev = get_number_input_neurons();
   if (n == 0)
   {
     return;
   }
-  _rw_values_T.resize(n * n); _f_rw_values_T.resize(n * n); _i_rw_values_T.resize(n * n); _o_rw_values_T.resize(n * n);
+  _rw_values_T.resize(n * n);
+  _f_rw_values_T.resize(n * n);
+  _i_rw_values_T.resize(n * n);
+  _o_rw_values_T.resize(n * n);
   for (size_t i = 0; i < n; ++i)
   {
     for (size_t j = 0; j < n; ++j)
@@ -1132,6 +1144,24 @@ void LSTMLayer::cache_recurrent_weights()
       _f_rw_values_T[j * n + i] = _f_rw_values[i * n + j];
       _i_rw_values_T[j * n + i] = _i_rw_values[i * n + j];
       _o_rw_values_T[j * n + i] = _o_rw_values[i * n + j];
+    }
+  }
+
+  if (n_prev > 0)
+  {
+    _w_values_T.resize(n * n_prev);
+    _f_w_values_T.resize(n * n_prev);
+    _i_w_values_T.resize(n * n_prev);
+    _o_w_values_T.resize(n * n_prev);
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      for (size_t j = 0; j < n; ++j)
+      {
+        _w_values_T[j * n_prev + i] = get_w_values()[i * n + j];
+        _f_w_values_T[j * n_prev + i] = _f_w_values[i * n + j];
+        _i_w_values_T[j * n_prev + i] = _i_w_values[i * n + j];
+        _o_w_values_T[j * n_prev + i] = _o_w_values[i * n + j];
+      }
     }
   }
 
@@ -1331,24 +1361,95 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       std::fill(dx_t, dx_t + N_prev, 0.0);
-      simd::gemv_accumulate_four(
-        _f_w_values.data(), _i_w_values.data(), _o_w_values.data(), _w_values.data(),
-        df_chunk, di_chunk, do_chunk, dg_chunk,
-        dx_t, N_prev, N_this
-      );
 
       std::fill(dh_next, dh_next + N_this, 0.0);
-      simd::gemv_accumulate_four(
-        _f_rw_values.data(), _i_rw_values.data(), _o_rw_values.data(), _rw_values.data(),
-        df_chunk, di_chunk, do_chunk, dg_chunk,
-        dh_next, N_this, N_this
-      );
 
       double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);
       std::copy(di_chunk, di_chunk + N_this, grad_out_t + N_this);
       std::copy(do_chunk, do_chunk + N_this, grad_out_t + 2 * N_this);
       std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this); // Gate 4 (Candidate)
+    }
+
+    // Now run batched GEMM operations outside the batch loop:
+    run_recurrent_gemm_backward(
+      0, end - start, N_this,
+      _f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(),
+      workspace.chunk_df.data(), workspace.chunk_di.data(), workspace.chunk_do.data(), workspace.chunk_dg.data(),
+      workspace.d_next_h.data()
+    );
+
+    size_t b = 0;
+    const size_t batch_size_chunk = end - start;
+    for (; b + 3 < batch_size_chunk; b += 4)
+    {
+      const double* f0 = workspace.chunk_df.data() + b * N_this;
+      const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
+      const double* f2 = workspace.chunk_df.data() + (b + 2) * N_this;
+      const double* f3 = workspace.chunk_df.data() + (b + 3) * N_this;
+
+      const double* i0 = workspace.chunk_di.data() + b * N_this;
+      const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
+      const double* i2 = workspace.chunk_di.data() + (b + 2) * N_this;
+      const double* i3 = workspace.chunk_di.data() + (b + 3) * N_this;
+
+      const double* o0 = workspace.chunk_do.data() + b * N_this;
+      const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
+      const double* o2 = workspace.chunk_do.data() + (b + 2) * N_this;
+      const double* o3 = workspace.chunk_do.data() + (b + 3) * N_this;
+
+      const double* g0 = workspace.chunk_dg.data() + b * N_this;
+      const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
+      const double* g2 = workspace.chunk_dg.data() + (b + 2) * N_this;
+      const double* g3 = workspace.chunk_dg.data() + (b + 3) * N_this;
+
+      double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+      double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+      double* y2 = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
+      double* y3 = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
+
+      simd::gemm_four_batches(f0, f1, f2, f3, _f_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      simd::gemm_four_batches(i0, i1, i2, i3, _i_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      simd::gemm_four_batches(o0, o1, o2, o3, _o_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      simd::gemm_four_batches(g0, g1, g2, g3, _w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+    }
+
+    for (; b + 1 < batch_size_chunk; b += 2)
+    {
+      const double* f0 = workspace.chunk_df.data() + b * N_this;
+      const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
+
+      const double* i0 = workspace.chunk_di.data() + b * N_this;
+      const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
+
+      const double* o0 = workspace.chunk_do.data() + b * N_this;
+      const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
+
+      const double* g0 = workspace.chunk_dg.data() + b * N_this;
+      const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
+
+      double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+      double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+
+      simd::gemm_two_batches(f0, f1, _f_w_values_T.data(), y0, y1, N_this, N_prev);
+      simd::gemm_two_batches(i0, i1, _i_w_values_T.data(), y0, y1, N_this, N_prev);
+      simd::gemm_two_batches(o0, o1, _o_w_values_T.data(), y0, y1, N_this, N_prev);
+      simd::gemm_two_batches(g0, g1, _w_values_T.data(), y0, y1, N_this, N_prev);
+    }
+
+    for (; b < batch_size_chunk; ++b)
+    {
+      const double* f = workspace.chunk_df.data() + b * N_this;
+      const double* i = workspace.chunk_di.data() + b * N_this;
+      const double* o = workspace.chunk_do.data() + b * N_this;
+      const double* g = workspace.chunk_dg.data() + b * N_this;
+
+      double* y = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+
+      simd::gemm_one_batch(f, _f_w_values_T.data(), y, N_this, N_prev);
+      simd::gemm_one_batch(i, _i_w_values_T.data(), y, N_this, N_prev);
+      simd::gemm_one_batch(o, _o_w_values_T.data(), y, N_this, N_prev);
+      simd::gemm_one_batch(g, _w_values_T.data(), y, N_this, N_prev);
     }
   }
 
@@ -1379,6 +1480,7 @@ void LSTMLayer::set_w_values(const std::vector<double>& v)
   {
     Layer::set_w_values(v);
   }
+  cache_recurrent_weights();
 }
 
 void LSTMLayer::set_w_grads(const std::vector<double>& v)
@@ -1739,6 +1841,93 @@ void LSTMLayer::set_rw_decays(const std::vector<double>& v)
   else
   {
     _rw_decays = v;
+  }
+}
+
+void LSTMLayer::run_recurrent_gemm_backward(
+  size_t b_start,
+  size_t b_end,
+  size_t N_this,
+  const double* U_f_T,
+  const double* U_i_T,
+  const double* U_o_T,
+  const double* U_g_T,
+  const double* df_batch,
+  const double* di_batch,
+  const double* do_batch,
+  const double* dg_batch,
+  double* dh_next_batch) const
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  size_t b = b_start;
+  for (; b + 3 < b_end; b += 4)
+  {
+    const double* f0 = df_batch + b * N_this;
+    const double* f1 = df_batch + (b + 1) * N_this;
+    const double* f2 = df_batch + (b + 2) * N_this;
+    const double* f3 = df_batch + (b + 3) * N_this;
+
+    const double* i0 = di_batch + b * N_this;
+    const double* i1 = di_batch + (b + 1) * N_this;
+    const double* i2 = di_batch + (b + 2) * N_this;
+    const double* i3 = di_batch + (b + 3) * N_this;
+
+    const double* o0 = do_batch + b * N_this;
+    const double* o1 = do_batch + (b + 1) * N_this;
+    const double* o2 = do_batch + (b + 2) * N_this;
+    const double* o3 = do_batch + (b + 3) * N_this;
+
+    const double* g0 = dg_batch + b * N_this;
+    const double* g1 = dg_batch + (b + 1) * N_this;
+    const double* g2 = dg_batch + (b + 2) * N_this;
+    const double* g3 = dg_batch + (b + 3) * N_this;
+
+    double* y0 = dh_next_batch + b * N_this;
+    double* y1 = dh_next_batch + (b + 1) * N_this;
+    double* y2 = dh_next_batch + (b + 2) * N_this;
+    double* y3 = dh_next_batch + (b + 3) * N_this;
+
+    simd::gemm_four_batches(f0, f1, f2, f3, U_f_T, y0, y1, y2, y3, N_this, N_this);
+    simd::gemm_four_batches(i0, i1, i2, i3, U_i_T, y0, y1, y2, y3, N_this, N_this);
+    simd::gemm_four_batches(o0, o1, o2, o3, U_o_T, y0, y1, y2, y3, N_this, N_this);
+    simd::gemm_four_batches(g0, g1, g2, g3, U_g_T, y0, y1, y2, y3, N_this, N_this);
+  }
+
+  for (; b + 1 < b_end; b += 2)
+  {
+    const double* f0 = df_batch + b * N_this;
+    const double* f1 = df_batch + (b + 1) * N_this;
+
+    const double* i0 = di_batch + b * N_this;
+    const double* i1 = di_batch + (b + 1) * N_this;
+
+    const double* o0 = do_batch + b * N_this;
+    const double* o1 = do_batch + (b + 1) * N_this;
+
+    const double* g0 = dg_batch + b * N_this;
+    const double* g1 = dg_batch + (b + 1) * N_this;
+
+    double* y0 = dh_next_batch + b * N_this;
+    double* y1 = dh_next_batch + (b + 1) * N_this;
+
+    simd::gemm_two_batches(f0, f1, U_f_T, y0, y1, N_this, N_this);
+    simd::gemm_two_batches(i0, i1, U_i_T, y0, y1, N_this, N_this);
+    simd::gemm_two_batches(o0, o1, U_o_T, y0, y1, N_this, N_this);
+    simd::gemm_two_batches(g0, g1, U_g_T, y0, y1, N_this, N_this);
+  }
+
+  for (; b < b_end; ++b)
+  {
+    const double* f = df_batch + b * N_this;
+    const double* i = di_batch + b * N_this;
+    const double* o = do_batch + b * N_this;
+    const double* g = dg_batch + b * N_this;
+    double* y = dh_next_batch + b * N_this;
+
+    simd::gemm_one_batch(f, U_f_T, y, N_this, N_this);
+    simd::gemm_one_batch(i, U_i_T, y, N_this, N_this);
+    simd::gemm_one_batch(o, U_o_T, y, N_this, N_this);
+    simd::gemm_one_batch(g, U_g_T, y, N_this, N_this);
   }
 }
 
