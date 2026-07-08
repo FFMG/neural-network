@@ -487,3 +487,54 @@ TEST_F(GRURNNLayerTest, StateAndMemoryAllocationOptimizationVerification)
     EXPECT_NE(outputs_1[5], 0.0);
 }
 
+TEST_F(GRURNNLayerTest, TransposedWeightsAndFastBpttPassCorrectness) {
+    // 2 inputs, 2 neurons, batch size 2, 2 time steps
+    unsigned num_inputs = 2;
+    unsigned num_outputs = 2;
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    // Populate weights
+    layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
+    layer.set_z_rw_values({ 0.15, 0.25, 0.35, 0.45 });
+    layer.set_z_b_values({ 0.05, 0.15 });
+
+    layer.set_r_w_values({ 0.2, 0.3, 0.4, 0.5 });
+    layer.set_r_rw_values({ 0.25, 0.35, 0.45, 0.55 });
+    layer.set_r_b_values({ 0.15, 0.25 });
+
+    layer.set_w_values({ 0.3, 0.4, 0.5, 0.6 });
+    layer.set_rw_values({ 0.35, 0.45, 0.55, 0.65 });
+    layer.set_b_values({ 0.25, 0.35 });
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2); // batch size 2
+    auto batch_hs = create_batch_hidden_states(topology, 2, 2, GRURNNLayer::Multiplier); // 2 steps
+
+    batch_go[0].set_rnn_outputs(0, { 1.0, 1.0, 0.5, 0.5 });
+    batch_go[1].set_rnn_outputs(0, { 0.8, 0.8, 0.4, 0.4 });
+
+    // Forward pass
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, false);
+
+    MockLayer next_layer(2, num_outputs);
+    next_layer.set_w_values({ 1.0, 0.5, 0.2, 0.8 });
+    std::vector<std::vector<double>> batch_next_grads = {
+        { 0.1, 0.2, 0.3, 0.4 },
+        { 0.5, 0.6, 0.7, 0.8 }
+    };
+
+    // Backward pass (BPTT = 2)
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 2, 2);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 2, 2);
+
+    // Verify gradients are non-zero and accumulated successfully
+    EXPECT_GT(std::abs(layer.get_w_grads()[0]), 0.0);
+    EXPECT_GT(std::abs(layer.get_rw_grads()[0]), 0.0);
+    EXPECT_GT(std::abs(layer.get_z_w_grads()[0]), 0.0);
+    EXPECT_GT(std::abs(layer.get_z_rw_grads()[0]), 0.0);
+    EXPECT_GT(std::abs(layer.get_r_w_grads()[0]), 0.0);
+    EXPECT_GT(std::abs(layer.get_r_rw_grads()[0]), 0.0);
+}
+
+

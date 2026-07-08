@@ -198,6 +198,9 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _rw_values_T(std::move(src._rw_values_T)),
   _z_rw_values_T(std::move(src._z_rw_values_T)),
   _r_rw_values_T(std::move(src._r_rw_values_T)),
+  _w_values_T(std::move(src._w_values_T)),
+  _z_w_values_T(std::move(src._z_w_values_T)),
+  _r_w_values_T(std::move(src._r_w_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -493,6 +496,9 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _identity_proxy = src._identity_proxy;
     src._identity_proxy = nullptr;
     _r_rw_values_T = std::move(src._r_rw_values_T);
+    _w_values_T = std::move(src._w_values_T);
+    _z_w_values_T = std::move(src._z_w_values_T);
+    _r_w_values_T = std::move(src._r_w_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -1158,11 +1164,41 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
     workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
-    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
+    
     {
-      const double* dh_hat_ptr = &dh_hat_ptr_all[b_idx * N_this];
-      double* temp_Uh_ptr = &temp_Uh_ptr_all[b_idx * N_this];
-      simd::gemv_add(_rw_values.data(), dh_hat_ptr, temp_Uh_ptr, N_this, N_this);
+      size_t b = 0;
+      const size_t batch_size_chunk = end - start;
+      for (; b + 3 < batch_size_chunk; b += 4)
+      {
+        const double* dh0 = dh_hat_ptr_all + b * N_this;
+        const double* dh1 = dh_hat_ptr_all + (b + 1) * N_this;
+        const double* dh2 = dh_hat_ptr_all + (b + 2) * N_this;
+        const double* dh3 = dh_hat_ptr_all + (b + 3) * N_this;
+
+        double* y0 = temp_Uh_ptr_all + b * N_this;
+        double* y1 = temp_Uh_ptr_all + (b + 1) * N_this;
+        double* y2 = temp_Uh_ptr_all + (b + 2) * N_this;
+        double* y3 = temp_Uh_ptr_all + (b + 3) * N_this;
+
+        simd::gemm_four_batches(dh0, dh1, dh2, dh3, _rw_values_T.data(), y0, y1, y2, y3, N_this, N_this);
+      }
+      for (; b + 1 < batch_size_chunk; b += 2)
+      {
+        const double* dh0 = dh_hat_ptr_all + b * N_this;
+        const double* dh1 = dh_hat_ptr_all + (b + 1) * N_this;
+
+        double* y0 = temp_Uh_ptr_all + b * N_this;
+        double* y1 = temp_Uh_ptr_all + (b + 1) * N_this;
+
+        simd::gemm_two_batches(dh0, dh1, _rw_values_T.data(), y0, y1, N_this, N_this);
+      }
+      for (; b < batch_size_chunk; ++b)
+      {
+        const double* dh = dh_hat_ptr_all + b * N_this;
+        double* y = temp_Uh_ptr_all + b * N_this;
+
+        simd::gemm_one_batch(dh, _rw_values_T.data(), y, N_this, N_this);
+      }
     }
 
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
@@ -1181,16 +1217,83 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
       // Calculate Reset gate gradients and backpropagate to previous hidden state
       simd::gru_bptt_reset_step(N_this, temp_Uh_ptr, h_prev_vals, r_vals, dh_prev_accum, dr_ptr, dh_next);
-      simd::gemv_accumulate_two(_z_rw_values.data(), _r_rw_values.data(), dz_ptr, dr_ptr, dh_next, N_this, N_this);
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
       std::fill_n(dx_t, N_prev, 0.0);
-      simd::gemv_accumulate_three(_z_w_values.data(), _r_w_values.data(), _w_values.data(), dz_ptr, dr_ptr, dh_hat_ptr, dx_t, N_prev, N_this);
 
       double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);
       std::copy(dz_ptr, dz_ptr + N_this, dest + N_this);
       std::copy(dr_ptr, dr_ptr + N_this, dest + 2 * N_this); // Gate 3 (Reset)
+    }
+
+    // Now run batched GEMM operations outside the batch loop:
+    run_recurrent_gemm_backward(
+      0, end - start, N_this,
+      _z_rw_values_T.data(), _r_rw_values_T.data(),
+      dz_ptr_all, dr_ptr_all,
+      d_next_h_ptr_all
+    );
+
+    {
+      size_t b = 0;
+      const size_t batch_size_chunk = end - start;
+      for (; b + 3 < batch_size_chunk; b += 4)
+      {
+        const double* z0 = dz_ptr_all + b * N_this;
+        const double* z1 = dz_ptr_all + (b + 1) * N_this;
+        const double* z2 = dz_ptr_all + (b + 2) * N_this;
+        const double* z3 = dz_ptr_all + (b + 3) * N_this;
+
+        const double* r0 = dr_ptr_all + b * N_this;
+        const double* r1 = dr_ptr_all + (b + 1) * N_this;
+        const double* r2 = dr_ptr_all + (b + 2) * N_this;
+        const double* r3 = dr_ptr_all + (b + 3) * N_this;
+
+        const double* h0 = dh_hat_ptr_all + b * N_this;
+        const double* h1 = dh_hat_ptr_all + (b + 1) * N_this;
+        const double* h2 = dh_hat_ptr_all + (b + 2) * N_this;
+        const double* h3 = dh_hat_ptr_all + (b + 3) * N_this;
+
+        double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+        double* y2 = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
+        double* y3 = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
+
+        simd::gemm_four_batches(z0, z1, z2, z3, _z_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_batches(r0, r1, r2, r3, _r_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_batches(h0, h1, h2, h3, _w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      }
+      for (; b + 1 < batch_size_chunk; b += 2)
+      {
+        const double* z0 = dz_ptr_all + b * N_this;
+        const double* z1 = dz_ptr_all + (b + 1) * N_this;
+
+        const double* r0 = dr_ptr_all + b * N_this;
+        const double* r1 = dr_ptr_all + (b + 1) * N_this;
+
+        const double* h0 = dh_hat_ptr_all + b * N_this;
+        const double* h1 = dh_hat_ptr_all + (b + 1) * N_this;
+
+        double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+
+        simd::gemm_two_batches(z0, z1, _z_w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_two_batches(r0, r1, _r_w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_two_batches(h0, h1, _w_values_T.data(), y0, y1, N_this, N_prev);
+      }
+      for (; b < batch_size_chunk; ++b)
+      {
+        const double* z = dz_ptr_all + b * N_this;
+        const double* r = dr_ptr_all + b * N_this;
+        const double* h = dh_hat_ptr_all + b * N_this;
+
+        double* y = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+
+        simd::gemm_one_batch(z, _z_w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_one_batch(r, _r_w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_one_batch(h, _w_values_T.data(), y, N_this, N_prev);
+      }
     }
   }
 
@@ -1660,6 +1763,7 @@ void GRURNNLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const size_t n = get_number_neurons();
+  const size_t n_prev = get_number_input_neurons();
   if (n == 0)
   {
     return;
@@ -1676,6 +1780,22 @@ void GRURNNLayer::cache_recurrent_weights()
       _rw_values_T[j * n + i] = _rw_values[i * n + j];
       _z_rw_values_T[j * n + i] = _z_rw_values[i * n + j];
       _r_rw_values_T[j * n + i] = _r_rw_values[i * n + j];
+    }
+  }
+
+  if (n_prev > 0)
+  {
+    _w_values_T.resize(n * n_prev);
+    _z_w_values_T.resize(n * n_prev);
+    _r_w_values_T.resize(n * n_prev);
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      for (size_t j = 0; j < n; ++j)
+      {
+        _w_values_T[j * n_prev + i] = get_w_values()[i * n + j];
+        _z_w_values_T[j * n_prev + i] = _z_w_values[i * n + j];
+        _r_w_values_T[j * n_prev + i] = _r_w_values[i * n + j];
+      }
     }
   }
 
@@ -1704,7 +1824,9 @@ void GRURNNLayer::set_w_values(const std::vector<double>& v)
   {
     Layer::set_w_values(v);
   }
+  cache_recurrent_weights();
 }
+
 
 void GRURNNLayer::set_w_grads(const std::vector<double>& v)
 {
@@ -2047,4 +2169,64 @@ void GRURNNLayer::set_rw_decays(const std::vector<double>& v)
   }
 }
 
+void GRURNNLayer::run_recurrent_gemm_backward(
+  size_t b_start,
+  size_t b_end,
+  size_t N_this,
+  const double* U_z_T,
+  const double* U_r_T,
+  const double* dz_batch,
+  const double* dr_batch,
+  double* dh_next_batch) const
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  size_t b = b_start;
+  for (; b + 3 < b_end; b += 4)
+  {
+    const double* z0 = dz_batch + b * N_this;
+    const double* z1 = dz_batch + (b + 1) * N_this;
+    const double* z2 = dz_batch + (b + 2) * N_this;
+    const double* z3 = dz_batch + (b + 3) * N_this;
+
+    const double* r0 = dr_batch + b * N_this;
+    const double* r1 = dr_batch + (b + 1) * N_this;
+    const double* r2 = dr_batch + (b + 2) * N_this;
+    const double* r3 = dr_batch + (b + 3) * N_this;
+
+    double* y0 = dh_next_batch + b * N_this;
+    double* y1 = dh_next_batch + (b + 1) * N_this;
+    double* y2 = dh_next_batch + (b + 2) * N_this;
+    double* y3 = dh_next_batch + (b + 3) * N_this;
+
+    simd::gemm_four_batches(z0, z1, z2, z3, U_z_T, y0, y1, y2, y3, N_this, N_this);
+    simd::gemm_four_batches(r0, r1, r2, r3, U_r_T, y0, y1, y2, y3, N_this, N_this);
+  }
+
+  for (; b + 1 < b_end; b += 2)
+  {
+    const double* z0 = dz_batch + b * N_this;
+    const double* z1 = dz_batch + (b + 1) * N_this;
+
+    const double* r0 = dr_batch + b * N_this;
+    const double* r1 = dr_batch + (b + 1) * N_this;
+
+    double* y0 = dh_next_batch + b * N_this;
+    double* y1 = dh_next_batch + (b + 1) * N_this;
+
+    simd::gemm_two_batches(z0, z1, U_z_T, y0, y1, N_this, N_this);
+    simd::gemm_two_batches(r0, r1, U_r_T, y0, y1, N_this, N_this);
+  }
+
+  for (; b < b_end; ++b)
+  {
+    const double* z = dz_batch + b * N_this;
+    const double* r = dr_batch + b * N_this;
+    double* y = dh_next_batch + b * N_this;
+
+    simd::gemm_one_batch(z, U_z_T, y, N_this, N_this);
+    simd::gemm_one_batch(r, U_r_T, y, N_this, N_this);
+  }
+}
+
 } // namespace myoddweb::nn
+

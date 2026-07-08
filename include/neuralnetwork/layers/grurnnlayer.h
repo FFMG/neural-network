@@ -741,6 +741,21 @@ private:
   BPTTWorkspace::AlignedVector _z_rw_values_T;
   BPTTWorkspace::AlignedVector _r_rw_values_T;
 
+  // Cached transposed input weights
+  BPTTWorkspace::AlignedVector _w_values_T;
+  BPTTWorkspace::AlignedVector _z_w_values_T;
+  BPTTWorkspace::AlignedVector _r_w_values_T;
+
+  void run_recurrent_gemm_backward(
+    size_t b_start,
+    size_t b_end,
+    size_t N_this,
+    const double* U_z_T,
+    const double* U_r_T,
+    const double* dz_batch,
+    const double* dr_batch,
+    double* dh_next_batch) const;
+
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
 
