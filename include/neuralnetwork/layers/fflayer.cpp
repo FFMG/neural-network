@@ -796,14 +796,50 @@ void FFLayer::run_gemm_backward(
   std::vector<double>& flattened_this_grads_buffer) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  for (size_t b = b_start; b < b_end; ++b)
+  size_t b = b_start;
+  for (; b + 3 < b_end; b += 4)
   {
-    simd::gemv_add(
+    const double* x0 = &flattened_next_grads_buffer[b * N_next];
+    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+    const double* x2 = &flattened_next_grads_buffer[(b + 2) * N_next];
+    const double* x3 = &flattened_next_grads_buffer[(b + 3) * N_next];
+
+    double* y0 = &flattened_this_grads_buffer[b * N_this];
+    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+    double* y2 = &flattened_this_grads_buffer[(b + 2) * N_this];
+    double* y3 = &flattened_this_grads_buffer[(b + 3) * N_this];
+
+    simd::gemm_transposed_four_batches(
+      x0, x1, x2, x3,
       W_next,
+      y0, y1, y2, y3,
+      N_this, N_next
+    );
+  }
+
+  for (; b + 1 < b_end; b += 2)
+  {
+    const double* x0 = &flattened_next_grads_buffer[b * N_next];
+    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+
+    double* y0 = &flattened_this_grads_buffer[b * N_this];
+    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+
+    simd::gemm_transposed_two_batches(
+      x0, x1,
+      W_next,
+      y0, y1,
+      N_this, N_next
+    );
+  }
+
+  for (; b < b_end; ++b)
+  {
+    simd::gemm_transposed_one_batch(
       &flattened_next_grads_buffer[b * N_next],
+      W_next,
       &flattened_this_grads_buffer[b * N_this],
-      N_this,
-      N_next
+      N_this, N_next
     );
   }
 }

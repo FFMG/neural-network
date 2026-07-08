@@ -1677,6 +1677,98 @@ TEST(SimdUtilsTest, GemmBatchesVerify)
   }
 }
 
+TEST(SimdUtilsTest, GemmTransposedBatchesVerify)
+{
+  const size_t n_this = 64;
+  const size_t n_next = 35;
+
+  std::vector<double> x0(n_next);
+  std::vector<double> x1(n_next);
+  std::vector<double> x2(n_next);
+  std::vector<double> x3(n_next);
+  std::vector<double> W(n_this * n_next);
+
+  for (size_t i = 0; i < n_next; ++i)
+  {
+    x0[i] = 0.1 * static_cast<double>(i);
+    x1[i] = -0.05 * static_cast<double>(i);
+    x2[i] = 0.02 * static_cast<double>(i);
+    x3[i] = -0.01 * static_cast<double>(i);
+  }
+
+  for (size_t i = 0; i < n_this; ++i)
+  {
+    for (size_t j = 0; j < n_next; ++j)
+    {
+      W[i * n_next + j] = 0.001 * static_cast<double>(i * j);
+    }
+  }
+
+  // 1. Verify gemm_transposed_four_batches
+  {
+    std::vector<double> y0_simd(n_this, 1.0);
+    std::vector<double> y1_simd(n_this, 2.0);
+    std::vector<double> y2_simd(n_this, 3.0);
+    std::vector<double> y3_simd(n_this, 4.0);
+
+    std::vector<double> y0_expected(n_this, 1.0);
+    std::vector<double> y1_expected(n_this, 2.0);
+    std::vector<double> y2_expected(n_this, 3.0);
+    std::vector<double> y3_expected(n_this, 4.0);
+
+    simd::scalar_gemv_add(W.data(), x0.data(), y0_expected.data(), n_this, n_next);
+    simd::scalar_gemv_add(W.data(), x1.data(), y1_expected.data(), n_this, n_next);
+    simd::scalar_gemv_add(W.data(), x2.data(), y2_expected.data(), n_this, n_next);
+    simd::scalar_gemv_add(W.data(), x3.data(), y3_expected.data(), n_this, n_next);
+
+    simd::gemm_transposed_four_batches(
+      x0.data(), x1.data(), x2.data(), x3.data(),
+      W.data(),
+      y0_simd.data(), y1_simd.data(), y2_simd.data(), y3_simd.data(),
+      n_this, n_next
+    );
+
+    expect_vec_near(y0_simd, y0_expected);
+    expect_vec_near(y1_simd, y1_expected);
+    expect_vec_near(y2_simd, y2_expected);
+    expect_vec_near(y3_simd, y3_expected);
+  }
+
+  // 2. Verify gemm_transposed_two_batches
+  {
+    std::vector<double> y0_simd(n_this, 1.0);
+    std::vector<double> y1_simd(n_this, 2.0);
+
+    std::vector<double> y0_expected(n_this, 1.0);
+    std::vector<double> y1_expected(n_this, 2.0);
+
+    simd::scalar_gemv_add(W.data(), x0.data(), y0_expected.data(), n_this, n_next);
+    simd::scalar_gemv_add(W.data(), x1.data(), y1_expected.data(), n_this, n_next);
+
+    simd::gemm_transposed_two_batches(
+      x0.data(), x1.data(),
+      W.data(),
+      y0_simd.data(), y1_simd.data(),
+      n_this, n_next
+    );
+
+    expect_vec_near(y0_simd, y0_expected);
+    expect_vec_near(y1_simd, y1_expected);
+  }
+
+  // 3. Verify gemm_transposed_one_batch
+  {
+    std::vector<double> y_simd(n_this, 1.0);
+    std::vector<double> y_expected(n_this, 1.0);
+
+    simd::scalar_gemv_add(W.data(), x0.data(), y_expected.data(), n_this, n_next);
+
+    simd::gemm_transposed_one_batch(x0.data(), W.data(), y_simd.data(), n_this, n_next);
+
+    expect_vec_near(y_simd, y_expected);
+  }
+}
+
 TEST(SimdUtilsTest, IncrementValues)
 {
   const size_t sizes[] = { 1, 3, 4, 7, 8, 15, 16, 100 };

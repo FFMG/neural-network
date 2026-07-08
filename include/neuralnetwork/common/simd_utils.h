@@ -622,6 +622,170 @@ public:
     }
   }
 
+  // Vectorised GEMM with a transposed matrix for four batches (y0 += x0 * W^T, y1 += x1 * W^T, etc.)
+  // W is of shape N_this * N_next, stored in row-major layout.
+  // x0..x3 are of size N_next.
+  // y0..y3 are of size N_this.
+  inline static void gemm_transposed_four_batches(
+    const double* x0, const double* x1, const double* x2, const double* x3,
+    const double* W,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t N_this, size_t N_next) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; i < N_this; ++i)
+    {
+      const double* row = W + i * N_next;
+      __m256d vec_sum0 = _mm256_setzero_pd();
+      __m256d vec_sum1 = _mm256_setzero_pd();
+      __m256d vec_sum2 = _mm256_setzero_pd();
+      __m256d vec_sum3 = _mm256_setzero_pd();
+
+      size_t j = 0;
+      for (; j + 3 < N_next; j += 4)
+      {
+        __m256d vec_w = _mm256_loadu_pd(row + j);
+        __m256d vec_x0 = _mm256_loadu_pd(x0 + j);
+        __m256d vec_x1 = _mm256_loadu_pd(x1 + j);
+        __m256d vec_x2 = _mm256_loadu_pd(x2 + j);
+        __m256d vec_x3 = _mm256_loadu_pd(x3 + j);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_sum0 = _mm256_fmadd_pd(vec_w, vec_x0, vec_sum0);
+        vec_sum1 = _mm256_fmadd_pd(vec_w, vec_x1, vec_sum1);
+        vec_sum2 = _mm256_fmadd_pd(vec_w, vec_x2, vec_sum2);
+        vec_sum3 = _mm256_fmadd_pd(vec_w, vec_x3, vec_sum3);
+#else
+        vec_sum0 = _mm256_add_pd(vec_sum0, _mm256_mul_pd(vec_w, vec_x0));
+        vec_sum1 = _mm256_add_pd(vec_sum1, _mm256_mul_pd(vec_w, vec_x1));
+        vec_sum2 = _mm256_add_pd(vec_sum2, _mm256_mul_pd(vec_w, vec_x2));
+        vec_sum3 = _mm256_add_pd(vec_sum3, _mm256_mul_pd(vec_w, vec_x3));
+#endif
+      }
+
+      double sum0 = horizontal_sum(vec_sum0);
+      double sum1 = horizontal_sum(vec_sum1);
+      double sum2 = horizontal_sum(vec_sum2);
+      double sum3 = horizontal_sum(vec_sum3);
+
+      for (; j < N_next; ++j)
+      {
+        double w_val = row[j];
+        sum0 += w_val * x0[j];
+        sum1 += w_val * x1[j];
+        sum2 += w_val * x2[j];
+        sum3 += w_val * x3[j];
+      }
+
+      y0[i] += sum0;
+      y1[i] += sum1;
+      y2[i] += sum2;
+      y3[i] += sum3;
+    }
+#else
+    // Scalar fallback
+    for (size_t r = 0; r < N_this; ++r)
+    {
+      const double* row = W + r * N_next;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      double sum2 = 0.0;
+      double sum3 = 0.0;
+      for (size_t c = 0; c < N_next; ++c)
+      {
+        double w_val = row[c];
+        sum0 += w_val * x0[c];
+        sum1 += w_val * x1[c];
+        sum2 += w_val * x2[c];
+        sum3 += w_val * x3[c];
+      }
+      y0[r] += sum0;
+      y1[r] += sum1;
+      y2[r] += sum2;
+      y3[r] += sum3;
+    }
+#endif
+  }
+
+  // Vectorised GEMM with a transposed matrix for two batches (y0 += x0 * W^T, y1 += x1 * W^T)
+  // W is of shape N_this * N_next, stored in row-major layout.
+  // x0..x1 are of size N_next.
+  // y0..y1 are of size N_this.
+  inline static void gemm_transposed_two_batches(
+    const double* x0, const double* x1,
+    const double* W,
+    double* y0, double* y1,
+    size_t N_this, size_t N_next) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; i < N_this; ++i)
+    {
+      const double* row = W + i * N_next;
+      __m256d vec_sum0 = _mm256_setzero_pd();
+      __m256d vec_sum1 = _mm256_setzero_pd();
+
+      size_t j = 0;
+      for (; j + 3 < N_next; j += 4)
+      {
+        __m256d vec_w = _mm256_loadu_pd(row + j);
+        __m256d vec_x0 = _mm256_loadu_pd(x0 + j);
+        __m256d vec_x1 = _mm256_loadu_pd(x1 + j);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_sum0 = _mm256_fmadd_pd(vec_w, vec_x0, vec_sum0);
+        vec_sum1 = _mm256_fmadd_pd(vec_w, vec_x1, vec_sum1);
+#else
+        vec_sum0 = _mm256_add_pd(vec_sum0, _mm256_mul_pd(vec_w, vec_x0));
+        vec_sum1 = _mm256_add_pd(vec_sum1, _mm256_mul_pd(vec_w, vec_x1));
+#endif
+      }
+
+      double sum0 = horizontal_sum(vec_sum0);
+      double sum1 = horizontal_sum(vec_sum1);
+
+      for (; j < N_next; ++j)
+      {
+        double w_val = row[j];
+        sum0 += w_val * x0[j];
+        sum1 += w_val * x1[j];
+      }
+
+      y0[i] += sum0;
+      y1[i] += sum1;
+    }
+#else
+    // Scalar fallback
+    for (size_t r = 0; r < N_this; ++r)
+    {
+      const double* row = W + r * N_next;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      for (size_t c = 0; c < N_next; ++c)
+      {
+        double w_val = row[c];
+        sum0 += w_val * x0[c];
+        sum1 += w_val * x1[c];
+      }
+      y0[r] += sum0;
+      y1[r] += sum1;
+    }
+#endif
+  }
+
+  // Vectorised GEMM with a transposed matrix for one batch (y += x * W^T)
+  inline static void gemm_transposed_one_batch(
+    const double* x,
+    const double* W,
+    double* y,
+    size_t N_this, size_t N_next) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    gemv_add(W, x, y, N_this, N_next);
+  }
 
   // Scalar fallback for dot_product
   [[nodiscard]] inline static double scalar_dot_product(const double* a, const double* b, size_t n, size_t start = 0) noexcept
