@@ -2737,6 +2737,40 @@ public:
     return _mm256_mul_pd(p, vec_2k);
   }
 
+  inline static __m256d reciprocal_pd(__m256d x) noexcept
+  {
+    const __m256d vec_two = _mm256_set1_pd(2.0);
+    __m128 x_float = _mm256_cvtpd_ps(x);
+    __m128 y0_float = _mm_rcp_ps(x_float);
+    __m256d y0 = _mm256_cvtps_pd(y0_float);
+
+    // NR Step 1: y1 = y0 * (2.0 - x * y0)
+#ifdef SIMD_FMA_ENABLED
+    __m256d term1 = _mm256_fnmadd_pd(x, y0, vec_two);
+    __m256d y1 = _mm256_mul_pd(y0, term1);
+#else
+    __m256d y1 = _mm256_mul_pd(y0, _mm256_sub_pd(vec_two, _mm256_mul_pd(x, y0)));
+#endif
+
+    // NR Step 2: y2 = y1 * (2.0 - x * y1)
+#ifdef SIMD_FMA_ENABLED
+    __m256d term2 = _mm256_fnmadd_pd(x, y1, vec_two);
+    __m256d y2 = _mm256_mul_pd(y1, term2);
+#else
+    __m256d y2 = _mm256_mul_pd(y1, _mm256_sub_pd(vec_two, _mm256_mul_pd(x, y1)));
+#endif
+
+    // NR Step 3: y3 = y2 * (2.0 - x * y2)
+#ifdef SIMD_FMA_ENABLED
+    __m256d term3 = _mm256_fnmadd_pd(x, y2, vec_two);
+    __m256d y3 = _mm256_mul_pd(y2, term3);
+#else
+    __m256d y3 = _mm256_mul_pd(y2, _mm256_sub_pd(vec_two, _mm256_mul_pd(x, y2)));
+#endif
+
+    return y3;
+  }
+
   inline static __m256d tanh_pd(__m256d x) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
@@ -2748,7 +2782,8 @@ public:
     __m256d u = _mm256_mul_pd(_mm256_set1_pd(-2.0), abs_x);
     __m256d exp_u = exp_pd(u);
     __m256d denom = _mm256_add_pd(exp_u, vec_one);
-    __m256d term = _mm256_div_pd(vec_two, denom);
+    __m256d r_denom = reciprocal_pd(denom);
+    __m256d term = _mm256_mul_pd(vec_two, r_denom);
     __m256d val = _mm256_sub_pd(term, vec_one);
     __m256d x_sign = _mm256_and_pd(x, sign_mask);
     return _mm256_xor_pd(val, x_sign);
@@ -2768,7 +2803,7 @@ public:
       __m256d vz = _mm256_mul_pd(vec_alpha, vx);
       __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
       __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-      __m256d res = _mm256_div_pd(vec_one, denom);
+      __m256d res = reciprocal_pd(denom);
       _mm256_storeu_pd(begin + i, res);
     }
 #endif
@@ -2803,7 +2838,7 @@ public:
         __m256d vz = _mm256_mul_pd(vec_alpha, vx);
         __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
         __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-        __m256d s = _mm256_div_pd(vec_one, denom);
+        __m256d s = reciprocal_pd(denom);
         __m256d res = _mm256_mul_pd(vec_alpha, _mm256_mul_pd(s, _mm256_sub_pd(vec_one, s)));
         _mm256_storeu_pd(out + i, res);
       }
@@ -3136,7 +3171,8 @@ public:
       __m256d vz = _mm256_mul_pd(vec_alpha, vx);
       __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
       __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-      __m256d res = _mm256_div_pd(vx, denom);
+      __m256d r_denom = reciprocal_pd(denom);
+      __m256d res = _mm256_mul_pd(vx, r_denom);
       _mm256_storeu_pd(begin + i, res);
     }
 #endif
@@ -3160,7 +3196,7 @@ public:
       __m256d vz = _mm256_mul_pd(vec_alpha, vx);
       __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
       __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
-      __m256d sigmoid = _mm256_div_pd(vec_one, denom);
+      __m256d sigmoid = reciprocal_pd(denom);
       __m256d one_minus_sig = _mm256_sub_pd(vec_one, sigmoid);
       __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vz, sigmoid), one_minus_sig);
       __m256d res = _mm256_add_pd(sigmoid, term2);

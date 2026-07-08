@@ -1823,4 +1823,21 @@ TEST(SimdUtilsTest, IncrementValues)
   }
 }
 
+#ifdef SIMD_AVX2_ENABLED
+TEST(SimdUtilsTest, ReciprocalPd)
+{
+  __m256d x = _mm256_set_pd(4.0, -10.0, 0.5, 12345.6789);
+  __m256d r = simd::reciprocal_pd(x);
+  
+  double r_arr[4];
+  _mm256_storeu_pd(r_arr, r);
+  
+  EXPECT_NEAR(r_arr[0], 1.0 / 12345.6789, 1e-12);
+  EXPECT_NEAR(r_arr[1], 1.0 / 0.5, 1e-12);
+  EXPECT_NEAR(r_arr[2], 1.0 / -10.0, 1e-12);
+  EXPECT_NEAR(r_arr[3], 1.0 / 4.0, 1e-12);
+}
+#endif
+
+
 
