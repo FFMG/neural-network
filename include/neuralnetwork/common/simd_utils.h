@@ -622,6 +622,58 @@ public:
     }
   }
 
+  // Scalar fallback for gemm_transposed_four_batches
+  inline static void scalar_gemm_transposed_four_batches(
+    const double* x0, const double* x1, const double* x2, const double* x3,
+    const double* W,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t N_this, size_t N_next) noexcept
+  {
+    for (size_t r = 0; r < N_this; ++r)
+    {
+      const double* row = W + r * N_next;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      double sum2 = 0.0;
+      double sum3 = 0.0;
+      for (size_t c = 0; c < N_next; ++c)
+      {
+        double w_val = row[c];
+        sum0 += w_val * x0[c];
+        sum1 += w_val * x1[c];
+        sum2 += w_val * x2[c];
+        sum3 += w_val * x3[c];
+      }
+      y0[r] += sum0;
+      y1[r] += sum1;
+      y2[r] += sum2;
+      y3[r] += sum3;
+    }
+  }
+
+  // Scalar fallback for gemm_transposed_two_batches
+  inline static void scalar_gemm_transposed_two_batches(
+    const double* x0, const double* x1,
+    const double* W,
+    double* y0, double* y1,
+    size_t N_this, size_t N_next) noexcept
+  {
+    for (size_t r = 0; r < N_this; ++r)
+    {
+      const double* row = W + r * N_next;
+      double sum0 = 0.0;
+      double sum1 = 0.0;
+      for (size_t c = 0; c < N_next; ++c)
+      {
+        double w_val = row[c];
+        sum0 += w_val * x0[c];
+        sum1 += w_val * x1[c];
+      }
+      y0[r] += sum0;
+      y1[r] += sum1;
+    }
+  }
+
   // Vectorised GEMM with a transposed matrix for four batches (y0 += x0 * W^T, y1 += x1 * W^T, etc.)
   // W is of shape N_this * N_next, stored in row-major layout.
   // x0..x3 are of size N_next.
@@ -685,27 +737,7 @@ public:
       y3[i] += sum3;
     }
 #else
-    // Scalar fallback
-    for (size_t r = 0; r < N_this; ++r)
-    {
-      const double* row = W + r * N_next;
-      double sum0 = 0.0;
-      double sum1 = 0.0;
-      double sum2 = 0.0;
-      double sum3 = 0.0;
-      for (size_t c = 0; c < N_next; ++c)
-      {
-        double w_val = row[c];
-        sum0 += w_val * x0[c];
-        sum1 += w_val * x1[c];
-        sum2 += w_val * x2[c];
-        sum3 += w_val * x3[c];
-      }
-      y0[r] += sum0;
-      y1[r] += sum1;
-      y2[r] += sum2;
-      y3[r] += sum3;
-    }
+    scalar_gemm_transposed_four_batches(x0, x1, x2, x3, W, y0, y1, y2, y3, N_this, N_next);
 #endif
   }
 
@@ -758,21 +790,7 @@ public:
       y1[i] += sum1;
     }
 #else
-    // Scalar fallback
-    for (size_t r = 0; r < N_this; ++r)
-    {
-      const double* row = W + r * N_next;
-      double sum0 = 0.0;
-      double sum1 = 0.0;
-      for (size_t c = 0; c < N_next; ++c)
-      {
-        double w_val = row[c];
-        sum0 += w_val * x0[c];
-        sum1 += w_val * x1[c];
-      }
-      y0[r] += sum0;
-      y1[r] += sum1;
-    }
+    scalar_gemm_transposed_two_batches(x0, x1, W, y0, y1, N_this, N_next);
 #endif
   }
 
