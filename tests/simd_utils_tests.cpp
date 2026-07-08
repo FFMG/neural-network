@@ -1732,6 +1732,24 @@ TEST(SimdUtilsTest, GemmTransposedBatchesVerify)
     expect_vec_near(y1_simd, y1_expected);
     expect_vec_near(y2_simd, y2_expected);
     expect_vec_near(y3_simd, y3_expected);
+
+    // Verify scalar fallback explicitly
+    std::vector<double> y0_scalar(n_this, 1.0);
+    std::vector<double> y1_scalar(n_this, 2.0);
+    std::vector<double> y2_scalar(n_this, 3.0);
+    std::vector<double> y3_scalar(n_this, 4.0);
+
+    simd::scalar_gemm_transposed_four_batches(
+      x0.data(), x1.data(), x2.data(), x3.data(),
+      W.data(),
+      y0_scalar.data(), y1_scalar.data(), y2_scalar.data(), y3_scalar.data(),
+      n_this, n_next
+    );
+
+    expect_vec_near(y0_scalar, y0_expected);
+    expect_vec_near(y1_scalar, y1_expected);
+    expect_vec_near(y2_scalar, y2_expected);
+    expect_vec_near(y3_scalar, y3_expected);
   }
 
   // 2. Verify gemm_transposed_two_batches
@@ -1754,6 +1772,20 @@ TEST(SimdUtilsTest, GemmTransposedBatchesVerify)
 
     expect_vec_near(y0_simd, y0_expected);
     expect_vec_near(y1_simd, y1_expected);
+
+    // Verify scalar fallback explicitly
+    std::vector<double> y0_scalar(n_this, 1.0);
+    std::vector<double> y1_scalar(n_this, 2.0);
+
+    simd::scalar_gemm_transposed_two_batches(
+      x0.data(), x1.data(),
+      W.data(),
+      y0_scalar.data(), y1_scalar.data(),
+      n_this, n_next
+    );
+
+    expect_vec_near(y0_scalar, y0_expected);
+    expect_vec_near(y1_scalar, y1_expected);
   }
 
   // 3. Verify gemm_transposed_one_batch
