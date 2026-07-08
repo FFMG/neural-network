@@ -540,3 +540,92 @@ TEST_F(FFLayerTest, StateAndMemoryAllocationOptimizationVerification)
   EXPECT_NEAR(outputs_0[4], 0.05, 1e-9); // relu(0.0 * 0.1 + 0.0 * 0.3 + 0.05) = 0.05
   EXPECT_NEAR(outputs_0[5], 0.15, 1e-9); // relu(0.0 * 0.2 + 0.0 * 0.4 + 0.15) = 0.15
 }
+
+TEST_F(FFLayerTest, TransposedWeightsCacheAndFastBackwardPass)
+{
+  // Create a layer: 3 inputs, 4 outputs
+  FFLayer layer(1, 3, 4, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+  // Set weights: shape [3, 4]
+  std::vector<double> weights = {
+    0.1, 0.2, 0.3, 0.4,
+    0.5, 0.6, 0.7, 0.8,
+    0.9, 1.0, 1.1, 1.2
+  };
+  layer.set_w_values(weights);
+
+  // Trigger transposition/caching
+  layer.cache_recurrent_weights();
+
+  // Verify transposed cache is correct: shape [4, 3]
+  const auto& weights_T = layer.get_w_values_T();
+  ASSERT_EQ(weights_T.size(), 12);
+  EXPECT_DOUBLE_EQ(weights_T[0], 0.1);
+  EXPECT_DOUBLE_EQ(weights_T[1], 0.5);
+  EXPECT_DOUBLE_EQ(weights_T[2], 0.9);
+  EXPECT_DOUBLE_EQ(weights_T[3], 0.2);
+  EXPECT_DOUBLE_EQ(weights_T[4], 0.6);
+  EXPECT_DOUBLE_EQ(weights_T[5], 1.0);
+  EXPECT_DOUBLE_EQ(weights_T[6], 0.3);
+  EXPECT_DOUBLE_EQ(weights_T[7], 0.7);
+  EXPECT_DOUBLE_EQ(weights_T[8], 1.1);
+  EXPECT_DOUBLE_EQ(weights_T[9], 0.4);
+  EXPECT_DOUBLE_EQ(weights_T[10], 0.8);
+  EXPECT_DOUBLE_EQ(weights_T[11], 1.2);
+
+  // Test backpropagation results:
+  // Next layer has 4 inputs, 2 outputs.
+  FFLayer next_layer(2, 4, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  std::vector<double> next_weights = {
+    0.15, 0.25,
+    0.35, 0.45,
+    0.55, 0.65,
+    0.75, 0.85
+  };
+  next_layer.set_w_values(next_weights);
+  next_layer.cache_recurrent_weights();
+
+  // Create batch gradients and outputs and hidden states
+  std::vector<unsigned> topology = { 3, 4, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 2); // batch size 2
+  auto batch_hs = create_batch_hidden_states(topology, 2, 1);
+
+  // Initialize cell state values so that gradients are not zeroed out during post-gemm masking
+  batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0, 1.0, 1.0 });
+  batch_hs[1].at(1, 0).set_cell_state_values({ 1.0, 1.0, 1.0, 1.0 });
+
+  // Set next layer incoming gradients (at index 2)
+  batch_go[0].set_gradients(2, { 0.1, 0.2 });
+  batch_go[1].set_gradients(2, { 0.3, 0.4 });
+
+  // Calculate hidden gradients for layer index 1
+  layer.calculate_hidden_gradients(batch_go, next_layer, {}, batch_hs, 2, 0);
+
+  const auto grads_0 = batch_go[0].get_gradients(1);
+  const auto grads_1 = batch_go[1].get_gradients(1);
+
+  ASSERT_EQ(grads_0.size(), 4);
+  ASSERT_EQ(grads_1.size(), 4);
+
+  // Hand calculate the expected backpropagated gradients:
+  // grad_prev_j = sum_k next_grad_k * W_next_jk
+  // For batch 0 (incoming grad = [0.1, 0.2]):
+  // grad_0[0] = 0.1 * 0.15 + 0.2 * 0.25 = 0.015 + 0.050 = 0.065
+  // grad_0[1] = 0.1 * 0.35 + 0.2 * 0.45 = 0.035 + 0.090 = 0.125
+  // grad_0[2] = 0.1 * 0.55 + 0.2 * 0.65 = 0.055 + 0.130 = 0.185
+  // grad_0[3] = 0.1 * 0.75 + 0.2 * 0.85 = 0.075 + 0.170 = 0.245
+  EXPECT_NEAR(grads_0[0], 0.065, 1e-9);
+  EXPECT_NEAR(grads_0[1], 0.125, 1e-9);
+  EXPECT_NEAR(grads_0[2], 0.185, 1e-9);
+  EXPECT_NEAR(grads_0[3], 0.245, 1e-9);
+
+  // For batch 1 (incoming grad = [0.3, 0.4]):
+  // grad_1[0] = 0.3 * 0.15 + 0.4 * 0.25 = 0.045 + 0.100 = 0.145
+  // grad_1[1] = 0.3 * 0.35 + 0.4 * 0.45 = 0.105 + 0.180 = 0.285
+  // grad_1[2] = 0.3 * 0.55 + 0.4 * 0.65 = 0.165 + 0.260 = 0.425
+  // grad_1[3] = 0.3 * 0.75 + 0.4 * 0.85 = 0.225 + 0.340 = 0.565
+  EXPECT_NEAR(grads_1[0], 0.145, 1e-9);
+  EXPECT_NEAR(grads_1[1], 0.285, 1e-9);
+  EXPECT_NEAR(grads_1[2], 0.425, 1e-9);
+  EXPECT_NEAR(grads_1[3], 0.565, 1e-9);
+}

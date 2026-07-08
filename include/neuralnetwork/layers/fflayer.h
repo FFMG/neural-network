@@ -133,6 +133,21 @@ public:
 
   virtual void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
+  void cache_recurrent_weights() override;
+
+  [[nodiscard]] inline const std::vector<double>& get_w_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return _w_values_T;
+  }
+
+  void set_w_values(const std::vector<double>& v) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    Layer::set_w_values(v);
+    cache_recurrent_weights();
+  }
+
 protected:
   FFLayer(unsigned layer_index,
     const std::vector<double>& weight_decays,
@@ -176,6 +191,15 @@ private:
     const std::vector<double>& flattened_next_grads_buffer,
     std::vector<double>& flattened_this_grads_buffer) const;
 
+  void run_gemm_backward_fast(
+    size_t b_start,
+    size_t b_end,
+    size_t N_next,
+    size_t N_this,
+    const double* W_next_T,
+    const std::vector<double>& flattened_next_grads_buffer,
+    std::vector<double>& flattened_this_grads_buffer) const;
+
   void run_post_gemm_backward(
     size_t start,
     size_t end,
@@ -198,5 +222,6 @@ private:
 
   std::vector<std::vector<double>> _thread_w_grads;
   std::vector<std::vector<double>> _thread_b_grads;
+  std::vector<double> _w_values_T;
 };
 } // namespace myoddweb::nn
