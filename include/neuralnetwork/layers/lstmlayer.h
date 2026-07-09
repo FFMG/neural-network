@@ -987,7 +987,7 @@ public:
 private:
   struct BPTTWorkspace
   {
-    using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
+    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
     AlignedVector grad_from_next_all_t;
     AlignedVector d_next_h;
     AlignedVector d_next_c;
@@ -1016,29 +1016,29 @@ private:
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
-      grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
-      d_next_h.assign(batch_chunk_size * n, 0.0);
-      d_next_c.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
-      dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
-      chunk_df.assign(batch_chunk_size * n, 0.0);
-      chunk_di.assign(batch_chunk_size * n, 0.0);
-      chunk_do.assign(batch_chunk_size * n, 0.0);
-      chunk_dg.assign(batch_chunk_size * n, 0.0);
-      f_vals.assign(batch_chunk_size * n, 0.0);
-      i_vals.assign(batch_chunk_size * n, 0.0);
-      o_vals.assign(batch_chunk_size * n, 0.0);
-      g_vals.assign(batch_chunk_size * n, 0.0);
-      c_vals.assign(batch_chunk_size * n, 0.0);
-      c_prev_vals.assign(batch_chunk_size * n, 0.0);
-      tanh_c_vals.assign(batch_chunk_size * n, 0.0);
-      temp_Uf_T_df.assign(batch_chunk_size * n, 0.0);
-      temp_Ui_T_di.assign(batch_chunk_size * n, 0.0);
-      temp_Uo_T_do.assign(batch_chunk_size * n, 0.0);
-      temp_Ug_T_dg.assign(batch_chunk_size * n, 0.0);
-      dh_curr.assign(batch_chunk_size * n, 0.0);
-      dc_act_deriv.assign(batch_chunk_size * n, 0.0);
-      dg_act_deriv.assign(batch_chunk_size * n, 0.0);
+      grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
+      d_next_h.resize_and_zero(batch_chunk_size * n);
+      d_next_c.resize_and_zero(batch_chunk_size * n);
+      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
+      dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
+      chunk_df.resize_and_zero(batch_chunk_size * n);
+      chunk_di.resize_and_zero(batch_chunk_size * n);
+      chunk_do.resize_and_zero(batch_chunk_size * n);
+      chunk_dg.resize_and_zero(batch_chunk_size * n);
+      f_vals.resize_and_zero(batch_chunk_size * n);
+      i_vals.resize_and_zero(batch_chunk_size * n);
+      o_vals.resize_and_zero(batch_chunk_size * n);
+      g_vals.resize_and_zero(batch_chunk_size * n);
+      c_vals.resize_and_zero(batch_chunk_size * n);
+      c_prev_vals.resize_and_zero(batch_chunk_size * n);
+      tanh_c_vals.resize_and_zero(batch_chunk_size * n);
+      temp_Uf_T_df.resize_and_zero(batch_chunk_size * n);
+      temp_Ui_T_di.resize_and_zero(batch_chunk_size * n);
+      temp_Uo_T_do.resize_and_zero(batch_chunk_size * n);
+      temp_Ug_T_dg.resize_and_zero(batch_chunk_size * n);
+      dh_curr.resize_and_zero(batch_chunk_size * n);
+      dc_act_deriv.resize_and_zero(batch_chunk_size * n);
+      dg_act_deriv.resize_and_zero(batch_chunk_size * n);
     }
   };
 

@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/aligned_allocator.h"
 #include <vector>
 #include <cstdint>
@@ -89,3 +89,39 @@ TEST(AlignedAllocatorTest, Rebind) {
     bool is_same = std::is_same<Rebound, AlignedAllocator<double, 16>>::value;
     EXPECT_TRUE(is_same);
 }
+
+TEST(AlignedVectorTest, ResizeAndZeroCorrectness) {
+    AlignedVector<double, 32> vec;
+    
+    // Test initial resize and zero
+    vec.resize_and_zero(10);
+    EXPECT_EQ(vec.size(), 10);
+    for (size_t i = 0; i < 10; ++i)
+    {
+        EXPECT_EQ(vec[i], 0.0);
+    }
+    
+    // Set some non-zero values
+    vec[0] = 5.0;
+    vec[5] = 12.0;
+    
+    // Test resize and zero with SAME size (fill path)
+    vec.resize_and_zero(10);
+    EXPECT_EQ(vec.size(), 10);
+    for (size_t i = 0; i < 10; ++i)
+    {
+        EXPECT_EQ(vec[i], 0.0);
+    }
+
+    // Set some non-zero values again
+    vec[3] = 4.0;
+
+    // Test resize and zero with DIFFERENT size (reallocation path)
+    vec.resize_and_zero(15);
+    EXPECT_EQ(vec.size(), 15);
+    for (size_t i = 0; i < 15; ++i)
+    {
+        EXPECT_EQ(vec[i], 0.0);
+    }
+}
+

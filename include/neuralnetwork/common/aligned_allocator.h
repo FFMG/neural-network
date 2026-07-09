@@ -1,8 +1,10 @@
-﻿#pragma once
+#pragma once
 #include "../libraries/instrumentor.h"
 
 #include <cstddef>
 #include <memory>
+#include <vector>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -107,6 +109,29 @@ bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&
   MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   return A1 != A2;
 }
+
+template <typename T, size_t Alignment = 32>
+class AlignedVector : public std::vector<T, AlignedAllocator<T, Alignment>>
+{
+public:
+  using std::vector<T, AlignedAllocator<T, Alignment>>::vector;
+  using std::vector<T, AlignedAllocator<T, Alignment>>::size;
+  using std::vector<T, AlignedAllocator<T, Alignment>>::assign;
+  using std::vector<T, AlignedAllocator<T, Alignment>>::begin;
+  using std::vector<T, AlignedAllocator<T, Alignment>>::end;
+
+  void resize_and_zero(size_t target_size)
+  {
+    if (size() != target_size)
+    {
+      assign(target_size, static_cast<T>(0));
+    }
+    else
+    {
+      std::fill(begin(), end(), static_cast<T>(0));
+    }
+  }
+};
 
 #if defined(_MSC_VER)
 #pragma pop_macro("new")
