@@ -1162,7 +1162,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       );
     }
 
-    workspace.temp_Uh_T_dh_hat.assign((end - start) * N_this, 0.0);
+    std::fill(workspace.temp_Uh_T_dh_hat.begin(), workspace.temp_Uh_T_dh_hat.end(), 0.0);
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
     
     {
