@@ -614,7 +614,7 @@ private:
 
   struct BPTTWorkspace 
   {
-    using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
+    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
     AlignedVector grad_from_next_all_t;
     AlignedVector d_next_h;
     AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x 3N]
@@ -629,17 +629,17 @@ private:
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
-      grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
-      d_next_h.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
-      dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
-      chunk_dz.assign(batch_chunk_size * n, 0.0);
-      chunk_dr.assign(batch_chunk_size * n, 0.0);
-      chunk_dh_hat.assign(batch_chunk_size * n, 0.0);
-      chunk_dh_prev_accum.assign(batch_chunk_size * n, 0.0);
-      h_hat_vals.assign(n, 0.0);
-      temp_Uh_T_dh_hat.assign(batch_chunk_size * n, 0.0);
-      dh_hat_pre_deriv_buf.assign(batch_chunk_size * n, 0.0);
+      grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
+      d_next_h.resize_and_zero(batch_chunk_size * n);
+      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
+      dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
+      chunk_dz.resize_and_zero(batch_chunk_size * n);
+      chunk_dr.resize_and_zero(batch_chunk_size * n);
+      chunk_dh_hat.resize_and_zero(batch_chunk_size * n);
+      chunk_dh_prev_accum.resize_and_zero(batch_chunk_size * n);
+      h_hat_vals.resize_and_zero(n);
+      temp_Uh_T_dh_hat.resize_and_zero(batch_chunk_size * n);
+      dh_hat_pre_deriv_buf.resize_and_zero(batch_chunk_size * n);
     }
   };
 

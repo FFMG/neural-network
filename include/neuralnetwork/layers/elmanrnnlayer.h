@@ -1,5 +1,6 @@
 #pragma once
 #include "../helpers/errorcalculation.h"
+#include "../common/aligned_allocator.h"
 #include "../common/hiddenstate.h"
 #include "layer.h"
 
@@ -234,7 +235,7 @@ public:
 private:
   struct BPTTWorkspace 
   {
-    using AlignedVector = std::vector<double, AlignedAllocator<double, 32>>;
+    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
     AlignedVector grad_from_next_all_t;
     AlignedVector d_next_h;
     AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x N]
@@ -243,11 +244,11 @@ private:
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
-      grad_from_next_all_t.assign(batch_chunk_size * num_time_steps * n, 0.0);
-      d_next_h.assign(batch_chunk_size * n, 0.0);
-      rnn_grad_matrix.assign(batch_chunk_size * num_time_steps * GateCount * n, 0.0);
-      dx_matrix.assign(batch_chunk_size * num_time_steps * n_prev, 0.0);
-      deriv_buf.assign(batch_chunk_size * n, 0.0);
+      grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
+      d_next_h.resize_and_zero(batch_chunk_size * n);
+      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
+      dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
+      deriv_buf.resize_and_zero(batch_chunk_size * n);
     }
   };
 
