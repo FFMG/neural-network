@@ -482,4 +482,80 @@ TEST(NetworkIntegrationTest, LockOptimizationConvergenceTest)
   EXPECT_NO_THROW(nn.train(inputs, outputs));
 }
 
+TEST(NetworkIntegrationTest, ThinkSequenceInputValidation)
+{
+  // 1. Test standard/non-BPTT network sequence validation
+  auto options_no_bptt = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_enable_bptt(false)
+    .build();
+  
+  NeuralNetwork nn_no_bptt(options_no_bptt);
+  
+  // Valid single-step size (matches topology first layer: 2)
+  EXPECT_NO_THROW({
+    auto out = nn_no_bptt.think(std::vector<double>{ 0.1, 0.2 });
+    // Expect output size matches output layer topology (1)
+    EXPECT_EQ(out.size(), 1);
+  });
+
+  // Invalid sizes should be caught and return empty vector
+  auto out_invalid_1 = nn_no_bptt.think(std::vector<double>{ 0.1 });
+  EXPECT_TRUE(out_invalid_1.empty());
+
+  auto out_invalid_2 = nn_no_bptt.think(std::vector<double>{ 0.1, 0.2, 0.3, 0.4 });
+  EXPECT_TRUE(out_invalid_2.empty());
+
+  // 2. Test BPTT network sequence validation
+  auto options_bptt = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  NeuralNetwork nn_bptt(options_bptt);
+
+  // Single-step size (2) should be valid
+  auto out_bptt_single = nn_bptt.think(std::vector<double>{ 0.1, 0.2 });
+  EXPECT_EQ(out_bptt_single.size(), 1);
+
+  // Multi-step sequence size (multiple of 2, e.g. 6) should be valid
+  auto out_bptt_seq = nn_bptt.think(std::vector<double>{ 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 });
+  EXPECT_EQ(out_bptt_seq.size(), 1);
+
+  // Non-multiple size (e.g. 5) should be caught and return empty vector
+  auto out_bptt_invalid = nn_bptt.think(std::vector<double>{ 0.1, 0.2, 0.3, 0.4, 0.5 });
+  EXPECT_TRUE(out_bptt_invalid.empty());
+}
+
+TEST(NetworkIntegrationTest, BPTTForecastMetricsActualHistoryCorrectness)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  // Sequential data
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}, {1.1}
+  };
+
+  NeuralNetwork nn(options);
+  // Training will populate the training helper and execute calculate_forward_feed_for_forecast_metrics
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  // Directly calculate forecast metrics to verify it completes successfully
+  std::vector<NeuralNetworkHelperMetrics> metrics;
+  EXPECT_NO_THROW({
+    metrics = nn.calculate_forecast_metric_all_layers(ErrorCalculation::type::mse);
+  });
+
+  ASSERT_FALSE(metrics.empty());
+  EXPECT_GE(metrics[0].error(), 0.0);
+}
+
+
 

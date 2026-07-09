@@ -295,7 +295,10 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  if (inputs.size() != get_topology().front())
+  const auto input_size = get_topology().front();
+  const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
+  const bool is_valid_size = (inputs.size() == input_size) || (is_bptt && input_size > 0 && inputs.size() % input_size == 0);
+  if (!is_valid_size)
   {
     Logger::error("The input size, '", inputs.size(),"' does not match the topology!");
     return {};
@@ -1244,13 +1247,17 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       if (options().enable_bptt() && options().bptt_max_ticks() > 1)
       {
         const int ticks = options().bptt_max_ticks();
-        std::vector<double> expanded;
-        expanded.reserve(input_size * ticks);
-        for (int t = 0; t < ticks; ++t)
+        std::vector<double> sequence;
+        sequence.reserve(input_size * ticks);
+        
+        const size_t idx = indices[b];
+        for (int t = -ticks + 1; t <= 0; ++t)
         {
-        expanded.insert(expanded.end(), current_input.begin(), current_input.end());
+          const size_t lookup_idx = (static_cast<long long>(idx) + t < 0) ? 0 : (idx + t);
+          const auto& step_input = all_inputs[lookup_idx];
+          sequence.insert(sequence.end(), step_input.begin(), step_input.end());
         }
-        gradients_and_output[b].set_rnn_outputs(0, expanded);
+        gradients_and_output[b].set_rnn_outputs(0, sequence);
       }
     }
     else if (options().enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
