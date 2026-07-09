@@ -1,6 +1,7 @@
 #include "common/logger.h"
 #include "neuralnetwork.h"
 #include "common/simd_utils.h"
+#include "common/denormal_disabler.h"
 
 #include <algorithm>
 #include <cmath>
@@ -524,6 +525,7 @@ void NeuralNetwork::train_single_batch(
   )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
   std::unique_lock<std::shared_mutex> lock(_mutex);
   _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
 }
@@ -638,6 +640,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
 void NeuralNetwork::train(const std::vector<std::vector<double>>& training_inputs,const std::vector<std::vector<double>>& training_outputs)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
 
   const auto& number_of_epoch = _options.number_of_epoch();
   _learning_rate = _options.learning_rate();
