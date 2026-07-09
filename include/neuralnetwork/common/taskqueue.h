@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -9,6 +9,7 @@
 
 #include "../libraries/instrumentor.h"
 #include "logger.h"
+#include "denormal_disabler.h"
 
 
 namespace myoddweb::nn
@@ -159,6 +160,7 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    DenormalDisabler disabler;
     std::vector<R> local_results;
     local_results.reserve(100); // pre-allocate some space.
     while (true)
@@ -385,6 +387,7 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueue");
+    DenormalDisabler disabler;
     while (_state.load(std::memory_order_relaxed) == State::Started || !_tasks.empty())
     {
       std::function<void()> task;
@@ -591,6 +594,7 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    DenormalDisabler disabler;
     while (_state.load(std::memory_order_relaxed) == State::Started)
     {
       std::function<R()> task;
@@ -785,6 +789,7 @@ private:
   void run()
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    DenormalDisabler disabler;
     while (_state.load(std::memory_order_relaxed) == State::Started)
     {
       std::function<void()> task;

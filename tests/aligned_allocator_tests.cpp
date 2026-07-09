@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/aligned_allocator.h"
+#include "common/denormal_disabler.h"
 #include <vector>
 #include <cstdint>
 
@@ -124,4 +125,24 @@ TEST(AlignedVectorTest, ResizeAndZeroCorrectness) {
         EXPECT_EQ(vec[i], 0.0);
     }
 }
+
+TEST(DenormalDisablerTest, FTZAndDAZCorrectness)
+{
+#if defined(_MSC_VER) || defined(__x86_64__) || defined(__i386__)
+  // Get current state
+  unsigned int original_mxcsr = _mm_getcsr();
+
+  {
+    DenormalDisabler disabler;
+    unsigned int active_mxcsr = _mm_getcsr();
+    // FTZ (bit 15) and DAZ (bit 6) should be enabled (set to 1)
+    EXPECT_NE((active_mxcsr & 0x8000), 0u);
+    EXPECT_NE((active_mxcsr & 0x0040), 0u);
+  }
+
+  unsigned int restored_mxcsr = _mm_getcsr();
+  EXPECT_EQ(restored_mxcsr, original_mxcsr);
+#endif
+}
+
 
