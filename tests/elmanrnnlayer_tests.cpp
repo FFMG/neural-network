@@ -271,3 +271,55 @@ TEST_F(ElmanRNNLayerTest, IdentityProxyCachingAndLifecycle)
   layer5 = std::move(layer4);
   EXPECT_NO_THROW(layer5.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
 }
+
+TEST_F(ElmanRNNLayerTest, BPTTWorkspaceResizeCorrectness)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 2;
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+  layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
+  layer.set_rw_values({ 0.15, 0.25, 0.35, 0.45 });
+  layer.set_b_values({ 0.05, 0.15 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  // Run backprop first time (creates workspace initially)
+  auto batch_go1 = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs1 = create_batch_hidden_states(topology, 2, 2);
+  batch_go1[0].set_rnn_outputs(0, { 1.0, 1.0, 0.5, 0.5 });
+  batch_go1[1].set_rnn_outputs(0, { 0.8, 0.8, 0.4, 0.4 });
+  layer.calculate_forward_feed(batch_go1, prev_layer, {}, batch_hs1, 2, false);
+
+  MockLayer next_layer(2, num_outputs);
+  next_layer.set_w_values({ 1.0, 0.5, 0.2, 0.8 });
+  std::vector<std::vector<double>> batch_next_grads = {
+    { 0.1, 0.2, 0.3, 0.4 },
+    { 0.5, 0.6, 0.7, 0.8 }
+  };
+
+  layer.calculate_hidden_gradients(batch_go1, next_layer, batch_next_grads, batch_hs1, 2, 2);
+  layer.calculate_and_store_gradients(batch_go1, batch_hs1, prev_layer, 2, 2);
+  double initial_norm = layer.get_gradient_norm_sq();
+  EXPECT_GT(initial_norm, 0.0);
+
+  // Run backprop second time with the SAME sizes (tests std::fill workspace reuse path)
+  layer.zero_gradients();
+  layer.calculate_hidden_gradients(batch_go1, next_layer, batch_next_grads, batch_hs1, 2, 2);
+  layer.calculate_and_store_gradients(batch_go1, batch_hs1, prev_layer, 2, 2);
+  EXPECT_NEAR(layer.get_gradient_norm_sq(), initial_norm, 1e-9);
+
+  // Run backprop third time with DIFFERENT sizes (tests resize/assign reallocation path)
+  layer.zero_gradients();
+  auto batch_go2 = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs2 = create_batch_hidden_states(topology, 1, 2);
+  batch_go2[0].set_rnn_outputs(0, { 1.0, 1.0, 0.5, 0.5 });
+  layer.calculate_forward_feed(batch_go2, prev_layer, {}, batch_hs2, 1, false);
+
+  std::vector<std::vector<double>> batch_next_grads2 = { { 0.1, 0.2, 0.3, 0.4 } };
+  layer.calculate_hidden_gradients(batch_go2, next_layer, batch_next_grads2, batch_hs2, 1, 2);
+  layer.calculate_and_store_gradients(batch_go2, batch_hs2, prev_layer, 1, 2);
+  EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
+}
+
