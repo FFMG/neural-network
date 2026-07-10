@@ -323,14 +323,15 @@ void ElmanRNNLayer::calculate_forward_feed(
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 2000000))) : 1;
   const bool use_multithreading = (active_threads > 1);
+  auto& flattened_batch_inputs_ref = flattened_batch_inputs;
+  auto& batch_pre_act_ref = batch_pre_act;
+
   if (!use_multithreading)
   {
     pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
   }
   else
   {
-    auto& flattened_batch_inputs_ref = flattened_batch_inputs;
-    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -360,7 +361,7 @@ void ElmanRNNLayer::calculate_forward_feed(
       std::fill(current_h.begin(), current_h.end(), 0.0);
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * N_this];
+        double* pre_t = &batch_pre_act_ref[(b * num_time_steps + t) * N_this];
 
         // Recurrent-to-Hidden (U * h_{t-1})
         simd::gemv_add(_rw_values_T.data(), current_h.data(), pre_t, N_this, N_this);
@@ -794,35 +795,8 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this)) / 2000000))) : 1;
 
-  if (_thread_w_grads.size() < active_threads)
+  auto run_chunk = [&](size_t start, size_t end, std::vector<double>& local_w_grads, std::vector<double>& local_rw_grads, std::vector<double>& local_b_grads)
   {
-    _thread_w_grads.resize(active_threads);
-  }
-  if (_thread_rw_grads.size() < active_threads)
-  {
-    _thread_rw_grads.resize(active_threads);
-  }
-  if (_thread_b_grads.size() < active_threads)
-  {
-    _thread_b_grads.resize(active_threads);
-  }
-
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    _thread_w_grads[t].resize(_w_grads.size());
-    std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-    _thread_rw_grads[t].resize(_rw_grads.size());
-    std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
-    _thread_b_grads[t].resize(has_bias() ? N_this : 0);
-    std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
-  }
-
-  auto run_chunk = [&](size_t start, size_t end, size_t thread_idx)
-  {
-    auto& local_w_grads = _thread_w_grads[thread_idx];
-    auto& local_rw_grads = _thread_rw_grads[thread_idx];
-    auto& local_b_grads = _thread_b_grads[thread_idx];
-
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -913,10 +887,34 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
-    run_chunk(0, batch_size, 0);
+    zero_gradients();
+    run_chunk(0, batch_size, _w_grads, _rw_grads, _b_grads);
   }
   else
   {
+    if (_thread_w_grads.size() < active_threads)
+    {
+      _thread_w_grads.resize(active_threads);
+    }
+    if (_thread_rw_grads.size() < active_threads)
+    {
+      _thread_rw_grads.resize(active_threads);
+    }
+    if (_thread_b_grads.size() < active_threads)
+    {
+      _thread_b_grads.resize(active_threads);
+    }
+
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      _thread_w_grads[t].resize(_w_grads.size());
+      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+      _thread_rw_grads[t].resize(_rw_grads.size());
+      std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+      _thread_b_grads[t].resize(has_bias() ? N_this : 0);
+      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+    }
+
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -924,22 +922,25 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk]() { run_chunk(start, end, t); });
+        _task_queue_pool->enqueue([start, end, t, &run_chunk, this]()
+        {
+          run_chunk(start, end, _thread_w_grads[t], _thread_rw_grads[t], _thread_b_grads[t]);
+        });
       }
       start = end;
     }
     _task_queue_pool->get();
-  }
 
-  // Merge results
-  zero_gradients();
-  for (unsigned int t = 0; t < active_threads; ++t)
-  {
-    simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
-    simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
-    if (has_bias())
+    // Merge results
+    zero_gradients();
+    for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+      simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+      if (has_bias())
+      {
+        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+      }
     }
   }
 

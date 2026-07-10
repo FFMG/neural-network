@@ -417,6 +417,9 @@ void LSTMLayer::calculate_forward_feed(
   thread_local std::vector<double> batch_pre_act;
   batch_pre_act.assign(batch_size * num_time_steps * GateCount * N_this, 0.0);
 
+  auto& batch_pre_act_ref = batch_pre_act;
+  auto& flattened_inputs_ref = flattened_inputs;
+
   auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
     const double* W_f = _f_w_values.data();
@@ -433,7 +436,7 @@ void LSTMLayer::calculate_forward_feed(
       {
         for (size_t step = step_start; step < step_end; ++step)
         {
-          double* pre_t = &batch_pre_act[step * GateCount * N_this];
+          double* pre_t = &batch_pre_act_ref[step * GateCount * N_this];
           std::copy(_bias_cached.begin(), _bias_cached.end(), pre_t);
         }
       }
@@ -441,7 +444,7 @@ void LSTMLayer::calculate_forward_feed(
       {
         for (size_t step = step_start; step < step_end; ++step)
         {
-          double* pre_t = &batch_pre_act[step * GateCount * N_this];
+          double* pre_t = &batch_pre_act_ref[step * GateCount * N_this];
           std::copy(_f_b_values.begin(), _f_b_values.end(), pre_t);
           std::copy(_i_b_values.begin(), _i_b_values.end(), pre_t + N_this);
           std::copy(_o_b_values.begin(), _o_b_values.end(), pre_t + 2 * N_this);
@@ -451,33 +454,33 @@ void LSTMLayer::calculate_forward_feed(
     }
     else
     {
-      std::fill(batch_pre_act.begin() + step_start * GateCount * N_this, batch_pre_act.begin() + step_end * GateCount * N_this, 0.0);
+      std::fill(batch_pre_act_ref.begin() + step_start * GateCount * N_this, batch_pre_act_ref.begin() + step_end * GateCount * N_this, 0.0);
     }
 
     size_t step = step_start;
     for (; step + 3 < step_end; step += 4)
     {
-      const double* x0 = &flattened_inputs[step * N_prev];
-      const double* x1 = &flattened_inputs[(step + 1) * N_prev];
-      const double* x2 = &flattened_inputs[(step + 2) * N_prev];
-      const double* x3 = &flattened_inputs[(step + 3) * N_prev];
+      const double* x0 = &flattened_inputs_ref[step * N_prev];
+      const double* x1 = &flattened_inputs_ref[(step + 1) * N_prev];
+      const double* x2 = &flattened_inputs_ref[(step + 2) * N_prev];
+      const double* x3 = &flattened_inputs_ref[(step + 3) * N_prev];
 
-      double* y0_f = &batch_pre_act[step * GateCount * N_this];
+      double* y0_f = &batch_pre_act_ref[step * GateCount * N_this];
       double* y0_i = y0_f + N_this;
       double* y0_o = y0_f + 2 * N_this;
       double* y0_g = y0_f + 3 * N_this;
 
-      double* y1_f = &batch_pre_act[(step + 1) * GateCount * N_this];
+      double* y1_f = &batch_pre_act_ref[(step + 1) * GateCount * N_this];
       double* y1_i = y1_f + N_this;
       double* y1_o = y1_f + 2 * N_this;
       double* y1_g = y1_f + 3 * N_this;
 
-      double* y2_f = &batch_pre_act[(step + 2) * GateCount * N_this];
+      double* y2_f = &batch_pre_act_ref[(step + 2) * GateCount * N_this];
       double* y2_i = y2_f + N_this;
       double* y2_o = y2_f + 2 * N_this;
       double* y2_g = y2_f + 3 * N_this;
 
-      double* y3_f = &batch_pre_act[(step + 3) * GateCount * N_this];
+      double* y3_f = &batch_pre_act_ref[(step + 3) * GateCount * N_this];
       double* y3_i = y3_f + N_this;
       double* y3_o = y3_f + 2 * N_this;
       double* y3_g = y3_f + 3 * N_this;
@@ -490,15 +493,15 @@ void LSTMLayer::calculate_forward_feed(
 
     for (; step + 1 < step_end; step += 2)
     {
-      const double* x0 = &flattened_inputs[step * N_prev];
-      const double* x1 = &flattened_inputs[(step + 1) * N_prev];
+      const double* x0 = &flattened_inputs_ref[step * N_prev];
+      const double* x1 = &flattened_inputs_ref[(step + 1) * N_prev];
 
-      double* y0_f = &batch_pre_act[step * GateCount * N_this];
+      double* y0_f = &batch_pre_act_ref[step * GateCount * N_this];
       double* y0_i = y0_f + N_this;
       double* y0_o = y0_f + 2 * N_this;
       double* y0_g = y0_f + 3 * N_this;
 
-      double* y1_f = &batch_pre_act[(step + 1) * GateCount * N_this];
+      double* y1_f = &batch_pre_act_ref[(step + 1) * GateCount * N_this];
       double* y1_i = y1_f + N_this;
       double* y1_o = y1_f + 2 * N_this;
       double* y1_g = y1_f + 3 * N_this;
@@ -511,8 +514,8 @@ void LSTMLayer::calculate_forward_feed(
 
     for (; step < step_end; ++step)
     {
-      const double* x_row = &flattened_inputs[step * N_prev];
-      double* y_f = &batch_pre_act[step * GateCount * N_this];
+      const double* x_row = &flattened_inputs_ref[step * N_prev];
+      double* y_f = &batch_pre_act_ref[step * GateCount * N_this];
       double* y_i = y_f + N_this;
       double* y_o = y_f + 2 * N_this;
       double* y_g = y_f + 3 * N_this;
@@ -569,7 +572,7 @@ void LSTMLayer::calculate_forward_feed(
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+        double* pre_t = &batch_pre_act_ref[(b * num_time_steps + t) * GateCount * N_this];
         std::copy(pre_t, pre_t + 4 * N_this, packed_bptt.begin());
 
         double* f_ptr = packed_bptt.data();

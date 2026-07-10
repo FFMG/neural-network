@@ -460,4 +460,102 @@ TEST_F(LSTMLayerTest, BPTTWorkspaceResizeCorrectness) {
     EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
 }
 
+TEST_F(LSTMLayerTest, SingleVSMultiThreadedEquivalence)
+{
+  unsigned num_inputs = 100;
+  unsigned num_outputs = 100;
+  size_t batch_size = 100;
+  size_t num_time_steps = 20;
+
+  // Layer 1: single threaded
+  LSTMLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+  // Layer 2: multi threaded
+  LSTMLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0);
+
+  // Helper to fill vectors with identical values
+  auto initialize_weights = [&](LSTMLayer& l)
+  {
+    l.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.05));
+    l.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.08));
+    l.set_b_values(std::vector<double>(num_outputs, 0.01));
+
+    l.set_f_w_values(std::vector<double>(num_inputs * num_outputs, 0.06));
+    l.set_f_rw_values(std::vector<double>(num_outputs * num_outputs, 0.09));
+    l.set_f_b_values(std::vector<double>(num_outputs, 0.02));
+
+    l.set_i_w_values(std::vector<double>(num_inputs * num_outputs, 0.07));
+    l.set_i_rw_values(std::vector<double>(num_outputs * num_outputs, 0.10));
+    l.set_i_b_values(std::vector<double>(num_outputs, 0.03));
+
+    l.set_o_w_values(std::vector<double>(num_inputs * num_outputs, 0.04));
+    l.set_o_rw_values(std::vector<double>(num_outputs * num_outputs, 0.07));
+    l.set_o_b_values(std::vector<double>(num_outputs, 0.04));
+  };
+
+  initialize_weights(layer_st);
+  initialize_weights(layer_mt);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  // Setup batch inputs and next gradients
+  auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+  auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  std::vector<double> inputs(num_time_steps * num_inputs, 0.5);
+  std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs, 0.25));
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go_st[b].set_rnn_outputs(0, inputs);
+    batch_go_mt[b].set_rnn_outputs(0, inputs);
+  }
+
+  // Forward feed
+  layer_st.calculate_forward_feed(batch_go_st, prev_layer, {}, batch_hs_st, batch_size, false);
+  layer_mt.calculate_forward_feed(batch_go_mt, prev_layer, {}, batch_hs_mt, batch_size, false);
+
+  // Backward feed
+  MockLayer next_layer(2, num_outputs);
+  std::vector<double> next_weights(num_outputs * num_outputs, 0.1);
+  next_layer.set_w_values(next_weights);
+
+  layer_st.calculate_hidden_gradients(batch_go_st, next_layer, batch_next_grads, batch_hs_st, batch_size, static_cast<int>(num_time_steps));
+  layer_mt.calculate_hidden_gradients(batch_go_mt, next_layer, batch_next_grads, batch_hs_mt, batch_size, static_cast<int>(num_time_steps));
+
+  // Store gradients
+  layer_st.calculate_and_store_gradients(batch_go_st, batch_hs_st, prev_layer, batch_size, static_cast<int>(num_time_steps));
+  layer_mt.calculate_and_store_gradients(batch_go_mt, batch_hs_mt, prev_layer, batch_size, static_cast<int>(num_time_steps));
+
+  // Helper to assert two vectors are equal within tolerance
+  auto assert_vectors_equal = [](const std::vector<double>& v1, const std::vector<double>& v2)
+  {
+    ASSERT_EQ(v1.size(), v2.size());
+    for (size_t i = 0; i < v1.size(); ++i)
+    {
+      EXPECT_NEAR(v1[i], v2[i], 1e-9);
+    }
+  };
+
+  // Assert all gradients are identical
+  assert_vectors_equal(layer_st.get_w_grads(), layer_mt.get_w_grads());
+  assert_vectors_equal(layer_st.get_rw_grads(), layer_mt.get_rw_grads());
+  assert_vectors_equal(layer_st.get_b_grads(), layer_mt.get_b_grads());
+
+  assert_vectors_equal(layer_st.get_f_w_grads(), layer_mt.get_f_w_grads());
+  assert_vectors_equal(layer_st.get_f_rw_grads(), layer_mt.get_f_rw_grads());
+  assert_vectors_equal(layer_st.get_f_b_grads(), layer_mt.get_f_b_grads());
+
+  assert_vectors_equal(layer_st.get_i_w_grads(), layer_mt.get_i_w_grads());
+  assert_vectors_equal(layer_st.get_i_rw_grads(), layer_mt.get_i_rw_grads());
+  assert_vectors_equal(layer_st.get_i_b_grads(), layer_mt.get_i_b_grads());
+
+  assert_vectors_equal(layer_st.get_o_w_grads(), layer_mt.get_o_w_grads());
+  assert_vectors_equal(layer_st.get_o_rw_grads(), layer_mt.get_o_rw_grads());
+  assert_vectors_equal(layer_st.get_o_b_grads(), layer_mt.get_o_b_grads());
+}
+
 
