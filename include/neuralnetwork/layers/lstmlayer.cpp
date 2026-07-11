@@ -1305,18 +1305,55 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
     }
   }
 
-  for (int t = t_start; t >= t_end; --t) {
-    for (size_t b = start; b < end; ++b) {
-      const size_t b_idx = b - start;
+  const size_t batch_size_chunk = end - start;
+  const size_t total_elements = batch_size_chunk * N_this;
+
+  for (int t = t_start; t >= t_end; --t)
+  {
+    // 1. Gather raw inputs contiguously
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      size_t b = start + b_idx;
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
       const auto& state = layer_states[t];
       const auto packed = state.get_pre_activation_sums();
       const auto c_curr = state.get_cell_state_values();
+
+      std::copy(c_curr.begin(), c_curr.end(), &workspace.c_vals[b_idx * N_this]);
+      std::copy(&packed[3 * N_this], &packed[3 * N_this] + N_this, &workspace.g_vals[b_idx * N_this]);
+    }
+
+    // 2. Contiguous activation
+    // tanh_c_vals = tanh(c_vals)
+    std::copy(workspace.c_vals.begin(), workspace.c_vals.begin() + total_elements, workspace.tanh_c_vals.begin());
+    get_activation().activate(workspace.tanh_c_vals.data(), workspace.tanh_c_vals.data() + total_elements);
+
+    // f_vals = tanh(g_vals)
+    std::copy(workspace.g_vals.begin(), workspace.g_vals.begin() + total_elements, workspace.f_vals.begin());
+    get_activation().activate(workspace.f_vals.data(), workspace.f_vals.data() + total_elements);
+
+    // 3. Contiguous derivative
+    const auto& act = get_activation();
+    act.activate_derivative(workspace.c_vals.data(), workspace.c_vals.data() + total_elements, workspace.tanh_c_vals.data(), workspace.dc_act_deriv.data());
+    act.activate_derivative(workspace.g_vals.data(), workspace.g_vals.data() + total_elements, workspace.f_vals.data(), workspace.dg_act_deriv.data());
+
+    // 4. Batch loop for gate steps
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      size_t b = start + b_idx;
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& state = layer_states[t];
+      const auto packed = state.get_pre_activation_sums();
       const bool has_prev = (t > 0);
       const auto c_prev = has_prev ? layer_states[t - 1].get_cell_state_values() : std::span<const double>();
+
       double* dh_next = &workspace.d_next_h[b_idx * N_this];
       double* dc_next = &workspace.d_next_c[b_idx * N_this];
-      if (t == t_start) { std::fill(dh_next, dh_next + N_this, 0.0); std::fill(dc_next, dc_next + N_this, 0.0); }
+      if (t == t_start)
+      {
+        std::fill(dh_next, dh_next + N_this, 0.0);
+        std::fill(dc_next, dc_next + N_this, 0.0);
+      }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       double* dh_curr = &workspace.dh_curr[b_idx * N_this];
 
@@ -1333,27 +1370,17 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       const double* df_ptr = &packed[0];
       const double* di_ptr = &packed[N_this];
       const double* do_ptr = &packed[2 * N_this];
-      const double* g_pre_ptr = &packed[3 * N_this]; // Now storing pre-activation g
+      const double* g_pre_ptr = &packed[3 * N_this];
 
       double* df_chunk = &workspace.chunk_df[b_idx * N_this];
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
       double* activated_c_chunk = &workspace.tanh_c_vals[b_idx * N_this];
-      double* activated_g_chunk = &workspace.g_vals[b_idx * N_this]; // Reuse g_vals for activated g
+      double* activated_g_chunk = &workspace.f_vals[b_idx * N_this];
 
-      std::copy(c_curr.begin(), c_curr.end(), activated_c_chunk);
-      get_activation().activate(activated_c_chunk, activated_c_chunk + N_this);
-
-      std::copy(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk);
-      get_activation().activate(activated_g_chunk, activated_g_chunk + N_this);
-
-      // Pre-calculate derivatives
       double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
       double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
-      const auto& act = get_activation();
-      act.activate_derivative(c_curr.data(), c_curr.data() + N_this, activated_c_chunk, dc_act_deriv);
-      act.activate_derivative(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk, dg_act_deriv);
 
       simd::lstm_bptt_gate_step(
         N_this, 
@@ -1385,7 +1412,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);
       std::copy(di_chunk, di_chunk + N_this, grad_out_t + N_this);
       std::copy(do_chunk, do_chunk + N_this, grad_out_t + 2 * N_this);
-      std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this); // Gate 4 (Candidate)
+      std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this);
     }
 
     // Now run batched GEMM operations outside the batch loop:

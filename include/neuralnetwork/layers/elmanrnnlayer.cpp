@@ -107,6 +107,7 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_timesteps(std::move(src._rw_timesteps)),
   _rw_decays(std::move(src._rw_decays)),
   _rw_values_T(std::move(src._rw_values_T)),
+  _w_values_T(std::move(src._w_values_T)),
   _thread_workspaces(std::move(src._thread_workspaces))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -222,6 +223,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_timesteps = std::move(src._rw_timesteps);
     _rw_decays = std::move(src._rw_decays);
     _rw_values_T = std::move(src._rw_values_T);
+    _w_values_T = std::move(src._w_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
   }
   return *this;
@@ -724,11 +726,29 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
     }
   }
 
+  const size_t batch_size_chunk = end - start;
+  const size_t total_elements = batch_size_chunk * N_this;
+
   for (int t = t_start; t >= t_end; --t)
   {
-    for (size_t b = start; b < end; ++b)
+    // 1. Gather raw inputs contiguously
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
-      const size_t b_idx = b - start;
+      size_t b = start + b_idx;
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& state = layer_states[t];
+
+      std::copy(state.get_pre_activation_sums().begin(), state.get_pre_activation_sums().end(), &workspace.pre_act_buf[b_idx * N_this]);
+      std::copy(state.get_hidden_state_values().begin(), state.get_hidden_state_values().end(), &workspace.hidden_val_buf[b_idx * N_this]);
+    }
+
+    // 2. Contiguous activation derivative
+    get_activation().activate_derivative(workspace.pre_act_buf.data(), workspace.pre_act_buf.data() + total_elements, workspace.hidden_val_buf.data(), workspace.deriv_buf.data());
+
+    // 3. Batch loop for gate steps
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      size_t b = start + b_idx;
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
       const auto& state = layer_states[t];
 
@@ -737,21 +757,65 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
       double* g_this_tick = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * N_this];
 
       const auto mask = state.get_cell_state_values();
-      const double* pre_act = state.get_pre_activation_sums().data();
       double* deriv_buf = &workspace.deriv_buf[b_idx * N_this];
 
-      get_activation().activate_derivative(pre_act, pre_act + N_this, state.get_hidden_state_values().data(), deriv_buf);
+      if (t == t_start)
+      {
+        std::fill(dh_next, dh_next + N_this, 0.0);
+      }
 
       // Calculate gate gradients using SIMD helper
       simd::elman_bptt_gate_step(upstream_grads, dh_next, deriv_buf, mask.data(), g_this_tick, N_this);
 
-      // Calculate dX_t
-      double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      std::fill(dx_t, dx_t + N_prev, 0.0);
-      simd::gemv_add(get_w_values().data(), g_this_tick, dx_t, N_prev, N_this);
-
       std::fill(dh_next, dh_next + N_this, 0.0);
-      simd::gemv_add(_rw_values.data(), g_this_tick, dh_next, N_this, N_this);
+    }
+
+    // 4. Contiguous batched GEMM operations outside the batch loop
+    {
+      size_t b = 0;
+      for (; b + 3 < batch_size_chunk; b += 4)
+      {
+        const double* g0 = &workspace.rnn_grad_matrix[(b * num_time_steps + t) * N_this];
+        const double* g1 = &workspace.rnn_grad_matrix[((b + 1) * num_time_steps + t) * N_this];
+        const double* g2 = &workspace.rnn_grad_matrix[((b + 2) * num_time_steps + t) * N_this];
+        const double* g3 = &workspace.rnn_grad_matrix[((b + 3) * num_time_steps + t) * N_this];
+
+        double* y0_rw = workspace.d_next_h.data() + b * N_this;
+        double* y1_rw = workspace.d_next_h.data() + (b + 1) * N_this;
+        double* y2_rw = workspace.d_next_h.data() + (b + 2) * N_this;
+        double* y3_rw = workspace.d_next_h.data() + (b + 3) * N_this;
+
+        double* y0_w = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1_w = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+        double* y2_w = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
+        double* y3_w = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
+
+        simd::gemm_four_batches(g0, g1, g2, g3, _rw_values_T.data(), y0_rw, y1_rw, y2_rw, y3_rw, N_this, N_this);
+        simd::gemm_four_batches(g0, g1, g2, g3, _w_values_T.data(), y0_w, y1_w, y2_w, y3_w, N_this, N_prev);
+      }
+      for (; b + 1 < batch_size_chunk; b += 2)
+      {
+        const double* g0 = &workspace.rnn_grad_matrix[(b * num_time_steps + t) * N_this];
+        const double* g1 = &workspace.rnn_grad_matrix[((b + 1) * num_time_steps + t) * N_this];
+
+        double* y0_rw = workspace.d_next_h.data() + b * N_this;
+        double* y1_rw = workspace.d_next_h.data() + (b + 1) * N_this;
+
+        double* y0_w = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1_w = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+
+        simd::gemm_two_batches(g0, g1, _rw_values_T.data(), y0_rw, y1_rw, N_this, N_this);
+        simd::gemm_two_batches(g0, g1, _w_values_T.data(), y0_w, y1_w, N_this, N_prev);
+      }
+      for (; b < batch_size_chunk; ++b)
+      {
+        const double* g = &workspace.rnn_grad_matrix[(b * num_time_steps + t) * N_this];
+        double* y_rw = workspace.d_next_h.data() + b * N_this;
+        double* y_w = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+
+        simd::gemm_one_batch(g, _rw_values_T.data(), y_rw, N_this, N_this);
+        simd::gemm_one_batch(g, _w_values_T.data(), y_w, N_this, N_prev);
+      }
     }
   }
 
@@ -960,6 +1024,13 @@ void ElmanRNNLayer::zero_gradients()
   std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
 }
 
+void ElmanRNNLayer::set_w_values(const std::vector<double>& v)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  Layer::set_w_values(v);
+  cache_recurrent_weights();
+}
+
 void ElmanRNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -1033,13 +1104,30 @@ void ElmanRNNLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t n = get_number_neurons();
-  if (n == 0) return;
+  const size_t n_prev = get_number_input_neurons();
+  if (n == 0)
+  {
+    return;
+  }
   _rw_values_T.resize(n * n);
   for (size_t i = 0; i < n; ++i)
   {
     for (size_t j = 0; j < n; ++j)
     {
       _rw_values_T[j * n + i] = _rw_values[i * n + j];
+    }
+  }
+
+  if (n_prev > 0)
+  {
+    _w_values_T.resize(n * n_prev);
+    const auto& w_vals = get_w_values();
+    for (size_t i = 0; i < n_prev; ++i)
+    {
+      for (size_t j = 0; j < n; ++j)
+      {
+        _w_values_T[j * n_prev + i] = w_vals[i * n + j];
+      }
     }
   }
 }

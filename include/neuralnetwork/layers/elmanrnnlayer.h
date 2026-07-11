@@ -138,6 +138,8 @@ public:
 
   Layer* clone() const override;
 
+  void set_w_values(const std::vector<double>& v) override;
+
   void calculate_and_store_gradients(
     const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& hidden_states,
@@ -241,6 +243,8 @@ private:
     AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x N]
     AlignedVector dx_matrix;      // Stores input gradients [Batch x T x N_prev]
     AlignedVector deriv_buf;
+    AlignedVector pre_act_buf;
+    AlignedVector hidden_val_buf;
 
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
@@ -249,6 +253,8 @@ private:
       rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
       dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
       deriv_buf.resize_and_zero(batch_chunk_size * n);
+      pre_act_buf.resize_and_zero(batch_chunk_size * n);
+      hidden_val_buf.resize_and_zero(batch_chunk_size * n);
     }
   };
 
@@ -288,8 +294,9 @@ private:
   mutable std::vector<long long> _rw_timesteps;
   std::vector<double> _rw_decays;
 
-  // Cached transposed recurrent weights
+  // Cached transposed recurrent weights and input weights
   BPTTWorkspace::AlignedVector _rw_values_T;
+  BPTTWorkspace::AlignedVector _w_values_T;
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
