@@ -1122,10 +1122,32 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   double* d_next_h_ptr_all = workspace.d_next_h.data();
   double* rnn_grad_ptr_all = workspace.rnn_grad_matrix.data();
 
+  const size_t batch_size_chunk = end - start;
+  const size_t total_elements = batch_size_chunk * N_this;
+
   for (int t = t_start; t >= t_end; --t)
   {
-    // Step 2a: Calculate gate gradients
-    for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
+    // Step 2a: Contiguous activation derivative calculation for candidate recurrent states
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      size_t b = start + b_idx;
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& state = layer_states[t];
+      const auto& packed_states = state.get_pre_activation_sums();
+
+      std::copy(&packed_states[2 * N_this], &packed_states[2 * N_this] + N_this, &workspace.h_hat_pre_buf[b_idx * N_this]);
+      std::copy(&packed_states[3 * N_this], &packed_states[3 * N_this] + N_this, &workspace.h_hat_val_buf[b_idx * N_this]);
+    }
+
+    get_activation().activate_derivative(
+      workspace.h_hat_pre_buf.data(),
+      workspace.h_hat_pre_buf.data() + total_elements,
+      workspace.h_hat_val_buf.data(),
+      workspace.dh_hat_pre_deriv_buf.data()
+    );
+
+    // Calculate gate gradients
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
       size_t b = start + b_idx;
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
@@ -1141,10 +1163,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       const double* grad_next_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
       double* d_next_h_ptr = &d_next_h_ptr_all[b_idx * N_this];
 
-      // Pre-calculate derivatives
       double* dh_hat_pre_deriv = &workspace.dh_hat_pre_deriv_buf[b_idx * N_this];
-      const auto& act = get_activation();
-      act.activate_derivative(h_hat_pre_vals, h_hat_pre_vals + N_this, h_hat_ptr, dh_hat_pre_deriv);
 
       simd::gru_bptt_gate_step(
         N_this,

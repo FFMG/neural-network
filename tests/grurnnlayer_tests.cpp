@@ -729,6 +729,61 @@ TEST_F(GRURNNLayerTest, SingleVSMultiThreadedEquivalence)
   assert_vectors_equal(layer_st.get_r_b_grads(), layer_mt.get_r_b_grads());
 }
 
+TEST_F(GRURNNLayerTest, BPTTMultiStepBatchVerification)
+{
+  unsigned num_inputs = 2;
+  unsigned num_outputs = 2;
+  size_t batch_size = 5;
+  size_t num_time_steps = 3;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+  layer.set_z_w_values({ 0.15, 0.25, 0.35, 0.45 });
+  layer.set_z_rw_values({ 0.1, 0.2, 0.3, 0.4 });
+  layer.set_z_b_values({ 0.05, 0.15 });
+
+  layer.set_r_w_values({ 0.25, 0.35, 0.45, 0.55 });
+  layer.set_r_rw_values({ 0.2, 0.3, 0.4, 0.5 });
+  layer.set_r_b_values({ 0.15, 0.25 });
+
+  layer.set_w_values({ 0.35, 0.45, 0.55, 0.65 });
+  layer.set_rw_values({ 0.3, 0.4, 0.5, 0.6 });
+  layer.set_b_values({ 0.25, 0.35 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  std::vector<double> inputs = { 0.5, -0.5, 0.2, -0.2, 0.1, -0.1 };
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go[b].set_rnn_outputs(0, inputs);
+  }
+
+  // Forward feed
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  MockLayer next_layer(2, num_outputs);
+  next_layer.set_w_values({ 1.0, 0.5, 0.2, 0.8 });
+
+  std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs, 0.1));
+
+  // Backward feed
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, static_cast<int>(num_time_steps));
+
+  // Store gradients
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, static_cast<int>(num_time_steps));
+
+  // Verify gradients computed are reasonable numbers (non-zero and finite)
+  EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
+  for (const double w : layer.get_w_grads())
+  {
+    EXPECT_TRUE(std::isfinite(w));
+  }
+}
+
 
 
 
