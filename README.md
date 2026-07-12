@@ -294,6 +294,16 @@ For classification tasks using Softmax, the network automatically optimizes the 
 * `directional_confidence_score`
 * `prediction_coverage`
 
+### Calculating Metrics
+
+You can calculate error metrics for the network's predictions using the `calculate_forecast_metrics` or `calculate_forecast_metrics_all_layers` methods:
+
+```cpp
+  // Calculate forecast metrics for the default output layer.
+  // The 'in_sample' parameter specifies whether to evaluate on training data (true) or validation/testing data (false).
+  std::vector<NeuralNetworkHelperMetrics> metrics = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, /*in_sample=*/false);
+```
+
 ## Performance Optimization (SIMD)
 
 To achieve high throughput during training and inference, this library leverages **Advanced Vector Extensions 2 (AVX2)** intrinsics for core mathematical operations (GEMM, dot products, and optimizer updates).

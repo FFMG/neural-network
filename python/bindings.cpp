@@ -197,7 +197,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("percent_complete", &NeuralNetworkHelper::percent_complete)
         .def_property_readonly("sample_size", &NeuralNetworkHelper::sample_size)
         .def("calculate_forecast_metric", &NeuralNetworkHelper::calculate_forecast_metric)
-        .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics);
+        .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics, py::arg("error_types"), py::arg("in_sample") = false);
 
     // 3. NeuralNetworkOptions
     py::class_<NeuralNetworkOptions>(m, "NeuralNetworkOptions")
@@ -240,9 +240,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("think", py::overload_cast<const std::vector<double>&>(&NeuralNetwork::think, py::const_))
         .def("get_topology", &NeuralNetwork::get_topology)
         .def("calculate_forecast_metric", &NeuralNetwork::calculate_forecast_metric)
-        .def("calculate_forecast_metrics", &NeuralNetwork::calculate_forecast_metrics, py::arg("error_types"), py::arg("final_check") = false)
+        .def("calculate_forecast_metrics", &NeuralNetwork::calculate_forecast_metrics, py::arg("error_types"), py::arg("in_sample") = false)
         .def("calculate_forecast_metric_all_layers", &NeuralNetwork::calculate_forecast_metric_all_layers)
-        .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers, py::arg("error_types"), py::arg("final_check") = false)
+        .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers, py::arg("error_types"), py::arg("in_sample") = false)
         .def("get_learning_rate", &NeuralNetwork::get_learning_rate)
         .def("get_temperature", py::overload_cast<>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_temperature, py::const_))
