@@ -379,22 +379,22 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return results.front();
 }
 
-std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_forecast_metrics_impl(error_types, final_check, nullptr);
+  return calculate_forecast_metrics_impl(error_types, in_sample, nullptr);
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool final_check) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_forecast_metrics_all_layers_impl(error_types, final_check, nullptr);
+  return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr);
 }
 
-std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const
+std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  auto results = calculate_forecast_metrics_all_layers_impl(error_types, final_check, layers);
+  auto results = calculate_forecast_metrics_all_layers_impl(error_types, in_sample, layers);
   if (results.size() > 0)
   {
     return results[0];
@@ -402,9 +402,8 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return {};
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool final_check, const Layers* layers) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const
 {
-  (void)final_check;
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
   std::shared_ptr<NeuralNetworkHelper> helper;
@@ -444,7 +443,9 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   const auto& training_inputs = helper->training_inputs();
   const auto& training_outputs = helper->training_outputs();
 
-  const std::vector<size_t>* checks_indexes = final_check ? &helper->final_check_indexes() : &helper->checking_indexes();
+  const std::vector<size_t>* checks_indexes = in_sample ? 
+    &helper->training_indexes() : 
+    ((helper->epoch() >= helper->number_of_epoch() && helper->number_of_epoch() > 0) ? &helper->final_check_indexes() : &helper->checking_indexes());
   size_t prediction_size = checks_indexes->size();
 
   if (prediction_size == 0)
@@ -829,7 +830,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   if (Logger::can_info() && options().final_error_calculation_types().size() > 0)
   {
-    const auto& metrics = calculate_forecast_metrics_all_layers(options().final_error_calculation_types(), true);
+    const auto& metrics = calculate_forecast_metrics_all_layers(options().final_error_calculation_types(), false);
     std::string message = "";
     unsigned output_layer_number = 0;
     for (const auto& metric : metrics)
