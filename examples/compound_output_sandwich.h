@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "helpers/errorcalculation.h"
 #include "common/logger.h"
 #include "helpers/neuralnetworkserializer.h"
@@ -100,7 +100,7 @@ private:
 
     auto metrics = nn.calculate_forecast_metrics_all_layers({ 
       ErrorCalculation::type::directional_accuracy 
-    }, true);
+    }, false);
 
     Logger::info("--- Verification: ", label, " ---");
     Logger::info("Softmax Head 0 Sum-to-one: ", (s0_sum_ok ? "PASS" : "FAIL"));

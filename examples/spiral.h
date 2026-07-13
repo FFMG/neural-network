@@ -1,4 +1,4 @@
-﻿#include "helpers/errorcalculation.h"
+#include "helpers/errorcalculation.h"
 #include "common/logger.h"
 #include "helpers/neuralnetworkserializer.h"
 
@@ -165,7 +165,7 @@ public:
     {
       ErrorCalculation::type::rmse,
       ErrorCalculation::type::bce_loss 
-    });
+    }, false);
     Logger::debug("Error rmse: ", metrics[0].error());
     Logger::debug("Error bce:  ", metrics[1].error());
 

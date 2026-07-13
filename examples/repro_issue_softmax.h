@@ -205,7 +205,7 @@ public:
         ErrorCalculation::type::prediction_coverage 
       };
 
-      auto metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics);
+      auto metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics, false);
 
       Logger::info("Branch 0 Metrics (Regression/Huber):");
       if (metrics_results.size() > 0)
@@ -282,7 +282,7 @@ public:
       // Calculate metrics for both layers - request only appropriate metrics for each
       std::vector<ErrorCalculation::type> all_layer_metrics = { ErrorCalculation::type::huber_direction_loss, ErrorCalculation::type::cross_entropy, ErrorCalculation::type::directional_confidence_score, ErrorCalculation::type::prediction_coverage };
 
-      auto all_layer_metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics);
+      auto all_layer_metrics_results = nn->calculate_forecast_metrics_all_layers(all_layer_metrics, false);
 
       Logger::info("Layer 0 Metrics (Regression):");
       for (const auto& m : all_layer_metrics_results[0])
