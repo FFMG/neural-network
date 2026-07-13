@@ -99,7 +99,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 *   `nn.NeuralNetworkHelper`: Tracking helper passed to the progress callback.
     *   Properties: `learning_rate`, `number_of_epoch`, `epoch`, `percent_complete`, `sample_size`.
     *   `calculate_forecast_metric(error_type)`: Calculates forecast metric for the default output layer.
-    *   `calculate_forecast_metrics(error_types, in_sample=False)`: Calculates list of forecast metrics for the default output layer.
+    *   `calculate_forecast_metrics(error_types, in_sample=True)`: Calculates list of forecast metrics for the default output layer.
 *   `nn.NeuralNetworkOptions`: Builder for model options.
     *   `NeuralNetworkOptions.create(topology)`: Static builder factory. Returns an options builder instance.
     *   Builder Methods: `with_has_bias`, `with_output_layer_details`, `with_number_of_epoch`, `with_batch_size`, `with_data_is_unique`, `with_progress_callback`, `with_number_of_threads`, `with_learning_rate`, `with_learning_rate_decay_rate`, `with_learning_rate_warmup`, `with_learning_rate_boost_rate`, `with_adaptive_learning_rates`, `with_hidden_layers`, `with_residual_layer_jump`, `with_clip_threshold`, `with_shuffle_training_data`, `with_shuffle_bptt_batches`, `with_enable_bptt`, `with_bptt_max_ticks`, `with_update_training_monitor_percent`, `with_final_error_calculation_types`, `with_log_level`.
@@ -109,7 +109,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `train(inputs, outputs)`: Runs training on the provided datasets.
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `get_topology()`: Returns the list of layer sizes.
-    *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=False)`: Computes model forecast error metrics.
+    *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`: Computes model forecast error metrics.
     *   `get_learning_rate()`, `get_temperature()`, `get_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.

@@ -120,7 +120,7 @@ public:
   }
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
-  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = false) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true) const;
 
   NeuralNetworkHelper(
     NeuralNetwork& neural_network,
