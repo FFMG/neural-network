@@ -55,11 +55,11 @@ public:
 
   // Output layer 0 only (common use case)
   NeuralNetworkHelperMetrics calculate_forecast_metric(ErrorCalculation::type error_type) const;
-  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = false) const;
+  std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true) const;
 
   // Multiple Output layers
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric_all_layers(ErrorCalculation::type error_type) const;
-  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = false) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true) const;
 
   double get_learning_rate() const noexcept;
   double get_temperature() const noexcept;

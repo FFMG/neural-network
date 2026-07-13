@@ -557,5 +557,45 @@ TEST(NetworkIntegrationTest, BPTTForecastMetricsActualHistoryCorrectness)
   EXPECT_GE(metrics[0].error(), 0.0);
 }
 
+TEST(NetworkIntegrationTest, ForecastMetricsDefaultInSample)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}, {1.1}
+  };
+
+  NeuralNetwork nn(options);
+  nn.train(inputs, outputs);
+
+  // Default call (should evaluate in-sample, i.e., training indexes)
+  auto metrics_default = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse });
+
+  // Explicit in_sample = true
+  auto metrics_in_sample = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, true);
+
+  // Explicit in_sample = false (should evaluate out-of-sample final check indexes)
+  auto metrics_out_of_sample = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, false);
+
+  ASSERT_FALSE(metrics_default.empty());
+  ASSERT_FALSE(metrics_in_sample.empty());
+  ASSERT_FALSE(metrics_out_of_sample.empty());
+
+  // Verify default is identical to explicit in_sample = true
+  EXPECT_NEAR(metrics_default[0].error(), metrics_in_sample[0].error(), 1e-9);
+
+  // Out of sample error can be different (or we just assert the methods run successfully)
+  EXPECT_GE(metrics_default[0].error(), 0.0);
+  EXPECT_GE(metrics_out_of_sample[0].error(), 0.0);
+}
+
 
 

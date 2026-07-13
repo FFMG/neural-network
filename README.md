@@ -300,8 +300,8 @@ You can calculate error metrics for the network's predictions using the `calcula
 
 ```cpp
   // Calculate forecast metrics for the default output layer.
-  // The 'in_sample' parameter specifies whether to evaluate on training data (true) or validation/testing data (false).
-  std::vector<NeuralNetworkHelperMetrics> metrics = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, /*in_sample=*/false);
+  // The 'in_sample' parameter defaults to true (evaluating on training data). Pass false to evaluate on validation/testing data.
+  std::vector<NeuralNetworkHelperMetrics> metrics = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, /*in_sample=*/true);
 ```
 
 ## Performance Optimization (SIMD)
