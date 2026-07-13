@@ -73,6 +73,7 @@ add_executable(neuralnetwork_tests
     multioutputlayer_tests.cpp
     network_integration_tests.cpp
     neuralnetwork_tests.cpp    
+    neuralnetworkhelper_tests.cpp
     neuron_tests.cpp
     output_layer_details_tests.cpp
     simd_utils_tests.cpp

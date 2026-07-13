@@ -102,6 +102,7 @@
     <ClCompile Include="lstmlayer_mt_tests.cpp" />
     <ClCompile Include="multioutputlayer_tests.cpp" />
     <ClCompile Include="network_integration_tests.cpp" />
+    <ClCompile Include="neuralnetworkhelper_tests.cpp" />
     <ClCompile Include="neuralnetwork_tests.cpp" />
     <ClCompile Include="neuron_tests.cpp" />
     <ClCompile Include="output_layer_details_tests.cpp" />
@@ -126,6 +127,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="test_helper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
