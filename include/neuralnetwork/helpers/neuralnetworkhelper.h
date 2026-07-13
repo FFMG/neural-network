@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <chrono>
 
 #include "../libraries/instrumentor.h"
 #include "errorcalculation.h"
@@ -41,6 +42,12 @@ public:
       _checking_indexes = src._checking_indexes;
       _final_check_indexes = src._final_check_indexes;
       _training_monitor = src._training_monitor;
+      _duration_ms = src._duration_ms;
+      _last_epoch_time = src._last_epoch_time;
+      _epoch_durations = src._epoch_durations;
+      _max_history_size = src._max_history_size;
+      _duration_sum = src._duration_sum;
+      _ring_buffer_index = src._ring_buffer_index;
     }
     return *this;
   }
@@ -61,11 +68,21 @@ public:
       _checking_indexes = std::move(src._checking_indexes);
       _final_check_indexes = std::move(src._final_check_indexes);
       _training_monitor = std::move(src._training_monitor);
+      _duration_ms = src._duration_ms;
+      _last_epoch_time = std::move(src._last_epoch_time);
+      _epoch_durations = std::move(src._epoch_durations);
+      _max_history_size = src._max_history_size;
+      _duration_sum = src._duration_sum;
+      _ring_buffer_index = src._ring_buffer_index;
       src._neural_network = nullptr;
       src._learning_rate = 0;
       src._number_of_epoch = 0;
       src._epoch = 0;
       src._percent_complete = 0;
+      src._duration_ms = 0.0;
+      src._max_history_size = 10;
+      src._duration_sum = 0.0;
+      src._ring_buffer_index = 0;
       src._training_inputs = nullptr;
       src._training_outputs = nullptr;
     }
@@ -81,6 +98,12 @@ public:
   void set_learning_rate(double learning_rate) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     _learning_rate = learning_rate; 
+  }
+
+  [[nodiscard]] inline double duration_ms() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    return _duration_ms;
   }
 
   [[nodiscard]] inline unsigned number_of_epoch() const noexcept
@@ -132,8 +155,39 @@ public:
 
   void set_epoch(unsigned epoch) noexcept {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    if (_last_epoch_time == std::chrono::steady_clock::time_point{})
+    {
+      _last_epoch_time = std::chrono::steady_clock::now();
+      _duration_ms = 0.0;
+      _duration_sum = 0.0;
+      _ring_buffer_index = 0;
+      _epoch_durations.clear();
+      _epoch = epoch;
+      _percent_complete = _number_of_epoch == 0 ? 0.0 : static_cast<double>(_epoch) / _number_of_epoch;
+      return;
+    }
+
     if (_epoch != epoch)
     {
+      const auto now = std::chrono::steady_clock::now();
+      const auto elapsed = std::chrono::duration<double, std::milli>(now - _last_epoch_time).count();
+
+      if (_epoch_durations.size() < _max_history_size)
+      {
+        _epoch_durations.push_back(elapsed);
+        _duration_sum += elapsed;
+      }
+      else
+      {
+        _duration_sum -= _epoch_durations[_ring_buffer_index];
+        _epoch_durations[_ring_buffer_index] = elapsed;
+        _duration_sum += elapsed;
+        _ring_buffer_index = (_ring_buffer_index + 1) % _max_history_size;
+      }
+
+      _duration_ms = _duration_sum / _epoch_durations.size();
+      _last_epoch_time = now;
+
       _epoch = epoch;
       _percent_complete = _number_of_epoch == 0 ? 0.0 : static_cast<double>(_epoch) / _number_of_epoch;
     }
@@ -191,6 +245,12 @@ private:
   std::shared_ptr<std::vector<size_t>> _checking_indexes;
   std::shared_ptr<std::vector<size_t>> _final_check_indexes;
   TrainingMonitor _training_monitor;
+  double _duration_ms;
+  std::chrono::steady_clock::time_point _last_epoch_time;
+  std::vector<double> _epoch_durations;
+  size_t _max_history_size;
+  double _duration_sum;
+  size_t _ring_buffer_index;
 };
 
 } // namespace myoddweb::nn

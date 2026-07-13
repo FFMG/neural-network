@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "neuralnetworkhelper.h"
 #include "../neuralnetwork.h"
 
@@ -20,7 +21,12 @@ NeuralNetworkHelper::NeuralNetworkHelper(
   _training_outputs(&training_outputs),
   _training_indexes(std::make_shared<std::vector<size_t>>()),
   _checking_indexes(std::make_shared<std::vector<size_t>>()),
-  _final_check_indexes(std::make_shared<std::vector<size_t>>())
+  _final_check_indexes(std::make_shared<std::vector<size_t>>()),
+  _duration_ms(0.0),
+  _last_epoch_time(),
+  _max_history_size(std::clamp<size_t>(number_of_epoch / 2000, 10, 50)),
+  _duration_sum(0.0),
+  _ring_buffer_index(0)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
 }
