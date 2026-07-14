@@ -1086,29 +1086,66 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       continue;
     }
 
-    for (int t = t_start; t >= t_end; --t)
+    if (next_is_seq && &next_layer != this)
     {
-      const double* next_grad_ptr = nullptr;
-      if (next_is_seq)
+      int t = t_start;
+      for (; t - 3 >= t_end; t -= 4)
       {
-        next_grad_ptr = &next_grad_matrix[t * N_next];
-      }
-      else if (t == t_start && next_grad_size == N_next)
-      {
-        next_grad_ptr = next_grad_matrix;
-      }
+        const double* g0 = &next_grad_matrix[t * N_next];
+        const double* g1 = &next_grad_matrix[(t - 1) * N_next];
+        const double* g2 = &next_grad_matrix[(t - 2) * N_next];
+        const double* g3 = &next_grad_matrix[(t - 3) * N_next];
 
-      if (next_grad_ptr != nullptr)
+        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+        double* d1 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 1) * N_this];
+        double* d2 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 2) * N_this];
+        double* d3 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 3) * N_this];
+
+        simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+      }
+      for (; t - 1 >= t_end; t -= 2)
       {
-        double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-        if (&next_layer == this)
+        const double* g0 = &next_grad_matrix[t * N_next];
+        const double* g1 = &next_grad_matrix[(t - 1) * N_next];
+
+        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+        double* d1 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 1) * N_this];
+
+        simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
+      }
+      for (; t >= t_end; --t)
+      {
+        const double* g0 = &next_grad_matrix[t * N_next];
+        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+
+        simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+      }
+    }
+    else
+    {
+      for (int t = t_start; t >= t_end; --t)
+      {
+        const double* next_grad_ptr = nullptr;
+        if (next_is_seq)
         {
-          // Identity mapping: next_grad_ptr is already dL/dh_{t+1}
-          simd::add_vectors(next_grad_ptr, dest_ptr, N_this);
+          next_grad_ptr = &next_grad_matrix[t * N_next];
         }
-        else
+        else if (t == t_start && next_grad_size == N_next)
         {
-          simd::gemv_add(next_w_data, next_grad_ptr, dest_ptr, N_this, N_next);
+          next_grad_ptr = next_grad_matrix;
+        }
+
+        if (next_grad_ptr != nullptr)
+        {
+          double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+          if (&next_layer == this)
+          {
+            simd::add_vectors(next_grad_ptr, dest_ptr, N_this);
+          }
+          else
+          {
+            simd::gemv_add(next_w_data, next_grad_ptr, dest_ptr, N_this, N_next);
+          }
         }
       }
     }

@@ -558,4 +558,71 @@ TEST_F(LSTMLayerTest, SingleVSMultiThreadedEquivalence)
   assert_vectors_equal(layer_st.get_o_b_grads(), layer_mt.get_o_b_grads());
 }
 
+TEST_F(LSTMLayerTest, BPTTSequenceLengthsVerification)
+{
+  unsigned num_inputs = 3;
+  unsigned num_outputs = 4;
+  size_t batch_size = 3;
+
+  for (size_t num_time_steps = 1; num_time_steps <= 12; ++num_time_steps)
+  {
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.1));
+    layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.15));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.05));
+
+    layer.set_f_w_values(std::vector<double>(num_inputs * num_outputs, 0.12));
+    layer.set_f_rw_values(std::vector<double>(num_outputs * num_outputs, 0.16));
+    layer.set_f_b_values(std::vector<double>(num_outputs, 0.06));
+
+    layer.set_i_w_values(std::vector<double>(num_inputs * num_outputs, 0.14));
+    layer.set_i_rw_values(std::vector<double>(num_outputs * num_outputs, 0.18));
+    layer.set_i_b_values(std::vector<double>(num_outputs, 0.07));
+
+    layer.set_o_w_values(std::vector<double>(num_inputs * num_outputs, 0.16));
+    layer.set_o_rw_values(std::vector<double>(num_outputs * num_outputs, 0.20));
+    layer.set_o_b_values(std::vector<double>(num_outputs, 0.08));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+    std::vector<double> inputs(num_time_steps * num_inputs, 0.5);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      batch_go[b].set_rnn_outputs(0, inputs);
+    }
+
+    // Forward feed
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+    MockLayer next_layer(2, num_outputs);
+    std::vector<double> next_w_vals(num_outputs * num_outputs, 0.3);
+    next_layer.set_w_values(next_w_vals);
+
+    std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs, 0.15));
+
+    // Backward feed
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, static_cast<int>(num_time_steps));
+
+    // Store gradients
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, static_cast<int>(num_time_steps));
+
+    // Verify gradients computed are reasonable numbers (non-zero and finite)
+    EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
+    for (const double w : layer.get_w_grads())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+    for (const double rw : layer.get_rw_grads())
+    {
+      EXPECT_TRUE(std::isfinite(rw));
+    }
+  }
+}
+
+
 
