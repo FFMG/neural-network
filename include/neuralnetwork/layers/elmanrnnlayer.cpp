@@ -714,15 +714,49 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
     double* dest_base = &workspace.grad_from_next_all_t[b_idx * num_time_steps * N_this];
 
-    for (int t = t_start; t >= t_end; --t)
+    if (next_is_seq)
     {
-      if (!next_is_seq && t < t_start)
+      int t = t_start;
+      for (; t - 3 >= t_end; t -= 4)
       {
-        continue;
+        const double* g0 = &next_grads_base[t * N_next];
+        const double* g1 = &next_grads_base[(t - 1) * N_next];
+        const double* g2 = &next_grads_base[(t - 2) * N_next];
+        const double* g3 = &next_grads_base[(t - 3) * N_next];
+
+        double* d0 = &dest_base[t * N_this];
+        double* d1 = &dest_base[(t - 1) * N_this];
+        double* d2 = &dest_base[(t - 2) * N_this];
+        double* d3 = &dest_base[(t - 3) * N_this];
+
+        simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
       }
-      const double* g_next_t = next_is_seq ? &next_grads_base[t * N_next] : next_grads_base;
-      double* dest_t = &dest_base[t * N_this];
-      simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+      for (; t - 1 >= t_end; t -= 2)
+      {
+        const double* g0 = &next_grads_base[t * N_next];
+        const double* g1 = &next_grads_base[(t - 1) * N_next];
+
+        double* d0 = &dest_base[t * N_this];
+        double* d1 = &dest_base[(t - 1) * N_this];
+
+        simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
+      }
+      for (; t >= t_end; --t)
+      {
+        const double* g0 = &next_grads_base[t * N_next];
+        double* d0 = &dest_base[t * N_this];
+
+        simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+      }
+    }
+    else
+    {
+      if (t_start >= t_end)
+      {
+        const double* g_next_t = next_grads_base;
+        double* dest_t = &dest_base[t_start * N_this];
+        simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+      }
     }
   }
 
