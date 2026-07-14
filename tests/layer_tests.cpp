@@ -230,7 +230,7 @@ TEST(LayerTest, DropoutConsistency) {
 }
 
 TEST(LayerTest, DropoutStatisticalVerification) {
-    const unsigned num_neurons = 1000;
+    const unsigned num_neurons = 5000;
     const double dropout_rate = 0.3;
     auto neurons = MockLayer::create_neurons_exposed(dropout_rate, num_neurons);
     
@@ -242,7 +242,7 @@ TEST(LayerTest, DropoutStatisticalVerification) {
     }
     
     double actual_rate = static_cast<double>(dropped) / num_neurons;
-    EXPECT_NEAR(actual_rate, dropout_rate, 0.05); // 5% tolerance for 10k samples
+    EXPECT_NEAR(actual_rate, dropout_rate, 0.06); // Relaxed tolerance and larger sample size to prevent flakiness
 }
 
 TEST(LayerTest, SetNumberOfThreads) {

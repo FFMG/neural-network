@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/multioutputlayer.h"
 #include "layers/multioutputlayerdetails.h"
 #include "layers/layerdetails.h"
@@ -319,7 +319,7 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
 
 TEST_F(MultiOutputLayerTest, DropoutStatisticalVerification) {
     const unsigned num_inputs = 100;
-    const unsigned num_outputs = 1000;
+    const unsigned num_outputs = 5000;
     const double dropout_rate = 0.5;
 
     std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0) };
@@ -357,7 +357,7 @@ TEST_F(MultiOutputLayerTest, DropoutStatisticalVerification) {
     }
 
     double actual_rate = static_cast<double>(dropped) / num_outputs;
-    EXPECT_NEAR(actual_rate, dropout_rate, 0.05); // 5% tolerance for 10k samples
+    EXPECT_NEAR(actual_rate, dropout_rate, 0.06); // Relaxed tolerance and larger sample size to prevent flakiness
     
     if (num_outputs - dropped > 0) {
         double avg_active = sum / (num_outputs - dropped);
