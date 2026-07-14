@@ -138,6 +138,25 @@ public:
     return TrainingStatus::OnTrack;
   }
 
+  static const char* monitor_status_to_string(TrainingMonitor::TrainingStatus status) 
+  {
+    MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
+    switch (status) 
+    {
+    case TrainingMonitor::TrainingStatus::OnTrack:   
+      return "on-track";
+
+    case TrainingMonitor::TrainingStatus::Stuck:
+      return "stuck";
+
+    case TrainingMonitor::TrainingStatus::Diverging:
+      return "diverging";
+
+    default:                                        
+      return "unknown";
+    }
+  }
+
 private:
   std::unordered_map<ErrorCalculation::type, std::vector<double>> _metrics;
   size_t _min_window;
