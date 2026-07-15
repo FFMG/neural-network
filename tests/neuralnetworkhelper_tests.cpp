@@ -82,3 +82,51 @@ TEST_F(NeuralNetworkHelperTest, CopyAndMoveOperatorsPreserveDuration)
   // Verify source helper is reset/cleared
   EXPECT_DOUBLE_EQ(helper.duration_ms(), 0.0);
 }
+
+TEST_F(NeuralNetworkHelperTest, TrainingMonitorMultipleLayersAndPanic)
+{
+  // 1. Single output layer setup
+  auto options1 = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .build();
+  
+  NeuralNetwork nn1(options1);
+  std::vector<std::vector<double>> inputs = {{1.0, 2.0}};
+  std::vector<std::vector<double>> outputs = {{0.5}};
+  
+  NeuralNetworkHelper helper1(nn1, 0.001, 10, inputs, outputs);
+  
+  // Valid index
+  EXPECT_NO_THROW((void)helper1.training_monitor(0));
+  
+  // Out of bounds index
+#if VALIDATE_DATA == 1
+  EXPECT_THROW((void)helper1.training_monitor(1), std::runtime_error);
+  EXPECT_THROW((void)helper1.training_monitor(99), std::runtime_error);
+#endif
+
+  // 2. Multiple output layers setup
+  OutputLayerDetails o0(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+  OutputLayerDetails o1(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+  
+  auto options2 = NeuralNetworkOptions::create({ 4, 3, 3 })
+    .with_output_layer_details({ o0, o1 })
+    .with_learning_rate(0.001)
+    .build();
+    
+  NeuralNetwork nn2(options2);
+  std::vector<std::vector<double>> inputs2 = {{1.0, 2.0, 3.0, 4.0}};
+  std::vector<std::vector<double>> outputs2 = {{0.5, 0.5, 0.5}};
+  
+  NeuralNetworkHelper helper2(nn2, 0.001, 10, inputs2, outputs2);
+  
+  // Valid indices (0 and 1)
+  EXPECT_NO_THROW((void)helper2.training_monitor(0));
+  EXPECT_NO_THROW((void)helper2.training_monitor(1));
+  
+  // Out of bounds index (2)
+#if VALIDATE_DATA == 1
+  EXPECT_THROW((void)helper2.training_monitor(2), std::runtime_error);
+#endif
+}
+

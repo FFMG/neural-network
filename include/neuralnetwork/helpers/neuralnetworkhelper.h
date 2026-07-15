@@ -1,13 +1,12 @@
 #pragma once
-#include <vector>
-#include <memory>
 #include <chrono>
+#include <memory>
+#include <vector>
 
 #include "../libraries/instrumentor.h"
 #include "errorcalculation.h"
 #include "neuralnetworkhelpermetrics.h"
 #include "trainingmonitor.h"
-
 
 namespace myoddweb::nn
 {
@@ -41,7 +40,7 @@ public:
       _training_indexes = src._training_indexes;
       _checking_indexes = src._checking_indexes;
       _final_check_indexes = src._final_check_indexes;
-      _training_monitor = src._training_monitor;
+      _training_monitors = src._training_monitors;
       _duration_ms = src._duration_ms;
       _last_epoch_time = src._last_epoch_time;
       _epoch_durations = src._epoch_durations;
@@ -67,7 +66,7 @@ public:
       _training_indexes = std::move(src._training_indexes);
       _checking_indexes = std::move(src._checking_indexes);
       _final_check_indexes = std::move(src._final_check_indexes);
-      _training_monitor = std::move(src._training_monitor);
+      _training_monitors = std::move(src._training_monitors);
       _duration_ms = src._duration_ms;
       _last_epoch_time = std::move(src._last_epoch_time);
       _epoch_durations = std::move(src._epoch_durations);
@@ -136,15 +135,37 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_inputs != nullptr ? _training_inputs->size() : 0;
   }
-  [[nodiscard]] inline const TrainingMonitor& training_monitor() const noexcept
+
+  /**
+   * @brief Gets the training monitor for a specific output layer.
+   * @param output_layer The index of the output layer (0-based).
+   * @return A const reference to the TrainingMonitor.
+   * @throws std::runtime_error (via Logger::panic) if output_layer is out of bounds.
+   */
+  [[nodiscard]] inline const TrainingMonitor& training_monitor(unsigned output_layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_monitor;
+    if (output_layer >= _training_monitors.size())
+    {
+      Logger::panic("Output layer index is out of bounds for the training monitors.");
+    }
+    return _training_monitors[output_layer];
   }
-  [[nodiscard]] inline TrainingMonitor& training_monitor() noexcept
+
+  /**
+   * @brief Gets the mutable training monitor for a specific output layer.
+   * @param output_layer The index of the output layer (0-based).
+   * @return A reference to the TrainingMonitor.
+   * @throws std::runtime_error (via Logger::panic) if output_layer is out of bounds.
+   */
+  [[nodiscard]] inline TrainingMonitor& training_monitor(unsigned output_layer)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    return _training_monitor;
+    if (output_layer >= _training_monitors.size())
+    {
+      Logger::panic("Output layer index is out of bounds for the training monitors.");
+    }
+    return _training_monitors[output_layer];
   }
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
@@ -249,13 +270,14 @@ private:
   std::shared_ptr<std::vector<size_t>> _training_indexes;
   std::shared_ptr<std::vector<size_t>> _checking_indexes;
   std::shared_ptr<std::vector<size_t>> _final_check_indexes;
-  TrainingMonitor _training_monitor;
+  std::vector<TrainingMonitor> _training_monitors;
   double _duration_ms;
   std::chrono::steady_clock::time_point _last_epoch_time;
   std::vector<double> _epoch_durations;
   size_t _max_history_size;
   double _duration_sum;
   size_t _ring_buffer_index;
+
 };
 
 } // namespace myoddweb::nn
