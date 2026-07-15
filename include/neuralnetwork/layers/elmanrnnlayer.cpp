@@ -319,7 +319,7 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
   thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.assign(batch_size * num_time_steps * N_this, 0.0);
+  batch_pre_act.resize(batch_size * num_time_steps * N_this);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);

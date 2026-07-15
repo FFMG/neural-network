@@ -141,6 +141,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
     return _training_monitor;
   }
+  [[nodiscard]] inline TrainingMonitor& training_monitor() noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+    return _training_monitor;
+  }
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
   std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true) const;

@@ -1,10 +1,10 @@
-﻿#pragma once
+#pragma once
 
-#include <unordered_map>
-#include "errorcalculation.h"
 #include "../common/logger.h"
 #include "../libraries/instrumentor.h"
-
+#include "errorcalculation.h"
+#include "neuralnetworkhelpermetrics.h"
+#include <unordered_map>
 
 namespace myoddweb::nn
 {
@@ -83,6 +83,12 @@ public:
       _rmse_tolerance = src._rmse_tolerance;
     }
     return *this;
+  }
+
+  void add_metric(const NeuralNetworkHelperMetrics& metric)
+  {
+    MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
+    add_metric(metric.error_type(), metric.error());
   }
 
   // Add a new checkpoint value for a metric

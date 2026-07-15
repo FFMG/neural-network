@@ -104,9 +104,26 @@ bool Neuron::must_randomly_drop() const
     Logger::panic("Only dropout layers choose if we must dropout.");
   }
 #endif
-  static thread_local std::mt19937 rng(std::random_device{}());
-  static thread_local std::uniform_real_distribution<double> dist(0.0, 1.0);
-  return dist(rng) < _dropout_rate;
+  struct ThreadLocalRng
+  {
+    uint64_t state;
+    ThreadLocalRng() noexcept
+    {
+      std::random_device rd;
+      uint64_t s = rd();
+      s = (s << 32) | rd();
+      state = s ? s : 88172645463325252ULL;
+    }
+    double next_double() noexcept
+    {
+      state ^= state << 13;
+      state ^= state >> 7;
+      state ^= state << 17;
+      return (state & 0x1FFFFFFFFFFFFFULL) * 1.1102230246251565e-16;
+    }
+  };
+  static thread_local ThreadLocalRng rng;
+  return rng.next_double() < _dropout_rate;
 }
 
 
