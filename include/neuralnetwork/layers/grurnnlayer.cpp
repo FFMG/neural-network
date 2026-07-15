@@ -654,7 +654,7 @@ void GRURNNLayer::calculate_forward_feed(
   // 2. Pre-calculate Input-to-Gates (all 3 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
   thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.assign(batch_size * num_time_steps * GateCount * N_this, 0.0);
+  batch_pre_act.resize(batch_size * num_time_steps * GateCount * N_this);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);

@@ -415,7 +415,7 @@ void LSTMLayer::calculate_forward_feed(
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 4 x N_this]
   thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.assign(batch_size * num_time_steps * GateCount * N_this, 0.0);
+  batch_pre_act.resize(batch_size * num_time_steps * GateCount * N_this);
 
   auto& batch_pre_act_ref = batch_pre_act;
   auto& flattened_inputs_ref = flattened_inputs;

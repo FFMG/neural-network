@@ -88,3 +88,23 @@ TEST(NeuronTest, DropoutStatisticalDistribution)
   EXPECT_GE(drop_count, 4700);
   EXPECT_LE(drop_count, 5300);
 }
+
+TEST(NeuronTest, Xorshift64DistributionAndBounds)
+{
+  Neuron n(0, Neuron::Type::Dropout, 0.5);
+  
+  const int num_iterations = 20000;
+  int dropped = 0;
+  for (int i = 0; i < num_iterations; ++i)
+  {
+    if (n.must_randomly_drop())
+    {
+      dropped++;
+    }
+  }
+  
+  double actual_rate = static_cast<double>(dropped) / num_iterations;
+  // 5% tolerance is extremely safe for 20000 iterations (approx 7 standard deviations)
+  EXPECT_NEAR(actual_rate, 0.5, 0.05);
+}
+
