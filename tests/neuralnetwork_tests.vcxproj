@@ -103,6 +103,7 @@
     <ClCompile Include="multioutputlayer_tests.cpp" />
     <ClCompile Include="network_integration_tests.cpp" />
     <ClCompile Include="neuralnetworkhelper_tests.cpp" />
+    <ClCompile Include="trainingmonitor_tests.cpp" />
     <ClCompile Include="neuralnetwork_tests.cpp" />
     <ClCompile Include="neuron_tests.cpp" />
     <ClCompile Include="output_layer_details_tests.cpp" />
