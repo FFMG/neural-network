@@ -22,6 +22,9 @@ NeuralNetworkHelper::NeuralNetworkHelper(
   _training_indexes(std::make_shared<std::vector<size_t>>()),
   _checking_indexes(std::make_shared<std::vector<size_t>>()),
   _final_check_indexes(std::make_shared<std::vector<size_t>>()),
+  _training_monitors(neural_network.options().has_multi_output()
+    ? neural_network.options().multi_output_layer_details().size()
+    : neural_network.options().output_layer_details().size()),
   _duration_ms(0.0),
   _last_epoch_time(),
   _max_history_size(std::clamp<size_t>(number_of_epoch / 2000, 10, 50)),
