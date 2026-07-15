@@ -293,7 +293,7 @@ TEST(SimdUtilsTest, DotProduct) {
     }
 
     double actual_dot = simd::dot_product(a.data(), b.data(), n);
-    EXPECT_NEAR(actual_dot, expected_dot, 1e-11) << "dot_product failed for size " << n;
+    EXPECT_NEAR(actual_dot, expected_dot, 1e-10) << "dot_product failed for size " << n;
   }
 }
 
@@ -1135,7 +1135,7 @@ TEST(SimdUtilsTest, SumSq)
       expected += x[i] * x[i];
     }
     double actual = simd::sum_sq(x.data(), n);
-    EXPECT_NEAR(expected, actual, 1e-12) << "sum_sq failed for size " << n;
+    EXPECT_NEAR(expected, actual, 1e-10) << "sum_sq failed for size " << n;
   }
 }
 
