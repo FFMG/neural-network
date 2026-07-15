@@ -279,17 +279,22 @@ TEST(SimdUtilsTest, MulAdd) {
 }
 
 TEST(SimdUtilsTest, DotProduct) {
-  std::vector<double> a = { 1.0, 2.0, 3.0, 4.0, 5.0 };
-  std::vector<double> b = { 0.5, 1.5, 2.5, 3.5, 4.5 };
-  double expected_dot = 0.0;
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 35, 127, 128, 256, 1024, 1025 };
+  for (size_t n : sizes)
+  {
+    std::vector<double> a(n);
+    std::vector<double> b(n);
+    double expected_dot = 0.0;
 
-  for (size_t i = 0; i < a.size(); ++i) {
-    expected_dot += a[i] * b[i];
+    for (size_t i = 0; i < n; ++i) {
+      a[i] = static_cast<double>(i) * 0.00015;
+      b[i] = static_cast<double>(i) * 0.00007 + 0.001;
+      expected_dot += a[i] * b[i];
+    }
+
+    double actual_dot = simd::dot_product(a.data(), b.data(), n);
+    EXPECT_NEAR(actual_dot, expected_dot, 1e-11) << "dot_product failed for size " << n;
   }
-
-  double actual_dot = simd::dot_product(a.data(), b.data(), a.size());
-
-  EXPECT_NEAR(actual_dot, expected_dot, EPSILON);
 }
 
 TEST(SimdUtilsTest, AdamStep) {
@@ -815,7 +820,7 @@ TEST(SimdUtilsTest, GemvAccumulateFour)
 
 TEST(SimdUtilsTest, AddVectors)
 {
-  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16 };
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 35, 127, 128, 256, 1024, 1025 };
   for (size_t n : sizes)
   {
     std::vector<double> x(n);
@@ -1119,7 +1124,7 @@ TEST(SimdUtilsTest, MulAddScalarsVariousSizes)
 
 TEST(SimdUtilsTest, SumSq)
 {
-  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 31, 32, 127, 128 };
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 35, 127, 128, 256, 1024, 1025 };
   for (size_t n : sizes)
   {
     std::vector<double> x(n);
