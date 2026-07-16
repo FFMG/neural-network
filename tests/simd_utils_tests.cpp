@@ -1020,7 +1020,7 @@ TEST(SimdUtilsTest, GemvAddTwoFour)
 
 TEST(SimdUtilsTest, MulAddScalarsVariousSizes)
 {
-  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 31, 32 };
+  std::vector<size_t> sizes = { 0, 1, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 35, 128, 256 };
   for (size_t n : sizes)
   {
     std::vector<double> w0(n, 1.1);
