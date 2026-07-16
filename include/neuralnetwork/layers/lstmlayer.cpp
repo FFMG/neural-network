@@ -1459,7 +1459,6 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
     );
 
     size_t b = 0;
-    const size_t batch_size_chunk = end - start;
     for (; b + 3 < batch_size_chunk; b += 4)
     {
       const double* f0 = workspace.chunk_df.data() + b * N_this;
