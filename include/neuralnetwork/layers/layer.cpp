@@ -233,24 +233,68 @@ void Layer::calculate_huber_loss_error_deltas(
 
   const double& delta = evaluation_config.huber_delta();
   const double inv_num_neurons = neurons.empty() ? 0.0 : 1.0 / static_cast<double>(neurons.size());
+  const bool use_direction_penalty = evaluation_config.use_direction_penalty();
 
-  for (const auto& neuron : neurons)
+  if (use_direction_penalty)
   {
-    const unsigned neuron_index = neuron.get_index();
-    const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
-    const double abs_error = std::abs(error);
+    const double& lambda = evaluation_config.direction_lambda();
+    const double& neutral_tolerance = evaluation_config.neutral_tolerance();
 
-    double grad;
-    if (abs_error <= delta)
+    for (const auto& neuron : neurons)
     {
-      grad = error;
-    }
-    else
-    {
-      grad = (error > 0.0 ? delta : -delta);
-    }
+      const unsigned neuron_index = neuron.get_index();
+      const double target = target_outputs[neuron_index];
+      const double output = given_outputs[neuron_index];
+      const double error = output - target;
+      const double abs_error = std::abs(error);
 
-    deltas[neuron_index] = grad * inv_num_neurons;
+      double grad;
+      if (abs_error <= delta)
+      {
+        grad = error;
+      }
+      else
+      {
+        grad = (error > 0.0 ? delta : -delta);
+      }
+
+      if (std::abs(target) > neutral_tolerance)
+      {
+        const bool sign_mismatch =
+          (target > 0.0 && output < 0.0) ||
+          (target < 0.0 && output > 0.0);
+
+        if (sign_mismatch)
+        {
+          const double direction_grad = output;
+          const double strength = std::abs(target);
+          grad += lambda * strength * direction_grad;
+        }
+      }
+
+      deltas[neuron_index] = grad * inv_num_neurons;
+    }
+  }
+  else
+  {
+    for (const auto& neuron : neurons)
+    {
+      const unsigned neuron_index = neuron.get_index();
+      const double error = given_outputs[neuron_index] - target_outputs[neuron_index];
+      const double abs_error = std::abs(error);
+
+      double grad;
+      if (abs_error <= delta)
+      {
+        grad = error;
+      }
+      else
+      {
+        grad = (error > 0.0 ? delta : -delta);
+      }
+
+      deltas[neuron_index] = grad * inv_num_neurons;
+    }
   }
 }
 
