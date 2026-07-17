@@ -1842,7 +1842,80 @@ TEST(SimdUtilsTest, ReciprocalPd)
   EXPECT_NEAR(r_arr[2], 1.0 / -10.0, 1e-12);
   EXPECT_NEAR(r_arr[3], 1.0 / 4.0, 1e-12);
 }
+
+TEST(SimdUtilsTest, LogPd)
+{
+  __m256d x = _mm256_set_pd(1.0, 2.0, 10.0, 12345.6789);
+  __m256d r = simd::log_pd(x);
+  
+  double r_arr[4];
+  _mm256_storeu_pd(r_arr, r);
+  
+  EXPECT_NEAR(r_arr[0], std::log(12345.6789), 1e-12);
+  EXPECT_NEAR(r_arr[1], std::log(10.0), 1e-12);
+  EXPECT_NEAR(r_arr[2], std::log(2.0), 1e-12);
+  EXPECT_NEAR(r_arr[3], std::log(1.0), 1e-12);
+}
 #endif
+
+TEST(SimdUtilsTest, MishActivate)
+{
+  std::vector<double> inputs = { -25.0, -10.0, -1.0, 0.0, 1.0, 10.0, 25.0, 3.14 };
+  std::vector<double> expected = inputs;
+  
+  for (size_t i = 0; i < expected.size(); ++i)
+  {
+    double x = expected[i];
+    if (x > 20.0)
+    {
+      expected[i] = x;
+    }
+    else if (x < -20.0)
+    {
+      expected[i] = 0.0;
+    }
+    else
+    {
+      expected[i] = x * std::tanh(std::log1p(std::exp(x)));
+    }
+  }
+  
+  std::vector<double> actual = inputs;
+  simd::mish_activate(actual.data(), actual.size());
+  
+  expect_vec_near(actual, expected, 1e-7);
+}
+
+TEST(SimdUtilsTest, MishDerivative)
+{
+  std::vector<double> inputs = { -25.0, -10.0, -1.0, 0.0, 1.0, 10.0, 25.0, 3.14 };
+  std::vector<double> expected(inputs.size());
+  
+  for (size_t i = 0; i < expected.size(); ++i)
+  {
+    double x = inputs[i];
+    if (x > 20.0)
+    {
+      expected[i] = 1.0;
+    }
+    else if (x < -20.0)
+    {
+      expected[i] = 0.0;
+    }
+    else
+    {
+      double sp = std::log1p(std::exp(x));
+      double tanh_sp = std::tanh(sp);
+      double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
+      expected[i] = tanh_sp + x * sigmoid_x * (1.0 - tanh_sp * tanh_sp);
+    }
+  }
+  
+  std::vector<double> actual(inputs.size());
+  simd::mish_derivative(inputs.data(), inputs.size(), actual.data());
+  
+  expect_vec_near(actual, expected, 1e-7);
+}
 
 
 

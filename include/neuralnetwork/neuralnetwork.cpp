@@ -289,6 +289,7 @@ void NeuralNetwork::create_batch_from_indexes(
 std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vector<double>>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
   std::shared_lock<std::shared_mutex> read(_mutex);
   return _layers.think(_options, inputs);
 }
@@ -296,6 +297,7 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
 std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
   const auto input_size = get_topology().front();
   const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
   const bool is_valid_size = (inputs.size() == input_size) || (is_bptt && input_size > 0 && inputs.size() % input_size == 0);
