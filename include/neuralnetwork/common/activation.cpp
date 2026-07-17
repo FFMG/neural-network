@@ -193,23 +193,7 @@ void activation::activate(double* begin, double* end, bool is_training) const
     simd::gelu_activate(begin, size);
     break;
   case method::mish:
-    for (size_t i = 0; i < size; ++i)
-    {
-      const double x = begin[i];
-      if (x > 20.0)
-      {
-        begin[i] = x;
-      }
-      else if (x < -20.0)
-      {
-        begin[i] = 0.0;
-      }
-      else
-      {
-        const double sp = std::log1p(std::exp(x));
-        begin[i] = x * std::tanh(sp);
-      }
-    }
+    simd::mish_activate(begin, size);
     break;
   default:
     for (double* it = begin; it != end; ++it)
@@ -255,10 +239,7 @@ void activation::activate_derivative(const double* begin, const double* end, con
     simd::gelu_derivative(begin, size, out);
     break;
   case method::mish:
-    for (size_t i = 0; i < size; ++i)
-    {
-      out[i] = _derivative_ptr(begin[i], _alpha);
-    }
+    simd::mish_derivative(begin, size, out);
     break;
   default:
     for (size_t i = 0; i < size; ++i)

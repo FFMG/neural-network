@@ -2907,6 +2907,62 @@ public:
     __m256d x_sign = _mm256_and_pd(x, sign_mask);
     return _mm256_xor_pd(val, x_sign);
   }
+
+  inline static __m256d log_pd(__m256d x) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    __m256i ix = _mm256_castpd_si256(x);
+    __m256i exp_shifted = _mm256_srli_epi64(ix, 52);
+    __m256i unbiased = _mm256_sub_epi64(
+      _mm256_and_si256(exp_shifted, _mm256_set1_epi64x(0x7FF)),
+      _mm256_set1_epi64x(1023)
+    );
+    __m256i permuted = _mm256_permutevar8x32_epi32(unbiased, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
+    __m128i exp_32 = _mm256_castsi256_si128(permuted);
+    __m256d e_double = _mm256_cvtepi32_pd(exp_32);
+    __m256i mantissa_mask = _mm256_set1_epi64x(0x000FFFFFFFFFFFFFULL);
+    __m256i bias_mask = _mm256_set1_epi64x(0x3FF0000000000000ULL);
+    __m256i m_int = _mm256_or_si256(_mm256_and_si256(ix, mantissa_mask), bias_mask);
+    __m256d m = _mm256_castsi256_pd(m_int);
+    __m256d threshold = _mm256_set1_pd(1.4142135623730950488);
+    __m256d gt_mask = _mm256_cmp_pd(m, threshold, _CMP_GT_OQ);
+    __m256d m_adjusted = _mm256_blendv_pd(m, _mm256_mul_pd(m, _mm256_set1_pd(0.5)), gt_mask);
+    __m256d e_adjusted = _mm256_blendv_pd(e_double, _mm256_add_pd(e_double, _mm256_set1_pd(1.0)), gt_mask);
+    __m256d num = _mm256_sub_pd(m_adjusted, _mm256_set1_pd(1.0));
+    __m256d denom = _mm256_add_pd(m_adjusted, _mm256_set1_pd(1.0));
+    __m256d s = _mm256_div_pd(num, denom);
+    __m256d s2 = _mm256_mul_pd(s, s);
+    __m256d L1 = _mm256_set1_pd(6.666666666666735130e-01);
+    __m256d L2 = _mm256_set1_pd(3.999999999940941908e-01);
+    __m256d L3 = _mm256_set1_pd(2.857142874366239149e-01);
+    __m256d L4 = _mm256_set1_pd(2.222219843214978396e-01);
+    __m256d L5 = _mm256_set1_pd(1.818357216161805012e-01);
+    __m256d L6 = _mm256_set1_pd(1.531383769920937332e-01);
+    __m256d L7 = _mm256_set1_pd(1.479819860511658591e-01);
+#ifdef SIMD_FMA_ENABLED
+    __m256d R = _mm256_fmadd_pd(s2, L7, L6);
+    R = _mm256_fmadd_pd(s2, R, L5);
+    R = _mm256_fmadd_pd(s2, R, L4);
+    R = _mm256_fmadd_pd(s2, R, L3);
+    R = _mm256_fmadd_pd(s2, R, L2);
+    R = _mm256_fmadd_pd(s2, R, L1);
+#else
+    __m256d R = _mm256_add_pd(_mm256_mul_pd(s2, L7), L6);
+    R = _mm256_add_pd(_mm256_mul_pd(s2, R), L5);
+    R = _mm256_add_pd(_mm256_mul_pd(s2, R), L4);
+    R = _mm256_add_pd(_mm256_mul_pd(s2, R), L3);
+    R = _mm256_add_pd(_mm256_mul_pd(s2, R), L2);
+    R = _mm256_add_pd(_mm256_mul_pd(s2, R), L1);
+#endif
+    R = _mm256_mul_pd(s2, R);
+    __m256d ln_m = _mm256_add_pd(_mm256_mul_pd(_mm256_set1_pd(2.0), s), _mm256_mul_pd(s, R));
+    __m256d ln2 = _mm256_set1_pd(0.693147180559945309417);
+#ifdef SIMD_FMA_ENABLED
+    return _mm256_fmadd_pd(e_adjusted, ln2, ln_m);
+#else
+    return _mm256_add_pd(ln_m, _mm256_mul_pd(e_adjusted, ln2));
+#endif
+  }
 #endif
 
   inline static void sigmoid_activate(double* begin, size_t size, double alpha) noexcept
@@ -3426,6 +3482,97 @@ public:
     for (; i < size; ++i)
     {
       out[i] = 1.0;
+    }
+  }
+
+  inline static void mish_activate(double* begin, size_t size) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_zero = _mm256_setzero_pd();
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_20 = _mm256_set1_pd(20.0);
+    __m256d vec_neg20 = _mm256_set1_pd(-20.0);
+    for (; i + 3 < size; i += 4)
+    {
+      __m256d vx = _mm256_loadu_pd(begin + i);
+      __m256d exp_x = exp_pd(vx);
+      __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
+      __m256d tanh_sp = tanh_pd(sp);
+      __m256d res = _mm256_mul_pd(vx, tanh_sp);
+      __m256d gt_mask = _mm256_cmp_pd(vx, vec_20, _CMP_GT_OQ);
+      __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
+      res = _mm256_blendv_pd(res, vx, gt_mask);
+      res = _mm256_blendv_pd(res, vec_zero, lt_mask);
+      _mm256_storeu_pd(begin + i, res);
+    }
+#endif
+    for (; i < size; ++i)
+    {
+      const double x = begin[i];
+      if (x > 20.0)
+      {
+        begin[i] = x;
+      }
+      else if (x < -20.0)
+      {
+        begin[i] = 0.0;
+      }
+      else
+      {
+        begin[i] = x * std::tanh(std::log1p(std::exp(x)));
+      }
+    }
+  }
+
+  inline static void mish_derivative(const double* begin, size_t size, double* out) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_zero = _mm256_setzero_pd();
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_20 = _mm256_set1_pd(20.0);
+    __m256d vec_neg20 = _mm256_set1_pd(-20.0);
+    for (; i + 3 < size; i += 4)
+    {
+      __m256d vx = _mm256_loadu_pd(begin + i);
+      __m256d exp_x = exp_pd(vx);
+      __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
+      __m256d tanh_sp = tanh_pd(sp);
+      __m256d exp_neg_x = exp_pd(_mm256_sub_pd(vec_zero, vx));
+      __m256d sig_denom = _mm256_add_pd(vec_one, exp_neg_x);
+      __m256d sig_x = reciprocal_pd(sig_denom);
+      __m256d tanh_sp2 = _mm256_mul_pd(tanh_sp, tanh_sp);
+      __m256d one_minus_tanh_sp2 = _mm256_sub_pd(vec_one, tanh_sp2);
+      __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vx, sig_x), one_minus_tanh_sp2);
+      __m256d res = _mm256_add_pd(tanh_sp, term2);
+      __m256d gt_mask = _mm256_cmp_pd(vx, vec_20, _CMP_GT_OQ);
+      __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
+      res = _mm256_blendv_pd(res, vec_one, gt_mask);
+      res = _mm256_blendv_pd(res, vec_zero, lt_mask);
+      _mm256_storeu_pd(out + i, res);
+    }
+#endif
+    for (; i < size; ++i)
+    {
+      const double x = begin[i];
+      if (x > 20.0)
+      {
+        out[i] = 1.0;
+      }
+      else if (x < -20.0)
+      {
+        out[i] = 0.0;
+      }
+      else
+      {
+        const double sp = std::log1p(std::exp(x));
+        const double tanh_sp = std::tanh(sp);
+        const double sigmoid_x = 1.0 / (1.0 + std::exp(-x));
+        out[i] = tanh_sp + x * sigmoid_x * (1.0 - tanh_sp * tanh_sp);
+      }
     }
   }
 };
