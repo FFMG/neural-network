@@ -2,6 +2,15 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.1] - 2026-07-17
+
+### Added
+- Added comprehensive unit tests in `tests/layer_tests.cpp` to verify `Layer::calculate_huber_loss_error_deltas` behavior under different direction penalty configurations.
+
+### Changed
+- Updated `Layer::calculate_huber_loss_error_deltas` in `include/neuralnetwork/layers/layer.cpp` to respect the `use_direction_penalty` flag from `EvaluationConfig`.
+- Optimized `Layer::calculate_huber_loss_error_deltas` using loop unswitching to eliminate branching overhead inside the neuron loop for maximum performance.
+
 ## [1.1.0] - 2026-06-12
 
 ### Added

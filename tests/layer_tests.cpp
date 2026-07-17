@@ -185,6 +185,50 @@ TEST(LayerTest, CalculateErrorDeltasHuber) {
     EXPECT_NEAR(deltas[0], 1.0, 1e-9);
 }
 
+TEST(LayerTest, CalculateErrorDeltasHuberDirectionPenalty)
+{
+  MockLayer layer(0, 1);
+  std::vector<double> deltas(1, 0.0);
+
+  EvaluationConfig config_penalty(0.01, 0.15, 1.0, 0.5, true, 1.0);
+  EvaluationConfig config_no_penalty(0.01, 0.15, 1.0, 0.5, false, 1.0);
+
+  // Case 1: Sign mismatch, target is -1.0, output is 0.5
+  // use_direction_penalty is true
+  {
+    std::vector<double> targets = { -1.0 };
+    std::vector<double> given = { 0.5 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::huber_loss, config_penalty, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], 1.25, 1e-9);
+  }
+
+  // Case 2: No sign mismatch, target is 1.0, output is 0.5
+  // use_direction_penalty is true
+  {
+    std::vector<double> targets = { 1.0 };
+    std::vector<double> given = { 0.5 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::huber_loss, config_penalty, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], -0.5, 1e-9);
+  }
+
+  // Case 3: Sign mismatch but target within neutral tolerance, target = 0.005, output = -0.5
+  // use_direction_penalty is true
+  {
+    std::vector<double> targets = { 0.005 };
+    std::vector<double> given = { -0.5 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::huber_loss, config_penalty, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], -0.505, 1e-9);
+  }
+
+  // Case 4: Sign mismatch but use_direction_penalty is false, target = -1.0, output = 0.5
+  {
+    std::vector<double> targets = { -1.0 };
+    std::vector<double> given = { 0.5 };
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::huber_loss, config_no_penalty, activation::method::linear, 0, 0);
+    EXPECT_NEAR(deltas[0], 1.0, 1e-9);
+  }
+}
+
 TEST(LayerTest, CalculateErrorDeltasLogCosh) {
     MockLayer layer(0, 1);
     std::vector<double> deltas(1, 0.0);
