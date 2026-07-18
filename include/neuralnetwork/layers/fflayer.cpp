@@ -401,8 +401,10 @@ void FFLayer::run_post_gemm(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  std::vector<double> mask(N_this, 1.0);
-  std::vector<double> output_row_seq(num_time_steps * N_this);
+  thread_local std::vector<double> mask;
+  thread_local std::vector<double> output_row_seq;
+  mask.resize(N_this);
+  output_row_seq.resize(num_time_steps * N_this);
   for (size_t b = start; b < end; b++)
   {
     std::fill(mask.begin(), mask.end(), 1.0);

@@ -356,8 +356,10 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
-    std::vector<double> current_h(N_this, 0.0);
-    std::vector<double> mask(N_this, 1.0);
+    thread_local std::vector<double> current_h;
+    thread_local std::vector<double> mask;
+    current_h.resize(N_this);
+    mask.resize(N_this);
     for (size_t b = b_start; b < b_end; ++b)
     {
       std::fill(current_h.begin(), current_h.end(), 0.0);

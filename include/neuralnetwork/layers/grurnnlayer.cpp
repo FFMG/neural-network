@@ -870,10 +870,15 @@ void GRURNNLayer::run_forward_pass(
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  std::vector<double> gated_h(N_this);
-  std::vector<double> prev_h(N_this, 0.0);
-  std::vector<double> current_h(N_this, 0.0);
-  std::vector<double> packed_bptt_states(Multiplier * N_this); // Index [(Multiplier-1)*N_this, Multiplier*N_this) used for dropout mask
+  thread_local std::vector<double> gated_h;
+  thread_local std::vector<double> prev_h;
+  thread_local std::vector<double> current_h;
+  thread_local std::vector<double> packed_bptt_states;
+
+  gated_h.resize(N_this);
+  prev_h.resize(N_this);
+  current_h.resize(N_this);
+  packed_bptt_states.resize(Multiplier * N_this);
 
   for (size_t b = start; b < end; ++b)
   {

@@ -2,6 +2,11 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.2] - 2026-07-18
+
+### Changed
+- Optimized `FFLayer::run_post_gemm`, `ElmanRNNLayer::calculate_forward_feed`, `LSTMLayer::calculate_forward_feed`, and `GRURNNLayer::run_forward_pass` by replacing dynamically allocated local vectors with `thread_local` vectors, eliminating heap allocation overhead from layer forward paths.
+
 ## [1.1.1] - 2026-07-18
 
 ### Added
