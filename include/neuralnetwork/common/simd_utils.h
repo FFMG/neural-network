@@ -933,20 +933,33 @@ public:
   {
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
-    for (size_t j = start; j < n; ++j)
+    if (decays != nullptr)
     {
-      double g = grads[j] * clipping_scale;
-      m1[j] = b1 * m1[j] + (1.0 - b1) * g;
-      m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
-      double m_hat = m1[j] * inv_p1;
-      double v_hat = m2[j] * inv_p2;
-      double update = m_hat / (std::sqrt(v_hat) + epsilon);
-      double w = values[j];
-      if (decays != nullptr)
+      for (size_t j = start; j < n; ++j)
       {
-        w *= (1.0 - lr * decays[j]);
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double v_hat = m2[j] * inv_p2;
+        double update = m_hat / (std::sqrt(v_hat) + epsilon);
+        double w = values[j] * (1.0 - lr * decays[j]);
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
       }
-      values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+    }
+    else
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double v_hat = m2[j] * inv_p2;
+        double update = m_hat / (std::sqrt(v_hat) + epsilon);
+        double w = values[j];
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+      }
     }
   }
 
@@ -985,52 +998,86 @@ public:
     __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
     __m256d vec_clip = _mm256_set1_pd(clipping_scale);
 
-    for (; j + 3 < n; j += 4) 
+    if (decays != nullptr)
     {
-      __m256d raw_g = _mm256_loadu_pd(&grads[j]);
-      __m256d g = _mm256_mul_pd(raw_g, vec_clip);
-      __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
-      __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
-      __m256d cur_w = _mm256_loadu_pd(&values[j]);
-
-      // Moments update
-#ifdef SIMD_FMA_ENABLED
-      __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
-      __m256d g_sq = _mm256_mul_pd(g, g);
-      __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
-#else
-      __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
-      __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
-#endif
-      _mm256_storeu_pd(&m1[j], next_m1);
-      _mm256_storeu_pd(&m2[j], next_m2);
-
-      // Adam scaling
-      __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
-      __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
-
-      __m256d update = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
-
-      // Optional AdamW weight decay
-      if (decays != nullptr)
+      for (; j + 3 < n; j += 4) 
       {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        // Adam scaling
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+
+        __m256d update = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
+
         __m256d d = _mm256_loadu_pd(&decays[j]);
 #ifdef SIMD_FMA_ENABLED
         cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
 #else
         cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
 #endif
+
+        // Hard clamp weights to prevent catastrophic numerical explosion (+/- 1 million)
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
       }
+    }
+    else
+    {
+      for (; j + 3 < n; j += 4) 
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        // Adam scaling
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+
+        __m256d update = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
 
 #ifdef SIMD_FMA_ENABLED
-      __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
 #else
-      __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
 #endif
 
-      // Hard clamp weights to prevent catastrophic numerical explosion (+/- 1 million)
-      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
-      _mm256_storeu_pd(&values[j], next_w);
+        // Hard clamp weights to prevent catastrophic numerical explosion (+/- 1 million)
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
     }
 #endif
     scalar_adam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);
@@ -1055,21 +1102,35 @@ public:
   {
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
-    for (size_t j = start; j < n; ++j)
+    if (decays != nullptr)
     {
-      double g = grads[j] * clipping_scale;
-      m1[j] = b1 * m1[j] + (1.0 - b1) * g;
-      m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
-      double m_hat = m1[j] * inv_p1;
-      double v_hat = m2[j] * inv_p2;
-      double m_nadam = b1 * m_hat + ((1.0 - b1) * g) * inv_p1;
-      double update = m_nadam / (std::sqrt(v_hat) + epsilon);
-      double w = values[j];
-      if (decays != nullptr)
+      for (size_t j = start; j < n; ++j)
       {
-        w *= (1.0 - lr * decays[j]);
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double v_hat = m2[j] * inv_p2;
+        double m_nadam = b1 * m_hat + ((1.0 - b1) * g) * inv_p1;
+        double update = m_nadam / (std::sqrt(v_hat) + epsilon);
+        double w = values[j] * (1.0 - lr * decays[j]);
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
       }
-      values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+    }
+    else
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double v_hat = m2[j] * inv_p2;
+        double m_nadam = b1 * m_hat + ((1.0 - b1) * g) * inv_p1;
+        double update = m_nadam / (std::sqrt(v_hat) + epsilon);
+        double w = values[j];
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+      }
     }
   }
 
@@ -1113,59 +1174,100 @@ public:
     __m256d vec_one_minus_b1_inv_p1 = _mm256_set1_pd((1.0 - b1) * inv_p1);
 #endif
 
-    for (; j + 3 < n; j += 4)
+    if (decays != nullptr)
     {
-      __m256d raw_g = _mm256_loadu_pd(&grads[j]);
-      __m256d g = _mm256_mul_pd(raw_g, vec_clip);
-      __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
-      __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
-      __m256d cur_w = _mm256_loadu_pd(&values[j]);
-
-      // Moments update
-#ifdef SIMD_FMA_ENABLED
-      __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
-      __m256d g_sq = _mm256_mul_pd(g, g);
-      __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
-#else
-      __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
-      __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
-#endif
-      _mm256_storeu_pd(&m1[j], next_m1);
-      _mm256_storeu_pd(&m2[j], next_m2);
-
-      // Nadam scaling
-      __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
-      __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
-
-      // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
-#ifdef SIMD_FMA_ENABLED
-      __m256d term2 = _mm256_mul_pd(vec_one_minus_b1_inv_p1, g);
-      __m256d m_nadam = _mm256_fmadd_pd(vec_b1, m_hat, term2);
-#else
-      __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_mul_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_inv_p1));
-#endif
-      __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
-
-      // Optional NadamW weight decay
-      if (decays != nullptr) 
+      for (; j + 3 < n; j += 4)
       {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        // Nadam scaling
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+
+        // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
+#ifdef SIMD_FMA_ENABLED
+        __m256d term2 = _mm256_mul_pd(vec_one_minus_b1_inv_p1, g);
+        __m256d m_nadam = _mm256_fmadd_pd(vec_b1, m_hat, term2);
+#else
+        __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_mul_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_inv_p1));
+#endif
+        __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
+
         __m256d d = _mm256_loadu_pd(&decays[j]);
 #ifdef SIMD_FMA_ENABLED
         cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
 #else
         cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
 #endif
+
+        // Hard clamp weights to prevent catastrophic numerical explosion
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
       }
+    }
+    else
+    {
+      for (; j + 3 < n; j += 4)
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        // Nadam scaling
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+
+        // m_nadam = beta1 * m_hat + ((1-beta1)*g)/p1
+#ifdef SIMD_FMA_ENABLED
+        __m256d term2 = _mm256_mul_pd(vec_one_minus_b1_inv_p1, g);
+        __m256d m_nadam = _mm256_fmadd_pd(vec_b1, m_hat, term2);
+#else
+        __m256d m_nadam = _mm256_add_pd(_mm256_mul_pd(vec_b1, m_hat), _mm256_mul_pd(_mm256_mul_pd(vec_one_minus_b1, g), vec_inv_p1));
+#endif
+        __m256d update = _mm256_div_pd(m_nadam, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
 
 #ifdef SIMD_FMA_ENABLED
-      __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
 #else
-      __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
 #endif
 
-      // Hard clamp weights to prevent catastrophic numerical explosion
-      __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
-      _mm256_storeu_pd(&values[j], next_w);
+        // Hard clamp weights to prevent catastrophic numerical explosion
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
     }
 #endif
     scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);

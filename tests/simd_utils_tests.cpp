@@ -372,6 +372,81 @@ TEST(SimdUtilsTest, NadamStep) {
   expect_vec_near(values, expected_values);
 }
 
+TEST(SimdUtilsTest, AdamStepNoDecay)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> m2 = { 0.001, 0.002, 0.003, 0.004, 0.005 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.8;
+  double p2 = 0.7;
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+  std::vector<double> expected_m2 = m2;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    expected_m1[i] = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    expected_m2[i] = b2 * expected_m2[i] + (1.0 - b2) * (grads[i] * grads[i]);
+    double m_hat = (p1 > 1e-15) ? expected_m1[i] / p1 : expected_m1[i];
+    double v_hat = (p2 > 1e-15) ? expected_m2[i] / p2 : expected_m2[i];
+    double update = m_hat / (std::sqrt(v_hat) + eps);
+    double w = expected_values[i];
+    expected_values[i] = std::clamp(w - lr * update, -100000.0, 100000.0);
+  }
+
+  simd::adam_step(values.data(), grads.data(), m1.data(), m2.data(), b1, b2, p1, p2, lr, eps, n, nullptr);
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, NadamStepNoDecay)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> m2 = { 0.001, 0.002, 0.003, 0.004, 0.005 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.8;
+  double p2 = 0.7;
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+  std::vector<double> expected_m2 = m2;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    expected_m1[i] = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    expected_m2[i] = b2 * expected_m2[i] + (1.0 - b2) * (grads[i] * grads[i]);
+    double m_hat = (p1 > 1e-15) ? expected_m1[i] / p1 : expected_m1[i];
+    double v_hat = (p2 > 1e-15) ? expected_m2[i] / p2 : expected_m2[i];
+    double m_nadam = b1 * m_hat + ((1.0 - b1) * grads[i]) / p1;
+    double update = m_nadam / (std::sqrt(v_hat) + eps);
+    double w = expected_values[i];
+    expected_values[i] = std::clamp(w - lr * update, -100000.0, 100000.0);
+  }
+
+  simd::nadam_step(values.data(), grads.data(), m1.data(), m2.data(), b1, b2, p1, p2, lr, eps, n, nullptr);
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
 TEST(SimdUtilsTest, AdamStepWithClipping)
 {
   const size_t n = 5;
