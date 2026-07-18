@@ -559,11 +559,17 @@ void LSTMLayer::calculate_forward_feed(
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
-    std::vector<double> current_h(N_this, 0.0);
-    std::vector<double> current_c(N_this, 0.0);
-    std::vector<double> packed_bptt(Multiplier * N_this);
-    std::vector<double> g_act_vec(N_this, 0.0);
-    std::vector<double> c_act_vec(N_this, 0.0);
+    thread_local std::vector<double> current_h;
+    thread_local std::vector<double> current_c;
+    thread_local std::vector<double> packed_bptt;
+    thread_local std::vector<double> g_act_vec;
+    thread_local std::vector<double> c_act_vec;
+
+    current_h.resize(N_this);
+    current_c.resize(N_this);
+    packed_bptt.resize(Multiplier * N_this);
+    g_act_vec.resize(N_this);
+    c_act_vec.resize(N_this);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
