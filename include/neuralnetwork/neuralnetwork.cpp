@@ -499,9 +499,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     cache.hidden_states[i].zero();
   }
 
-  std::vector<size_t> sub_indices(checks_indexes->begin(), checks_indexes->begin() + prediction_size);
-
-  calculate_forward_feed_for_forecast_metrics(cache.gradients, training_inputs, sub_indices, target_layers, cache.hidden_states, false);
+  calculate_forward_feed_for_forecast_metrics(cache.gradients, training_inputs, *checks_indexes, target_layers, cache.hidden_states, false);
 
   for (size_t i = 0; i < prediction_size; ++i)
   {
@@ -515,7 +513,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     {
       predictions.push_back(cache.gradients[i].output_back());
     }
-    checking_outputs.push_back(training_outputs[sub_indices[i]]);
+    checking_outputs.push_back(training_outputs[(*checks_indexes)[i]]);
   }
 
   return target_layers.output_layer().calculate_output_metrics(error_types, checking_outputs, predictions);
@@ -542,10 +540,6 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
 
   if (!bptt_inputs.empty())
   {
-    if (bptt_size_option <= 1 || !_options.enable_bptt())
-    {
-      return;
-    }
     if (is_shuffled)
     {
       const size_t n = bptt_inputs.size();
@@ -585,6 +579,20 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     {
       bptt_inputs.push_back(inputs[i]);
       bptt_outputs.push_back(outputs[i]);
+    }
+    if (is_shuffled)
+    {
+      const size_t n = bptt_inputs.size();
+      thread_local std::mt19937 g(std::random_device{}());
+      for (size_t i = n - 1; i > 0; --i)
+      {
+        size_t j = g() % (i + 1);
+        if (i != j)
+        {
+          std::swap(bptt_inputs[i], bptt_inputs[j]);
+          std::swap(bptt_outputs[i], bptt_outputs[j]);
+        }
+      }
     }
     return;
   }

@@ -597,5 +597,37 @@ TEST(NetworkIntegrationTest, ForecastMetricsDefaultInSample)
   EXPECT_GE(metrics_out_of_sample[0].error(), 0.0);
 }
 
+TEST(NetworkIntegrationTest, ShuffleSingleStepsBehavior)
+{
+  auto options_no_shuffle = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_shuffle_bptt_batches(false)
+    .with_enable_bptt(false)
+    .build();
+
+  auto options_shuffle = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_shuffle_bptt_batches(true)
+    .with_enable_bptt(false)
+    .build();
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6}, {0.7, 0.8}, {0.9, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.3}, {0.7}, {1.1}, {1.5}, {1.9}
+  };
+
+  NeuralNetwork nn_no_shuffle(options_no_shuffle);
+  nn_no_shuffle.train(inputs, outputs);
+
+  NeuralNetwork nn_shuffle(options_shuffle);
+  nn_shuffle.train(inputs, outputs);
+
+  SUCCEED();
+}
+
 
 
