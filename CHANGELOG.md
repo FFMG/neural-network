@@ -2,6 +2,15 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.3] - 2026-07-19
+
+### Added
+- Added `ShuffleSingleStepsBehavior` test to `tests/network_integration_tests.cpp` to verify stochastic gradient descent shuffling behavior when backpropagation through time (BPTT) is disabled.
+
+### Changed
+- Corrected and optimized `NeuralNetwork::create_bptt_batches` in `include/neuralnetwork/neuralnetwork.cpp` to correctly shuffle training data between epochs when BPTT is disabled.
+- Optimized `NeuralNetwork::calculate_forecast_metrics_all_layers_impl` in `include/neuralnetwork/neuralnetwork.cpp` by eliminating a redundant copy of checking indices.
+
 ## [1.1.2] - 2026-07-18
 
 ### Changed
