@@ -548,4 +548,98 @@ TEST_F(ActivationTest, SELUAVX2Correctness)
   }
 }
 
+TEST_F(ActivationTest, ELUAVX2AllPositive)
+{
+  const double alpha_val = 0.5;
+  activation act(activation::method::elu, alpha_val);
+
+  std::vector<double> input = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::elu(input[i], alpha_val);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::elu_deriv(input[i], alpha_val);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
+TEST_F(ActivationTest, ELUAVX2AllNegative)
+{
+  const double alpha_val = 0.5;
+  activation act(activation::method::elu, alpha_val);
+
+  std::vector<double> input = { -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::elu(input[i], alpha_val);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::elu_deriv(input[i], alpha_val);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
+TEST_F(ActivationTest, SELUAVX2AllPositive)
+{
+  activation act(activation::method::selu, 1.0);
+
+  std::vector<double> input = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::selu(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::selu_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
+TEST_F(ActivationTest, SELUAVX2AllNegative)
+{
+  activation act(activation::method::selu, 1.0);
+
+  std::vector<double> input = { -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::selu(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::selu_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
 

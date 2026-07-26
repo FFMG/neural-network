@@ -2,6 +2,14 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.4] - 2026-07-25
+
+### Added
+- Added custom unit test cases (`ELUAVX2AllPositive`, `ELUAVX2AllNegative`, `SELUAVX2AllPositive`, `SELUAVX2AllNegative`) in `tests/activation_tests.cpp` to verify optimized SIMD branches.
+
+### Changed
+- Optimized `simd::elu_activate`, `simd::elu_derivative`, `simd::selu_activate`, and `simd::selu_derivative` in `include/neuralnetwork/common/simd_utils.h` using AVX2 mask checking (`_mm256_movemask_pd`) to completely bypass expensive vectorized exponentiation (`exp_pd`) when inputs are all positive or all non-positive.
+
 ## [1.1.3] - 2026-07-19
 
 ### Added
