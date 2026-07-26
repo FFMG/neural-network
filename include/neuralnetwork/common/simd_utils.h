@@ -3297,12 +3297,27 @@ public:
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d exp_x = exp_pd(vx);
-      __m256d val_pos = _mm256_mul_pd(vec_lambda, vx);
-      __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, _mm256_sub_pd(exp_x, vec_one));
       __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-      __m256d res = _mm256_blendv_pd(val_neg, val_pos, mask);
-      _mm256_storeu_pd(begin + i, res);
+      int mask_bits = _mm256_movemask_pd(mask);
+      if (mask_bits == 0xF)
+      {
+        __m256d res = _mm256_mul_pd(vec_lambda, vx);
+        _mm256_storeu_pd(begin + i, res);
+      }
+      else if (mask_bits == 0)
+      {
+        __m256d exp_x = exp_pd(vx);
+        __m256d res = _mm256_mul_pd(vec_lambda_alpha, _mm256_sub_pd(exp_x, vec_one));
+        _mm256_storeu_pd(begin + i, res);
+      }
+      else
+      {
+        __m256d exp_x = exp_pd(vx);
+        __m256d val_pos = _mm256_mul_pd(vec_lambda, vx);
+        __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, _mm256_sub_pd(exp_x, vec_one));
+        __m256d res = _mm256_blendv_pd(val_neg, val_pos, mask);
+        _mm256_storeu_pd(begin + i, res);
+      }
     }
 #endif
     for (; i < size; ++i)
@@ -3337,11 +3352,25 @@ public:
       for (; i + 3 < size; i += 4)
       {
         __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = exp_pd(vx);
-        __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, exp_x);
         __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, vec_lambda, mask);
-        _mm256_storeu_pd(out + i, res);
+        int mask_bits = _mm256_movemask_pd(mask);
+        if (mask_bits == 0xF)
+        {
+          _mm256_storeu_pd(out + i, vec_lambda);
+        }
+        else if (mask_bits == 0)
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d res = _mm256_mul_pd(vec_lambda_alpha, exp_x);
+          _mm256_storeu_pd(out + i, res);
+        }
+        else
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d val_neg = _mm256_mul_pd(vec_lambda_alpha, exp_x);
+          __m256d res = _mm256_blendv_pd(val_neg, vec_lambda, mask);
+          _mm256_storeu_pd(out + i, res);
+        }
       }
     }
 #endif
@@ -3372,11 +3401,25 @@ public:
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d exp_x = exp_pd(vx);
-      __m256d val_neg = _mm256_mul_pd(vec_alpha, _mm256_sub_pd(exp_x, vec_one));
       __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-      __m256d res = _mm256_blendv_pd(val_neg, vx, mask);
-      _mm256_storeu_pd(begin + i, res);
+      int mask_bits = _mm256_movemask_pd(mask);
+      if (mask_bits == 0xF)
+      {
+        _mm256_storeu_pd(begin + i, vx);
+      }
+      else if (mask_bits == 0)
+      {
+        __m256d exp_x = exp_pd(vx);
+        __m256d res = _mm256_mul_pd(vec_alpha, _mm256_sub_pd(exp_x, vec_one));
+        _mm256_storeu_pd(begin + i, res);
+      }
+      else
+      {
+        __m256d exp_x = exp_pd(vx);
+        __m256d val_neg = _mm256_mul_pd(vec_alpha, _mm256_sub_pd(exp_x, vec_one));
+        __m256d res = _mm256_blendv_pd(val_neg, vx, mask);
+        _mm256_storeu_pd(begin + i, res);
+      }
     }
 #endif
     for (; i < size; ++i)
@@ -3411,11 +3454,25 @@ public:
       for (; i + 3 < size; i += 4)
       {
         __m256d vx = _mm256_loadu_pd(begin + i);
-        __m256d exp_x = exp_pd(vx);
-        __m256d val_neg = _mm256_mul_pd(vec_alpha, exp_x);
         __m256d mask = _mm256_cmp_pd(vx, vec_zero, _CMP_GT_OQ);
-        __m256d res = _mm256_blendv_pd(val_neg, vec_one, mask);
-        _mm256_storeu_pd(out + i, res);
+        int mask_bits = _mm256_movemask_pd(mask);
+        if (mask_bits == 0xF)
+        {
+          _mm256_storeu_pd(out + i, vec_one);
+        }
+        else if (mask_bits == 0)
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d res = _mm256_mul_pd(vec_alpha, exp_x);
+          _mm256_storeu_pd(out + i, res);
+        }
+        else
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d val_neg = _mm256_mul_pd(vec_alpha, exp_x);
+          __m256d res = _mm256_blendv_pd(val_neg, vec_one, mask);
+          _mm256_storeu_pd(out + i, res);
+        }
       }
     }
 #endif
