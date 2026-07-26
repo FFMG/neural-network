@@ -2,6 +2,14 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.5] - 2026-07-26
+
+### Added
+- Added custom unit test cases (`MishAVX2Correctness`, `MishAVX2AllPositive`, `MishAVX2AllNegative`) in `tests/activation_tests.cpp` to verify optimized Mish SIMD branches.
+
+### Changed
+- Optimized `simd::mish_activate` and `simd::mish_derivative` in `include/neuralnetwork/common/simd_utils.h` using AVX2 mask checking (`_mm256_movemask_pd`) to completely bypass expensive vectorized math (`exp_pd`, `log_pd`, `tanh_pd`, `reciprocal_pd`) when inputs are all positive (> 20.0) or all negative (< -20.0).
+
 ## [1.1.4] - 2026-07-25
 
 ### Added

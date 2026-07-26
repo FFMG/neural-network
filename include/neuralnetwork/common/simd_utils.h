@@ -3656,15 +3656,31 @@ public:
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d exp_x = exp_pd(vx);
-      __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
-      __m256d tanh_sp = tanh_pd(sp);
-      __m256d res = _mm256_mul_pd(vx, tanh_sp);
       __m256d gt_mask = _mm256_cmp_pd(vx, vec_20, _CMP_GT_OQ);
-      __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
-      res = _mm256_blendv_pd(res, vx, gt_mask);
-      res = _mm256_blendv_pd(res, vec_zero, lt_mask);
-      _mm256_storeu_pd(begin + i, res);
+      int gt_bits = _mm256_movemask_pd(gt_mask);
+      if (gt_bits == 0xF)
+      {
+        _mm256_storeu_pd(begin + i, vx);
+      }
+      else
+      {
+        __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
+        int lt_bits = _mm256_movemask_pd(lt_mask);
+        if (lt_bits == 0xF)
+        {
+          _mm256_storeu_pd(begin + i, vec_zero);
+        }
+        else
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
+          __m256d tanh_sp = tanh_pd(sp);
+          __m256d res = _mm256_mul_pd(vx, tanh_sp);
+          res = _mm256_blendv_pd(res, vx, gt_mask);
+          res = _mm256_blendv_pd(res, vec_zero, lt_mask);
+          _mm256_storeu_pd(begin + i, res);
+        }
+      }
     }
 #endif
     for (; i < size; ++i)
@@ -3697,21 +3713,37 @@ public:
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d exp_x = exp_pd(vx);
-      __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
-      __m256d tanh_sp = tanh_pd(sp);
-      __m256d exp_neg_x = exp_pd(_mm256_sub_pd(vec_zero, vx));
-      __m256d sig_denom = _mm256_add_pd(vec_one, exp_neg_x);
-      __m256d sig_x = reciprocal_pd(sig_denom);
-      __m256d tanh_sp2 = _mm256_mul_pd(tanh_sp, tanh_sp);
-      __m256d one_minus_tanh_sp2 = _mm256_sub_pd(vec_one, tanh_sp2);
-      __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vx, sig_x), one_minus_tanh_sp2);
-      __m256d res = _mm256_add_pd(tanh_sp, term2);
       __m256d gt_mask = _mm256_cmp_pd(vx, vec_20, _CMP_GT_OQ);
-      __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
-      res = _mm256_blendv_pd(res, vec_one, gt_mask);
-      res = _mm256_blendv_pd(res, vec_zero, lt_mask);
-      _mm256_storeu_pd(out + i, res);
+      int gt_bits = _mm256_movemask_pd(gt_mask);
+      if (gt_bits == 0xF)
+      {
+        _mm256_storeu_pd(out + i, vec_one);
+      }
+      else
+      {
+        __m256d lt_mask = _mm256_cmp_pd(vx, vec_neg20, _CMP_LT_OQ);
+        int lt_bits = _mm256_movemask_pd(lt_mask);
+        if (lt_bits == 0xF)
+        {
+          _mm256_storeu_pd(out + i, vec_zero);
+        }
+        else
+        {
+          __m256d exp_x = exp_pd(vx);
+          __m256d sp = log_pd(_mm256_add_pd(vec_one, exp_x));
+          __m256d tanh_sp = tanh_pd(sp);
+          __m256d exp_neg_x = exp_pd(_mm256_sub_pd(vec_zero, vx));
+          __m256d sig_denom = _mm256_add_pd(vec_one, exp_neg_x);
+          __m256d sig_x = reciprocal_pd(sig_denom);
+          __m256d tanh_sp2 = _mm256_mul_pd(tanh_sp, tanh_sp);
+          __m256d one_minus_tanh_sp2 = _mm256_sub_pd(vec_one, tanh_sp2);
+          __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(vx, sig_x), one_minus_tanh_sp2);
+          __m256d res = _mm256_add_pd(tanh_sp, term2);
+          res = _mm256_blendv_pd(res, vec_one, gt_mask);
+          res = _mm256_blendv_pd(res, vec_zero, lt_mask);
+          _mm256_storeu_pd(out + i, res);
+        }
+      }
     }
 #endif
     for (; i < size; ++i)
