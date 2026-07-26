@@ -611,7 +611,7 @@ void GRURNNLayer::calculate_forward_feed(
   const size_t N_this = get_number_neurons();
 
   // 1. Flatten inputs [BatchSize x T x N_prev]
-  thread_local std::vector<double> flattened_batch_inputs;
+  std::vector<double> flattened_batch_inputs;
   size_t num_time_steps = 0;
 
   const unsigned prev_layer_index = previous_layer.get_layer_index();
@@ -653,8 +653,7 @@ void GRURNNLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 3 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
-  thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.resize(batch_size * num_time_steps * GateCount * N_this);
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
@@ -870,15 +869,10 @@ void GRURNNLayer::run_forward_pass(
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  thread_local std::vector<double> gated_h;
-  thread_local std::vector<double> prev_h;
-  thread_local std::vector<double> current_h;
-  thread_local std::vector<double> packed_bptt_states;
-
-  gated_h.resize(N_this);
-  prev_h.resize(N_this);
-  current_h.resize(N_this);
-  packed_bptt_states.resize(Multiplier * N_this);
+  std::vector<double> gated_h(N_this);
+  std::vector<double> prev_h(N_this, 0.0);
+  std::vector<double> current_h(N_this, 0.0);
+  std::vector<double> packed_bptt_states(Multiplier * N_this);
 
   for (size_t b = start; b < end; ++b)
   {

@@ -298,8 +298,7 @@ void ElmanRNNLayer::calculate_forward_feed(
     return;
   }
 
-  thread_local std::vector<double> flattened_batch_inputs;
-  flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+  std::vector<double> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -318,8 +317,7 @@ void ElmanRNNLayer::calculate_forward_feed(
   }
 
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
-  thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.resize(batch_size * num_time_steps * N_this);
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * N_this);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
@@ -356,10 +354,8 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
-    thread_local std::vector<double> current_h;
-    thread_local std::vector<double> mask;
-    current_h.resize(N_this);
-    mask.resize(N_this);
+    std::vector<double> current_h(N_this, 0.0);
+    std::vector<double> mask(N_this, 1.0);
     for (size_t b = b_start; b < b_end; ++b)
     {
       std::fill(current_h.begin(), current_h.end(), 0.0);

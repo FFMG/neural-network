@@ -399,8 +399,7 @@ void LSTMLayer::calculate_forward_feed(
   }
   if (num_time_steps == 0) return;
 
-  thread_local std::vector<double> flattened_inputs;
-  flattened_inputs.resize(batch_size * num_time_steps * N_prev);
+  std::vector<double> flattened_inputs(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -414,8 +413,7 @@ void LSTMLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 4 x N_this]
-  thread_local std::vector<double> batch_pre_act;
-  batch_pre_act.resize(batch_size * num_time_steps * GateCount * N_this);
+  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
 
   auto& batch_pre_act_ref = batch_pre_act;
   auto& flattened_inputs_ref = flattened_inputs;
@@ -559,17 +557,11 @@ void LSTMLayer::calculate_forward_feed(
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
-    thread_local std::vector<double> current_h;
-    thread_local std::vector<double> current_c;
-    thread_local std::vector<double> packed_bptt;
-    thread_local std::vector<double> g_act_vec;
-    thread_local std::vector<double> c_act_vec;
-
-    current_h.resize(N_this);
-    current_c.resize(N_this);
-    packed_bptt.resize(Multiplier * N_this);
-    g_act_vec.resize(N_this);
-    c_act_vec.resize(N_this);
+    std::vector<double> current_h(N_this, 0.0);
+    std::vector<double> current_c(N_this, 0.0);
+    std::vector<double> packed_bptt(Multiplier * N_this);
+    std::vector<double> g_act_vec(N_this, 0.0);
+    std::vector<double> c_act_vec(N_this, 0.0);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
