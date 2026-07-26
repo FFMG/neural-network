@@ -642,4 +642,81 @@ TEST_F(ActivationTest, SELUAVX2AllNegative)
   }
 }
 
+TEST_F(ActivationTest, MishAVX2Correctness)
+{
+  activation act(activation::method::mish, 1.0);
+
+  std::vector<double> input(17);
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    input[i] = -25.0 + i * 3.0; // Covers <-20, in-range, and >20 values!
+  }
+
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::mish(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance) << "AVX2 Mish mismatch at index " << i;
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::mish_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance) << "AVX2 Mish derivative mismatch at index " << i;
+  }
+}
+
+TEST_F(ActivationTest, MishAVX2AllPositive)
+{
+  activation act(activation::method::mish, 1.0);
+
+  // All inputs > 20.0
+  std::vector<double> input = { 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::mish(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::mish_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
+TEST_F(ActivationTest, MishAVX2AllNegative)
+{
+  activation act(activation::method::mish, 1.0);
+
+  // All inputs < -20.0
+  std::vector<double> input = { -21.0, -22.0, -23.0, -24.0, -25.0, -26.0, -27.0, -28.0 };
+  std::vector<double> input_copy = input;
+  act.activate(input_copy.data(), input_copy.data() + input_copy.size(), true);
+
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected = math_expect::mish(input[i], 1.0);
+    EXPECT_NEAR(expected, input_copy[i], tolerance);
+  }
+
+  std::vector<double> deriv_out(input.size());
+  act.activate_derivative(input.data(), input.data() + input.size(), nullptr, deriv_out.data());
+  for (size_t i = 0; i < input.size(); ++i)
+  {
+    double expected_deriv = math_expect::mish_deriv(input[i], 1.0);
+    EXPECT_NEAR(expected_deriv, deriv_out[i], tolerance);
+  }
+}
+
 
