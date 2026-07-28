@@ -159,8 +159,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   std::vector<size_t> shuffled_indexes(raw_size);
   std::iota(shuffled_indexes.begin(), shuffled_indexes.end(), 0);
 
-  std::random_device rd;
-  std::mt19937 gen(rd()); // Mersenne Twister RNG
+  thread_local std::mt19937 gen(std::random_device{}());
   std::shuffle(shuffled_indexes.begin(), shuffled_indexes.end(), gen);
   return shuffled_indexes;
 }
@@ -260,8 +259,7 @@ void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_netw
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto indexes = neural_network_helper.training_indexes();
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
+  thread_local std::mt19937 gen(std::random_device{}());
   std::shuffle(indexes.begin(), indexes.end(), gen);
   neural_network_helper.move_training_indexes(std::move(indexes));
   create_batch_from_indexes(neural_network_helper.training_indexes(), training_inputs, training_outputs, shuffled_training_inputs, shuffled_training_outputs);
@@ -943,8 +941,7 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
   std::vector<size_t> calibration_indices(training_inputs.size());
   std::iota(calibration_indices.begin(), calibration_indices.end(), 0);
   
-  static std::random_device rd;
-  static std::mt19937 g(rd());
+  thread_local std::mt19937 g(std::random_device{}());
   std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
   calibration_indices.resize(num_samples);
 

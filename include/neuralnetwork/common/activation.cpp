@@ -592,8 +592,7 @@ double activation::xavier_initialization(unsigned fan_in, unsigned fan_out, std:
     return dist(local_gen);
   }
 
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
+  thread_local std::mt19937 gen(std::random_device{}());
   return dist(gen);
 }
 
@@ -611,8 +610,7 @@ double activation::he_initialization(unsigned fan_in, std::optional<uint32_t> se
     return dist(local_gen);
   }
 
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
+  thread_local std::mt19937 gen(std::random_device{}());
   return dist(gen);
 }
 
@@ -630,8 +628,7 @@ double activation::selu_initialization(unsigned fan_in, std::optional<uint32_t> 
     return dist(local_gen);
   }
 
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
+  thread_local std::mt19937 gen(std::random_device{}());
   return dist(gen);
 }
 
@@ -648,8 +645,7 @@ double activation::lecun_initialization(unsigned fan_in, std::optional<uint32_t>
     return dist(local_gen);
   }
 
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
+  thread_local std::mt19937 gen(std::random_device{}());
   return dist(gen);
 }
 
@@ -663,8 +659,10 @@ activation::method activation::string_to_method(const std::string& str)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   std::string lower_str = str;
-  std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(static_cast<int>(c))); });
+  for (size_t i = 0; i < lower_str.size(); ++i)
+  {
+    lower_str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lower_str[i])));
+  }
 
   if (lower_str == "linear")
   {

@@ -719,4 +719,35 @@ TEST_F(ActivationTest, MishAVX2AllNegative)
   }
 }
 
+static void test_initialization_worker(const activation* act)
+{
+  for (int i = 0; i < 1000; ++i)
+  {
+    double val = act->weight_initialization(10, 10);
+    EXPECT_TRUE(std::isfinite(val));
+  }
+}
+
+TEST_F(ActivationTest, MultithreadedWeightInitialization)
+{
+  activation act(activation::method::relu, 0.01);
+  std::vector<std::thread> threads;
+  threads.reserve(8);
+  for (int i = 0; i < 8; ++i)
+  {
+    threads.emplace_back(test_initialization_worker, &act);
+  }
+  for (auto& t : threads)
+  {
+    if (t.joinable())
+    {
+      t.join();
+    }
+  }
+
+  EXPECT_EQ(activation::string_to_method("ReLU"), activation::method::relu);
+  EXPECT_EQ(activation::string_to_method("Sigmoid"), activation::method::sigmoid);
+}
+
+
 

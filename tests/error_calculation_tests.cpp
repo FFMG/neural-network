@@ -1,4 +1,4 @@
-﻿#include "common/activation.h"
+#include "common/activation.h"
 #include "helpers/errorcalculation.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
@@ -612,3 +612,17 @@ TEST_F(ErrorCalculationTest, ActivationMethodBranching) {
     }
   }
 }
+
+TEST_F(ErrorCalculationTest, LogCoshCalculationAndStringTypeTest)
+{
+  std::vector<std::vector<double>> gt = { { 0.0, 1.0, -1.0 } };
+  std::vector<std::vector<double>> pred = { { 0.5, 0.5, -0.5 } };
+
+  double actual = ErrorCalculation::calculate_log_cosh(gt, pred);
+  double expected = math_expect::log_cosh(gt, pred);
+  EXPECT_NEAR(actual, expected, 1e-12);
+
+  EXPECT_EQ(ErrorCalculation::string_to_type("Log-Cosh"), ErrorCalculation::type::log_cosh);
+  EXPECT_EQ(ErrorCalculation::string_to_type("MSE"), ErrorCalculation::type::mse);
+}
+
