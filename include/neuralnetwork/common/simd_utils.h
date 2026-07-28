@@ -516,6 +516,68 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0_0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y0_1 = _mm256_loadu_pd(&y0[j + 4]);
+      __m256d vec_y1_0 = _mm256_loadu_pd(&y1[j]);
+      __m256d vec_y1_1 = _mm256_loadu_pd(&y1[j + 4]);
+      __m256d vec_y2_0 = _mm256_loadu_pd(&y2[j]);
+      __m256d vec_y2_1 = _mm256_loadu_pd(&y2[j + 4]);
+      __m256d vec_y3_0 = _mm256_loadu_pd(&y3[j]);
+      __m256d vec_y3_1 = _mm256_loadu_pd(&y3[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w_row = W + i * N_this + j;
+        __m256d vec_w0 = _mm256_loadu_pd(w_row);
+        __m256d vec_w1 = _mm256_loadu_pd(w_row + 4);
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+        __m256d vec_x2 = _mm256_set1_pd(x2[i]);
+        __m256d vec_x3 = _mm256_set1_pd(x3[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0 = _mm256_fmadd_pd(vec_w0, vec_x0, vec_y0_0);
+        vec_y0_1 = _mm256_fmadd_pd(vec_w1, vec_x0, vec_y0_1);
+
+        vec_y1_0 = _mm256_fmadd_pd(vec_w0, vec_x1, vec_y1_0);
+        vec_y1_1 = _mm256_fmadd_pd(vec_w1, vec_x1, vec_y1_1);
+
+        vec_y2_0 = _mm256_fmadd_pd(vec_w0, vec_x2, vec_y2_0);
+        vec_y2_1 = _mm256_fmadd_pd(vec_w1, vec_x2, vec_y2_1);
+
+        vec_y3_0 = _mm256_fmadd_pd(vec_w0, vec_x3, vec_y3_0);
+        vec_y3_1 = _mm256_fmadd_pd(vec_w1, vec_x3, vec_y3_1);
+#else
+        vec_y0_0 = _mm256_add_pd(vec_y0_0, _mm256_mul_pd(vec_w0, vec_x0));
+        vec_y0_1 = _mm256_add_pd(vec_y0_1, _mm256_mul_pd(vec_w1, vec_x0));
+
+        vec_y1_0 = _mm256_add_pd(vec_y1_0, _mm256_mul_pd(vec_w0, vec_x1));
+        vec_y1_1 = _mm256_add_pd(vec_y1_1, _mm256_mul_pd(vec_w1, vec_x1));
+
+        vec_y2_0 = _mm256_add_pd(vec_y2_0, _mm256_mul_pd(vec_w0, vec_x2));
+        vec_y2_1 = _mm256_add_pd(vec_y2_1, _mm256_mul_pd(vec_w1, vec_x2));
+
+        vec_y3_0 = _mm256_add_pd(vec_y3_0, _mm256_mul_pd(vec_w0, vec_x3));
+        vec_y3_1 = _mm256_add_pd(vec_y3_1, _mm256_mul_pd(vec_w1, vec_x3));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0_0);
+      _mm256_storeu_pd(&y0[j + 4], vec_y0_1);
+
+      _mm256_storeu_pd(&y1[j], vec_y1_0);
+      _mm256_storeu_pd(&y1[j + 4], vec_y1_1);
+
+      _mm256_storeu_pd(&y2[j], vec_y2_0);
+      _mm256_storeu_pd(&y2[j + 4], vec_y2_1);
+
+      _mm256_storeu_pd(&y3[j], vec_y3_0);
+      _mm256_storeu_pd(&y3[j + 4], vec_y3_1);
+    }
+
     for (; j + 3 < N_this; j += 4)
     {
       __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
@@ -581,6 +643,44 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0_0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y0_1 = _mm256_loadu_pd(&y0[j + 4]);
+      __m256d vec_y1_0 = _mm256_loadu_pd(&y1[j]);
+      __m256d vec_y1_1 = _mm256_loadu_pd(&y1[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w_row = W + i * N_this + j;
+        __m256d vec_w0 = _mm256_loadu_pd(w_row);
+        __m256d vec_w1 = _mm256_loadu_pd(w_row + 4);
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0 = _mm256_fmadd_pd(vec_w0, vec_x0, vec_y0_0);
+        vec_y0_1 = _mm256_fmadd_pd(vec_w1, vec_x0, vec_y0_1);
+
+        vec_y1_0 = _mm256_fmadd_pd(vec_w0, vec_x1, vec_y1_0);
+        vec_y1_1 = _mm256_fmadd_pd(vec_w1, vec_x1, vec_y1_1);
+#else
+        vec_y0_0 = _mm256_add_pd(vec_y0_0, _mm256_mul_pd(vec_w0, vec_x0));
+        vec_y0_1 = _mm256_add_pd(vec_y0_1, _mm256_mul_pd(vec_w1, vec_x0));
+
+        vec_y1_0 = _mm256_add_pd(vec_y1_0, _mm256_mul_pd(vec_w0, vec_x1));
+        vec_y1_1 = _mm256_add_pd(vec_y1_1, _mm256_mul_pd(vec_w1, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0_0);
+      _mm256_storeu_pd(&y0[j + 4], vec_y0_1);
+
+      _mm256_storeu_pd(&y1[j], vec_y1_0);
+      _mm256_storeu_pd(&y1[j + 4], vec_y1_1);
+    }
+
     for (; j + 3 < N_this; j += 4)
     {
       __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
@@ -632,6 +732,32 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w_row = W + i * N_this + j;
+        __m256d vec_w0 = _mm256_loadu_pd(w_row);
+        __m256d vec_w1 = _mm256_loadu_pd(w_row + 4);
+
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0, vec_x, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w1, vec_x, vec_y1);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0, vec_x));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w1, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y0);
+      _mm256_storeu_pd(&y[j + 4], vec_y1);
+    }
+
     for (; j + 3 < N_this; j += 4)
     {
       __m256d vec_y = _mm256_loadu_pd(&y[j]);
