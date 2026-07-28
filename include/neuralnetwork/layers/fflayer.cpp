@@ -401,11 +401,13 @@ void FFLayer::run_post_gemm(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  std::vector<double> mask(N_this, 1.0);
-  std::vector<double> output_row_seq(num_time_steps * N_this);
+  // Reuse thread-local buffers via TempBuffer to avoid repeated heap allocations.
+  TempBuffer<double, 7> mask_buf(N_this);
+  TempBuffer<double, 8> output_row_seq_buf(num_time_steps * N_this);
+
   for (size_t b = start; b < end; b++)
   {
-    std::fill(mask.begin(), mask.end(), 1.0);
+    std::fill(mask_buf.vec().begin(), mask_buf.vec().begin() + N_this, 1.0);
     if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
     {
       batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
@@ -415,7 +417,7 @@ void FFLayer::run_post_gemm(
     for (size_t t = 0; t < num_time_steps; ++t)
     {
       double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
-      double* current_output_row = &output_row_seq[t * N_this];
+      double* current_output_row = output_row_seq_buf.data() + t * N_this;
 
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
       {
@@ -442,13 +444,13 @@ void FFLayer::run_post_gemm(
               if (neuron.must_randomly_drop())
               {
                 output = 0.0;
-                mask[j] = 0.0;
+                mask_buf.data()[j] = 0.0;
               }
               else
               {
                 double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
                 output *= scale;
-                mask[j] = scale;
+                mask_buf.data()[j] = scale;
               }
             }
             current_output_row[j] = output;
@@ -459,13 +461,13 @@ void FFLayer::run_post_gemm(
           std::copy(current_pre_act + r.start, current_pre_act + r.end, current_output_row + r.start);
         }
       }
-      layer_states_ref[t].set_cell_state_values(mask.data(), N_this);
+      layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
       layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
     }
 
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy(output_row_seq.end() - N_this, output_row_seq.end(), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq.data(), output_row_seq.size());
+    std::copy(output_row_seq_buf.data() + (num_time_steps * N_this) - N_this, output_row_seq_buf.data() + (num_time_steps * N_this), dest_ptr);
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq_buf.data(), output_row_seq_buf.size());
   }
 }
 
