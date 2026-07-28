@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../libraries/instrumentor.h"
 
 #include <algorithm>
@@ -82,8 +82,10 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     std::string lower_str = str;
-    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(),
-      [](unsigned char c) { return static_cast<char>(std::tolower(static_cast<int>(c))); });
+    for (size_t i = 0; i < lower_str.size(); ++i)
+    {
+      lower_str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lower_str[i])));
+    }
 
     if (lower_str == "none")
     {
@@ -906,6 +908,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_log_cosh = 0.0;
     size_t count = 0;
+    const double log2_val = std::log(2.0);
 
     for (size_t i = 0; i < ground_truths.size(); ++i)
     {
@@ -924,7 +927,7 @@ public:
         // ln(cosh(x)) = ln((e^x + e^-x) / 2) = ln(e^abs(x) * (1 + e^(-2*abs(x))) / 2)
         //             = abs(x) + ln(1 + e^(-2*abs(x))) - ln(2)
         // We use std::log1p(y) which is ln(1+y) for better precision with small y.
-        total_log_cosh += abs_x + std::log1p(std::exp(-2.0 * abs_x)) - std::log(2.0);
+        total_log_cosh += abs_x + std::log1p(std::exp(-2.0 * abs_x)) - log2_val;
         ++count;
       }
     }
