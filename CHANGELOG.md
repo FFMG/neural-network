@@ -2,6 +2,11 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.6] - 2026-07-27
+
+### Changed
+- Optimized `FFLayer::run_post_gemm` in `include/neuralnetwork/layers/fflayer.cpp` to reuse thread-local buffers via `TempBuffer` tags 7 and 8, completely avoiding dynamic stack vector allocation during forward feed.
+
 ## [1.1.5] - 2026-07-26
 
 ### Added
