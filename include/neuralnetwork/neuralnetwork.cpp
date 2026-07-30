@@ -1167,11 +1167,15 @@ double NeuralNetwork::calculate_learning_rate(
   {
     if (epoch % 5 == 0)
     {
-      _last_metrics = calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, nullptr);
+      const auto current_metrics = calculate_forecast_metrics_impl({ ErrorCalculation::type::rmse }, false, nullptr);
 
-      if (!_last_metrics.empty())
+      if (!current_metrics.empty())
       {
-        learning_rate = learning_rate_scheduler.update(_last_metrics[0].error(), learning_rate, epoch, number_of_epoch);
+        {
+          std::unique_lock<std::shared_mutex> lock(_mutex);
+          _last_metrics = current_metrics;
+        }
+        learning_rate = learning_rate_scheduler.update(current_metrics[0].error(), learning_rate, epoch, number_of_epoch);
         learning_rate_scheduler.set_learning_rate(learning_rate);
         Logger::trace("Adaptive learning rate to ", std::fixed, std::setprecision(15), learning_rate, " at epoch ", epoch, " (", std::setprecision(4), (double)(completed_percent * 100.0), "%)");
       }
