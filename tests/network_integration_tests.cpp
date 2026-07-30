@@ -629,5 +629,75 @@ TEST(NetworkIntegrationTest, ShuffleSingleStepsBehavior)
   SUCCEED();
 }
 
+TEST(NetworkIntegrationTest, CalculateForecastMetricsComprehensiveTest)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .build();
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6}, {0.7, 0.8}, {0.9, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.3}, {0.7}, {1.1}, {1.5}, {1.9}
+  };
+
+  NeuralNetwork nn(options);
+
+  // 1. Check before training (should return default error metric)
+  NeuralNetworkHelperMetrics metric_before = nn.calculate_forecast_metric(ErrorCalculation::type::mse);
+  EXPECT_EQ(metric_before.error_type(), ErrorCalculation::type::mse);
+
+  auto all_metrics_before = nn.calculate_forecast_metric_all_layers(ErrorCalculation::type::mae);
+  EXPECT_TRUE(all_metrics_before.empty() || all_metrics_before[0].error_type() == ErrorCalculation::type::mae);
+
+  // 2. Train network
+  nn.train(inputs, outputs);
+
+  // 3. Test single forecast metric (out of sample)
+  NeuralNetworkHelperMetrics single_metric = nn.calculate_forecast_metric(ErrorCalculation::type::mse);
+  EXPECT_EQ(single_metric.error_type(), ErrorCalculation::type::mse);
+  EXPECT_GE(single_metric.error(), 0.0);
+
+  // 4. Test single forecast metric all layers
+  std::vector<NeuralNetworkHelperMetrics> layer_single_metrics = nn.calculate_forecast_metric_all_layers(ErrorCalculation::type::mae);
+  ASSERT_FALSE(layer_single_metrics.empty());
+  EXPECT_EQ(layer_single_metrics[0].error_type(), ErrorCalculation::type::mae);
+  EXPECT_GE(layer_single_metrics[0].error(), 0.0);
+
+  // 5. Test multiple forecast metrics (in-sample vs out-of-sample)
+  std::vector<ErrorCalculation::type> error_types = { ErrorCalculation::type::mse, ErrorCalculation::type::mae };
+  auto metrics_in = nn.calculate_forecast_metrics(error_types, true);
+  auto metrics_out = nn.calculate_forecast_metrics(error_types, false);
+
+  ASSERT_EQ(metrics_in.size(), 2u);
+  ASSERT_EQ(metrics_out.size(), 2u);
+  EXPECT_EQ(metrics_in[0].error_type(), ErrorCalculation::type::mse);
+  EXPECT_EQ(metrics_in[1].error_type(), ErrorCalculation::type::mae);
+  EXPECT_GE(metrics_in[0].error(), 0.0);
+  EXPECT_GE(metrics_out[0].error(), 0.0);
+
+  // 6. Test forecast metrics all layers
+  auto all_layers_in = nn.calculate_forecast_metrics_all_layers(error_types, true);
+  auto all_layers_out = nn.calculate_forecast_metrics_all_layers(error_types, false);
+  ASSERT_FALSE(all_layers_in.empty());
+  ASSERT_FALSE(all_layers_out.empty());
+  ASSERT_EQ(all_layers_in[0].size(), 2u);
+  EXPECT_EQ(all_layers_in[0][0].error_type(), ErrorCalculation::type::mse);
+  EXPECT_EQ(all_layers_in[0][1].error_type(), ErrorCalculation::type::mae);
+
+  // 7. Test NeuralNetworkHelper wrapper methods
+  NeuralNetworkHelper helper(nn, 0.01, 5, inputs, outputs);
+  auto helper_single = helper.calculate_forecast_metric(ErrorCalculation::type::mse);
+  ASSERT_FALSE(helper_single.empty());
+  EXPECT_EQ(helper_single[0].error_type(), ErrorCalculation::type::mse);
+
+  auto helper_multi = helper.calculate_forecast_metrics(error_types, true);
+  ASSERT_FALSE(helper_multi.empty());
+  ASSERT_EQ(helper_multi[0].size(), 2u);
+}
+
+
 
 
