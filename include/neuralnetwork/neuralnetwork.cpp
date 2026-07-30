@@ -499,9 +499,9 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 
   calculate_forward_feed_for_forecast_metrics(cache.gradients, training_inputs, *checks_indexes, target_layers, cache.hidden_states, false);
 
+  const unsigned last_layer_index = static_cast<unsigned>(target_layers.size() - 1);
   for (size_t i = 0; i < prediction_size; ++i)
   {
-    const unsigned last_layer_index = static_cast<unsigned>(target_layers.size() - 1);
     const auto& rnn_out = cache.gradients[i].get_rnn_outputs(last_layer_index);
     if (!rnn_out.empty())
     {
@@ -1245,10 +1245,7 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
     const auto& current_input = all_inputs[indices[b]];
     if (b < 2)
     {
-      Logger::trace([=]
-        {
-          return Logger::factory("DEBUG: [b=", b, "] Forecast Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
-        });
+      Logger::trace("DEBUG: [b=", b, "] Forecast Input[0]=", (current_input.empty() ? 0.0 : current_input[0]));
     }
     const size_t input_size = layers_container[0].get_number_neurons();
 

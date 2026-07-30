@@ -824,6 +824,8 @@ public:
       // This ensures that ErrorCalculation (which works on samples) correctly handles Softmax max-indices, etc.
       std::vector<std::vector<double>> unrolled_predictions;
       std::vector<std::vector<double>> unrolled_checking_outputs;
+      unrolled_predictions.reserve(batch_size);
+      unrolled_checking_outputs.reserve(batch_size);
 
       for (size_t b = 0; b < batch_size; ++b)
       {
@@ -845,17 +847,11 @@ public:
 
         for (size_t t = 0; t < num_steps; ++t)
         {
-          std::vector<double> p_slice(num_neurons);
-          std::vector<double> c_slice(num_neurons);
-
           const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
-          std::copy(p_start, p_start + num_neurons, p_slice.begin());
-
           const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
-          std::copy(c_start, c_start + num_neurons, c_slice.begin());
 
-          unrolled_predictions.push_back(std::move(p_slice));
-          unrolled_checking_outputs.push_back(std::move(c_slice));
+          unrolled_predictions.emplace_back(p_start, p_start + num_neurons);
+          unrolled_checking_outputs.emplace_back(c_start, c_start + num_neurons);
         }
       }
 
