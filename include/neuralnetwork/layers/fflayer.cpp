@@ -275,7 +275,7 @@ void FFLayer::calculate_forward_feed(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_gemm_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((effective_batch_size * N_prev * N_this) / 2000000))) : 1;
-  const bool use_gemm_mt = (active_gemm_threads > 1);
+  const bool use_gemm_mt = is_training && (active_gemm_threads > 1);
   if (!use_gemm_mt)
   {
     run_gemm(0, effective_batch_size, N_prev, N_this, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec());
@@ -301,7 +301,7 @@ void FFLayer::calculate_forward_feed(
 
   // 4. Residuals, Activation and Dropout
   const unsigned int active_post_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 1000000))) : 1;
-  const bool use_post_mt = (active_post_threads > 1);
+  const bool use_post_mt = is_training && (active_post_threads > 1);
   if (!use_post_mt)
   {
     run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec(), is_training);
