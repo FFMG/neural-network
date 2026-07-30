@@ -658,7 +658,7 @@ void GRURNNLayer::calculate_forward_feed(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this * 3) / 2000000))) : 1;
-  const bool use_multithreading = (active_threads > 1);
+  const bool use_multithreading = is_training && (active_threads > 1);
   if (!use_multithreading)
   {
     pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
