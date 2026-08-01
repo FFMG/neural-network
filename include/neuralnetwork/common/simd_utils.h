@@ -1416,6 +1416,7 @@ public:
     size_t start = 0) noexcept
   {
     (void)h_hat_pre_vals;
+    if (start >= n) return;
     for (size_t j = start; j < n; ++j)
     {
       double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
@@ -1456,7 +1457,7 @@ public:
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
 
-    for (; j + 7 < n; j += 8)
+    for (; j + 8 <= n; j += 8)
     {
       __m256d dh_raw0 = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j]), _mm256_loadu_pd(&d_next_h[j]));
       __m256d dh_raw1 = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j + 4]), _mm256_loadu_pd(&d_next_h[j + 4]));
@@ -1506,7 +1507,7 @@ public:
       _mm256_storeu_pd(&dh_prev_accum_out[j + 4], d_h_prev_direct1);
     }
 
-    for (; j + 3 < n; j += 4)
+    for (; j + 4 <= n; j += 4)
     {
       __m256d dh_raw = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j]), _mm256_loadu_pd(&d_next_h[j]));
       __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, clip_limit), neg_clip_limit);
@@ -1551,6 +1552,7 @@ public:
     double* dh_next_out,
     size_t start = 0) noexcept
   {
+    if (start >= n) return;
     for (size_t j = start; j < n; ++j)
     {
       double grad_rh = temp_Uh[j];
@@ -1575,7 +1577,7 @@ public:
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
     const __m256d one = _mm256_set1_pd(1.0);
-    for (; j + 7 < n; j += 8)
+    for (; j + 8 <= n; j += 8)
     {
       __m256d grad_rh0 = _mm256_loadu_pd(&temp_Uh[j]);
       __m256d grad_rh1 = _mm256_loadu_pd(&temp_Uh[j + 4]);
@@ -1607,7 +1609,7 @@ public:
       _mm256_storeu_pd(&dh_next_out[j + 4], dh_next1);
     }
 
-    for (; j + 3 < n; j += 4)
+    for (; j + 4 <= n; j += 4)
     {
       __m256d grad_rh = _mm256_loadu_pd(&temp_Uh[j]);
       __m256d h_prev = (h_prev_vals != nullptr) ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
@@ -1654,6 +1656,7 @@ public:
     size_t start = 0) noexcept
   {
     (void)g_pre_vals;
+    if (start >= n) return;
     for (size_t j = start; j < n; ++j)
     {
       double dh = std::clamp(dh_curr[j], -50.0, 50.0);
@@ -1700,7 +1703,7 @@ public:
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
 
-    for (; j + 7 < n; j += 8)
+    for (; j + 8 <= n; j += 8)
     {
       __m256d dh_raw0 = _mm256_loadu_pd(&dh_curr[j]);
       __m256d dh_raw1 = _mm256_loadu_pd(&dh_curr[j + 4]);
@@ -1771,7 +1774,7 @@ public:
       _mm256_storeu_pd(&dc_next_out[j + 4], _mm256_mul_pd(dc1, f_gate1));
     }
 
-    for (; j + 3 < n; j += 4)
+    for (; j + 4 <= n; j += 4)
     {
       __m256d dh_raw = _mm256_loadu_pd(&dh_curr[j]);
       __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, clip_limit), neg_clip_limit);
@@ -2875,6 +2878,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    if (start >= n) return;
     for (size_t j = start; j < n; ++j)
     {
       dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
@@ -2894,7 +2898,7 @@ public:
 #ifdef SIMD_AVX2_ENABLED
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
-    for (; j + 7 < n; j += 8)
+    for (; j + 8 <= n; j += 8)
     {
       __m256d vec_up0 = _mm256_loadu_pd(upstream + j);
       __m256d vec_up1 = _mm256_loadu_pd(upstream + j + 4);
@@ -2918,7 +2922,7 @@ public:
       _mm256_storeu_pd(dh_curr + j, clamped0);
       _mm256_storeu_pd(dh_curr + j + 4, clamped1);
     }
-    for (; j + 3 < n; j += 4)
+    for (; j + 4 <= n; j += 4)
     {
       __m256d vec_up = _mm256_loadu_pd(upstream + j);
       __m256d vec_next = _mm256_loadu_pd(dh_next + j);
@@ -2946,6 +2950,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    if (start >= n) return;
     for (size_t j = start; j < n; ++j)
     {
       double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
@@ -2967,7 +2972,7 @@ public:
 #ifdef SIMD_AVX2_ENABLED
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
-    for (; j + 7 < n; j += 8)
+    for (; j + 8 <= n; j += 8)
     {
       __m256d vec_up0 = _mm256_loadu_pd(upstream + j);
       __m256d vec_up1 = _mm256_loadu_pd(upstream + j + 4);
@@ -2993,7 +2998,7 @@ public:
       _mm256_storeu_pd(g_this_tick + j, res0);
       _mm256_storeu_pd(g_this_tick + j + 4, res1);
     }
-    for (; j + 3 < n; j += 4)
+    for (; j + 4 <= n; j += 4)
     {
       __m256d vec_up = _mm256_loadu_pd(upstream + j);
       __m256d vec_next = _mm256_loadu_pd(dh_next + j);
