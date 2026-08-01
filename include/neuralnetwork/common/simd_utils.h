@@ -1416,8 +1416,8 @@ public:
     size_t start = 0) noexcept
   {
     (void)h_hat_pre_vals;
-    if (start >= n) return;
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+    for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
       double z = z_vals[j];
@@ -1552,8 +1552,8 @@ public:
     double* dh_next_out,
     size_t start = 0) noexcept
   {
-    if (start >= n) return;
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+    for (size_t j = s; j < n; ++j)
     {
       double grad_rh = temp_Uh[j];
       double h_prev = (h_prev_vals != nullptr) ? h_prev_vals[j] : 0.0;
@@ -1656,8 +1656,8 @@ public:
     size_t start = 0) noexcept
   {
     (void)g_pre_vals;
-    if (start >= n) return;
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+    for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(dh_curr[j], -50.0, 50.0);
       double act_c = activated_c_vals[j];
@@ -2878,8 +2878,8 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
-    if (start >= n) return;
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+    for (size_t j = s; j < n; ++j)
     {
       dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
     }
@@ -2950,8 +2950,8 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
-    if (start >= n) return;
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+    for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
       g_this_tick[j] = dh * deriv[j] * mask[j];
