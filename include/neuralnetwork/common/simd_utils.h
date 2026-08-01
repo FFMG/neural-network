@@ -1456,6 +1456,56 @@ public:
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
 
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d dh_raw0 = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j]), _mm256_loadu_pd(&d_next_h[j]));
+      __m256d dh_raw1 = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j + 4]), _mm256_loadu_pd(&d_next_h[j + 4]));
+
+      __m256d dh0 = _mm256_max_pd(_mm256_min_pd(dh_raw0, clip_limit), neg_clip_limit);
+      __m256d dh1 = _mm256_max_pd(_mm256_min_pd(dh_raw1, clip_limit), neg_clip_limit);
+
+      __m256d z0 = _mm256_loadu_pd(&z_vals[j]);
+      __m256d z1 = _mm256_loadu_pd(&z_vals[j + 4]);
+
+      __m256d h_hat0 = _mm256_loadu_pd(&h_hat_vals[j]);
+      __m256d h_hat1 = _mm256_loadu_pd(&h_hat_vals[j + 4]);
+
+      __m256d mask0 = _mm256_loadu_pd(&mask_vals[j]);
+      __m256d mask1 = _mm256_loadu_pd(&mask_vals[j + 4]);
+
+      __m256d h_prev0 = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
+      __m256d h_prev1 = h_prev_vals ? _mm256_loadu_pd(&h_prev_vals[j + 4]) : _mm256_setzero_pd();
+
+      __m256d deriv0 = _mm256_loadu_pd(&h_hat_pre_deriv_vals[j]);
+      __m256d deriv1 = _mm256_loadu_pd(&h_hat_pre_deriv_vals[j + 4]);
+
+      __m256d h_hat_final0 = _mm256_mul_pd(h_hat0, mask0);
+      __m256d h_hat_final1 = _mm256_mul_pd(h_hat1, mask1);
+
+      __m256d d_z_pre0 = _mm256_mul_pd(_mm256_mul_pd(dh0, _mm256_sub_pd(h_hat_final0, h_prev0)), _mm256_mul_pd(z0, _mm256_sub_pd(one, z0)));
+      __m256d d_z_pre1 = _mm256_mul_pd(_mm256_mul_pd(dh1, _mm256_sub_pd(h_hat_final1, h_prev1)), _mm256_mul_pd(z1, _mm256_sub_pd(one, z1)));
+
+      __m256d d_h_hat_pre0 = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(dh0, z0), deriv0), mask0);
+      __m256d d_h_hat_pre1 = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(dh1, z1), deriv1), mask1);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d d_h_prev_direct0 = _mm256_fnmadd_pd(dh0, z0, dh0);
+      __m256d d_h_prev_direct1 = _mm256_fnmadd_pd(dh1, z1, dh1);
+#else
+      __m256d d_h_prev_direct0 = _mm256_mul_pd(dh0, _mm256_sub_pd(one, z0));
+      __m256d d_h_prev_direct1 = _mm256_mul_pd(dh1, _mm256_sub_pd(one, z1));
+#endif
+
+      _mm256_storeu_pd(&dz_out[j], d_z_pre0);
+      _mm256_storeu_pd(&dz_out[j + 4], d_z_pre1);
+
+      _mm256_storeu_pd(&dh_hat_out[j], d_h_hat_pre0);
+      _mm256_storeu_pd(&dh_hat_out[j + 4], d_h_hat_pre1);
+
+      _mm256_storeu_pd(&dh_prev_accum_out[j], d_h_prev_direct0);
+      _mm256_storeu_pd(&dh_prev_accum_out[j + 4], d_h_prev_direct1);
+    }
+
     for (; j + 3 < n; j += 4)
     {
       __m256d dh_raw = _mm256_add_pd(_mm256_loadu_pd(&grad_next[j]), _mm256_loadu_pd(&d_next_h[j]));
@@ -1525,6 +1575,38 @@ public:
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
     const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d grad_rh0 = _mm256_loadu_pd(&temp_Uh[j]);
+      __m256d grad_rh1 = _mm256_loadu_pd(&temp_Uh[j + 4]);
+
+      __m256d h_prev0 = (h_prev_vals != nullptr) ? _mm256_loadu_pd(&h_prev_vals[j]) : _mm256_setzero_pd();
+      __m256d h_prev1 = (h_prev_vals != nullptr) ? _mm256_loadu_pd(&h_prev_vals[j + 4]) : _mm256_setzero_pd();
+
+      __m256d r0 = _mm256_loadu_pd(&r_vals[j]);
+      __m256d r1 = _mm256_loadu_pd(&r_vals[j + 4]);
+
+      __m256d dh_prev0 = _mm256_loadu_pd(&dh_prev_accum[j]);
+      __m256d dh_prev1 = _mm256_loadu_pd(&dh_prev_accum[j + 4]);
+
+      __m256d dr0 = _mm256_mul_pd(_mm256_mul_pd(grad_rh0, h_prev0), _mm256_mul_pd(r0, _mm256_sub_pd(one, r0)));
+      __m256d dr1 = _mm256_mul_pd(_mm256_mul_pd(grad_rh1, h_prev1), _mm256_mul_pd(r1, _mm256_sub_pd(one, r1)));
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d dh_next0 = _mm256_fmadd_pd(grad_rh0, r0, dh_prev0);
+      __m256d dh_next1 = _mm256_fmadd_pd(grad_rh1, r1, dh_prev1);
+#else
+      __m256d dh_next0 = _mm256_add_pd(dh_prev0, _mm256_mul_pd(grad_rh0, r0));
+      __m256d dh_next1 = _mm256_add_pd(dh_prev1, _mm256_mul_pd(grad_rh1, r1));
+#endif
+
+      _mm256_storeu_pd(&dr_out[j], dr0);
+      _mm256_storeu_pd(&dr_out[j + 4], dr1);
+
+      _mm256_storeu_pd(&dh_next_out[j], dh_next0);
+      _mm256_storeu_pd(&dh_next_out[j + 4], dh_next1);
+    }
+
     for (; j + 3 < n; j += 4)
     {
       __m256d grad_rh = _mm256_loadu_pd(&temp_Uh[j]);
@@ -1617,6 +1699,77 @@ public:
     const __m256d one = _mm256_set1_pd(1.0);
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d dh_raw0 = _mm256_loadu_pd(&dh_curr[j]);
+      __m256d dh_raw1 = _mm256_loadu_pd(&dh_curr[j + 4]);
+
+      __m256d dh0 = _mm256_max_pd(_mm256_min_pd(dh_raw0, clip_limit), neg_clip_limit);
+      __m256d dh1 = _mm256_max_pd(_mm256_min_pd(dh_raw1, clip_limit), neg_clip_limit);
+
+      __m256d o_gate0 = _mm256_loadu_pd(&o[j]);
+      __m256d o_gate1 = _mm256_loadu_pd(&o[j + 4]);
+
+      __m256d dc_nxt0 = _mm256_loadu_pd(&dc_next_in[j]);
+      __m256d dc_nxt1 = _mm256_loadu_pd(&dc_next_in[j + 4]);
+
+      __m256d act_c0 = _mm256_loadu_pd(&activated_c_vals[j]);
+      __m256d act_c1 = _mm256_loadu_pd(&activated_c_vals[j + 4]);
+
+      __m256d do_gate_v0 = _mm256_mul_pd(_mm256_mul_pd(dh0, act_c0), _mm256_mul_pd(o_gate0, _mm256_sub_pd(one, o_gate0)));
+      __m256d do_gate_v1 = _mm256_mul_pd(_mm256_mul_pd(dh1, act_c1), _mm256_mul_pd(o_gate1, _mm256_sub_pd(one, o_gate1)));
+
+      __m256d dc_deriv0 = _mm256_loadu_pd(&dc_act_deriv_vals[j]);
+      __m256d dc_deriv1 = _mm256_loadu_pd(&dc_act_deriv_vals[j + 4]);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d dc0 = _mm256_fmadd_pd(_mm256_mul_pd(dh0, o_gate0), dc_deriv0, dc_nxt0);
+      __m256d dc1 = _mm256_fmadd_pd(_mm256_mul_pd(dh1, o_gate1), dc_deriv1, dc_nxt1);
+#else
+      __m256d dc0 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh0, o_gate0), dc_deriv0), dc_nxt0);
+      __m256d dc1 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh1, o_gate1), dc_deriv1), dc_nxt1);
+#endif
+
+      __m256d f_gate0 = _mm256_loadu_pd(&f[j]);
+      __m256d f_gate1 = _mm256_loadu_pd(&f[j + 4]);
+
+      __m256d i_gate0 = _mm256_loadu_pd(&i[j]);
+      __m256d i_gate1 = _mm256_loadu_pd(&i[j + 4]);
+
+      __m256d cp0 = has_prev ? _mm256_loadu_pd(&c_prev[j]) : _mm256_setzero_pd();
+      __m256d cp1 = has_prev ? _mm256_loadu_pd(&c_prev[j + 4]) : _mm256_setzero_pd();
+
+      __m256d g_act0 = _mm256_loadu_pd(&activated_g_vals[j]);
+      __m256d g_act1 = _mm256_loadu_pd(&activated_g_vals[j + 4]);
+
+      __m256d dg_deriv0 = _mm256_loadu_pd(&dg_act_deriv_vals[j]);
+      __m256d dg_deriv1 = _mm256_loadu_pd(&dg_act_deriv_vals[j + 4]);
+
+      __m256d df0 = _mm256_mul_pd(_mm256_mul_pd(dc0, cp0), _mm256_mul_pd(f_gate0, _mm256_sub_pd(one, f_gate0)));
+      __m256d df1 = _mm256_mul_pd(_mm256_mul_pd(dc1, cp1), _mm256_mul_pd(f_gate1, _mm256_sub_pd(one, f_gate1)));
+
+      __m256d di0 = _mm256_mul_pd(_mm256_mul_pd(dc0, g_act0), _mm256_mul_pd(i_gate0, _mm256_sub_pd(one, i_gate0)));
+      __m256d di1 = _mm256_mul_pd(_mm256_mul_pd(dc1, g_act1), _mm256_mul_pd(i_gate1, _mm256_sub_pd(one, i_gate1)));
+
+      __m256d dg0 = _mm256_mul_pd(_mm256_mul_pd(dc0, i_gate0), dg_deriv0);
+      __m256d dg1 = _mm256_mul_pd(_mm256_mul_pd(dc1, i_gate1), dg_deriv1);
+
+      _mm256_storeu_pd(&df_out[j], df0);
+      _mm256_storeu_pd(&df_out[j + 4], df1);
+
+      _mm256_storeu_pd(&di_out[j], di0);
+      _mm256_storeu_pd(&di_out[j + 4], di1);
+
+      _mm256_storeu_pd(&do_out[j], do_gate_v0);
+      _mm256_storeu_pd(&do_out[j + 4], do_gate_v1);
+
+      _mm256_storeu_pd(&dg_out[j], dg0);
+      _mm256_storeu_pd(&dg_out[j + 4], dg1);
+
+      _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc0, f_gate0));
+      _mm256_storeu_pd(&dc_next_out[j + 4], _mm256_mul_pd(dc1, f_gate1));
+    }
 
     for (; j + 3 < n; j += 4)
     {
@@ -2741,6 +2894,30 @@ public:
 #ifdef SIMD_AVX2_ENABLED
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vec_up0 = _mm256_loadu_pd(upstream + j);
+      __m256d vec_up1 = _mm256_loadu_pd(upstream + j + 4);
+
+      __m256d vec_next0 = _mm256_loadu_pd(dh_next + j);
+      __m256d vec_next1 = _mm256_loadu_pd(dh_next + j + 4);
+
+      __m256d vec_mask0 = _mm256_loadu_pd(mask + j);
+      __m256d vec_mask1 = _mm256_loadu_pd(mask + j + 4);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d val0 = _mm256_fmadd_pd(vec_up0, vec_mask0, _mm256_mul_pd(vec_next0, vec_mask0));
+      __m256d val1 = _mm256_fmadd_pd(vec_up1, vec_mask1, _mm256_mul_pd(vec_next1, vec_mask1));
+#else
+      __m256d val0 = _mm256_mul_pd(_mm256_add_pd(vec_up0, vec_next0), vec_mask0);
+      __m256d val1 = _mm256_mul_pd(_mm256_add_pd(vec_up1, vec_next1), vec_mask1);
+#endif
+      __m256d clamped0 = _mm256_max_pd(_mm256_min_pd(val0, clip_limit), neg_clip_limit);
+      __m256d clamped1 = _mm256_max_pd(_mm256_min_pd(val1, clip_limit), neg_clip_limit);
+
+      _mm256_storeu_pd(dh_curr + j, clamped0);
+      _mm256_storeu_pd(dh_curr + j + 4, clamped1);
+    }
     for (; j + 3 < n; j += 4)
     {
       __m256d vec_up = _mm256_loadu_pd(upstream + j);
@@ -2790,6 +2967,32 @@ public:
 #ifdef SIMD_AVX2_ENABLED
     const __m256d clip_limit = _mm256_set1_pd(50.0);
     const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vec_up0 = _mm256_loadu_pd(upstream + j);
+      __m256d vec_up1 = _mm256_loadu_pd(upstream + j + 4);
+
+      __m256d vec_next0 = _mm256_loadu_pd(dh_next + j);
+      __m256d vec_next1 = _mm256_loadu_pd(dh_next + j + 4);
+
+      __m256d vec_deriv0 = _mm256_loadu_pd(deriv + j);
+      __m256d vec_deriv1 = _mm256_loadu_pd(deriv + j + 4);
+
+      __m256d vec_mask0 = _mm256_loadu_pd(mask + j);
+      __m256d vec_mask1 = _mm256_loadu_pd(mask + j + 4);
+
+      __m256d dh_raw0 = _mm256_add_pd(vec_up0, vec_next0);
+      __m256d dh_raw1 = _mm256_add_pd(vec_up1, vec_next1);
+
+      __m256d dh0 = _mm256_max_pd(_mm256_min_pd(dh_raw0, clip_limit), neg_clip_limit);
+      __m256d dh1 = _mm256_max_pd(_mm256_min_pd(dh_raw1, clip_limit), neg_clip_limit);
+
+      __m256d res0 = _mm256_mul_pd(_mm256_mul_pd(dh0, vec_deriv0), vec_mask0);
+      __m256d res1 = _mm256_mul_pd(_mm256_mul_pd(dh1, vec_deriv1), vec_mask1);
+
+      _mm256_storeu_pd(g_this_tick + j, res0);
+      _mm256_storeu_pd(g_this_tick + j + 4, res1);
+    }
     for (; j + 3 < n; j += 4)
     {
       __m256d vec_up = _mm256_loadu_pd(upstream + j);

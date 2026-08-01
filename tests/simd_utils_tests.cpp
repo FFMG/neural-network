@@ -1992,5 +1992,123 @@ TEST(SimdUtilsTest, MishDerivative)
   expect_vec_near(actual, expected, 1e-7);
 }
 
+TEST(SimdUtilsTest, BpttUnrolledEightWideEquivalenceVerify)
+{
+  const size_t n = 32;
+
+  // 1. GRU BPTT Gate Step (n = 32)
+  {
+    std::vector<double> grad_next(n), d_next_h(n), z_vals(n), h_hat_vals(n), h_prev_vals(n), h_hat_pre_vals(n), mask_vals(n), h_hat_pre_deriv(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      grad_next[i] = 0.05 * static_cast<double>(i);
+      d_next_h[i] = -0.02 * static_cast<double>(i);
+      z_vals[i] = 0.1 + 0.02 * static_cast<double>(i % 10);
+      h_hat_vals[i] = 0.3;
+      h_prev_vals[i] = 0.15;
+      h_hat_pre_vals[i] = 0.25;
+      mask_vals[i] = (i % 3 == 0) ? 0.0 : 1.0;
+      h_hat_pre_deriv[i] = 0.5;
+    }
+
+    std::vector<double> dz_simd(n, 0.0), dh_hat_simd(n, 0.0), dh_prev_accum_simd(n, 0.0);
+    std::vector<double> dz_scalar(n, 0.0), dh_hat_scalar(n, 0.0), dh_prev_accum_scalar(n, 0.0);
+
+    simd::gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), mask_vals.data(), dz_simd.data(), dh_hat_simd.data(), dh_prev_accum_simd.data(), h_hat_pre_deriv.data());
+    simd::scalar_gru_bptt_gate_step(n, grad_next.data(), d_next_h.data(), z_vals.data(), h_hat_vals.data(), h_prev_vals.data(), h_hat_pre_vals.data(), mask_vals.data(), dz_scalar.data(), dh_hat_scalar.data(), dh_prev_accum_scalar.data(), h_hat_pre_deriv.data());
+
+    expect_vec_near(dz_simd, dz_scalar);
+    expect_vec_near(dh_hat_simd, dh_hat_scalar);
+    expect_vec_near(dh_prev_accum_simd, dh_prev_accum_scalar);
+  }
+
+  // 2. GRU BPTT Reset Step (n = 32)
+  {
+    std::vector<double> temp_Uh(n), h_prev_vals(n), r_vals(n), dh_prev_accum(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      temp_Uh[i] = 0.1 * static_cast<double>(i);
+      h_prev_vals[i] = 0.2 * static_cast<double>(i);
+      r_vals[i] = 0.4;
+      dh_prev_accum[i] = 0.01 * static_cast<double>(i);
+    }
+
+    std::vector<double> dr_simd(n, 0.0), dh_next_simd(n, 0.0);
+    std::vector<double> dr_scalar(n, 0.0), dh_next_scalar(n, 0.0);
+
+    simd::gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_simd.data(), dh_next_simd.data());
+    simd::scalar_gru_bptt_reset_step(n, temp_Uh.data(), h_prev_vals.data(), r_vals.data(), dh_prev_accum.data(), dr_scalar.data(), dh_next_scalar.data());
+
+    expect_vec_near(dr_simd, dr_scalar);
+    expect_vec_near(dh_next_simd, dh_next_scalar);
+  }
+
+  // 3. LSTM BPTT Gate Step (n = 32)
+  {
+    std::vector<double> dh_curr(n), dc_next_in(n), f(n), i_gate(n), o(n), g_pre_vals(n), activated_g_vals(n), activated_c_vals(n), c_prev(n), dc_act_deriv_vals(n), dg_act_deriv_vals(n);
+    for (size_t idx = 0; idx < n; ++idx)
+    {
+      dh_curr[idx] = 0.5 * static_cast<double>(idx);
+      dc_next_in[idx] = 0.2 * static_cast<double>(idx);
+      f[idx] = 0.7;
+      i_gate[idx] = 0.6;
+      o[idx] = 0.8;
+      g_pre_vals[idx] = 0.3;
+      activated_g_vals[idx] = 0.4;
+      activated_c_vals[idx] = 0.5;
+      c_prev[idx] = 0.1;
+      dc_act_deriv_vals[idx] = 0.9;
+      dg_act_deriv_vals[idx] = 0.85;
+    }
+
+    std::vector<double> df_simd(n, 0.0), di_simd(n, 0.0), do_simd(n, 0.0), dg_simd(n, 0.0), dc_next_simd(n, 0.0);
+    std::vector<double> df_scalar(n, 0.0), di_scalar(n, 0.0), do_scalar(n, 0.0), dg_scalar(n, 0.0), dc_next_scalar(n, 0.0);
+
+    simd::lstm_bptt_gate_step(n, dh_curr.data(), dc_next_in.data(), f.data(), i_gate.data(), o.data(), g_pre_vals.data(), activated_g_vals.data(), activated_c_vals.data(), c_prev.data(), true, df_simd.data(), di_simd.data(), do_simd.data(), dg_simd.data(), dc_next_simd.data(), dc_act_deriv_vals.data(), dg_act_deriv_vals.data());
+    simd::scalar_lstm_bptt_gate_step(n, dh_curr.data(), dc_next_in.data(), f.data(), i_gate.data(), o.data(), g_pre_vals.data(), activated_g_vals.data(), activated_c_vals.data(), c_prev.data(), true, df_scalar.data(), di_scalar.data(), do_scalar.data(), dg_scalar.data(), dc_next_scalar.data(), dc_act_deriv_vals.data(), dg_act_deriv_vals.data());
+
+    expect_vec_near(df_simd, df_scalar);
+    expect_vec_near(di_simd, di_scalar);
+    expect_vec_near(do_simd, do_scalar);
+    expect_vec_near(dg_simd, dg_scalar);
+    expect_vec_near(dc_next_simd, dc_next_scalar);
+  }
+
+  // 4. LSTM BPTT Upstream Step (n = 32)
+  {
+    std::vector<double> upstream(n), dh_next(n), mask(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      upstream[i] = 0.5 * static_cast<double>(i);
+      dh_next[i] = -0.1 * static_cast<double>(i);
+      mask[i] = (i % 2 == 0) ? 1.0 : 0.5;
+    }
+
+    std::vector<double> actual_simd(n, 0.0), actual_scalar(n, 0.0);
+    simd::lstm_bptt_upstream_step(upstream.data(), dh_next.data(), mask.data(), actual_simd.data(), n);
+    simd::scalar_lstm_bptt_upstream_step(upstream.data(), dh_next.data(), mask.data(), actual_scalar.data(), n);
+
+    expect_vec_near(actual_simd, actual_scalar);
+  }
+
+  // 5. Elman BPTT Gate Step (n = 32)
+  {
+    std::vector<double> upstream(n), dh_next(n), deriv(n), mask(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      upstream[i] = 1.0 + static_cast<double>(i);
+      dh_next[i] = -0.5 * static_cast<double>(i);
+      deriv[i] = 0.25;
+      mask[i] = 1.0;
+    }
+
+    std::vector<double> actual_simd(n, 0.0), actual_scalar(n, 0.0);
+    simd::elman_bptt_gate_step(upstream.data(), dh_next.data(), deriv.data(), mask.data(), actual_simd.data(), n);
+    simd::scalar_elman_bptt_gate_step(upstream.data(), dh_next.data(), deriv.data(), mask.data(), actual_scalar.data(), n);
+
+    expect_vec_near(actual_simd, actual_scalar);
+  }
+}
+
 
 
