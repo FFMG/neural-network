@@ -1539,21 +1539,24 @@ public:
       _mm256_storeu_pd(&dh_prev_accum_out[j], d_h_prev_direct);
     }
 #endif
-    for (; j < n; ++j)
+    if (j < n)
     {
-      double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
-      double z = z_vals[j];
-      double h_hat = h_hat_vals[j];
-      double mask = mask_vals[j];
-      double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-      double h_hat_final = h_hat * mask;
+      for (; j < n; ++j)
+      {
+        double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
+        double z = z_vals[j];
+        double h_hat = h_hat_vals[j];
+        double mask = mask_vals[j];
+        double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
+        double h_hat_final = h_hat * mask;
 
-      double d_z_pre = dh * (h_hat_final - h_prev) * z * (1.0 - z);
-      double d_h_hat_pre = dh * z * h_hat_pre_deriv_vals[j] * mask;
+        double d_z_pre = dh * (h_hat_final - h_prev) * z * (1.0 - z);
+        double d_h_hat_pre = dh * z * h_hat_pre_deriv_vals[j] * mask;
 
-      dz_out[j] = d_z_pre;
-      dh_hat_out[j] = d_h_hat_pre;
-      dh_prev_accum_out[j] = dh * (1.0 - z);
+        dz_out[j] = d_z_pre;
+        dh_hat_out[j] = d_h_hat_pre;
+        dh_prev_accum_out[j] = dh * (1.0 - z);
+      }
     }
   }
 
@@ -1646,13 +1649,16 @@ public:
       _mm256_storeu_pd(&dh_next_out[j], dh_next);
     }
 #endif
-    for (; j < n; ++j)
+    if (j < n)
     {
-      double grad_rh = temp_Uh[j];
-      double h_prev = (h_prev_vals != nullptr) ? h_prev_vals[j] : 0.0;
-      double r = r_vals[j];
-      dr_out[j] = grad_rh * h_prev * r * (1.0 - r);
-      dh_next_out[j] = dh_prev_accum[j] + grad_rh * r;
+      for (; j < n; ++j)
+      {
+        double grad_rh = temp_Uh[j];
+        double h_prev = (h_prev_vals != nullptr) ? h_prev_vals[j] : 0.0;
+        double r = r_vals[j];
+        dr_out[j] = grad_rh * h_prev * r * (1.0 - r);
+        dh_next_out[j] = dh_prev_accum[j] + grad_rh * r;
+      }
     }
   }
 
@@ -1832,21 +1838,24 @@ public:
       _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc, f_gate));
     }
 #endif
-    for (; j < n; ++j)
+    if (j < n)
     {
-      double dh = std::clamp(dh_curr[j], -50.0, 50.0);
-      double act_c = activated_c_vals[j];
-      double do_gate_s = dh * act_c * o[j] * (1.0 - o[j]);
+      for (; j < n; ++j)
+      {
+        double dh = std::clamp(dh_curr[j], -50.0, 50.0);
+        double act_c = activated_c_vals[j];
+        double do_gate_s = dh * act_c * o[j] * (1.0 - o[j]);
 
-      double dc = dh * o[j] * dc_act_deriv_vals[j] + dc_next_in[j];
+        double dc = dh * o[j] * dc_act_deriv_vals[j] + dc_next_in[j];
 
-      double g_act = activated_g_vals[j];
+        double g_act = activated_g_vals[j];
 
-      df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
-      di_out[j] = dc * g_act * i[j] * (1.0 - i[j]);
-      do_out[j] = do_gate_s;
-      dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
-      dc_next_out[j] = dc * f[j];
+        df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
+        di_out[j] = dc * g_act * i[j] * (1.0 - i[j]);
+        do_out[j] = do_gate_s;
+        dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
+        dc_next_out[j] = dc * f[j];
+      }
     }
   }
 
@@ -2956,9 +2965,12 @@ public:
       _mm256_storeu_pd(dh_curr + j, clamped);
     }
 #endif
-    for (; j < n; ++j)
+    if (j < n)
     {
-      dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
+      for (; j < n; ++j)
+      {
+        dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
+      }
     }
   }
 
@@ -3033,10 +3045,13 @@ public:
       _mm256_storeu_pd(g_this_tick + j, res);
     }
 #endif
-    for (; j < n; ++j)
+    if (j < n)
     {
-      double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
-      g_this_tick[j] = dh * deriv[j] * mask[j];
+      for (; j < n; ++j)
+      {
+        double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
+        g_this_tick[j] = dh * deriv[j] * mask[j];
+      }
     }
   }
 
