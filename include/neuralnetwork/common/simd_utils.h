@@ -1417,6 +1417,10 @@ public:
   {
     (void)h_hat_pre_vals;
     const size_t s = (start < n) ? start : n;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
@@ -1433,6 +1437,9 @@ public:
       dh_hat_out[j] = d_h_hat_pre;
       dh_prev_accum_out[j] = dh * (1.0 - z);
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // GRU BPTT Gate Step
@@ -1539,25 +1546,7 @@ public:
       _mm256_storeu_pd(&dh_prev_accum_out[j], d_h_prev_direct);
     }
 #endif
-    if (j < n)
-    {
-      for (; j < n; ++j)
-      {
-        double dh = std::clamp(grad_next[j] + d_next_h[j], -50.0, 50.0);
-        double z = z_vals[j];
-        double h_hat = h_hat_vals[j];
-        double mask = mask_vals[j];
-        double h_prev = (h_prev_vals) ? h_prev_vals[j] : 0.0;
-        double h_hat_final = h_hat * mask;
-
-        double d_z_pre = dh * (h_hat_final - h_prev) * z * (1.0 - z);
-        double d_h_hat_pre = dh * z * h_hat_pre_deriv_vals[j] * mask;
-
-        dz_out[j] = d_z_pre;
-        dh_hat_out[j] = d_h_hat_pre;
-        dh_prev_accum_out[j] = dh * (1.0 - z);
-      }
-    }
+    scalar_gru_bptt_gate_step(n, grad_next, d_next_h, z_vals, h_hat_vals, h_prev_vals, h_hat_pre_vals, mask_vals, dz_out, dh_hat_out, dh_prev_accum_out, h_hat_pre_deriv_vals, j);
   }
 
   // Scalar fallback for gru_bptt_reset_step
@@ -1572,6 +1561,10 @@ public:
     size_t start = 0) noexcept
   {
     const size_t s = (start < n) ? start : n;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (size_t j = s; j < n; ++j)
     {
       double grad_rh = temp_Uh[j];
@@ -1580,6 +1573,9 @@ public:
       dr_out[j] = grad_rh * h_prev * r * (1.0 - r);
       dh_next_out[j] = dh_prev_accum[j] + grad_rh * r;
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // GRU BPTT Reset Gate Step
@@ -1649,17 +1645,7 @@ public:
       _mm256_storeu_pd(&dh_next_out[j], dh_next);
     }
 #endif
-    if (j < n)
-    {
-      for (; j < n; ++j)
-      {
-        double grad_rh = temp_Uh[j];
-        double h_prev = (h_prev_vals != nullptr) ? h_prev_vals[j] : 0.0;
-        double r = r_vals[j];
-        dr_out[j] = grad_rh * h_prev * r * (1.0 - r);
-        dh_next_out[j] = dh_prev_accum[j] + grad_rh * r;
-      }
-    }
+    scalar_gru_bptt_reset_step(n, temp_Uh, h_prev_vals, r_vals, dh_prev_accum, dr_out, dh_next_out, j);
   }
 
   // Scalar fallback for lstm_bptt_gate_step
@@ -1686,6 +1672,10 @@ public:
   {
     (void)g_pre_vals;
     const size_t s = (start < n) ? start : n;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(dh_curr[j], -50.0, 50.0);
@@ -1702,6 +1692,9 @@ public:
       dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
       dc_next_out[j] = dc * f[j];
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // LSTM BPTT Gate Step
@@ -1838,25 +1831,7 @@ public:
       _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc, f_gate));
     }
 #endif
-    if (j < n)
-    {
-      for (; j < n; ++j)
-      {
-        double dh = std::clamp(dh_curr[j], -50.0, 50.0);
-        double act_c = activated_c_vals[j];
-        double do_gate_s = dh * act_c * o[j] * (1.0 - o[j]);
-
-        double dc = dh * o[j] * dc_act_deriv_vals[j] + dc_next_in[j];
-
-        double g_act = activated_g_vals[j];
-
-        df_out[j] = dc * (has_prev ? c_prev[j] : 0.0) * f[j] * (1.0 - f[j]);
-        di_out[j] = dc * g_act * i[j] * (1.0 - i[j]);
-        do_out[j] = do_gate_s;
-        dg_out[j] = dc * i[j] * dg_act_deriv_vals[j];
-        dc_next_out[j] = dc * f[j];
-      }
-    }
+    scalar_lstm_bptt_gate_step(n, dh_curr, dc_next_in, f, i, o, g_pre_vals, activated_g_vals, activated_c_vals, c_prev, has_prev, df_out, di_out, do_out, dg_out, dc_next_out, dc_act_deriv_vals, dg_act_deriv_vals, j);
   }
 
   // Calculate sum of squares (sum(x_i^2))
@@ -2907,10 +2882,17 @@ public:
     size_t start = 0) noexcept
   {
     const size_t s = (start < n) ? start : n;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
     for (size_t j = s; j < n; ++j)
     {
       dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // Vectorised LSTM BPTT upstream step: dh_curr[j] = clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0)
@@ -2965,13 +2947,7 @@ public:
       _mm256_storeu_pd(dh_curr + j, clamped);
     }
 #endif
-    if (j < n)
-    {
-      for (; j < n; ++j)
-      {
-        dh_curr[j] = std::clamp((upstream[j] + dh_next[j]) * mask[j], -50.0, 50.0);
-      }
-    }
+    scalar_lstm_bptt_upstream_step(upstream, dh_next, mask, dh_curr, n, j);
   }
 
   // Scalar fallback for elman_bptt_gate_step
@@ -2984,11 +2960,19 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
-    for (size_t j = start; j < n; ++j)
+    const size_t s = (start < n) ? start : n;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waggressive-loop-optimizations"
+#endif
+    for (size_t j = s; j < n; ++j)
     {
       double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
       g_this_tick[j] = dh * deriv[j] * mask[j];
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // Vectorised Elman RNN BPTT gate step: g_this_tick[j] = clamp(upstream[j] + dh_next[j], -50.0, 50.0) * deriv[j] * mask[j]
@@ -3045,14 +3029,7 @@ public:
       _mm256_storeu_pd(g_this_tick + j, res);
     }
 #endif
-    if (j < n)
-    {
-      for (; j < n; ++j)
-      {
-        double dh = std::clamp(upstream[j] + dh_next[j], -50.0, 50.0);
-        g_this_tick[j] = dh * deriv[j] * mask[j];
-      }
-    }
+    scalar_elman_bptt_gate_step(upstream, dh_next, deriv, mask, g_this_tick, n, j);
   }
 
   // Scalar fallback for gru_output_step
