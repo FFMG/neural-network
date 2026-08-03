@@ -3,6 +3,7 @@
 #include "fflayer.h"
 #include "../common/logger.h"
 #include "../common/simd_utils.h"
+#include "../common/tempbuffer.h"
 #include <numeric>
 
 
@@ -611,7 +612,7 @@ void GRURNNLayer::calculate_forward_feed(
   const size_t N_this = get_number_neurons();
 
   // 1. Flatten inputs [BatchSize x T x N_prev]
-  std::vector<double> flattened_batch_inputs;
+  TempBuffer<double, 20> flattened_batch_inputs(0);
   size_t num_time_steps = 0;
 
   const unsigned prev_layer_index = previous_layer.get_layer_index();
@@ -624,9 +625,9 @@ void GRURNNLayer::calculate_forward_feed(
       if (num_time_steps == 0) 
       {
         num_time_steps = t;
-        flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+        flattened_batch_inputs.assign(batch_size * num_time_steps * N_prev, 0.0);
       }
-      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.begin() + b * num_time_steps * N_prev);
+      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.vec().begin() + b * num_time_steps * N_prev);
     }
     else
     {
@@ -636,11 +637,11 @@ void GRURNNLayer::calculate_forward_feed(
         if (num_time_steps == 0) 
         {
           num_time_steps = 1;
-          flattened_batch_inputs.resize(batch_size * num_time_steps * N_prev);
+          flattened_batch_inputs.assign(batch_size * num_time_steps * N_prev, 0.0);
         }
         for (size_t t = 0; t < num_time_steps; ++t)
         {
-          std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.begin() + (b * num_time_steps + t) * N_prev);
+          std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.vec().begin() + (b * num_time_steps + t) * N_prev);
         }
       }
     }
@@ -653,20 +654,21 @@ void GRURNNLayer::calculate_forward_feed(
 
   // 2. Pre-calculate Input-to-Gates (all 3 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
+  TempBuffer<double, 21> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
 
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this * 3) / 2000000))) : 1;
   const bool use_multithreading = is_training && (active_threads > 1);
+  auto& flattened_batch_inputs_ref = flattened_batch_inputs.vec();
+  auto& batch_pre_act_ref = batch_pre_act.vec();
+
   if (!use_multithreading)
   {
-    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs.vec(), batch_pre_act.vec());
   }
   else
   {
-    auto& flattened_batch_inputs_ref = flattened_batch_inputs;
-    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -685,7 +687,7 @@ void GRURNNLayer::calculate_forward_feed(
   }
 
   // 3. Output sequence buffer and sequential recurrent pass
-  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this, 0.0);
+  TempBuffer<double, 22> batch_output_sequences(batch_size * num_time_steps * N_this, true);
 
   if (!use_multithreading)
   {
@@ -694,16 +696,15 @@ void GRURNNLayer::calculate_forward_feed(
       batch_size,
       N_this,
       num_time_steps,
-      batch_pre_act,
+      batch_pre_act.vec(),
       batch_residual_output_values,
-      batch_output_sequences,
+      batch_output_sequences.vec(),
       batch_hidden_states,
       is_training
       );
   }
   else
   {
-    auto& batch_pre_act_ref = batch_pre_act;
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -711,13 +712,14 @@ void GRURNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
+        auto& batch_output_sequences_ref = batch_output_sequences.vec();
         _task_queue_pool->enqueue([
           start, 
           end, 
           N_this,
           &batch_pre_act_ref,
           &batch_residual_output_values,
-          &batch_output_sequences,
+          &batch_output_sequences_ref,
           &batch_hidden_states,
           is_training,
           num_time_steps,
@@ -730,7 +732,7 @@ void GRURNNLayer::calculate_forward_feed(
               num_time_steps,
               batch_pre_act_ref,
               batch_residual_output_values,
-              batch_output_sequences,
+              batch_output_sequences_ref,
               batch_hidden_states,
               is_training
               );
@@ -744,10 +746,10 @@ void GRURNNLayer::calculate_forward_feed(
   // 3. Store results
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
+    const double* seq_ptr = &batch_output_sequences.data()[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
     
-    const double* last_ptr = &batch_output_sequences[(b * num_time_steps + num_time_steps - 1) * N_this];
+    const double* last_ptr = &batch_output_sequences.data()[(b * num_time_steps + num_time_steps - 1) * N_this];
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     std::copy(last_ptr, last_ptr + N_this, dest_ptr);
   }
@@ -869,22 +871,22 @@ void GRURNNLayer::run_forward_pass(
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  std::vector<double> gated_h(N_this);
-  std::vector<double> prev_h(N_this, 0.0);
-  std::vector<double> current_h(N_this, 0.0);
-  std::vector<double> packed_bptt_states(Multiplier * N_this);
+  TempBuffer<double, 23> gated_h(N_this);
+  TempBuffer<double, 24> prev_h(N_this, true);
+  TempBuffer<double, 25> current_h(N_this, true);
+  TempBuffer<double, 26> packed_bptt_states(Multiplier * N_this);
 
   for (size_t b = start; b < end; ++b)
   {
     // Reset hidden state for each sample in the batch!
-    std::fill(prev_h.begin(), prev_h.end(), 0.0);
-    std::fill(current_h.begin(), current_h.end(), 0.0);
+    std::fill(prev_h.vec().begin(), prev_h.vec().begin() + N_this, 0.0);
+    std::fill(current_h.vec().begin(), current_h.vec().begin() + N_this, 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
       // a. Retrieve precalculated Input-to-Gates (W * x_t + bias) and copy directly to packed_bptt_states
       const double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-      std::copy(pre_t, pre_t + 3 * N_this, packed_bptt_states.begin());
+      std::copy(pre_t, pre_t + 3 * N_this, packed_bptt_states.data());
 
       double* z_ptr = packed_bptt_states.data();
       double* r_ptr = packed_bptt_states.data() + N_this;
@@ -936,27 +938,27 @@ void GRURNNLayer::run_forward_pass(
             }
           }
           mask_ptr[j] = mask;
-          current_h[j] = (1.0 - z_ptr[j]) * prev_h[j] + z_ptr[j] * h_hat_final;
-          batch_output_sequences[(b * num_time_steps + t) * N_this + j] = current_h[j];
+          current_h.data()[j] = (1.0 - z_ptr[j]) * prev_h.data()[j] + z_ptr[j] * h_hat_final;
+          batch_output_sequences.data()[(b * num_time_steps + t) * N_this + j] = current_h.data()[j];
         }
       }
       else
       {
-        std::fill_n(packed_bptt_states.begin() + 4 * N_this, N_this, 1.0);
+        std::fill_n(packed_bptt_states.data() + 4 * N_this, N_this, 1.0);
 
         simd::gru_output_step(
           packed_bptt_states.data(),
           prev_h.data(),
           h_hat_activated_ptr,
           current_h.data(),
-          &batch_output_sequences[(b * num_time_steps + t) * N_this],
+          &batch_output_sequences.data()[(b * num_time_steps + t) * N_this],
           N_this
         );
       }
 
       batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
       batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
-      std::swap(prev_h, current_h);
+      std::swap(prev_h.vec(), current_h.vec());
     }
   }
 }

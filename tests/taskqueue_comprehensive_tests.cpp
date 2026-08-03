@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/taskqueue.h"
 #include <atomic>
 #include <chrono>
@@ -119,3 +119,22 @@ TEST_F(TaskQueueComprehensiveTest, SingleTaskQueueExceptionHandling)
   queue.call([]() -> int { throw std::runtime_error("Test Exception"); });
   EXPECT_THROW(queue.get(), std::runtime_error);
 }
+
+TEST_F(TaskQueueComprehensiveTest, TaskQueuePoolHighThroughputDispatch) 
+{
+  TaskQueuePool<void> pool(4);
+  std::atomic<int> completed_tasks{0};
+  const int total_jobs = 1000;
+
+  for (int i = 0; i < total_jobs; ++i)
+  {
+    pool.enqueue([&completed_tasks]()
+    {
+      completed_tasks.fetch_add(1, std::memory_order_relaxed);
+    });
+  }
+
+  pool.get();
+  EXPECT_EQ(completed_tasks.load(), total_jobs);
+}
+
