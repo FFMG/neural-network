@@ -624,5 +624,47 @@ TEST_F(LSTMLayerTest, BPTTSequenceLengthsVerification)
   }
 }
 
+TEST_F(LSTMLayerTest, TempBufferReuseAndMultiIterationConsistency) {
+  LSTMLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0);
+
+  MockLayer prev_layer(0, 2);
+  std::vector<unsigned> topology = { 2, 2 };
+
+  std::vector<double> first_pass_outputs;
+  std::vector<double> second_pass_outputs;
+
+  for (int iter = 0; iter < 2; ++iter)
+  {
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 3);
+
+    batch_go[0].set_rnn_outputs(0, { 0.5, 0.2, -0.1, 0.8, 0.3, 0.4 });
+    batch_go[1].set_rnn_outputs(0, { 0.1, -0.4, 0.6, 0.2, -0.5, 0.1 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, true);
+
+    const auto rnn_out_0 = batch_go[0].get_rnn_outputs(1);
+    const auto rnn_out_1 = batch_go[1].get_rnn_outputs(1);
+
+    if (iter == 0)
+    {
+      first_pass_outputs = rnn_out_0;
+      first_pass_outputs.insert(first_pass_outputs.end(), rnn_out_1.begin(), rnn_out_1.end());
+    }
+    else
+    {
+      second_pass_outputs = rnn_out_0;
+      second_pass_outputs.insert(second_pass_outputs.end(), rnn_out_1.begin(), rnn_out_1.end());
+    }
+  }
+
+  ASSERT_EQ(first_pass_outputs.size(), second_pass_outputs.size());
+  for (size_t i = 0; i < first_pass_outputs.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(first_pass_outputs[i], second_pass_outputs[i]);
+  }
+}
+
+
 
 

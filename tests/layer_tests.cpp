@@ -362,3 +362,20 @@ TEST(LayerTest, TempBufferCorrectness)
     }
   }
 }
+
+TEST(LayerTest, LayersUpdateWeightsWorkloadThreshold) {
+  auto options = NeuralNetworkOptions::create({ 2, 3, 2 });
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, 0.2 }, { 0.1, -0.4 } };
+  std::vector<std::vector<double>> outputs = { { 0.1, 0.9 }, { 0.8, 0.2 } };
+
+  auto inputs_it = inputs.cbegin();
+  auto outputs_it = outputs.cbegin();
+
+  // Small batch size (batch_size = 2) triggers workload thresholding path cleanly during train()
+  layers.train(options, 0.01, inputs_it, outputs_it, 2);
+  
+  EXPECT_EQ(layers.size(), 3);
+}
+

@@ -3,6 +3,7 @@
 #include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
+#include "../common/tempbuffer.h"
 #include <algorithm>
 #include <cmath>
 
@@ -399,24 +400,24 @@ void LSTMLayer::calculate_forward_feed(
   }
   if (num_time_steps == 0) return;
 
-  std::vector<double> flattened_inputs(batch_size * num_time_steps * N_prev);
+  TempBuffer<double, 30> flattened_inputs(batch_size * num_time_steps * N_prev);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    if (!rnn_in.empty()) std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs.begin() + b * num_time_steps * N_prev);
+    if (!rnn_in.empty()) std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs.vec().begin() + b * num_time_steps * N_prev);
     else
     {
       const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      for (size_t t = 0; t < num_time_steps; ++t) std::copy(std_in.begin(), std_in.end(), flattened_inputs.begin() + (b * num_time_steps + t) * N_prev);
+      for (size_t t = 0; t < num_time_steps; ++t) std::copy(std_in.begin(), std_in.end(), flattened_inputs.vec().begin() + (b * num_time_steps + t) * N_prev);
     }
   }
 
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   // Pre-activations buffer: [Batch x Ticks x 4 x N_this]
-  std::vector<double> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
+  TempBuffer<double, 31> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
 
-  auto& batch_pre_act_ref = batch_pre_act;
-  auto& flattened_inputs_ref = flattened_inputs;
+  auto& batch_pre_act_ref = batch_pre_act.vec();
+  auto& flattened_inputs_ref = flattened_inputs.vec();
 
   auto precalc_gates = [&](size_t b_start, size_t b_end)
   {
@@ -552,26 +553,26 @@ void LSTMLayer::calculate_forward_feed(
     _task_queue_pool->get();
   }
 
-        // Sequential Recurrent Pass and Activations
-  std::vector<double> batch_output_sequences(batch_size * num_time_steps * N_this);
+  // Sequential Recurrent Pass and Activations
+  TempBuffer<double, 32> batch_output_sequences(batch_size * num_time_steps * N_this);
 
   auto recurrent_pass = [&](size_t b_start, size_t b_end)
   {
-    std::vector<double> current_h(N_this, 0.0);
-    std::vector<double> current_c(N_this, 0.0);
-    std::vector<double> packed_bptt(Multiplier * N_this);
-    std::vector<double> g_act_vec(N_this, 0.0);
-    std::vector<double> c_act_vec(N_this, 0.0);
+    TempBuffer<double, 33> current_h(N_this, true);
+    TempBuffer<double, 34> current_c(N_this, true);
+    TempBuffer<double, 35> packed_bptt(Multiplier * N_this);
+    TempBuffer<double, 36> g_act_vec(N_this, true);
+    TempBuffer<double, 37> c_act_vec(N_this, true);
 
     for (size_t b = b_start; b < b_end; ++b)
     {
-      std::fill(current_h.begin(), current_h.end(), 0.0);
-      std::fill(current_c.begin(), current_c.end(), 0.0);
+      std::fill(current_h.vec().begin(), current_h.vec().begin() + N_this, 0.0);
+      std::fill(current_c.vec().begin(), current_c.vec().begin() + N_this, 0.0);
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
         double* pre_t = &batch_pre_act_ref[(b * num_time_steps + t) * GateCount * N_this];
-        std::copy(pre_t, pre_t + 4 * N_this, packed_bptt.begin());
+        std::copy(pre_t, pre_t + 4 * N_this, packed_bptt.data());
 
         double* f_ptr = packed_bptt.data();
         double* i_ptr = packed_bptt.data() + N_this;
@@ -588,7 +589,7 @@ void LSTMLayer::calculate_forward_feed(
         }
 
         // Activations
-        std::copy(g_ptr, g_ptr + N_this, g_act_vec.begin());
+        std::copy(g_ptr, g_ptr + N_this, g_act_vec.data());
         get_activation().activate(g_act_vec.data(), g_act_vec.data() + N_this, is_training);
 
         static const activation sigmoid_act(activation::method::sigmoid, 1.0);
@@ -602,7 +603,7 @@ void LSTMLayer::calculate_forward_feed(
           N_this
         );
 
-        std::copy(current_c.begin(), current_c.end(), c_act_vec.begin());
+        std::copy(current_c.data(), current_c.data() + N_this, c_act_vec.data());
         get_activation().activate(c_act_vec.data(), c_act_vec.data() + N_this, is_training);
 
         if (is_training && get_dropout() > 0.0)
@@ -612,7 +613,7 @@ void LSTMLayer::calculate_forward_feed(
           for (size_t j = 0; j < N_this; ++j)
           {
             double o = o_ptr[j];
-            double activated_c = c_act_vec[j];
+            double activated_c = c_act_vec.data()[j];
             double out = o * activated_c;
 
             double mask = 1.0;
@@ -633,8 +634,8 @@ void LSTMLayer::calculate_forward_feed(
             }
             mask_ptr[j] = mask;
 
-            current_h[j] = out;
-            batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+            current_h.data()[j] = out;
+            batch_output_sequences.data()[(b * num_time_steps + t) * N_this + j] = out;
           }
         }
         else
@@ -646,7 +647,7 @@ void LSTMLayer::calculate_forward_feed(
             current_h.data(),
             N_this
           );
-          std::copy(current_h.begin(), current_h.end(), &batch_output_sequences[(b * num_time_steps + t) * N_this]);
+          std::copy(current_h.data(), current_h.data() + N_this, &batch_output_sequences.data()[(b * num_time_steps + t) * N_this]);
         }
 
         // Store states
@@ -684,7 +685,7 @@ void LSTMLayer::calculate_forward_feed(
   // 4. Output GradientsAndOutputs
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* seq_ptr = &batch_output_sequences[b * num_time_steps * N_this];
+    const double* seq_ptr = &batch_output_sequences.data()[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
     const double* last_ptr = seq_ptr + (num_time_steps - 1) * N_this;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
@@ -696,12 +697,12 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t N_this = get_number_neurons();
-  std::vector<double> deltas;
+  TempBuffer<double, 38> deltas(0);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& states = batch_hidden_states[b].at(get_layer_index());
     const size_t T = states.size();
-    deltas.resize(T * N_this);
+    deltas.assign(T * N_this, 0.0);
     const std::vector<double>& targets = *(target_outputs_begin + b);
     for (size_t t = 0; t < T; ++t)
     {
@@ -711,16 +712,16 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
         size_t idx = t * N_this + j;
         if (idx < targets.size())
         {
-          deltas[idx] = given[j] - targets[idx];
+          deltas.data()[idx] = given[j] - targets[idx];
         }
         else
         {
-          deltas[idx] = 0.0;
+          deltas.data()[idx] = 0.0;
         }
       }
     }
     double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::copy(deltas.end() - N_this, deltas.end(), dest_ptr);
+    std::copy(deltas.data() + deltas.size() - N_this, deltas.data() + deltas.size(), dest_ptr);
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas.data(), deltas.size());
   }
 }

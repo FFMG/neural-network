@@ -765,11 +765,13 @@ public:
 
   inline bool busy() const
   {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
     return _busy_task.load() || _task_is_present.load();
   }
 
   inline bool has_result() const
   {
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
     return false; 
   }
 
@@ -867,6 +869,7 @@ public:
         _number_of_threads = 2;
       }
     }
+    start();
   }
 
   ~TaskQueuePool()
@@ -932,7 +935,7 @@ public:
   void enqueue(F&& f, Args&&... args) 
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    std::call_once(_start_flag, [this] { start(); });
+    if (_task_queues.empty()) std::call_once(_start_flag, [this] { start(); });
     unsigned int index = _threads_index.fetch_add(1, std::memory_order_relaxed) % _number_of_threads;
     _task_queues[index]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
   }
@@ -1006,6 +1009,7 @@ public:
         _number_of_threads = 2;
       }
     }
+    start();
   }
 
   ~TaskQueuePool()
@@ -1071,7 +1075,7 @@ public:
   void enqueue(F&& f, Args&&... args)
   {
     MYODDWEB_PROFILE_FUNCTION("TaskQueuePool");
-    std::call_once(_start_flag, [this] { start(); });
+    if (_task_queues.empty()) std::call_once(_start_flag, [this] { start(); });
     unsigned int index = _threads_index.fetch_add(1, std::memory_order_relaxed) % _number_of_threads;
     _task_queues[index]->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
   }

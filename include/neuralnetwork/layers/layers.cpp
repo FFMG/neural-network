@@ -563,8 +563,17 @@ void Layers::update_weights(
     return;
   }
 
-  // 1. Have each layer calculate and store its own gradients in parallel if threads are available
-  if (_update_weights_pool != nullptr && _update_weights_pool->get_number_of_threads() > 1 && size() > 2)
+  size_t total_weights = 0;
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    total_weights += _layers[i]->get_w_values().size() + _layers[i]->get_b_values().size();
+  }
+  const bool use_pool = (_update_weights_pool != nullptr && _update_weights_pool->get_number_of_threads() > 1 && size() > 2);
+  const bool parallel_grad_calc = use_pool && (batch_size * total_weights >= 10000);
+  const bool parallel_grad_apply = use_pool && (total_weights >= 50000);
+
+  // 1. Have each layer calculate and store its own gradients in parallel if workload exceeds threshold
+  if (parallel_grad_calc)
   {
     for (unsigned i = 1; i < size(); ++i)
     {
@@ -610,9 +619,9 @@ void Layers::update_weights(
     Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
   }
 
-  // 3. Apply the stored (and now clipped) gradients in parallel if threads are available
+  // 3. Apply the stored (and now clipped) gradients
   std::unique_lock<std::shared_mutex> write(_mutex);
-  if (_update_weights_pool != nullptr && _update_weights_pool->get_number_of_threads() > 1 && size() > 2)
+  if (parallel_grad_apply)
   {
     for (unsigned i = 1; i < size(); ++i)
     {
