@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "helpers/adaptivelearningratescheduler.h"
 #include "common/logger.h"
 #include <vector>
@@ -30,23 +30,16 @@ TEST_F(AdaptiveLearningRateSchedulerTest, DecreasingErrorIncreasesLearningRate) 
   AdaptiveLearningRateScheduler scheduler(history_size, 0.0005, min_percent_change, adjustment_rate);
   double initial_lr = 0.1;
   
-  // Fill history with constant error
+  // Fill history with decreasing error sequence
+  double err = 1.0;
   for (size_t i = 0; i < history_size; ++i) {
-    scheduler.update(1.0, initial_lr, 0, 100);
+    scheduler.update(err, initial_lr, 0, 100);
+    err *= 0.95; // 5% decrease
   }
+  scheduler.reset_cool_down();
 
-  // Now provide decreasing error. 
-  // State: Decreasing if change < 0 and change <= (-2 * _min_percent_change)
-  // -2 * 1% = -2% change per step.
-  double error = 1.0;
-  double lr = initial_lr;
-  for (int i = 0; i < 5; ++i) {
-    error *= 0.95; // 5% decrease, which is > 2%
-    lr = scheduler.update(error, lr, 0, 100);
-  }
+  double lr = scheduler.update(err, initial_lr, 0, 100);
 
-  // Adjustment: current_learning_rate * (1.0 + (_adjustment_rate / 2.0))
-  // 0.1 * (1.0 + 0.05) = 0.105
   EXPECT_GT(lr, initial_lr);
   EXPECT_NEAR(lr, initial_lr * (1.0 + adjustment_rate / 2.0), 1e-7);
 }
@@ -58,22 +51,16 @@ TEST_F(AdaptiveLearningRateSchedulerTest, IncreasingErrorDecreasesLearningRate) 
   AdaptiveLearningRateScheduler scheduler(history_size, 0.0005, min_percent_change, adjustment_rate);
   double initial_lr = 0.1;
   
-  // Fill history
+  // Fill history with increasing error sequence
+  double err = 1.0;
   for (size_t i = 0; i < history_size; ++i) {
-    scheduler.update(1.0, initial_lr, 0, 100);
+    scheduler.update(err, initial_lr, 0, 100);
+    err *= 1.012; // 1.2% increase
   }
+  scheduler.reset_cool_down();
 
-  // Increasing error. State: Increasing if change > 0 and change >= _min_percent_change
-  // And change < 2 * _min_percent_change to avoid Exploding state.
-  double error = 1.0;
-  double lr = initial_lr;
-  for (int i = 0; i < 5; ++i) {
-    error *= 1.012; // 1.2% increase, which is between 1% and 2%
-    lr = scheduler.update(error, lr, 0, 100);
-  }
+  double lr = scheduler.update(err, initial_lr, 0, 100);
 
-  // Adjustment: current_learning_rate * (1.0 - _adjustment_rate * 1.5)
-  // 0.1 * (1.0 - 0.15) = 0.085
   EXPECT_LT(lr, initial_lr);
   EXPECT_NEAR(lr, initial_lr * (1.0 - adjustment_rate * 1.5), 1e-7);
 }
@@ -85,21 +72,16 @@ TEST_F(AdaptiveLearningRateSchedulerTest, ExplodingErrorDecreasesLearningRateFas
   AdaptiveLearningRateScheduler scheduler(history_size, 0.0005, min_percent_change, adjustment_rate);
   double initial_lr = 0.1;
   
-  // Fill history
+  // Fill history with exploding error sequence
+  double err = 1.0;
   for (size_t i = 0; i < history_size; ++i) {
-    scheduler.update(1.0, initial_lr, 0, 100);
+    scheduler.update(err, initial_lr, 0, 100);
+    err *= 1.10; // 10% increase
   }
+  scheduler.reset_cool_down();
 
-  // Exploding error. State: Exploding if change > 0 and change >= (2*_min_percent_change)
-  double error = 1.0;
-  double lr = initial_lr;
-  for (int i = 0; i < 5; ++i) {
-    error *= 1.10; // 10% increase, which is > 2%
-    lr = scheduler.update(error, lr, 0, 100);
-  }
+  double lr = scheduler.update(err, initial_lr, 0, 100);
 
-  // Adjustment: current_learning_rate * (1.0 - _adjustment_rate * 2.0)
-  // 0.1 * (1.0 - 0.2) = 0.08
   EXPECT_LT(lr, initial_lr);
   EXPECT_NEAR(lr, initial_lr * (1.0 - adjustment_rate * 2.0), 1e-7);
 }
@@ -107,26 +89,20 @@ TEST_F(AdaptiveLearningRateSchedulerTest, ExplodingErrorDecreasesLearningRateFas
 TEST_F(AdaptiveLearningRateSchedulerTest, PlateauingErrorDecreasesLearningRateMildly) {
   size_t history_size = 10;
   double min_plateau_percent_change = 0.0005;
-  AdaptiveLearningRateScheduler scheduler(history_size, min_plateau_percent_change);
+  double adjustment_rate = 0.1;
+  AdaptiveLearningRateScheduler scheduler(history_size, min_plateau_percent_change, 0.005, adjustment_rate);
   double initial_lr = 0.1;
   
-  // Fill history
+  // Fill history with constant error
   for (size_t i = 0; i < history_size; ++i) {
     scheduler.update(1.0, initial_lr, 0, 100);
   }
+  scheduler.reset_cool_down();
 
-  // Plateauing error. State: Plateauing if fabs(change) <= _min_plateau_percent_change
-  double lr = initial_lr;
-  int epoch = 10;
-  int total_epochs = 100;
-  for (int i = 0; i < 5; ++i) {
-    lr = scheduler.update(1.0, lr, epoch, total_epochs);
-  }
+  double lr = scheduler.update(1.0, initial_lr, 10, 100);
 
-  // Adjustment: current_learning_rate * (1.0 - static_cast<double>(epoch) / number_of_epoch)
-  // 0.1 * (1.0 - 10/100) = 0.09
   EXPECT_LT(lr, initial_lr);
-  EXPECT_NEAR(lr, initial_lr * (1.0 - static_cast<double>(epoch) / total_epochs), 1e-7);
+  EXPECT_NEAR(lr, initial_lr * (1.0 - adjustment_rate / 2.0), 1e-7);
 }
 
 TEST_F(AdaptiveLearningRateSchedulerTest, CooldownPreventsImmediateFurtherChanges) {
@@ -135,32 +111,23 @@ TEST_F(AdaptiveLearningRateSchedulerTest, CooldownPreventsImmediateFurtherChange
   AdaptiveLearningRateScheduler scheduler(history_size, 0.0005, 0.01, adjustment_rate);
   double initial_lr = 0.1;
   
-  // Fill history
+  // Fill history with decreasing error sequence
+  double err = 1.0;
   for (size_t i = 0; i < history_size; ++i) {
-    scheduler.update(1.0, initial_lr, 0, 100);
+    scheduler.update(err, initial_lr, 0, 100);
+    err *= 0.90;
   }
+  scheduler.reset_cool_down();
 
   // Trigger a change (Decreasing)
-  double error = 1.0;
-  double lr = initial_lr;
-  bool changed = false;
-  for (int i = 0; i < 10; ++i) {
-    error *= 0.90; // Large decrease
-    lr = scheduler.update(error, lr, 0, 100);
-    if (lr != initial_lr) {
-      changed = true;
-      break;
-    }
-  }
-  
-  ASSERT_TRUE(changed) << "Failed to trigger a learning rate change";
+  double lr = scheduler.update(err, initial_lr, 0, 100);
+  EXPECT_NE(lr, initial_lr);
   double lr_after_first_change = lr;
 
   // Subsequent updates should be in cooldown.
-  // CoolDownDecreasing = 10 * _history_size = 100 iterations.
   for (int i = 0; i < 50; ++i) {
-    error *= 0.90;
-    lr = scheduler.update(error, lr, 0, 100);
+    err *= 0.90;
+    lr = scheduler.update(err, lr, 0, 100);
     EXPECT_DOUBLE_EQ(lr, lr_after_first_change) << "LR changed during cooldown at iteration " << i;
   }
 }
@@ -170,20 +137,55 @@ TEST_F(AdaptiveLearningRateSchedulerTest, RateIsClamped) {
   AdaptiveLearningRateScheduler scheduler(history_size);
   double initial_lr = 0.1;
   
-  // Fill history
+  // Fill history with decreasing error sequence
+  double err = 1.0;
   for (size_t i = 0; i < history_size; ++i) {
-    scheduler.update(1.0, initial_lr, 0, 100);
+    scheduler.update(err, initial_lr, 0, 100);
+    err *= 0.90;
   }
+  scheduler.reset_cool_down();
 
-  // Max LR is set to clamp(2*current, current, 0.99) = 0.2
-  // Let's force many increases
-  double error = 1.0;
   double lr = initial_lr;
   for (int i = 0; i < 1000; ++i) {
-    error *= 0.90;
-    lr = scheduler.update(error, lr, 0, 100);
+    err *= 0.90;
+    lr = scheduler.update(err, lr, 0, 100);
   }
 
   EXPECT_LE(lr, 0.2000000000001);
   EXPECT_GE(lr, 1e-6);
+}
+
+TEST_F(AdaptiveLearningRateSchedulerTest, ExtendedEpochTrainingDoesNotOverflow) {
+  size_t history_size = 10;
+  AdaptiveLearningRateScheduler scheduler(history_size);
+  double initial_lr = 0.1;
+
+  for (size_t i = 0; i < history_size; ++i) {
+    scheduler.update(1.0, initial_lr, 0, 100);
+  }
+  scheduler.reset_cool_down();
+
+  // Epoch exceeding total_epochs (e.g. epoch 150 of 100)
+  double lr = scheduler.update(1.0, initial_lr, 150, 100);
+  EXPECT_GE(lr, 1e-6);
+  EXPECT_LE(lr, 0.2);
+}
+
+TEST_F(AdaptiveLearningRateSchedulerTest, NoisyErrorHistoryDecreasingState) {
+  size_t history_size = 12;
+  double min_percent_change = 0.005; // 0.5%
+  double adjustment_rate = 0.1;
+  AdaptiveLearningRateScheduler scheduler(history_size, 0.0005, min_percent_change, adjustment_rate);
+  double initial_lr = 0.1;
+
+  std::vector<double> noisy_errors = {
+    1.0, 0.99, 0.98, 0.985, 0.97, 0.965, 0.95, 0.955, 0.94, 0.93, 0.925, 0.91, 0.90
+  };
+
+  double lr = initial_lr;
+  for (double err : noisy_errors) {
+    lr = scheduler.update(err, lr, 10, 100);
+  }
+
+  EXPECT_GT(lr, initial_lr);
 }
