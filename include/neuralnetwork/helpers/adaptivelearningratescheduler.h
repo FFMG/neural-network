@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <deque>
@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../common/logger.h"
+#include "../libraries/instrumentor.h"
 
 
 namespace myoddweb::nn
@@ -17,7 +18,7 @@ class AdaptiveLearningRateScheduler
 private:
   static constexpr size_t CoolDownExploding = 1;
   static constexpr size_t CoolDownIncrease = 10;
-  static constexpr size_t CoolDownPlateau = 3;
+  static constexpr size_t CoolDownPlateau = 1;
   static constexpr size_t CoolDownDecreasing = 10;
 
   enum RateState
@@ -43,6 +44,7 @@ public:
     _max_learning_rate(0.0),
     _current_learning_rate(0.0)
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     assert(min_percent_change >= 0 && min_percent_change <= 1.0);
   }
 
@@ -54,20 +56,29 @@ public:
 
   [[nodiscard]] double current_learning_rate() const noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     return _current_learning_rate;
   }
 
   void set_learning_rate(double lr) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     _current_learning_rate = lr;
+  }
+
+  void reset_cool_down() noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
+    _cool_down = 0;
   }
 
   double update(double currentError, double current_learning_rate, int epoch, int number_of_epoch)
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     if (_max_learning_rate == 0)
     {
       //  set the max learning rate.
-      _max_learning_rate = std::clamp(2* current_learning_rate, current_learning_rate, 0.99);
+      _max_learning_rate = std::clamp(2 * current_learning_rate, current_learning_rate, 0.99);
       _current_learning_rate = current_learning_rate;
       Logger::debug("Adaptive Learning Rate max value set to: ", std::fixed, std::setprecision(15), _max_learning_rate);
     }
@@ -102,7 +113,7 @@ public:
       {
         return current_learning_rate;
       }
-      _cool_down = static_cast<int>( CoolDownDecreasing * _history_size);
+      _cool_down = static_cast<int>(CoolDownDecreasing * _history_size);
       Logger::info("Learning is improving. Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
@@ -113,13 +124,13 @@ public:
 
     case RateState::Plateauing:
     {
-      double new_learning_rate = clamp_learning_rate(linear_decay(current_learning_rate, epoch, number_of_epoch)); // Mild reduce
+      double new_learning_rate = clamp_learning_rate(current_learning_rate * (1.0 - (_adjustment_rate / 2.0))); // Mild geometric reduce
       if (!will_change(current_learning_rate, new_learning_rate))
       {
         return current_learning_rate;
       }
       _cool_down = static_cast<int>(CoolDownPlateau * _history_size);
-      Logger::info("Learning is plateauing. Changing learning down rate from "
+      Logger::info("Learning is plateauing. Changing learning rate from "
         , std::fixed, std::setprecision(15), current_learning_rate
         , " to "
         , std::fixed, std::setprecision(15), new_learning_rate);
@@ -177,17 +188,20 @@ private:
 
   double clamp_learning_rate(double new_learning_rate) const
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     new_learning_rate = std::clamp(new_learning_rate, 1e-6, _max_learning_rate);
     return new_learning_rate;
   }
   
   bool will_change(double current_rate, double new_rate) const
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     return current_rate != new_rate;
   }
 
   RateState get_rate_change() const
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     const size_t error_size = _error_history.size();
     if (error_size < _history_size)
     {
@@ -200,8 +214,6 @@ private:
     size_t explodingCount = 0;
     size_t explodingPattern = 0;
     size_t comparisons = error_size / 2;
-    size_t plateau_comparisons = error_size / 4;
-    plateau_comparisons = std::max(plateau_comparisons, size_t(4));
 
     for (size_t i = error_size - comparisons; i < error_size - 1; ++i)
     {
@@ -214,9 +226,7 @@ private:
       }
 
       // decreasing
-      // for decrease to cause a change we must be doing really well.
-      // so we will be looking for 2x the percent change
-      if (change < 0 && change <= (- 2 * _min_percent_change))
+      if (change < 0 && change <= -_min_percent_change)
       {
         ++decreaseCount;
       }
@@ -228,7 +238,7 @@ private:
       }
 
       // exploding
-      if (change > 0 && change >= (2*_min_percent_change))
+      if (change > 0 && change >= (2 * _min_percent_change))
       {
         ++explodingCount;
       }
@@ -239,19 +249,22 @@ private:
         ++explodingPattern;
       }
     }
-    if (explodingPattern >= comparisons - 1 || explodingCount >= comparisons - 1)
+
+    const size_t num_steps = (comparisons > 1) ? comparisons - 1 : 1;
+
+    if (explodingPattern >= num_steps || explodingCount >= num_steps)
     {
       return RateState::Exploding;
     }
-    if (increaseCount >= comparisons - 1)
+    if (increaseCount >= (num_steps + 1) / 2)
     {
       return RateState::Increasing;
     }
-    if (decreaseCount >= comparisons - 1)
+    if (decreaseCount >= (num_steps + 1) / 2)
     {
       return RateState::Decreasing;
     }
-    if (plateau >= plateau_comparisons - 1)
+    if (plateau >= (num_steps * 3 + 3) / 4)
     {
       return RateState::Plateauing;
     }
@@ -261,6 +274,7 @@ private:
 
   double percent_change(double oldValue, double newValue) const
   {
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
     // Handle the edge case where the old value is 0 to avoid division by zero.
     if (oldValue == 0.0) 
     {
@@ -281,9 +295,12 @@ private:
     return (change / oldValue);
   }
 
-  double linear_decay(double current_learning_rate, int epoch, int number_of_epoch)
+  double linear_decay(double current_learning_rate, int epoch, int number_of_epoch) const
   {
-    return current_learning_rate * (1.0 - static_cast<double>(epoch) / number_of_epoch);
+    MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
+    if (number_of_epoch <= 0) return current_learning_rate;
+    double progress = std::clamp(static_cast<double>(epoch) / number_of_epoch, 0.0, 0.95);
+    return current_learning_rate * (1.0 - progress);
   }
 };
 } // namespace myoddweb::nn
