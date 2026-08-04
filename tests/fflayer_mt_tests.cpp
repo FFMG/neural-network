@@ -296,3 +296,50 @@ TEST_F(FFLayerMTTest, ThreadLocalBufferCorrectnessAndStress)
         }
     }
 }
+
+TEST_F(FFLayerMTTest, MediumWorkloadParallelExecutionVerification) 
+{
+    const unsigned num_inputs = 64;
+    const unsigned num_neurons = 64;
+    const unsigned batch_size = 64;
+    const unsigned num_threads = 4;
+
+    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+
+    init_layer_weights(layer_st);
+    init_layer_weights(layer_mt);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_neurons };
+
+    auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, 1, 1);
+    auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, 1, 1);
+
+    for (size_t b = 0; b < batch_size; ++b) 
+    {
+        std::vector<double> inputs(num_inputs);
+        for (size_t i = 0; i < inputs.size(); ++i) 
+        {
+          inputs[i] = std::cos(static_cast<double>(b * i));
+        }
+        batch_go_st[b].set_outputs(0, inputs);
+        batch_go_mt[b].set_outputs(0, inputs);
+    }
+
+    layer_st.calculate_forward_feed(batch_go_st, prev_layer, {}, batch_hs_st, batch_size, true);
+    layer_mt.calculate_forward_feed(batch_go_mt, prev_layer, {}, batch_hs_mt, batch_size, true);
+
+    for (size_t b = 0; b < batch_size; ++b) 
+    {
+        const auto& out_st = batch_go_st[b].get_outputs(1);
+        const auto& out_mt = batch_go_mt[b].get_outputs(1);
+        ASSERT_EQ(out_st.size(), out_mt.size());
+        for (size_t i = 0; i < out_st.size(); ++i) 
+        {
+            EXPECT_NEAR(out_st[i], out_mt[i], 1e-12);
+        }
+    }
+}
