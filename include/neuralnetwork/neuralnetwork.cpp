@@ -347,6 +347,7 @@ double NeuralNetwork::get_percent_complete() const noexcept
 
 bool NeuralNetwork::has_training_data() const
 {
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::shared_lock<std::shared_mutex> read(_mutex);
   if (!_neural_network_helpers.empty())
   {
@@ -538,13 +539,14 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
 
   if (!bptt_inputs.empty())
   {
-    if (is_shuffled)
+    if (is_shuffled && bptt_inputs.size() > 1)
     {
       const size_t n = bptt_inputs.size();
       thread_local std::mt19937 g(std::random_device{}());
+      std::uniform_int_distribution<size_t> dist;
       for (size_t i = n - 1; i > 0; --i)
       {
-        size_t j = g() % (i + 1);
+        size_t j = dist(g, std::uniform_int_distribution<size_t>::param_type(0, i));
         if (i != j)
         {
           std::swap(bptt_inputs[i], bptt_inputs[j]);
@@ -578,13 +580,14 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
       bptt_inputs.push_back(inputs[i]);
       bptt_outputs.push_back(outputs[i]);
     }
-    if (is_shuffled)
+    if (is_shuffled && bptt_inputs.size() > 1)
     {
       const size_t n = bptt_inputs.size();
       thread_local std::mt19937 g(std::random_device{}());
+      std::uniform_int_distribution<size_t> dist;
       for (size_t i = n - 1; i > 0; --i)
       {
-        size_t j = g() % (i + 1);
+        size_t j = dist(g, std::uniform_int_distribution<size_t>::param_type(0, i));
         if (i != j)
         {
           std::swap(bptt_inputs[i], bptt_inputs[j]);
@@ -607,6 +610,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
 
   // 1. Identify valid sequence start indices
   std::vector<size_t> start_indices;
+  start_indices.reserve(total_samples / bptt_size);
   for (size_t start_idx = 0; start_idx + bptt_size <= total_samples; start_idx += bptt_size)
   {
     start_indices.push_back(start_idx);
@@ -615,10 +619,8 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   // 2. Shuffle indices instead of data if requested
   if (is_shuffled)
   {
-    std::vector<size_t> shuffled_indices = start_indices;
     thread_local std::mt19937 g(std::random_device{}());
-    std::shuffle(shuffled_indices.begin(), shuffled_indices.end(), g);
-    start_indices = std::move(shuffled_indices);
+    std::shuffle(start_indices.begin(), start_indices.end(), g);
   }
 
   // 3. Create flattened sequences

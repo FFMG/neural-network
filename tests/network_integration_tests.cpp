@@ -698,6 +698,138 @@ TEST(NetworkIntegrationTest, CalculateForecastMetricsComprehensiveTest)
   ASSERT_EQ(helper_multi[0].size(), 2u);
 }
 
+TEST(NetworkIntegrationTest, BpttBatchShufflePreservesPairingIntegrity)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  // 12 distinct steps forming 4 BPTT sequence batches (each tick=3, input_dim=2, output_dim=1)
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (size_t i = 0; i < 12; ++i)
+  {
+    inputs.push_back({ static_cast<double>(i + 1), static_cast<double>((i + 1) * 10) });
+    outputs.push_back({ static_cast<double>((i + 1) * 100) });
+  }
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+
+  ASSERT_EQ(bptt_in.size(), 4u);
+  ASSERT_EQ(bptt_out.size(), 4u);
+
+  // Perform 50 shuffle passes and verify 1-to-1 input/output sequence alignment
+  for (int pass = 0; pass < 50; ++pass)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    for (size_t seq = 0; seq < bptt_in.size(); ++seq)
+    {
+      const auto& seq_in = bptt_in[seq];
+      const auto& seq_out = bptt_out[seq];
+      ASSERT_EQ(seq_in.size(), 6u); // 3 ticks * 2 inputs
+      ASSERT_EQ(seq_out.size(), 3u); // 3 ticks * 1 output
+
+      for (size_t t = 0; t < 3; ++t)
+      {
+        double in_val1 = seq_in[t * 2];
+        double in_val2 = seq_in[t * 2 + 1];
+        double out_val = seq_out[t];
+
+        EXPECT_DOUBLE_EQ(in_val2, in_val1 * 10.0);
+        EXPECT_DOUBLE_EQ(out_val, in_val1 * 100.0);
+      }
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, BpttBatchShuffleDistributionUniformity)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_shuffle_bptt_batches(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  // 20 steps forming 10 sequence batches
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (size_t i = 0; i < 20; ++i)
+  {
+    inputs.push_back({ static_cast<double>(i + 1) });
+    outputs.push_back({ static_cast<double>((i + 1) * 2) });
+  }
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+
+  ASSERT_EQ(bptt_in.size(), 10u);
+
+  // Track position frequencies of first sequence element across 500 iterations
+  std::vector<int> position_counts(10, 0);
+  const int iterations = 500;
+  for (int iter = 0; iter < iterations; ++iter)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    for (size_t pos = 0; pos < bptt_in.size(); ++pos)
+    {
+      if (bptt_in[pos][0] == 1.0)
+      {
+        position_counts[pos]++;
+        break;
+      }
+    }
+  }
+
+  // Every position should be hit (statistically expected ~50 times)
+  for (size_t pos = 0; pos < position_counts.size(); ++pos)
+  {
+    EXPECT_GT(position_counts[pos], 5) << "Position " << pos << " was hit too few times, indicating non-uniform shuffle distribution.";
+  }
+}
+
+TEST(NetworkIntegrationTest, SingleStepShufflePreservesPairingIntegrity)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_enable_bptt(false)
+    .with_shuffle_bptt_batches(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {1.0, 10.0}, {2.0, 20.0}, {3.0, 30.0}, {4.0, 40.0}, {5.0, 50.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {100.0}, {200.0}, {300.0}, {400.0}, {500.0}
+  };
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+
+  for (int pass = 0; pass < 50; ++pass)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    ASSERT_EQ(bptt_in.size(), 5u);
+    ASSERT_EQ(bptt_out.size(), 5u);
+
+    for (size_t i = 0; i < bptt_in.size(); ++i)
+    {
+      EXPECT_DOUBLE_EQ(bptt_in[i][1], bptt_in[i][0] * 10.0);
+      EXPECT_DOUBLE_EQ(bptt_out[i][0], bptt_in[i][0] * 100.0);
+    }
+  }
+}
+
 
 
 
