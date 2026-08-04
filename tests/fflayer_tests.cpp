@@ -629,3 +629,66 @@ TEST_F(FFLayerTest, TransposedWeightsCacheAndFastBackwardPass)
   EXPECT_NEAR(grads_1[2], 0.425, 1e-9);
   EXPECT_NEAR(grads_1[3], 0.565, 1e-9);
 }
+
+TEST_F(FFLayerTest, BatchForwardFeedInputCopyingSequenceAndBiasVerification)
+{
+  const unsigned num_inputs = 4;
+  const unsigned num_neurons = 2;
+  FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+  // Set weights: W is size 4 x 2: row 0 = [1, 0], row 1 = [0, 1], row 2 = [0, 0], row 3 = [0, 0]
+  std::vector<double> weights = { 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 };
+  std::vector<double> biases = { 0.5, 1.5 };
+  layer.set_w_values(weights);
+  layer.set_b_values(biases);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_neurons };
+
+  // Test 1: Standard input copying across batch size 3
+  auto batch_go = create_batch_gradients_and_outputs(topology, 3);
+  auto batch_hs = create_batch_hidden_states(topology, 3, 1);
+
+  batch_go[0].set_outputs(0, { 1.0, 2.0, 3.0, 4.0 });
+  batch_go[1].set_outputs(0, { 2.0, 3.0, 4.0, 5.0 });
+  batch_go[2].set_outputs(0, { 3.0, 4.0, 5.0, 6.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 3, false);
+
+  // Expected output = x * W + b
+  // Batch 0: [1*1 + 2*0 + 0.5, 1*0 + 2*1 + 1.5] = [1.5, 3.5]
+  // Batch 1: [2*1 + 3*0 + 0.5, 2*0 + 3*1 + 1.5] = [2.5, 4.5]
+  // Batch 2: [3*1 + 4*0 + 0.5, 3*0 + 4*1 + 1.5] = [3.5, 5.5]
+  const auto& out0 = batch_go[0].get_outputs(1);
+  const auto& out1 = batch_go[1].get_outputs(1);
+  const auto& out2 = batch_go[2].get_outputs(1);
+
+  ASSERT_EQ(out0.size(), 2u);
+  EXPECT_DOUBLE_EQ(out0[0], 1.5);
+  EXPECT_DOUBLE_EQ(out0[1], 3.5);
+
+  ASSERT_EQ(out1.size(), 2u);
+  EXPECT_DOUBLE_EQ(out1[0], 2.5);
+  EXPECT_DOUBLE_EQ(out1[1], 4.5);
+
+  ASSERT_EQ(out2.size(), 2u);
+  EXPECT_DOUBLE_EQ(out2[0], 3.5);
+  EXPECT_DOUBLE_EQ(out2[1], 5.5);
+
+  // Test 2: Sequence rnn_outputs copying across 2 time steps
+  auto batch_go_seq = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs_seq = create_batch_hidden_states(topology, 1, 2);
+
+  // 2 time steps for batch item 0 (4 inputs * 2 ticks = 8 doubles)
+  std::vector<double> rnn_inputs = { 1.0, 2.0, 0.0, 0.0,  10.0, 20.0, 0.0, 0.0 };
+  batch_go_seq[0].set_rnn_outputs(0, rnn_inputs.data(), rnn_inputs.size());
+
+  layer.calculate_forward_feed(batch_go_seq, prev_layer, {}, batch_hs_seq, 1, false);
+
+  const auto& rnn_out = batch_go_seq[0].get_rnn_outputs(1);
+  ASSERT_EQ(rnn_out.size(), 4u); // 2 ticks * 2 neurons
+  EXPECT_DOUBLE_EQ(rnn_out[0], 1.5);
+  EXPECT_DOUBLE_EQ(rnn_out[1], 3.5);
+  EXPECT_DOUBLE_EQ(rnn_out[2], 10.5);
+  EXPECT_DOUBLE_EQ(rnn_out[3], 21.5);
+}
