@@ -224,3 +224,61 @@ TEST(HiddenStatesTest, CachingOptimizationCorrectness)
   // Pointer addresses will change because vectors were reassigned and reallocated.
   EXPECT_NE(views3[0].get_pre_activation_sums().data(), original_pre_ptr);
 }
+
+TEST(HiddenStatesTest, HiddenStatesZeroReuseZeroReallocation)
+{
+  std::vector<unsigned> topology = { 8, 16, 8, 4 };
+  HiddenStates hs(topology);
+
+  // Initial assign for all hidden/output layers (each 3 time steps)
+  for (size_t l = 1; l < topology.size(); ++l)
+  {
+    hs.assign(l, 3, HiddenState(), 1);
+  }
+
+  // Record initial raw memory pointers for all layers
+  std::vector<const double*> pre_ptrs(topology.size());
+  std::vector<const double*> hid_ptrs(topology.size());
+  for (size_t l = 1; l < topology.size(); ++l)
+  {
+    pre_ptrs[l] = hs.at(l)[0].get_pre_activation_sums().data();
+    hid_ptrs[l] = hs.at(l)[0].get_hidden_state_values().data();
+  }
+
+  // Simulate 1,000 epoch iterations with zero() and assign()
+  for (int iter = 0; iter < 1000; ++iter)
+  {
+    hs.zero();
+    for (size_t l = 1; l < topology.size(); ++l)
+    {
+      hs.assign(l, 3, HiddenState(), 1);
+    }
+  }
+
+  // Assert pointers remain 100% identical (0 reallocations)
+  for (size_t l = 1; l < topology.size(); ++l)
+  {
+    EXPECT_EQ(hs.at(l)[0].get_pre_activation_sums().data(), pre_ptrs[l]);
+    EXPECT_EQ(hs.at(l)[0].get_hidden_state_values().data(), hid_ptrs[l]);
+  }
+}
+
+TEST(HiddenStatesTest, HiddenStatesMultiLayerAllocationPersistence)
+{
+  std::vector<unsigned> topology = { 4, 32, 16, 2 };
+  HiddenStates hs(topology);
+
+  // Assign layer 1 (32 neurons, 10 ticks, multiplier 4 for LSTM)
+  hs.assign(1, 10, HiddenState(), 4);
+  const double* lstm_pre = hs.at(1)[0].get_pre_activation_sums().data();
+  const double* lstm_hid = hs.at(1)[0].get_hidden_state_values().data();
+
+  // Re-assign 500 times
+  for (int i = 0; i < 500; ++i)
+  {
+    hs.assign(1, 10, HiddenState(), 4);
+  }
+
+  EXPECT_EQ(hs.at(1)[0].get_pre_activation_sums().data(), lstm_pre);
+  EXPECT_EQ(hs.at(1)[0].get_hidden_state_values().data(), lstm_hid);
+}

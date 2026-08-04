@@ -649,18 +649,51 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
   const size_t batch_size = inputs.size();
   if (batch_size == 0) return {};
 
-  std::vector<GradientsAndOutputs> batch_gradients;
-  batch_gradients.resize(batch_size, GradientsAndOutputs(options.topology()));
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(batch_size, HiddenStates(options.topology()));
+  thread_local struct BatchInferenceCache
+  {
+    std::vector<unsigned> topology;
+    std::vector<GradientsAndOutputs> gradients;
+    std::vector<HiddenStates> hidden_states;
+  } cache;
 
-  calculate_forward_feed(options, batch_gradients, inputs.begin(), batch_size, hidden_states, false);
+  const auto& topology = options.topology();
+  if (cache.topology != topology)
+  {
+    cache.topology = topology;
+    cache.gradients.clear();
+    cache.hidden_states.clear();
+  }
+
+  if (cache.gradients.size() < batch_size)
+  {
+    cache.gradients.reserve(batch_size);
+    while (cache.gradients.size() < batch_size)
+    {
+      cache.gradients.emplace_back(topology);
+    }
+  }
+  if (cache.hidden_states.size() < batch_size)
+  {
+    cache.hidden_states.reserve(batch_size);
+    while (cache.hidden_states.size() < batch_size)
+    {
+      cache.hidden_states.emplace_back(topology);
+    }
+  }
+
+  for (size_t i = 0; i < batch_size; ++i)
+  {
+    cache.gradients[i].zero();
+    cache.hidden_states[i].zero();
+  }
+
+  calculate_forward_feed(options, cache.gradients, inputs.begin(), batch_size, cache.hidden_states, false);
 
   std::vector<std::vector<double>> outputs;
   outputs.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
   {
-    outputs.push_back(batch_gradients[i].output_back());
+    outputs.push_back(cache.gradients[i].output_back());
   }
   return outputs;
 }
@@ -669,14 +702,35 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.push_back(GradientsAndOutputs(options.topology()));
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.resize(1, HiddenStates(options.topology()));
+  thread_local struct SingleInferenceCache
+  {
+    std::vector<unsigned> topology;
+    std::vector<GradientsAndOutputs> gradients;
+    std::vector<HiddenStates> hidden_states;
+    std::vector<std::vector<double>> all_inputs;
+  } cache;
 
-  const std::vector<std::vector<double>> all_inputs = { inputs };
-  calculate_forward_feed(options, gradients, all_inputs.begin(), 1, hidden_states, false);
-  return gradients.front().output_back();
+  const auto& topology = options.topology();
+  if (cache.topology != topology)
+  {
+    cache.topology = topology;
+    cache.gradients.clear();
+    cache.hidden_states.clear();
+  }
+
+  if (cache.gradients.empty())
+  {
+    cache.gradients.emplace_back(topology);
+    cache.hidden_states.emplace_back(topology);
+    cache.all_inputs.resize(1);
+  }
+
+  cache.gradients[0].zero();
+  cache.hidden_states[0].zero();
+  cache.all_inputs[0] = inputs;
+
+  calculate_forward_feed(options, cache.gradients, cache.all_inputs.begin(), 1, cache.hidden_states, false);
+  return cache.gradients.front().output_back();
 }
 
 void Layers::train(
