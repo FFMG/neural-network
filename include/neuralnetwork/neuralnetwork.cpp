@@ -197,15 +197,19 @@ void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_
 
   auto sample_size = neural_network_helper.sample_size();
 
-  auto shuffled_indexes = get_shuffled_indexes(sample_size);
+  std::vector<size_t> indexes(sample_size);
+  std::iota(indexes.begin(), indexes.end(), 0);
 #if VALIDATE_DATA == 1
-  if (sample_size != shuffled_indexes.size())
+  if (sample_size != indexes.size())
   {
-    Logger::panic("Sample size does not match shuffled indexes size!");
+    Logger::panic("Sample size does not match indexes size!");
   }
 #endif
 
-  break_indexes(shuffled_indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
+  break_indexes(indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
+
+  thread_local std::mt19937 gen(std::random_device{}());
+  std::shuffle(training_indexes.begin(), training_indexes.end(), gen);
 
   neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
 }

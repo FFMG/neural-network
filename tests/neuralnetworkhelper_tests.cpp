@@ -4,6 +4,7 @@
 #include "neuralnetwork.h"
 #include <thread>
 #include <chrono>
+#include <set>
 
 using namespace myoddweb::nn;
 
@@ -129,4 +130,89 @@ TEST_F(NeuralNetworkHelperTest, TrainingMonitorMultipleLayersAndPanic)
   EXPECT_THROW((void)helper2.training_monitor(2), std::runtime_error);
 #endif
 }
+
+struct HelperCapturer
+{
+  std::vector<size_t> train_idx;
+  std::vector<size_t> check_idx;
+  std::vector<size_t> final_idx;
+
+  bool operator()(NeuralNetworkHelper& helper)
+  {
+    train_idx = helper.training_indexes();
+    check_idx = helper.checking_indexes();
+    final_idx = helper.final_check_indexes();
+    return false; // Stop training immediately
+  }
+};
+
+TEST_F(NeuralNetworkHelperTest, TrainingIndexesOOSIsolationTest)
+{
+  HelperCapturer capturer;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_data_is_unique(false)
+    .with_shuffle_training_data(true)
+    .with_progress_callback(std::ref(capturer))
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs(100, {1.0, 2.0});
+  std::vector<std::vector<double>> outputs(100, {0.5});
+
+  nn.train(inputs, outputs);
+
+  // Verify sizes add up to total dataset size (100)
+  EXPECT_EQ(capturer.train_idx.size() + capturer.check_idx.size() + capturer.final_idx.size(), 100);
+
+  // Verify set disjointness (no overlap between training and checking / final check)
+  std::set<size_t> train_set(capturer.train_idx.begin(), capturer.train_idx.end());
+  for (size_t idx : capturer.check_idx)
+  {
+    EXPECT_EQ(train_set.count(idx), 0);
+  }
+  for (size_t idx : capturer.final_idx)
+  {
+    EXPECT_EQ(train_set.count(idx), 0);
+  }
+}
+
+TEST_F(NeuralNetworkHelperTest, ShuffleTrainingDataInvarianceTest)
+{
+  HelperCapturer capturer1;
+  auto options1 = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(true)
+    .with_progress_callback(std::ref(capturer1))
+    .build();
+
+  NeuralNetwork nn1(options1);
+  std::vector<std::vector<double>> inputs(100, {1.0, 2.0});
+  std::vector<std::vector<double>> outputs(100, {0.5});
+
+  nn1.train(inputs, outputs);
+
+  HelperCapturer capturer2;
+  auto options2 = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(true)
+    .with_progress_callback(std::ref(capturer2))
+    .build();
+
+  NeuralNetwork nn2(options2);
+  nn2.train(inputs, outputs);
+
+  // Out-of-sample indices must be identical across runs
+  EXPECT_EQ(capturer1.check_idx, capturer2.check_idx);
+  EXPECT_EQ(capturer1.final_idx, capturer2.final_idx);
+
+  // Training index sets contain the exact same elements
+  std::set<size_t> set1(capturer1.train_idx.begin(), capturer1.train_idx.end());
+  std::set<size_t> set2(capturer2.train_idx.begin(), capturer2.train_idx.end());
+  EXPECT_EQ(set1, set2);
+}
+
 
