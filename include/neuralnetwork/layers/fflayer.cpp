@@ -236,20 +236,31 @@ void FFLayer::calculate_forward_feed(
   const size_t effective_batch_size = batch_size * num_time_steps;
   TempBuffer<double, 0> batch_inputs_buffer(effective_batch_size * N_prev);
   
+  double* in_buf_ptr = batch_inputs_buffer.data();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    double* dest_base = in_buf_ptr + b * num_time_steps * N_prev;
     if (!rnn_in.empty())
     {
-        std::copy(rnn_in.begin(), rnn_in.end(), batch_inputs_buffer.vec().begin() + b * num_time_steps * N_prev);
+      const size_t copy_size = std::min(rnn_in.size(), num_time_steps * N_prev);
+      std::copy(rnn_in.data(), rnn_in.data() + copy_size, dest_base);
     }
     else
     {
-        const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const size_t copy_size = std::min<size_t>(std_in.size(), N_prev);
+      if (num_time_steps == 1)
+      {
+        std::copy(std_in.data(), std_in.data() + copy_size, dest_base);
+      }
+      else
+      {
         for (size_t t = 0; t < num_time_steps; ++t)
         {
-            std::copy(std_in.begin(), std_in.end(), batch_inputs_buffer.vec().begin() + (b * num_time_steps + t) * N_prev);
+          std::copy(std_in.data(), std_in.data() + copy_size, dest_base + t * N_prev);
         }
+      }
     }
   }
 
@@ -260,10 +271,12 @@ void FFLayer::calculate_forward_feed(
   {
     const auto& biases = get_b_values();
     const size_t copy_size = std::min<size_t>(biases.size(), N_this);
-    for (size_t eb = 0; eb < effective_batch_size; eb++)
+    const double* b_ptr = biases.data();
+    double* dest_base = batch_pre_activation_sums_buffer.data();
+    for (size_t eb = 0; eb < effective_batch_size; ++eb)
     {
-      double* dest = batch_pre_activation_sums_buffer.data() + eb * N_this;
-      std::copy(biases.begin(), biases.begin() + copy_size, dest);
+      double* dest = dest_base + eb * N_this;
+      std::copy(b_ptr, b_ptr + copy_size, dest);
       if (copy_size < N_this)
       {
         std::fill(dest + copy_size, dest + N_this, 0.0);
