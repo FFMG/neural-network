@@ -727,7 +727,7 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
 
   cache.gradients[0].zero();
   cache.hidden_states[0].zero();
-  cache.all_inputs[0] = inputs;
+  cache.all_inputs[0].assign(inputs.begin(), inputs.end());
 
   calculate_forward_feed(options, cache.gradients, cache.all_inputs.begin(), 1, cache.hidden_states, false);
   return cache.gradients.front().output_back();

@@ -830,6 +830,60 @@ TEST(NetworkIntegrationTest, SingleStepShufflePreservesPairingIntegrity)
   }
 }
 
+TEST(NetworkIntegrationTest, ThinkPerformanceSingleInferenceThroughput)
+{
+  auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<double> input = { 0.1, 0.2, 0.3, 0.4 };
+
+  // Run initial call to warm up thread-local caches
+  auto initial_result = nn.think(input);
+  ASSERT_EQ(initial_result.size(), 2u);
+
+  // Perform 50,000 single-sample inference calls
+  for (int i = 0; i < 50000; ++i)
+  {
+    auto result = nn.think(input);
+    EXPECT_EQ(result.size(), 2u);
+    EXPECT_DOUBLE_EQ(result[0], initial_result[0]);
+    EXPECT_DOUBLE_EQ(result[1], initial_result[1]);
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkPerformanceBatchedInferenceThroughput)
+{
+  auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> batch_inputs = {
+    { 0.1, 0.2, 0.3, 0.4 },
+    { 0.5, 0.6, 0.7, 0.8 },
+    { 0.9, 1.0, 1.1, 1.2 }
+  };
+
+  // Run initial call to warm up thread-local caches
+  auto initial_results = nn.think(batch_inputs);
+  ASSERT_EQ(initial_results.size(), 3u);
+
+  // Perform 10,000 batch inference calls
+  for (int i = 0; i < 10000; ++i)
+  {
+    auto results = nn.think(batch_inputs);
+    EXPECT_EQ(results.size(), 3u);
+    for (size_t b = 0; b < 3; ++b)
+    {
+      EXPECT_DOUBLE_EQ(results[b][0], initial_results[b][0]);
+      EXPECT_DOUBLE_EQ(results[b][1], initial_results[b][1]);
+    }
+  }
+}
+
+
 
 
 
