@@ -372,8 +372,11 @@ void ElmanRNNLayer::calculate_forward_feed(
           simd::add_vectors(batch_residual_output_values[b].data(), pre_t, N_this);
         }
 
-        auto& state = batch_hidden_states[b].at(get_layer_index())[t];
-        state.set_pre_activation_sums(pre_t, N_this);
+        if (!batch_hidden_states.empty())
+        {
+          auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+          state.set_pre_activation_sums(pre_t, N_this);
+        }
 
         get_activation().activate(pre_t, pre_t + N_this, is_training);
 
@@ -408,8 +411,12 @@ void ElmanRNNLayer::calculate_forward_feed(
           std::copy(pre_t, pre_t + N_this, current_h.data());
           std::copy(pre_t, pre_t + N_this, &batch_output_sequences.data()[(b * num_time_steps + t) * N_this]);
         }
-        state.set_cell_state_values(mask.data(), N_this);
-        state.set_hidden_state_values(current_h.data(), N_this);
+        if (!batch_hidden_states.empty())
+        {
+          auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+          state.set_cell_state_values(mask.data(), N_this);
+          state.set_hidden_state_values(current_h.data(), N_this);
+        }
       }
     }
   };

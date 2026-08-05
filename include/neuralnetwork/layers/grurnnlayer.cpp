@@ -956,8 +956,11 @@ void GRURNNLayer::run_forward_pass(
         );
       }
 
-      batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
-      batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
+      if (!batch_hidden_states.empty())
+      {
+        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
+        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
+      }
       std::swap(prev_h.vec(), current_h.vec());
     }
   }

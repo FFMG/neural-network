@@ -883,6 +883,29 @@ TEST(NetworkIntegrationTest, ThinkPerformanceBatchedInferenceThroughput)
   }
 }
 
+TEST(NetworkIntegrationTest, ThinkPerformanceRecurrentInferenceThroughput)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 8, 1 })
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(4)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<double> sequence_input = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 };
+
+  auto initial_result = nn.think(sequence_input);
+  ASSERT_EQ(initial_result.size(), 1u);
+
+  for (int i = 0; i < 10000; ++i)
+  {
+    auto result = nn.think(sequence_input);
+    EXPECT_EQ(result.size(), 1u);
+    EXPECT_DOUBLE_EQ(result[0], initial_result[0]);
+  }
+}
+
+
 
 
 

@@ -651,10 +651,13 @@ void LSTMLayer::calculate_forward_feed(
         }
 
         // Store states
-        auto& state = batch_hidden_states[b].at(get_layer_index())[t];
-        state.set_pre_activation_sums(packed_bptt.data(), packed_bptt.size());
-        state.set_cell_state_values(current_c.data(), current_c.size());
-        state.set_hidden_state_values(current_h.data(), current_h.size());
+        if (!batch_hidden_states.empty())
+        {
+          auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+          state.set_pre_activation_sums(packed_bptt.data(), packed_bptt.size());
+          state.set_cell_state_values(current_c.data(), current_c.size());
+          state.set_hidden_state_values(current_h.data(), current_h.size());
+        }
       }
     }
   };

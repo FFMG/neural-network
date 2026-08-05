@@ -432,16 +432,19 @@ void Layers::calculate_forward_feed(
       batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
     }
 
-    for (size_t b = 0; b < batch_size; ++b)
+    if (!hidden_states.empty())
     {
-      const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-      const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+        const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
 
-      const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
-      const size_t n_prev = previous_layer.get_number_neurons();
-      const size_t num_time_steps = (n_prev > 0 && !prev_rnn_span.empty()) ? seq_size / n_prev : 1;
-      
-      hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+        const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
+        const size_t n_prev = previous_layer.get_number_neurons();
+        const size_t num_time_steps = (n_prev > 0 && !prev_rnn_span.empty()) ? seq_size / n_prev : 1;
+        
+        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+      }
     }
     // Call batched forward feed
     current_layer.calculate_forward_feed(
@@ -672,19 +675,10 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
       cache.gradients.emplace_back(topology);
     }
   }
-  if (cache.hidden_states.size() < batch_size)
-  {
-    cache.hidden_states.reserve(batch_size);
-    while (cache.hidden_states.size() < batch_size)
-    {
-      cache.hidden_states.emplace_back(topology);
-    }
-  }
 
   for (size_t i = 0; i < batch_size; ++i)
   {
     cache.gradients[i].zero();
-    cache.hidden_states[i].zero();
   }
 
   calculate_forward_feed(options, cache.gradients, inputs.begin(), batch_size, cache.hidden_states, false);
@@ -721,7 +715,6 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
   if (cache.gradients.empty())
   {
     cache.gradients.emplace_back(topology);
-    cache.hidden_states.emplace_back(topology);
     cache.all_inputs.resize(1);
   }
 
