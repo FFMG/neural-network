@@ -26,7 +26,8 @@ public:
     _outputs(src._outputs),
     _gradients(src._gradients),
     _rnn_outputs(src._rnn_outputs),
-    _rnn_gradients(src._rnn_gradients)
+    _rnn_gradients(src._rnn_gradients),
+    _rnn_gate_gradients(src._rnn_gate_gradients)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
   }
@@ -35,7 +36,8 @@ public:
     _outputs(std::move(src._outputs)),
     _gradients(std::move(src._gradients)),
     _rnn_outputs(std::move(src._rnn_outputs)),
-    _rnn_gradients(std::move(src._rnn_gradients))
+    _rnn_gradients(std::move(src._rnn_gradients)),
+    _rnn_gate_gradients(std::move(src._rnn_gate_gradients))
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
   }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <mutex>
 
 #include "../libraries/instrumentor.h"
 
@@ -206,6 +207,7 @@ public:
   [[nodiscard]] inline const std::vector<std::vector<WeightParam>>& get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    std::lock_guard<std::mutex> lock(_cache_mutex);
     if (_weights_cache_dirty) 
     {
       _cached_weights.assign(_output_size, std::vector<WeightParam>(_input_size, WeightParam(0,0,0,0)));
@@ -323,5 +325,6 @@ private:
 
   mutable std::vector<std::vector<WeightParam>> _cached_weights;
   mutable bool _weights_cache_dirty;
+  mutable std::mutex _cache_mutex;
 };
 } // namespace myoddweb::nn
