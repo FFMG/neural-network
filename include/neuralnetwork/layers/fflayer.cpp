@@ -421,11 +421,13 @@ void FFLayer::run_post_gemm(
   for (size_t b = start; b < end; b++)
   {
     std::fill(mask_buf.vec().begin(), mask_buf.vec().begin() + N_this, 1.0);
-    if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
+    if (!batch_hidden_states.empty())
     {
-      batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
+      if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
+      {
+        batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
+      }
     }
-    auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -440,7 +442,11 @@ void FFLayer::run_post_gemm(
         }
       }
 
-      layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
+      if (!batch_hidden_states.empty())
+      {
+        auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
+        layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
+      }
 
       for (const auto& r : _layer_activation_helper.ranges())
       {
@@ -474,8 +480,12 @@ void FFLayer::run_post_gemm(
           std::copy(current_pre_act + r.start, current_pre_act + r.end, current_output_row + r.start);
         }
       }
-      layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
-      layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
+      if (!batch_hidden_states.empty())
+      {
+        auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
+        layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
+        layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
+      }
     }
 
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
