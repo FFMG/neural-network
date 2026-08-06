@@ -675,6 +675,14 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
       cache.gradients.emplace_back(topology);
     }
   }
+  if (cache.hidden_states.size() < batch_size)
+  {
+    cache.hidden_states.reserve(batch_size);
+    while (cache.hidden_states.size() < batch_size)
+    {
+      cache.hidden_states.emplace_back(topology);
+    }
+  }
 
   for (size_t i = 0; i < batch_size; ++i)
   {
@@ -715,11 +723,11 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
   if (cache.gradients.empty())
   {
     cache.gradients.emplace_back(topology);
+    cache.hidden_states.emplace_back(topology);
     cache.all_inputs.resize(1);
   }
 
   cache.gradients[0].zero();
-  cache.hidden_states[0].zero();
   cache.all_inputs[0].assign(inputs.begin(), inputs.end());
 
   calculate_forward_feed(options, cache.gradients, cache.all_inputs.begin(), 1, cache.hidden_states, false);
