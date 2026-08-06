@@ -214,3 +214,12 @@ TEST_F(GradientsAndOutputsTest, RnnGradientsReusesCapacity) {
     gao.set_rnn_gradients(2, new_vals.data(), new_vals.size());
     EXPECT_EQ(vec_ref.capacity(), capacity_after_clear); // Capacity must not change
 }
+
+TEST_F(GradientsAndOutputsTest, ResetForInference) {
+    GradientsAndOutputs gao(topology);
+    gao.set_rnn_outputs(1, { 0.1, 0.2, 0.3 });
+    ASSERT_FALSE(gao.get_rnn_outputs(1).empty());
+
+    gao.reset_for_inference();
+    EXPECT_TRUE(gao.get_rnn_outputs(1).empty());
+}
