@@ -387,7 +387,7 @@ void Layers::calculate_forward_feed(
     if (current_input.size() == input_size)
     {
       gradients_and_output[b].set_outputs(0, current_input.data(), input_size);
-      if (options.enable_bptt() && options.bptt_max_ticks() > 1)
+      if (is_training && options.enable_bptt() && options.bptt_max_ticks() > 1)
       {
         const int ticks = options.bptt_max_ticks();
         double* dest = gradients_and_output[b].get_rnn_outputs_raw(0, input_size * ticks);
