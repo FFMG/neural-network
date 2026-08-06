@@ -84,6 +84,15 @@ public:
     for (auto& vec : _rnn_gate_gradients) vec.clear();
   }
 
+  inline void reset_for_inference()
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    for (auto& vec : _rnn_outputs)
+    {
+      vec.clear();
+    }
+  }
+
   [[nodiscard]] inline std::span<const double> get_gradients(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");

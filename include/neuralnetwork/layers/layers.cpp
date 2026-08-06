@@ -686,7 +686,7 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
 
   for (size_t i = 0; i < batch_size; ++i)
   {
-    cache.gradients[i].zero();
+    cache.gradients[i].reset_for_inference();
   }
 
   calculate_forward_feed(options, cache.gradients, inputs.begin(), batch_size, cache.hidden_states, false);
@@ -727,7 +727,7 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
     cache.all_inputs.resize(1);
   }
 
-  cache.gradients[0].zero();
+  cache.gradients[0].reset_for_inference();
   cache.all_inputs[0].assign(inputs.begin(), inputs.end());
 
   calculate_forward_feed(options, cache.gradients, cache.all_inputs.begin(), 1, cache.hidden_states, false);
