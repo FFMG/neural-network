@@ -749,5 +749,151 @@ TEST_F(ActivationTest, MultithreadedWeightInitialization)
   EXPECT_EQ(activation::string_to_method("Sigmoid"), activation::method::sigmoid);
 }
 
+TEST_F(ActivationTest, AllMethodsStringRoundtripCoverage)
+{
+  const std::vector<activation::method> all_methods = {
+    activation::method::linear,
+    activation::method::sigmoid,
+    activation::method::tanh,
+    activation::method::relu,
+    activation::method::leakyRelu,
+    activation::method::PRelu,
+    activation::method::selu,
+    activation::method::swish,
+    activation::method::mish,
+    activation::method::gelu,
+    activation::method::elu,
+    activation::method::softmax
+  };
+
+  for (const auto& m : all_methods)
+  {
+    const std::string str = activation::method_to_string(m);
+    EXPECT_FALSE(str.empty());
+    const activation::method back = activation::string_to_method(str);
+    EXPECT_EQ(m, back) << "Failed roundtrip for method: " << str;
+  }
+
+  // Test case-insensitivity
+  EXPECT_EQ(activation::string_to_method("LiNeAr"), activation::method::linear);
+  EXPECT_EQ(activation::string_to_method("sIgMoId"), activation::method::sigmoid);
+  EXPECT_EQ(activation::string_to_method("TaNh"), activation::method::tanh);
+  EXPECT_EQ(activation::string_to_method("sOfTmAx"), activation::method::softmax);
+}
+
+TEST_F(ActivationTest, HandCalculatedAnalyticalProofs)
+{
+  // 1. Linear: f(2.5) = 2.5, f'(2.5) = 1.0
+  activation act_linear(activation::method::linear, 1.0);
+  EXPECT_DOUBLE_EQ(act_linear.activate(2.5), 2.5);
+  EXPECT_DOUBLE_EQ(act_linear.activate_derivative(2.5), 1.0);
+
+  // 2. Sigmoid (alpha=1.0): f(0) = 0.5, f'(0) = 0.25
+  activation act_sig(activation::method::sigmoid, 1.0);
+  EXPECT_DOUBLE_EQ(act_sig.activate(0.0), 0.5);
+  EXPECT_DOUBLE_EQ(act_sig.activate_derivative(0.0), 0.25);
+
+  // 3. Tanh: f(0) = 0.0, f'(0) = 1.0
+  activation act_tanh(activation::method::tanh, 1.0);
+  EXPECT_DOUBLE_EQ(act_tanh.activate(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(act_tanh.activate_derivative(0.0), 1.0);
+
+  // 4. ReLU: f(3) = 3.0, f'(3) = 1.0; f(-3) = 0.0, f'(-3) = 0.0
+  activation act_relu(activation::method::relu, 1.0);
+  EXPECT_DOUBLE_EQ(act_relu.activate(3.0), 3.0);
+  EXPECT_DOUBLE_EQ(act_relu.activate_derivative(3.0), 1.0);
+  EXPECT_DOUBLE_EQ(act_relu.activate(-3.0), 0.0);
+  EXPECT_DOUBLE_EQ(act_relu.activate_derivative(-3.0), 0.0);
+
+  // 5. LeakyReLU (alpha=0.01): f(-2) = -0.02, f'(-2) = 0.01
+  activation act_lrelu(activation::method::leakyRelu, 0.01);
+  EXPECT_DOUBLE_EQ(act_lrelu.activate(-2.0), -0.02);
+  EXPECT_DOUBLE_EQ(act_lrelu.activate_derivative(-2.0), 0.01);
+
+  // 6. ELU (alpha=1.0): f(0) = 0.0, f(-1.0) = exp(-1) - 1
+  activation act_elu(activation::method::elu, 1.0);
+  EXPECT_DOUBLE_EQ(act_elu.activate(0.0), 0.0);
+  const double expected_elu_neg = std::exp(-1.0) - 1.0;
+  const double expected_elu_neg_deriv = std::exp(-1.0);
+  EXPECT_NEAR(act_elu.activate(-1.0), expected_elu_neg, 1e-12);
+  EXPECT_NEAR(act_elu.activate_derivative(-1.0), expected_elu_neg_deriv, 1e-12);
+
+  // 7. SELU: f(1.0) = 1.0507, f(-1.0) = 1.0507 * 1.67326 * (exp(-1) - 1)
+  activation act_selu(activation::method::selu, 1.0);
+  EXPECT_DOUBLE_EQ(act_selu.activate(1.0), 1.0507);
+  const double expected_selu_neg = 1.0507 * 1.67326 * (std::exp(-1.0) - 1.0);
+  EXPECT_NEAR(act_selu.activate(-1.0), expected_selu_neg, 1e-12);
+
+  // 8. Swish (alpha=1.0): f(0) = 0, f(1.0) = 1 / (1 + exp(-1))
+  activation act_swish(activation::method::swish, 1.0);
+  EXPECT_DOUBLE_EQ(act_swish.activate(0.0), 0.0);
+  const double expected_swish_one = 1.0 / (1.0 + std::exp(-1.0));
+  EXPECT_NEAR(act_swish.activate(1.0), expected_swish_one, 1e-12);
+
+  // 9. Softmax with Temperature Scaling
+  // Input: [1.0, 0.0] with T=0.5 -> Scaled logit diff = 1.0 / 0.5 = 2.0
+  // P(0) = exp(0) / (exp(0) + exp(-2.0)) = 1 / (1 + exp(-2.0))
+  activation act_softmax(activation::method::softmax, 1.0, 0.5, 0.5);
+  std::vector<double> sm_input = { 1.0, 0.0 };
+  act_softmax.activate(sm_input.data(), sm_input.data() + sm_input.size(), false);
+  const double expected_sm_0 = 1.0 / (1.0 + std::exp(-2.0));
+  EXPECT_NEAR(sm_input[0], expected_sm_0, 1e-12);
+  EXPECT_NEAR(sm_input[1], 1.0 - expected_sm_0, 1e-12);
+}
+
+TEST_F(ActivationTest, TemperatureAndInferenceTemperature)
+{
+  activation act(activation::method::softmax, 1.0, 2.0, 0.5);
+  EXPECT_DOUBLE_EQ(act.get_temperature(), 2.0);
+  EXPECT_DOUBLE_EQ(act.get_inference_temperature(), 0.5);
+
+  act.set_inference_temperature(0.1);
+  EXPECT_DOUBLE_EQ(act.get_inference_temperature(), 0.1);
+
+  // Clamping check for tiny temperature
+  act.set_inference_temperature(1e-9);
+  EXPECT_DOUBLE_EQ(act.get_inference_temperature(), 1e-6);
+}
+
+TEST_F(ActivationTest, StatisticalWeightInitializationVerification)
+{
+  const unsigned fan_in = 100;
+  const unsigned fan_out = 50;
+  const size_t num_samples = 10000;
+
+  // 1. He Initialization: Normal(0, sqrt(2/fan_in))
+  // Variance = 2 / 100 = 0.02
+  activation act_he(activation::method::relu, 0.0);
+  double sum_he = 0.0;
+  double sum_sq_he = 0.0;
+  for (size_t i = 0; i < num_samples; ++i)
+  {
+    double w = act_he.weight_initialization(fan_in, fan_out);
+    sum_he += w;
+    sum_sq_he += w * w;
+  }
+  double mean_he = sum_he / num_samples;
+  double var_he = (sum_sq_he / num_samples) - (mean_he * mean_he);
+  EXPECT_NEAR(mean_he, 0.0, 0.01);
+  EXPECT_NEAR(var_he, 0.02, 0.005);
+
+  // 2. SELU / LeCun Initialization: Normal(0, sqrt(1/fan_in))
+  // Variance = 1 / 100 = 0.01
+  activation act_selu(activation::method::selu, 0.0);
+  double sum_selu = 0.0;
+  double sum_sq_selu = 0.0;
+  for (size_t i = 0; i < num_samples; ++i)
+  {
+    double w = act_selu.weight_initialization(fan_in, fan_out);
+    sum_selu += w;
+    sum_sq_selu += w * w;
+  }
+  double mean_selu = sum_selu / num_samples;
+  double var_selu = (sum_sq_selu / num_samples) - (mean_selu * mean_selu);
+  EXPECT_NEAR(mean_selu, 0.0, 0.01);
+  EXPECT_NEAR(var_selu, 0.01, 0.003);
+}
+
+
 
 

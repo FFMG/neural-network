@@ -40,6 +40,32 @@ public:
   [[nodiscard]] inline double activate(double x) const noexcept 
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
+    switch (_method)
+    {
+    case method::linear:
+      return x;
+    case method::relu:
+      return (x > 0.0) ? x : 0.0;
+    case method::leakyRelu:
+    case method::PRelu:
+      return (x > 0.0) ? x : _alpha * x;
+    case method::tanh:
+      return std::tanh(x);
+    case method::sigmoid:
+      return calculate_sigmoid(x, _alpha);
+    case method::selu:
+      return calculate_selu(x, _alpha);
+    case method::elu:
+      return calculate_elu(x, _alpha);
+    case method::swish:
+      return calculate_swish(x, _alpha);
+    case method::mish:
+      return calculate_mish(x, _alpha);
+    case method::gelu:
+      return calculate_gelu(x, _alpha);
+    case method::softmax:
+      return calculate_softmax(x, _alpha);
+    }
     return _activate_ptr(x, _alpha); 
   }
   void activate(double* begin, double* end, bool is_training = false) const;
@@ -48,6 +74,35 @@ public:
   [[nodiscard]] inline double activate_derivative(double x) const noexcept 
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
+    switch (_method)
+    {
+    case method::linear:
+      return 1.0;
+    case method::relu:
+      return (x > 0.0) ? 1.0 : 0.0;
+    case method::leakyRelu:
+    case method::PRelu:
+      return (x > 0.0) ? 1.0 : _alpha;
+    case method::tanh:
+    {
+      const double t = std::tanh(x);
+      return 1.0 - t * t;
+    }
+    case method::sigmoid:
+      return calculate_sigmoid_derivative(x, _alpha);
+    case method::selu:
+      return calculate_selu_derivative(x, _alpha);
+    case method::elu:
+      return calculate_elu_derivative(x, _alpha);
+    case method::swish:
+      return calculate_swish_derivative(x, _alpha);
+    case method::mish:
+      return calculate_mish_derivative(x, _alpha);
+    case method::gelu:
+      return calculate_gelu_derivative(x, _alpha);
+    case method::softmax:
+      return calculate_softmax_derivative(x, _alpha);
+    }
     return _derivative_ptr(x, _alpha); 
   }
 
@@ -85,10 +140,14 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
     _inference_temperature = t;
-    if (_inference_temperature < 1e-6) _inference_temperature = 1e-6;
+    if (_inference_temperature < 1e-6)
+    {
+      _inference_temperature = 1e-6;
+    }
   }
 
 private:
+  [[nodiscard]] static bool iequals(const std::string& str, const char* lit) noexcept;
   [[nodiscard]] double he_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
   [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const noexcept;
   [[nodiscard]] double lecun_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
