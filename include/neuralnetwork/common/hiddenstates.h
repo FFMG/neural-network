@@ -142,7 +142,7 @@ public:
     }
 
     auto& views = _layer_views[layer_number];
-    if (views.size() != num_time_steps)
+    if (views.size() != num_time_steps || (num_time_steps > 0 && (views.empty() || views[0].get_pre_activation_sums().data() != _pre_activation_sums[layer_number].data())))
     {
       needs_rebuild = true;
     }
