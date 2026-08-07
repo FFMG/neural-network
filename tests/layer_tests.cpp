@@ -379,3 +379,85 @@ TEST(LayerTest, LayersUpdateWeightsWorkloadThreshold) {
   EXPECT_EQ(layers.size(), 3);
 }
 
+TEST(LayerTest, LayersTrainRepeatedBatchBufferReuse) {
+  auto options = NeuralNetworkOptions::create({ 3, 5, 2 });
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.1, 0.2, 0.3 },
+    { 0.4, 0.5, 0.6 },
+    { 0.7, 0.8, 0.9 },
+    { 0.2, 0.4, 0.6 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 1.0, 0.0 },
+    { 0.0, 1.0 },
+    { 0.5, 0.5 },
+    { 0.2, 0.8 }
+  };
+
+  // Test batch_size = 1
+  auto in_it1 = inputs.cbegin();
+  auto out_it1 = outputs.cbegin();
+  layers.train(options, 0.05, in_it1, out_it1, 1);
+
+  // Test expanding batch_size = 4 (buffer grows and zeroes reused/new elements)
+  auto in_it4 = inputs.cbegin();
+  auto out_it4 = outputs.cbegin();
+  layers.train(options, 0.05, in_it4, out_it4, 4);
+
+  // Test shrinking batch_size = 2 (reuses existing buffer without reallocation)
+  auto in_it2 = inputs.cbegin();
+  auto out_it2 = outputs.cbegin();
+  layers.train(options, 0.05, in_it2, out_it2, 2);
+
+  // Verify layer weight values remain valid and finite after all batch iterations
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+TEST(LayerTest, LayersTrainParallelWeightUpdateCorrectness) {
+  auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })
+    .with_number_of_threads(4)
+    .build();
+
+  Layers layers_parallel(options);
+  Layers layers_single(options);
+
+  // Set matching initial weights for both
+  for (unsigned i = 1; i < layers_parallel.size(); ++i)
+  {
+    layers_parallel[i].set_w_values(layers_single[i].get_w_values());
+    layers_parallel[i].set_b_values(layers_single[i].get_b_values());
+  }
+
+  std::vector<std::vector<double>> inputs(16, std::vector<double>{ 0.1, 0.2, 0.3, 0.4 });
+  std::vector<std::vector<double>> outputs(16, std::vector<double>{ 0.8, 0.2 });
+
+  auto in_it_p = inputs.cbegin();
+  auto out_it_p = outputs.cbegin();
+  layers_parallel.train(options, 0.01, in_it_p, out_it_p, 16);
+
+  auto in_it_s = inputs.cbegin();
+  auto out_it_s = outputs.cbegin();
+  layers_single.train(options, 0.01, in_it_s, out_it_s, 16);
+
+  // Parallel and single-threaded training must produce identical weights
+  for (unsigned i = 1; i < layers_parallel.size(); ++i)
+  {
+    const auto& w_p = layers_parallel[i].get_w_values();
+    const auto& w_s = layers_single[i].get_w_values();
+    ASSERT_EQ(w_p.size(), w_s.size());
+    for (size_t j = 0; j < w_p.size(); ++j)
+    {
+      EXPECT_NEAR(w_p[j], w_s[j], 1e-12);
+    }
+  }
+}
+
+

@@ -552,6 +552,38 @@ void Layers::calculate_back_propagation_hidden_layers(
   }
 }
 
+namespace
+{
+struct GradCalcTask
+{
+  Layer& layer_a;
+  const std::vector<GradientsAndOutputs>& batch_gradients;
+  const std::vector<HiddenStates>& hidden_states;
+  const Layer& layer_b;
+  size_t batch_size;
+  const NeuralNetworkOptions& options;
+
+  void operator()() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradCalcTask");
+    layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
+  }
+};
+
+struct GradApplyTask
+{
+  Layer& layer_a;
+  double learning_rate;
+  double clipping_scale;
+
+  void operator()() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradApplyTask");
+    layer_a.apply_stored_gradients(learning_rate, clipping_scale);
+  }
+};
+}
+
 void Layers::update_weights(
   const NeuralNetworkOptions& options,
   const std::vector<GradientsAndOutputs>& batch_gradients,
@@ -582,10 +614,7 @@ void Layers::update_weights(
     {
       auto& layer_a = *_layers.at(i);
       auto& layer_b = *_layers.at(i - 1);
-      _update_weights_pool->enqueue([&layer_a, &batch_gradients, &hidden_states, &layer_b, batch_size, &options]()
-      {
-        layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-      });
+      _update_weights_pool->enqueue(GradCalcTask{ layer_a, batch_gradients, hidden_states, layer_b, batch_size, options });
     }
     _update_weights_pool->get();
   }
@@ -629,10 +658,7 @@ void Layers::update_weights(
     for (unsigned i = 1; i < size(); ++i)
     {
       auto& layer_a = *_layers[i];
-      _update_weights_pool->enqueue([&layer_a, learning_rate, clipping_scale]()
-      {
-        layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-      });
+      _update_weights_pool->enqueue(GradApplyTask{ layer_a, learning_rate, clipping_scale });
     }
     _update_weights_pool->get();
   }
@@ -745,7 +771,8 @@ void Layers::train(
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 
-  if (_training_gradients_buffer.size() < batch_size)
+  const size_t prev_grad_size = _training_gradients_buffer.size();
+  if (prev_grad_size < batch_size)
   {
     _training_gradients_buffer.reserve(batch_size);
     while (_training_gradients_buffer.size() < batch_size)
@@ -753,7 +780,9 @@ void Layers::train(
       _training_gradients_buffer.emplace_back(options.topology());
     }
   }
-  if (_training_hidden_states_buffer.size() < batch_size)
+
+  const size_t prev_hidden_size = _training_hidden_states_buffer.size();
+  if (prev_hidden_size < batch_size)
   {
     _training_hidden_states_buffer.reserve(batch_size);
     while (_training_hidden_states_buffer.size() < batch_size)
@@ -762,10 +791,13 @@ void Layers::train(
     }
   }
 
-  // Zero out the items we are about to use
-  for (size_t i = 0; i < batch_size; ++i)
+  // Zero out existing reused elements; newly created elements were initialized by constructor
+  for (size_t i = 0; i < prev_grad_size && i < batch_size; ++i)
   {
     _training_gradients_buffer[i].zero();
+  }
+  for (size_t i = 0; i < prev_hidden_size && i < batch_size; ++i)
+  {
     _training_hidden_states_buffer[i].zero();
   }
 
