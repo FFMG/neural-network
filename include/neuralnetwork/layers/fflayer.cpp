@@ -1043,11 +1043,14 @@ void FFLayer::cache_recurrent_weights()
     return;
   }
   _w_values_T.resize(n_this * n_prev);
+  const double* w_ptr = w_vals.data();
+  double* wt_ptr = _w_values_T.data();
   for (size_t i = 0; i < n_prev; ++i)
   {
+    const double* src_row = w_ptr + i * n_this;
     for (size_t j = 0; j < n_this; ++j)
     {
-      _w_values_T[j * n_prev + i] = w_vals[i * n_this + j];
+      wt_ptr[j * n_prev + i] = src_row[j];
     }
   }
 }
