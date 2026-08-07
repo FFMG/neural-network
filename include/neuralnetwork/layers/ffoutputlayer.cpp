@@ -275,6 +275,11 @@ void FFOutputLayer::run_output_gradients(
   std::vector<double> current_target;
   std::vector<double> deltas;
 
+  rnn_grads_row.reserve(num_time_steps * num_neurons);
+  given_outputs_vec.reserve(num_neurons);
+  current_target.reserve(num_neurons);
+  deltas.reserve(num_neurons);
+
   for (size_t b = start; b < end; b++)
   {
     const auto& target_outputs = *(target_outputs_begin + b);
@@ -285,17 +290,18 @@ void FFOutputLayer::run_output_gradients(
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      given_outputs_vec.assign(given_outputs.begin(), given_outputs.end());
+      given_outputs_vec.assign(given_outputs.data(), given_outputs.data() + given_outputs.size());
       
       // Determine target for this time step
       if (target_outputs.size() == num_time_steps * num_neurons)
       {
-        current_target.assign(target_outputs.begin() + t * num_neurons, target_outputs.begin() + (t + 1) * num_neurons);
+        const double* tgt_ptr = target_outputs.data() + t * num_neurons;
+        current_target.assign(tgt_ptr, tgt_ptr + num_neurons);
       }
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        current_target.assign(target_outputs.begin(), target_outputs.end());
+        current_target.assign(target_outputs.data(), target_outputs.data() + target_outputs.size());
       }
       else
       {

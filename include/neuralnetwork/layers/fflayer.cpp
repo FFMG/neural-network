@@ -541,24 +541,24 @@ void FFLayer::calculate_hidden_gradients(
       continue;
     }
 
+    double* dest_base = flattened_next_grads_buffer.data() + b * num_time_steps * N_next;
+    const double* src_ptr = next_grads.data();
     if (next_grads.size() == N_next)
     {
       // Broadcast single gradient to all time steps
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.vec().begin() + (b * num_time_steps + t) * N_next);
+        std::copy(src_ptr, src_ptr + N_next, dest_base + t * N_next);
       }
     }
     else if (next_grads.size() == num_time_steps * N_next)
     {
-      std::copy(next_grads.begin(), next_grads.end(), flattened_next_grads_buffer.vec().begin() + b * num_time_steps * N_next);
+      std::copy(src_ptr, src_ptr + num_time_steps * N_next, dest_base);
     }
     else
     {
-      // Mismatch, take what we can or log error. 
-      // For now, copy as much as fits to avoid crash.
       const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_next);
-      std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_next_grads_buffer.vec().begin() + b * num_time_steps * N_next);
+      std::copy(src_ptr, src_ptr + copy_size, dest_base);
     }
   }
 

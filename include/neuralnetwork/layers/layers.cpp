@@ -391,9 +391,10 @@ void Layers::calculate_forward_feed(
       {
         const int ticks = options.bptt_max_ticks();
         double* dest = gradients_and_output[b].get_rnn_outputs_raw(0, input_size * ticks);
+        const double* src = current_input.data();
         for (int t = 0; t < ticks; ++t)
         {
-          std::copy(current_input.begin(), current_input.end(), dest + t * input_size);
+          std::copy(src, src + input_size, dest + t * input_size);
         }
       }
     }
