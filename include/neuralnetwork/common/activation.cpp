@@ -649,6 +649,21 @@ double activation::lecun_initialization(unsigned fan_in, std::optional<uint32_t>
   return dist(gen);
 }
 
+bool activation::iequals(const std::string& str, const char* lit) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  size_t i = 0;
+  while (str[i] != '\0' && lit[i] != '\0')
+  {
+    if (static_cast<char>(std::tolower(static_cast<unsigned char>(str[i]))) != lit[i])
+    {
+      return false;
+    }
+    ++i;
+  }
+  return str[i] == '\0' && lit[i] == '\0';
+}
+
 std::string activation::method_to_string() const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -658,57 +673,51 @@ std::string activation::method_to_string() const
 activation::method activation::string_to_method(const std::string& str)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  std::string lower_str = str;
-  for (size_t i = 0; i < lower_str.size(); ++i)
-  {
-    lower_str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lower_str[i])));
-  }
-
-  if (lower_str == "linear")
+  if (iequals(str, "linear"))
   {
     return method::linear;
   }
-  if (lower_str == "sigmoid")
+  if (iequals(str, "sigmoid"))
   {
     return method::sigmoid;
   }
-  if (lower_str == "tanh")
+  if (iequals(str, "tanh"))
   {
     return method::tanh;
   }
-  if (lower_str == "relu")
+  if (iequals(str, "relu"))
   {
     return method::relu;
   }
-  if (lower_str == "leakyrelu")
+  if (iequals(str, "leakyrelu"))
   {
     return method::leakyRelu;
   }
-  if (lower_str == "prelu")
+  if (iequals(str, "prelu"))
   {
     return method::PRelu;
   }
-  if (lower_str == "selu")
+  if (iequals(str, "selu"))
   {
     return method::selu;
   }
-  if (lower_str == "swish")
+  if (iequals(str, "swish"))
   {
     return method::swish;
   }
-  if (lower_str == "mish")
+  if (iequals(str, "mish"))
   {
     return method::mish;
   }
-  if (lower_str == "gelu")
+  if (iequals(str, "gelu"))
   {
     return method::gelu;
   }
-  if (lower_str == "elu")
+  if (iequals(str, "elu"))
   {
     return method::elu;
   }
-  if (lower_str == "softmax")
+  if (iequals(str, "softmax"))
   {
     return method::softmax;
   }
