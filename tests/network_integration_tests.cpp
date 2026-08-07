@@ -905,6 +905,90 @@ TEST(NetworkIntegrationTest, ThinkPerformanceRecurrentInferenceThroughput)
   }
 }
 
+TEST(NetworkIntegrationTest, ThinkEmptyInputsHandling)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 }).build();
+  NeuralNetwork nn(options);
+
+  const std::vector<double> empty_single;
+  const auto single_res = nn.think(empty_single);
+  EXPECT_TRUE(single_res.empty());
+
+  const std::vector<std::vector<double>> empty_batch;
+  const auto batch_res = nn.think(empty_batch);
+  EXPECT_TRUE(batch_res.empty());
+}
+
+TEST(NetworkIntegrationTest, ThinkInvalidTopologySizeHandling)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 }).build();
+  NeuralNetwork nn(options);
+
+  // Input size 3 does not match input layer topology size 2
+  const std::vector<double> invalid_input = { 0.5, 0.5, 0.5 };
+  const auto res = nn.think(invalid_input);
+  EXPECT_TRUE(res.empty());
+}
+
+TEST(NetworkIntegrationTest, ThinkBatchVersusSingleConsistency)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 8, 2 }).build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> batch_inputs = {
+    { 0.1, 0.2 },
+    { 0.3, 0.4 },
+    { 0.5, 0.6 },
+    { 0.7, 0.8 }
+  };
+
+  const auto batch_outputs = nn.think(batch_inputs);
+  ASSERT_EQ(batch_outputs.size(), 4u);
+
+  for (size_t i = 0; i < batch_inputs.size(); ++i)
+  {
+    const auto single_out = nn.think(batch_inputs[i]);
+    ASSERT_EQ(single_out.size(), 2u);
+    EXPECT_NEAR(batch_outputs[i][0], single_out[0], 1e-12);
+    EXPECT_NEAR(batch_outputs[i][1], single_out[1], 1e-12);
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkConcurrentMultiThreadedInference)
+{
+  auto options = NeuralNetworkOptions::create({ 3, 16, 2 }).build();
+  NeuralNetwork nn(options);
+
+  const std::vector<double> test_input = { 0.2, 0.4, 0.6 };
+  const auto expected_out = nn.think(test_input);
+  ASSERT_EQ(expected_out.size(), 2u);
+
+  std::vector<std::thread> threads;
+  threads.reserve(8);
+  for (int t = 0; t < 8; ++t)
+  {
+    threads.emplace_back([&nn, &test_input, &expected_out]()
+    {
+      for (int i = 0; i < 1000; ++i)
+      {
+        const auto out = nn.think(test_input);
+        EXPECT_EQ(out.size(), 2u);
+        EXPECT_DOUBLE_EQ(out[0], expected_out[0]);
+        EXPECT_DOUBLE_EQ(out[1], expected_out[1]);
+      }
+    });
+  }
+
+  for (auto& th : threads)
+  {
+    if (th.joinable())
+    {
+      th.join();
+    }
+  }
+}
+
+
 
 
 

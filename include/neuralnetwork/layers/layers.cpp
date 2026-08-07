@@ -695,7 +695,8 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
   outputs.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
   {
-    outputs.push_back(cache.gradients[i].output_back());
+    const auto s = cache.gradients[i].output_back_span();
+    outputs.emplace_back(s.begin(), s.end());
   }
   return outputs;
 }
@@ -731,7 +732,8 @@ std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std
   cache.all_inputs[0].assign(inputs.begin(), inputs.end());
 
   calculate_forward_feed(options, cache.gradients, cache.all_inputs.begin(), 1, cache.hidden_states, false);
-  return cache.gradients.front().output_back();
+  const auto s = cache.gradients.front().output_back_span();
+  return std::vector<double>(s.begin(), s.end());
 }
 
 void Layers::train(

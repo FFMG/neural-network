@@ -164,13 +164,19 @@ public:
   [[nodiscard]] inline std::vector<double> output_back() const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    const auto s = output_back_span();
+    return std::vector<double>(s.begin(), s.end());
+  }
+
+  [[nodiscard]] inline std::span<const double> output_back_span() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
     const auto size = _outputs.number_layers();
     if (size == 0)
     {
       Logger::panic("No layers in container");
     }
-    const auto s = _outputs.get_span(static_cast<unsigned>(size - 1));
-    return std::vector<double>(s.begin(), s.end());
+    return _outputs.get_span(static_cast<unsigned>(size - 1));
   }
 
   inline void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
