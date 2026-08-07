@@ -626,3 +626,117 @@ TEST_F(ErrorCalculationTest, LogCoshCalculationAndStringTypeTest)
   EXPECT_EQ(ErrorCalculation::string_to_type("MSE"), ErrorCalculation::type::mse);
 }
 
+TEST_F(ErrorCalculationTest, AllTypesStringRoundtripCoverage)
+{
+  const std::vector<ErrorCalculation::type> all_types = {
+    ErrorCalculation::type::none,
+    ErrorCalculation::type::huber_loss,
+    ErrorCalculation::type::huber_direction_loss,
+    ErrorCalculation::type::mae,
+    ErrorCalculation::type::mse,
+    ErrorCalculation::type::rmse,
+    ErrorCalculation::type::nrmse,
+    ErrorCalculation::type::mape,
+    ErrorCalculation::type::smape,
+    ErrorCalculation::type::wape,
+    ErrorCalculation::type::directional_accuracy,
+    ErrorCalculation::type::bce_loss,
+    ErrorCalculation::type::cross_entropy,
+    ErrorCalculation::type::log_cosh,
+    ErrorCalculation::type::directional_confidence_score,
+    ErrorCalculation::type::prediction_coverage
+  };
+
+  for (const auto& t : all_types)
+  {
+    const std::string str = ErrorCalculation::type_to_string(t);
+    EXPECT_FALSE(str.empty());
+    const ErrorCalculation::type back = ErrorCalculation::string_to_type(str);
+    EXPECT_EQ(t, back) << "Failed roundtrip for type: " << str;
+  }
+}
+
+TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
+{
+  // 1. MAE & MSE on deterministic sequence
+  // GT: [[1.0, 3.0], [2.0, 5.0]]
+  // PRED: [[2.0, 1.0], [4.0, 2.0]]
+  // Errors: [-1, 2, -2, 3] -> Abs: [1, 2, 2, 3] -> MAE = (1+2+2+3)/4 = 2.0
+  // SqErrors: [1, 4, 4, 9] -> MSE = (1+4+4+9)/4 = 4.5
+  std::vector<std::vector<double>> gt1 = { { 1.0, 3.0 }, { 2.0, 5.0 } };
+  std::vector<std::vector<double>> pred1 = { { 2.0, 1.0 }, { 4.0, 2.0 } };
+
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mae_error(gt1, pred1), 2.0);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mse_error(gt1, pred1), 4.5);
+
+  // 2. RMSE on deterministic sequence
+  // Seq 0 MSE = (1 + 4)/2 = 2.5 -> RMSE_0 = sqrt(2.5)
+  // Seq 1 MSE = (4 + 9)/2 = 6.5 -> RMSE_1 = sqrt(6.5)
+  // Avg RMSE = (sqrt(2.5) + sqrt(6.5)) / 2.0
+  const double expected_rmse = (std::sqrt(2.5) + std::sqrt(6.5)) / 2.0;
+  EXPECT_NEAR(ErrorCalculation::calculate_rmse_error(gt1, pred1), expected_rmse, 1e-12);
+
+  // 3. Huber Loss with Delta = 1.0
+  // GT: [[0.0], [0.0]]
+  // PRED: [[0.5], [2.0]]
+  // Error 0: 0.5 <= 1.0 -> 0.5 * 0.5^2 = 0.125
+  // Error 1: 2.0 > 1.0  -> 1.0 * (2.0 - 0.5 * 1.0) = 1.5
+  // Total = (0.125 + 1.5) / 2 = 0.8125
+  std::vector<std::vector<double>> gt_huber = { { 0.0 }, { 0.0 } };
+  std::vector<std::vector<double>> pred_huber = { { 0.5 }, { 2.0 } };
+  EvaluationConfig huber_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_huber_loss_error(gt_huber, pred_huber, huber_cfg), 0.8125);
+
+  // 4. WAPE
+  // GT: [[1.0, 3.0], [2.0, 4.0]]
+  // PRED: [[1.5, 2.0], [3.0, 2.0]]
+  // Abs error sum: |1-1.5| + |3-2| + |2-3| + |4-2| = 0.5 + 1.0 + 1.0 + 2.0 = 4.5
+  // Abs actual sum: 1 + 3 + 2 + 4 = 10.0
+  // WAPE = 4.5 / 10.0 = 0.45
+  std::vector<std::vector<double>> gt_wape = { { 1.0, 3.0 }, { 2.0, 4.0 } };
+  std::vector<std::vector<double>> pred_wape = { { 1.5, 2.0 }, { 3.0, 2.0 } };
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_forecast_wape(gt_wape, pred_wape), 0.45);
+
+  // 5. WAPE Zero Actuals Edge Case
+  std::vector<std::vector<double>> gt_zero = { { 0.0, 0.0 } };
+  std::vector<std::vector<double>> pred_zero = { { 0.0, 0.0 } };
+  std::vector<std::vector<double>> pred_nonzero = { { 0.1, 0.2 } };
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_forecast_wape(gt_zero, pred_zero), 0.0);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_forecast_wape(gt_zero, pred_nonzero), 1.0);
+
+  // 6. BCE Loss
+  // GT: [[1.0], [0.0]]
+  // PRED: [[0.8], [0.2]]
+  // Elem 0: -(1 * ln(0.8) + 0) = -ln(0.8)
+  // Elem 1: -(0 + 1 * ln(0.8)) = -ln(0.8)
+  // Avg = -ln(0.8)
+  std::vector<std::vector<double>> gt_bce = { { 1.0 }, { 0.0 } };
+  std::vector<std::vector<double>> pred_bce = { { 0.8 }, { 0.2 } };
+  EvaluationConfig bce_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
+  const double expected_bce = -std::log(0.8);
+  EXPECT_NEAR(ErrorCalculation::calculate_bce_loss(gt_bce, pred_bce, bce_cfg), expected_bce, 1e-12);
+
+  // 7. Log-Cosh
+  // GT: [[0.0]]
+  // PRED: [[1.0]]
+  // x = 1.0
+  // log_cosh = 1.0 + ln(1 + e^-2) - ln(2)
+  std::vector<std::vector<double>> gt_logcosh = { { 0.0 } };
+  std::vector<std::vector<double>> pred_logcosh = { { 1.0 } };
+  const double expected_logcosh = 1.0 + std::log1p(std::exp(-2.0)) - std::log(2.0);
+  EXPECT_NEAR(ErrorCalculation::calculate_log_cosh(gt_logcosh, pred_logcosh), expected_logcosh, 1e-12);
+}
+
+TEST_F(ErrorCalculationTest, CalculateErrorEnumDispatch)
+{
+  std::vector<std::vector<double>> gt = { { 1.0, 0.0 }, { 0.0, 1.0 } };
+  std::vector<std::vector<double>> pred = { { 0.8, 0.2 }, { 0.3, 0.7 } };
+
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_error(ErrorCalculation::type::none, gt, pred, config, activation::method::sigmoid), 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mae, gt, pred, config, activation::method::sigmoid), 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mse, gt, pred, config, activation::method::sigmoid), 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::rmse, gt, pred, config, activation::method::sigmoid), 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::bce_loss, gt, pred, config, activation::method::sigmoid), 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::cross_entropy, gt, pred, config, activation::method::softmax), 0.0);
+}
+

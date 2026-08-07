@@ -75,6 +75,8 @@ public:
   double update(double currentError, double current_learning_rate, int epoch, int number_of_epoch)
   {
     MYODDWEB_PROFILE_FUNCTION("AdaptiveLearningRateScheduler");
+    (void)epoch;
+    (void)number_of_epoch;
     if (_max_learning_rate == 0)
     {
       //  set the max learning rate.

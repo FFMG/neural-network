@@ -36,6 +36,21 @@ public:
     directional_confidence_score,
     prediction_coverage
   };
+private:
+  [[nodiscard]] inline static bool iequals(const std::string& str, const char* lit)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    size_t i = 0;
+    while (str[i] != '\0' && lit[i] != '\0')
+    {
+      if (static_cast<char>(std::tolower(static_cast<unsigned char>(str[i]))) != lit[i])
+      {
+        return false;
+      }
+      ++i;
+    }
+    return str[i] == '\0' && lit[i] == '\0';
+  }
 public:
   [[nodiscard]] inline static std::string type_to_string(const ErrorCalculation::type& type)
   {
@@ -75,79 +90,73 @@ public:
     case type::prediction_coverage:
       return "prediction-coverage";
     }
-    Logger::panic("Unknown activation type!");
+    Logger::panic("Unknown ErrorCalculation type!");
   }
 
   [[nodiscard]] inline static type string_to_type(const std::string& str)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    std::string lower_str = str;
-    for (size_t i = 0; i < lower_str.size(); ++i)
-    {
-      lower_str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(lower_str[i])));
-    }
-
-    if (lower_str == "none")
+    if (iequals(str, "none"))
     {
       return type::none;
     }
-    if (lower_str == "huber-loss")
+    if (iequals(str, "huber-loss"))
     {
       return type::huber_loss;
     }
-    if (lower_str == "huber-direction-loss")
+    if (iequals(str, "huber-direction-loss"))
     {
       return type::huber_direction_loss;
     }
-    if (lower_str == "mae")
+    if (iequals(str, "mae"))
     {
       return type::mae;
     }
-    if (lower_str == "mse")
+    if (iequals(str, "mse"))
     {
       return type::mse;
     }
-    if (lower_str == "rmse")
+    if (iequals(str, "rmse"))
     {
       return type::rmse;
     }
-    if (lower_str == "nrmse")
+    if (iequals(str, "nrmse"))
     {
       return type::nrmse;
     }
-    if (lower_str == "mape")
+    if (iequals(str, "mape"))
     {
       return type::mape;
     }
-    if (lower_str == "smape")
+    if (iequals(str, "smape"))
     {
       return type::smape;
     }
-    if (lower_str == "wape")
+    if (iequals(str, "wape"))
     {
       return type::wape;
     }
-    if (lower_str == "directional-accuracy")
+    if (iequals(str, "directional-accuracy"))
     {
       return type::directional_accuracy;
     }
-    if (lower_str == "directional-confidence-score")
+    if (iequals(str, "directional-confidence-score"))
     {
       return type::directional_confidence_score;
     }
-    if (lower_str == "prediction-coverage")
+    if (iequals(str, "prediction-coverage"))
     {
       return type::prediction_coverage;
     }
-    if (lower_str == "bce-loss")
+    if (iequals(str, "bce-loss"))
     {
       return type::bce_loss;
     }
-    if (lower_str == "cross-entropy")
+    if (iequals(str, "cross-entropy"))
     {
       return type::cross_entropy;
     }
-    if (lower_str == "log-cosh")
+    if (iequals(str, "log-cosh"))
     {
       return type::log_cosh;
     }
@@ -233,7 +242,7 @@ public:
   static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    const auto& delta = evaluation_config.huber_delta();
+    const auto delta = evaluation_config.huber_delta();
 
     double total_loss = 0.0;
     size_t count = 0;
@@ -248,15 +257,17 @@ public:
         Logger::panic("Mismatched vector sizes at index ", i);
       }
 
-      for (size_t j = 0; j < gt_vec.size(); ++j)
-      {
-        const double target = gt_vec[j];
-        const double output = pred_vec[j];
+      const double* gt_ptr = gt_vec.data();
+      const double* pred_ptr = pred_vec.data();
+      const size_t vec_len = gt_vec.size();
 
-        // For classification (Softmax/BCE), we often only care about the target class
-        // but here we calculate the loss for all neurons.
-        double error = target - output;
-        double abs_error = std::abs(error);
+      for (size_t j = 0; j < vec_len; ++j)
+      {
+        const double target = gt_ptr[j];
+        const double output = pred_ptr[j];
+
+        const double error = target - output;
+        const double abs_error = std::abs(error);
 
         if (abs_error <= delta)
         {
@@ -269,7 +280,7 @@ public:
         ++count;
       }
     }
-    return (count > 0) ? (total_loss / count) : 0.0;
+    return (count > 0) ? (total_loss / static_cast<double>(count)) : 0.0;
   }
 
   static double calculate_huber_direction_loss(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
@@ -277,26 +288,35 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     const auto lambda = evaluation_config.direction_lambda();
     const auto delta = evaluation_config.huber_delta();
+    const bool use_penalty = evaluation_config.use_direction_penalty();
 
     double total_loss = 0.0;
     size_t count = 0;
 
-    const double scale = 100.0; // important
+    const double scale = 100.0;
 
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
       const auto& gt_vec = ground_truth[i];
       const auto& pred_vec = predictions[i];
 
-      for (size_t j = 0; j < gt_vec.size(); ++j)
+      if (gt_vec.size() != pred_vec.size())
       {
-        const double target = gt_vec[j];
-        const double output = pred_vec[j];
+        Logger::panic("Mismatched vector sizes at index ", i);
+      }
+
+      const double* gt_ptr = gt_vec.data();
+      const double* pred_ptr = pred_vec.data();
+      const size_t vec_len = gt_vec.size();
+
+      for (size_t j = 0; j < vec_len; ++j)
+      {
+        const double target = gt_ptr[j];
+        const double output = pred_ptr[j];
 
         const double error = target - output;
         const double abs_error = std::abs(error);
 
-        // --- Huber loss ---
         double loss = 0.0;
         if (abs_error <= delta)
         {
@@ -307,14 +327,10 @@ public:
           loss = delta * (abs_error - 0.5 * delta);
         }
 
-        if (evaluation_config.use_direction_penalty() && std::abs(target) > 1e-6) // ignore noise
+        if (use_penalty && std::abs(target) > 1e-6)
         {
           const double x = -scale * target * output;
-
-          // ln(1 + exp(x))
-          // For numerical stability: ln(1 + exp(x)) = max(0, x) + ln(1 + exp(-abs(x)))
           const double direction_loss = (x > 0.0) ? (x + std::log1p(std::exp(-x))) : std::log1p(std::exp(x));
-
           loss += lambda * direction_loss;
         }
 
@@ -323,7 +339,7 @@ public:
       }
     }
 
-    return (count > 0) ? (total_loss / count) : 0.0;
+    return (count > 0) ? (total_loss / static_cast<double>(count)) : 0.0;
   }
 
   static double calculate_mae_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
@@ -333,23 +349,31 @@ public:
     size_t count = 0;
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
-      if (ground_truth[i].size() != predictions[i].size())
+      const auto& gt_vec = ground_truth[i];
+      const auto& pred_vec = predictions[i];
+
+      if (gt_vec.size() != pred_vec.size())
       {
         Logger::panic("Mismatched vector sizes at index ", i);
       }
-      for (size_t j = 0; j < ground_truth[i].size(); ++j)
+
+      const double* gt_ptr = gt_vec.data();
+      const double* pred_ptr = pred_vec.data();
+      const size_t vec_len = gt_vec.size();
+
+      for (size_t j = 0; j < vec_len; ++j)
       {
-        total_abs_error += std::abs(ground_truth[i][j] - predictions[i][j]);
+        total_abs_error += std::abs(gt_ptr[j] - pred_ptr[j]);
         ++count;
       }
     }
-    return (count > 0) ? (total_abs_error / count) : 0.0;
+    return (count > 0) ? (total_abs_error / static_cast<double>(count)) : 0.0;
   }
 
   static double calculate_mse_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    double mean_squared_error = 0.0;
+    double total_squared_error = 0.0;
     size_t valid_count = 0;
 
     for (size_t i = 0; i < ground_truth.size(); ++i)
@@ -363,22 +387,26 @@ public:
         continue;
       }
 
-      for (size_t j = 0; j < true_output.size(); ++j)
+      const double* true_ptr = true_output.data();
+      const double* pred_ptr = predicted_output.data();
+      const size_t vec_len = true_output.size();
+
+      for (size_t j = 0; j < vec_len; ++j)
       {
-        double error = predicted_output[j] - true_output[j];
+        const double error = pred_ptr[j] - true_ptr[j];
 
         if (!std::isfinite(error))
         {
           continue;
         }
 
-        double squared_error = error * error;
+        const double squared_error = error * error;
         if (!std::isfinite(squared_error))
         {
           continue;
         }
+        total_squared_error += squared_error;
         ++valid_count;
-        mean_squared_error += (squared_error - mean_squared_error) / valid_count;
       }
     }
 
@@ -386,10 +414,10 @@ public:
     {
       return std::numeric_limits<double>::quiet_NaN();
     }
-    return mean_squared_error;
+    return total_squared_error / static_cast<double>(valid_count);
   }
 
-  static double calculate_rmse_error(std::span<const std::vector<double>> ground_truths,std::span<const std::vector<double>> predictions)
+  static double calculate_rmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_rmse = 0.0;
@@ -401,21 +429,27 @@ public:
       const auto& pred = predictions[seq_idx];
 
       if (gt.size() != pred.size() || gt.empty())
+      {
         continue;
+      }
+
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
       double mse = 0.0;
-      for (size_t i = 0; i < gt.size(); ++i)
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        double diff = gt[i] - pred[i];
+        const double diff = gt_ptr[i] - pred_ptr[i];
         mse += diff * diff;
       }
 
-      mse /= gt.size();
+      mse /= static_cast<double>(vec_len);
       total_rmse += std::sqrt(mse);
       ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_rmse / sequence_count);
+    return (sequence_count == 0) ? 0.0 : (total_rmse / static_cast<double>(sequence_count));
   }
 
   static double calculate_nrmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
@@ -423,7 +457,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_nrmse = 0.0;
     size_t sequence_count = 0;
-    const double eps = 1e-12; // small value to avoid division by zero
+    const double eps = 1e-12;
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -435,33 +469,45 @@ public:
         continue;
       }
 
-      double mse = 0.0;
-      double min_val = gt[0], max_val = gt[0], mean_abs = 0.0;
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
-      for (size_t i = 0; i < gt.size(); ++i)
+      double mse = 0.0;
+      double min_val = gt_ptr[0];
+      double max_val = gt_ptr[0];
+      double mean_abs = 0.0;
+
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        double diff = gt[i] - pred[i];
+        const double val = gt_ptr[i];
+        const double diff = val - pred_ptr[i];
         mse += diff * diff;
 
-        min_val = std::min(min_val, gt[i]);
-        max_val = std::max(max_val, gt[i]);
-        mean_abs += std::abs(gt[i]);
+        min_val = std::min(min_val, val);
+        max_val = std::max(max_val, val);
+        mean_abs += std::abs(val);
       }
 
-      mse /= gt.size();
+      mse /= static_cast<double>(vec_len);
       double rmse = std::sqrt(mse);
-      mean_abs /= gt.size();
+      mean_abs /= static_cast<double>(vec_len);
 
-      // Auto-select normalization
-      double denom = max_val - min_val;         // primary: range
-      if (denom < eps) denom = mean_abs;        // fallback: mean magnitude
-      if (denom < eps) continue;                // skip if both tiny
+      double denom = max_val - min_val;
+      if (denom < eps)
+      {
+        denom = mean_abs;
+      }
+      if (denom < eps)
+      {
+        continue;
+      }
 
       total_nrmse += rmse / denom;
       ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_nrmse / sequence_count);
+    return (sequence_count == 0) ? 0.0 : (total_nrmse / static_cast<double>(sequence_count));
   }
 
   static double calculate_forecast_mape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
@@ -469,6 +515,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_mape = 0.0;
     size_t sequence_count = 0;
+    const double eps = evaluation_config.epsilon();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -477,38 +524,39 @@ public:
 
       if (gt.size() != pred.size() || gt.empty())
       {
-        continue; // skip empty or mismatched
+        continue;
       }
+
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
       double seq_error_sum = 0.0;
       size_t count = 0;
-              
-      for (size_t i = 0; i < gt.size(); ++i)
+
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        double denom = std::abs(gt[i]);
-        if (denom < evaluation_config.epsilon())
+        const double denom = std::abs(gt_ptr[i]);
+        if (denom < eps)
         {
-          continue; // skip tiny values
+          continue;
         }
-        seq_error_sum += std::abs((gt[i] - pred[i]) / denom);
+        seq_error_sum += std::abs((gt_ptr[i] - pred_ptr[i]) / denom);
         ++count;
       }
-              
+
       if (count > 0)
       {
-        total_mape += seq_error_sum / count;
+        total_mape += seq_error_sum / static_cast<double>(count);
         ++sequence_count;
       }
 
-      Logger::trace([&]
+      if (Logger::can_trace())
       {
-        std::ostringstream ss;
-        ss << "[MAPE_DEBUG] After sequence " << seq_idx << ": total_mape=" << total_mape
-            << ", sequence_count=" << sequence_count;
-        return ss.str();
-      });
+        Logger::trace("[MAPE_DEBUG] After sequence ", seq_idx, ": total_mape=", total_mape, ", sequence_count=", sequence_count);
+      }
     }
-    return (sequence_count == 0) ? 0.0 : (total_mape / sequence_count);
+    return (sequence_count == 0) ? 0.0 : (total_mape / static_cast<double>(sequence_count));
   }
 
   static double calculate_forecast_wape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
@@ -522,70 +570,72 @@ public:
       const auto& gt = ground_truths[seq_idx];
       const auto& pred = predictions[seq_idx];
 
-      // Skip mismatched or empty sequences
       if (gt.size() != pred.size() || gt.empty())
       {
         continue;
       }
 
-      // Sum the errors and actuals for this sequence
-      for (size_t i = 0; i < gt.size(); ++i)
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
+
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        total_absolute_error += std::abs(gt[i] - pred[i]);
-        total_absolute_actuals += std::abs(gt[i]);
+        total_absolute_error += std::abs(gt_ptr[i] - pred_ptr[i]);
+        total_absolute_actuals += std::abs(gt_ptr[i]);
       }
     }
 
-    // Perform a single division at the end
-    // Check if the total sum of actuals is zero
     if (total_absolute_actuals == 0.0)
     {
-      // If total actuals are 0, error is 0 only if total error is also 0.
-      // Otherwise, it's undefined. We can return 0 if both are 0, 
-      // or 1.0 (100% error) if we predicted non-zero values for all-zero actuals.
       return (total_absolute_error == 0.0) ? 0.0 : 1.0;
     }
 
-    // WAPE formula
     return total_absolute_error / total_absolute_actuals;
   }
 
-  static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config )
+  static double calculate_forecast_smape(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_smape = 0.0;
     size_t sequence_count = 0;
+    const double eps = evaluation_config.epsilon();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
       const auto& gt = ground_truths[seq_idx];
       const auto& pred = predictions[seq_idx];
 
-      if (gt.size() != pred.size() || gt.empty()) {
-        continue; // skip empty or mismatched
+      if (gt.size() != pred.size() || gt.empty())
+      {
+        continue;
       }
+
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
       double seq_error_sum = 0.0;
       size_t count = 0;
 
-      for (size_t i = 0; i < gt.size(); ++i)
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        double denom = (std::abs(gt[i]) + std::abs(pred[i])) / 2.0;
-        if (denom < evaluation_config.epsilon())
+        const double denom = (std::abs(gt_ptr[i]) + std::abs(pred_ptr[i])) / 2.0;
+        if (denom < eps)
         {
-          continue; // skip both near-zero
+          continue;
         }
-        seq_error_sum += std::abs(gt[i] - pred[i]) / denom;
+        seq_error_sum += std::abs(gt_ptr[i] - pred_ptr[i]) / denom;
         ++count;
       }
 
       if (count > 0)
       {
-        total_smape += seq_error_sum / count;
+        total_smape += seq_error_sum / static_cast<double>(count);
         ++sequence_count;
       }
     }
-    return (sequence_count == 0) ? 0.0 : (total_smape / sequence_count);
+    return (sequence_count == 0) ? 0.0 : (total_smape / static_cast<double>(sequence_count));
   }
 
   static double calculate_softmax_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
@@ -593,6 +643,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t confident = 0;
     size_t total = 0;
+    const double threshold = evaluation_config.confidence_threshold();
 
     for (const auto& seq : predictions)
     {
@@ -601,16 +652,15 @@ public:
         continue;
       }
 
-      // In Softmax, coverage is based on the confidence of the winning class.
       auto max_it = std::max_element(seq.begin(), seq.end());
-      if (*max_it > evaluation_config.confidence_threshold())
+      if (*max_it > threshold)
       {
         ++confident;
       }
 
       ++total;
     }
-    return (total == 0) ? 0.0 : static_cast<double>(confident) / total;
+    return (total == 0) ? 0.0 : static_cast<double>(confident) / static_cast<double>(total);
   }
 
   static double calculate_softmax_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
@@ -618,46 +668,43 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;
     size_t total = 0;
+    const double threshold = evaluation_config.confidence_threshold();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
       const auto& gt = ground_truths[seq_idx];
       const auto& pred = predictions[seq_idx];
 
-      if (gt.empty() || pred.empty()) continue;
-
-      // 1. Determine Midpoint for generic "Directional" logic
-      // For N classes: indices < mid are DOWN, indices > mid are UP, index == mid is NEUTRAL.
-      const size_t num_classes = pred.size();
-      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
-
-      // 2. Get Predicted Winning Index (ArgMax)
-      auto max_pred_it = std::max_element(pred.begin(), pred.end());
-      size_t pred_idx = std::distance(pred.begin(), max_pred_it);
-      double confidence = *max_pred_it;
-
-      // 3. Get Truth Winning Index
-      auto max_gt_it = std::max_element(gt.begin(), gt.end());
-      size_t gt_idx = std::distance(gt.begin(), max_gt_it);
-
-      // 4. Filter by confidence and neutral predictions
-      const bool is_pred_neutral = std::abs(static_cast<double>(pred_idx) - mid) < 0.1;
-      if (is_pred_neutral || confidence < evaluation_config.confidence_threshold())
+      if (gt.empty() || pred.empty())
       {
         continue;
       }
 
-      // 5. Filter by neutral truth
+      const size_t num_classes = pred.size();
+      const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
+
+      auto max_pred_it = std::max_element(pred.begin(), pred.end());
+      const size_t pred_idx = std::distance(pred.begin(), max_pred_it);
+      const double confidence = *max_pred_it;
+
+      auto max_gt_it = std::max_element(gt.begin(), gt.end());
+      const size_t gt_idx = std::distance(gt.begin(), max_gt_it);
+
+      const bool is_pred_neutral = std::abs(static_cast<double>(pred_idx) - mid) < 0.1;
+      if (is_pred_neutral || confidence < threshold)
+      {
+        continue;
+      }
+
       const bool is_gt_neutral = std::abs(static_cast<double>(gt_idx) - mid) < 0.1;
       if (is_gt_neutral)
       {
         continue;
       }
 
-      // 6. Directional Logic:
-      bool predicted_up = (static_cast<double>(pred_idx) > mid);
-      bool actual_up = (static_cast<double>(gt_idx) > mid);
-      bool match = (predicted_up == actual_up);
+      const bool predicted_up = (static_cast<double>(pred_idx) > mid);
+      const bool actual_up = (static_cast<double>(gt_idx) > mid);
+      const bool match = (predicted_up == actual_up);
 
       if (match)
       {
@@ -666,37 +713,35 @@ public:
 
       ++total;
 
-      Logger::trace([&]()
+      if (Logger::can_trace())
       {
-        std::ostringstream ss;
-        ss << "[ErrorCalculation::calculate_softmax_directional_confidence_score] "
-           << "seq=" << seq_idx << ", pred_idx=" << pred_idx << ", gt_idx=" << gt_idx
-           << ", mid=" << mid << ", match=" << (match ? "OK" : "FAIL");
-        return ss.str();
-      });
+        Logger::trace("[ErrorCalculation::calculate_softmax_directional_confidence_score] seq=", seq_idx, ", pred_idx=", pred_idx, ", gt_idx=", gt_idx, ", mid=", mid, ", match=", (match ? "OK" : "FAIL"));
+      }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
   }
 
   static double calculate_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    if (predictions.empty()) return 0.0;
+    if (predictions.empty())
+    {
+      return 0.0;
+    }
 
     size_t confident = 0;
     size_t total = 0;
 
     if (activation_method == activation::method::softmax)
     {
-      // Re-use the existing Softmax specific logic for consistency
       return calculate_softmax_directional_confidence_score(ground_truths, predictions, evaluation_config);
     }
 
-    // Use 0.5 baseline for Sigmoid, 0.0 for others (Tanh, RELU, etc.)
     const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
     const double neutral_tolerance = evaluation_config.neutral_tolerance();
     const double confidence_threshold = evaluation_config.confidence_threshold();
+    const bool can_trace_log = Logger::can_trace();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -708,18 +753,20 @@ public:
         Logger::panic("Ground truth size mismatch.");
       }
 
-      for (size_t i = 0; i < gt.size(); ++i)
-      {
-        double gt_val = gt[i];
-        double pred_val = pred[i];
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
-        // Ignore tiny real moves relative to baseline
+      for (size_t i = 0; i < vec_len; ++i)
+      {
+        const double gt_val = gt_ptr[i];
+        const double pred_val = pred_ptr[i];
+
         if (std::abs(gt_val - baseline) < neutral_tolerance)
         {
           continue;
         }
 
-        // Ignore weak predictions relative to baseline
         if (std::abs(pred_val - baseline) < confidence_threshold)
         {
           continue;
@@ -736,19 +783,14 @@ public:
 
         ++total;
 
-        Logger::trace([&]()
+        if (can_trace_log)
         {
-          std::ostringstream ss;
-          ss << "[ErrorCalculation::calculate_directional_confidence_score] "
-             << "gt=" << gt_val << ", pred=" << pred_val << ", baseline=" << baseline
-             << ", actual_up=" << (actual_up ? "Y" : "N") << ", pred_up=" << (predicted_up ? "Y" : "N")
-             << ", match=" << (match ? "OK" : "FAIL");
-          return ss.str();
-        });
+          Logger::trace("[ErrorCalculation::calculate_directional_confidence_score] gt=", gt_val, ", pred=", pred_val, ", baseline=", baseline, ", actual_up=", (actual_up ? "Y" : "N"), ", pred_up=", (predicted_up ? "Y" : "N"), ", match=", (match ? "OK" : "FAIL"));
+        }
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(confident) / total);
+    return (total == 0) ? 0.0 : (static_cast<double>(confident) / static_cast<double>(total));
   }
 
   static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
@@ -770,29 +812,23 @@ public:
       const size_t num_classes = pred.size();
       const double mid = (static_cast<double>(num_classes) - 1.0) / 2.0;
 
-      // 1. Find the index of the highest predicted probability
       auto max_pred_it = std::max_element(pred.begin(), pred.end());
-      size_t pred_idx = std::distance(pred.begin(), max_pred_it);
+      const size_t pred_idx = std::distance(pred.begin(), max_pred_it);
 
-      // 2. Find the index of the actual target
       auto max_gt_it = std::max_element(gt.begin(), gt.end());
-      size_t gt_idx = std::distance(gt.begin(), max_gt_it);
+      const size_t gt_idx = std::distance(gt.begin(), max_gt_it);
 
-      // 3. Skip samples where the ground truth is neutral
       const bool is_gt_neutral = std::abs(static_cast<double>(gt_idx) - mid) < 0.1;
       if (is_gt_neutral)
       {
         continue;
       }
 
-      // 4. Directional Match: Are they in the same directional group?
-      // A match only occurs if BOTH are in the same directional group (UP or DOWN)
-      // and NEITHER is NEUTRAL.
       const bool is_pred_neutral = std::abs(static_cast<double>(pred_idx) - mid) < 0.1;
-      bool predicted_up = (static_cast<double>(pred_idx) > mid);
-      bool actual_up = (static_cast<double>(gt_idx) > mid);
+      const bool predicted_up = (static_cast<double>(pred_idx) > mid);
+      const bool actual_up = (static_cast<double>(gt_idx) > mid);
 
-      bool match = !is_pred_neutral && (predicted_up == actual_up);
+      const bool match = !is_pred_neutral && (predicted_up == actual_up);
 
       if (match)
       {
@@ -801,17 +837,13 @@ public:
 
       ++total;
 
-      Logger::trace([&]()
+      if (Logger::can_trace())
       {
-        std::ostringstream ss;
-        ss << "[ErrorCalculation::calculate_softmax_directional_accuracy] "
-           << "seq=" << seq_idx << ", pred_idx=" << pred_idx << ", gt_idx=" << gt_idx
-           << ", mid=" << mid << ", match=" << (match ? "OK" : "FAIL");
-        return ss.str();
-      });
+        Logger::trace("[ErrorCalculation::calculate_softmax_directional_accuracy] seq=", seq_idx, ", pred_idx=", pred_idx, ", gt_idx=", gt_idx, ", mid=", mid, ", match=", (match ? "OK" : "FAIL"));
+      }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
   }
 
   static double calculate_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
@@ -820,9 +852,9 @@ public:
     size_t correct = 0;
     size_t total = 0;
 
-    // Use 0.5 baseline for Sigmoid, 0.0 for others (Tanh, RELU, etc.)
     const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
     const double neutral_tolerance = evaluation_config.neutral_tolerance();
+    const bool can_trace_log = Logger::can_trace();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -834,12 +866,15 @@ public:
         Logger::panic("The provided ground truth for directional accuracy is either not the correct size or is empty.");
       }
 
-      for (size_t i = 0; i < gt.size(); ++i)
-      {
-        double gt_val = gt[i];
-        double pred_val = pred[i];
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
 
-        // Ignore small ground truth moves
+      for (size_t i = 0; i < vec_len; ++i)
+      {
+        const double gt_val = gt_ptr[i];
+        const double pred_val = pred_ptr[i];
+
         if (std::abs(gt_val - baseline) < neutral_tolerance)
         {
           continue;
@@ -856,28 +891,24 @@ public:
 
         ++total;
 
-        Logger::trace([&]()
+        if (can_trace_log)
         {
-          std::ostringstream ss;
-          ss << "[ErrorCalculation::calculate_directional_accuracy] "
-             << "gt=" << gt_val << ", pred=" << pred_val << ", baseline=" << baseline
-             << ", actual_up=" << (actual_up ? "Y" : "N") << ", pred_up=" << (predicted_up ? "Y" : "N")
-             << ", match=" << (match ? "OK" : "FAIL");
-          return ss.str();
-        });
+          Logger::trace("[ErrorCalculation::calculate_directional_accuracy] gt=", gt_val, ", pred=", pred_val, ", baseline=", baseline, ", actual_up=", (actual_up ? "Y" : "N"), ", pred_up=", (predicted_up ? "Y" : "N"), ", match=", (match ? "OK" : "FAIL"));
+        }
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / total);
+    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
   }
 
-  static double calculate_bce_loss( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_bce_loss(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_bce = 0.0;
     size_t count = 0;
 
     const auto eps = evaluation_config.epsilon();
+    const double one_minus_eps = 1.0 - eps;
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -889,21 +920,24 @@ public:
         continue;
       }
 
-      for (size_t i = 0; i < gt.size(); ++i)
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
+
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        // clip predictions to [eps, 1 - eps]
-        const auto p = std::clamp(pred[i], eps, 1.0 - eps);
-        const auto y = gt[i];
+        const auto p = std::clamp(pred_ptr[i], eps, one_minus_eps);
+        const auto y = gt_ptr[i];
 
         total_bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
         ++count;
       }
     }
 
-    return (count == 0) ? 0.0 : (total_bce / count);
+    return (count == 0) ? 0.0 : (total_bce / static_cast<double>(count));
   }
 
-  static double calculate_log_cosh( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
+  static double calculate_log_cosh(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_log_cosh = 0.0;
@@ -912,34 +946,37 @@ public:
 
     for (size_t i = 0; i < ground_truths.size(); ++i)
     {
-      if (ground_truths[i].size() != predictions[i].size())
+      const auto& gt = ground_truths[i];
+      const auto& pred = predictions[i];
+
+      if (gt.size() != pred.size())
       {
         Logger::panic("Mismatched vector sizes at index ", i);
       }
 
-      for (size_t j = 0; j < ground_truths[i].size(); ++j)
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
+
+      for (size_t j = 0; j < vec_len; ++j)
       {
-        const double x = predictions[i][j] - ground_truths[i][j];
+        const double x = pred_ptr[j] - gt_ptr[j];
         const double abs_x = std::abs(x);
 
-        // Log-cosh(x) = ln(cosh(x))
-        // For numerical stability:
-        // ln(cosh(x)) = ln((e^x + e^-x) / 2) = ln(e^abs(x) * (1 + e^(-2*abs(x))) / 2)
-        //             = abs(x) + ln(1 + e^(-2*abs(x))) - ln(2)
-        // We use std::log1p(y) which is ln(1+y) for better precision with small y.
         total_log_cosh += abs_x + std::log1p(std::exp(-2.0 * abs_x)) - log2_val;
         ++count;
       }
     }
-    return (count > 0) ? (total_log_cosh / count) : 0.0;
+    return (count > 0) ? (total_log_cosh / static_cast<double>(count)) : 0.0;
   }
 
-  static double calculate_cross_entropy( std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static double calculate_cross_entropy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_loss = 0.0;
     size_t sequence_count = 0;
     const double eps = 1e-12;
+    const double one_minus_eps = 1.0 - eps;
     const double cross_entropy_lambda = evaluation_config.cross_entropy_lambda();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
@@ -952,29 +989,37 @@ public:
         continue;
       }
 
+      const double* gt_ptr = gt.data();
+      const double* pred_ptr = pred.data();
+      const size_t vec_len = gt.size();
+
       double sample_loss = 0.0;
-      for (size_t i = 0; i < gt.size(); ++i)
+      for (size_t i = 0; i < vec_len; ++i)
       {
-        if (gt[i] > 0.0)
+        if (gt_ptr[i] > 0.0)
         {
-           double p = std::max(eps, std::min(1.0 - eps, pred[i]));
-           sample_loss += -gt[i] * std::log(p);
+          const double p = std::clamp(pred_ptr[i], eps, one_minus_eps);
+          sample_loss += -gt_ptr[i] * std::log(p);
         }
       }
       total_loss += sample_loss;
       ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_loss / sequence_count) * cross_entropy_lambda;
+    return (sequence_count == 0) ? 0.0 : (total_loss / static_cast<double>(sequence_count)) * cross_entropy_lambda;
   }
 
   static double calculate_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    if (predictions.empty()) return 0.0;
+    if (predictions.empty())
+    {
+      return 0.0;
+    }
 
     size_t predicted = 0;
     size_t total = 0;
+    const double threshold = evaluation_config.confidence_threshold();
 
     for (const auto& seq : predictions)
     {
@@ -985,20 +1030,21 @@ public:
 
       if (activation_method == activation::method::softmax)
       {
-        // For softmax, coverage is based on the confidence of the winning class.
         auto max_it = std::max_element(seq.begin(), seq.end());
-        if (*max_it > evaluation_config.confidence_threshold())
+        if (*max_it > threshold)
         {
           ++predicted;
         }
       }
       else
       {
-        // For regression, we count the sample as covered if ANY neuron is confident
+        const double* seq_ptr = seq.data();
+        const size_t seq_len = seq.size();
         bool any_confident = false;
-        for (double v : seq)
+
+        for (size_t j = 0; j < seq_len; ++j)
         {
-          if (std::abs(v) > evaluation_config.confidence_threshold())
+          if (std::abs(seq_ptr[j]) > threshold)
           {
             any_confident = true;
             break;
@@ -1011,7 +1057,7 @@ public:
       }
       ++total;
     }
-    return (total == 0) ? 0.0 : static_cast<double>(predicted) / total;
+    return (total == 0) ? 0.0 : static_cast<double>(predicted) / static_cast<double>(total);
   }
 };
 } // namespace myoddweb::nn
