@@ -1,6 +1,8 @@
 #pragma once
 #include "../libraries/instrumentor.h"
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 
