@@ -963,18 +963,21 @@ TEST(NetworkIntegrationTest, ThinkConcurrentMultiThreadedInference)
   const auto expected_out = nn.think(test_input);
   ASSERT_EQ(expected_out.size(), 2u);
 
+  std::atomic<bool> success{ true };
   std::vector<std::thread> threads;
   threads.reserve(8);
   for (int t = 0; t < 8; ++t)
   {
-    threads.emplace_back([&nn, &test_input, &expected_out]()
+    threads.emplace_back([&nn, &test_input, &expected_out, &success]()
     {
       for (int i = 0; i < 1000; ++i)
       {
         const auto out = nn.think(test_input);
-        EXPECT_EQ(out.size(), 2u);
-        EXPECT_DOUBLE_EQ(out[0], expected_out[0]);
-        EXPECT_DOUBLE_EQ(out[1], expected_out[1]);
+        if (out.size() != 2u || out[0] != expected_out[0] || out[1] != expected_out[1])
+        {
+          success.store(false, std::memory_order_relaxed);
+          break;
+        }
       }
     });
   }
@@ -986,7 +989,10 @@ TEST(NetworkIntegrationTest, ThinkConcurrentMultiThreadedInference)
       th.join();
     }
   }
+
+  EXPECT_TRUE(success.load());
 }
+
 
 
 
