@@ -89,6 +89,7 @@ public:
   void set_number_of_threads(int number_of_threads);
   std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
+  [[nodiscard]] size_t get_total_weights() const noexcept;
 
 private:
   [[nodiscard]] inline const Layer& layer(unsigned index) const
@@ -142,8 +143,6 @@ private:
     double learning_rate,
     size_t batch_size,
     const std::vector<HiddenStates>& hidden_states);
-
-  [[nodiscard]] size_t get_total_weights() const noexcept;
 
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias);
