@@ -850,8 +850,8 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, _optimiser_type);
   if (has_bias()) apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, _optimiser_type);
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  if (has_bias()) std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  if (!_w_grads.empty()) std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
+  if (has_bias() && !_b_grads.empty()) std::memset(_b_grads.data(), 0, _b_grads.size() * sizeof(double));
   cache_recurrent_weights();
 }
 
@@ -983,20 +983,23 @@ void FFLayer::calculate_and_store_gradients_chunk(
   std::vector<double>& local_b_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const bool is_rnn_in = (start < end) && !batch_gradients_and_outputs[start].get_rnn_outputs(prev_layer_index).empty();
+  const bool is_rnn_grad = (start < end) && batch_gradients_and_outputs[start].has_rnn_gradients(this_layer_index);
+
   for (size_t b = start; b < end; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+    const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
 
     const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
     const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-    const double* g_base = !rnn_grad.empty() ? rnn_grad.data() : std_grad.data();
+    const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      const double* x_t = (!rnn_in.empty()) ? &x_base[t * num_inputs] : x_base;
-      const double* g_t = (!rnn_grad.empty()) ? &g_base[t * num_outputs] : g_base;
+      const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
+      const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
       size_t i = 0;
       for (; i + 3 < num_inputs; i += 4)
       {

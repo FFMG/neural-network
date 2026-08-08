@@ -460,4 +460,57 @@ TEST(LayerTest, LayersTrainParallelWeightUpdateCorrectness) {
   }
 }
 
+TEST(LayerTest, LayersTrainGradientClippingDisabledFastPath) {
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_clip_threshold(std::numeric_limits<double>::infinity())
+    .build();
+
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.1, 0.9 }, { 0.8, 0.2 } };
+  std::vector<std::vector<double>> outputs = { { 1.0, 0.0 }, { 0.0, 1.0 } };
+
+  auto in_it = inputs.cbegin();
+  auto out_it = outputs.cbegin();
+  layers.train(options, 0.01, in_it, out_it, 2);
+
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+TEST(LayerTest, LayersTrainRecurrentSequenceBackprop) {
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99) })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  Layers layers(options);
+
+  std::vector<std::vector<double>> sequence_inputs = {
+    { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 }
+  };
+  std::vector<std::vector<double>> sequence_outputs = {
+    { 0.9, 0.1 }
+  };
+
+  auto in_it = sequence_inputs.cbegin();
+  auto out_it = sequence_outputs.cbegin();
+  layers.train(options, 0.01, in_it, out_it, 1);
+
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+
 

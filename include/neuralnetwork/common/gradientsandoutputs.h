@@ -265,6 +265,16 @@ public:
     _rnn_gradients[layer].assign(data, data + size);
   }
 
+  [[nodiscard]] inline bool has_rnn_gradients(unsigned layer) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer >= _rnn_gradients.size())
+    {
+      return false;
+    }
+    return !_rnn_gradients[layer].empty();
+  }
+
   [[nodiscard]] inline const std::vector<double>& get_rnn_gradients(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");

@@ -532,15 +532,8 @@ void Layers::calculate_back_propagation_hidden_layers(
     else
     {
        static const std::vector<std::vector<double>> empty_matrix;
-       bool next_is_recurrent = false;
-       for (size_t b = 0; b < batch_size; ++b)
-       {
-         if (!gradients[b].get_rnn_gradients(static_cast<unsigned>(layer_number + 1)).empty())
-         {
-           next_is_recurrent = true;
-           break;
-         }
-       }
+       const unsigned next_layer_idx = static_cast<unsigned>(layer_number + 1);
+       const bool next_is_recurrent = (batch_size > 0) && gradients[0].has_rnn_gradients(next_layer_idx);
        if (next_is_recurrent)
        {
          hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, empty_matrix, hidden_states, batch_size, options.bptt_max_ticks());
@@ -629,27 +622,26 @@ void Layers::update_weights(
     }
   }
 
-  // 2. Calculate global gradient norm for clipping sequentially
-  double total_norm_sq = 0.0;
-  for (unsigned i = 1; i < size(); ++i)
-  {
-    total_norm_sq += _layers[i]->get_gradient_norm_sq();
-  }
-  const double total_norm = std::sqrt(total_norm_sq);
-
+  // 2. Calculate global gradient norm for clipping if enabled
   double clipping_scale = 1.0;
   const double gradient_clip_threshold = options.clip_threshold();
-  if (gradient_clip_threshold > 0.0 && total_norm > 0.0)
+  if (gradient_clip_threshold > 0.0)
   {
+    double total_norm_sq = 0.0;
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      total_norm_sq += _layers[i]->get_gradient_norm_sq();
+    }
+    const double total_norm = std::sqrt(total_norm_sq);
+
+    if (!std::isfinite(total_norm)) 
+    {
+      Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
+    }
     if (total_norm > gradient_clip_threshold)
     {
       clipping_scale = gradient_clip_threshold / total_norm;
     }
-  }
-
-  if (!std::isfinite(total_norm)) 
-  {
-    Logger::panic("CRITICAL: Explosive gradients detected (norm is NaN/Inf)!");
   }
 
   // 3. Apply the stored (and now clipped) gradients
