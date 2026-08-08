@@ -513,14 +513,20 @@ TEST(LayerTest, LayersTrainRecurrentSequenceBackprop) {
 }
 
 TEST(LayerTest, LayerTypeIdentificationVirtuals) {
-  auto options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
-  Layers layers(options);
+  auto elman_options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99) })
+    .build();
+  Layers elman_layers(elman_options);
 
-  EXPECT_TRUE(layers[1].is_ff_layer());
-  EXPECT_TRUE(layers[2].is_ff_layer());
-  EXPECT_FALSE(layers[0].is_ff_layer());
-  EXPECT_FALSE(layers[1].is_multi_output());
+  auto ff_options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
+  Layers ff_layers(ff_options);
+
+  EXPECT_TRUE(ff_layers[1].is_ff_layer());
+  EXPECT_TRUE(ff_layers[2].is_ff_layer());
+  EXPECT_FALSE(elman_layers[1].is_ff_layer());
+  EXPECT_FALSE(ff_layers[1].is_multi_output());
 }
+
 
 TEST(LayerTest, LayersGetTotalWeightsCaching) {
   auto options = NeuralNetworkOptions::create({ 3, 16, 2 }).build();
