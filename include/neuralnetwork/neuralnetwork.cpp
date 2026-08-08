@@ -1378,6 +1378,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "  Warmup target            : ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
   Logger::info(tab, "  Restart rate             : ", _options.learning_rate_restart_rate());
   Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
+  Logger::info(tab, "  Adaptive Learning Rate   : ", _options.adaptive_learning_rate() ? "true" : "false");
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
 
   // Hidden
