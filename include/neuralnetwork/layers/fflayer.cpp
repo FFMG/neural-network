@@ -3,6 +3,7 @@
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
 #include "../common/tempbuffer.h"
+#include <cstring>
 #include <numeric>
 
 
