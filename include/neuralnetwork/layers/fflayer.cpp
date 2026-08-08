@@ -566,7 +566,7 @@ void FFLayer::calculate_hidden_gradients(
   const size_t effective_batch_size = batch_size * num_time_steps;
   TempBuffer<double, 3> flattened_this_grads_buffer(effective_batch_size * N_this, true);
 
-  const auto* ff_next = dynamic_cast<const FFLayer*>(&next_layer);
+  const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
   const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
   const double* W_next = (W_next_T == nullptr) ? next_layer.get_w_values().data() : nullptr;
 

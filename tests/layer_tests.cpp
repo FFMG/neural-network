@@ -512,5 +512,25 @@ TEST(LayerTest, LayersTrainRecurrentSequenceBackprop) {
   }
 }
 
+TEST(LayerTest, LayerTypeIdentificationVirtuals) {
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
+  Layers layers(options);
+
+  EXPECT_TRUE(layers[1].is_ff_layer());
+  EXPECT_TRUE(layers[2].is_ff_layer());
+  EXPECT_FALSE(layers[0].is_ff_layer());
+  EXPECT_FALSE(layers[1].is_multi_output());
+}
+
+TEST(LayerTest, LayersGetTotalWeightsCaching) {
+  auto options = NeuralNetworkOptions::create({ 3, 16, 2 }).build();
+  Layers layers(options);
+
+  size_t expected_weights = (3 * 16 + 16) + (16 * 2 + 2);
+  EXPECT_EQ(layers.get_total_weights(), expected_weights);
+  EXPECT_EQ(layers.get_total_weights(), expected_weights);
+}
+
+
 
 

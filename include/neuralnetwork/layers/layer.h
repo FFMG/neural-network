@@ -509,6 +509,18 @@ public:
 
   [[nodiscard]] virtual Architecture get_layer_architecture() const = 0;
 
+  [[nodiscard]] virtual bool is_ff_layer() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return false;
+  }
+
+  [[nodiscard]] virtual bool is_multi_output() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return false;
+  }
+
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

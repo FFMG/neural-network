@@ -135,6 +135,12 @@ public:
 
   void cache_recurrent_weights() override;
 
+  [[nodiscard]] bool is_ff_layer() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return true;
+  }
+
   [[nodiscard]] inline const std::vector<double>& get_w_values_T() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
