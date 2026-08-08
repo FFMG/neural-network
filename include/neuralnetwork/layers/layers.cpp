@@ -497,9 +497,10 @@ void Layers::calculate_back_propagation_output_layer(
   auto& ol = output_layer();
   ol.calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
   
-  if (const auto& branched = dynamic_cast<const MultiOutputLayer*>(&ol))
+  if (ol.is_multi_output())
   {
-    branched->backprop_branches(batch_size, options.bptt_max_ticks());
+    const auto& branched = static_cast<const MultiOutputLayer&>(ol);
+    branched.backprop_branches(batch_size, options.bptt_max_ticks());
   }
 }
 
@@ -518,15 +519,16 @@ void Layers::calculate_back_propagation_hidden_layers(
     const auto& hidden_1 = layer(static_cast<unsigned>(layer_number + 1));
 
     // Check if next layer is Branched
-    if (auto branched = dynamic_cast<const MultiOutputLayer*>(&hidden_1))
+    if (hidden_1.is_multi_output())
     {
+       const auto& branched = static_cast<const MultiOutputLayer&>(hidden_1);
        // Only call backprop_branches if it's NOT the output layer, 
        // because calculate_back_propagation_output_layer already did it.
        if (static_cast<unsigned>(layer_number + 1) != size() - 1)
        {
-         branched->backprop_branches(batch_size, options.bptt_max_ticks());
+         branched.backprop_branches(batch_size, options.bptt_max_ticks());
        }
-       std::vector<std::vector<double>> batch_next_gradients = branched->get_trunk_gradients(batch_size);
+       std::vector<std::vector<double>> batch_next_gradients = branched.get_trunk_gradients(batch_size);
        hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, batch_next_gradients, hidden_states, batch_size, options.bptt_max_ticks());
     }
     else
@@ -578,6 +580,21 @@ struct GradApplyTask
 };
 }
 
+size_t Layers::get_total_weights() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  if (_total_weights == 0 && !_layers.empty())
+  {
+    size_t total = 0;
+    for (unsigned i = 1; i < size(); ++i)
+    {
+      total += _layers[i]->get_w_values().size() + _layers[i]->get_b_values().size();
+    }
+    _total_weights = total;
+  }
+  return _total_weights;
+}
+
 void Layers::update_weights(
   const NeuralNetworkOptions& options,
   const std::vector<GradientsAndOutputs>& batch_gradients,
@@ -592,11 +609,8 @@ void Layers::update_weights(
     return;
   }
 
-  size_t total_weights = 0;
-  for (unsigned i = 1; i < size(); ++i)
-  {
-    total_weights += _layers[i]->get_w_values().size() + _layers[i]->get_b_values().size();
-  }
+  const size_t total_weights = get_total_weights();
+
   const bool use_pool = (_update_weights_pool != nullptr && _update_weights_pool->get_number_of_threads() > 1 && size() > 2);
   const bool parallel_grad_calc = use_pool && (batch_size * total_weights >= 10000);
   const bool parallel_grad_apply = use_pool && (total_weights >= 50000);
@@ -749,10 +763,6 @@ void Layers::train(
   for (size_t i = 0; i < prev_grad_size && i < batch_size; ++i)
   {
     _training_gradients_buffer[i].zero();
-  }
-  for (size_t i = 0; i < prev_hidden_size && i < batch_size; ++i)
-  {
-    _training_hidden_states_buffer[i].zero();
   }
 
   // 2. Calculate gradients via back-propagation

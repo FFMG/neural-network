@@ -143,6 +143,8 @@ private:
     size_t batch_size,
     const std::vector<HiddenStates>& hidden_states);
 
+  [[nodiscard]] size_t get_total_weights() const noexcept;
+
   ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
   static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias);
   std::unique_ptr<Layer> create_hidden_layer(const Layer& previous_layer, int residual_layer_number, const LayerDetails& layer_details, int number_of_threads, bool has_bias);
@@ -156,8 +158,10 @@ private:
   std::vector<GradientsAndOutputs> _training_gradients_buffer;
   std::vector<HiddenStates> _training_hidden_states_buffer;
   mutable std::vector<std::vector<double>> _batch_next_gradients_buffer;
+  mutable size_t _total_weights = 0;
 
   mutable std::shared_mutex _mutex;
   TaskQueuePool<void>* _update_weights_pool;
 };
+
 } // namespace myoddweb::nn

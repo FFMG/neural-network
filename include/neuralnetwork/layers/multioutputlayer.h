@@ -297,6 +297,12 @@ public:
     return Architecture::MultiOutput;
   }
 
+  [[nodiscard]] bool is_multi_output() const noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    return true;
+  }
+
   Layer* clone() const override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
