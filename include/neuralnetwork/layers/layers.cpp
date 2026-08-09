@@ -438,7 +438,7 @@ void Layers::calculate_forward_feed(
     if (!hidden_states.empty())
     {
       const size_t n_prev = previous_layer.get_number_neurons();
-      const double pre_activation_mult = current_layer.get_pre_activation_multiplier();
+      const unsigned pre_activation_mult = current_layer.get_pre_activation_multiplier();
       const unsigned prev_idx = previous_layer.get_layer_index();
       for (size_t b = 0; b < batch_size; ++b)
       {
