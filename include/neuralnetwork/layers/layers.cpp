@@ -379,26 +379,28 @@ void Layers::calculate_forward_feed(
   std::shared_lock<std::shared_mutex> read(_mutex);
 
   // --- 1. Store input layer outputs for the entire batch ---
+  const size_t input_size = input_layer().get_number_neurons();
+  const bool enable_bptt = options.enable_bptt();
+  const int bptt_ticks = options.bptt_max_ticks();
+
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& current_input = *(inputs_begin + b);
-    const size_t input_size = input_layer().get_number_neurons();
 
     if (current_input.size() == input_size)
     {
       gradients_and_output[b].set_outputs(0, current_input.data(), input_size);
-      if (is_training && options.enable_bptt() && options.bptt_max_ticks() > 1)
+      if (is_training && enable_bptt && bptt_ticks > 1)
       {
-        const int ticks = options.bptt_max_ticks();
-        double* dest = gradients_and_output[b].get_rnn_outputs_raw(0, input_size * ticks);
+        double* dest = gradients_and_output[b].get_rnn_outputs_raw(0, input_size * bptt_ticks);
         const double* src = current_input.data();
-        for (int t = 0; t < ticks; ++t)
+        for (int t = 0; t < bptt_ticks; ++t)
         {
           std::copy(src, src + input_size, dest + t * input_size);
         }
       }
     }
-    else if (options.enable_bptt() && input_size > 0 && current_input.size() % input_size == 0)
+    else if (enable_bptt && input_size > 0 && current_input.size() % input_size == 0)
     {
       // Sequence input provided!
       // Set the standard output to the LAST time step (so strict topology checks pass)
@@ -435,16 +437,18 @@ void Layers::calculate_forward_feed(
 
     if (!hidden_states.empty())
     {
+      const size_t n_prev = previous_layer.get_number_neurons();
+      const double pre_activation_mult = current_layer.get_pre_activation_multiplier();
+      const unsigned prev_idx = previous_layer.get_layer_index();
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-        const auto prev_std_span = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(prev_idx);
+        const auto prev_std_span = gradients_and_output[b].get_outputs(prev_idx);
 
         const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
-        const size_t n_prev = previous_layer.get_number_neurons();
         const size_t num_time_steps = (n_prev > 0 && !prev_rnn_span.empty()) ? seq_size / n_prev : 1;
         
-        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), pre_activation_mult);
       }
     }
     // Call batched forward feed
@@ -620,8 +624,8 @@ void Layers::update_weights(
   {
     for (unsigned i = 1; i < size(); ++i)
     {
-      auto& layer_a = *_layers.at(i);
-      auto& layer_b = *_layers.at(i - 1);
+      auto& layer_a = *_layers[i];
+      auto& layer_b = *_layers[i - 1];
       _update_weights_pool->enqueue(GradCalcTask{ layer_a, batch_gradients, hidden_states, layer_b, batch_size, options });
     }
     _update_weights_pool->get();
@@ -630,11 +634,12 @@ void Layers::update_weights(
   {
     for (unsigned i = 1; i < size(); ++i)
     {
-      auto& layer_a = *_layers.at(i);
-      auto& layer_b = *_layers.at(i - 1);
+      auto& layer_a = *_layers[i];
+      auto& layer_b = *_layers[i - 1];
       layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
     }
   }
+
 
   // 2. Calculate global gradient norm for clipping if enabled
   double clipping_scale = 1.0;

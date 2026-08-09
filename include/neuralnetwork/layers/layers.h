@@ -66,7 +66,7 @@ public:
       Logger::panic("Trying to get hidden layer information past the number of hidden layers!");
     }
 #endif
-    return *_layers.at(index);
+    return *_layers[index];
   }
 
   [[nodiscard]] inline const Layer& output_layer() const
@@ -101,8 +101,9 @@ private:
       Logger::panic("Trying to get layer information past the number of layers!");
     }
 #endif
-    return *_layers.at(index);
+    return *_layers[index];
   }
+
 
   void calculate_forward_feed(
     const NeuralNetworkOptions& options,

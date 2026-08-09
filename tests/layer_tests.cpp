@@ -537,6 +537,31 @@ TEST(LayerTest, LayersGetTotalWeightsCaching) {
   EXPECT_EQ(layers.get_total_weights(), expected_weights);
 }
 
+TEST(LayerTest, LayersAccessorsAndForwardFeedOptimizedPaths) {
+  auto options = NeuralNetworkOptions::create({ 2, 4, 3 }).build();
+  Layers layers(options);
+
+  EXPECT_EQ(layers.input_layer().get_number_neurons(), 2U);
+  EXPECT_EQ(layers.hidden_layer(1).get_number_neurons(), 4U);
+  EXPECT_EQ(layers.output_layer().get_number_neurons(), 3U);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, 0.2 }, { 0.1, 0.9 } };
+  std::vector<std::vector<double>> outputs = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 } };
+
+  auto in_it = inputs.cbegin();
+  auto out_it = outputs.cbegin();
+  layers.train(options, 0.05, in_it, out_it, 2);
+
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+
 
 
 
