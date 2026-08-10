@@ -226,8 +226,8 @@ TEST_F(GradientsAndOutputsTest, ResetForInference) {
 
 TEST_F(GradientsAndOutputsTest, PrepareForTraining) {
     GradientsAndOutputs gao(topology);
-    gao.set_outputs(0, { 1.0, 2.0 });
-    gao.set_gradients(0, { 0.5, 0.5 });
+    gao.set_outputs(0, { 1.0, 2.0, 3.0 });
+    gao.set_gradients(0, { 0.5, 0.5, 0.5 });
     gao.set_rnn_outputs(1, { 0.1, 0.2 });
     gao.set_rnn_gradients(1, { 0.01, 0.02 });
 
@@ -235,9 +235,12 @@ TEST_F(GradientsAndOutputsTest, PrepareForTraining) {
 
     EXPECT_DOUBLE_EQ(gao.get_outputs(0)[0], 1.0);
     EXPECT_DOUBLE_EQ(gao.get_outputs(0)[1], 2.0);
+    EXPECT_DOUBLE_EQ(gao.get_outputs(0)[2], 3.0);
     EXPECT_DOUBLE_EQ(gao.get_gradients(0)[0], 0.0);
     EXPECT_DOUBLE_EQ(gao.get_gradients(0)[1], 0.0);
+    EXPECT_DOUBLE_EQ(gao.get_gradients(0)[2], 0.0);
     EXPECT_TRUE(gao.get_rnn_outputs(1).empty());
     EXPECT_FALSE(gao.has_rnn_gradients(1));
 }
+
 
