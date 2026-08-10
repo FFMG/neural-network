@@ -561,6 +561,154 @@ TEST(LayerTest, LayersAccessorsAndForwardFeedOptimizedPaths) {
   }
 }
 
+TEST(LayerTest, FFLayerCalculateAndStoreGradientsMathematicalSoundness) {
+  const unsigned num_inputs = 3;
+  const unsigned num_outputs = 4;
+  const size_t batch_size = 4;
+  const size_t num_time_steps = 2;
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto options = NeuralNetworkOptions::create(topology).build();
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+  std::vector<GradientsAndOutputs> batch_gradients_and_outputs;
+  batch_gradients_and_outputs.reserve(batch_size);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_gradients_and_outputs.emplace_back(topology);
+  }
+
+  std::vector<HiddenStates> hidden_states;
+  hidden_states.reserve(batch_size);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    hidden_states.emplace_back(topology);
+    hidden_states[b].assign(1, num_time_steps, HiddenState(), 1);
+  }
+
+  // Populate deterministic inputs and gradients for each sample and timestep
+  std::vector<std::vector<double>> inputs_data(batch_size * num_time_steps, std::vector<double>(num_inputs, 0.0));
+  std::vector<std::vector<double>> grads_data(batch_size * num_time_steps, std::vector<double>(num_outputs, 0.0));
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> rnn_inputs(num_time_steps * num_inputs);
+    std::vector<double> rnn_grads(num_time_steps * num_outputs);
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const size_t idx = b * num_time_steps + t;
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        const double x_val = static_cast<double>(idx * 10 + i + 1) * 0.1;
+        inputs_data[idx][i] = x_val;
+        rnn_inputs[t * num_inputs + i] = x_val;
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        const double g_val = static_cast<double>(idx * 5 + j + 2) * 0.05;
+        grads_data[idx][j] = g_val;
+        rnn_grads[t * num_outputs + j] = g_val;
+      }
+    }
+    batch_gradients_and_outputs[b].set_rnn_outputs(0, rnn_inputs);
+    batch_gradients_and_outputs[b].set_rnn_gradients(1, rnn_grads);
+  }
+
+  // Execute optimized gradient calculation
+  MockLayer prev_layer(0, num_inputs);
+  layer.calculate_and_store_gradients(batch_gradients_and_outputs, hidden_states, prev_layer, batch_size, 1);
+
+  // Compute reference gradients via mathematical definition: dW_ij = (1/B) * sum_{b,t} (x_i * g_j)
+  std::vector<double> expected_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> expected_b_grads(num_outputs, 0.0);
+
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const size_t idx = b * num_time_steps + t;
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+          expected_w_grads[i * num_outputs + j] += inputs_data[idx][i] * grads_data[idx][j];
+        }
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        expected_b_grads[j] += grads_data[idx][j];
+      }
+    }
+  }
+
+  for (size_t k = 0; k < expected_w_grads.size(); ++k)
+  {
+    expected_w_grads[k] *= inv_batch;
+  }
+  for (size_t j = 0; j < expected_b_grads.size(); ++j)
+  {
+    expected_b_grads[j] *= inv_batch;
+  }
+
+  // Verify mathematical equivalence to double precision floating-point tolerance
+  const auto& actual_w_grads = layer.get_w_grads();
+  const auto& actual_b_grads = layer.get_b_grads();
+
+  ASSERT_EQ(actual_w_grads.size(), expected_w_grads.size());
+  for (size_t k = 0; k < expected_w_grads.size(); ++k)
+  {
+    EXPECT_NEAR(actual_w_grads[k], expected_w_grads[k], 1e-14);
+  }
+
+  ASSERT_EQ(actual_b_grads.size(), expected_b_grads.size());
+  for (size_t j = 0; j < expected_b_grads.size(); ++j)
+  {
+    EXPECT_NEAR(actual_b_grads[j], expected_b_grads[j], 1e-14);
+  }
+}
+
+TEST(LayerTest, LayersTrainCoverageAndConsistencyAcrossBatchSizes) {
+  auto options = NeuralNetworkOptions::create({ 4, 8, 3 }).build();
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.1, 0.2, 0.3, 0.4 },
+    { 0.5, 0.6, 0.7, 0.8 },
+    { 0.9, 0.1, 0.2, 0.3 },
+    { 0.4, 0.5, 0.6, 0.7 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 1.0, 0.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 0.5, 0.5, 0.0 }
+  };
+
+  // Test single sample batch
+  auto in_it1 = inputs.cbegin();
+  auto out_it1 = outputs.cbegin();
+  layers.train(options, 0.01, in_it1, out_it1, 1);
+
+  // Test multi-sample batch
+  auto in_it4 = inputs.cbegin();
+  auto out_it4 = outputs.cbegin();
+  layers.train(options, 0.01, in_it4, out_it4, 4);
+
+  // Verify numerical stability
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+
 
 
 
