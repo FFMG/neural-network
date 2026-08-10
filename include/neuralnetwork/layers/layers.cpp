@@ -767,8 +767,9 @@ void Layers::train(
   // Zero out existing reused elements; newly created elements were initialized by constructor
   for (size_t i = 0; i < prev_grad_size && i < batch_size; ++i)
   {
-    _training_gradients_buffer[i].zero();
+    _training_gradients_buffer[i].prepare_for_training();
   }
+
 
   // 2. Calculate gradients via back-propagation
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
