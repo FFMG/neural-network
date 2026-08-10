@@ -84,6 +84,16 @@ public:
     for (auto& vec : _rnn_gate_gradients) vec.clear();
   }
 
+  inline void prepare_for_training()
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    _gradients.zero();
+    for (auto& vec : _rnn_outputs) vec.clear();
+    for (auto& vec : _rnn_gradients) vec.clear();
+    for (auto& vec : _rnn_gate_gradients) vec.clear();
+  }
+
+
   inline void reset_for_inference()
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
