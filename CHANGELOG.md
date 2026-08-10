@@ -2,6 +2,19 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.9] - 2026-08-10
+
+### Added
+- Added unit tests `FFLayerCalculateAndStoreGradientsMathematicalSoundness` and `LayersTrainCoverageAndConsistencyAcrossBatchSizes` to `tests/layer_tests.cpp` to mathematically prove weight/bias gradient calculations against analytical formulas ($10^{-14}$ precision) and verify multi-batch training execution.
+
+### Changed
+- Optimized `FFLayer::calculate_and_store_gradients_chunk` in `include/neuralnetwork/layers/fflayer.cpp`:
+  - Inverted weight gradient accumulation loop hierarchy to make input neuron index the outer loop, ensuring row $i$ of `local_w_grads` stays in SIMD registers and L1 cache across all batch samples and time steps, eliminating L1 cache thrashing during training.
+- Optimized `Layers::train` in `include/neuralnetwork/layers/layers.cpp`:
+  - Removed duplicate `cache_recurrent_weights()` invocation at the end of `Layers::train(...)` as `apply_stored_gradients(...)` already updates transposed weights per layer.
+- Optimized `FFOutputLayer::run_output_gradients` in `include/neuralnetwork/layers/ffoutputlayer.cpp`:
+  - Replaced local heap `std::vector` allocations with `TempBuffer` for thread-local buffer reuse.
+
 ## [1.1.8] - 2026-08-07
 
 ### Added

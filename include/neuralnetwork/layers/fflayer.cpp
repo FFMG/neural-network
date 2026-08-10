@@ -984,57 +984,54 @@ void FFLayer::calculate_and_store_gradients_chunk(
   std::vector<double>& local_b_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const bool is_rnn_in = (start < end) && !batch_gradients_and_outputs[start].get_rnn_outputs(prev_layer_index).empty();
-  const bool is_rnn_grad = (start < end) && batch_gradients_and_outputs[start].has_rnn_gradients(this_layer_index);
-
-  for (size_t b = start; b < end; ++b)
+  if (start >= end)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
+    return;
+  }
 
-    const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-    const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-    const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+  const bool is_rnn_in = !batch_gradients_and_outputs[start].get_rnn_outputs(prev_layer_index).empty();
+  const bool is_rnn_grad = batch_gradients_and_outputs[start].has_rnn_gradients(this_layer_index);
 
-    for (size_t t = 0; t < num_time_steps; ++t)
+  if (has_bias())
+  {
+    for (size_t b = start; b < end; ++b)
     {
-      const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
-      const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
-      size_t i = 0;
-      for (; i + 3 < num_inputs; i += 4)
+      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+      for (size_t t = 0; t < num_time_steps; ++t)
       {
-        simd::mul_add_four_scalars(
-          x_t[i], x_t[i + 1], x_t[i + 2], x_t[i + 3],
-          g_t,
-          &local_w_grads[i * num_outputs],
-          &local_w_grads[(i + 1) * num_outputs],
-          &local_w_grads[(i + 2) * num_outputs],
-          &local_w_grads[(i + 3) * num_outputs],
-          num_outputs
-        );
-      }
-      for (; i + 1 < num_inputs; i += 2)
-      {
-        simd::mul_add_two_scalars(
-          x_t[i], x_t[i + 1],
-          g_t,
-          &local_w_grads[i * num_outputs],
-          &local_w_grads[(i + 1) * num_outputs],
-          num_outputs
-        );
-      }
-      for (; i < num_inputs; ++i)
-      {
-        simd::mul_add(x_t[i], g_t, &local_w_grads[i * num_outputs], num_outputs);
-      }
-      if (has_bias())
-      {
+        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
         simd::add_vectors(g_t, local_b_grads.data(), num_outputs);
       }
     }
   }
+
+  // Weight gradients (outer loop over input neuron i to eliminate L1 cache thrashing)
+  for (size_t i = 0; i < num_inputs; ++i)
+  {
+    double* w_grad_row = &local_w_grads[i * num_outputs];
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
+
+      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
+        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double x_val = x_t[i];
+        simd::mul_add(x_val, g_t, w_grad_row, num_outputs);
+      }
+    }
+  }
 }
+
 
 void FFLayer::cache_recurrent_weights()
 {

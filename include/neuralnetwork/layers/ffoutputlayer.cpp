@@ -269,39 +269,34 @@ void FFOutputLayer::run_output_gradients(
   const auto& ranges = _layer_activation_helper.ranges();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
 
-  std::vector<double> deriv_buf(num_neurons);
-  std::vector<double> rnn_grads_row;
-  std::vector<double> given_outputs_vec;
-  std::vector<double> current_target;
-  std::vector<double> deltas;
-
-  rnn_grads_row.reserve(num_time_steps * num_neurons);
-  given_outputs_vec.reserve(num_neurons);
-  current_target.reserve(num_neurons);
-  deltas.reserve(num_neurons);
+  TempBuffer<double, 55> deriv_buf(num_neurons);
+  TempBuffer<double, 56> rnn_grads_row(num_time_steps * num_neurons);
+  TempBuffer<double, 57> given_outputs_vec(num_neurons);
+  TempBuffer<double, 58> current_target(num_neurons);
+  TempBuffer<double, 59> deltas(num_neurons);
 
   for (size_t b = start; b < end; b++)
   {
     const auto& target_outputs = *(target_outputs_begin + b);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-    rnn_grads_row.assign(num_time_steps * num_neurons, 0.0);
+    std::fill(rnn_grads_row.vec().begin(), rnn_grads_row.vec().end(), 0.0);
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      given_outputs_vec.assign(given_outputs.data(), given_outputs.data() + given_outputs.size());
+      given_outputs_vec.vec().assign(given_outputs.data(), given_outputs.data() + given_outputs.size());
       
       // Determine target for this time step
       if (target_outputs.size() == num_time_steps * num_neurons)
       {
         const double* tgt_ptr = target_outputs.data() + t * num_neurons;
-        current_target.assign(tgt_ptr, tgt_ptr + num_neurons);
+        current_target.vec().assign(tgt_ptr, tgt_ptr + num_neurons);
       }
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        current_target.assign(target_outputs.data(), target_outputs.data() + target_outputs.size());
+        current_target.vec().assign(target_outputs.data(), target_outputs.data() + target_outputs.size());
       }
       else
       {
@@ -309,8 +304,8 @@ void FFOutputLayer::run_output_gradients(
         continue;
       }
 
-      deltas.assign(num_neurons, 0.0);
-      calculate_error_deltas(deltas, current_target, given_outputs_vec);
+      std::fill(deltas.vec().begin(), deltas.vec().end(), 0.0);
+      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec());
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
