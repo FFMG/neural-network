@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <set>
+#include <algorithm>
 
 using namespace myoddweb::nn;
 
@@ -213,6 +214,34 @@ TEST_F(NeuralNetworkHelperTest, ShuffleTrainingDataInvarianceTest)
   std::set<size_t> set1(capturer1.train_idx.begin(), capturer1.train_idx.end());
   std::set<size_t> set2(capturer2.train_idx.begin(), capturer2.train_idx.end());
   EXPECT_EQ(set1, set2);
+}
+
+TEST_F(NeuralNetworkHelperTest, ShuffleTrainingDataIgnoredWhenBpttEnabledTest)
+{
+  // Requesting shuffle-training-data together with BPTT must not scramble the
+  // chronological row order: create_bptt_batches slices consecutive array
+  // entries into fixed-size windows, so a shuffled row order would glue
+  // together unrelated rows into fake sequences.
+  HelperCapturer capturer;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_data_is_unique(false)
+    .with_shuffle_training_data(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_progress_callback(std::ref(capturer))
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs(100, {1.0, 2.0});
+  std::vector<std::vector<double>> outputs(100, {0.5});
+
+  nn.train(inputs, outputs);
+
+  // Training indexes must stay in strictly ascending (chronological) order.
+  ASSERT_FALSE(capturer.train_idx.empty());
+  EXPECT_TRUE(std::is_sorted(capturer.train_idx.begin(), capturer.train_idx.end()));
 }
 
 

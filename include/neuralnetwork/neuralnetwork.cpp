@@ -1054,7 +1054,17 @@ std::shared_ptr<NeuralNetworkHelper> NeuralNetwork::create_initial_neural_networ
   auto helper = std::make_shared<NeuralNetworkHelper>(const_cast<NeuralNetwork&>(*this), _learning_rate, number_of_epoch, training_inputs, training_outputs);
 
   // set all the indexes in the helper, either shuffled or not.
-  if (options().shuffle_training_data())
+  // BPTT sequences are built by slicing consecutive entries out of the
+  // training array, so that array must stay in chronological order; row
+  // shuffling would glue together unrelated rows into fake "sequences".
+  // Use shuffle-bptt-batches instead, which shuffles whole chronological
+  // blocks after they have been formed.
+  if (options().shuffle_training_data() && options().enable_bptt())
+  {
+    Logger::warning("shuffle-training-data is ignored while BPTT is enabled: shuffling raw rows would break the chronological windows BPTT depends on. Use shuffle-bptt-batches instead.");
+    create_indexes_in_lock(*helper, _options.data_is_unique());
+  }
+  else if (options().shuffle_training_data())
   {
     create_shuffled_indexes_in_lock(*helper, _options.data_is_unique());
   }
