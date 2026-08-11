@@ -5,6 +5,10 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.10] - 2026-08-11
 
 ### Added
+- Added `bptt-supervise-last-step-only` configuration option (`NeuralNetworkOptions::with_bptt_supervise_last_step_only`). When enabled, only the final time step ($t = \text{bptt\_max\_ticks} - 1$) of each sequence window is supervised with target outputs during BPTT training, enabling sequence-to-one forecasting.
+- Added JSON serialization and deserialization support for `bptt-supervise-last-step-only` in `NeuralNetworkSerializer`.
+- Exposed `with_bptt_supervise_last_step_only` and `bptt_supervise_last_step_only` in Python Pybind11 bindings.
+- Added unit tests `GRUSequenceConvergenceBpttSuperviseLastStepOnly`, `GRUSequenceConvergenceMultiOutputBpttSuperviseLastStepOnly`, `BpttSuperviseLastStepOnlyShapeAndValue`, and `BpttSuperviseLastStepOnlySerializerSaveLoad` in `tests/network_integration_tests.cpp`.
 - Added unit test `GRURNNLayerCalculateAndStoreGradientsMathematicalSoundness` to `tests/grurnnlayer_tests.cpp` to mathematically prove all 6 GRU weight gradient matrices ($W_h, W_z, W_r, RW_h, RW_z, RW_r$) and 3 bias gradient vectors ($B_h, B_z, B_r$) against exact analytical formulas ($10^{-14}$ precision).
 
 ### Changed

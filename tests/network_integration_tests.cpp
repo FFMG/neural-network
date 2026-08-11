@@ -4,6 +4,8 @@
 #include "layers/elmanrnnlayer.h"
 #include "layers/lstmlayer.h"
 #include "layers/ffoutputlayer.h"
+#include "layers/multioutputlayer.h"
+#include "layers/multioutputlayerdetails.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
 #include "helpers/neuralnetworkserializer.h"
@@ -385,6 +387,172 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergence)
   EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
 }
 
+// Same network/task as GRUSequenceConvergence, but instead of hand-built
+// {}-placeholder targets, every row gets a real (dense) target and
+// bptt-supervise-last-step-only is enabled to make create_bptt_batches
+// itself discard everything but the last tick of each 3-row block. Since
+// GRUSequenceConvergence already proves the {}-placeholder pattern converges
+// to these exact predictions, this test is an end-to-end equivalence check:
+// the new code path should reduce dense per-row targets down to the same
+// effective supervision (rows 2, 5, 8 only) and converge identically.
+TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.0))
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  GRURNNLayer& gru = static_cast<GRURNNLayer&>(layers[1]);
+  gru.set_w_values({ 1.0, 1.0 });
+  gru.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_b_values({ 0.0, 0.0 });
+
+  gru.set_z_w_values({ 0.0, 0.0 });
+  gru.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_z_b_values({ 10.0, 10.0 });
+
+  gru.set_r_w_values({ 0.0, 0.0 });
+  gru.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_r_b_values({ 10.0, 10.0 });
+
+  layers[2].set_w_values({ 0.5, 0.5 });
+  layers[2].set_b_values({ 0.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  // Dense targets on every row (unlike GRUSequenceConvergence's {} placeholders).
+  std::vector<std::vector<double>> outputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
+}
+
+// Production's real config uses `multi-output-layer-details` (2 branches),
+// not a single output layer — the two tests above don't exercise
+// MultiOutputLayer::calculate_output_gradients's branch-offset slicing
+// (multioutputlayer.h:487-506) under BPTT with bptt-supervise-last-step-only.
+// This test closes that gap: two branches learn two DIFFERENT targets (x and
+// 2x) from the same GRU trunk under the new option. If gradients were
+// misrouted or mixed between branches, this would not converge correctly to
+// both distinct targets simultaneously.
+TEST(NetworkIntegrationTest, GRUSequenceConvergenceMultiOutputBpttSuperviseLastStepOnly)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+  };
+
+  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0);
+  OutputLayerDetails branch_a_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
+  OutputLayerDetails branch_b_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
+  std::vector<MultiOutputLayerDetails> multi_output_layer_details = {
+    MultiOutputLayerDetails({}, branch_a_output),
+    MultiOutputLayerDetails({}, branch_b_output)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 1, 2, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(multi_output_layer_details)
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  GRURNNLayer& gru = static_cast<GRURNNLayer&>(layers[1]);
+  gru.set_w_values({ 1.0, 1.0 });
+  gru.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_b_values({ 0.0, 0.0 });
+
+  gru.set_z_w_values({ 0.0, 0.0 });
+  gru.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_z_b_values({ 10.0, 10.0 });
+
+  gru.set_r_w_values({ 0.0, 0.0 });
+  gru.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+  gru.set_r_b_values({ 10.0, 10.0 });
+
+  auto& multi_output = static_cast<MultiOutputLayer&>(layers[2]);
+  auto& branches = multi_output.get_mutable_branches();
+  ASSERT_EQ(branches.size(), 2u);
+  // Branch A learns identity: 0.5*h0 + 0.5*h1 == x (h0 == h1 == x, as in GRUSequenceConvergence).
+  branches[0].layers[0]->set_w_values({ 0.5, 0.5 });
+  branches[0].layers[0]->set_b_values({ 0.0 });
+  // Branch B learns double: 1.0*h0 + 1.0*h1 == 2x — deliberately different from branch A.
+  branches[1].layers[0]->set_w_values({ 1.0, 1.0 });
+  branches[1].layers[0]->set_b_values({ 0.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  // Dense per-row targets [x, 2x] on every row; bptt-supervise-last-step-only
+  // should reduce this to supervising only rows 2, 5, 8 (the last tick of
+  // each 3-row block) for both branches simultaneously.
+  std::vector<std::vector<double>> outputs = {
+    {0.1, 0.2}, {0.2, 0.4}, {0.3, 0.6},
+    {0.4, 0.8}, {0.5, 1.0}, {0.6, 1.2},
+    {0.7, 1.4}, {0.8, 1.6}, {0.9, 1.8}
+  };
+
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  ASSERT_EQ(predictions[0].size(), 2u);
+  EXPECT_NEAR(predictions[0][0], 0.3, 1e-2);
+  EXPECT_NEAR(predictions[0][1], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[1][0], 0.6, 1e-2);
+  EXPECT_NEAR(predictions[1][1], 1.2, 1e-2);
+  EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
+  EXPECT_NEAR(predictions[2][1], 1.8, 1e-2);
+}
+
 TEST(NetworkIntegrationTest, LogTrainingInfo)
 {
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
@@ -423,6 +591,31 @@ TEST(NetworkIntegrationTest, LogTrainingInfoOptionAndSerialization)
   auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
   ASSERT_NE(loaded_nn, nullptr);
   EXPECT_FALSE(loaded_nn->options().log_training_info());
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, BpttSuperviseLastStepOnlySerializerSaveLoad)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(1)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6} };
+  std::vector<std::vector<double>> outputs = { {0.1}, {0.2}, {0.3} };
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_bptt_supervise_last_step_only.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_TRUE(loaded_nn->options().bptt_supervise_last_step_only());
 
   std::remove(test_path.c_str());
 }
@@ -745,6 +938,52 @@ TEST(NetworkIntegrationTest, BpttBatchShufflePreservesPairingIntegrity)
         EXPECT_DOUBLE_EQ(out_val, in_val1 * 100.0);
       }
     }
+  }
+}
+
+TEST(NetworkIntegrationTest, BpttSuperviseLastStepOnlyShapeAndValue)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(false)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  // 12 distinct steps forming 4 BPTT sequence blocks (each tick=3, input_dim=2, output_dim=1)
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (size_t i = 0; i < 12; ++i)
+  {
+    inputs.push_back({ static_cast<double>(i + 1), static_cast<double>((i + 1) * 10) });
+    outputs.push_back({ static_cast<double>((i + 1) * 100) });
+  }
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+
+  ASSERT_EQ(bptt_in.size(), 4u);
+  ASSERT_EQ(bptt_out.size(), 4u);
+
+  for (size_t seq = 0; seq < bptt_in.size(); ++seq)
+  {
+    const auto& seq_in = bptt_in[seq];
+    const auto& seq_out = bptt_out[seq];
+
+    // Input side is unaffected by the option: still the full 3-tick sequence.
+    ASSERT_EQ(seq_in.size(), 6u); // 3 ticks * 2 inputs
+
+    // Output side now holds only the LAST tick's target, not all 3 ticks.
+    ASSERT_EQ(seq_out.size(), 1u); // 1 output, not 3 ticks * 1 output
+
+    // Block `seq` covers steps [seq*3, seq*3+2]; the retained value must be
+    // the LAST step's own output, not the first step's or an average.
+    const size_t last_step_index = seq * 3 + 2;
+    const double expected_last_output = static_cast<double>((last_step_index + 1) * 100);
+    EXPECT_DOUBLE_EQ(seq_out[0], expected_last_output);
   }
 }
 
