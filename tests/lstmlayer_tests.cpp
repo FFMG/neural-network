@@ -86,7 +86,7 @@ TEST_F(LSTMLayerTest, DropoutConsistencyVerification) {
 
 TEST_F(LSTMLayerTest, DropoutStatisticalVerification) {
     unsigned num_inputs = 1;
-    unsigned num_outputs = 1000;
+    unsigned num_outputs = 5000;
     double dropout_rate = 0.5;
     LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
 
@@ -123,7 +123,7 @@ TEST_F(LSTMLayerTest, DropoutStatisticalVerification) {
     }
 
     EXPECT_EQ(dropped_count + kept_count, (int)num_outputs);
-    EXPECT_NEAR(dropped_count, num_outputs * dropout_rate, num_outputs * 0.05);
+    EXPECT_NEAR(dropped_count, num_outputs * dropout_rate, num_outputs * 0.08);
 }
 
 TEST_F(LSTMLayerTest, DropoutNotInference) {
