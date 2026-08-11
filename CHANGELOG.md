@@ -17,6 +17,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Replaced captured lambda closures with named task functor structure `GruGradCalcTask`, adhering to coding standards.
 
 ### Fixed
+- Increased sample size (to 5,000 neurons) and relaxed tolerance (to 0.08) in `DropoutStatisticalVerification` unit tests across `ffoutputlayer_tests.cpp`, `fflayer_tests.cpp`, `elmanrnnlayer_tests.cpp`, `grurnnlayer_tests.cpp`, and `lstmlayer_tests.cpp` (matching `layer_tests.cpp` and `multioutputlayer_tests.cpp`) to prevent random statistical sampling flakiness on CI runners.
 - Fixed a multi-threading race condition and recursive mutex deadlock in `SingleTaskQueue` and `SingleTaskQueue<void>` in `include/neuralnetwork/common/taskqueue.h`:
   - `busy()` checked two independent atomic flags (`_busy_task` and `_task_is_present`) without acquiring `_mutex`. On multi-core CI runners under CPU contention, worker thread transitions between setting `_busy_task = true` and `_task_is_present = false` created a microsecond window where both flags evaluated to `false`, causing `SingleTaskQueueTest.BusyStatus` to randomly fail on macOS/Windows CI.
   - Made `_mutex` `mutable` and acquired `_mutex` inside `busy()`. Added `busy_nolock()` for internal wait conditions to prevent recursive mutex deadlocks when `wait_for_task()` is called with `_mutex` already locked.
