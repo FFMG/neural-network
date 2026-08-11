@@ -639,20 +639,36 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   bptt_inputs.reserve(start_indices.size());
   bptt_outputs.reserve(start_indices.size());
 
+  // When enabled, only the last (fully-warmed, 24-tick-context) timestep of
+  // each block is supervised, matching how evaluation/live inference always
+  // scores a full-context prediction — see LEARNING_LOG.md Section 6c/6d.
+  // The full input sequence is still built either way; the GRU needs it to
+  // build up hidden state regardless of which timestep(s) get a target.
+  const bool supervise_last_step_only = _options.bptt_supervise_last_step_only();
+
   for (size_t start_idx : start_indices)
   {
     std::vector<double> flattened_in;
     flattened_in.reserve(bptt_size * input_size);
     std::vector<double> flattened_out;
-    flattened_out.reserve(bptt_size * output_size);
+    flattened_out.reserve(supervise_last_step_only ? output_size : bptt_size * output_size);
 
     for (size_t t = 0; t < bptt_size; ++t)
     {
       const auto& in_step = inputs[start_idx + t];
       flattened_in.insert(flattened_in.end(), in_step.begin(), in_step.end());
 
-      const auto& out_step = outputs[start_idx + t];
-      flattened_out.insert(flattened_out.end(), out_step.begin(), out_step.end());
+      if (!supervise_last_step_only)
+      {
+        const auto& out_step = outputs[start_idx + t];
+        flattened_out.insert(flattened_out.end(), out_step.begin(), out_step.end());
+      }
+    }
+
+    if (supervise_last_step_only)
+    {
+      const auto& out_step = outputs[start_idx + bptt_size - 1];
+      flattened_out.assign(out_step.begin(), out_step.end());
     }
 
     bptt_inputs.push_back(std::move(flattened_in));
@@ -1504,6 +1520,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
+  Logger::info(tab, "BPTT Supervise Last Step Only: ", _options.bptt_supervise_last_step_only() ? "true" : "false");
 
   Logger::info(tab, "Batch size                 : ", _options.batch_size());
   if (_options.final_error_calculation_types().size() == 0)

@@ -40,6 +40,7 @@ private:
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
     _shuffle_bptt_batches(true),
+    _bptt_supervise_last_step_only(false),
     _final_error_calculation_types({}),
     _enable_bptt(true),
     _bptt_max_ticks(0),
@@ -116,6 +117,7 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
       _update_training_monitor_percent = nno._update_training_monitor_percent;
@@ -152,6 +154,7 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
@@ -172,6 +175,7 @@ public:
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
       nno._shuffle_bptt_batches = true;
+      nno._bptt_supervise_last_step_only = false;
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
       nno._update_training_monitor_percent = 0.0;
@@ -313,6 +317,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _shuffle_bptt_batches = shuffle_bptt_batches;
+    return *this;
+  }
+  NeuralNetworkOptions& with_bptt_supervise_last_step_only(bool bptt_supervise_last_step_only)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _bptt_supervise_last_step_only = bptt_supervise_last_step_only;
     return *this;
   }
 
@@ -510,6 +520,7 @@ public:
       .with_clip_threshold(clip_threshold)
       .with_shuffle_training_data(true)
       .with_shuffle_bptt_batches(true)
+      .with_bptt_supervise_last_step_only(false)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(0)
       .with_update_training_monitor_percent(0.0)
@@ -536,6 +547,7 @@ public:
   [[nodiscard]] inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
   [[nodiscard]] inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
   [[nodiscard]] inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
+  [[nodiscard]] inline bool bptt_supervise_last_step_only() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_supervise_last_step_only; }
   [[nodiscard]] inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
   [[nodiscard]] inline int bptt_max_ticks() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_max_ticks; }
@@ -567,6 +579,7 @@ private:
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
   bool _shuffle_bptt_batches;
+  bool _bptt_supervise_last_step_only;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;
   int _bptt_max_ticks;

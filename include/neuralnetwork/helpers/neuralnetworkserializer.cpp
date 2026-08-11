@@ -965,6 +965,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto enable_bptt = options_object->get_or<bool>("enable-bptt", false);
   const auto bptt_max_ticks = options_object->get_or<int>("bptt-max-ticks", 0);
   const auto shuffle_bptt_batches = options_object->get_or<bool>("shuffle-bptt-batches", true);
+  const auto bptt_supervise_last_step_only = options_object->get_or<bool>("bptt-supervise-last-step-only", false);
   const auto has_bias = options_object->get_or<bool>("has-bias", true);
   const auto log_training_info = options_object->get_or<bool>("log-training-info", true);
 
@@ -1001,6 +1002,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_hidden_layers(hidden_layers)
     .with_bptt_max_ticks(bptt_max_ticks)
     .with_shuffle_bptt_batches(shuffle_bptt_batches)
+    .with_bptt_supervise_last_step_only(bptt_supervise_last_step_only)
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
@@ -1323,6 +1325,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
 
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
+  options_object->set_boolean("bptt-supervise-last-step-only", options.bptt_supervise_last_step_only());
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());
   options_object->set_boolean("log-training-info", options.log_training_info());

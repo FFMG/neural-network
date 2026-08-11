@@ -192,6 +192,8 @@ When training recurrent networks (RNN, GRU, LSTM), the order of samples is criti
     *   **WARNING:** This should be set to `false` when using recurrent layers, as it destroys the chronological order of the data, making it impossible for the network to learn time-based patterns.
 *   **`shuffle-bptt-batches` (Sequence Shuffling):** If set to `true`, the library first creates contiguous "blocks" of data (of size `bptt_max_ticks`) where the internal chronological order is preserved. It then shuffles the order of these *blocks*.
     *   **RECOMMENDED:** This is the preferred way to shuffle recurrent data. It ensures the GRU/LSTM sees valid timelines within each batch while preventing the model from over-fitting to the global sequence of the dataset.
+*   **`bptt-supervise-last-step-only` (Last Step Supervision Only):** If set to `true`, only the final time step ($t = \text{bptt\_max\_ticks} - 1$) of each sequence block is supervised with target outputs during training.
+    *   **USE CASE:** Ideal for sequence-to-one forecasting tasks (e.g. predicting the next price or direction after observing $T$ historical ticks). The recurrent layer consumes all $T$ input ticks to warm up its hidden state context, but loss and gradient backpropagation are calculated exclusively from the final prediction step.
 
 ```cpp
     auto options = NeuralNetworkOptions::create(topology)
@@ -199,6 +201,7 @@ When training recurrent networks (RNN, GRU, LSTM), the order of samples is criti
       .with_shuffle_bptt_batches(true)  // Shuffle blocks for better generalization
       .with_enable_bptt(true)
       .with_bptt_max_ticks(24)
+      .with_bptt_supervise_last_step_only(true) // Supervise only the final tick of each sequence
       .build();
 ```
 
