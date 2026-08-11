@@ -155,6 +155,19 @@ public:
 
   void set_number_of_threads(int number_of_threads) override;
 
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    unsigned prev_layer_index,
+    size_t N_prev,
+    size_t N_this,
+    size_t T,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_rw_grads,
+    std::vector<double>& local_b_grads) const;
+
   inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
