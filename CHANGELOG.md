@@ -2,6 +2,14 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.11] - 2026-08-11
+
+### Changed
+- Optimised `LSTMLayer` BPTT backward pass in `include/neuralnetwork/layers/lstmlayer.cpp`: the forward pass already computes `tanh(g)` (candidate) and `tanh(c)` (cell state) once per timestep, but discarded them, so BPTT re-evaluated `get_activation().activate(...)` on both a second time, every timestep, every training batch.
+  - Extended the packed per-timestep `HiddenState` storage from `Multiplier = 5` to `Multiplier = 7` slots (`include/neuralnetwork/layers/lstmlayer.h`) to cache the already-computed activated `g` and `c` values from the forward pass.
+  - BPTT now copies the cached activations directly instead of recomputing them, matching the "compute once, cache, reuse in backward" pattern already used by `GRURNNLayer` and `ElmanRNNLayer`. Raw (pre-activation) `g` and `c` values are still stored and available, so `activate_derivative` continues to work correctly for any configured activation method, not just `tanh`.
+- Added unit test `ForwardFeedCachesActivatedCandidateAndCellStateForBptt` to `tests/lstmlayer_tests.cpp`, asserting the cached activated slots equal `tanh()` of the raw values stored during the forward pass.
+
 ## [1.1.10] - 2026-08-11
 
 ### Added

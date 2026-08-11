@@ -163,14 +163,18 @@ public:
   }
 
   /*
-   * Multiplier = 5:
+   * Multiplier = 7:
    * 1. Forget gate (f) pre-activation
    * 2. Input gate (i) pre-activation
    * 3. Output gate (o) pre-activation
-   * 4. Cell candidate (g) activated (tanh)
+   * 4. Cell candidate (g) raw pre-activation
    * 5. Dropout mask (stored to ensure consistency between forward and BPTT passes)
+   * 6. Cell candidate (g) activated (tanh), cached from the forward pass so BPTT
+   *    does not need to re-evaluate the activation function.
+   * 7. Cell state (c) activated (tanh), cached from the forward pass for the same reason.
    */
-  static constexpr unsigned Multiplier = 5;  static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
+  static constexpr unsigned Multiplier = 7;
+  static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
