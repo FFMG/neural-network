@@ -205,6 +205,27 @@ public:
 
   void set_number_of_threads(int number_of_threads) override;
 
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    unsigned prev_layer_index,
+    size_t num_inputs,
+    size_t num_outputs,
+    size_t num_time_steps,
+    int t_start,
+    int t_end,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_rw_grads,
+    std::vector<double>& local_z_w_grads,
+    std::vector<double>& local_z_rw_grads,
+    std::vector<double>& local_r_w_grads,
+    std::vector<double>& local_r_rw_grads,
+    std::vector<double>& local_b_grads,
+    std::vector<double>& local_z_b_grads,
+    std::vector<double>& local_r_b_grads) const;
+
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
