@@ -17,6 +17,9 @@ All notable changes to the `neural-network` library will be documented in this f
   - Replaced captured lambda closures with named task functor structure `GruGradCalcTask`, adhering to coding standards.
 
 ### Fixed
+- Fixed a multi-threading race condition and recursive mutex deadlock in `SingleTaskQueue` and `SingleTaskQueue<void>` in `include/neuralnetwork/common/taskqueue.h`:
+  - `busy()` checked two independent atomic flags (`_busy_task` and `_task_is_present`) without acquiring `_mutex`. On multi-core CI runners under CPU contention, worker thread transitions between setting `_busy_task = true` and `_task_is_present = false` created a microsecond window where both flags evaluated to `false`, causing `SingleTaskQueueTest.BusyStatus` to randomly fail on macOS/Windows CI.
+  - Made `_mutex` `mutable` and acquired `_mutex` inside `busy()`. Added `busy_nolock()` for internal wait conditions to prevent recursive mutex deadlocks when `wait_for_task()` is called with `_mutex` already locked.
 - Fixed `NeuralNetwork::create_initial_neural_network_helper` in `include/neuralnetwork/neuralnetwork.cpp`: when `shuffle-training-data` is `true` and `enable-bptt` is also `true`, the library now keeps training rows in chronological order (ignoring the row-shuffle and logging a warning) instead of scrambling them.
   - Previously, `create_shuffled_indexes_in_lock` permuted the row order before `create_bptt_batches` sliced consecutive array entries into fixed-size windows, so each "sequence" fed to BPTT was actually `bptt_max_ticks` unrelated, randomly ordered historical rows glued together rather than a genuine contiguous time window. Evaluation was unaffected, as it always indexed the untouched chronological array directly.
   - Recurrent networks should use `shuffle-bptt-batches` instead (shuffles whole chronological blocks after windowing), as already documented in `README.md`.

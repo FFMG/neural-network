@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "common/taskqueue.h"
 #include <atomic>
 #include <thread>
@@ -86,14 +86,20 @@ TEST(TaskQueueVoidTest, StopAndJoinRace) {
 
 TEST(SingleTaskQueueTest, BusyStatus) {
     SingleTaskQueue<int> queue;
+    std::atomic<bool> started{false};
     std::atomic<bool> can_finish{false};
     
     // Start a long running task
-    bool called = queue.call([&can_finish]() {
+    bool called = queue.call([&started, &can_finish]() {
+        started.store(true);
         while(!can_finish.load()) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
         return 42;
     });
     EXPECT_TRUE(called);
+
+    // Wait for task execution to start
+    while (!started.load()) { std::this_thread::yield(); }
+
     EXPECT_TRUE(queue.busy());
 
     // Try to call another one - should fail
