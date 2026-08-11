@@ -73,10 +73,10 @@ TEST_F(LSTMLayerMTTest, ForwardFeedMTConsistency)
     std::vector<unsigned> topology = { num_inputs, num_neurons };
 
     auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
     
     auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
 
     for (size_t b = 0; b < batch_size; ++b) 
     {
@@ -125,9 +125,9 @@ TEST_F(LSTMLayerMTTest, BackwardFeedMTConsistency)
     std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons };
 
     auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
     auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
 
     for (size_t b = 0; b < batch_size; ++b) 
     {
@@ -208,9 +208,9 @@ TEST_F(LSTMLayerMTTest, SmallBatchSizeThresholdFallback)
     std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons };
 
     auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
     auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, 5);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
 
     for (size_t b = 0; b < batch_size; ++b) 
     {

@@ -23,7 +23,7 @@ TEST_F(LSTMLayerTest, ConstructionAndTopology) {
   EXPECT_EQ(layer.get_number_output_neurons(), 3);
   EXPECT_EQ(layer.get_layer_architecture(), Layer::Architecture::Lstm);
   EXPECT_TRUE(layer.use_bptt());
-  EXPECT_EQ(layer.get_pre_activation_multiplier(), 5); 
+  EXPECT_EQ(layer.get_pre_activation_multiplier(), LSTMLayer::Multiplier);
 }
 
 TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {
@@ -43,7 +43,7 @@ TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {
   MockLayer prev_layer(0, 1);
   std::vector<unsigned> topology = { 1, 1 };
   auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-  auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5); // 1 time step, multiplier 5
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier); // 1 time step
 
   batch_go[0].set_rnn_outputs(0, { 1.0 });
 
@@ -68,7 +68,7 @@ TEST_F(LSTMLayerTest, DropoutConsistencyVerification) {
   MockLayer prev_layer(0, 1);
   std::vector<unsigned> topology = { 1, 1 };
   auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-  auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5); // multiplier 5
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
 
   batch_go[0].set_rnn_outputs(0, { 1.0 });
 
@@ -143,7 +143,7 @@ TEST_F(LSTMLayerTest, DropoutNotInference) {
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 5);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
 
     batch_go[0].set_outputs(0, { 1.0 });
 
@@ -255,6 +255,70 @@ TEST_F(LSTMLayerTest, BPTTRobustness) {
     EXPECT_NEAR(layer.get_i_rw_grads()[0],0.01419121, 1e-6);
     EXPECT_NEAR(layer.get_o_w_grads()[0], 0.11594396, 1e-6);
     EXPECT_NEAR(layer.get_o_rw_grads()[0],0.02277115, 1e-6);
+}
+
+TEST_F(LSTMLayerTest, ForwardFeedCachesActivatedCandidateAndCellStateForBptt) {
+  // BPTT re-derives dtanh(g)/dtanh(c) every timestep purely from cached state,
+  // so the forward pass must store the *activated* candidate (g) and cell (c)
+  // values it already computed, rather than making BPTT recompute tanh() from
+  // scratch. This test pins that contract directly against HiddenState storage,
+  // independently of any end-to-end gradient values.
+  const unsigned num_inputs = 2;
+  const unsigned num_neurons = 2;
+  LSTMLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+  layer.set_w_values({ 0.6, -0.4, 0.3, -0.2 });
+  layer.set_rw_values({ 0.15, -0.25, 0.35, -0.1 });
+  layer.set_b_values({ 0.05, -0.05 });
+
+  layer.set_f_w_values({ 0.2, 0.1, -0.1, 0.3 });
+  layer.set_f_rw_values({ 0.1, 0.2, -0.2, 0.1 });
+  layer.set_f_b_values({ 0.0, 0.0 });
+
+  layer.set_i_w_values({ 0.3, -0.2, 0.1, 0.2 });
+  layer.set_i_rw_values({ -0.1, 0.2, 0.1, -0.2 });
+  layer.set_i_b_values({ 0.0, 0.0 });
+
+  layer.set_o_w_values({ 0.25, 0.15, -0.15, 0.2 });
+  layer.set_o_rw_values({ 0.2, -0.1, 0.1, 0.3 });
+  layer.set_o_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_neurons };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  const size_t num_time_steps = 2;
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 0.5, -0.3, 0.2, 0.7 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  const auto& states = batch_hs[0].at(layer.get_layer_index());
+  ASSERT_EQ(states.size(), num_time_steps);
+
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    const auto packed = states[t].get_pre_activation_sums();
+    ASSERT_EQ(packed.size(), LSTMLayer::Multiplier * num_neurons);
+
+    const auto cell = states[t].get_cell_state_values();
+    ASSERT_EQ(cell.size(), num_neurons);
+
+    for (unsigned n = 0; n < num_neurons; ++n)
+    {
+      const double raw_g = packed[3 * num_neurons + n];
+      const double cached_activated_g = packed[5 * num_neurons + n];
+      EXPECT_NEAR(cached_activated_g, std::tanh(raw_g), 1e-12);
+      // Confirm the test setup isn't degenerate (raw g == 0 would make
+      // tanh(g) == g and hide a caching bug that stored the raw value).
+      EXPECT_NE(raw_g, 0.0);
+
+      const double raw_c = cell[n];
+      const double cached_activated_c = packed[6 * num_neurons + n];
+      EXPECT_NEAR(cached_activated_c, std::tanh(raw_c), 1e-12);
+      EXPECT_NE(raw_c, 0.0);
+    }
+  }
 }
 
 TEST_F(LSTMLayerTest, ApplyStoredGradientsCacheUpdate)
@@ -636,7 +700,7 @@ TEST_F(LSTMLayerTest, TempBufferReuseAndMultiIterationConsistency) {
   for (int iter = 0; iter < 2; ++iter)
   {
     auto batch_go = create_batch_gradients_and_outputs(topology, 2);
-    auto batch_hs = create_batch_hidden_states(topology, 2, 3);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 3, LSTMLayer::Multiplier);
 
     batch_go[0].set_rnn_outputs(0, { 0.5, 0.2, -0.1, 0.8, 0.3, 0.4 });
     batch_go[1].set_rnn_outputs(0, { 0.1, -0.4, 0.6, 0.2, -0.5, 0.1 });

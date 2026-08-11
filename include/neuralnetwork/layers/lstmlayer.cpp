@@ -653,6 +653,11 @@ void LSTMLayer::calculate_forward_feed(
         // Store states
         if (!batch_hidden_states.empty())
         {
+          // Cache the already-computed tanh(g) and tanh(c) activations so BPTT
+          // can reuse them instead of re-evaluating the activation function.
+          std::copy(g_act_vec.data(), g_act_vec.data() + N_this, packed_bptt.data() + 5 * N_this);
+          std::copy(c_act_vec.data(), c_act_vec.data() + N_this, packed_bptt.data() + 6 * N_this);
+
           auto& state = batch_hidden_states[b].at(get_layer_index())[t];
           state.set_pre_activation_sums(packed_bptt.data(), packed_bptt.size());
           state.set_cell_state_values(current_c.data(), current_c.size());
@@ -1347,7 +1352,9 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
   for (int t = t_start; t >= t_end; --t)
   {
-    // 1. Gather raw inputs contiguously
+    // 1. Gather raw inputs, plus the tanh(g)/tanh(c) activations already computed
+    // and cached during the forward pass (packed slots 5 and 6), so we don't have
+    // to re-evaluate the activation function here.
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
       size_t b = start + b_idx;
@@ -1358,23 +1365,16 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
       std::copy(c_curr.begin(), c_curr.end(), &workspace.c_vals[b_idx * N_this]);
       std::copy(&packed[3 * N_this], &packed[3 * N_this] + N_this, &workspace.g_vals[b_idx * N_this]);
+      std::copy(&packed[5 * N_this], &packed[5 * N_this] + N_this, &workspace.f_vals[b_idx * N_this]);
+      std::copy(&packed[6 * N_this], &packed[6 * N_this] + N_this, &workspace.tanh_c_vals[b_idx * N_this]);
     }
 
-    // 2. Contiguous activation
-    // tanh_c_vals = tanh(c_vals)
-    std::copy(workspace.c_vals.begin(), workspace.c_vals.begin() + total_elements, workspace.tanh_c_vals.begin());
-    get_activation().activate(workspace.tanh_c_vals.data(), workspace.tanh_c_vals.data() + total_elements);
-
-    // f_vals = tanh(g_vals)
-    std::copy(workspace.g_vals.begin(), workspace.g_vals.begin() + total_elements, workspace.f_vals.begin());
-    get_activation().activate(workspace.f_vals.data(), workspace.f_vals.data() + total_elements);
-
-    // 3. Contiguous derivative
+    // 2. Contiguous derivative (activated values reused from the forward pass, see above)
     const auto& act = get_activation();
     act.activate_derivative(workspace.c_vals.data(), workspace.c_vals.data() + total_elements, workspace.tanh_c_vals.data(), workspace.dc_act_deriv.data());
     act.activate_derivative(workspace.g_vals.data(), workspace.g_vals.data() + total_elements, workspace.f_vals.data(), workspace.dg_act_deriv.data());
 
-    // 4. Batch loop for gate steps
+    // 3. Batch loop for gate steps
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
       size_t b = start + b_idx;
