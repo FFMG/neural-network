@@ -882,6 +882,126 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+namespace
+{
+struct ElmanGradCalcTask
+{
+  const ElmanRNNLayer& layer;
+  size_t start;
+  size_t end;
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
+  const std::vector<HiddenStates>& hidden_states;
+  unsigned prev_layer_index;
+  size_t N_prev;
+  size_t N_this;
+  size_t T;
+  std::vector<double>& local_w_grads;
+  std::vector<double>& local_rw_grads;
+  std::vector<double>& local_b_grads;
+
+  void operator()() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanGradCalcTask");
+    layer.calculate_and_store_gradients_chunk(
+      start,
+      end,
+      batch_gradients_and_outputs,
+      hidden_states,
+      prev_layer_index,
+      N_prev,
+      N_this,
+      T,
+      local_w_grads,
+      local_rw_grads,
+      local_b_grads
+    );
+  }
+};
+}
+
+void ElmanRNNLayer::calculate_and_store_gradients_chunk(
+  size_t start,
+  size_t end,
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  unsigned prev_layer_index,
+  size_t N_prev,
+  size_t N_this,
+  size_t T,
+  std::vector<double>& local_w_grads,
+  std::vector<double>& local_rw_grads,
+  std::vector<double>& local_b_grads) const
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (start >= end)
+  {
+    return;
+  }
+
+  if (has_bias())
+  {
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      for (size_t t = 0; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        simd::add_vectors(g_t, local_b_grads.data(), N_this);
+      }
+    }
+  }
+
+  for (size_t k = 0; k < N_prev; ++k)
+  {
+    double* w_grad_row = &local_w_grads[k * N_this];
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
+
+      for (size_t t = 0; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
+        const double x_val = x_t[k];
+        simd::mul_add(x_val, g_t, w_grad_row, N_this);
+      }
+    }
+  }
+
+  for (size_t rk = 0; rk < N_this; ++rk)
+  {
+    double* rw_grad_row = &local_rw_grads[rk * N_this];
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& layer_states = hidden_states[b].at(get_layer_index());
+      for (size_t t = 1; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* h_prev = layer_states[t - 1].get_hidden_state_values().data();
+        const double h_val = h_prev[rk];
+        simd::mul_add(h_val, g_t, rw_grad_row, N_this);
+      }
+    }
+  }
+}
+
 void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -899,100 +1019,11 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this)) / 100000))) : 1;
 
-  auto run_chunk = [&](size_t start, size_t end, std::vector<double>& local_w_grads, std::vector<double>& local_rw_grads, std::vector<double>& local_b_grads)
-  {
-    for (size_t b = start; b < end; ++b)
-    {
-      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (packed_grads.empty())
-      {
-        continue;
-      }
-
-      const auto& layer_states = hidden_states[b].at(get_layer_index());
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
-
-      for (size_t t = 0; t < T; ++t)
-      {
-        const double* g_t = &packed_grads[t * N_this];
-        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
-        const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
-
-        if (has_bias())
-        {
-          simd::add_vectors(g_t, local_b_grads.data(), N_this);
-        }
-
-        size_t k = 0;
-        for (; k + 3 < N_prev; k += 4)
-        {
-          simd::mul_add_four_scalars(
-            x_t[k], x_t[k + 1], x_t[k + 2], x_t[k + 3],
-            g_t,
-            &local_w_grads[k * N_this],
-            &local_w_grads[(k + 1) * N_this],
-            &local_w_grads[(k + 2) * N_this],
-            &local_w_grads[(k + 3) * N_this],
-            N_this
-          );
-        }
-        for (; k + 1 < N_prev; k += 2)
-        {
-          simd::mul_add_two_scalars(
-            x_t[k], x_t[k + 1],
-            g_t,
-            &local_w_grads[k * N_this],
-            &local_w_grads[(k + 1) * N_this],
-            N_this
-          );
-        }
-        for (; k < N_prev; ++k)
-        {
-          simd::mul_add(x_t[k], g_t, &local_w_grads[k * N_this], N_this);
-        }
-
-        if (h_prev)
-        {
-          size_t rk = 0;
-          for (; rk + 3 < N_this; rk += 4)
-          {
-            simd::mul_add_four_scalars(
-              h_prev[rk], h_prev[rk + 1], h_prev[rk + 2], h_prev[rk + 3],
-              g_t,
-              &local_rw_grads[rk * N_this],
-              &local_rw_grads[(rk + 1) * N_this],
-              &local_rw_grads[(rk + 2) * N_this],
-              &local_rw_grads[(rk + 3) * N_this],
-              N_this
-            );
-          }
-          for (; rk + 1 < N_this; rk += 2)
-          {
-            simd::mul_add_two_scalars(
-              h_prev[rk], h_prev[rk + 1],
-              g_t,
-              &local_rw_grads[rk * N_this],
-              &local_rw_grads[(rk + 1) * N_this],
-              N_this
-            );
-          }
-          for (; rk < N_this; ++rk)
-          {
-            simd::mul_add(h_prev[rk], g_t, &local_rw_grads[rk * N_this], N_this);
-          }
-        }
-      }
-    }
-  };
-
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     zero_gradients();
-    run_chunk(0, batch_size, _w_grads, _rw_grads, _b_grads);
+    calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, hidden_states, prev_layer_index, N_prev, N_this, T, _w_grads, _rw_grads, _b_grads);
   }
   else
   {
@@ -1026,9 +1057,19 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &run_chunk, this]()
-        {
-          run_chunk(start, end, _thread_w_grads[t], _thread_rw_grads[t], _thread_b_grads[t]);
+        _task_queue_pool->enqueue(ElmanGradCalcTask{
+          *this,
+          start,
+          end,
+          batch_gradients_and_outputs,
+          hidden_states,
+          prev_layer_index,
+          N_prev,
+          N_this,
+          T,
+          _thread_w_grads[t],
+          _thread_rw_grads[t],
+          _thread_b_grads[t]
         });
       }
       start = end;
