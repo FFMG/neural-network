@@ -570,7 +570,9 @@ public:
 
   inline bool busy() const
   {
-    return _busy_task.load() || _task_is_present.load();
+    MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
+    std::unique_lock<std::mutex> lock(_mutex);
+    return busy_nolock();
   }
 
   inline bool has_result() const
@@ -579,15 +581,20 @@ public:
   }
 
 private:
+  inline bool busy_nolock() const noexcept
+  {
+    return _busy_task.load() || _task_is_present.load();
+  }
+
   void wait_for_task(std::unique_lock<std::mutex>& lock)
   {
-    if (!busy())
+    if (!busy_nolock())
     {
       return;
     }
     _condition_busy_task_complete.wait(lock, [this]
       {
-        return !busy();
+        return !busy_nolock();
       });
   }
 
@@ -641,7 +648,7 @@ private:
   }
 
   std::thread _worker;
-  std::mutex _mutex;
+  mutable std::mutex _mutex;
   std::condition_variable _condition_busy_task_complete;
   std::condition_variable _condition_new_task;
 
@@ -766,7 +773,8 @@ public:
   inline bool busy() const
   {
     MYODDWEB_PROFILE_FUNCTION("SingleTaskQueue");
-    return _busy_task.load() || _task_is_present.load();
+    std::unique_lock<std::mutex> lock(_mutex);
+    return busy_nolock();
   }
 
   inline bool has_result() const
@@ -776,15 +784,20 @@ public:
   }
 
 private:
+  inline bool busy_nolock() const noexcept
+  {
+    return _busy_task.load() || _task_is_present.load();
+  }
+
   void wait_for_task(std::unique_lock<std::mutex>& lock)
   {
-    if (!busy())
+    if (!busy_nolock())
     {
       return;
     }
     _condition_busy_task_complete.wait(lock, [this]
       {
-        return !busy();
+        return !busy_nolock();
       });
   }
 
@@ -835,7 +848,7 @@ private:
   }
 
   std::thread _worker;
-  std::mutex _mutex;
+  mutable std::mutex _mutex;
   std::condition_variable _condition_busy_task_complete;
   std::condition_variable _condition_new_task;
 
