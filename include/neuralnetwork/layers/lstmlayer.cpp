@@ -1555,9 +1555,9 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
   {
     const size_t b_idx = b - start;
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
-    if (num_time_steps > 0 && N_prev > 0)
+    if (num_time_steps > 0 && N_prev > 0 && get_layer_index() > 0)
     {
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), dX_src + (num_time_steps - 1) * N_prev, N_prev);
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index() - 1, dX_src + (num_time_steps - 1) * N_prev, N_prev);
     }
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), dX_src, num_time_steps * N_prev);
     const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this];
