@@ -1044,14 +1044,23 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   // Step 1: Pre-calculate upstream gradients from next layer
   const size_t N_next = next_layer.get_number_neurons();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
+  const unsigned target_layer_idx = (use_direct_gradients && _identity_proxy != nullptr && &next_layer == _identity_proxy) ? (get_layer_index() + 1) : next_layer.get_layer_index();
 
   bool next_is_seq = false;
   if (use_direct_gradients)
   {
     if (end > start)
     {
-      const auto next_grads = batch_gradients_and_outputs[start].get_gradients(next_layer.get_layer_index());
-      next_is_seq = (next_grads.size() == num_time_steps * N_next);
+      const auto& rnn_g = batch_gradients_and_outputs[start].get_rnn_gradients(target_layer_idx);
+      if (!rnn_g.empty())
+      {
+        next_is_seq = (rnn_g.size() == num_time_steps * N_next);
+      }
+      else
+      {
+        const auto next_grads = batch_gradients_and_outputs[start].get_gradients(target_layer_idx);
+        next_is_seq = (next_grads.size() == num_time_steps * N_next);
+      }
     }
   }
   else
@@ -1072,9 +1081,18 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     size_t next_grad_size = 0;
     if (use_direct_gradients)
     {
-      const auto next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
-      next_grad_matrix = next_grads.data();
-      next_grad_size = next_grads.size();
+      const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(target_layer_idx);
+      if (!rnn_g.empty())
+      {
+        next_grad_matrix = rnn_g.data();
+        next_grad_size = rnn_g.size();
+      }
+      else
+      {
+        const auto std_g = batch_gradients_and_outputs[b].get_gradients(target_layer_idx);
+        next_grad_matrix = std_g.data();
+        next_grad_size = std_g.size();
+      }
     }
     else
     {
@@ -1359,6 +1377,10 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   {
     const size_t b_idx = b - start;
     const double* dX_src = &workspace.dx_matrix[b_idx * num_time_steps * N_prev];
+    if (num_time_steps > 0 && N_prev > 0)
+    {
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), dX_src + (num_time_steps - 1) * N_prev, N_prev);
+    }
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), dX_src, num_time_steps * N_prev);
 
     const double* gates_src = &workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this];

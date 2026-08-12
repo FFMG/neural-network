@@ -442,7 +442,7 @@ void Layers::calculate_forward_feed(
       const unsigned prev_idx = previous_layer.get_layer_index();
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto prev_rnn_span = gradients_and_output[b].get_rnn_outputs(prev_idx);
+        const auto& prev_rnn_span = gradients_and_output[b].get_rnn_outputs(prev_idx);
         const auto prev_std_span = gradients_and_output[b].get_outputs(prev_idx);
 
         const size_t seq_size = !prev_rnn_span.empty() ? prev_rnn_span.size() : prev_std_span.size();
