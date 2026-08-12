@@ -163,3 +163,21 @@ TEST(TaskQueuePoolTest, MultipleGets) {
     int sum = r2[0] + r2[1];
     EXPECT_EQ(sum, 50);
 }
+
+TEST(TaskQueueTest, InlineTaskZeroHeapAllocationForRealisticCaptures) {
+    inline_task<void>::reset_heap_fallback_count();
+
+    TaskQueue<void> queue;
+    int a = 1, b = 2, c = 3, d = 4, e = 5, f = 6, g = 7, h = 8;
+    std::atomic<int> sum{0};
+
+    // Enqueue lambda capturing 9 references/pointers (~72 bytes)
+    queue.enqueue([&a, &b, &c, &d, &e, &f, &g, &h, &sum]() {
+        sum.store(a + b + c + d + e + f + g + h);
+    });
+
+    queue.get();
+    EXPECT_EQ(sum.load(), 36);
+    EXPECT_EQ(inline_task<void>::heap_fallback_count(), 0u);
+}
+

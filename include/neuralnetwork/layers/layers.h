@@ -157,7 +157,6 @@ private:
 
   std::vector<GradientsAndOutputs> _training_gradients_buffer;
   std::vector<HiddenStates> _training_hidden_states_buffer;
-  mutable std::vector<std::vector<double>> _batch_next_gradients_buffer;
   mutable size_t _total_weights = 0;
 
   mutable std::shared_mutex _mutex;

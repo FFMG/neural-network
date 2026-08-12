@@ -835,6 +835,82 @@ TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
   }
 }
 
+TEST(LayerTest, ResidualProjectorProjectBatchIntoEquivalence)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerTest");
+  ResidualProjector projector(4, 6, activation(activation::method::relu, 0.0), 0.0);
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.1, 0.2, 0.3, 0.4 },
+    { 0.5, 0.6, 0.7, 0.8 }
+  };
+
+  std::vector<const double*> raw_inputs = {
+    inputs[0].data(),
+    inputs[1].data()
+  };
+
+  auto expected = projector.project_batch(raw_inputs);
+
+  std::vector<std::vector<double>> actual;
+  projector.project_batch_into(raw_inputs, actual);
+
+  ASSERT_EQ(expected.size(), actual.size());
+  for (size_t b = 0; b < expected.size(); ++b)
+  {
+    ASSERT_EQ(expected[b].size(), actual[b].size());
+    for (size_t i = 0; i < expected[b].size(); ++i)
+    {
+      EXPECT_DOUBLE_EQ(expected[b][i], actual[b][i]);
+    }
+  }
+}
+
+TEST(LayerTest, LayersForwardFeedResidualLeakDoesNotContaminateNonResidualLayer)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerTest");
+  // Regression test: Layers::calculate_forward_feed reuses a thread_local
+  // scratch buffer for residual projections. Layer 2 (the output layer) has
+  // no residual connection of its own, but it immediately follows layer 1,
+  // which does. Both layers share the same width here, so if the thread_local
+  // buffer were not cleared for layers without a residual projector, layer 2
+  // would silently pick up layer 1's leftover residual-projected values.
+  const unsigned width = 4;
+
+  auto output_layer = OutputLayerDetails(
+    width,
+    activation(activation::method::linear, 0.0),
+    ErrorCalculation::type::mse,
+    { 0.0, 0.0, 1.0, 0.0, false, 1.0 },
+    0.0,
+    OptimiserType::None,
+    0.0);
+
+  LayerDetails hidden_detail(Layer::Architecture::FF, width, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0);
+
+  auto options = NeuralNetworkOptions::create({ 2, width, width })
+    .with_hidden_layers({ hidden_detail })
+    .with_output_layer_details(output_layer)
+    .with_residual_layer_jump(1);
+
+  Layers layers(options);
+
+  // Zero every real weight so the only possible nonzero contribution to the
+  // output layer's pre-activation sum is a leaked residual value.
+  layers[1].set_w_values(std::vector<double>(2 * width, 0.0));
+  layers[1].set_b_values({ 1.0, 2.0, 3.0, 4.0 });
+  layers[2].set_w_values(std::vector<double>(width * width, 0.0));
+  const std::vector<double> output_bias = { 10.0, 20.0, 30.0, 40.0 };
+  layers[2].set_b_values(output_bias);
+
+  const auto result = layers.think(options, std::vector<double>{ 0.5, -0.25 });
+
+  ASSERT_EQ(result.size(), width);
+  for (size_t i = 0; i < width; ++i)
+  {
+    EXPECT_DOUBLE_EQ(result[i], output_bias[i]);
+  }
+}
 
 
 

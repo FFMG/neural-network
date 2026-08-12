@@ -2,6 +2,29 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.12] - 2026-08-12
+
+### Added
+- Added `inline_task<R>` class in `include/neuralnetwork/common/inline_task.h`: a move-only, type-erased task wrapper with a 96-byte inline buffer and a 3-pointer manual vtable (invoke, move, destroy).
+- Added `ResidualProjector::project_batch_into(...)` overload in `include/neuralnetwork/layers/residualprojector.h` to reuse allocated vector capacity during residual batch projections.
+- Added unit test `InlineTaskZeroHeapAllocationForRealisticCaptures` in `tests/taskqueue_tests.cpp` to verify zero heap allocations when enqueuing task closures up to 9 captured references.
+- Added unit test `ResidualProjectorProjectBatchIntoEquivalence` in `tests/layer_tests.cpp` to verify output equivalence between `project_batch_into` and `project_batch`.
+- Added unit test `LayersTrainAsymmetricLayerSizesNoBufferOverflow` in `tests/layer_tests.cpp` to verify asymmetric layer topology training without buffer overflow.
+- Added unit test `LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow` in `tests/layer_tests.cpp` to verify multi-layer recurrent backpropagation weight updates.
+
+### Changed
+- Refactored `TaskQueue<R>` and `TaskQueue<void>` in `include/neuralnetwork/common/taskqueue.h` to store `inline_task<R>` instead of `std::function<R()>`, eliminating heap allocations on every parallel task submission during training.
+- Simplified `TaskQueue::enqueue` to bypass `std::bind` when zero extra arguments are passed.
+- Optimized `Layers::calculate_forward_feed` in `include/neuralnetwork/layers/layers.cpp`: replaced temporary vector allocations for residual connections with `thread_local` scratch buffers, eliminating per-batch allocations during training while preserving thread-safety for concurrent `think()` inference calls.
+- Removed unused `_batch_next_gradients_buffer` member from `Layers` (`include/neuralnetwork/layers/layers.h`).
+
+### Fixed
+- Fixed performance bottleneck in `Layers::train(...)`: replaced value-copy variable declarations with `const auto&` references across `Layers`, `FFLayer`, and `MultiOutputLayer` during forward propagation, eliminating per-sample deep vector copies.
+- Fixed multi-layer recurrent backpropagation gradient flow in `ElmanRNNLayer`, `GRURNNLayer`, and `LSTMLayer`:
+  - Resolved `target_layer_idx` to `get_layer_index() + 1` when `_identity_proxy` is active.
+  - Corrected single-timestep gradient buffer targeted by `set_gradients` to `get_layer_index() - 1` (preceding layer), preventing buffer overflow crashes when input size $N_{prev}$ exceeds layer size $N_{this}$.
+- Required `is_training` guard before enabling multithreading in `ElmanRNNLayer::calculate_forward_feed` in `include/neuralnetwork/layers/elmanrnnlayer.cpp`, preventing thread pool queue contention during concurrent multi-threaded inference (`think()`).
+
 ## [1.1.11] - 2026-08-11
 
 ### Changed

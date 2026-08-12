@@ -10,6 +10,7 @@
 #include "../libraries/instrumentor.h"
 #include "logger.h"
 #include "denormal_disabler.h"
+#include "inline_task.h"
 
 
 namespace myoddweb::nn
@@ -90,7 +91,6 @@ public:
       }
     }
 
-    auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
       std::unique_lock<std::mutex> lock(_mutex);
       if(_state.load() == State::Stopping)
@@ -102,10 +102,15 @@ public:
         _worker = std::thread([this] { run(); });
         _state.store(State::Started);
       }
-      _tasks.emplace([task]() -> R { 
-        MYODDWEB_PROFILE_FUNCTION("TaskQueue::enqueue");
-        return task();
-      });
+      
+      if constexpr (sizeof...(Args) == 0)
+      {
+        _tasks.emplace(std::forward<F>(f));
+      }
+      else
+      {
+        _tasks.emplace(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+      }
       
       // Increment pending tasks while holding the lock
       _total_pending_tasks.fetch_add(1, std::memory_order_relaxed);
@@ -165,7 +170,7 @@ private:
     local_results.reserve(100); // pre-allocate some space.
     while (true)
     {
-      std::function<R()> task;
+      inline_task<R> task;
       {
         std::unique_lock<std::mutex> lock(_mutex);
         _condition_new_task.wait(lock, [this]
@@ -238,7 +243,7 @@ private:
   std::atomic<int> _total_completed_tasks;
   std::atomic<int> _total_pending_tasks;
 
-  std::queue<std::function<R()>> _tasks;
+  std::queue<inline_task<R>> _tasks;
   std::vector<R> _results;
   std::exception_ptr _exception_ptr = nullptr;
 };
@@ -319,7 +324,6 @@ public:
       }
     }
 
-    auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
       std::unique_lock<std::mutex> lock(_mutex);
       if (_state.load() == State::Stopping)
@@ -335,10 +339,15 @@ public:
         }
         _worker = std::thread([this] { run(); });
       }
-      _tasks.emplace([task]() { 
-        MYODDWEB_PROFILE_FUNCTION("TaskQueue::enqueue");
-        task(); 
-      });
+
+      if constexpr (sizeof...(Args) == 0)
+      {
+        _tasks.emplace(std::forward<F>(f));
+      }
+      else
+      {
+        _tasks.emplace(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+      }
       
       _total_pending_tasks.fetch_add(1, std::memory_order_relaxed);
     }
@@ -390,7 +399,7 @@ private:
     DenormalDisabler disabler;
     while (_state.load(std::memory_order_relaxed) == State::Started || !_tasks.empty())
     {
-      std::function<void()> task;
+      inline_task<void> task;
       {
         std::unique_lock<std::mutex> lock(_mutex);
         _condition_new_task.wait(lock, [this]
@@ -449,7 +458,7 @@ private:
   std::atomic<int> _total_completed_tasks;
   std::atomic<int> _total_pending_tasks;
 
-  std::queue<std::function<void()>> _tasks;
+  std::queue<inline_task<void>> _tasks;
   std::exception_ptr _exception_ptr = nullptr;
 };
 
