@@ -240,7 +240,7 @@ void FFLayer::calculate_forward_feed(
   double* in_buf_ptr = batch_inputs_buffer.data();
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     double* dest_base = in_buf_ptr + b * num_time_steps * N_prev;
     if (!rnn_in.empty())
     {
@@ -667,7 +667,15 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
     std::span<const double> next_grads;
     if (use_direct_gradients)
     {
-      next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
+      const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index() + 1);
+      if (!rnn_g.empty())
+      {
+        next_grads = rnn_g;
+      }
+      else
+      {
+        next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
+      }
     }
     else
     {

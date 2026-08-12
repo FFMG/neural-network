@@ -708,6 +708,87 @@ TEST(LayerTest, LayersTrainCoverageAndConsistencyAcrossBatchSizes) {
   }
 }
 
+TEST(LayerTest, LayersTrainPerformanceFixCoverage)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerTest");
+  auto options = NeuralNetworkOptions::create({ 8, 16, 12, 4 }).build();
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    std::vector<double> in_vec(8, 0.1 * static_cast<double>(i + 1));
+    std::vector<double> out_vec(4, 0.05 * static_cast<double>(i + 1));
+    inputs.push_back(in_vec);
+    outputs.push_back(out_vec);
+  }
+
+  // Ensure train runs without copying bottleneck or invalid state
+  auto in_it = inputs.cbegin();
+  auto out_it = outputs.cbegin();
+  for (int iter = 0; iter < 10; ++iter)
+  {
+    in_it = inputs.cbegin();
+    out_it = outputs.cbegin();
+    layers.train(options, 0.01, in_it, out_it, 16);
+  }
+
+  for (unsigned i = 1; i < layers.size(); ++i)
+  {
+    for (double w : layers[i].get_w_values())
+    {
+      EXPECT_TRUE(std::isfinite(w));
+    }
+  }
+}
+
+TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerTest");
+  // Build a multi-layer network with a recurrent layer preceding an output layer
+  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu));
+  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh));
+
+  auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
+    .hidden_layers({ ff_detail, elman_detail })
+    .enable_bptt(true)
+    .bptt_max_ticks(2)
+    .learning_rate(0.05)
+    .build();
+
+  Layers layers(options);
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.1, 0.2, 0.3, 0.4 },
+    { 0.5, 0.6, 0.7, 0.8 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 1.0, 0.0 },
+    { 0.0, 1.0 }
+  };
+
+  auto in_it = inputs.cbegin();
+  auto out_it = outputs.cbegin();
+  layers.train(options, 0.05, in_it, out_it, 2);
+
+  // Check mathematical soundness: gradients must propagate to preceding layer (Layer 1)
+  const auto& layer1_w_grads = layers[1].get_w_grads();
+  EXPECT_FALSE(layer1_w_grads.empty());
+
+  bool has_non_zero_grad = false;
+  for (double g : layer1_w_grads)
+  {
+    EXPECT_TRUE(std::isfinite(g));
+    if (std::abs(g) > 1e-12)
+    {
+      has_non_zero_grad = true;
+    }
+  }
+  EXPECT_TRUE(has_non_zero_grad);
+}
+
+
 
 
 

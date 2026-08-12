@@ -331,7 +331,7 @@ public:
     size_t num_time_steps = 1;
     for (size_t b = 0; b < batch_size; ++b)
     {
-       const auto trunk_rnn_output_span = batch_gradients_and_outputs[b].get_rnn_outputs(trunk_layer_index);
+       const auto& trunk_rnn_output_span = batch_gradients_and_outputs[b].get_rnn_outputs(trunk_layer_index);
        const auto trunk_output_span = batch_gradients_and_outputs[b].get_outputs(trunk_layer_index);
        
        if (b == 0 && !trunk_rnn_output_span.empty())
@@ -538,7 +538,7 @@ public:
         batch_next_gradients.reserve(batch_size);
         for(size_t b=0; b<batch_size; ++b)
         {
-          const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(next.get_layer_index());
+          const auto& rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(next.get_layer_index());
           if (!rnn_span.empty())
           {
             batch_next_gradients.emplace_back(rnn_span.begin(), rnn_span.end());
@@ -569,7 +569,7 @@ public:
       batch_first_gradients.reserve(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(first_layer.get_layer_index());
+        const auto& rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(first_layer.get_layer_index());
         if (!rnn_span.empty())
         {
           batch_first_gradients.emplace_back(rnn_span.begin(), rnn_span.end());
@@ -602,7 +602,7 @@ public:
     {
       if (batch_size > 0)
       {
-         const auto rnn_span = branch.gradients_and_outputs[0].get_rnn_gradients(0);
+         const auto& rnn_span = branch.gradients_and_outputs[0].get_rnn_gradients(0);
          if (!rnn_span.empty())
          {
            max_seq_len = std::max(max_seq_len, rnn_span.size() / get_number_input_neurons());
@@ -617,7 +617,7 @@ public:
     {
       for(size_t b=0; b<batch_size; ++b)
       {
-        const auto rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(0);
+        const auto& rnn_span = branch.gradients_and_outputs[b].get_rnn_gradients(0);
         if (!rnn_span.empty())
         {
           const size_t branch_seq_len = rnn_span.size() / N_trunk;
