@@ -788,6 +788,53 @@ TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
   EXPECT_TRUE(has_non_zero_grad);
 }
 
+TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerTest");
+  // Test topology where N_prev (52) > N_this (24), matching Florent's scenario
+  const std::vector<Layer::Architecture> architectures = {
+    Layer::Architecture::Gru,
+    Layer::Architecture::Elman,
+    Layer::Architecture::Lstm
+  };
+
+  for (auto arch : architectures)
+  {
+    LayerDetails hidden_detail(arch, 24, activation(activation::method::tanh));
+    auto options = NeuralNetworkOptions::create({ 52, 24, 10 })
+      .hidden_layers({ hidden_detail })
+      .enable_bptt(true)
+      .bptt_max_ticks(2)
+      .learning_rate(0.01)
+      .build();
+
+    Layers layers(options);
+
+    std::vector<std::vector<double>> inputs = {
+      std::vector<double>(52, 0.1),
+      std::vector<double>(52, 0.2)
+    };
+    std::vector<std::vector<double>> outputs = {
+      std::vector<double>(10, 0.5),
+      std::vector<double>(10, 0.8)
+    };
+
+    auto in_it = inputs.cbegin();
+    auto out_it = outputs.cbegin();
+    // Must execute train without crashing or overflowing buffer
+    EXPECT_NO_THROW(layers.train(options, 0.01, in_it, out_it, 2));
+
+    for (unsigned i = 1; i < layers.size(); ++i)
+    {
+      for (double w : layers[i].get_w_values())
+      {
+        EXPECT_TRUE(std::isfinite(w));
+      }
+    }
+  }
+}
+
+
 
 
 
