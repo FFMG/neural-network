@@ -422,18 +422,27 @@ void Layers::calculate_forward_feed(
     const auto& previous_layer = layer(static_cast<unsigned>(layer_number - 1));
     const auto& current_layer = layer(static_cast<unsigned>(layer_number));
 
-    std::vector<std::vector<double>> batch_residual_values;
+    thread_local std::vector<const double*> tls_batch_residual_inputs;
+    thread_local std::vector<std::vector<double>> tls_batch_residual_values;
+
     const auto* residual_projector = get_residual_layer_projector(static_cast<unsigned>(layer_number));
     if (residual_projector != nullptr)
     {
       auto residual_layer_number = get_residual_layer_number(static_cast<unsigned>(layer_number));
-      std::vector<const double*> batch_residual_inputs(batch_size);
+      tls_batch_residual_inputs.resize(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
+        tls_batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
       }
-      batch_residual_values = residual_projector->project_batch(batch_residual_inputs);
+      residual_projector->project_batch_into(tls_batch_residual_inputs, tls_batch_residual_values);
     }
+    else
+    {
+      // Clear so a layer without a residual connection never sees stale values
+      // left behind by an earlier layer in this same forward-feed pass.
+      tls_batch_residual_values.clear();
+    }
+    const auto& batch_residual_values = tls_batch_residual_values;
 
     if (!hidden_states.empty())
     {
