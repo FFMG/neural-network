@@ -323,7 +323,7 @@ void ElmanRNNLayer::calculate_forward_feed(
   const auto& num_threads = _task_queue_pool->get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 100000))) : 1;
-  const bool use_multithreading = (active_threads > 1);
+  const bool use_multithreading = is_training && (active_threads > 1);
   auto& flattened_batch_inputs_ref = flattened_batch_inputs.vec();
   auto& batch_pre_act_ref = batch_pre_act.vec();
 
