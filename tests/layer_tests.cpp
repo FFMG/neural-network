@@ -711,7 +711,7 @@ TEST(LayerTest, LayersTrainCoverageAndConsistencyAcrossBatchSizes) {
 TEST(LayerTest, LayersTrainPerformanceFixCoverage)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerTest");
-  auto options = NeuralNetworkOptions::create({ 8, 16, 12, 4 }).build();
+  auto options = NeuralNetworkOptions::create({ 8, 16, 12, 4 });
   Layers layers(options);
 
   std::vector<std::vector<double>> inputs;
@@ -747,17 +747,18 @@ TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerTest");
   // Build a multi-layer network with a recurrent layer preceding an output layer
-  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu));
-  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh));
+  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
+  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0);
 
   auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
-    .hidden_layers({ ff_detail, elman_detail })
-    .enable_bptt(true)
-    .bptt_max_ticks(2)
-    .learning_rate(0.05)
-    .build();
+    .with_hidden_layers({ ff_detail, elman_detail })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_learning_rate(0.05);
 
   Layers layers(options);
+
+  const auto w1_before = layers[1].get_w_values();
 
   std::vector<std::vector<double>> inputs = {
     { 0.1, 0.2, 0.3, 0.4 },
@@ -772,21 +773,22 @@ TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
   auto out_it = outputs.cbegin();
   layers.train(options, 0.05, in_it, out_it, 2);
 
-  // Check mathematical soundness: gradients must propagate to preceding layer (Layer 1)
-  const auto& layer1_w_grads = layers[1].get_w_grads();
-  EXPECT_FALSE(layer1_w_grads.empty());
+  // Check mathematical soundness: weights of preceding layer (Layer 1) must be updated by backprop
+  const auto w1_after = layers[1].get_w_values();
+  ASSERT_EQ(w1_before.size(), w1_after.size());
 
-  bool has_non_zero_grad = false;
-  for (double g : layer1_w_grads)
+  bool weights_changed = false;
+  for (size_t i = 0; i < w1_before.size(); ++i)
   {
-    EXPECT_TRUE(std::isfinite(g));
-    if (std::abs(g) > 1e-12)
+    EXPECT_TRUE(std::isfinite(w1_after[i]));
+    if (std::abs(w1_after[i] - w1_before[i]) > 1e-12)
     {
-      has_non_zero_grad = true;
+      weights_changed = true;
     }
   }
-  EXPECT_TRUE(has_non_zero_grad);
+  EXPECT_TRUE(weights_changed);
 }
+
 
 TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
 {
@@ -800,13 +802,12 @@ TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
 
   for (auto arch : architectures)
   {
-    LayerDetails hidden_detail(arch, 24, activation(activation::method::tanh));
+    LayerDetails hidden_detail(arch, 24, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0);
     auto options = NeuralNetworkOptions::create({ 52, 24, 10 })
-      .hidden_layers({ hidden_detail })
-      .enable_bptt(true)
-      .bptt_max_ticks(2)
-      .learning_rate(0.01)
-      .build();
+      .with_hidden_layers({ hidden_detail })
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(2)
+      .with_learning_rate(0.01);
 
     Layers layers(options);
 
@@ -833,6 +834,7 @@ TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
     }
   }
 }
+
 
 
 
