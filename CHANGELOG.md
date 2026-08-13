@@ -2,6 +2,16 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.14] - 2026-08-13
+
+### Fixed
+- Fixed mathematical bug in `ErrorCalculation::calculate_prediction_coverage` in `include/neuralnetwork/helpers/errorcalculation.h`: the non-softmax branch measured confidence as the raw magnitude of a prediction (`abs(value) > threshold`) instead of its distance from the activation's neutral baseline. For `sigmoid` heads (neutral point 0.5, not 0.0) this silently undercounted confidently-negative predictions (values near 0.0 read as "unconfident" purely because they are numerically small) while still requiring `tanh`/`linear`/`relu` heads to clear the threshold from 0.0, which was already correct for those. Now uses the same `baseline = (activation_method == sigmoid) ? 0.5 : 0.0` convention already used by `calculate_directional_accuracy`/`calculate_directional_confidence_score`.
+- Fixed silent data loss in `ErrorCalculation::calculate_mse_error`: non-finite (NaN/Inf) prediction errors were excluded from the running sum and count with no indication at all, unlike every other malformed-input branch in the file (e.g. the mismatched-size branch two lines above it, which does log). A diverged/unstable training run could silently produce an artificially low MSE with no warning. Now logs a single warning per call (not per value, to avoid flooding the log on a hot per-epoch path) summarising how many non-finite values were skipped; the returned numeric value is unchanged.
+- Hoisted the `Logger::can_trace()` check in `ErrorCalculation::calculate_forecast_mape` out of the per-sequence loop into a local, matching the pattern already used by `calculate_directional_accuracy`/`calculate_directional_confidence_score` (`can_trace_log` computed once, checked per-iteration).
+
+### Added
+- Added unit tests in `tests/error_calculation_tests.cpp`: `PredictionCoverageSigmoidUsesNeutralBaseline` and `PredictionCoverageEmptySequencePanics` (prediction-coverage baseline/edge cases), `MSESkipsNonFiniteValuesButKeepsFiniteOnesInTheAverage` and `MSEReturnsNaNWhenNoValidValuesExist` (non-finite handling), `MismatchedVectorSizePanicsForStrictMetrics` and `MismatchedVectorSizeSkippedSilentlyForSequenceMetrics` (previously-untested panic vs. skip behaviour across all metric functions on mismatched row sizes), and `UnknownStringToTypeThrows` (previously-untested `string_to_type` failure path).
+
 ## [1.1.13] - 2026-08-13
 
 ### Fixed

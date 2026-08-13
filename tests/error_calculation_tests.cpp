@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <vector>
 
 
@@ -288,12 +289,12 @@ namespace math_expect {
     return total == 0 ? 0.0 : static_cast<double>(correct) / total;
   }
 
-  double prediction_coverage(const std::vector<std::vector<double>>& pred, double confidence_threshold) {
+  double prediction_coverage(const std::vector<std::vector<double>>& pred, double confidence_threshold, double baseline = 0.0) {
     size_t covered = 0;
     for (const auto& seq : pred) {
       bool any = false;
       for (double v : seq) {
-        if (std::abs(v) > confidence_threshold) { any = true; break; }
+        if (std::abs(v - baseline) > confidence_threshold) { any = true; break; }
       }
       if (any) ++covered;
     }
@@ -455,6 +456,36 @@ TEST_F(ErrorCalculationTest, SoftmaxPredictionCoverage) {
   double expected = math_expect::softmax_prediction_coverage(predictions, config.confidence_threshold());
   double actual = ErrorCalculation::calculate_softmax_prediction_coverage(predictions, config);
   EXPECT_DOUBLE_EQ(expected, actual);
+}
+
+TEST_F(ErrorCalculationTest, PredictionCoverageSigmoidUsesNeutralBaseline) {
+  // Sigmoid's neutral point is 0.5, not 0.0: a value near 0.0 is a *confident* "down" call,
+  // not an unconfident one. calculate_prediction_coverage must measure distance from 0.5,
+  // exactly like calculate_directional_confidence_score already does for sigmoid.
+  EvaluationConfig sigmoid_config{ 0.05, 0.3, 1.0, 0.1, true, 1.0, 1e-7 };
+  std::vector<std::vector<double>> sigmoid_predictions = {
+    { 0.05 },  // |0.05 - 0.5| = 0.45 > 0.3 -> confident (strongly "down")
+    { 0.95 },  // |0.95 - 0.5| = 0.45 > 0.3 -> confident (strongly "up")
+    { 0.5 },   // |0.5  - 0.5| = 0.0  <= 0.3 -> not confident (neutral)
+    { 0.55 },  // |0.55 - 0.5| = 0.05 <= 0.3 -> not confident
+  };
+
+  double expected = math_expect::prediction_coverage(sigmoid_predictions, sigmoid_config.confidence_threshold(), 0.5);
+  double actual = ErrorCalculation::calculate_prediction_coverage(sigmoid_predictions, sigmoid_config, activation::method::sigmoid);
+  EXPECT_DOUBLE_EQ(expected, actual);
+  EXPECT_DOUBLE_EQ(actual, 0.5); // 2 out of 4 sequences (0.05 and 0.95) are confident
+
+  // The raw-magnitude (unfixed) interpretation would score 0.75 instead: 0.95, 0.5, and 0.55
+  // all exceed the 0.3 threshold in raw magnitude, wrongly counting the neutral 0.5 value as
+  // "confident" while still correctly catching 0.95 -- a different, wrong answer either way.
+  double raw_magnitude_interpretation = math_expect::prediction_coverage(sigmoid_predictions, sigmoid_config.confidence_threshold(), 0.0);
+  EXPECT_DOUBLE_EQ(raw_magnitude_interpretation, 0.75);
+  EXPECT_NE(actual, raw_magnitude_interpretation);
+}
+
+TEST_F(ErrorCalculationTest, PredictionCoverageEmptySequencePanics) {
+  std::vector<std::vector<double>> pred_with_empty = { { 0.9 }, {} };
+  EXPECT_THROW((void)ErrorCalculation::calculate_prediction_coverage(pred_with_empty, config, activation::method::linear), std::runtime_error);
 }
 
 // --- Complex Multi-Layer Integration Test ---
@@ -725,6 +756,72 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   std::vector<std::vector<double>> pred_logcosh = { { 1.0 } };
   const double expected_logcosh = 1.0 + std::log1p(std::exp(-2.0)) - std::log(2.0);
   EXPECT_NEAR(ErrorCalculation::calculate_log_cosh(gt_logcosh, pred_logcosh), expected_logcosh, 1e-12);
+}
+
+TEST_F(ErrorCalculationTest, MSESkipsNonFiniteValuesButKeepsFiniteOnesInTheAverage) {
+  // A NaN/Inf prediction (e.g. from a diverged/unstable training run) must not corrupt the
+  // whole metric: it should be excluded from both the sum and the count, rather than
+  // poisoning the average with NaN or being silently counted as if it were a valid 0-error term.
+  std::vector<std::vector<double>> gt = { { 1.0, 2.0, 3.0 } };
+  std::vector<std::vector<double>> pred_with_nan = { { 2.0, std::numeric_limits<double>::quiet_NaN(), 3.0 } };
+  std::vector<std::vector<double>> pred_with_inf = { { 2.0, std::numeric_limits<double>::infinity(), 3.0 } };
+
+  // Index 1 (NaN) is skipped; the two remaining finite pairs are (1.0, 2.0) -> squared error
+  // 1.0, and (3.0, 3.0) -> squared error 0.0, averaged over the 2 valid values: (1.0+0.0)/2.
+  const double expected_finite_only = 0.5;
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mse_error(gt, pred_with_nan), expected_finite_only);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mse_error(gt, pred_with_inf), expected_finite_only);
+}
+
+TEST_F(ErrorCalculationTest, MSEReturnsNaNWhenNoValidValuesExist) {
+  std::vector<std::vector<double>> gt = { { 1.0, 2.0 } };
+  std::vector<std::vector<double>> pred_all_nan = { { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() } };
+  EXPECT_TRUE(std::isnan(ErrorCalculation::calculate_mse_error(gt, pred_all_nan)));
+
+  // Mismatched row sizes are skipped with a warning rather than crashing; if every row
+  // mismatches, no valid values exist at all.
+  std::vector<std::vector<double>> gt_mismatch = { { 1.0, 2.0 } };
+  std::vector<std::vector<double>> pred_mismatch = { { 1.0 } };
+  EXPECT_TRUE(std::isnan(ErrorCalculation::calculate_mse_error(gt_mismatch, pred_mismatch)));
+}
+
+TEST_F(ErrorCalculationTest, MismatchedVectorSizePanicsForStrictMetrics) {
+  std::vector<std::vector<double>> gt_mismatch = { { 1.0, 2.0 } };
+  std::vector<std::vector<double>> pred_mismatch = { { 1.0 } };
+
+  EXPECT_THROW((void)ErrorCalculation::calculate_mae_error(gt_mismatch, pred_mismatch), std::runtime_error);
+  EXPECT_THROW((void)ErrorCalculation::calculate_huber_loss_error(gt_mismatch, pred_mismatch, config), std::runtime_error);
+  EXPECT_THROW((void)ErrorCalculation::calculate_huber_direction_loss(gt_mismatch, pred_mismatch, config), std::runtime_error);
+  EXPECT_THROW((void)ErrorCalculation::calculate_log_cosh(gt_mismatch, pred_mismatch), std::runtime_error);
+  EXPECT_THROW((void)ErrorCalculation::calculate_directional_accuracy(gt_mismatch, pred_mismatch, config, activation::method::linear), std::runtime_error);
+  EXPECT_THROW((void)ErrorCalculation::calculate_directional_confidence_score(gt_mismatch, pred_mismatch, config, activation::method::linear), std::runtime_error);
+
+  std::vector<std::vector<double>> gt_sm_mismatch = { { 1.0, 0.0, 0.0 } };
+  std::vector<std::vector<double>> pred_sm_mismatch = { { 0.5, 0.5 } };
+  EXPECT_THROW((void)ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm_mismatch, pred_sm_mismatch), std::runtime_error);
+}
+
+TEST_F(ErrorCalculationTest, MismatchedVectorSizeSkippedSilentlyForSequenceMetrics) {
+  // rmse/nrmse/mape/smape/wape/bce/cross_entropy treat a mismatched row as "no data for
+  // this sequence" and skip it, rather than panicking. Verify this documented, more forgiving
+  // behaviour still holds (as opposed to accidentally throwing or corrupting the average).
+  std::vector<std::vector<double>> gt = { { 1.0, 2.0 }, { 3.0 } };
+  std::vector<std::vector<double>> pred = { { 1.5, 2.5 }, { 3.0, 4.0 } }; // row 1 mismatches
+
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_rmse_error(gt, pred));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_nrmse_error(gt, pred));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_forecast_mape(gt, pred, config));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_forecast_smape(gt, pred, config));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_forecast_wape(gt, pred));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_bce_loss(gt, pred, config));
+  EXPECT_NO_THROW((void)ErrorCalculation::calculate_cross_entropy(gt, pred, config));
+
+  // Only row 0 contributes: RMSE = sqrt(((1-1.5)^2 + (2-2.5)^2) / 2) = sqrt(0.25) = 0.5
+  EXPECT_NEAR(ErrorCalculation::calculate_rmse_error(gt, pred), 0.5, tolerance);
+}
+
+TEST_F(ErrorCalculationTest, UnknownStringToTypeThrows) {
+  EXPECT_THROW((void)ErrorCalculation::string_to_type("not-a-real-error-type"), std::runtime_error);
 }
 
 TEST_F(ErrorCalculationTest, CalculateErrorEnumDispatch)

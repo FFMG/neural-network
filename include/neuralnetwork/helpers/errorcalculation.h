@@ -375,6 +375,7 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_squared_error = 0.0;
     size_t valid_count = 0;
+    size_t skipped_non_finite_count = 0;
 
     for (size_t i = 0; i < ground_truth.size(); ++i)
     {
@@ -397,17 +398,27 @@ public:
 
         if (!std::isfinite(error))
         {
+          ++skipped_non_finite_count;
           continue;
         }
 
         const double squared_error = error * error;
         if (!std::isfinite(squared_error))
         {
+          ++skipped_non_finite_count;
           continue;
         }
         total_squared_error += squared_error;
         ++valid_count;
       }
+    }
+
+    // Logged once per call (not per value) so a run of diverged/NaN predictions doesn't
+    // flood the log; without this, non-finite predictions were silently excluded from both
+    // the sum and the count, understating the reported error with no visible indication.
+    if (skipped_non_finite_count > 0)
+    {
+      Logger::warning("calculate_mse_error skipped ", skipped_non_finite_count, " non-finite prediction error(s) out of ", (valid_count + skipped_non_finite_count), " total value(s).");
     }
 
     if (valid_count == 0)
@@ -516,6 +527,7 @@ public:
     double total_mape = 0.0;
     size_t sequence_count = 0;
     const double eps = evaluation_config.epsilon();
+    const bool can_trace_log = Logger::can_trace();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -551,7 +563,7 @@ public:
         ++sequence_count;
       }
 
-      if (Logger::can_trace())
+      if (can_trace_log)
       {
         Logger::trace("[MAPE_DEBUG] After sequence ", seq_idx, ": total_mape=", total_mape, ", sequence_count=", sequence_count);
       }
@@ -1020,6 +1032,12 @@ public:
     size_t predicted = 0;
     size_t total = 0;
     const double threshold = evaluation_config.confidence_threshold();
+    // Match the baseline convention used by calculate_directional_confidence_score/
+    // calculate_directional_accuracy: sigmoid's neutral point is 0.5, everything else is 0.0.
+    // Without this, "confidence" for a sigmoid head would be measured as raw magnitude
+    // instead of distance from neutral, silently undercounting confident low-value (near-0,
+    // i.e. confidently "down") predictions.
+    const double baseline = (activation_method == activation::method::sigmoid) ? 0.5 : 0.0;
 
     for (const auto& seq : predictions)
     {
@@ -1044,7 +1062,7 @@ public:
 
         for (size_t j = 0; j < seq_len; ++j)
         {
-          if (std::abs(seq_ptr[j]) > threshold)
+          if (std::abs(seq_ptr[j] - baseline) > threshold)
           {
             any_confident = true;
             break;
