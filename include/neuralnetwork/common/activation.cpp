@@ -241,6 +241,10 @@ void activation::activate_derivative(const double* begin, const double* end, con
   case method::mish:
     simd::mish_derivative(begin, size, out);
     break;
+  case method::softmax:
+    Logger::warning("activate_derivative() called for a softmax-activated range; softmax's derivative should be skipped entirely (e.g. when paired with Cross-Entropy). Returning zero gradients for this range.");
+    std::fill(out, out + size, 0.0);
+    break;
   default:
     for (size_t i = 0; i < size; ++i)
     {
@@ -310,8 +314,8 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
   // Find max for numerical stability
   double max_val = *begin;
   // Also find min_val to detect extreme range for warning
-  double min_val = *begin; 
-  for (const double* it = begin + 1; it != end; ++it)
+  double min_val = *begin;
+  for (const double* it = begin; it != end; ++it)
   {
     if (std::isnan(*it))
     {
@@ -326,7 +330,7 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
     {
       max_val = *it;
     }
-    if (*it < min_val) 
+    if (*it < min_val)
     {
       min_val = *it;
     }
@@ -418,14 +422,18 @@ double activation::calculate_softmax(double, double) noexcept
   return 1.0;
 }
 
-double activation::calculate_softmax_derivative(double x, double) noexcept
+double activation::calculate_softmax_derivative(double, double) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  // This is a simplified scalar derivative (S(1-S)). 
-  // Note: Softmax derivative is actually a Jacobian matrix.
-  // Standard practice is to skip this derivative when combined with Cross-Entropy.
-  double s = 1.0 / (1.0 + std::exp(-x)); 
-  return s * (1.0 - s);
+  Logger::warning("Calling the softmax derivative for a single value indicates that the wrong error type/activation pair was used!");
+  // Softmax's true derivative is a full-row Jacobian, not a function of one raw pre-activation
+  // value in isolation, so it cannot be computed correctly here (this scalar signature only
+  // has x and alpha, not the whole row, and not even the already-computed softmax output y
+  // that the batched activate_derivative() passes down for exactly this kind of case).
+  // Standard practice is to skip this derivative entirely when softmax is combined with
+  // Cross-Entropy (see FFOutputLayer's skip_derivative), which is the only supported use.
+  // Returning 0.0 avoids masquerading as a plausible gradient.
+  return 0.0;
 }
 
 double activation::calculate_relu(double x, double) noexcept
@@ -619,23 +627,6 @@ double activation::selu_initialization(unsigned fan_in, std::optional<uint32_t> 
   MYODDWEB_PROFILE_FUNCTION("activation");
   
   // SELU initialization (LeCun): Normal(0, sqrt(1/fan_in))
-  double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
-  std::normal_distribution<double> dist(0.0, stddev);
-
-  if (seed.has_value())
-  {
-    std::mt19937 local_gen(seed.value());
-    return dist(local_gen);
-  }
-
-  thread_local std::mt19937 gen(std::random_device{}());
-  return dist(gen);
-}
-
-double activation::lecun_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("activation");
-  
   double stddev = std::sqrt(1.0 / std::max(1u, fan_in));
   std::normal_distribution<double> dist(0.0, stddev);
 

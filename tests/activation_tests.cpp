@@ -2,6 +2,7 @@
 #include "common/activation.h"
 #include <cmath>
 #include <algorithm>
+#include <limits>
 #include <vector>
 #include <random>
 
@@ -208,6 +209,91 @@ TEST_F(ActivationTest, SoftmaxArray) {
   for (size_t i = 0; i < input.size(); ++i) {
     EXPECT_NEAR(expected[i], input[i], tolerance) << "Failed Softmax array at index " << i;
   }
+}
+
+TEST_F(ActivationTest, SoftmaxNaNAtFirstIndexPropagatesNaN) {
+  // Regression test: calculate_softmax's NaN-scan used to start at begin + 1, so a NaN in the
+  // very first slot never got detected (max_val/min_val were seeded from *begin and every
+  // subsequent comparison with NaN is false). Instead of propagating NaN through the whole
+  // row as documented, it silently produced a fake, deterministic {1.0, 0.0, ..., 0.0} result.
+  activation act(activation::method::softmax, 0.0);
+  std::vector<double> input = { std::numeric_limits<double>::quiet_NaN(), 1.0, 2.0, 0.5 };
+  act.activate(input.data(), input.data() + input.size());
+
+  for (double v : input)
+  {
+    EXPECT_TRUE(std::isnan(v)) << "Expected NaN to propagate through the entire row";
+  }
+}
+
+TEST_F(ActivationTest, SoftmaxNaNAtLaterIndexPropagatesNaN) {
+  // Contrast case: a NaN anywhere after index 0 was already handled correctly before the fix.
+  // Kept alongside the index-0 regression test so both branches stay covered together.
+  activation act(activation::method::softmax, 0.0);
+  std::vector<double> input = { 1.0, 2.0, std::numeric_limits<double>::quiet_NaN(), 0.5 };
+  act.activate(input.data(), input.data() + input.size());
+
+  for (double v : input)
+  {
+    EXPECT_TRUE(std::isnan(v)) << "Expected NaN to propagate through the entire row";
+  }
+}
+
+TEST_F(ActivationTest, SoftmaxDerivativeScalarFallbackReturnsZeroNotSigmoid) {
+  // calculate_softmax_derivative previously computed sigmoid(x)*(1-sigmoid(x)) on the raw
+  // pre-activation value -- a formula unrelated to softmax's actual output, and one that
+  // ignored the already-computed softmax probability entirely. Softmax's true derivative is a
+  // full-row Jacobian that cannot be expressed as a function of one scalar value, so the fixed
+  // behaviour is to return a safe 0.0 rather than a plausible-looking wrong gradient.
+  activation act(activation::method::softmax, 0.0);
+  EXPECT_DOUBLE_EQ(act.activate_derivative(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(act.activate_derivative(5.0), 0.0);
+  EXPECT_DOUBLE_EQ(act.activate_derivative(-5.0), 0.0);
+}
+
+TEST_F(ActivationTest, SoftmaxDerivativeBatchedFallbackReturnsZeroForWholeRange) {
+  // The batched array activate_derivative() now explicitly handles method::softmax (returning
+  // zero gradients for the whole range) instead of silently falling through to the per-element
+  // scalar fallback above, which would otherwise log once per element on a real batch.
+  activation act(activation::method::softmax, 0.0);
+  std::vector<double> pre_activations = { -2.0, 0.0, 1.0, 3.0 };
+  std::vector<double> out(pre_activations.size(), 123.0); // poison value to prove it gets overwritten
+  act.activate_derivative(pre_activations.data(), pre_activations.data() + pre_activations.size(), nullptr, out.data());
+
+  for (double v : out)
+  {
+    EXPECT_DOUBLE_EQ(v, 0.0);
+  }
+}
+
+TEST_F(ActivationTest, SoftmaxCatastrophicLogitRangePanics) {
+  // logit_range = max - min > 1000 is treated as unrecoverable numerical instability.
+  activation act(activation::method::softmax, 0.0);
+  std::vector<double> input = { 0.0, 1500.0 };
+  EXPECT_THROW(act.activate(input.data(), input.data() + input.size()), std::runtime_error);
+}
+
+TEST_F(ActivationTest, SoftmaxExtremeLogitRangeStillProducesValidDistribution) {
+  // logit_range > 200 (but <= 1000) only warns; the softmax output must still be a valid,
+  // finite probability distribution summing to 1.
+  activation act(activation::method::softmax, 0.0);
+  std::vector<double> input = { 0.0, 300.0 };
+  act.activate(input.data(), input.data() + input.size());
+
+  double sum = 0.0;
+  for (double v : input)
+  {
+    EXPECT_TRUE(std::isfinite(v));
+    EXPECT_GE(v, 0.0);
+    sum += v;
+  }
+  EXPECT_NEAR(sum, 1.0, 1e-9);
+  // The much larger logit should dominate the distribution.
+  EXPECT_NEAR(input[1], 1.0, 1e-9);
+}
+
+TEST_F(ActivationTest, UnknownStringToMethodThrows) {
+  EXPECT_THROW((void)activation::string_to_method("not-a-real-activation"), std::runtime_error);
 }
 
 TEST_F(ActivationTest, DeterministicInitialization) {
