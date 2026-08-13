@@ -1924,30 +1924,19 @@ void GRURNNLayer::cache_recurrent_weights()
   _z_rw_values_T.resize(n * n);
   _r_rw_values_T.resize(n * n);
 
-  for (size_t i = 0; i < n; ++i)
-  {
-    for (size_t j = 0; j < n; ++j)
-    {
-      _rw_values_T[j * n + i] = _rw_values[i * n + j];
-      _z_rw_values_T[j * n + i] = _z_rw_values[i * n + j];
-      _r_rw_values_T[j * n + i] = _r_rw_values[i * n + j];
-    }
-  }
+  simd::transpose(_rw_values.data(), _rw_values_T.data(), n, n);
+  simd::transpose(_z_rw_values.data(), _z_rw_values_T.data(), n, n);
+  simd::transpose(_r_rw_values.data(), _r_rw_values_T.data(), n, n);
 
   if (n_prev > 0)
   {
     _w_values_T.resize(n * n_prev);
     _z_w_values_T.resize(n * n_prev);
     _r_w_values_T.resize(n * n_prev);
-    for (size_t i = 0; i < n_prev; ++i)
-    {
-      for (size_t j = 0; j < n; ++j)
-      {
-        _w_values_T[j * n_prev + i] = get_w_values()[i * n + j];
-        _z_w_values_T[j * n_prev + i] = _z_w_values[i * n + j];
-        _r_w_values_T[j * n_prev + i] = _r_w_values[i * n + j];
-      }
-    }
+
+    simd::transpose(get_w_values().data(), _w_values_T.data(), n_prev, n);
+    simd::transpose(_z_w_values.data(), _z_w_values_T.data(), n_prev, n);
+    simd::transpose(_r_w_values.data(), _r_w_values_T.data(), n_prev, n);
   }
 
   if (has_bias() && !_z_b_values.empty() && !_r_b_values.empty() && !get_b_values().empty())

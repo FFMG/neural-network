@@ -2110,5 +2110,72 @@ TEST(SimdUtilsTest, BpttUnrolledEightWideEquivalenceVerify)
   }
 }
 
+namespace
+{
+  // Naive reference transpose: dst[c * rows + r] = src[r * cols + c]
+  std::vector<double> reference_transpose(const std::vector<double>& src, size_t rows, size_t cols)
+  {
+    std::vector<double> dst(rows * cols);
+    for (size_t r = 0; r < rows; ++r)
+    {
+      for (size_t c = 0; c < cols; ++c)
+      {
+        dst[c * rows + r] = src[r * cols + c];
+      }
+    }
+    return dst;
+  }
+
+  void check_transpose(size_t rows, size_t cols)
+  {
+    std::vector<double> src(rows * cols);
+    for (size_t i = 0; i < src.size(); ++i)
+    {
+      src[i] = static_cast<double>(i) * 0.5 - 3.0;
+    }
+
+    const auto expected = reference_transpose(src, rows, cols);
+
+    std::vector<double> actual(rows * cols, 0.0);
+    simd::transpose(src.data(), actual.data(), rows, cols);
+
+    expect_vec_near(actual, expected);
+  }
+}
+
+TEST(SimdUtilsTest, TransposeSquareSmall)
+{
+  // Smaller than the internal 64x64 block: exercises a single tile.
+  check_transpose(5, 5);
+}
+
+TEST(SimdUtilsTest, TransposeSquareCrossesBlockBoundary)
+{
+  // 130 straddles the 64-element block size on both axes, forcing partial
+  // tiles at the edges to be exercised.
+  check_transpose(130, 130);
+}
+
+TEST(SimdUtilsTest, TransposeRectangularWideSource)
+{
+  check_transpose(7, 130);
+}
+
+TEST(SimdUtilsTest, TransposeRectangularTallSource)
+{
+  check_transpose(130, 7);
+}
+
+TEST(SimdUtilsTest, TransposeSingleElement)
+{
+  check_transpose(1, 1);
+}
+
+TEST(SimdUtilsTest, TransposeSingleRowAndColumn)
+{
+  check_transpose(1, 40);
+  check_transpose(40, 1);
+}
+
 
 

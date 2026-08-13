@@ -2,6 +2,16 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.16] - 2026-08-13
+
+### Added
+- Added `simd::transpose` in `include/neuralnetwork/common/simd_utils.h`: a cache-blocked matrix transpose function using 64x64 tiling to eliminate L1/L2 cache line thrashing during weight matrix transpositions.
+- Added unit tests in `tests/simd_utils_tests.cpp`: `TransposeSquareSmall`, `TransposeSquareCrossesBlockBoundary`, `TransposeRectangularWideSource`, `TransposeRectangularTallSource`, `TransposeSingleElement`, and `TransposeSingleRowAndColumn`.
+
+### Changed
+- Optimized `FFLayer::cache_recurrent_weights` in `include/neuralnetwork/layers/fflayer.cpp`: replaced naive nested loop with `simd::transpose`.
+- Optimized `GRURNNLayer::cache_recurrent_weights` in `include/neuralnetwork/layers/grurnnlayer.cpp`: replaced 6 manual nested weight matrix transposition loops for input ($W_h, W_z, W_r$) and recurrent ($RW_h, RW_z, RW_r$) weight matrices with `simd::transpose`.
+
 ## [1.1.15] - 2026-08-13
 
 ### Fixed
