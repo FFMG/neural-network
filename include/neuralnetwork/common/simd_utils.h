@@ -1885,6 +1885,32 @@ public:
     return total;
   }
 
+  // Cache-blocked matrix transpose: dst[c * rows + r] = src[r * cols + c] for src of shape [rows x cols].
+  // A naive row-by-row transpose writes to dst with a stride of `rows` elements, which thrashes the
+  // cache for large matrices (e.g. GRU/FF weight caches). Tiling keeps both the read and write
+  // working sets within a cache line's worth of tiles at a time.
+  inline static void transpose(const double* src, double* dst, size_t rows, size_t cols) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    constexpr size_t Block = 64;
+    for (size_t r0 = 0; r0 < rows; r0 += Block)
+    {
+      const size_t r_max = std::min(r0 + Block, rows);
+      for (size_t c0 = 0; c0 < cols; c0 += Block)
+      {
+        const size_t c_max = std::min(c0 + Block, cols);
+        for (size_t r = r0; r < r_max; ++r)
+        {
+          const double* src_row = src + r * cols;
+          for (size_t c = c0; c < c_max; ++c)
+          {
+            dst[c * rows + r] = src_row[c];
+          }
+        }
+      }
+    }
+  }
+
   // Scalar fallback for gemv_add
   inline static void scalar_gemv_add(const double* A, const double* x, double* y, size_t rows, size_t cols) noexcept
   {
