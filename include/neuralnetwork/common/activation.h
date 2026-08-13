@@ -152,7 +152,6 @@ private:
   [[nodiscard]] static bool iequals(const std::string& str, const char* lit) noexcept;
   [[nodiscard]] double he_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
   [[nodiscard]] double xavier_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const noexcept;
-  [[nodiscard]] double lecun_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
   [[nodiscard]] double selu_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
 
   [[nodiscard]] static double calculate_selu(double x, double alpha) noexcept;
