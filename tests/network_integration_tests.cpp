@@ -790,6 +790,51 @@ TEST(NetworkIntegrationTest, ForecastMetricsDefaultInSample)
   EXPECT_GE(metrics_out_of_sample[0].error(), 0.0);
 }
 
+TEST(NetworkIntegrationTest, BPTTForecastMetricsCacheReuseRepeatable)
+{
+  // calculate_forecast_metrics_all_layers_impl reuses a thread_local GradientsAndOutputs
+  // cache across calls, only clearing what a forward-only pass actually needs (via
+  // reset_for_inference()) instead of a full zero(). With BPTT enabled, the output layer's
+  // _rnn_outputs gets populated on every call; if reset_for_inference() failed to clear a
+  // stale sequence from a previous call, a reused cache row could silently report the
+  // previous call's prediction instead of a freshly computed one.
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}, {1.1}
+  };
+
+  NeuralNetwork nn(options);
+  nn.train(inputs, outputs);
+
+  auto first_in_sample = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, true);
+  ASSERT_FALSE(first_in_sample.empty());
+
+  // Interleave an out-of-sample call (different index set / prediction_size), forcing the
+  // cache to shrink and/or grow and exercising reset_for_inference() on the reused rows.
+  auto out_of_sample = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, false);
+  ASSERT_FALSE(out_of_sample.empty());
+
+  // Repeating the exact same in-sample call must reproduce bit-identical results.
+  auto second_in_sample = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, true);
+  ASSERT_FALSE(second_in_sample.empty());
+
+  EXPECT_DOUBLE_EQ(first_in_sample[0].error(), second_in_sample[0].error());
+
+  // A third repeat, again interleaved, confirms the cache stays consistent under reuse.
+  auto out_of_sample_2 = nn.calculate_forecast_metrics({ ErrorCalculation::type::mse }, false);
+  ASSERT_FALSE(out_of_sample_2.empty());
+  EXPECT_DOUBLE_EQ(out_of_sample[0].error(), out_of_sample_2[0].error());
+}
+
 TEST(NetworkIntegrationTest, ShuffleSingleStepsBehavior)
 {
   auto options_no_shuffle = NeuralNetworkOptions::create({ 2, 2, 1 })
