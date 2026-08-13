@@ -506,7 +506,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 
   for (size_t i = 0; i < prediction_size; ++i)
   {
-    cache.gradients[i].zero();
+    cache.gradients[i].reset_for_inference();
     cache.hidden_states[i].zero();
   }
 
