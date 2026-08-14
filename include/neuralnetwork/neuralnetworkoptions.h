@@ -84,6 +84,7 @@ public:
     _topology(nno._topology),
     _hidden_layers(nno._hidden_layers),
     _output_layer_details(nno._output_layer_details),
+    _multi_output_layer_details(nno._multi_output_layer_details),
     _learning_rate(nno._learning_rate),
     _number_of_epoch(nno._number_of_epoch),
     _batch_size(nno._batch_size),
@@ -102,12 +103,11 @@ public:
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
+    _final_error_calculation_types(nno._final_error_calculation_types),
     _enable_bptt(nno._enable_bptt),
     _bptt_max_ticks(nno._bptt_max_ticks),
     _update_training_monitor_percent(nno._update_training_monitor_percent),
-    _final_error_calculation_types(nno._final_error_calculation_types),
     _has_bias(nno._has_bias),
-    _multi_output_layer_details(nno._multi_output_layer_details),
     _log_training_info(nno._log_training_info)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -117,6 +117,7 @@ public:
     _topology(std::move(nno._topology)),
     _hidden_layers(std::move(nno._hidden_layers)),
     _output_layer_details(std::move(nno._output_layer_details)),
+    _multi_output_layer_details(std::move(nno._multi_output_layer_details)),
     _learning_rate(nno._learning_rate),
     _number_of_epoch(nno._number_of_epoch),
     _batch_size(nno._batch_size),
@@ -135,12 +136,11 @@ public:
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
+    _final_error_calculation_types(std::move(nno._final_error_calculation_types)),
     _enable_bptt(nno._enable_bptt),
     _bptt_max_ticks(nno._bptt_max_ticks),
     _update_training_monitor_percent(nno._update_training_monitor_percent),
-    _final_error_calculation_types(std::move(nno._final_error_calculation_types)),
     _has_bias(nno._has_bias),
-    _multi_output_layer_details(std::move(nno._multi_output_layer_details)),
     _log_training_info(nno._log_training_info)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
