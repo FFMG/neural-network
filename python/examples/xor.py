@@ -5,8 +5,8 @@ This example demonstrates how to solve the classic non-linearly separable
 XOR problem using the `neuralnetwork` Python library.
 
 Network Topology:
-- Input layer: 3 inputs (x1, x2, and a constant bias feature 1.0)
-- Hidden layer: 2 neurons with Sigmoid activation
+- Input layer: 2 inputs (x1, x2) — the internal bias neuron is added automatically
+- Hidden layer: 4 neurons with Sigmoid activation
 - Output layer: 1 neuron with Sigmoid activation and MSE error calculation
 
 The XOR function truth table:
@@ -37,33 +37,33 @@ except ImportError as e:
 def run_xor():
     nn.Logger.info("=== Running Python XOR Example ===")
 
-    # 1. Define network topology: 3 inputs, 2 hidden neurons, 1 output neuron
-    topology = [3, 2, 1]
+    # 1. Define network topology: 2 input features, 4 hidden neurons, 1 output neuron
+    topology = [2, 4, 1]
 
-    # 2. Configure hidden layer (Feed-Forward architecture with Sigmoid activation)
+    # 2. Configure hidden layer (Feed-Forward architecture with Sigmoid activation and NadamW optimiser)
     hidden_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     hidden_layers = [
         nn.LayerDetails(
             nn.LayerArchitecture.FF,
-            2,                      # 2 neurons in hidden layer
-            hidden_activation,      # Sigmoid activation function
-            0.0,                    # Dropout rate (0.0 = disabled)
-            0.0,                    # Weight decay
-            nn.OptimiserType.SGD,   # Optimiser algorithm
-            0.99                    # Momentum factor
+            4,                         # 4 neurons in hidden layer
+            hidden_activation,         # Sigmoid activation function
+            0.0,                       # Dropout rate (0.0 = disabled)
+            0.0,                       # Weight decay
+            nn.OptimiserType.NadamW,   # NadamW optimiser for stable convergence
+            0.9                        # Momentum factor
         )
     ]
 
     # 3. Configure output layer (Sigmoid activation, Mean Squared Error loss)
     output_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     output_layer = nn.OutputLayerDetails(
-        topology[-1],               # 1 output neuron
-        output_activation,          # Sigmoid activation
-        nn.ErrorCalculationType.MSE, # Mean Squared Error calculation
-        nn.EvaluationConfig(),      # Evaluation configuration defaults
-        0.0,                        # Weight decay
-        nn.OptimiserType.SGD,       # Optimiser algorithm
-        0.99                        # Momentum factor
+        topology[-1],                  # 1 output neuron
+        output_activation,             # Sigmoid activation
+        nn.ErrorCalculationType.MSE,    # Mean Squared Error calculation
+        nn.EvaluationConfig(),         # Evaluation configuration defaults
+        0.0,                           # Weight decay
+        nn.OptimiserType.NadamW,       # NadamW optimiser
+        0.9                            # Momentum factor
     )
 
     # 4. Optional progress callback to monitor training epochs
@@ -78,11 +78,8 @@ def run_xor():
         .with_batch_size(1)
         .with_hidden_layers(hidden_layers)
         .with_output_layer_details(output_layer)
-        .with_learning_rate(0.1)
-        .with_learning_rate_warmup(0.01, 0.075)
-        .with_learning_rate_decay_rate(0.0)
-        .with_learning_rate_boost_rate(0.25, 0.05)
-        .with_number_of_epoch(5000)
+        .with_learning_rate(0.01)
+        .with_number_of_epoch(2000)
         .with_log_level(nn.LogLevel.Info)
         .with_progress_callback(on_progress)
         .build()
@@ -91,12 +88,12 @@ def run_xor():
     # 6. Instantiate the neural network
     net = nn.NeuralNetwork(options)
 
-    # 7. Define training inputs (XOR inputs + 1.0 bias feature) and expected outputs
+    # 7. Define training inputs (2 XOR inputs) and expected outputs
     training_inputs = [
-        [0.0, 0.0, 1.0],
-        [0.0, 1.0, 1.0],
-        [1.0, 0.0, 1.0],
-        [1.0, 1.0, 1.0]
+        [0.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [1.0, 1.0]
     ]
 
     training_outputs = [
@@ -126,7 +123,7 @@ def run_xor():
 
         status = "[OK]" if passed else "[FAIL]"
         nn.Logger.info(
-            f"Input: {inputs[:2]} | Expected: {exp_val:.1f} | "
+            f"Input: {inputs} | Expected: {exp_val:.1f} | "
             f"Predicted: {predicted:.4f} {status}"
         )
 
