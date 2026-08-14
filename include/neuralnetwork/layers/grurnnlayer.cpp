@@ -656,7 +656,7 @@ void GRURNNLayer::calculate_forward_feed(
   // Pre-activations buffer: [Batch x Ticks x 3 x N_this]
   TempBuffer<double, 21> batch_pre_act(batch_size * num_time_steps * GateCount * N_this);
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this * 3) / 100000))) : 1;
   const bool use_multithreading = is_training && (active_threads > 1);
@@ -1129,7 +1129,7 @@ void GRURNNLayer::allocate_workspace()
   {
     return;
   }
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   allocate_workspace(num_threads);
 }
 
@@ -1551,7 +1551,7 @@ void GRURNNLayer::calculate_hidden_gradients(
     return;
   }
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 3) / 100000))) : 1;
@@ -1839,7 +1839,7 @@ void GRURNNLayer::calculate_and_store_gradients(
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const size_t N_this = num_outputs;
   const size_t N_prev = previous_layer.get_number_neurons();
   const size_t T = num_time_steps;

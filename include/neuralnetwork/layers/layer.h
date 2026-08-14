@@ -711,6 +711,12 @@ public:
     _task_queue_pool = std::make_unique<TaskQueuePool<void>>(number_of_threads);
   }
 
+  [[nodiscard]] inline unsigned int get_number_of_threads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    return _task_queue_pool ? _task_queue_pool->get_number_of_threads() : 1;
+  }
+
   void apply_update_to_vector(
     std::vector<double>& values,
     std::vector<double>& grads,
@@ -797,51 +803,48 @@ public:
     return _b_values[output_idx];
   }
 
-  [[nodiscard]] const std::vector<std::vector<WeightParam>>& get_weight_params() const
+  [[nodiscard]] std::vector<std::vector<WeightParam>> get_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     (void)get_w_timesteps();
-    static thread_local std::vector<std::vector<WeightParam>> thread_local_weights;
-    thread_local_weights.assign(get_number_input_neurons(), std::vector<WeightParam>(get_number_output_neurons(), WeightParam(0, 0, 0, 0)));
+    std::vector<std::vector<WeightParam>> weights(get_number_input_neurons(), std::vector<WeightParam>(get_number_output_neurons(), WeightParam(0, 0, 0, 0)));
     for (unsigned i = 0; i < get_number_input_neurons(); ++i) 
     {
       for (unsigned j = 0; j < get_number_output_neurons(); ++j) 
       {
         const auto idx = i * get_number_output_neurons() + j;
-        thread_local_weights[i][j] = WeightParam(
+        weights[i][j] = WeightParam(
             _w_values[idx], _w_grads[idx], _w_velocities[idx],
             _w_m1[idx], _w_m2[idx], _w_timesteps[idx], _w_decays[idx]
         );
       }
     }
-    return thread_local_weights;
+    return weights;
   }
 
-  [[nodiscard]] const std::vector<WeightParam>& get_bias_weight_params() const
+  [[nodiscard]] std::vector<WeightParam> get_bias_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     (void)get_b_timesteps();
-    static thread_local std::vector<WeightParam> thread_local_bias_weights;
-    thread_local_bias_weights.resize(get_number_output_neurons(), WeightParam(0, 0, 0, 0));
+    std::vector<WeightParam> bias_weights(get_number_output_neurons(), WeightParam(0, 0, 0, 0));
     for (unsigned j = 0; j < get_number_output_neurons(); ++j)
     {
-      thread_local_bias_weights[j] = WeightParam(
+      bias_weights[j] = WeightParam(
           _b_values[j], _b_grads[j], _b_velocities[j],
           _b_m1[j], _b_m2[j], _b_timesteps[j], _b_decays[j]
       );
     }
-    return thread_local_bias_weights;
+    return bias_weights;
   }
 
-  [[nodiscard]] virtual const std::vector<std::vector<WeightParam>>& get_residual_weight_params() const
+  [[nodiscard]] virtual std::vector<std::vector<WeightParam>> get_residual_weight_params() const
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     if (_residual_projector != nullptr)
     {
       return _residual_projector->get_weight_params();
     }
-    static const std::vector<std::vector<WeightParam>> empty_vec_2d;
-    return empty_vec_2d;
+    return {};
   }
 
   void reset_optimizer_state()

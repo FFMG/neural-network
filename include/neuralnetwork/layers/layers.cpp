@@ -74,7 +74,7 @@ Layers::Layers(const Layers& src) noexcept :
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   std::shared_lock<std::shared_mutex> lock(src._mutex);
-  _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
+  _update_weights_pool = src._update_weights_pool ? new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads()) : nullptr;
   _layers.reserve(src._layers.size());
   for(const auto& layer : src._layers)
   {
@@ -119,7 +119,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
     std::lock(lhs_lock, rhs_lock);
 
     delete _update_weights_pool;
-    _update_weights_pool = new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads());
+    _update_weights_pool = src._update_weights_pool ? new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads()) : nullptr;
 
     _layers.clear();
     _layers.reserve(src._layers.size());
@@ -424,21 +424,19 @@ void Layers::calculate_forward_feed(
 
     const auto* residual_projector = get_residual_layer_projector(static_cast<unsigned>(layer_number));
     static const std::vector<std::vector<double>> empty_residual_values;
+    std::vector<std::vector<double>> local_batch_residual_values;
     const std::vector<std::vector<double>>* batch_residual_values_ptr = &empty_residual_values;
 
     if (residual_projector != nullptr)
     {
-      thread_local std::vector<const double*> tls_batch_residual_inputs;
-      thread_local std::vector<std::vector<double>> tls_batch_residual_values;
-
+      std::vector<const double*> local_batch_residual_inputs(batch_size);
       auto residual_layer_number = get_residual_layer_number(static_cast<unsigned>(layer_number));
-      tls_batch_residual_inputs.resize(batch_size);
       for (size_t b = 0; b < batch_size; ++b)
       {
-        tls_batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
+        local_batch_residual_inputs[b] = gradients_and_output[b].get_outputs_raw(static_cast<unsigned>(residual_layer_number));
       }
-      residual_projector->project_batch_into(tls_batch_residual_inputs, tls_batch_residual_values);
-      batch_residual_values_ptr = &tls_batch_residual_values;
+      residual_projector->project_batch_into(local_batch_residual_inputs, local_batch_residual_values);
+      batch_residual_values_ptr = &local_batch_residual_values;
     }
     const auto& batch_residual_values = *batch_residual_values_ptr;
 
