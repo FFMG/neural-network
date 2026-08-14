@@ -80,16 +80,80 @@ private:
   }
 
 public:
-  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept
+  NeuralNetworkOptions(const NeuralNetworkOptions& nno) noexcept :
+    _topology(nno._topology),
+    _hidden_layers(nno._hidden_layers),
+    _output_layer_details(nno._output_layer_details),
+    _learning_rate(nno._learning_rate),
+    _number_of_epoch(nno._number_of_epoch),
+    _batch_size(nno._batch_size),
+    _data_is_unique(nno._data_is_unique),
+    _progress_callback(nno._progress_callback),
+    _log_level(nno._log_level),
+    _number_of_threads(nno._number_of_threads),
+    _learning_rate_decay_rate(nno._learning_rate_decay_rate),
+    _adaptive_learning_rate(nno._adaptive_learning_rate),
+    _learning_rate_restart_rate(nno._learning_rate_restart_rate),
+    _learning_rate_restart_boost(nno._learning_rate_restart_boost),
+    _residual_layer_jump(nno._residual_layer_jump),
+    _clip_threshold(nno._clip_threshold),
+    _learning_rate_warmup_start(nno._learning_rate_warmup_start),
+    _learning_rate_warmup_target(nno._learning_rate_warmup_target),
+    _shuffle_training_data(nno._shuffle_training_data),
+    _shuffle_bptt_batches(nno._shuffle_bptt_batches),
+    _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
+    _enable_bptt(nno._enable_bptt),
+    _bptt_max_ticks(nno._bptt_max_ticks),
+    _update_training_monitor_percent(nno._update_training_monitor_percent),
+    _final_error_calculation_types(nno._final_error_calculation_types),
+    _has_bias(nno._has_bias),
+    _multi_output_layer_details(nno._multi_output_layer_details),
+    _log_training_info(nno._log_training_info)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    *this = nno;
   }
 
-  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept
+  NeuralNetworkOptions(NeuralNetworkOptions&& nno) noexcept :
+    _topology(std::move(nno._topology)),
+    _hidden_layers(std::move(nno._hidden_layers)),
+    _output_layer_details(std::move(nno._output_layer_details)),
+    _learning_rate(nno._learning_rate),
+    _number_of_epoch(nno._number_of_epoch),
+    _batch_size(nno._batch_size),
+    _data_is_unique(nno._data_is_unique),
+    _progress_callback(std::move(nno._progress_callback)),
+    _log_level(nno._log_level),
+    _number_of_threads(nno._number_of_threads),
+    _learning_rate_decay_rate(nno._learning_rate_decay_rate),
+    _adaptive_learning_rate(nno._adaptive_learning_rate),
+    _learning_rate_restart_rate(nno._learning_rate_restart_rate),
+    _learning_rate_restart_boost(nno._learning_rate_restart_boost),
+    _residual_layer_jump(nno._residual_layer_jump),
+    _clip_threshold(nno._clip_threshold),
+    _learning_rate_warmup_start(nno._learning_rate_warmup_start),
+    _learning_rate_warmup_target(nno._learning_rate_warmup_target),
+    _shuffle_training_data(nno._shuffle_training_data),
+    _shuffle_bptt_batches(nno._shuffle_bptt_batches),
+    _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
+    _enable_bptt(nno._enable_bptt),
+    _bptt_max_ticks(nno._bptt_max_ticks),
+    _update_training_monitor_percent(nno._update_training_monitor_percent),
+    _final_error_calculation_types(std::move(nno._final_error_calculation_types)),
+    _has_bias(nno._has_bias),
+    _multi_output_layer_details(std::move(nno._multi_output_layer_details)),
+    _log_training_info(nno._log_training_info)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    *this = std::move(nno);
+    nno._progress_callback = nullptr;
+    nno._log_level = Logger::LogLevel::None;
+    nno._number_of_epoch = 0;
+    nno._batch_size = 0;
+    nno._learning_rate = 0.00;
+    nno._data_is_unique = false;
+    nno._residual_layer_jump = -1;
+    nno._clip_threshold = 1.0;
+    nno._learning_rate_warmup_start = 0.0;
+    nno._learning_rate_warmup_target = 0.0;
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept

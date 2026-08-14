@@ -187,6 +187,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("output_details", &MultiOutputLayerDetails::get_output_details);
 
     py::class_<NeuralNetworkHelperMetrics>(m, "NeuralNetworkHelperMetrics")
+        .def(py::init<>())
+        .def(py::init<double, ErrorCalculation::type>())
         .def_property_readonly("error", &NeuralNetworkHelperMetrics::error)
         .def_property_readonly("error_type", &NeuralNetworkHelperMetrics::error_type);
 

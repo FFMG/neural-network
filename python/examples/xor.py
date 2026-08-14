@@ -37,19 +37,19 @@ except ImportError as e:
 def run_xor():
     nn.Logger.info("=== Running Python XOR Example ===")
 
-    # 1. Define network topology: 2 input features, 4 hidden neurons, 1 output neuron
-    topology = [2, 4, 1]
+    # 1. Define network topology: 2 input features, 8 hidden neurons, 1 output neuron
+    topology = [2, 8, 1]
 
-    # 2. Configure hidden layer (Feed-Forward architecture with Sigmoid activation and NadamW optimiser)
+    # 2. Configure hidden layer (Feed-Forward architecture with Sigmoid activation and Adam optimiser)
     hidden_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     hidden_layers = [
         nn.LayerDetails(
             nn.LayerArchitecture.FF,
-            4,                         # 4 neurons in hidden layer
+            8,                         # 8 neurons in hidden layer
             hidden_activation,         # Sigmoid activation function
             0.0,                       # Dropout rate (0.0 = disabled)
             0.0,                       # Weight decay
-            nn.OptimiserType.NadamW,   # NadamW optimiser for stable convergence
+            nn.OptimiserType.Adam,     # Adam optimiser for fast and stable convergence
             0.9                        # Momentum factor
         )
     ]
@@ -62,7 +62,7 @@ def run_xor():
         nn.ErrorCalculationType.MSE,    # Mean Squared Error calculation
         nn.EvaluationConfig(),         # Evaluation configuration defaults
         0.0,                           # Weight decay
-        nn.OptimiserType.NadamW,       # NadamW optimiser
+        nn.OptimiserType.Adam,         # Adam optimiser
         0.9                            # Momentum factor
     )
 
@@ -78,8 +78,11 @@ def run_xor():
         .with_batch_size(1)
         .with_hidden_layers(hidden_layers)
         .with_output_layer_details(output_layer)
-        .with_learning_rate(0.01)
-        .with_number_of_epoch(2000)
+        .with_learning_rate(0.1)
+        .with_number_of_epoch(3000)
+        .with_enable_bptt(False)
+        .with_shuffle_training_data(True)
+        .with_data_is_unique(True)
         .with_log_level(nn.LogLevel.Info)
         .with_progress_callback(on_progress)
         .build()
@@ -131,6 +134,7 @@ def run_xor():
         nn.Logger.info("XOR Example Completed Successfully!")
     else:
         nn.Logger.error("XOR Example Failed to Converge!")
+        sys.exit(1)
 
 
 if __name__ == '__main__':
