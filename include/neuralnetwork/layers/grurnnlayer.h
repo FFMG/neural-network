@@ -622,6 +622,19 @@ private:
     bool is_training
   ) const;
 
+  void finalize_forward_step(
+    size_t b,
+    size_t t,
+    size_t N_this,
+    size_t num_time_steps,
+    double* h_prev_slice,
+    double* item_packed,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<double>& batch_output_sequences,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training
+  ) const;
+
   void pre_calculate_gates(
     const size_t b_start,
     const size_t b_end,
