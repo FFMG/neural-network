@@ -56,19 +56,44 @@ NeuralNetwork::NeuralNetwork(
 }
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
+  _learning_rate(src._learning_rate),
   _layers(src._layers),
-  _options(src._options)
+  _options(src._options),
+  _saved_errors(src._saved_errors),
+  _last_metrics(src._last_metrics)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  *this = src;
+  std::shared_lock<std::shared_mutex> rhs_lock(src._mutex);
+  _neural_network_helpers.clear();
+  for (const auto& src_helper : src._neural_network_helpers)
+  {
+    if (src_helper != nullptr)
+    {
+      auto new_helper = std::make_shared<NeuralNetworkHelper>(*src_helper);
+      new_helper->_neural_network = this;
+      _neural_network_helpers.push_back(new_helper);
+    }
+  }
 }
 
 NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
+  _learning_rate(src._learning_rate),
   _layers(std::move(src._layers)),
-  _options(std::move(src._options))
+  _options(std::move(src._options)),
+  _neural_network_helpers(std::move(src._neural_network_helpers)),
+  _saved_errors(std::move(src._saved_errors)),
+  _last_metrics(std::move(src._last_metrics))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  *this = std::move(src);
+  for (auto& helper : _neural_network_helpers)
+  {
+    if (helper != nullptr)
+    {
+      helper->_neural_network = this;
+    }
+  }
+  src._neural_network_helpers.clear();
+  src._learning_rate = 0.0;
 }
 
 NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)

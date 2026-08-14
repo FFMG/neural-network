@@ -15,15 +15,58 @@ class NeuralNetworkHelper
 {
 public:
   NeuralNetworkHelper() = delete;
-  NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept
+  NeuralNetworkHelper(const NeuralNetworkHelper& src) noexcept :
+    _neural_network(src._neural_network),
+    _learning_rate(src._learning_rate),
+    _number_of_epoch(src._number_of_epoch),
+    _epoch(src._epoch),
+    _percent_complete(src._percent_complete),
+    _training_inputs(src._training_inputs),
+    _training_outputs(src._training_outputs),
+    _training_indexes(src._training_indexes),
+    _checking_indexes(src._checking_indexes),
+    _final_check_indexes(src._final_check_indexes),
+    _training_monitors(src._training_monitors),
+    _duration_ms(src._duration_ms),
+    _last_epoch_time(src._last_epoch_time),
+    _epoch_durations(src._epoch_durations),
+    _max_history_size(src._max_history_size),
+    _duration_sum(src._duration_sum),
+    _ring_buffer_index(src._ring_buffer_index)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    *this = src;
   }
-  NeuralNetworkHelper(NeuralNetworkHelper&& src) noexcept
+  NeuralNetworkHelper(NeuralNetworkHelper&& src) noexcept :
+    _neural_network(src._neural_network),
+    _learning_rate(src._learning_rate),
+    _number_of_epoch(src._number_of_epoch),
+    _epoch(src._epoch),
+    _percent_complete(src._percent_complete),
+    _training_inputs(std::move(src._training_inputs)),
+    _training_outputs(std::move(src._training_outputs)),
+    _training_indexes(std::move(src._training_indexes)),
+    _checking_indexes(std::move(src._checking_indexes)),
+    _final_check_indexes(std::move(src._final_check_indexes)),
+    _training_monitors(std::move(src._training_monitors)),
+    _duration_ms(src._duration_ms),
+    _last_epoch_time(std::move(src._last_epoch_time)),
+    _epoch_durations(std::move(src._epoch_durations)),
+    _max_history_size(src._max_history_size),
+    _duration_sum(src._duration_sum),
+    _ring_buffer_index(src._ring_buffer_index)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    *this = std::move(src);
+    src._neural_network = nullptr;
+    src._learning_rate = 0;
+    src._number_of_epoch = 0;
+    src._epoch = 0;
+    src._percent_complete = 0;
+    src._duration_ms = 0.0;
+    src._max_history_size = 10;
+    src._duration_sum = 0.0;
+    src._ring_buffer_index = 0;
+    src._training_inputs = nullptr;
+    src._training_outputs = nullptr;
   }
   NeuralNetworkHelper& operator=(const NeuralNetworkHelper& src) noexcept
   {
@@ -265,8 +308,8 @@ private:
   unsigned _number_of_epoch;
   unsigned _epoch;
   double _percent_complete;
-  const std::vector<std::vector<double>>* _training_inputs;
-  const std::vector<std::vector<double>>* _training_outputs;
+  std::shared_ptr<const std::vector<std::vector<double>>> _training_inputs;
+  std::shared_ptr<const std::vector<std::vector<double>>> _training_outputs;
   std::shared_ptr<std::vector<size_t>> _training_indexes;
   std::shared_ptr<std::vector<size_t>> _checking_indexes;
   std::shared_ptr<std::vector<size_t>> _final_check_indexes;
