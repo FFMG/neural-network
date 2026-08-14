@@ -10,7 +10,7 @@ All notable changes to the `neural-network` library will be documented in this f
 
 ### Fixed
 - Fixed multi-threaded inference segmentation fault in `NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`:
-  - Replaced `ThreadBufferCache`'s dynamic `std::vector<std::unique_ptr<std::vector<double>>>` in `include/neuralnetwork/common/tempbuffer.h` with static per-tag `thread_local std::vector<T>` caches, preventing thread-local destruction issues and TLS race conditions on MinGW/GCC.
+  - Centralised `TempBuffer`'s thread-local storage pool into a single translation unit (`include/neuralnetwork/layers/layer.cpp`), eliminating MSVC duplicate dynamic TLS destructor registrations across translation units that caused heap corruption (`0xc0000374`) on ephemeral thread exit.
   - Added safe `get_number_of_threads()` helper in `Layer` (`include/neuralnetwork/layers/layer.h`) to prevent null pointer dereferences on `_task_queue_pool` across all layer implementations (`FFLayer`, `FFOutputLayer`, `ElmanRNNLayer`, `GRURNNLayer`, `LSTMLayer`).
   - Fixed `Layers` copy constructor and copy assignment operator in `include/neuralnetwork/layers/layers.cpp` to properly null-check `src._update_weights_pool`.
   - Replaced function-local `thread_local` vectors in `Layers::calculate_forward_feed`'s residual projection path with local stack vectors.
