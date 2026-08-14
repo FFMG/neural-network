@@ -115,94 +115,86 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
     *   `load(filepath)`: Static method to load a network instance from a JSON file.
 
-### Example
+### Examples
 
-Below is a complete example showing how to configure, train, evaluate, and save/load a neural network to solve the XOR classification problem.
+Standalone python examples are located in the [examples/](examples/) folder.
+
+#### XOR Classification (`examples/xor.py`)
+
+A classic non-linearly separable classification example solving the XOR problem.
+
+**What it does:**
+- Constructs a 3-layer Feed-Forward network (`[3, 2, 1]`) with Sigmoid activation.
+- Trains the network on the XOR truth table using Stochastic Gradient Descent (SGD).
+- Evaluates predicted probabilities against expected binary XOR outputs and verifies convergence.
 
 ```python
-import os
-import sys
 import neuralnetwork as nn
 
-# 1. Configure Topology (2 inputs, 2 hidden neurons, 1 output)
-topology = [2, 2, 1]
+# Configure topology: 3 inputs (2 data + 1 bias), 2 hidden neurons, 1 output neuron
+topology = [3, 2, 1]
 
-# 2. Configure Hidden Layer (Feed-Forward, Sigmoid, SGD)
-hidden_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
-hidden_layers = [
-    nn.LayerDetails(
-        nn.LayerArchitecture.FF, 
-        2, 
-        hidden_activation, 
-        0.0, 0.0, 
-        nn.OptimiserType.SGD, 
-        0.99
-    )
-]
-
-# 3. Configure Output Layer (Sigmoid, MSE, SGD)
-out_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
-out_layer = nn.OutputLayerDetails(
-    topology[-1], 
-    out_activation, 
-    nn.ErrorCalculationType.MSE,
-    nn.EvaluationConfig(),
-    0.0, 
-    nn.OptimiserType.SGD, 
-    0.99
+# Build options with Sigmoid activation and MSE loss
+options = (
+    nn.NeuralNetworkOptions.create(topology)
+    .with_batch_size(1)
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(5000)
+    .build()
 )
 
-# 4. Optional Progress Callback (stops training if callback returns False)
-def on_progress(helper):
-    if helper.epoch % 100 == 0:
-        nn.Logger.info(f"Epoch: {helper.epoch:4d} | Percent Complete: {helper.percent_complete * 100:5.1f}%")
-    return True
-
-# 5. Build Options
-options = nn.NeuralNetworkOptions.create(topology) \
-    .with_batch_size(1) \
-    .with_hidden_layers(hidden_layers) \
-    .with_output_layer_details(out_layer) \
-    .with_learning_rate(0.1) \
-    .with_number_of_epoch(5000) \
-    .with_log_level(nn.LogLevel.Info) \
-    .with_progress_callback(on_progress) \
-    .build()
-
-# 6. Instantiate and Train the Network
 net = nn.NeuralNetwork(options)
+net.train([[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
+          [[0.0], [1.0], [1.0], [0.0]])
 
-training_inputs = [
-    [0.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [1.0, 1.0]
+print("Prediction for [1, 0]:", net.think([1.0, 0.0, 1.0])[0])
+```
+
+Run command:
+```bash
+python python/examples/xor.py
+```
+
+#### Multi-Output Layer (`examples/multi_output.py`)
+
+Demonstrates a network with multiple output layers trained concurrently for different learning targets (similar to the C++ `examples/multi_output.h`).
+
+**What it does:**
+- Constructs a network with 1 input feature, 2 hidden layers of 8 neurons each, and 2 distinct output heads (`[1, 8, 8, 2]`).
+- **Head 1 (Classification)**: Uses Sigmoid activation to classify whether input $x > 0$.
+- **Head 2 (Regression)**: Uses Tanh activation to estimate the continuous function $\tanh(x)$.
+- Trains on 500 synthetic data points using the NadamW optimiser and tests inference predictions across positive and negative inputs.
+
+```python
+import neuralnetwork as nn
+
+# Define parallel output layers: Classification (Sigmoid) + Regression (Tanh)
+output_layers = [
+    nn.OutputLayerDetails(1, nn.Activation(nn.ActivationMethod.Sigmoid, 1.0), nn.ErrorCalculationType.MSE, nn.EvaluationConfig(), 0.001, nn.OptimiserType.NadamW, 0.99),
+    nn.OutputLayerDetails(1, nn.Activation(nn.ActivationMethod.Tanh, 1.0), nn.ErrorCalculationType.MSE, nn.EvaluationConfig(), 0.001, nn.OptimiserType.NadamW, 0.9)
 ]
-training_outputs = [
-    [0.0],
-    [1.0],
-    [1.0],
-    [0.0]
-]
 
-nn.Logger.info("Starting training...")
-net.train(training_inputs, training_outputs)
+options = (
+    nn.NeuralNetworkOptions.create([1, 8, 8, 2])
+    .with_output_layer_details(output_layers)
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(1000)
+    .build()
+)
+```
 
-# 7. Run Inference
-nn.Logger.info("Evaluating predictions:")
-for inputs, expected in zip(training_inputs, training_outputs):
-    outputs = net.think(inputs)
-    nn.Logger.info(f"Input: {inputs} | Expected: {expected[0]} | Predicted: {outputs[0]:.4f}")
+Run command:
+```bash
+python python/examples/multi_output.py
+```
 
-# 8. Save and Reload Model
-model_path = "xor_model.json"
-nn.Logger.info(f"Saving model to {model_path}...")
-nn.NeuralNetworkSerializer.save(net, model_path)
+#### General Example (`examples/example.py`)
 
-nn.Logger.info(f"Loading model from {model_path}...")
-loaded_net = nn.NeuralNetworkSerializer.load(model_path)
-loaded_output = loaded_net.think([1.0, 0.0])
-nn.Logger.info(f"Loaded model prediction on [1.0, 0.0]: {loaded_output[0]:.4f}")
+Illustrates full network configuration, custom Python progress callbacks, model training, inference, and saving/loading model files (`nn.NeuralNetworkSerializer`).
+
+Run command:
+```bash
+python python/examples/example.py
 ```
 
 ---
@@ -260,15 +252,15 @@ g++ -O3 -Wall -shared -std=c++17 -fPIC -I../include \
 
 ## Using / Running the Compiled Module
 
-Once built, make sure the generated output file (`neuralnetwork.pyd` on Windows, or `neuralnetwork.so` on Unix-like platforms) is in your Python path or in the same directory as your Python script.
+Once built, make sure the generated output file (`neuralnetwork.pyd` on Windows, or `neuralnetwork.so` on Unix-like platforms) is in your Python path or in the `python/` directory.
 
-Run the example script:
+Run any of the example scripts from the repository root:
 
 ```bash
-python example.py
+python python/examples/xor.py
+python python/examples/multi_output.py
+python python/examples/example.py
 ```
-
-This will run the full XOR classification training pipeline and verify that the Python bindings are functioning correctly.
 
 ---
 
@@ -278,5 +270,9 @@ This will run the full XOR classification training pipeline and verify that the 
 *   `neuralnetwork_py.vcxproj`: Visual Studio C++ project file configured to build a dynamic library output with a `.pyd` file extension.
 *   `neuralnetwork_py.vcxproj.filters`: Project filters mapping for Solution Explorer organization.
 *   `neuralnetwork_py.sln`: Main Visual Studio solution.
-*   `example.py`: Python script illustrating options configuration, model instantiation, callback monitoring, training, inference, and serialization.
 *   `import_check.py`: A lightweight validation script that verifies the binary module loads, initializes enums, and starts up correctly (used in CI).
+*   `examples/`: Folder containing Python example scripts:
+    *   `examples/xor.py`: Classic XOR classification example with output validation.
+    *   `examples/multi_output.py`: Multi-output example with classification (Sigmoid) and regression (Tanh) heads.
+    *   `examples/example.py`: General Python script illustrating options configuration, progress callbacks, training, inference, and serialization.
+

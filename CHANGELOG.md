@@ -2,7 +2,20 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.17] - 2026-08-14
+
+### Added
+- Created dedicated `python/examples/` folder for standalone Python library examples.
+- Added `python/examples/xor.py`: fully commented Python example solving the XOR classification problem with prediction evaluation and `[OK]`/`[FAIL]` status reporting.
+- Added `python/examples/multi_output.py`: multi-output Python example mirroring `examples/multi_output.h` with joint classification (Sigmoid) and regression (Tanh) heads, synthetic dataset generation, and output evaluation.
+- Added step to run all Python examples (`xor.py`, `multi_output.py`, `example.py`) in `.github/workflows/python.yml` CI workflow.
+
+### Changed
+- Moved `python/example.py` to `python/examples/example.py` and updated import search path resolution for compiled `.pyd` module.
+- Updated `python/README.md` and root `README.md` with new `python/examples/` layout, write-ups for XOR and multi-output examples, and updated run commands.
+
 ## [1.1.16] - 2026-08-13
+
 
 ### Added
 - Added `simd::transpose` in `include/neuralnetwork/common/simd_utils.h`: a cache-blocked matrix transpose function using 64x64 tiling to eliminate L1/L2 cache line thrashing during weight matrix transpositions.
