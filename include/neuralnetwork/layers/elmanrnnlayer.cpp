@@ -320,7 +320,7 @@ void ElmanRNNLayer::calculate_forward_feed(
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
   TempBuffer<double, 11> batch_pre_act(batch_size * num_time_steps * N_this);
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 100000))) : 1;
   const bool use_multithreading = is_training && (active_threads > 1);
@@ -591,7 +591,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
     return;
   }
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this)) / 100000))) : 1;
@@ -1037,7 +1037,7 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   const size_t T = hidden_states[0].at(get_layer_index()).size();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this)) / 100000))) : 1;
 

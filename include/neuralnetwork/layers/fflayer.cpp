@@ -286,7 +286,7 @@ void FFLayer::calculate_forward_feed(
   }
 
   // 3. Batched Matrix-Matrix multiplication (GEMM)
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_gemm_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((effective_batch_size * N_prev * N_this) / 100000))) : 1;
   const bool use_gemm_mt = is_training && (active_gemm_threads > 1);
@@ -570,7 +570,7 @@ void FFLayer::calculate_hidden_gradients(
   const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
   const double* W_next = (W_next_T == nullptr) ? next_layer.get_w_values().data() : nullptr;
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_gemm_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((effective_batch_size * N_next * N_this) / 100000))) : 1;
   const bool use_gemm_mt = (active_gemm_threads > 1);
@@ -707,7 +707,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
     }
   }
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
@@ -755,7 +755,7 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     return;
   }
 
-  const auto& num_threads = _task_queue_pool->get_number_of_threads();
+  const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * num_inputs * num_outputs) / 100000))) : 1;
 

@@ -2,27 +2,20 @@
 #include <vector>
 #include <algorithm>
 #include <type_traits>
-#include <memory>
 #include "../libraries/instrumentor.h"
 
 namespace myoddweb::nn
 {
-struct ThreadBufferCache
-{
-  std::vector<std::unique_ptr<std::vector<double>>> caches;
-};
-
-inline ThreadBufferCache& get_thread_buffer_cache() noexcept
-{
-  MYODDWEB_PROFILE_FUNCTION("ThreadBufferCache");
-  static thread_local ThreadBufferCache instance;
-  return instance;
-}
-
 template <typename T, int Tag = 0>
 class TempBuffer
 {
   static_assert(std::is_same_v<T, double>, "TempBuffer only supports double type for thread-local caching.");
+
+  static std::vector<T>& get_cache() noexcept
+  {
+    static thread_local std::vector<T> cache;
+    return cache;
+  }
 
 public:
   TempBuffer(size_t size, bool zero_init = false) :
@@ -34,16 +27,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& thread_cache = get_thread_buffer_cache();
-      if (static_cast<size_t>(Tag) >= thread_cache.caches.size())
-      {
-        thread_cache.caches.resize(Tag + 1);
-      }
-      if (!thread_cache.caches[Tag])
-      {
-        thread_cache.caches[Tag] = std::make_unique<std::vector<double>>();
-      }
-      std::vector<T>& cache = *thread_cache.caches[Tag];
+      auto& cache = get_cache();
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -75,16 +59,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& thread_cache = get_thread_buffer_cache();
-      if (static_cast<size_t>(Tag) >= thread_cache.caches.size())
-      {
-        thread_cache.caches.resize(Tag + 1);
-      }
-      if (!thread_cache.caches[Tag])
-      {
-        thread_cache.caches[Tag] = std::make_unique<std::vector<double>>();
-      }
-      std::vector<T>& cache = *thread_cache.caches[Tag];
+      auto& cache = get_cache();
       if (cache.size() < size)
       {
         cache.resize(size);

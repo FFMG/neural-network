@@ -8,6 +8,14 @@ All notable changes to the `neural-network` library will be documented in this f
 - Optimized `LSTMLayer::calculate_forward_feed`'s recurrent pass in `include/neuralnetwork/layers/lstmlayer.cpp`: batched the recurrent (hidden-to-hidden) GEMV operations for all four gates (forget, input, output, candidate) across groups of up to 4 batch items per timestep using `simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch` (against the raw, non-transposed recurrent weight matrices) instead of evaluating batch items individually via `simd::gemv_add_four` against the transposed weight caches.
 - Refactored post-recurrent step logic into a new private `LSTMLayer::finalize_forward_step` in `include/neuralnetwork/layers/lstmlayer.cpp`, eliminating redundant scratch-buffer copies by activating the candidate gate and cell state directly into their final packed-state slots.
 
+### Fixed
+- Fixed multi-threaded inference segmentation fault in `NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`:
+  - Replaced `ThreadBufferCache`'s dynamic `std::vector<std::unique_ptr<std::vector<double>>>` in `include/neuralnetwork/common/tempbuffer.h` with static per-tag `thread_local std::vector<T>` caches, preventing thread-local destruction issues and TLS race conditions on MinGW/GCC.
+  - Added safe `get_number_of_threads()` helper in `Layer` (`include/neuralnetwork/layers/layer.h`) to prevent null pointer dereferences on `_task_queue_pool` across all layer implementations (`FFLayer`, `FFOutputLayer`, `ElmanRNNLayer`, `GRURNNLayer`, `LSTMLayer`).
+  - Fixed `Layers` copy constructor and copy assignment operator in `include/neuralnetwork/layers/layers.cpp` to properly null-check `src._update_weights_pool`.
+  - Replaced function-local `thread_local` vectors in `Layers::calculate_forward_feed`'s residual projection path with local stack vectors.
+  - Removed dangerous `static thread_local` return references in `Layer::get_weight_params()` and `Layer::get_bias_weight_params()`.
+
 ### Added
 - Added 9 unit tests in `tests/lstmlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items, mirroring the GRURNNLayer regression suite added in `[1.1.17]`.
 
