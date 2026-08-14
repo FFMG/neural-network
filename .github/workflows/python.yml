@@ -34,3 +34,10 @@ jobs:
 
     - name: Verify Module Import and Functionality
       run: python python/import_check.py
+
+    - name: Run Python Examples
+      run: |
+        python python/examples/xor.py
+        python python/examples/multi_output.py
+        python python/examples/example.py
+

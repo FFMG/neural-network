@@ -2,9 +2,11 @@ import os
 import sys
 
 # Add the directory containing the compiled .pyd module to the import search path
-# (Assuming the module is built in x64/Release or placed in this folder)
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "x64", "Release"))
+# (Assuming the module is built in x64/Release or placed in the parent python folder)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PYTHON_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+sys.path.append(PYTHON_DIR)
+sys.path.append(os.path.join(PYTHON_DIR, "x64", "Release"))
 
 try:
     import neuralnetwork as nn
@@ -15,7 +17,7 @@ except ImportError as e:
     sys.exit(1)
 
 def run_xor_example():
-    nn.Logger.info("--- Running XOR Example ---")
+    nn.Logger.info("--- Running General Python Example ---")
     
     # 1. Configure the network topology and options
     topology = [3, 2, 1]
