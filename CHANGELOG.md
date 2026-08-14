@@ -9,10 +9,14 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added `python/examples/xor.py`: fully commented Python example solving the XOR classification problem with prediction evaluation and `[OK]`/`[FAIL]` status reporting.
 - Added `python/examples/multi_output.py`: multi-output Python example mirroring `examples/multi_output.h` with joint classification (Sigmoid) and regression (Tanh) heads, synthetic dataset generation, and output evaluation.
 - Added step to run all Python examples (`xor.py`, `multi_output.py`, `example.py`) in `.github/workflows/python.yml` CI workflow.
+- Added 9 unit tests in `tests/grurnnlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items.
 
 ### Changed
 - Moved `python/example.py` to `python/examples/example.py` and updated import search path resolution for compiled `.pyd` module.
 - Updated `python/README.md` and root `README.md` with new `python/examples/` layout, write-ups for XOR and multi-output examples, and updated run commands.
+- Optimized `GRURNNLayer::run_forward_pass` in `include/neuralnetwork/layers/grurnnlayer.cpp`: batched the recurrent (hidden-to-hidden) GEMV operations across groups of up to 4 batch items per timestep using `simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch` instead of evaluating batch items individually.
+- Refactored post-recurrent step logic into `GRURNNLayer::finalize_forward_step` in `include/neuralnetwork/layers/grurnnlayer.cpp`, eliminating redundant memory copies by aliasing state buffers in-place during `simd::gru_output_step`.
+
 
 ## [1.1.16] - 2026-08-13
 
