@@ -6,16 +6,15 @@
 
 namespace myoddweb::nn
 {
+namespace detail
+{
+  std::vector<double>& get_thread_temp_buffer(int tag) noexcept;
+}
+
 template <typename T, int Tag = 0>
 class TempBuffer
 {
   static_assert(std::is_same_v<T, double>, "TempBuffer only supports double type for thread-local caching.");
-
-  static std::vector<T>& get_cache() noexcept
-  {
-    static thread_local std::vector<T> cache;
-    return cache;
-  }
 
 public:
   TempBuffer(size_t size, bool zero_init = false) :
@@ -27,7 +26,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& cache = get_cache();
+      auto& cache = detail::get_thread_temp_buffer(Tag);
       if (cache.size() < size)
       {
         cache.resize(size);
@@ -59,7 +58,7 @@ public:
     // Capped at 1,048,576 elements (~8MB for double) to prevent TLS bloat
     if (size <= 1048576)
     {
-      auto& cache = get_cache();
+      auto& cache = detail::get_thread_temp_buffer(Tag);
       if (cache.size() < size)
       {
         cache.resize(size);
