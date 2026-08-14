@@ -21,12 +21,18 @@ public:
     return _error_type;
   }
 
-  ~NeuralNetworkHelperMetrics() = default;
-
-  NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src) noexcept
+  NeuralNetworkHelperMetrics() noexcept :
+    _error(0.0),
+    _error_type(ErrorCalculation::type::none)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-    *this = src;
+  }
+
+  NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src) noexcept :
+    _error(src._error),
+    _error_type(src._error_type)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
   }
   NeuralNetworkHelperMetrics& operator=(const NeuralNetworkHelperMetrics& src) noexcept
   {
@@ -39,10 +45,13 @@ public:
     return *this;
   }
 
-  NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) noexcept
+  NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) noexcept :
+    _error(src._error),
+    _error_type(src._error_type)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
-    *this = std::move(src);
+    src._error = 0.0;
+    src._error_type = ErrorCalculation::type::none;
   }
 
   NeuralNetworkHelperMetrics& operator=(NeuralNetworkHelperMetrics&& src) noexcept

@@ -63,15 +63,20 @@ myoddweb::nn::NeuralNetwork nn(options);
 
 Python bindings are available for the `myoddweb::nn` library, allowing you to configure, train, and run models natively in Python. The bindings are powered by `pybind11`.
 
-For detailed API documentation, prerequisites, and instructions on how to build and run the module, see the [python/README.md](python/README.md).
+For detailed API documentation, prerequisites, and instructions on how to build and run the module, see [python/README.md](python/README.md).
 
-### Python Pseudo-Code Example
+Standalone Python examples are located in [python/examples/](python/examples/):
+- **XOR Classification (`python/examples/xor.py`)**: Classic non-linearly separable XOR problem using Feed-Forward layers and Sigmoid activation.
+- **Multi-Output Layer (`python/examples/multi_output.py`)**: Parallel multi-output model performing joint classification (Sigmoid) and regression (Tanh).
+- **General Example (`python/examples/example.py`)**: Comprehensive demonstration of configuration options, progress monitoring callbacks, and model serialization.
+
+### Python Quickstart Example
 
 ```python
 import neuralnetwork as nn
 
 # 1. Configure the network architecture
-topology = [2, 2, 1]
+topology = [3, 2, 1]
 
 # 2. Set options (learning rate, epochs, etc.)
 options = nn.NeuralNetworkOptions.create(topology) \
@@ -84,14 +89,15 @@ options = nn.NeuralNetworkOptions.create(topology) \
 net = nn.NeuralNetwork(options)
 
 # 4. Train the network
-inputs = [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]
+inputs = [[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]]
 outputs = [[0.0], [1.0], [1.0], [0.0]]
 net.train(inputs, outputs)
 
 # 5. Predict
-prediction = net.think([1.0, 0.0])
-print(f"Prediction: {prediction[0]}")
+prediction = net.think([1.0, 0.0, 1.0])
+print(f"Prediction: {prediction[0]:.4f}")
 ```
+
 
 ## Options
 
@@ -323,7 +329,7 @@ For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel
 *   `\include\neuralnetwork\`: The stand-alone core C++ neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
 *   `\examples\`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
 *   `\tests\`: Comprehensive unit test suite.
-*   `\python\`: Pybind11-based Visual Studio 2022 solution (`neuralnetwork_py.sln`) and Python usage examples.
+*   `\python\`: Pybind11-based Visual Studio 2022 solution (`neuralnetwork_py.sln`) and Python usage examples in `\python\examples\`.
 
 ## Building and Running
 
