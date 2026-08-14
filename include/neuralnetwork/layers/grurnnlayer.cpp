@@ -871,98 +871,240 @@ void GRURNNLayer::run_forward_pass(
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  TempBuffer<double, 23> gated_h(N_this);
-  TempBuffer<double, 24> prev_h(N_this, true);
-  TempBuffer<double, 25> current_h(N_this, true);
-  TempBuffer<double, 26> packed_bptt_states(Multiplier * N_this);
-
-  for (size_t b = start; b < end; ++b)
+  const size_t chunk_size = end - start;
+  if (chunk_size == 0)
   {
-    // Reset hidden state for each sample in the batch!
-    std::fill(prev_h.vec().begin(), prev_h.vec().begin() + N_this, 0.0);
-    std::fill(current_h.vec().begin(), current_h.vec().begin() + N_this, 0.0);
+    return;
+  }
 
-    for (size_t t = 0; t < num_time_steps; ++t)
+  // Persistent hidden state for the whole chunk: slice (b-start)*N_this holds
+  // h_{t-1} for batch item b. Zeroed once; each item keeps its own slice for
+  // the lifetime of this call, since batch items are now processed in
+  // interleaved groups per timestep rather than one item at a time.
+  TempBuffer<double, 24> prev_h(chunk_size * N_this, true);
+
+  // Small per-group scratch, reused every group iteration; never holds more
+  // than 4 items' worth of data at once. Per-item stride Multiplier*N_this
+  // mirrors the [z(N)|r(N)|h_hat_pre(N)|h_hat_activated(N)|mask(N)] layout
+  // that batch_hidden_states expects from set_pre_activation_sums.
+  TempBuffer<double, 23> group_gated_h(4 * N_this);
+  TempBuffer<double, 26> group_packed(4 * Multiplier * N_this);
+
+  static const activation sigmoid_act(activation::method::sigmoid, 1.0);
+
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    size_t b = start;
+
+    // ---- 4-wide groups: batch the recurrent GEMV across 4 items so each
+    // read of the recurrent weight matrices is reused 4x instead of being
+    // re-read from memory once per item. ----
+    for (; b + 3 < end; b += 4)
     {
-      // a. Retrieve precalculated Input-to-Gates (W * x_t + bias) and copy directly to packed_bptt_states
-      const double* pre_t = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-      std::copy(pre_t, pre_t + 3 * N_this, packed_bptt_states.data());
+      double* hp0 = &prev_h.data()[(b - start) * N_this];
+      double* hp1 = hp0 + N_this;
+      double* hp2 = hp1 + N_this;
+      double* hp3 = hp2 + N_this;
 
-      double* z_ptr = packed_bptt_states.data();
-      double* r_ptr = packed_bptt_states.data() + N_this;
-      double* h_hat_pre_ptr = packed_bptt_states.data() + 2 * N_this;
-      double* h_hat_activated_ptr = packed_bptt_states.data() + 3 * N_this;
+      double* g0 = &group_packed.data()[0 * Multiplier * N_this];
+      double* g1 = &group_packed.data()[1 * Multiplier * N_this];
+      double* g2 = &group_packed.data()[2 * Multiplier * N_this];
+      double* g3 = &group_packed.data()[3 * Multiplier * N_this];
 
-      // c. Hidden-to-Gates (U * h_{t-1}) - Tiled
-      const double* h_prev_ptr = prev_h.data();
-      simd::gemv_add_two(_z_rw_values_T.data(), _r_rw_values_T.data(), h_prev_ptr, z_ptr, r_ptr, N_this, N_this);
+      const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+      const double* pre1 = &batch_pre_act[((b + 1) * num_time_steps + t) * GateCount * N_this];
+      const double* pre2 = &batch_pre_act[((b + 2) * num_time_steps + t) * GateCount * N_this];
+      const double* pre3 = &batch_pre_act[((b + 3) * num_time_steps + t) * GateCount * N_this];
 
-      // d. Calculate Gates
-      static const activation sigmoid_act(activation::method::sigmoid, 1.0);
-      sigmoid_act.activate(z_ptr, z_ptr + 2 * N_this);
+      std::copy(pre0, pre0 + 3 * N_this, g0);
+      std::copy(pre1, pre1 + 3 * N_this, g1);
+      std::copy(pre2, pre2 + 3 * N_this, g2);
+      std::copy(pre3, pre3 + 3 * N_this, g3);
 
-      // e. Candidate Recurrent State (U_h * (r * h_{t-1})) - Tiled
-      simd::mul_vectors(r_ptr, h_prev_ptr, gated_h.data(), N_this);
-      simd::gemv_add(_rw_values_T.data(), gated_h.data(), h_hat_pre_ptr, N_this, N_this);
+      double* z0 = g0;
+      double* z1 = g1;
+      double* z2 = g2;
+      double* z3 = g3;
+      double* r0 = g0 + N_this;
+      double* r1 = g1 + N_this;
+      double* r2 = g2 + N_this;
+      double* r3 = g3 + N_this;
+      double* h_hat_pre0 = g0 + 2 * N_this;
+      double* h_hat_pre1 = g1 + 2 * N_this;
+      double* h_hat_pre2 = g2 + 2 * N_this;
+      double* h_hat_pre3 = g3 + 2 * N_this;
 
-      // f. Residuals and Candidate Activation
-      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+      // Hidden-to-Gates (U * h_{t-1})
+      simd::gemm_four_batches(hp0, hp1, hp2, hp3, _z_rw_values.data(), z0, z1, z2, z3, N_this, N_this);
+      simd::gemm_four_batches(hp0, hp1, hp2, hp3, _r_rw_values.data(), r0, r1, r2, r3, N_this, N_this);
+
+      sigmoid_act.activate(z0, z0 + 2 * N_this);
+      sigmoid_act.activate(z1, z1 + 2 * N_this);
+      sigmoid_act.activate(z2, z2 + 2 * N_this);
+      sigmoid_act.activate(z3, z3 + 2 * N_this);
+
+      double* gh0 = &group_gated_h.data()[0 * N_this];
+      double* gh1 = &group_gated_h.data()[1 * N_this];
+      double* gh2 = &group_gated_h.data()[2 * N_this];
+      double* gh3 = &group_gated_h.data()[3 * N_this];
+      simd::mul_vectors(r0, hp0, gh0, N_this);
+      simd::mul_vectors(r1, hp1, gh1, N_this);
+      simd::mul_vectors(r2, hp2, gh2, N_this);
+      simd::mul_vectors(r3, hp3, gh3, N_this);
+
+      // Candidate Recurrent State (U_h * (r * h_{t-1}))
+      simd::gemm_four_batches(gh0, gh1, gh2, gh3, _rw_values.data(), h_hat_pre0, h_hat_pre1, h_hat_pre2, h_hat_pre3, N_this, N_this);
+
+      finalize_forward_step(b,     t, N_this, num_time_steps, hp0, g0, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+      finalize_forward_step(b + 1, t, N_this, num_time_steps, hp1, g1, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+      finalize_forward_step(b + 2, t, N_this, num_time_steps, hp2, g2, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+      finalize_forward_step(b + 3, t, N_this, num_time_steps, hp3, g3, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+    }
+
+    // ---- 2-wide cleanup ----
+    for (; b + 1 < end; b += 2)
+    {
+      double* hp0 = &prev_h.data()[(b - start) * N_this];
+      double* hp1 = hp0 + N_this;
+
+      double* g0 = &group_packed.data()[0 * Multiplier * N_this];
+      double* g1 = &group_packed.data()[1 * Multiplier * N_this];
+
+      const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+      const double* pre1 = &batch_pre_act[((b + 1) * num_time_steps + t) * GateCount * N_this];
+      std::copy(pre0, pre0 + 3 * N_this, g0);
+      std::copy(pre1, pre1 + 3 * N_this, g1);
+
+      double* z0 = g0;
+      double* z1 = g1;
+      double* r0 = g0 + N_this;
+      double* r1 = g1 + N_this;
+      double* h_hat_pre0 = g0 + 2 * N_this;
+      double* h_hat_pre1 = g1 + 2 * N_this;
+
+      simd::gemm_two_batches(hp0, hp1, _z_rw_values.data(), z0, z1, N_this, N_this);
+      simd::gemm_two_batches(hp0, hp1, _r_rw_values.data(), r0, r1, N_this, N_this);
+
+      sigmoid_act.activate(z0, z0 + 2 * N_this);
+      sigmoid_act.activate(z1, z1 + 2 * N_this);
+
+      double* gh0 = &group_gated_h.data()[0 * N_this];
+      double* gh1 = &group_gated_h.data()[1 * N_this];
+      simd::mul_vectors(r0, hp0, gh0, N_this);
+      simd::mul_vectors(r1, hp1, gh1, N_this);
+
+      simd::gemm_two_batches(gh0, gh1, _rw_values.data(), h_hat_pre0, h_hat_pre1, N_this, N_this);
+
+      finalize_forward_step(b,     t, N_this, num_time_steps, hp0, g0, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+      finalize_forward_step(b + 1, t, N_this, num_time_steps, hp1, g1, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+    }
+
+    // ---- 1-wide cleanup ----
+    for (; b < end; ++b)
+    {
+      double* hp0 = &prev_h.data()[(b - start) * N_this];
+      double* g0 = &group_packed.data()[0];
+
+      const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
+      std::copy(pre0, pre0 + 3 * N_this, g0);
+
+      double* z0 = g0;
+      double* r0 = g0 + N_this;
+      double* h_hat_pre0 = g0 + 2 * N_this;
+
+      simd::gemm_one_batch(hp0, _z_rw_values.data(), z0, N_this, N_this);
+      simd::gemm_one_batch(hp0, _r_rw_values.data(), r0, N_this, N_this);
+
+      sigmoid_act.activate(z0, z0 + 2 * N_this);
+
+      double* gh0 = &group_gated_h.data()[0];
+      simd::mul_vectors(r0, hp0, gh0, N_this);
+
+      simd::gemm_one_batch(gh0, _rw_values.data(), h_hat_pre0, N_this, N_this);
+
+      finalize_forward_step(b, t, N_this, num_time_steps, hp0, g0, batch_residual_output_values, batch_output_sequences, batch_hidden_states, is_training);
+    }
+  }
+}
+
+void GRURNNLayer::finalize_forward_step(
+  size_t b,
+  size_t t,
+  size_t N_this,
+  size_t num_time_steps,
+  double* h_prev_slice,
+  double* item_packed,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<double>& batch_output_sequences,
+  std::vector<HiddenStates>& batch_hidden_states,
+  bool is_training) const
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  double* z_ptr = item_packed;
+  double* h_hat_pre_ptr = item_packed + 2 * N_this;
+  double* h_hat_activated_ptr = item_packed + 3 * N_this;
+
+  // Residuals and Candidate Activation
+  if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+  {
+    simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre_ptr, N_this);
+  }
+
+  std::copy(h_hat_pre_ptr, h_hat_pre_ptr + N_this, h_hat_activated_ptr);
+  get_activation().activate(h_hat_activated_ptr, h_hat_activated_ptr + N_this, is_training);
+
+  if (is_training && get_dropout() > 0.0)
+  {
+    const auto& neurons = get_neurons();
+    double* mask_ptr = item_packed + 4 * N_this;
+    for (size_t j = 0; j < N_this; ++j)
+    {
+      double h_hat_activated_val = h_hat_activated_ptr[j];
+      double mask = 1.0;
+      double h_hat_final = h_hat_activated_val;
+      const auto& neuron = neurons[j];
+      if (neuron.is_dropout())
       {
-        simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre_ptr, N_this);
-      }
-
-      std::copy(h_hat_pre_ptr, h_hat_pre_ptr + N_this, h_hat_activated_ptr);
-      get_activation().activate(h_hat_activated_ptr, h_hat_activated_ptr + N_this, is_training);
-
-      if (is_training && get_dropout() > 0.0)
-      {
-        const auto& neurons = get_neurons();
-        double* mask_ptr = packed_bptt_states.data() + 4 * N_this;
-        for (size_t j = 0; j < N_this; ++j)
+        if (neuron.must_randomly_drop())
         {
-          double h_hat_activated_val = h_hat_activated_ptr[j];
-          double mask = 1.0;
-          double h_hat_final = h_hat_activated_val;
-          const auto& neuron = neurons[j];
-          if (neuron.is_dropout())
-          {
-            if (neuron.must_randomly_drop())
-            {
-              mask = 0.0;
-              h_hat_final = 0.0;
-            }
-            else
-            {
-              mask = 1.0 / (1.0 - neuron.get_dropout_rate());
-              h_hat_final *= mask;
-            }
-          }
-          mask_ptr[j] = mask;
-          current_h.data()[j] = (1.0 - z_ptr[j]) * prev_h.data()[j] + z_ptr[j] * h_hat_final;
-          batch_output_sequences.data()[(b * num_time_steps + t) * N_this + j] = current_h.data()[j];
+          mask = 0.0;
+          h_hat_final = 0.0;
+        }
+        else
+        {
+          mask = 1.0 / (1.0 - neuron.get_dropout_rate());
+          h_hat_final *= mask;
         }
       }
-      else
-      {
-        std::fill_n(packed_bptt_states.data() + 4 * N_this, N_this, 1.0);
-
-        simd::gru_output_step(
-          packed_bptt_states.data(),
-          prev_h.data(),
-          h_hat_activated_ptr,
-          current_h.data(),
-          &batch_output_sequences.data()[(b * num_time_steps + t) * N_this],
-          N_this
-        );
-      }
-
-      if (!batch_hidden_states.empty())
-      {
-        batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(packed_bptt_states.data(), packed_bptt_states.size());
-        batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(current_h.data(), current_h.size());
-      }
-      std::swap(prev_h.vec(), current_h.vec());
+      mask_ptr[j] = mask;
+      // In-place update: h_prev_slice[j] is read then written for the same
+      // index only, so this is safe (see gru_output_step below for the
+      // vectorised equivalent, verified against the same hazard).
+      h_prev_slice[j] = (1.0 - z_ptr[j]) * h_prev_slice[j] + z_ptr[j] * h_hat_final;
+      batch_output_sequences.data()[(b * num_time_steps + t) * N_this + j] = h_prev_slice[j];
     }
+  }
+  else
+  {
+    std::fill_n(item_packed + 4 * N_this, N_this, 1.0);
+
+    // current_h aliases h_prev_slice (in place): gru_output_step loads
+    // prev_h into registers before storing current_h for the same lane
+    // range, so aliasing the two pointers here is safe.
+    simd::gru_output_step(
+      item_packed,
+      h_prev_slice,
+      h_hat_activated_ptr,
+      h_prev_slice,
+      &batch_output_sequences.data()[(b * num_time_steps + t) * N_this],
+      N_this
+    );
+  }
+
+  if (!batch_hidden_states.empty())
+  {
+    batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(item_packed, Multiplier * N_this);
+    batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(h_prev_slice, N_this);
   }
 }
 
