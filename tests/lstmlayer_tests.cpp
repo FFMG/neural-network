@@ -729,6 +729,193 @@ TEST_F(LSTMLayerTest, TempBufferReuseAndMultiIterationConsistency) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Batched recurrent forward-pass regression tests.
+//
+// calculate_forward_feed's recurrent pass batches the recurrent
+// (hidden-to-hidden) GEMV across up to 4 batch items per timestep instead of
+// processing one batch item at a time. These tests verify that batching a
+// batch item together with other, different batch items never changes that
+// item's own result (no cross-talk between batch items sharing a group), and
+// that every 4-wide/2-wide/1-wide cleanup path is exercised at least once.
+// ---------------------------------------------------------------------------
+namespace {
+
+  std::vector<double> lstm_make_deterministic_weights(size_t rows, size_t cols, double scale, double offset)
+  {
+    std::vector<double> w(rows * cols);
+    for (size_t i = 0; i < rows; ++i)
+    {
+      for (size_t j = 0; j < cols; ++j)
+      {
+        w[i * cols + j] = offset + scale * std::sin(static_cast<double>(i * 7 + j * 3 + 1));
+      }
+    }
+    return w;
+  }
+
+  LSTMLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs)
+  {
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    layer.set_f_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.15, 0.02));
+    layer.set_f_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, 0.12, -0.01));
+    layer.set_f_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.05, 0.0));
+    layer.set_i_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, -0.13, 0.03));
+    layer.set_i_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, 0.10, 0.02));
+    layer.set_i_b_values(lstm_make_deterministic_weights(1, num_outputs, -0.04, 0.01));
+    layer.set_o_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.11, 0.015));
+    layer.set_o_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, -0.08, 0.02));
+    layer.set_o_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.03, -0.02));
+    layer.set_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.18, -0.02));
+    layer.set_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, -0.09, 0.04));
+    layer.set_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.06, -0.01));
+    return layer;
+  }
+
+  std::vector<double> lstm_make_cross_talk_sequence(double base, size_t num_time_steps, size_t num_inputs)
+  {
+    std::vector<double> seq(num_time_steps * num_inputs);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        seq[t * num_inputs + i] = base + 0.13 * static_cast<double>(t) - 0.07 * static_cast<double>(i);
+      }
+    }
+    return seq;
+  }
+
+  // Runs one distinctive input sequence ("X") both alone (batch_size=1) and
+  // batched at position x_index among batch_size-1 other, different sequences,
+  // then asserts X's stored pre-activation sums, cell state values, hidden
+  // state values (every timestep) and final rnn_outputs are unaffected by
+  // which other batch items happened to share its 4-wide/2-wide/1-wide group.
+  void assert_no_lstm_batch_cross_talk(unsigned num_inputs, unsigned num_outputs, size_t batch_size, size_t num_time_steps, size_t x_index, bool is_training)
+  {
+    ASSERT_LT(x_index, batch_size);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    const auto x_seq = lstm_make_cross_talk_sequence(0.37, num_time_steps, num_inputs);
+
+    LSTMLayer layer_alone = make_cross_talk_test_layer(num_inputs, num_outputs);
+    MockLayer prev_layer_alone(0, num_inputs);
+    auto batch_go_alone = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs_alone = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+    batch_go_alone[0].set_rnn_outputs(0, x_seq);
+    layer_alone.calculate_forward_feed(batch_go_alone, prev_layer_alone, {}, batch_hs_alone, 1, is_training);
+
+    LSTMLayer layer_batched = make_cross_talk_test_layer(num_inputs, num_outputs);
+    MockLayer prev_layer_batched(0, num_inputs);
+    auto batch_go_batched = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_batched = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      if (b == x_index)
+      {
+        batch_go_batched[b].set_rnn_outputs(0, x_seq);
+      }
+      else
+      {
+        const double base = -0.6 + 0.23 * static_cast<double>(b);
+        batch_go_batched[b].set_rnn_outputs(0, lstm_make_cross_talk_sequence(base, num_time_steps, num_inputs));
+      }
+    }
+    layer_batched.calculate_forward_feed(batch_go_batched, prev_layer_batched, {}, batch_hs_batched, batch_size, is_training);
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const auto pre_alone = batch_hs_alone[0].at(1, t).get_pre_activation_sums();
+      const auto pre_batched = batch_hs_batched[x_index].at(1, t).get_pre_activation_sums();
+      ASSERT_EQ(pre_alone.size(), pre_batched.size());
+      for (size_t i = 0; i < pre_alone.size(); ++i)
+      {
+        EXPECT_NEAR(pre_alone[i], pre_batched[i], 1e-9) << "t=" << t << " i=" << i;
+      }
+
+      const auto cell_alone = batch_hs_alone[0].at(1, t).get_cell_state_values();
+      const auto cell_batched = batch_hs_batched[x_index].at(1, t).get_cell_state_values();
+      ASSERT_EQ(cell_alone.size(), cell_batched.size());
+      for (size_t i = 0; i < cell_alone.size(); ++i)
+      {
+        EXPECT_NEAR(cell_alone[i], cell_batched[i], 1e-9) << "t=" << t << " i=" << i;
+      }
+
+      const auto hidden_alone = batch_hs_alone[0].at(1, t).get_hidden_state_values();
+      const auto hidden_batched = batch_hs_batched[x_index].at(1, t).get_hidden_state_values();
+      ASSERT_EQ(hidden_alone.size(), hidden_batched.size());
+      for (size_t i = 0; i < hidden_alone.size(); ++i)
+      {
+        EXPECT_NEAR(hidden_alone[i], hidden_batched[i], 1e-9) << "t=" << t << " i=" << i;
+      }
+    }
+
+    const auto rnn_out_alone = batch_go_alone[0].get_rnn_outputs(1);
+    const auto rnn_out_batched = batch_go_batched[x_index].get_rnn_outputs(1);
+    ASSERT_EQ(rnn_out_alone.size(), rnn_out_batched.size());
+    for (size_t i = 0; i < rnn_out_alone.size(); ++i)
+    {
+      EXPECT_NEAR(rnn_out_alone[i], rnn_out_batched[i], 1e-9) << "i=" << i;
+    }
+  }
+
+} // namespace
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkFourWideGroupInference)
+{
+  // batch_size=7 -> groups of 4, 2, 1. X at index 3 is the last slot of the 4-wide group.
+  assert_no_lstm_batch_cross_talk(2, 3, 7, 3, 3, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkOneWideCleanupInference)
+{
+  // batch_size=7 -> groups of 4, 2, 1. X at index 6 is the 1-wide cleanup item.
+  assert_no_lstm_batch_cross_talk(2, 3, 7, 3, 6, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkFourWideGroupTraining)
+{
+  // Same as above but is_training=true (dropout=0.0, so still deterministic):
+  // exercises the activation()'s training-mode code path without RNG noise.
+  assert_no_lstm_batch_cross_talk(2, 3, 7, 3, 3, true);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkOneWideCleanupTraining)
+{
+  assert_no_lstm_batch_cross_talk(2, 3, 7, 3, 6, true);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkExactFourMultiple)
+{
+  // batch_size=4: exactly one 4-wide group, no cleanup at all.
+  assert_no_lstm_batch_cross_talk(2, 3, 4, 2, 0, false);
+  assert_no_lstm_batch_cross_talk(2, 3, 4, 2, 3, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkOneWideCleanupRemainder)
+{
+  // batch_size=5 -> 4 + 1: X in the 1-wide cleanup.
+  assert_no_lstm_batch_cross_talk(2, 3, 5, 2, 4, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkTwoWideCleanupRemainder)
+{
+  // batch_size=6 -> 4 + 2: X in the 2-wide cleanup.
+  assert_no_lstm_batch_cross_talk(2, 3, 6, 2, 5, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkTwoFullFourWideGroups)
+{
+  // batch_size=8 -> 4 + 4: X at the start of the second 4-wide group.
+  assert_no_lstm_batch_cross_talk(2, 3, 8, 2, 4, false);
+}
+
+TEST_F(LSTMLayerTest, NoBatchCrossTalkLargerHiddenSize)
+{
+  // N_this=10 crosses gemm_four_batches' internal 8-wide/4-wide/scalar-tail
+  // AVX2 boundaries; batch_size=9 -> 4 + 4 + 1.
+  assert_no_lstm_batch_cross_talk(4, 10, 9, 3, 4, false);
+  assert_no_lstm_batch_cross_talk(4, 10, 9, 3, 8, false);
+}
+
 
 
 

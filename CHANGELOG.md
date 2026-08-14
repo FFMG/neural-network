@@ -2,6 +2,15 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.18] - 2026-08-14
+
+### Changed
+- Optimized `LSTMLayer::calculate_forward_feed`'s recurrent pass in `include/neuralnetwork/layers/lstmlayer.cpp`: batched the recurrent (hidden-to-hidden) GEMV operations for all four gates (forget, input, output, candidate) across groups of up to 4 batch items per timestep using `simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch` (against the raw, non-transposed recurrent weight matrices) instead of evaluating batch items individually via `simd::gemv_add_four` against the transposed weight caches.
+- Refactored post-recurrent step logic into a new private `LSTMLayer::finalize_forward_step` in `include/neuralnetwork/layers/lstmlayer.cpp`, eliminating redundant scratch-buffer copies by activating the candidate gate and cell state directly into their final packed-state slots.
+
+### Added
+- Added 9 unit tests in `tests/lstmlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items, mirroring the GRURNNLayer regression suite added in `[1.1.17]`.
+
 ## [1.1.17] - 2026-08-14
 
 ### Changed
