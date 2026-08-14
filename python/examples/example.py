@@ -19,19 +19,19 @@ except ImportError as e:
 def run_general_example():
     nn.Logger.info("--- Running General Python Example ---")
     
-    # 1. Configure the network topology and options (2 inputs, 4 hidden, 1 output)
-    topology = [2, 4, 1]
+    # 1. Configure the network topology and options (2 inputs, 8 hidden, 1 output)
+    topology = [2, 8, 1]
     
     # Expose hidden layer details
     hidden_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     hidden_layers = [
         nn.LayerDetails(
             nn.LayerArchitecture.FF, 
-            4, 
+            8, 
             hidden_activation, 
             0.0, 
             0.0, 
-            nn.OptimiserType.NadamW, 
+            nn.OptimiserType.Adam, 
             0.9
         )
     ]
@@ -44,7 +44,7 @@ def run_general_example():
         nn.ErrorCalculationType.MSE,
         nn.EvaluationConfig(),
         0.0, 
-        nn.OptimiserType.NadamW, 
+        nn.OptimiserType.Adam, 
         0.9
     )
     
@@ -53,8 +53,11 @@ def run_general_example():
         .with_batch_size(1) \
         .with_hidden_layers(hidden_layers) \
         .with_output_layer_details(out_layer) \
-        .with_learning_rate(0.01) \
-        .with_number_of_epoch(2000) \
+        .with_learning_rate(0.1) \
+        .with_number_of_epoch(3000) \
+        .with_enable_bptt(False) \
+        .with_shuffle_training_data(True) \
+        .with_data_is_unique(True) \
         .with_log_level(nn.LogLevel.Debug) \
         .build()
         
@@ -106,6 +109,9 @@ def run_general_example():
     test_input = [1.0, 0.0]
     loaded_output = loaded_net.think(test_input)
     nn.Logger.info(f"Loaded model prediction on {test_input}: {loaded_output[0]:.4f}")
+    
+    if os.path.exists(model_path):
+        os.remove(model_path)
 
 if __name__ == '__main__':
     run_general_example()

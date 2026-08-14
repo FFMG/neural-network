@@ -11,6 +11,12 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added step to run all Python examples (`xor.py`, `multi_output.py`, `example.py`) in `.github/workflows/python.yml` CI workflow.
 - Added 9 unit tests in `tests/grurnnlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items.
 
+### Fixed
+- Fixed dangling pointers in `NeuralNetworkHelper`: converted `_training_inputs` and `_training_outputs` from raw pointers to `std::shared_ptr<const std::vector<std::vector<double>>>`, preventing undefined behaviour and access violations during post-training forecast metric calculations and model serialization (`NeuralNetworkSerializer::save`) when training data was allocated temporarily on the caller's stack (e.g. from Python bindings).
+- Fixed uninitialised memory access in copy and move constructors of `NeuralNetworkHelper`, `NeuralNetworkHelperMetrics`, `NeuralNetworkOptions`, and `NeuralNetwork` by replacing `*this = src;` assignments with proper member initialiser lists.
+- Fixed Python pybind11 bindings for `NeuralNetworkHelperMetrics` by registering default and value constructors (`py::init<>()` and `py::init<double, ErrorCalculation::type>()`).
+- Fixed convergence in `python/examples/xor.py` and `python/examples/example.py` by configuring topology `[2, 8, 1]`, `learning_rate = 0.1`, `number_of_epoch = 3000`, `enable_bptt = False`, `shuffle_training_data = True`, `data_is_unique = True`, and `Adam` optimiser for reliable 100% convergence.
+
 ### Changed
 - Moved `python/example.py` to `python/examples/example.py` and updated import search path resolution for compiled `.pyd` module.
 - Updated `python/README.md` and root `README.md` with new `python/examples/` layout, write-ups for XOR and multi-output examples, and updated run commands.
