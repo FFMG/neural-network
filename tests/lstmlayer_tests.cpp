@@ -83,14 +83,14 @@ TEST_F(LSTMLayerTest, LayerNormForwardNormalizesCellState) {
 }
 
 TEST_F(LSTMLayerTest, LayerNormDisabledMatchesUnnormalizedForwardFeed) {
-  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false);
 
   layer.set_f_w_values({ 0.1, -0.3 }); layer.set_f_rw_values({ 0.0, 0.0, 0.0, 0.0 });
   layer.set_i_w_values({ 0.5, 0.2 });  layer.set_i_rw_values({ 0.0, 0.0, 0.0, 0.0 });
   layer.set_o_w_values({ 0.2, 0.4 });  layer.set_o_rw_values({ 0.0, 0.0, 0.0, 0.0 });
   layer.set_w_values({ 0.6, -0.4 });   layer.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
 
-  EXPECT_FALSE(layer.get_use_layer_norm());
+  EXPECT_FALSE(layer.get_use_layer_normalisation());
 
   MockLayer prev_layer(0, 1);
   std::vector<unsigned> topology = { 1, 2 };
@@ -895,9 +895,9 @@ namespace {
     return w;
   }
 
-  LSTMLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs, bool use_layer_norm = false)
+  LSTMLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs, bool use_layer_normalisation = false)
   {
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_norm);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_normalisation);
     layer.set_f_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.15, 0.02));
     layer.set_f_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, 0.12, -0.01));
     layer.set_f_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.05, 0.0));
@@ -910,7 +910,7 @@ namespace {
     layer.set_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.18, -0.02));
     layer.set_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, -0.09, 0.04));
     layer.set_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.06, -0.01));
-    if (use_layer_norm)
+    if (use_layer_normalisation)
     {
       layer.set_ln_c_gain_values(lstm_make_deterministic_weights(1, num_outputs, 1.2, 0.05));
       layer.set_ln_c_bias_values(lstm_make_deterministic_weights(1, num_outputs, -0.08, 0.02));
@@ -936,21 +936,21 @@ namespace {
   // then asserts X's stored pre-activation sums, cell state values, hidden
   // state values (every timestep) and final rnn_outputs are unaffected by
   // which other batch items happened to share its 4-wide/2-wide/1-wide group.
-  void assert_no_lstm_batch_cross_talk(unsigned num_inputs, unsigned num_outputs, size_t batch_size, size_t num_time_steps, size_t x_index, bool is_training, bool use_layer_norm = false)
+  void assert_no_lstm_batch_cross_talk(unsigned num_inputs, unsigned num_outputs, size_t batch_size, size_t num_time_steps, size_t x_index, bool is_training, bool use_layer_normalisation = false)
   {
     ASSERT_LT(x_index, batch_size);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     const auto x_seq = lstm_make_cross_talk_sequence(0.37, num_time_steps, num_inputs);
-    const unsigned multiplier = use_layer_norm ? LSTMLayer::LayerNormMultiplier : LSTMLayer::Multiplier;
+    const unsigned multiplier = use_layer_normalisation ? LSTMLayer::LayerNormMultiplier : LSTMLayer::Multiplier;
 
-    LSTMLayer layer_alone = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_norm);
+    LSTMLayer layer_alone = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_normalisation);
     MockLayer prev_layer_alone(0, num_inputs);
     auto batch_go_alone = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs_alone = create_batch_hidden_states(topology, 1, num_time_steps, multiplier);
     batch_go_alone[0].set_rnn_outputs(0, x_seq);
     layer_alone.calculate_forward_feed(batch_go_alone, prev_layer_alone, {}, batch_hs_alone, 1, is_training);
 
-    LSTMLayer layer_batched = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_norm);
+    LSTMLayer layer_batched = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_normalisation);
     MockLayer prev_layer_batched(0, num_inputs);
     auto batch_go_batched = create_batch_gradients_and_outputs(topology, batch_size);
     auto batch_hs_batched = create_batch_hidden_states(topology, batch_size, num_time_steps, multiplier);
@@ -1066,7 +1066,7 @@ TEST_F(LSTMLayerTest, NoBatchCrossTalkLargerHiddenSize)
 TEST_F(LSTMLayerTest, NoBatchCrossTalkLayerNormFourWideGroup)
 {
   // Same 4-wide-group layout as NoBatchCrossTalkFourWideGroupInference, but
-  // with use_layer_norm enabled: verifies each batch item's LayerNorm
+  // with use_layer_normalisation enabled: verifies each batch item's LayerNorm
   // statistics (mean/inv_std, cached per-item) for the cell state are
   // computed independently and are not contaminated by its 4-wide SIMD
   // group neighbors.

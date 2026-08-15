@@ -23,7 +23,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm) : LSTMLayer(
+    bool use_layer_normalisation) : LSTMLayer(
     layer_index,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
@@ -37,7 +37,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     number_of_threads,
     has_bias,
     momentum,
-    use_layer_norm
+    use_layer_normalisation
   )
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
@@ -57,7 +57,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm) : Layer(
+    bool use_layer_normalisation) : Layer(
     layer_index,
     layer_role,
     activation_method,
@@ -72,7 +72,7 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     number_of_threads,
     momentum
   ),
-  _use_layer_norm(use_layer_norm)
+  _use_layer_normalisation(use_layer_normalisation)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
@@ -184,7 +184,7 @@ LSTMLayer::LSTMLayer(
     const std::vector<double>& ln_c_bias_m2,
     const std::vector<long long>& ln_c_bias_timesteps,
     const std::vector<double>& ln_c_bias_decays,
-    bool use_layer_norm,
+    bool use_layer_normalisation,
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
@@ -224,7 +224,7 @@ _i_b_values(i_b_values), _i_b_grads(i_b_grads), _i_b_velocities(i_b_velocities),
 _o_w_values(o_w_values), _o_w_grads(o_w_grads), _o_w_velocities(o_w_velocities), _o_w_m1(o_w_m1), _o_w_m2(o_w_m2), _o_w_decays(o_w_decays), _o_w_timesteps(o_w_timesteps),
 _o_rw_values(o_rw_values), _o_rw_grads(o_rw_grads), _o_rw_velocities(o_rw_velocities), _o_rw_m1(o_rw_m1), _o_rw_m2(o_rw_m2), _o_rw_decays(o_rw_decays), _o_rw_timesteps(o_rw_timesteps),
 _o_b_values(o_b_values), _o_b_grads(o_b_grads), _o_b_velocities(o_b_velocities), _o_b_m1(o_b_m1), _o_b_m2(o_b_m2), _o_b_decays(o_b_decays), _o_b_timesteps(o_b_timesteps),
-_use_layer_norm(use_layer_norm),
+_use_layer_normalisation(use_layer_normalisation),
 _ln_c_gain_values(ln_c_gain_values), _ln_c_gain_grads(ln_c_gain_grads), _ln_c_gain_velocities(ln_c_gain_velocities), _ln_c_gain_m1(ln_c_gain_m1), _ln_c_gain_m2(ln_c_gain_m2), _ln_c_gain_timesteps(ln_c_gain_timesteps), _ln_c_gain_decays(ln_c_gain_decays),
 _ln_c_bias_values(ln_c_bias_values), _ln_c_bias_grads(ln_c_bias_grads), _ln_c_bias_velocities(ln_c_bias_velocities), _ln_c_bias_m1(ln_c_bias_m1), _ln_c_bias_m2(ln_c_bias_m2), _ln_c_bias_timesteps(ln_c_bias_timesteps), _ln_c_bias_decays(ln_c_bias_decays)
 {
@@ -245,7 +245,7 @@ LSTMLayer::LSTMLayer(const LSTMLayer& src) noexcept :
   _o_w_values(src._o_w_values), _o_w_grads(src._o_w_grads), _o_w_velocities(src._o_w_velocities), _o_w_m1(src._o_w_m1), _o_w_m2(src._o_w_m2), _o_w_decays(src._o_w_decays), _o_w_timesteps(src._o_w_timesteps),
   _o_rw_values(src._o_rw_values), _o_rw_grads(src._o_rw_grads), _o_rw_velocities(src._o_rw_velocities), _o_rw_m1(src._o_rw_m1), _o_rw_m2(src._o_rw_m2), _o_rw_decays(src._o_rw_decays), _o_rw_timesteps(src._o_rw_timesteps),
   _o_b_values(src._o_b_values), _o_b_grads(src._o_b_grads), _o_b_velocities(src._o_b_velocities), _o_b_m1(src._o_b_m1), _o_b_m2(src._o_b_m2), _o_b_decays(src._o_b_decays), _o_b_timesteps(src._o_b_timesteps),
-  _use_layer_norm(src._use_layer_norm),
+  _use_layer_normalisation(src._use_layer_normalisation),
   _ln_c_gain_values(src._ln_c_gain_values), _ln_c_gain_grads(src._ln_c_gain_grads), _ln_c_gain_velocities(src._ln_c_gain_velocities), _ln_c_gain_m1(src._ln_c_gain_m1), _ln_c_gain_m2(src._ln_c_gain_m2), _ln_c_gain_timesteps(src._ln_c_gain_timesteps), _ln_c_gain_decays(src._ln_c_gain_decays),
   _ln_c_bias_values(src._ln_c_bias_values), _ln_c_bias_grads(src._ln_c_bias_grads), _ln_c_bias_velocities(src._ln_c_bias_velocities), _ln_c_bias_m1(src._ln_c_bias_m1), _ln_c_bias_m2(src._ln_c_bias_m2), _ln_c_bias_timesteps(src._ln_c_bias_timesteps), _ln_c_bias_decays(src._ln_c_bias_decays)
 {
@@ -266,7 +266,7 @@ LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :
   _o_w_values(std::move(src._o_w_values)), _o_w_grads(std::move(src._o_w_grads)), _o_w_velocities(std::move(src._o_w_velocities)), _o_w_m1(std::move(src._o_w_m1)), _o_w_m2(std::move(src._o_w_m2)), _o_w_decays(std::move(src._o_w_decays)), _o_w_timesteps(std::move(src._o_w_timesteps)),
   _o_rw_values(std::move(src._o_rw_values)), _o_rw_grads(std::move(src._o_rw_grads)), _o_rw_velocities(std::move(src._o_rw_velocities)), _o_rw_m1(std::move(src._o_rw_m1)), _o_rw_m2(std::move(src._o_rw_m2)), _o_rw_decays(std::move(src._o_rw_decays)), _o_rw_timesteps(std::move(src._o_rw_timesteps)),
   _o_b_values(std::move(src._o_b_values)), _o_b_grads(std::move(src._o_b_grads)), _o_b_velocities(std::move(src._o_b_velocities)), _o_b_m1(std::move(src._o_b_m1)), _o_b_m2(std::move(src._o_b_m2)), _o_b_decays(std::move(src._o_b_decays)), _o_b_timesteps(std::move(src._o_b_timesteps)),
-  _use_layer_norm(src._use_layer_norm),
+  _use_layer_normalisation(src._use_layer_normalisation),
   _ln_c_gain_values(std::move(src._ln_c_gain_values)), _ln_c_gain_grads(std::move(src._ln_c_gain_grads)), _ln_c_gain_velocities(std::move(src._ln_c_gain_velocities)), _ln_c_gain_m1(std::move(src._ln_c_gain_m1)), _ln_c_gain_m2(std::move(src._ln_c_gain_m2)), _ln_c_gain_timesteps(std::move(src._ln_c_gain_timesteps)), _ln_c_gain_decays(std::move(src._ln_c_gain_decays)),
   _ln_c_bias_values(std::move(src._ln_c_bias_values)), _ln_c_bias_grads(std::move(src._ln_c_bias_grads)), _ln_c_bias_velocities(std::move(src._ln_c_bias_velocities)), _ln_c_bias_m1(std::move(src._ln_c_bias_m1)), _ln_c_bias_m2(std::move(src._ln_c_bias_m2)), _ln_c_bias_timesteps(std::move(src._ln_c_bias_timesteps)), _ln_c_bias_decays(std::move(src._ln_c_bias_decays)),
   _rw_values_T(std::move(src._rw_values_T)),
@@ -301,7 +301,7 @@ LSTMLayer& LSTMLayer::operator=(const LSTMLayer& src) noexcept
     _o_rw_values = src._o_rw_values; _o_rw_grads = src._o_rw_grads; _o_rw_velocities = src._o_rw_velocities; _o_rw_m1 = src._o_rw_m1; _o_rw_m2 = src._o_rw_m2; _o_rw_decays = src._o_rw_decays; _o_rw_timesteps = src._o_rw_timesteps;
     _o_b_values = src._o_b_values; _o_b_grads = src._o_b_grads; _o_b_velocities = src._o_b_velocities; _o_b_m1 = src._o_b_m1; _o_b_m2 = src._o_b_m2; _o_b_decays = src._o_b_decays; _o_b_timesteps = src._o_b_timesteps;
 
-    _use_layer_norm = src._use_layer_norm;
+    _use_layer_normalisation = src._use_layer_normalisation;
     _ln_c_gain_values = src._ln_c_gain_values; _ln_c_gain_grads = src._ln_c_gain_grads; _ln_c_gain_velocities = src._ln_c_gain_velocities; _ln_c_gain_m1 = src._ln_c_gain_m1; _ln_c_gain_m2 = src._ln_c_gain_m2; _ln_c_gain_timesteps = src._ln_c_gain_timesteps; _ln_c_gain_decays = src._ln_c_gain_decays;
     _ln_c_bias_values = src._ln_c_bias_values; _ln_c_bias_grads = src._ln_c_bias_grads; _ln_c_bias_velocities = src._ln_c_bias_velocities; _ln_c_bias_m1 = src._ln_c_bias_m1; _ln_c_bias_m2 = src._ln_c_bias_m2; _ln_c_bias_timesteps = src._ln_c_bias_timesteps; _ln_c_bias_decays = src._ln_c_bias_decays;
 
@@ -330,7 +330,7 @@ LSTMLayer& LSTMLayer::operator=(LSTMLayer&& src) noexcept
     _o_rw_values = std::move(src._o_rw_values); _o_rw_grads = std::move(src._o_rw_grads); _o_rw_velocities = std::move(src._o_rw_velocities); _o_rw_m1 = std::move(src._o_rw_m1); _o_rw_m2 = std::move(src._o_rw_m2); _o_rw_decays = std::move(src._o_rw_decays); _o_rw_timesteps = std::move(src._o_rw_timesteps);
     _o_b_values = std::move(src._o_b_values); _o_b_grads = std::move(src._o_b_grads); _o_b_velocities = std::move(src._o_b_velocities); _o_b_m1 = std::move(src._o_b_m1); _o_b_m2 = std::move(src._o_b_m2); _o_b_decays = std::move(src._o_b_decays); _o_b_timesteps = std::move(src._o_b_timesteps);
 
-    _use_layer_norm = src._use_layer_norm;
+    _use_layer_normalisation = src._use_layer_normalisation;
     _ln_c_gain_values = std::move(src._ln_c_gain_values); _ln_c_gain_grads = std::move(src._ln_c_gain_grads); _ln_c_gain_velocities = std::move(src._ln_c_gain_velocities); _ln_c_gain_m1 = std::move(src._ln_c_gain_m1); _ln_c_gain_m2 = std::move(src._ln_c_gain_m2); _ln_c_gain_timesteps = std::move(src._ln_c_gain_timesteps); _ln_c_gain_decays = std::move(src._ln_c_gain_decays);
     _ln_c_bias_values = std::move(src._ln_c_bias_values); _ln_c_bias_grads = std::move(src._ln_c_bias_grads); _ln_c_bias_velocities = std::move(src._ln_c_bias_velocities); _ln_c_bias_m1 = std::move(src._ln_c_bias_m1); _ln_c_bias_m2 = std::move(src._ln_c_bias_m2); _ln_c_bias_timesteps = std::move(src._ln_c_bias_timesteps); _ln_c_bias_decays = std::move(src._ln_c_bias_decays);
 
@@ -387,7 +387,7 @@ void LSTMLayer::initialize_recurrent_weights(double weight_decay)
 void LSTMLayer::initialize_layer_norm()
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  if (!_use_layer_norm)
+  if (!_use_layer_normalisation)
   {
     return;
   }
@@ -642,7 +642,7 @@ void LSTMLayer::calculate_forward_feed(
     // Small per-group scratch, reused every group iteration; never holds more
     // than 4 items' worth of data at once. Per-item stride is this instance's
     // get_pre_activation_multiplier()*N_this (Multiplier, or LayerNormMultiplier
-    // when use_layer_norm is enabled) and mirrors the
+    // when use_layer_normalisation is enabled) and mirrors the
     // [f|i|o|g_pre|mask|g_activated|c_activated(|inv_std)] layout that
     // batch_hidden_states expects from set_pre_activation_sums.
     const size_t multiplier = get_pre_activation_multiplier();
@@ -840,7 +840,7 @@ void LSTMLayer::finalize_forward_step(
   // a_hat is cheaply recoverable there from the cached (normalized)
   // cell_state_values via (y - bias) / gain, so no other new storage is
   // required.
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     double inv_std = 0.0;
     simd::layer_norm_forward(c_prev_slice, _ln_c_gain_values.data(), _ln_c_bias_values.data(), c_prev_slice, N_this, LayerNormEpsilon, inv_std);
@@ -956,7 +956,7 @@ void LSTMLayer::calculate_hidden_gradients(
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 4) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     std::fill(_ln_c_gain_grads.begin(), _ln_c_gain_grads.end(), 0.0);
     std::fill(_ln_c_bias_grads.begin(), _ln_c_bias_grads.end(), 0.0);
@@ -991,7 +991,7 @@ void LSTMLayer::calculate_hidden_gradients(
   // Merge each dispatched chunk's share of the LayerNorm gain/bias
   // gradients (accumulated per-workspace in calculate_bptt_batch_chunk,
   // since that method is const and runs concurrently across batch chunks).
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     for (unsigned int t = 0; t < used_workspaces; ++t)
     {
@@ -1311,7 +1311,7 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
   norm(_o_w_grads);
   norm(_o_b_grads);
   norm(_o_rw_grads);
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     // Already fully accumulated by calculate_hidden_gradients() (Phase A);
     // this call only needs to apply the same batch-average scaling as
@@ -1339,7 +1339,7 @@ double LSTMLayer::get_gradient_norm_sq() const
     norm_sq += simd::sum_sq(_i_b_grads.data(), _i_b_grads.size());
     norm_sq += simd::sum_sq(_o_b_grads.data(), _o_b_grads.size());
   }
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     norm_sq += simd::sum_sq(_ln_c_gain_grads.data(), _ln_c_gain_grads.size());
     norm_sq += simd::sum_sq(_ln_c_bias_grads.data(), _ln_c_bias_grads.size());
@@ -1384,7 +1384,7 @@ void LSTMLayer::apply_stored_gradients(double learning_rate, double clipping_sca
 
   // Recurrent-state LayerNorm gain/bias (no weight decay on either,
   // matching how biases already skip decay via is_bias=true).
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     app(_ln_c_gain_values, _ln_c_gain_grads, _ln_c_gain_velocities, _ln_c_gain_m1, _ln_c_gain_m2, _ln_c_gain_timesteps, _ln_c_gain_decays, true);
     app(_ln_c_bias_values, _ln_c_bias_grads, _ln_c_bias_velocities, _ln_c_bias_m1, _ln_c_bias_m2, _ln_c_bias_timesteps, _ln_c_bias_decays, true);
@@ -1686,7 +1686,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
       double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
 
-      if (_use_layer_norm)
+      if (_use_layer_normalisation)
       {
         // Unlike GRU's h_t, LSTM's do_out (output gate gradient) depends on
         // dh_curr directly, not through dc, so dh_curr must be passed to

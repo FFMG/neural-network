@@ -347,15 +347,15 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   auto r_b_timesteps = layer_object.get<std::vector<long long>>("r-b-timesteps");
   auto r_b_decays = layer_object.get<std::vector<double>>("r-b-decays");
 
-  // Recurrent-state LayerNorm (applied to h_t): use_layer_norm defaults to
+  // Recurrent-state LayerNorm (applied to h_t): use_layer_normalisation defaults to
   // false so models saved before this feature existed still load; the LN
   // vectors are only required (and only meaningful) when it was enabled.
-  const bool use_layer_norm = layer_object.get_or<bool>("use-layer-norm", false);
+  const bool use_layer_normalisation = layer_object.get_or<bool>("use-layer-normalisation", false);
   std::vector<double> ln_h_gain_values, ln_h_gain_grads, ln_h_gain_velocities, ln_h_gain_m1, ln_h_gain_m2, ln_h_gain_decays;
   std::vector<long long> ln_h_gain_timesteps;
   std::vector<double> ln_h_bias_values, ln_h_bias_grads, ln_h_bias_velocities, ln_h_bias_m1, ln_h_bias_m2, ln_h_bias_decays;
   std::vector<long long> ln_h_bias_timesteps;
-  if (use_layer_norm)
+  if (use_layer_normalisation)
   {
     ln_h_gain_values = layer_object.get<std::vector<double>>("ln-h-gain-values");
     ln_h_gain_grads = layer_object.get<std::vector<double>>("ln-h-gain-grads");
@@ -374,9 +374,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     ln_h_bias_decays = layer_object.get<std::vector<double>>("ln-h-bias-decays");
   }
 
+  const auto residual_projector = std::unique_ptr<ResidualProjector>(get_residual_projector(layer_object));
   double momentum = layer_object.get_or<double>("momentum", 0.0);
-
-  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<GRURNNLayer>(
     layer_index,
@@ -464,7 +463,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
     ln_h_bias_m2,
     ln_h_bias_timesteps,
     ln_h_bias_decays,
-    use_layer_norm,
+    use_layer_normalisation,
     residual_projector.get(),
     number_of_threads,
     lah,
@@ -597,15 +596,15 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   auto o_b_timesteps = layer_object.get<std::vector<long long>>("o-b-timesteps");
   auto o_b_decays = layer_object.get<std::vector<double>>("o-b-decays");
 
-  // Recurrent-state LayerNorm (applied to c_t): use_layer_norm defaults to
+  // Recurrent-state LayerNorm (applied to c_t): use_layer_normalisation defaults to
   // false so models saved before this feature existed still load; the LN
   // vectors are only required (and only meaningful) when it was enabled.
-  const bool use_layer_norm = layer_object.get_or<bool>("use-layer-norm", false);
+  const bool use_layer_normalisation = layer_object.get_or<bool>("use-layer-normalisation", false);
   std::vector<double> ln_c_gain_values, ln_c_gain_grads, ln_c_gain_velocities, ln_c_gain_m1, ln_c_gain_m2, ln_c_gain_decays;
   std::vector<long long> ln_c_gain_timesteps;
   std::vector<double> ln_c_bias_values, ln_c_bias_grads, ln_c_bias_velocities, ln_c_bias_m1, ln_c_bias_m2, ln_c_bias_decays;
   std::vector<long long> ln_c_bias_timesteps;
-  if (use_layer_norm)
+  if (use_layer_normalisation)
   {
     ln_c_gain_values = layer_object.get<std::vector<double>>("ln-c-gain-values");
     ln_c_gain_grads = layer_object.get<std::vector<double>>("ln-c-gain-grads");
@@ -670,7 +669,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
     // Recurrent-state LayerNorm (applied to c_t)
     ln_c_gain_values, ln_c_gain_grads, ln_c_gain_velocities, ln_c_gain_m1, ln_c_gain_m2, ln_c_gain_timesteps, ln_c_gain_decays,
     ln_c_bias_values, ln_c_bias_grads, ln_c_bias_velocities, ln_c_bias_m1, ln_c_bias_m2, ln_c_bias_timesteps, ln_c_bias_decays,
-    use_layer_norm,
+    use_layer_normalisation,
     residual_projector.get(),
     number_of_threads,
     lah,
@@ -915,7 +914,7 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
       phlo->get<double>("weight-decay"),
       optimiser_type,
       momentum,
-      phlo->get_or<bool>("use-layer-norm", false)
+      phlo->get_or<bool>("use-layer-normalisation", false)
     ));
   }
   return hidden_layer;
@@ -1589,8 +1588,8 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   layer_object->set_floats("r-b-decays", layer.get_r_b_decays());
 
   // Recurrent-state LayerNorm (applied to h_t)
-  layer_object->set_boolean("use-layer-norm", layer.get_use_layer_norm());
-  if (layer.get_use_layer_norm())
+  layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
+  if (layer.get_use_layer_normalisation())
   {
     layer_object->set_floats("ln-h-gain-values", layer.get_ln_h_gain_values());
     layer_object->set_floats("ln-h-gain-grads", layer.get_ln_h_gain_grads());
@@ -1742,8 +1741,8 @@ void NeuralNetworkSerializer::add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJ
   layer_object->set_floats("o-b-decays", layer.get_o_b_decays());
 
   // Recurrent-state LayerNorm (applied to c_t)
-  layer_object->set_boolean("use-layer-norm", layer.get_use_layer_norm());
-  if (layer.get_use_layer_norm())
+  layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
+  if (layer.get_use_layer_normalisation())
   {
     layer_object->set_floats("ln-c-gain-values", layer.get_ln_c_gain_values());
     layer_object->set_floats("ln-c-gain-grads", layer.get_ln_c_gain_grads());
@@ -1918,7 +1917,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set("weight-decay", hl.get_weight_decay());
     hidden_layer_object->set("optimiser-type", optimiser_type_to_string(hl.get_optimiser_type()).c_str());
     hidden_layer_object->set("momentum", hl.get_momentum());
-    hidden_layer_object->set_boolean("use-layer-norm", hl.get_use_layer_norm());
+    hidden_layer_object->set_boolean("use-layer-normalisation", hl.get_use_layer_normalisation());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
@@ -2153,7 +2152,7 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         phlo->get<double>("weight-decay"),
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
         phlo->get<double>("momentum"),
-        phlo->get_or<bool>("use-layer-norm", false)
+        phlo->get_or<bool>("use-layer-normalisation", false)
       ));
     }
 

@@ -29,7 +29,7 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm = false);
+    bool use_layer_normalisation = false);
 
   LSTMLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -44,7 +44,7 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm = false);
+    bool use_layer_normalisation = false);
 
   LSTMLayer(
     unsigned layer_index,
@@ -154,7 +154,7 @@ public:
     const std::vector<double>& ln_c_bias_m2,
     const std::vector<long long>& ln_c_bias_timesteps,
     const std::vector<double>& ln_c_bias_decays,
-    bool use_layer_norm,
+    bool use_layer_normalisation,
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
@@ -193,7 +193,7 @@ public:
    */
   static constexpr unsigned Multiplier = 7;
   // LayerNormMultiplier adds one extra slot beyond Multiplier, used instead
-  // whenever use_layer_norm is enabled:
+  // whenever use_layer_normalisation is enabled:
   // 8. Recurrent-state LayerNorm inv_std for the cell state c_t, cached in
   //    element [0] (the remaining N_this-1 elements of this slot are
   //    unused); see simd::layer_norm_forward/backward.
@@ -207,7 +207,7 @@ public:
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    return _use_layer_norm ? LayerNormMultiplier : Multiplier;
+    return _use_layer_normalisation ? LayerNormMultiplier : Multiplier;
   }
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -663,7 +663,7 @@ public:
   }
 
   // Recurrent-state LayerNorm (applied to c_t)
-  [[nodiscard]] inline bool get_use_layer_norm() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _use_layer_norm; }
+  [[nodiscard]] inline bool get_use_layer_normalisation() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _use_layer_normalisation; }
   [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_values; }
   [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_grads; }
   [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_velocities; }
@@ -1066,7 +1066,7 @@ private:
     AlignedVector dg_act_deriv;
 
     // Recurrent-state LayerNorm scratch (only used when the layer has
-    // use_layer_norm enabled). Unlike GRU, the output gate's gradient
+    // use_layer_normalisation enabled). Unlike GRU, the output gate's gradient
     // (do_out) depends on dh_curr directly rather than through dc, so
     // lstm_bptt_gate_step's real dh_curr must stay unmodified; instead a
     // substitute dc_next_in is computed (ln_dc_next_substitute_buf) so the
@@ -1184,7 +1184,7 @@ private:
   mutable std::vector<long long> _o_b_timesteps;
 
   // --- Recurrent-state LayerNorm (applied to the cell state c_t) ---
-  bool _use_layer_norm = false;
+  bool _use_layer_normalisation = false;
   std::vector<double> _ln_c_gain_values;
   // Written from calculate_hidden_gradients(), which is const: this class
   // already uses `mutable` for internal caches accumulated behind a const
