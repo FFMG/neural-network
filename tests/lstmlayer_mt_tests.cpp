@@ -175,7 +175,107 @@ TEST_F(LSTMLayerMTTest, BackwardFeedMTConsistency)
     }
 }
 
-TEST_F(LSTMLayerMTTest, SmallBatchSizeThresholdFallback) 
+TEST_F(LSTMLayerMTTest, LayerNormForwardAndBackwardMTConsistency)
+{
+    // Same shape as BackwardFeedMTConsistency (batch_size=128 is large
+    // enough to push calculate_hidden_gradients past its multithreading
+    // threshold, dispatching multiple BPTTWorkspace-backed chunks), but
+    // with use_layer_norm enabled and extended through
+    // calculate_and_store_gradients: specifically exercises the
+    // per-workspace LayerNorm gain/bias gradient accumulation and its
+    // merge back into _ln_c_gain_grads/_ln_c_bias_grads in
+    // calculate_hidden_gradients.
+    const unsigned num_inputs = 8;
+    const unsigned num_neurons = 16;
+    const unsigned batch_size = 128;
+    const unsigned num_threads = get_test_threads();
+    const unsigned num_timesteps = 10;
+
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, true);
+
+    init_layer_weights(layer_st);
+    init_layer_weights(layer_mt);
+    std::vector<double> gain(num_neurons), bias(num_neurons);
+    for (size_t i = 0; i < num_neurons; ++i)
+    {
+        gain[i] = 1.0 + 0.1 * std::sin(static_cast<double>(i));
+        bias[i] = 0.05 * std::cos(static_cast<double>(i));
+    }
+    layer_st.set_ln_c_gain_values(gain); layer_st.set_ln_c_bias_values(bias);
+    layer_mt.set_ln_c_gain_values(gain); layer_mt.set_ln_c_bias_values(bias);
+    layer_st.cache_recurrent_weights();
+    layer_mt.cache_recurrent_weights();
+
+    MockLayer prev_layer(0, num_inputs);
+    MockLayer next_layer(2, num_neurons);
+    next_layer.set_w_values(std::vector<double>(num_neurons * num_neurons, 0.1));
+
+    std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons };
+
+    auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::LayerNormMultiplier);
+    auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::LayerNormMultiplier);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        std::vector<double> inputs(num_inputs * num_timesteps);
+        for (size_t i = 0; i < inputs.size(); ++i)
+        {
+          inputs[i] = std::cos(static_cast<double>(b + i));
+        }
+        batch_go_st[b].set_rnn_outputs(0, inputs);
+        batch_go_mt[b].set_rnn_outputs(0, inputs);
+    }
+
+    layer_st.calculate_forward_feed(batch_go_st, prev_layer, {}, batch_hs_st, batch_size, true);
+    layer_mt.calculate_forward_feed(batch_go_mt, prev_layer, {}, batch_hs_mt, batch_size, true);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        const auto& out_st = batch_go_st[b].get_rnn_outputs(1);
+        const auto& out_mt = batch_go_mt[b].get_rnn_outputs(1);
+        ASSERT_EQ(out_st.size(), out_mt.size());
+        for (size_t i = 0; i < out_st.size(); ++i)
+        {
+            EXPECT_NEAR(out_st[i], out_mt[i], 1e-12) << "Forward mismatch at batch " << b << " index " << i;
+        }
+    }
+
+    std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_neurons * num_timesteps));
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        for (size_t i = 0; i < batch_next_grads[b].size(); ++i)
+        {
+          batch_next_grads[b][i] = std::sin(static_cast<double>(b * i));
+        }
+    }
+
+    layer_st.calculate_hidden_gradients(batch_go_st, next_layer, batch_next_grads, batch_hs_st, batch_size, 0);
+    layer_mt.calculate_hidden_gradients(batch_go_mt, next_layer, batch_next_grads, batch_hs_mt, batch_size, 0);
+
+    layer_st.calculate_and_store_gradients(batch_go_st, batch_hs_st, prev_layer, batch_size, 0);
+    layer_mt.calculate_and_store_gradients(batch_go_mt, batch_hs_mt, prev_layer, batch_size, 0);
+
+    const auto& ln_gain_grads_st = layer_st.get_ln_c_gain_grads();
+    const auto& ln_gain_grads_mt = layer_mt.get_ln_c_gain_grads();
+    ASSERT_EQ(ln_gain_grads_st.size(), ln_gain_grads_mt.size());
+    for (size_t i = 0; i < ln_gain_grads_st.size(); ++i)
+    {
+        EXPECT_NEAR(ln_gain_grads_st[i], ln_gain_grads_mt[i], 1e-9) << "LN gain grad mismatch at index " << i;
+    }
+
+    const auto& ln_bias_grads_st = layer_st.get_ln_c_bias_grads();
+    const auto& ln_bias_grads_mt = layer_mt.get_ln_c_bias_grads();
+    ASSERT_EQ(ln_bias_grads_st.size(), ln_bias_grads_mt.size());
+    for (size_t i = 0; i < ln_bias_grads_st.size(); ++i)
+    {
+        EXPECT_NEAR(ln_bias_grads_st[i], ln_bias_grads_mt[i], 1e-9) << "LN bias grad mismatch at index " << i;
+    }
+}
+
+TEST_F(LSTMLayerMTTest, SmallBatchSizeThresholdFallback)
 {
     const unsigned num_inputs = 8;
     const unsigned num_neurons = 16;

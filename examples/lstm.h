@@ -34,7 +34,8 @@ private:
       0.0, // dropout
       0.01, // weight decay
       OptimiserType::Adam,
-      0.9
+      0.9,
+      false
     );
     options.with_hidden_layers(hidden_layers);
     options.build();
