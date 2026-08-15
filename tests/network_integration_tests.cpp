@@ -10,6 +10,7 @@
 #include "neuralnetworkoptions.h"
 #include "helpers/neuralnetworkserializer.h"
 #include "test_helper.h"
+#include <string>
 #include <vector>
 
 
@@ -721,6 +722,123 @@ TEST(NetworkIntegrationTest, LockOptimizationConvergenceTest)
   NeuralNetwork nn(options);
   // Verify that the network trains successfully with the lock optimisation
   EXPECT_NO_THROW(nn.train(inputs, outputs));
+}
+
+TEST(NetworkIntegrationTest, UpdateWeightsTouchesEveryLayerAcrossThreadCounts)
+{
+  // Regression test for Layers::update_weights (include/neuralnetwork/layers/layers.cpp):
+  // gradient calculation/application used to be dispatched per layer onto a
+  // Layers-owned thread pool running in parallel with each layer's own
+  // internal thread pool, oversubscribing the CPU. That outer dispatch was
+  // removed in favour of a plain sequential loop across layers, relying
+  // solely on each layer's own internal parallelism. This checks the
+  // sequential loop still visits and updates every hidden and output layer,
+  // for a range of thread-count settings.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+  };
+
+  std::vector<std::vector<double>> inputs = {
+    { 0.0, 0.0 }, { 0.0, 1.0 }, { 1.0, 0.0 }, { 1.0, 1.0 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 0.0 }, { 1.0 }, { 1.0 }, { 0.0 }
+  };
+
+  for (const int number_of_threads : { 1, 2, 8 })
+  {
+    SCOPED_TRACE("number_of_threads=" + std::to_string(number_of_threads));
+
+    auto options = NeuralNetworkOptions::create({ 2, 6, 6, 6, 1 })
+      .with_hidden_layers(hidden_layers)
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+      .with_learning_rate(0.1)
+      .with_number_of_epoch(1)
+      .with_batch_size(4)
+      .with_shuffle_training_data(false)
+      .with_has_bias(true)
+      .with_number_of_threads(number_of_threads)
+      .build();
+
+    NeuralNetwork nn(options);
+    auto& layers = const_cast<Layers&>(nn.get_layers());
+    const auto number_of_layers = static_cast<unsigned>(layers.size());
+
+    std::vector<std::vector<double>> w_before;
+    std::vector<std::vector<double>> b_before;
+    for (unsigned i = 1; i < number_of_layers; ++i)
+    {
+      w_before.push_back(layers[i].get_w_values());
+      b_before.push_back(layers[i].get_b_values());
+    }
+
+    nn.train(inputs, outputs);
+
+    for (unsigned i = 1; i < number_of_layers; ++i)
+    {
+      SCOPED_TRACE("layer=" + std::to_string(i));
+      EXPECT_NE(w_before[i - 1], layers[i].get_w_values()) << "Layer " << i << " weights did not change after training.";
+      if (!b_before[i - 1].empty())
+      {
+        EXPECT_NE(b_before[i - 1], layers[i].get_b_values()) << "Layer " << i << " biases did not change after training.";
+      }
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, DeepNetworkConvergesWithExplicitThreadCount)
+{
+  // Companion to UpdateWeightsTouchesEveryLayerAcrossThreadCounts: reuses the
+  // known-good hand-set XOR weights from XorFFConvergence to confirm that
+  // training through the now-always-sequential Layers::update_weights loop
+  // still converges correctly when number_of_threads is explicitly set above 1.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .with_number_of_threads(4)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({
+    10.0, 10.0, 0.0, 0.0,
+    10.0, 10.0, 0.0, 0.0
+  });
+  layers[1].set_b_values({ -5.0, -15.0, 0.0, 0.0 });
+  layers[2].set_w_values({ 10.0, -20.0, 0.0, 0.0 });
+  layers[2].set_b_values({ -5.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0},
+    {0.0, 1.0},
+    {1.0, 0.0},
+    {1.0, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0},
+    {1.0},
+    {1.0},
+    {0.0}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto predictions = nn.think(inputs);
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 0.0, 0.15);
+  EXPECT_NEAR(predictions[1][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[2][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[3][0], 0.0, 0.15);
 }
 
 TEST(NetworkIntegrationTest, ThinkSequenceInputValidation)
