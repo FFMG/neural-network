@@ -222,24 +222,6 @@ private:
   {
     return (level == LogLevel::Panic || level >= _min_level);
   }
-
-  // Buffer for formatting user argument in log()
-  static std::ostringstream& get_msg_oss()
-  {
-    thread_local std::ostringstream oss;
-    oss.str("");
-    oss.clear();
-    return oss;
-  }
-
-  // Buffer for formatting the final log message with timestamp and tag
-  static std::ostringstream& get_msg_fmt_oss()
-  {
-    thread_local std::ostringstream oss;
-    oss.str("");
-    oss.clear();
-    return oss;
-  }
   
   static void get_current_time_string(char (&buf)[TimeStringBufferSize])
   {
@@ -311,7 +293,7 @@ private:
     {
       return;
     }
-    auto& oss = get_msg_oss();
+    std::ostringstream oss;
     print_args(oss, std::forward<Args>(args)...);
     oss << '\n';
 #if __cplusplus >= 202002L
@@ -388,7 +370,7 @@ private:
     indent[indent_len] = '\0';
 
     // 4. Output the color-coded tag, then reset color
-    auto& oss = get_msg_fmt_oss();
+    std::ostringstream oss;
     oss << time_str << ' ' << color_code << tag << LogColorReset << ' ';
 
     // 5. Output the user's message arguments
