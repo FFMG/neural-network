@@ -22,7 +22,8 @@ GRURNNLayer::GRURNNLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  bool use_layer_norm
   ) :
   GRURNNLayer(
     layer_index,
@@ -37,7 +38,8 @@ GRURNNLayer::GRURNNLayer(
     residual_projector,
     number_of_threads,
     has_bias,
-    momentum
+    momentum,
+    use_layer_norm
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -58,7 +60,8 @@ GRURNNLayer::GRURNNLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  bool use_layer_norm
 ) :
   Layer(
     layer_index,
@@ -74,11 +77,13 @@ GRURNNLayer::GRURNNLayer(
     residual_projector,
     number_of_threads,
     momentum
-  )
+  ),
+  _use_layer_norm(use_layer_norm)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  
+
   initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  initialize_layer_norm();
 
   allocate_workspace();
 }
@@ -135,7 +140,22 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_m1(src._r_b_m1),
   _r_b_m2(src._r_b_m2),
   _r_b_timesteps(src._r_b_timesteps),
-  _r_b_decays(src._r_b_decays)
+  _r_b_decays(src._r_b_decays),
+  _use_layer_norm(src._use_layer_norm),
+  _ln_h_gain_values(src._ln_h_gain_values),
+  _ln_h_gain_grads(src._ln_h_gain_grads),
+  _ln_h_gain_velocities(src._ln_h_gain_velocities),
+  _ln_h_gain_m1(src._ln_h_gain_m1),
+  _ln_h_gain_m2(src._ln_h_gain_m2),
+  _ln_h_gain_timesteps(src._ln_h_gain_timesteps),
+  _ln_h_gain_decays(src._ln_h_gain_decays),
+  _ln_h_bias_values(src._ln_h_bias_values),
+  _ln_h_bias_grads(src._ln_h_bias_grads),
+  _ln_h_bias_velocities(src._ln_h_bias_velocities),
+  _ln_h_bias_m1(src._ln_h_bias_m1),
+  _ln_h_bias_m2(src._ln_h_bias_m2),
+  _ln_h_bias_timesteps(src._ln_h_bias_timesteps),
+  _ln_h_bias_decays(src._ln_h_bias_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   _identity_proxy = nullptr;
@@ -196,6 +216,21 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
   _r_b_decays(std::move(src._r_b_decays)),
+  _use_layer_norm(src._use_layer_norm),
+  _ln_h_gain_values(std::move(src._ln_h_gain_values)),
+  _ln_h_gain_grads(std::move(src._ln_h_gain_grads)),
+  _ln_h_gain_velocities(std::move(src._ln_h_gain_velocities)),
+  _ln_h_gain_m1(std::move(src._ln_h_gain_m1)),
+  _ln_h_gain_m2(std::move(src._ln_h_gain_m2)),
+  _ln_h_gain_timesteps(std::move(src._ln_h_gain_timesteps)),
+  _ln_h_gain_decays(std::move(src._ln_h_gain_decays)),
+  _ln_h_bias_values(std::move(src._ln_h_bias_values)),
+  _ln_h_bias_grads(std::move(src._ln_h_bias_grads)),
+  _ln_h_bias_velocities(std::move(src._ln_h_bias_velocities)),
+  _ln_h_bias_m1(std::move(src._ln_h_bias_m1)),
+  _ln_h_bias_m2(std::move(src._ln_h_bias_m2)),
+  _ln_h_bias_timesteps(std::move(src._ln_h_bias_timesteps)),
+  _ln_h_bias_decays(std::move(src._ln_h_bias_decays)),
   _rw_values_T(std::move(src._rw_values_T)),
   _z_rw_values_T(std::move(src._z_rw_values_T)),
   _r_rw_values_T(std::move(src._r_rw_values_T)),
@@ -280,6 +315,22 @@ GRURNNLayer::GRURNNLayer(
   const std::vector<double>& r_b_m2,
   const std::vector<long long>& r_b_timesteps,
   const std::vector<double>& r_b_decays,
+  // Recurrent-state LayerNorm (applied to h_t)
+  const std::vector<double>& ln_h_gain_values,
+  const std::vector<double>& ln_h_gain_grads,
+  const std::vector<double>& ln_h_gain_velocities,
+  const std::vector<double>& ln_h_gain_m1,
+  const std::vector<double>& ln_h_gain_m2,
+  const std::vector<long long>& ln_h_gain_timesteps,
+  const std::vector<double>& ln_h_gain_decays,
+  const std::vector<double>& ln_h_bias_values,
+  const std::vector<double>& ln_h_bias_grads,
+  const std::vector<double>& ln_h_bias_velocities,
+  const std::vector<double>& ln_h_bias_m1,
+  const std::vector<double>& ln_h_bias_m2,
+  const std::vector<long long>& ln_h_bias_timesteps,
+  const std::vector<double>& ln_h_bias_decays,
+  bool use_layer_norm,
   const ResidualProjector* residual_projector,
   int number_of_threads,
   const layer_activation_helper& lah,
@@ -359,7 +410,22 @@ GRURNNLayer::GRURNNLayer(
     _r_b_m1(r_b_m1),
     _r_b_m2(r_b_m2),
     _r_b_timesteps(r_b_timesteps),
-    _r_b_decays(r_b_decays)
+    _r_b_decays(r_b_decays),
+    _use_layer_norm(use_layer_norm),
+    _ln_h_gain_values(ln_h_gain_values),
+    _ln_h_gain_grads(ln_h_gain_grads),
+    _ln_h_gain_velocities(ln_h_gain_velocities),
+    _ln_h_gain_m1(ln_h_gain_m1),
+    _ln_h_gain_m2(ln_h_gain_m2),
+    _ln_h_gain_timesteps(ln_h_gain_timesteps),
+    _ln_h_gain_decays(ln_h_gain_decays),
+    _ln_h_bias_values(ln_h_bias_values),
+    _ln_h_bias_grads(ln_h_bias_grads),
+    _ln_h_bias_velocities(ln_h_bias_velocities),
+    _ln_h_bias_m1(ln_h_bias_m1),
+    _ln_h_bias_m2(ln_h_bias_m2),
+    _ln_h_bias_timesteps(ln_h_bias_timesteps),
+    _ln_h_bias_decays(ln_h_bias_decays)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   cache_recurrent_weights();
@@ -425,6 +491,23 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_m2 = src._r_b_m2;
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
+
+    _use_layer_norm = src._use_layer_norm;
+    _ln_h_gain_values = src._ln_h_gain_values;
+    _ln_h_gain_grads = src._ln_h_gain_grads;
+    _ln_h_gain_velocities = src._ln_h_gain_velocities;
+    _ln_h_gain_m1 = src._ln_h_gain_m1;
+    _ln_h_gain_m2 = src._ln_h_gain_m2;
+    _ln_h_gain_timesteps = src._ln_h_gain_timesteps;
+    _ln_h_gain_decays = src._ln_h_gain_decays;
+    _ln_h_bias_values = src._ln_h_bias_values;
+    _ln_h_bias_grads = src._ln_h_bias_grads;
+    _ln_h_bias_velocities = src._ln_h_bias_velocities;
+    _ln_h_bias_m1 = src._ln_h_bias_m1;
+    _ln_h_bias_m2 = src._ln_h_bias_m2;
+    _ln_h_bias_timesteps = src._ln_h_bias_timesteps;
+    _ln_h_bias_decays = src._ln_h_bias_decays;
+
     delete _identity_proxy;
     _identity_proxy = nullptr;
     allocate_workspace();
@@ -491,6 +574,23 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_m2 = std::move(src._r_b_m2);
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
+
+    _use_layer_norm = src._use_layer_norm;
+    _ln_h_gain_values = std::move(src._ln_h_gain_values);
+    _ln_h_gain_grads = std::move(src._ln_h_gain_grads);
+    _ln_h_gain_velocities = std::move(src._ln_h_gain_velocities);
+    _ln_h_gain_m1 = std::move(src._ln_h_gain_m1);
+    _ln_h_gain_m2 = std::move(src._ln_h_gain_m2);
+    _ln_h_gain_timesteps = std::move(src._ln_h_gain_timesteps);
+    _ln_h_gain_decays = std::move(src._ln_h_gain_decays);
+    _ln_h_bias_values = std::move(src._ln_h_bias_values);
+    _ln_h_bias_grads = std::move(src._ln_h_bias_grads);
+    _ln_h_bias_velocities = std::move(src._ln_h_bias_velocities);
+    _ln_h_bias_m1 = std::move(src._ln_h_bias_m1);
+    _ln_h_bias_m2 = std::move(src._ln_h_bias_m2);
+    _ln_h_bias_timesteps = std::move(src._ln_h_bias_timesteps);
+    _ln_h_bias_decays = std::move(src._ln_h_bias_decays);
+
     _rw_values_T = std::move(src._rw_values_T);
     _z_rw_values_T = std::move(src._z_rw_values_T);
     delete _identity_proxy;
@@ -592,6 +692,32 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
     init_bias(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays);
   }
   cache_recurrent_weights();
+}
+
+void GRURNNLayer::initialize_layer_norm()
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  if (!_use_layer_norm)
+  {
+    return;
+  }
+
+  const auto n = get_number_neurons();
+  _ln_h_gain_values.assign(n, 1.0);
+  _ln_h_gain_grads.assign(n, 0.0);
+  _ln_h_gain_velocities.assign(n, 0.0);
+  _ln_h_gain_m1.assign(n, 0.0);
+  _ln_h_gain_m2.assign(n, 0.0);
+  _ln_h_gain_timesteps.assign(n, 0);
+  _ln_h_gain_decays.assign(n, 0.0);
+
+  _ln_h_bias_values.assign(n, 0.0);
+  _ln_h_bias_grads.assign(n, 0.0);
+  _ln_h_bias_velocities.assign(n, 0.0);
+  _ln_h_bias_m1.assign(n, 0.0);
+  _ln_h_bias_m2.assign(n, 0.0);
+  _ln_h_bias_timesteps.assign(n, 0);
+  _ln_h_bias_decays.assign(n, 0.0);
 }
 
 void GRURNNLayer::calculate_forward_feed(
@@ -884,11 +1010,14 @@ void GRURNNLayer::run_forward_pass(
   TempBuffer<double, 24> prev_h(chunk_size * N_this, true);
 
   // Small per-group scratch, reused every group iteration; never holds more
-  // than 4 items' worth of data at once. Per-item stride Multiplier*N_this
-  // mirrors the [z(N)|r(N)|h_hat_pre(N)|h_hat_activated(N)|mask(N)] layout
+  // than 4 items' worth of data at once. Per-item stride is this instance's
+  // get_pre_activation_multiplier()*N_this (Multiplier, or LayerNormMultiplier
+  // when use_layer_norm is enabled) and mirrors the
+  // [z(N)|r(N)|h_hat_pre(N)|h_hat_activated(N)|mask(N)(|inv_std(N))] layout
   // that batch_hidden_states expects from set_pre_activation_sums.
+  const size_t multiplier = get_pre_activation_multiplier();
   TempBuffer<double, 23> group_gated_h(4 * N_this);
-  TempBuffer<double, 26> group_packed(4 * Multiplier * N_this);
+  TempBuffer<double, 26> group_packed(4 * multiplier * N_this);
 
   static const activation sigmoid_act(activation::method::sigmoid, 1.0);
 
@@ -906,10 +1035,10 @@ void GRURNNLayer::run_forward_pass(
       double* hp2 = hp1 + N_this;
       double* hp3 = hp2 + N_this;
 
-      double* g0 = &group_packed.data()[0 * Multiplier * N_this];
-      double* g1 = &group_packed.data()[1 * Multiplier * N_this];
-      double* g2 = &group_packed.data()[2 * Multiplier * N_this];
-      double* g3 = &group_packed.data()[3 * Multiplier * N_this];
+      double* g0 = &group_packed.data()[0 * multiplier * N_this];
+      double* g1 = &group_packed.data()[1 * multiplier * N_this];
+      double* g2 = &group_packed.data()[2 * multiplier * N_this];
+      double* g3 = &group_packed.data()[3 * multiplier * N_this];
 
       const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
       const double* pre1 = &batch_pre_act[((b + 1) * num_time_steps + t) * GateCount * N_this];
@@ -967,8 +1096,8 @@ void GRURNNLayer::run_forward_pass(
       double* hp0 = &prev_h.data()[(b - start) * N_this];
       double* hp1 = hp0 + N_this;
 
-      double* g0 = &group_packed.data()[0 * Multiplier * N_this];
-      double* g1 = &group_packed.data()[1 * Multiplier * N_this];
+      double* g0 = &group_packed.data()[0 * multiplier * N_this];
+      double* g1 = &group_packed.data()[1 * multiplier * N_this];
 
       const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
       const double* pre1 = &batch_pre_act[((b + 1) * num_time_steps + t) * GateCount * N_this];
@@ -1101,9 +1230,26 @@ void GRURNNLayer::finalize_forward_step(
     );
   }
 
+  // Recurrent-state LayerNorm: normalize the blended hidden state h_t
+  // in place before it is cached/propagated, so both the value fed
+  // downstream and the value carried forward as h_{t-1} are normalized.
+  // The inv_std needed to undo this in the backward pass is cached in
+  // element [0] of the new Multiplier slot (see the class-level comment
+  // on Multiplier); a_hat is cheaply recoverable there from the cached
+  // (normalized) hidden_state_values via (y - bias) / gain, so no other
+  // new storage is required.
+  if (_use_layer_norm)
+  {
+    double inv_std = 0.0;
+    simd::layer_norm_forward(h_prev_slice, _ln_h_gain_values.data(), _ln_h_bias_values.data(), h_prev_slice, N_this, LayerNormEpsilon, inv_std);
+    double* out_ptr = &batch_output_sequences.data()[(b * num_time_steps + t) * N_this];
+    std::copy(h_prev_slice, h_prev_slice + N_this, out_ptr);
+    item_packed[5 * N_this] = inv_std;
+  }
+
   if (!batch_hidden_states.empty())
   {
-    batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(item_packed, Multiplier * N_this);
+    batch_hidden_states[b].at(get_layer_index())[t].set_pre_activation_sums(item_packed, get_pre_activation_multiplier() * N_this);
     batch_hidden_states[b].at(get_layer_index())[t].set_hidden_state_values(h_prev_slice, N_this);
   }
 }
@@ -1361,20 +1507,63 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
       double* dh_hat_pre_deriv = &workspace.dh_hat_pre_deriv_buf[b_idx * N_this];
 
-      simd::gru_bptt_gate_step(
-        N_this,
-        grad_next_ptr,
-        d_next_h_ptr,
-        z_vals,
-        h_hat_ptr,
-        h_prev_vals,
-        h_hat_pre_vals,
-        mask_vals,
-        &dz_ptr_all[b_idx * N_this],
-        &dh_hat_ptr_all[b_idx * N_this],
-        &dh_prev_accum_ptr_all[b_idx * N_this],
-        dh_hat_pre_deriv
-      );
+      if (_use_layer_norm)
+      {
+        // dL/dh_t (external + recurrent-through-time) must be passed
+        // through the LayerNorm backward formula before it is distributed
+        // into the gate gradients below, undoing the normalization applied
+        // to h_t in finalize_forward_step. The result is then fed into the
+        // unmodified gru_bptt_gate_step exactly where the raw gradient
+        // flows for the non-LayerNorm case, split as (combined, 0) instead
+        // of (grad_next_ptr, d_next_h_ptr) since the kernel simply sums its
+        // two gradient inputs.
+        double* dy_buf = workspace.ln_dy_buf.data();
+        double* dx_buf = workspace.ln_dx_buf.data();
+        double* zero_buf = workspace.ln_zero_buf.data();
+        std::fill(zero_buf, zero_buf + N_this, 0.0);
+        std::copy(grad_next_ptr, grad_next_ptr + N_this, dy_buf);
+        simd::add_vectors(d_next_h_ptr, dy_buf, N_this);
+
+        const double* y_h = state.get_hidden_state_values().data();
+        const double inv_std_h = packed_states[5 * N_this];
+
+        simd::layer_norm_backward(
+          dy_buf, y_h, _ln_h_gain_values.data(), _ln_h_bias_values.data(), inv_std_h, N_this,
+          dx_buf, workspace.ln_h_gain_grad_accum.data(), workspace.ln_h_bias_grad_accum.data()
+        );
+
+        simd::gru_bptt_gate_step(
+          N_this,
+          dx_buf,
+          zero_buf,
+          z_vals,
+          h_hat_ptr,
+          h_prev_vals,
+          h_hat_pre_vals,
+          mask_vals,
+          &dz_ptr_all[b_idx * N_this],
+          &dh_hat_ptr_all[b_idx * N_this],
+          &dh_prev_accum_ptr_all[b_idx * N_this],
+          dh_hat_pre_deriv
+        );
+      }
+      else
+      {
+        simd::gru_bptt_gate_step(
+          N_this,
+          grad_next_ptr,
+          d_next_h_ptr,
+          z_vals,
+          h_hat_ptr,
+          h_prev_vals,
+          h_hat_pre_vals,
+          mask_vals,
+          &dz_ptr_all[b_idx * N_this],
+          &dh_hat_ptr_all[b_idx * N_this],
+          &dh_prev_accum_ptr_all[b_idx * N_this],
+          dh_hat_pre_deriv
+        );
+      }
     }
 
     std::fill(workspace.temp_Uh_T_dh_hat.begin(), workspace.temp_Uh_T_dh_hat.end(), 0.0);
@@ -1552,7 +1741,14 @@ void GRURNNLayer::calculate_hidden_gradients(
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 3) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
+  if (_use_layer_norm)
+  {
+    std::fill(_ln_h_gain_grads.begin(), _ln_h_gain_grads.end(), 0.0);
+    std::fill(_ln_h_bias_grads.begin(), _ln_h_bias_grads.end(), 0.0);
+  }
+
   // Launch threads for each batch chunk
+  const unsigned int used_workspaces = use_multithreading ? active_threads : 1U;
   if (!use_multithreading)
   {
     auto& workspace = get_workspace(0);
@@ -1576,6 +1772,19 @@ void GRURNNLayer::calculate_hidden_gradients(
       start = end;
     }
     _task_queue_pool->get();
+  }
+
+  // Merge each dispatched chunk's share of the LayerNorm gain/bias
+  // gradients (accumulated per-workspace in calculate_bptt_batch_chunk,
+  // since that method is const and runs concurrently across batch chunks).
+  if (_use_layer_norm)
+  {
+    for (unsigned int t = 0; t < used_workspaces; ++t)
+    {
+      auto& workspace = get_workspace(t);
+      simd::add_vectors(workspace.ln_h_gain_grad_accum.data(), _ln_h_gain_grads.data(), N_this);
+      simd::add_vectors(workspace.ln_h_bias_grad_accum.data(), _ln_h_bias_grads.data(), N_this);
+    }
   }
 }
 
@@ -1978,6 +2187,14 @@ void GRURNNLayer::calculate_and_store_gradients(
     simd::scale_vector(_z_b_grads.data(), inv_batch, _z_b_grads.size());
     simd::scale_vector(_r_b_grads.data(), inv_batch, _r_b_grads.size());
   }
+  if (_use_layer_norm)
+  {
+    // Already fully accumulated by calculate_hidden_gradients() (Phase A);
+    // this call only needs to apply the same batch-average scaling as
+    // every other gradient here.
+    simd::scale_vector(_ln_h_gain_grads.data(), inv_batch, _ln_h_gain_grads.size());
+    simd::scale_vector(_ln_h_bias_grads.data(), inv_batch, _ln_h_bias_grads.size());
+  }
 }
 
 double GRURNNLayer::get_gradient_norm_sq() const
@@ -1996,6 +2213,11 @@ double GRURNNLayer::get_gradient_norm_sq() const
     norm_sq += simd::sum_sq(_z_b_grads.data(), _z_b_grads.size());
     norm_sq += simd::sum_sq(_r_b_grads.data(), _r_b_grads.size());
   }
+  if (_use_layer_norm)
+  {
+    norm_sq += simd::sum_sq(_ln_h_gain_grads.data(), _ln_h_gain_grads.size());
+    norm_sq += simd::sum_sq(_ln_h_bias_grads.data(), _ln_h_bias_grads.size());
+  }
 
   return norm_sq;
 }
@@ -2011,6 +2233,14 @@ void GRURNNLayer::zero_gradients()
   std::fill(_r_w_grads.begin(), _r_w_grads.end(), 0.0);
   std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
   std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
+  // _ln_h_gain_grads/_ln_h_bias_grads are intentionally NOT zeroed here.
+  // Unlike every other gradient above, which calculate_and_store_gradients()
+  // recomputes from scratch each call (starting with this zero_gradients()),
+  // LayerNorm's gain/bias gradients are fully computed earlier, in
+  // calculate_hidden_gradients() (which zeroes and fills them itself).
+  // This zero_gradients() runs in between that call and apply_stored_gradients(),
+  // which still needs to read them -- zeroing them here would wipe them out
+  // first.
 }
 
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
@@ -2035,6 +2265,14 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
   app(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, false);
   app(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, false);
   if (has_bias()) app(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, true);
+
+  // 4. Recurrent-state LayerNorm gain/bias (no weight decay on either,
+  // matching how biases already skip decay via is_bias=true).
+  if (_use_layer_norm)
+  {
+    app(_ln_h_gain_values, _ln_h_gain_grads, _ln_h_gain_velocities, _ln_h_gain_m1, _ln_h_gain_m2, _ln_h_gain_timesteps, _ln_h_gain_decays, true);
+    app(_ln_h_bias_values, _ln_h_bias_grads, _ln_h_bias_velocities, _ln_h_bias_m1, _ln_h_bias_m2, _ln_h_bias_timesteps, _ln_h_bias_decays, true);
+  }
 
   cache_recurrent_weights();
   zero_gradients();

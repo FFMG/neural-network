@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 
@@ -16,21 +16,23 @@ namespace myoddweb::nn
 class LayerDetails
 {
 public:
-  LayerDetails( 
+  LayerDetails(
     Layer::Architecture layer_architecture,
-    unsigned layer_size, 
-    const activation& activation, 
-    double dropout, 
-    double weight_decay, 
-    OptimiserType optimiser_type, 
-    double momentum) noexcept :
+    unsigned layer_size,
+    const activation& activation,
+    double dropout,
+    double weight_decay,
+    OptimiserType optimiser_type,
+    double momentum,
+    bool use_layer_norm) noexcept :
     _layer_architecture(layer_architecture),
     _layer_size(layer_size),
     _activation(activation),
     _dropout(dropout),
     _weight_decay(weight_decay),
     _optimiser_type(optimiser_type),
-    _momentum(momentum)
+    _momentum(momentum),
+    _use_layer_norm(use_layer_norm)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -42,7 +44,8 @@ public:
     _dropout(src._dropout),
     _weight_decay(src._weight_decay),
     _optimiser_type(src._optimiser_type),
-    _momentum(src._momentum)
+    _momentum(src._momentum),
+    _use_layer_norm(src._use_layer_norm)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -54,10 +57,15 @@ public:
     _dropout(src._dropout),
     _weight_decay(src._weight_decay),
     _optimiser_type( src._optimiser_type),
-    _momentum( src._momentum)
+    _momentum( src._momentum),
+    _use_layer_norm(src._use_layer_norm)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    src._layer_architecture = Layer::Architecture::None;
     src._layer_size = 0;
+    src._dropout = 0.0;
+    src._weight_decay = 0;
+    src._use_layer_norm = false;
   }
 
   LayerDetails& operator=(const LayerDetails& src) noexcept
@@ -72,6 +80,7 @@ public:
       _weight_decay = src._weight_decay;
       _optimiser_type = src._optimiser_type;
       _momentum = src._momentum;
+      _use_layer_norm = src._use_layer_norm;
     }
     return *this;
   }
@@ -88,11 +97,13 @@ public:
       _weight_decay = src._weight_decay;
       _optimiser_type = src._optimiser_type;
       _momentum = src._momentum;
+      _use_layer_norm = src._use_layer_norm;
 
       src._layer_architecture = Layer::Architecture::None;
       src._layer_size = 0;
       src._dropout = 0.0;
       src._weight_decay = 0;
+      src._use_layer_norm = false;
     }
     return *this;
   }
@@ -136,6 +147,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _momentum;
   }
+  [[nodiscard]] inline bool get_use_layer_norm() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _use_layer_norm;
+  }
 private:
   Layer::Architecture _layer_architecture;
   unsigned _layer_size;
@@ -144,5 +160,6 @@ private:
   double _weight_decay;
   OptimiserType _optimiser_type;
   double _momentum;
+  bool _use_layer_norm;
 };
 } // namespace myoddweb::nn

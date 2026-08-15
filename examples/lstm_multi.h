@@ -36,14 +36,17 @@ private:
                 0.0, // dropout
                 0.01, // weight decay
                 OptimiserType::Adam,
-                0.9),
+                0.9, 
+                false
+                ),
           LayerDetails(Layer::Architecture::FF,
                 32,
                 activation(activation::method::tanh, 0.0, 1.0),
                 0.0, // dropout
                 0.01, // weight decay
                 OptimiserType::Adam,
-                0.9)
+                0.9,
+                false)
         },
         OutputLayerDetails(5, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
       ),
@@ -55,14 +58,16 @@ private:
                 0.0, // dropout
                 0.01, // weight decay
                 OptimiserType::Adam,
-                0.9),
+                0.9,
+                false),
           LayerDetails(Layer::Architecture::FF,
                 32,
                 activation(activation::method::tanh, 0.0, 1.0),
                 0.0, // dropout
                 0.01, // weight decay
                 OptimiserType::Adam,
-                0.9)
+                0.9, 
+                false)
         },
         // Second output: Tanh, Temperature 1.0
         OutputLayerDetails(2, activation(activation::method::tanh, 0.0, 1.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
@@ -89,7 +94,8 @@ private:
       0.0, // dropout
       0.01, // weight decay
       OptimiserType::Adam,
-      0.9
+      0.9,
+      false
     );
     hidden_layers.emplace_back(
       Layer::Architecture::Lstm,
@@ -98,7 +104,8 @@ private:
       0.0, // dropout
       0.01, // weight decay
       OptimiserType::Adam,
-      0.9
+      0.9,
+      false
     );
     options.with_hidden_layers(hidden_layers);
     options.build();

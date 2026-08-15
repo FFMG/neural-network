@@ -64,7 +64,8 @@ private:
           0.0, 
           0.05, 
           OptimiserType::SGD, 
-          0.99)
+          0.99, 
+          false)
       );
     }
 

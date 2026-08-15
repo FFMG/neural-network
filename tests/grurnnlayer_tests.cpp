@@ -73,6 +73,150 @@ TEST_F(GRURNNLayerTest, BPTTMathematicalVerification) {
     EXPECT_NEAR(in_grads[0], 0.256747, 1e-4);
 }
 
+TEST_F(GRURNNLayerTest, LayerNormForwardNormalizesHiddenState) {
+    // 1 input, 2 neurons, single timestep, LayerNorm enabled on h_t.
+    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+
+    layer.set_z_w_values({ 0.1, 0.2 }); layer.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_z_b_values({ 0.0, 0.0 });
+    layer.set_r_w_values({ 0.0, 0.0 }); layer.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_r_b_values({ 0.0, 0.0 });
+    layer.set_w_values({ 0.3, 0.4 });   layer.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });   layer.set_b_values({ 0.0, 0.0 });
+    layer.set_ln_h_gain_values({ 2.0, 2.0 });
+    layer.set_ln_h_bias_values({ 0.5, -0.5 });
+
+    MockLayer prev_layer(0, 1);
+    std::vector<unsigned> topology = { 1, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, GRURNNLayer::LayerNormMultiplier);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    // z = sigmoid([0.1, 0.2]) = [0.524979, 0.549834]
+    // h_hat = tanh([0.3, 0.4]) = [0.291313, 0.379949]
+    // h_t (raw) = z * h_hat (h_prev=0) = [0.152933, 0.208909]
+    // mean = 0.180921, var = 0.000783, inv_std = 1/sqrt(var+1e-5) = 35.501
+    // a_hat = [-0.993662, 0.993662]
+    // y = gain*a_hat + bias = [2*(-0.993662)+0.5, 2*(0.993662)-0.5] = [-1.487324, 1.487324]
+    const auto& outputs = batch_go[0].get_outputs(1);
+    EXPECT_NEAR(outputs[0], -1.487324, 1e-4);
+    EXPECT_NEAR(outputs[1], 1.487324, 1e-4);
+
+    // Every element of a normalized 2-element vector is equidistant from the
+    // mean (mean(y) == mean(bias) here since a_hat sums to zero).
+    EXPECT_NEAR(outputs[0] + outputs[1], 0.0, 1e-9);
+}
+
+TEST_F(GRURNNLayerTest, LayerNormDisabledMatchesUnnormalizedForwardFeed) {
+    // Same weights as LayerNormForwardNormalizesHiddenState but with
+    // use_layer_norm left at its default (false): output must be the raw
+    // (unnormalized) h_t, confirming the flag is a true no-op when unset.
+    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+
+    layer.set_z_w_values({ 0.1, 0.2 }); layer.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_z_b_values({ 0.0, 0.0 });
+    layer.set_r_w_values({ 0.0, 0.0 }); layer.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_r_b_values({ 0.0, 0.0 });
+    layer.set_w_values({ 0.3, 0.4 });   layer.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });   layer.set_b_values({ 0.0, 0.0 });
+
+    EXPECT_FALSE(layer.get_use_layer_norm());
+
+    MockLayer prev_layer(0, 1);
+    std::vector<unsigned> topology = { 1, 2 };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, GRURNNLayer::Multiplier);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& outputs = batch_go[0].get_outputs(1);
+    EXPECT_NEAR(outputs[0], 0.152933, 1e-4);
+    EXPECT_NEAR(outputs[1], 0.208909, 1e-4);
+}
+
+TEST_F(GRURNNLayerTest, LayerNormGainBiasGradientsMatchNumericalGradient) {
+    // Numerical-gradient check of the LayerNorm backward wiring added to
+    // calculate_bptt_batch_chunk: seeds an arbitrary upstream gradient dy
+    // via batch_next_grads (same direct-injection mechanism as
+    // BPTTMathematicalVerification above) and treats
+    // loss(gain, bias) = dot(dy, h_t(gain, bias)) as a plain scalar function,
+    // independently verified via central finite differences.
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 2;
+    std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+    auto make_layer = [&](const std::vector<double>& gain, const std::vector<double>& bias)
+    {
+        GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+        layer.set_z_w_values({ 0.15, -0.22 }); layer.set_z_rw_values({ 0.05, -0.03, 0.02, 0.04 }); layer.set_z_b_values({ 0.01, -0.02 });
+        layer.set_r_w_values({ -0.18, 0.27 }); layer.set_r_rw_values({ -0.04, 0.06, 0.03, -0.05 }); layer.set_r_b_values({ 0.0, 0.03 });
+        layer.set_w_values({ 0.31, 0.44 });    layer.set_rw_values({ 0.07, -0.02, -0.06, 0.08 });   layer.set_b_values({ -0.01, 0.02 });
+        layer.set_ln_h_gain_values(gain);
+        layer.set_ln_h_bias_values(bias);
+        return layer;
+    };
+
+    auto run_loss = [&](const std::vector<double>& gain, const std::vector<double>& bias, const std::vector<double>& dy) -> double
+    {
+        auto layer = make_layer(gain, bias);
+        MockLayer prev_layer(0, num_inputs);
+        auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+        auto batch_hs = create_batch_hidden_states(topology, 1, 1, GRURNNLayer::LayerNormMultiplier);
+        batch_go[0].set_outputs(0, { 1.0 });
+        layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+        const auto& outputs = batch_go[0].get_outputs(1);
+        double loss = 0.0;
+        for (unsigned j = 0; j < num_outputs; ++j)
+        {
+            loss += dy[j] * outputs[j];
+        }
+        return loss;
+    };
+
+    const std::vector<double> gain = { 1.3, 0.8 };
+    const std::vector<double> bias = { 0.1, -0.2 };
+    const std::vector<double> dy = { 0.6, -0.9 };
+
+    auto layer = make_layer(gain, bias);
+    MockLayer prev_layer(0, num_inputs);
+    MockLayer next_layer(2, num_outputs);
+    // Identity weight matrix so batch_next_grads is projected through
+    // unchanged (dh_t = I^T * dy = dy), matching BPTTMathematicalVerification's
+    // use of a 1x1 identity above; without this, next_layer's weight vector
+    // is empty and the backward GEMV reads out of bounds.
+    {
+      std::vector<double> identity(num_outputs * num_outputs, 0.0);
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        identity[j * num_outputs + j] = 1.0;
+      }
+      next_layer.set_w_values(identity);
+    }
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, GRURNNLayer::LayerNormMultiplier);
+    batch_go[0].set_outputs(0, { 1.0 });
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> batch_next_grads = { dy };
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
+
+    const auto& gain_grads = layer.get_ln_h_gain_grads();
+    const auto& bias_grads = layer.get_ln_h_bias_grads();
+    ASSERT_EQ(gain_grads.size(), num_outputs);
+    ASSERT_EQ(bias_grads.size(), num_outputs);
+
+    const double h = 1e-6;
+    for (unsigned j = 0; j < num_outputs; ++j)
+    {
+        std::vector<double> gain_plus = gain; gain_plus[j] += h;
+        std::vector<double> gain_minus = gain; gain_minus[j] -= h;
+        const double numerical_gain_grad = (run_loss(gain_plus, bias, dy) - run_loss(gain_minus, bias, dy)) / (2.0 * h);
+        EXPECT_NEAR(gain_grads[j], numerical_gain_grad, 1e-4) << "gain[" << j << "]";
+
+        std::vector<double> bias_plus = bias; bias_plus[j] += h;
+        std::vector<double> bias_minus = bias; bias_minus[j] -= h;
+        const double numerical_bias_grad = (run_loss(gain, bias_plus, dy) - run_loss(gain, bias_minus, dy)) / (2.0 * h);
+        EXPECT_NEAR(bias_grads[j], numerical_bias_grad, 1e-4) << "bias[" << j << "]";
+    }
+}
+
 TEST_F(GRURNNLayerTest, DropoutConsistency) {
     // Test that dropout mask is preserved and applied correctly in BPTT
     // Use high dropout rate (0.5) to ensure it triggers
@@ -1088,9 +1232,9 @@ namespace {
     return w;
   }
 
-  GRURNNLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs)
+  GRURNNLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs, bool use_layer_norm = false)
   {
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_norm);
     layer.set_z_w_values(make_deterministic_weights(num_inputs, num_outputs, 0.15, 0.02));
     layer.set_z_rw_values(make_deterministic_weights(num_outputs, num_outputs, 0.12, -0.01));
     layer.set_z_b_values(make_deterministic_weights(1, num_outputs, 0.05, 0.0));
@@ -1100,6 +1244,11 @@ namespace {
     layer.set_w_values(make_deterministic_weights(num_inputs, num_outputs, 0.18, -0.02));
     layer.set_rw_values(make_deterministic_weights(num_outputs, num_outputs, -0.09, 0.04));
     layer.set_b_values(make_deterministic_weights(1, num_outputs, 0.06, -0.01));
+    if (use_layer_norm)
+    {
+      layer.set_ln_h_gain_values(make_deterministic_weights(1, num_outputs, 1.2, 0.05));
+      layer.set_ln_h_bias_values(make_deterministic_weights(1, num_outputs, -0.08, 0.02));
+    }
     return layer;
   }
 
@@ -1121,23 +1270,24 @@ namespace {
   // then asserts X's stored pre-activation sums, hidden state values (every
   // timestep) and final rnn_outputs are unaffected by which other batch items
   // happened to share its 4-wide/2-wide/1-wide group.
-  void assert_no_batch_cross_talk(unsigned num_inputs, unsigned num_outputs, size_t batch_size, size_t num_time_steps, size_t x_index, bool is_training)
+  void assert_no_batch_cross_talk(unsigned num_inputs, unsigned num_outputs, size_t batch_size, size_t num_time_steps, size_t x_index, bool is_training, bool use_layer_norm = false)
   {
     ASSERT_LT(x_index, batch_size);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     const auto x_seq = make_cross_talk_sequence(0.37, num_time_steps, num_inputs);
+    const unsigned multiplier = use_layer_norm ? GRURNNLayer::LayerNormMultiplier : GRURNNLayer::Multiplier;
 
-    GRURNNLayer layer_alone = make_cross_talk_test_layer(num_inputs, num_outputs);
+    GRURNNLayer layer_alone = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_norm);
     MockLayer prev_layer_alone(0, num_inputs);
     auto batch_go_alone = create_batch_gradients_and_outputs(topology, 1);
-    auto batch_hs_alone = create_batch_hidden_states(topology, 1, num_time_steps, GRURNNLayer::Multiplier);
+    auto batch_hs_alone = create_batch_hidden_states(topology, 1, num_time_steps, multiplier);
     batch_go_alone[0].set_rnn_outputs(0, x_seq);
     layer_alone.calculate_forward_feed(batch_go_alone, prev_layer_alone, {}, batch_hs_alone, 1, is_training);
 
-    GRURNNLayer layer_batched = make_cross_talk_test_layer(num_inputs, num_outputs);
+    GRURNNLayer layer_batched = make_cross_talk_test_layer(num_inputs, num_outputs, use_layer_norm);
     MockLayer prev_layer_batched(0, num_inputs);
     auto batch_go_batched = create_batch_gradients_and_outputs(topology, batch_size);
-    auto batch_hs_batched = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+    auto batch_hs_batched = create_batch_hidden_states(topology, batch_size, num_time_steps, multiplier);
     for (size_t b = 0; b < batch_size; ++b)
     {
       if (b == x_index)
@@ -1237,6 +1387,25 @@ TEST_F(GRURNNLayerTest, NoBatchCrossTalkLargerHiddenSize)
   // AVX2 boundaries; batch_size=9 -> 4 + 4 + 1.
   assert_no_batch_cross_talk(4, 10, 9, 3, 4, false);
   assert_no_batch_cross_talk(4, 10, 9, 3, 8, false);
+}
+
+TEST_F(GRURNNLayerTest, NoBatchCrossTalkLayerNormFourWideGroup)
+{
+  // Same 4-wide-group layout as NoBatchCrossTalkFourWideGroupInference, but
+  // with use_layer_norm enabled: verifies each batch item's LayerNorm
+  // statistics (mean/inv_std, cached per-item) are computed independently
+  // and are not contaminated by its 4-wide SIMD group neighbors.
+  assert_no_batch_cross_talk(2, 3, 7, 3, 3, false, true);
+}
+
+TEST_F(GRURNNLayerTest, NoBatchCrossTalkLayerNormOneWideCleanup)
+{
+  assert_no_batch_cross_talk(2, 3, 5, 2, 4, false, true);
+}
+
+TEST_F(GRURNNLayerTest, NoBatchCrossTalkLayerNormTraining)
+{
+  assert_no_batch_cross_talk(2, 3, 7, 3, 3, true, true);
 }
 
 

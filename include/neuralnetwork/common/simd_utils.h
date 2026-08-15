@@ -2029,6 +2029,109 @@ public:
     return total;
   }
 
+  // Layer normalization forward step, applied over the n-element feature
+  // axis of a single (batch item, timestep) slice: normalizes `a` to zero
+  // mean / unit variance (population variance, +eps for stability), then
+  // applies the learnable per-element gain/bias. Writes the result to `y`
+  // (may alias `a` for in-place use) and returns the inverse standard
+  // deviation via `out_inv_std`, which the caller must cache alongside `y`
+  // for the backward pass (see layer_norm_backward). Called once per
+  // (batch, timestep, layer) rather than once per weight like the GEMM/
+  // optimiser kernels above, so a plain scalar loop is used here rather
+  // than hand-written AVX2 intrinsics.
+  inline static void layer_norm_forward(
+    const double* a,
+    const double* gain,
+    const double* bias,
+    double* y,
+    size_t n,
+    double eps,
+    double& out_inv_std) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    if (n == 0)
+    {
+      out_inv_std = 0.0;
+      return;
+    }
+
+    double mean = 0.0;
+    for (size_t j = 0; j < n; ++j)
+    {
+      mean += a[j];
+    }
+    mean /= static_cast<double>(n);
+
+    double var = 0.0;
+    for (size_t j = 0; j < n; ++j)
+    {
+      const double d = a[j] - mean;
+      var += d * d;
+    }
+    var /= static_cast<double>(n);
+
+    const double inv_std = 1.0 / std::sqrt(var + eps);
+    out_inv_std = inv_std;
+
+    for (size_t j = 0; j < n; ++j)
+    {
+      const double a_hat = (a[j] - mean) * inv_std;
+      y[j] = gain[j] * a_hat + bias[j];
+    }
+  }
+
+  // Layer normalization backward step: given the upstream gradient `dy`
+  // (dL/dy), the cached post-normalization output `y` from the matching
+  // forward call, the cached `inv_std`, and the layer's current `gain`,
+  // recovers `a_hat = (y - bias) / gain` and applies the standard LayerNorm
+  // backward formula to produce `dx` (dL/d of the pre-normalization input),
+  // which the caller feeds onward into its existing weight-gradient code
+  // exactly where the pre-LayerNorm gradient flowed before. `dgain_accum`/
+  // `dbias_accum` are accumulated into (added, not overwritten), matching
+  // how gate weight gradients already accumulate across a batch.
+  inline static void layer_norm_backward(
+    const double* dy,
+    const double* y,
+    const double* gain,
+    const double* bias,
+    double inv_std,
+    size_t n,
+    double* dx,
+    double* dgain_accum,
+    double* dbias_accum) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    if (n == 0)
+    {
+      return;
+    }
+
+    double sum_dhat = 0.0;
+    double sum_dhat_ahat = 0.0;
+    for (size_t j = 0; j < n; ++j)
+    {
+      const double g = gain[j];
+      const double safe_gain = (std::abs(g) > 1e-12) ? g : (g >= 0.0 ? 1e-12 : -1e-12);
+      const double a_hat = (y[j] - bias[j]) / safe_gain;
+      const double dhat = dy[j] * g;
+      sum_dhat += dhat;
+      sum_dhat_ahat += dhat * a_hat;
+
+      dbias_accum[j] += dy[j];
+      dgain_accum[j] += dy[j] * a_hat;
+    }
+
+    const double inv_n = 1.0 / static_cast<double>(n);
+    for (size_t j = 0; j < n; ++j)
+    {
+      const double g = gain[j];
+      const double safe_gain = (std::abs(g) > 1e-12) ? g : (g >= 0.0 ? 1e-12 : -1e-12);
+      const double a_hat = (y[j] - bias[j]) / safe_gain;
+      const double dhat = dy[j] * g;
+      dx[j] = inv_std * inv_n * (static_cast<double>(n) * dhat - sum_dhat - a_hat * sum_dhat_ahat);
+    }
+  }
+
   // Cache-blocked matrix transpose: dst[c * rows + r] = src[r * cols + c] for src of shape [rows x cols].
   // A naive row-by-row transpose writes to dst with a stride of `rows` elements, which thrashes the
   // cache for large matrices (e.g. GRU/FF weight caches). Tiling keeps both the read and write

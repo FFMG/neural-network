@@ -28,6 +28,10 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
   switch (ld.get_layer_architecture())
   {
   case Layer::Architecture::FF:
+    if (ld.get_use_layer_norm())
+    {
+      Logger::panic("LayerNorm (use_layer_norm) is only supported for Gru/Lstm hidden layers, not FF.");
+    }
     return std::make_unique<FFLayer>(
       layer_index,
       number_input_neurons,
@@ -45,6 +49,10 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
     );
 
   case Layer::Architecture::Elman:
+    if (ld.get_use_layer_norm())
+    {
+      Logger::panic("LayerNorm (use_layer_norm) is only supported for Gru/Lstm hidden layers, not Elman.");
+    }
     return std::make_unique<ElmanRNNLayer>(
       layer_index,
       number_input_neurons,
@@ -75,7 +83,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       residual_projector,
       number_of_threads,
       has_bias,
-      ld.get_momentum()
+      ld.get_momentum(),
+      ld.get_use_layer_norm()
     );
 
   case Layer::Architecture::Lstm:
@@ -92,7 +101,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       residual_projector,
       number_of_threads,
       has_bias,
-      ld.get_momentum()
+      ld.get_momentum(),
+      ld.get_use_layer_norm()
     );
 
   default:
