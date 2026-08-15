@@ -14,6 +14,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added integration test `XorFFConvergenceLion` in `tests/network_integration_tests.cpp`.
 
 ### Fixed
+- Replaced `TempBuffer`'s thread-local storage pool (`ThreadBufferPool`) with a clean, stack-scoped RAII buffer in `include/neuralnetwork/common/tempbuffer.h` and `include/neuralnetwork/layers/layer.cpp`, eliminating all MSVC CRT dynamic TLS teardown crashes (`0xc0000374`) when worker/inference threads terminate.
 - `Layer::apply_update_to_weight`'s per-weight Lion path now clamps the updated value to `[-100000, 100000]`, matching the hard explosion guard already applied by the vectorised `simd::lion_step` path, so the two code paths can no longer diverge under extreme values.
 - Corrected `OptimiserType::LAMB` to `OptimiserType::Lamb` in Python pybind11 bindings (`python/bindings.cpp`).
 
