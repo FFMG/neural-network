@@ -1415,7 +1415,8 @@ void NeuralNetwork::log_training_info(
                  tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
                  tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
                  tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
-                 tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
+                 tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay(), "\n",
+                 tab, tab, tab, "Use Layer Normalisation: ", this_hl.get_use_layer_normalisation() ? "true" : "false");
   }
 
   // Output
@@ -1440,7 +1441,8 @@ void NeuralNetwork::log_training_info(
           tab, tab, tab, tab, "Activation method      : ", activation::method_to_string(this_hl.get_activation().get_method()), "\n",
           tab, tab, tab, tab, "Activation alpha       : ", std::fixed, std::setprecision(5), this_hl.get_activation().get_alpha(), "\n",
           tab, tab, tab, tab, "Dropout                : ", std::fixed, std::setprecision(5), this_hl.get_dropout(), "\n",
-          tab, tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay());
+          tab, tab, tab, tab, "Weight Decay           : ", std::fixed, std::setprecision(5), this_hl.get_weight_decay(), "\n",
+          tab, tab, tab, tab, "Use Layer Normalisation: ", this_hl.get_use_layer_normalisation() ? "true" : "false");
 
         if (hl_index < head.get_hidden_layers().size())
         {

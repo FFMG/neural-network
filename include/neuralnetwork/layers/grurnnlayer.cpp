@@ -23,7 +23,7 @@ GRURNNLayer::GRURNNLayer(
   int number_of_threads,
   bool has_bias,
   double momentum,
-  bool use_layer_norm
+  bool use_layer_normalisation
   ) :
   GRURNNLayer(
     layer_index,
@@ -39,7 +39,7 @@ GRURNNLayer::GRURNNLayer(
     number_of_threads,
     has_bias,
     momentum,
-    use_layer_norm
+    use_layer_normalisation
   )
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
@@ -61,7 +61,7 @@ GRURNNLayer::GRURNNLayer(
   int number_of_threads,
   bool has_bias,
   double momentum,
-  bool use_layer_norm
+  bool use_layer_normalisation
 ) :
   Layer(
     layer_index,
@@ -78,7 +78,7 @@ GRURNNLayer::GRURNNLayer(
     number_of_threads,
     momentum
   ),
-  _use_layer_norm(use_layer_norm)
+  _use_layer_normalisation(use_layer_normalisation)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
 
@@ -141,7 +141,7 @@ GRURNNLayer::GRURNNLayer(const GRURNNLayer& src) noexcept :
   _r_b_m2(src._r_b_m2),
   _r_b_timesteps(src._r_b_timesteps),
   _r_b_decays(src._r_b_decays),
-  _use_layer_norm(src._use_layer_norm),
+  _use_layer_normalisation(src._use_layer_normalisation),
   _ln_h_gain_values(src._ln_h_gain_values),
   _ln_h_gain_grads(src._ln_h_gain_grads),
   _ln_h_gain_velocities(src._ln_h_gain_velocities),
@@ -216,7 +216,7 @@ GRURNNLayer::GRURNNLayer(GRURNNLayer&& src) noexcept :
   _r_b_m2(std::move(src._r_b_m2)),
   _r_b_timesteps(std::move(src._r_b_timesteps)),
   _r_b_decays(std::move(src._r_b_decays)),
-  _use_layer_norm(src._use_layer_norm),
+  _use_layer_normalisation(src._use_layer_normalisation),
   _ln_h_gain_values(std::move(src._ln_h_gain_values)),
   _ln_h_gain_grads(std::move(src._ln_h_gain_grads)),
   _ln_h_gain_velocities(std::move(src._ln_h_gain_velocities)),
@@ -330,7 +330,7 @@ GRURNNLayer::GRURNNLayer(
   const std::vector<double>& ln_h_bias_m2,
   const std::vector<long long>& ln_h_bias_timesteps,
   const std::vector<double>& ln_h_bias_decays,
-  bool use_layer_norm,
+  bool use_layer_normalisation,
   const ResidualProjector* residual_projector,
   int number_of_threads,
   const layer_activation_helper& lah,
@@ -411,7 +411,7 @@ GRURNNLayer::GRURNNLayer(
     _r_b_m2(r_b_m2),
     _r_b_timesteps(r_b_timesteps),
     _r_b_decays(r_b_decays),
-    _use_layer_norm(use_layer_norm),
+    _use_layer_normalisation(use_layer_normalisation),
     _ln_h_gain_values(ln_h_gain_values),
     _ln_h_gain_grads(ln_h_gain_grads),
     _ln_h_gain_velocities(ln_h_gain_velocities),
@@ -492,7 +492,7 @@ GRURNNLayer& GRURNNLayer::operator=(const GRURNNLayer& src) noexcept
     _r_b_timesteps = src._r_b_timesteps;
     _r_b_decays = src._r_b_decays;
 
-    _use_layer_norm = src._use_layer_norm;
+    _use_layer_normalisation = src._use_layer_normalisation;
     _ln_h_gain_values = src._ln_h_gain_values;
     _ln_h_gain_grads = src._ln_h_gain_grads;
     _ln_h_gain_velocities = src._ln_h_gain_velocities;
@@ -575,7 +575,7 @@ GRURNNLayer& GRURNNLayer::operator=(GRURNNLayer&& src) noexcept
     _r_b_timesteps = std::move(src._r_b_timesteps);
     _r_b_decays = std::move(src._r_b_decays);
 
-    _use_layer_norm = src._use_layer_norm;
+    _use_layer_normalisation = src._use_layer_normalisation;
     _ln_h_gain_values = std::move(src._ln_h_gain_values);
     _ln_h_gain_grads = std::move(src._ln_h_gain_grads);
     _ln_h_gain_velocities = std::move(src._ln_h_gain_velocities);
@@ -697,7 +697,7 @@ void GRURNNLayer::initialize_recurrent_weights(double weight_decay)
 void GRURNNLayer::initialize_layer_norm()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  if (!_use_layer_norm)
+  if (!_use_layer_normalisation)
   {
     return;
   }
@@ -1012,7 +1012,7 @@ void GRURNNLayer::run_forward_pass(
   // Small per-group scratch, reused every group iteration; never holds more
   // than 4 items' worth of data at once. Per-item stride is this instance's
   // get_pre_activation_multiplier()*N_this (Multiplier, or LayerNormMultiplier
-  // when use_layer_norm is enabled) and mirrors the
+  // when use_layer_normalisation is enabled) and mirrors the
   // [z(N)|r(N)|h_hat_pre(N)|h_hat_activated(N)|mask(N)(|inv_std(N))] layout
   // that batch_hidden_states expects from set_pre_activation_sums.
   const size_t multiplier = get_pre_activation_multiplier();
@@ -1238,7 +1238,7 @@ void GRURNNLayer::finalize_forward_step(
   // on Multiplier); a_hat is cheaply recoverable there from the cached
   // (normalized) hidden_state_values via (y - bias) / gain, so no other
   // new storage is required.
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     double inv_std = 0.0;
     simd::layer_norm_forward(h_prev_slice, _ln_h_gain_values.data(), _ln_h_bias_values.data(), h_prev_slice, N_this, LayerNormEpsilon, inv_std);
@@ -1507,7 +1507,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
       double* dh_hat_pre_deriv = &workspace.dh_hat_pre_deriv_buf[b_idx * N_this];
 
-      if (_use_layer_norm)
+      if (_use_layer_normalisation)
       {
         // dL/dh_t (external + recurrent-through-time) must be passed
         // through the LayerNorm backward formula before it is distributed
@@ -1741,7 +1741,7 @@ void GRURNNLayer::calculate_hidden_gradients(
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 3) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     std::fill(_ln_h_gain_grads.begin(), _ln_h_gain_grads.end(), 0.0);
     std::fill(_ln_h_bias_grads.begin(), _ln_h_bias_grads.end(), 0.0);
@@ -1777,7 +1777,7 @@ void GRURNNLayer::calculate_hidden_gradients(
   // Merge each dispatched chunk's share of the LayerNorm gain/bias
   // gradients (accumulated per-workspace in calculate_bptt_batch_chunk,
   // since that method is const and runs concurrently across batch chunks).
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     for (unsigned int t = 0; t < used_workspaces; ++t)
     {
@@ -2187,7 +2187,7 @@ void GRURNNLayer::calculate_and_store_gradients(
     simd::scale_vector(_z_b_grads.data(), inv_batch, _z_b_grads.size());
     simd::scale_vector(_r_b_grads.data(), inv_batch, _r_b_grads.size());
   }
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     // Already fully accumulated by calculate_hidden_gradients() (Phase A);
     // this call only needs to apply the same batch-average scaling as
@@ -2213,7 +2213,7 @@ double GRURNNLayer::get_gradient_norm_sq() const
     norm_sq += simd::sum_sq(_z_b_grads.data(), _z_b_grads.size());
     norm_sq += simd::sum_sq(_r_b_grads.data(), _r_b_grads.size());
   }
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     norm_sq += simd::sum_sq(_ln_h_gain_grads.data(), _ln_h_gain_grads.size());
     norm_sq += simd::sum_sq(_ln_h_bias_grads.data(), _ln_h_bias_grads.size());
@@ -2268,7 +2268,7 @@ void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_s
 
   // 4. Recurrent-state LayerNorm gain/bias (no weight decay on either,
   // matching how biases already skip decay via is_bias=true).
-  if (_use_layer_norm)
+  if (_use_layer_normalisation)
   {
     app(_ln_h_gain_values, _ln_h_gain_grads, _ln_h_gain_velocities, _ln_h_gain_m1, _ln_h_gain_m2, _ln_h_gain_timesteps, _ln_h_gain_decays, true);
     app(_ln_h_bias_values, _ln_h_bias_grads, _ln_h_bias_velocities, _ln_h_bias_m1, _ln_h_bias_m2, _ln_h_bias_timesteps, _ln_h_bias_decays, true);

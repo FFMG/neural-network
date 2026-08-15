@@ -260,7 +260,7 @@ TEST_F(GRURNNLayerMTTest, LayerNormForwardAndBackwardMTConsistency)
     // Same shape as GradientStorageMTConsistency (batch_size=128 is large
     // enough to push calculate_hidden_gradients past its multithreading
     // threshold, dispatching multiple BPTTWorkspace-backed chunks), but with
-    // use_layer_norm enabled: this specifically exercises the per-workspace
+    // use_layer_normalisation enabled: this specifically exercises the per-workspace
     // LayerNorm gain/bias gradient accumulation and its merge back into
     // _ln_h_gain_grads/_ln_h_bias_grads in calculate_hidden_gradients.
     const unsigned num_inputs = 8;

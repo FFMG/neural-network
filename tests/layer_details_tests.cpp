@@ -58,35 +58,35 @@ TEST_F(LayerDetailsTest, LayerDetailsMethods) {
     EXPECT_EQ(assigned.get_size(), 0);
 }
 
-TEST_F(LayerDetailsTest, LayerDetailsUseLayerNormFlag) {
+TEST_F(LayerDetailsTest, LayerDetailsUseLayerNormalisationFlag) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::tanh, 0.0, 1.0);
 
     LayerDetails default_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false);
-    EXPECT_FALSE(default_details.get_use_layer_norm());
+    EXPECT_FALSE(default_details.get_use_layer_normalisation());
 
     LayerDetails enabled_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true);
-    EXPECT_TRUE(enabled_details.get_use_layer_norm());
+    EXPECT_TRUE(enabled_details.get_use_layer_normalisation());
 
     // Copy constructor
     LayerDetails copy(enabled_details);
-    EXPECT_TRUE(copy.get_use_layer_norm());
+    EXPECT_TRUE(copy.get_use_layer_normalisation());
 
     // Move constructor
     LayerDetails moved(std::move(copy));
-    EXPECT_TRUE(moved.get_use_layer_norm());
-    EXPECT_FALSE(copy.get_use_layer_norm()); // moved-from state resets to false
+    EXPECT_TRUE(moved.get_use_layer_normalisation());
+    EXPECT_FALSE(copy.get_use_layer_normalisation()); // moved-from state resets to false
 
     // Copy assignment
     LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false);
     assigned = enabled_details;
-    EXPECT_TRUE(assigned.get_use_layer_norm());
+    EXPECT_TRUE(assigned.get_use_layer_normalisation());
 
     // Move assignment
     LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false);
     move_assigned = std::move(assigned);
-    EXPECT_TRUE(move_assigned.get_use_layer_norm());
-    EXPECT_FALSE(assigned.get_use_layer_norm()); // moved-from state resets to false
+    EXPECT_TRUE(move_assigned.get_use_layer_normalisation());
+    EXPECT_FALSE(assigned.get_use_layer_normalisation()); // moved-from state resets to false
 }
 
 TEST_F(LayerDetailsTest, OutputLayerDetailsMethods) {

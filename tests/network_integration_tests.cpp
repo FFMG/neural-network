@@ -378,7 +378,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
 // Smoke tests (not exact-convergence checks like LSTMSequenceConvergence
 // above, which hand-seeds near-solution weights that assume no
 // normalization is applied): confirm training a GRU/LSTM hidden layer with
-// use_layer_norm enabled, through the full NeuralNetwork::train pipeline
+// use_layer_normalisation enabled, through the full NeuralNetwork::train pipeline
 // (forward, BPTT backward, optimiser step), completes without throwing and
 // produces finite, bounded predictions, and that the LayerNorm gain
 // actually moves away from its 1.0 identity initialization -- i.e. the
@@ -433,7 +433,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceLayerNorm)
 
   auto& layers = const_cast<Layers&>(nn.get_layers());
   GRURNNLayer& gru = static_cast<GRURNNLayer&>(layers[1]);
-  EXPECT_TRUE(gru.get_use_layer_norm());
+  EXPECT_TRUE(gru.get_use_layer_normalisation());
   const auto& gain_after = gru.get_ln_h_gain_values();
   ASSERT_NE(gain_after, std::vector<double>(gain_after.size(), 1.0));
 
@@ -488,7 +488,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceLayerNorm)
 
   auto& layers = const_cast<Layers&>(nn.get_layers());
   LSTMLayer& lstm = static_cast<LSTMLayer&>(layers[1]);
-  EXPECT_TRUE(lstm.get_use_layer_norm());
+  EXPECT_TRUE(lstm.get_use_layer_normalisation());
   const auto& gain_after = lstm.get_ln_c_gain_values();
   ASSERT_NE(gain_after, std::vector<double>(gain_after.size(), 1.0));
 
@@ -805,7 +805,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   // (which only checks an option survives save/load), this captures the
   // GRU layer's LayerNorm gain/bias values before saving and asserts they
   // come back identical after loading, exercising the new
-  // use-layer-norm/ln-h-gain-*/ln-h-bias-* serializer fields end-to-end.
+  // use-layer-normalisation/ln-h-gain-*/ln-h-bias-* serializer fields end-to-end.
   // Output layer neuron count is deliberately matched to the GRU hidden
   // size (3): GRURNNLayer::calculate_hidden_gradients_from_output_gradients
   // routes the real output-layer gradient through a same-sized identity
@@ -832,7 +832,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
 
   auto& layers_before = const_cast<Layers&>(nn.get_layers());
   GRURNNLayer& gru_before = static_cast<GRURNNLayer&>(layers_before[1]);
-  ASSERT_TRUE(gru_before.get_use_layer_norm());
+  ASSERT_TRUE(gru_before.get_use_layer_normalisation());
   const std::vector<double> gain_before = gru_before.get_ln_h_gain_values();
   const std::vector<double> bias_before = gru_before.get_ln_h_bias_values();
   // Sanity: training with a non-zero learning rate must have moved gain
@@ -848,7 +848,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
 
   auto& layers_after = const_cast<Layers&>(loaded_nn->get_layers());
   GRURNNLayer& gru_after = static_cast<GRURNNLayer&>(layers_after[1]);
-  EXPECT_TRUE(gru_after.get_use_layer_norm());
+  EXPECT_TRUE(gru_after.get_use_layer_normalisation());
   const auto& gain_after = gru_after.get_ln_h_gain_values();
   const auto& bias_after = gru_after.get_ln_h_bias_values();
   ASSERT_EQ(gain_after.size(), gain_before.size());
@@ -868,10 +868,10 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   std::remove(test_path.c_str());
 }
 
-TEST(NetworkIntegrationTest, UseLayerNormOptionSerialization)
+TEST(NetworkIntegrationTest, UseLayerNormalisationOptionSerialization)
 {
   // Unlike LayerNormGainBiasSerializerSaveLoad (which checks the trained
-  // gain/bias weight values), this checks that use_layer_norm survives as
+  // gain/bias weight values), this checks that use_layer_normalisation survives as
   // part of the NeuralNetworkOptions hidden-layer configuration itself --
   // NeuralNetworkSerializer::add_hidden_layers/get_hidden_layers is a
   // separate code path from the per-layer weight save/load functions
@@ -887,20 +887,20 @@ TEST(NetworkIntegrationTest, UseLayerNormOptionSerialization)
     .with_number_of_epoch(1)
     .build();
 
-  ASSERT_TRUE(options.hidden_layers()[0].get_use_layer_norm());
+  ASSERT_TRUE(options.hidden_layers()[0].get_use_layer_normalisation());
 
   NeuralNetwork nn(options);
   std::vector<std::vector<double>> inputs = { {0.5} };
   std::vector<std::vector<double>> outputs = { {1.0} };
   nn.train(inputs, outputs);
 
-  std::string test_path = "test_use_layer_norm_option.json";
+  std::string test_path = "test_use_layer_normalisation_option.json";
   NeuralNetworkSerializer::save(nn, test_path);
 
   auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
   ASSERT_NE(loaded_nn, nullptr);
   ASSERT_EQ(loaded_nn->options().hidden_layers().size(), 1);
-  EXPECT_TRUE(loaded_nn->options().hidden_layers()[0].get_use_layer_norm());
+  EXPECT_TRUE(loaded_nn->options().hidden_layers()[0].get_use_layer_normalisation());
 
   std::remove(test_path.c_str());
 }

@@ -29,7 +29,7 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm = false);
+    bool use_layer_normalisation = false);
 
   GRURNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -44,7 +44,7 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_norm = false);
+    bool use_layer_normalisation = false);
 
   GRURNNLayer(
     unsigned layer_index,
@@ -132,7 +132,7 @@ public:
     const std::vector<double>& ln_h_bias_m2,
     const std::vector<long long>& ln_h_bias_timesteps,
     const std::vector<double>& ln_h_bias_decays,
-    bool use_layer_norm,
+    bool use_layer_normalisation,
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
@@ -167,7 +167,7 @@ public:
    * 5. Dropout mask (stored to ensure consistency between forward and BPTT passes)
    *
    * LayerNormMultiplier = Multiplier + 1 is used instead whenever
-   * use_layer_norm is enabled, adding one extra slot:
+   * use_layer_normalisation is enabled, adding one extra slot:
    * 6. Recurrent-state LayerNorm inv_std, cached in element [0] (the
    *    remaining N_this-1 elements of this slot are unused); see
    *    simd::layer_norm_forward/backward. get_pre_activation_multiplier()
@@ -182,7 +182,7 @@ public:
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    return _use_layer_norm ? LayerNormMultiplier : Multiplier;
+    return _use_layer_normalisation ? LayerNormMultiplier : Multiplier;
   }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -394,7 +394,7 @@ public:
   [[nodiscard]] inline const std::vector<double>& get_r_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_decays; }
 
   // Recurrent-state LayerNorm (applied to h_t)
-  [[nodiscard]] inline bool get_use_layer_norm() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _use_layer_norm; }
+  [[nodiscard]] inline bool get_use_layer_normalisation() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _use_layer_normalisation; }
   [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_values; }
   [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_grads; }
   [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_velocities; }
@@ -712,7 +712,7 @@ private:
     AlignedVector h_hat_val_buf;
 
     // Recurrent-state LayerNorm scratch (only used when the layer has
-    // use_layer_norm enabled): per-timestep combined external+recurrent
+    // use_layer_normalisation enabled): per-timestep combined external+recurrent
     // gradient buffer and its LayerNorm-backward output, plus this
     // workspace's share of the gain/bias gradients, accumulated across the
     // whole calculate_bptt_batch_chunk call and merged into the layer's
@@ -842,7 +842,7 @@ private:
   std::vector<double> _r_b_decays;
 
   // --- Recurrent-state LayerNorm (applied to the blended hidden state h_t) ---
-  bool _use_layer_norm = false;
+  bool _use_layer_normalisation = false;
   std::vector<double> _ln_h_gain_values;
   // Written from calculate_hidden_gradients(), which is const: this class
   // already uses `mutable` for internal caches accumulated behind a const

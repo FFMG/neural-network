@@ -164,7 +164,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
     py::class_<LayerDetails>(m, "LayerDetails")
         .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool>(),
              py::arg("architecture"), py::arg("size"), py::arg("activation"), py::arg("dropout"),
-             py::arg("weight_decay"), py::arg("optimiser_type"), py::arg("momentum"), py::arg("use_layer_norm") = false)
+             py::arg("weight_decay"), py::arg("optimiser_type"), py::arg("momentum"), py::arg("use_layer_normalisation") = false)
         .def_property_readonly("architecture", &LayerDetails::get_layer_architecture)
         .def_property_readonly("size", &LayerDetails::get_size)
         .def_property_readonly("activation", &LayerDetails::get_activation)
@@ -172,7 +172,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("weight_decay", &LayerDetails::get_weight_decay)
         .def_property_readonly("optimiser_type", &LayerDetails::get_optimiser_type)
         .def_property_readonly("momentum", &LayerDetails::get_momentum)
-        .def_property_readonly("use_layer_norm", &LayerDetails::get_use_layer_norm);
+        .def_property_readonly("use_layer_normalisation", &LayerDetails::get_use_layer_normalisation);
 
     py::class_<OutputLayerDetails>(m, "OutputLayerDetails")
         .def(py::init<unsigned, const activation&, const ErrorCalculation::type&, const EvaluationConfig&, double, OptimiserType, double>())

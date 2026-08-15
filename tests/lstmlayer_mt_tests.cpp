@@ -180,7 +180,7 @@ TEST_F(LSTMLayerMTTest, LayerNormForwardAndBackwardMTConsistency)
     // Same shape as BackwardFeedMTConsistency (batch_size=128 is large
     // enough to push calculate_hidden_gradients past its multithreading
     // threshold, dispatching multiple BPTTWorkspace-backed chunks), but
-    // with use_layer_norm enabled and extended through
+    // with use_layer_normalisation enabled and extended through
     // calculate_and_store_gradients: specifically exercises the
     // per-workspace LayerNorm gain/bias gradient accumulation and its
     // merge back into _ln_c_gain_grads/_ln_c_bias_grads in
