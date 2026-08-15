@@ -1322,22 +1322,19 @@ void LSTMLayer::cache_recurrent_weights()
 void LSTMLayer::allocate_workspace()
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  if (_task_queue_pool == nullptr)
-  {
-    return;
-  }
-  const auto num_threads = get_number_of_threads();
+  const auto num_threads = std::max(1U, get_number_of_threads());
   allocate_workspace(num_threads);
 }
 
 void LSTMLayer::allocate_workspace(unsigned int num_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  if (_thread_workspaces.size() <= num_threads)
+  const unsigned count = std::max(1U, num_threads);
+  if (_thread_workspaces.size() < count)
   {
-    _thread_workspaces.resize(num_threads);
+    _thread_workspaces.resize(count);
   }
-  for (size_t thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+  for (size_t thread_idx = 0; thread_idx < count; ++thread_idx)
   {
     if (!_thread_workspaces[thread_idx])
     {
@@ -1349,12 +1346,10 @@ void LSTMLayer::allocate_workspace(unsigned int num_threads)
 LSTMLayer::BPTTWorkspace& LSTMLayer::get_workspace(size_t thread_idx) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-#if VALIDATE_DATA == 1
-  if (thread_idx >= _thread_workspaces.size())
+  if (thread_idx >= _thread_workspaces.size() || !_thread_workspaces[thread_idx])
   {
-    Logger::panic("Trying to get a workspace thread ", thread_idx, " past the workspaces size!");
+    const_cast<LSTMLayer*>(this)->allocate_workspace(static_cast<unsigned int>(thread_idx + 1));
   }
-#endif
   return *_thread_workspaces[thread_idx];
 }
 

@@ -9,7 +9,10 @@ All notable changes to the `neural-network` library will be documented in this f
 - Refactored post-recurrent step logic into a new private `LSTMLayer::finalize_forward_step` in `include/neuralnetwork/layers/lstmlayer.cpp`, eliminating redundant scratch-buffer copies by activating the candidate gate and cell state directly into their final packed-state slots.
 
 ### Fixed
-- Fixed multi-threaded inference segmentation fault in `NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`:
+- Fixed multi-threaded inference and training heap corruption (`0xc0000374`) across tests:
+  - Fixed out-of-bounds workspace indexing in `GRURNNLayer`, `ElmanRNNLayer`, and `LSTMLayer`: `allocate_workspace()` now ensures at least 1 `BPTTWorkspace` is allocated even when `number_of_threads <= 1` (`_task_queue_pool == nullptr`), and `get_workspace(thread_idx)` dynamically allocates additional workspaces on demand to eliminate invalid memory dereferencing.
+  - Removed static inline `thread_local std::ostringstream` instances (`get_msg_oss()`, `get_msg_fmt_oss()`) from `include/neuralnetwork/common/logger.h`, preventing duplicate MSVC CRT dynamic TLS destructor entries from triggering multiple deallocations upon thread termination.
+  - Replaced complex `thread_local` cache structures (`EvaluationCache` and `TempCache`) in `include/neuralnetwork/neuralnetwork.cpp` with local stack/heap vectors, eliminating fragile dynamic TLS destruction on ephemeral test threads.
   - Centralised `TempBuffer`'s thread-local storage pool into a single translation unit (`include/neuralnetwork/layers/layer.cpp`), eliminating MSVC duplicate dynamic TLS destructor registrations across translation units that caused heap corruption (`0xc0000374`) on ephemeral thread exit.
   - Added safe `get_number_of_threads()` helper in `Layer` (`include/neuralnetwork/layers/layer.h`) to prevent null pointer dereferences on `_task_queue_pool` across all layer implementations (`FFLayer`, `FFOutputLayer`, `ElmanRNNLayer`, `GRURNNLayer`, `LSTMLayer`).
   - Fixed `Layers` copy constructor and copy assignment operator in `include/neuralnetwork/layers/layers.cpp` to properly null-check `src._update_weights_pool`.
