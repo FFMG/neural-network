@@ -246,6 +246,22 @@ Individual layers can have dropout applied via `LayerDetails`. During training, 
     LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true); // Layer Normalisation enabled
 ```
 
+### Stochastic Weight Averaging (SWA)
+
+Run-to-run noise (best epoch, peak accuracy, trajectory shape) makes it hard to tell whether a change to the network genuinely helped or the run just got lucky. SWA reduces that variance, and often yields a small free accuracy improvement, by periodically snapshotting the trained weight *values* once training has reached its stable plateau and averaging them together into the final model — no separate ensemble to store or run at inference time.
+
+Once training reaches `swa_start_percent` of `number_of_epoch`, a snapshot of the current weights is folded into a running average every `swa_update_percent` of `number_of_epoch` (same cadence semantics as `update_training_monitor_percent`). At the end of `train()`, if at least one snapshot was taken, the averaged weights **replace** the network's trained weights before final metrics/temperature calibration are computed — so the deployed model is the averaged one. If SWA is disabled, or no snapshot ever fires (e.g. very short training runs), this is a no-op.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_swa(true)
+      .with_swa_start_percent(0.75)  // start snapshotting after 75% of epochs
+      .with_swa_update_percent(0.02) // snapshot every 2% of epochs thereafter
+      .build();
+```
+
+These fields are persisted by `NeuralNetworkSerializer::save`/`load`.
+
 ### General Training Options
 
 These options control the overall execution of the training process:

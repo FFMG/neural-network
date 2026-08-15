@@ -1045,6 +1045,10 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
   const auto update_training_monitor_percent = options_object->get_or<double>("update-training-monitor-percent", 0.0);
 
+  const auto swa_enabled = options_object->get_or<bool>("swa-enabled", false);
+  const auto swa_start_percent = options_object->get_or<double>("swa-start-percent", 0.75);
+  const auto swa_update_percent = options_object->get_or<double>("swa-update-percent", 0.02);
+
   const auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
   std::vector<ErrorCalculation::type> final_error_calculation_types = {};
   if (nullptr != final_error_calculation_types_array)
@@ -1081,7 +1085,10 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_enable_bptt(enable_bptt)
     .with_update_training_monitor_percent(update_training_monitor_percent)
     .with_has_bias(has_bias)
-    .with_log_training_info(log_training_info);
+    .with_log_training_info(log_training_info)
+    .with_swa(swa_enabled)
+    .with_swa_start_percent(swa_start_percent)
+    .with_swa_update_percent(swa_update_percent);
 
   if (multi_output_layer_details.size())
   {
@@ -1403,6 +1410,9 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());
   options_object->set_boolean("log-training-info", options.log_training_info());
+  options_object->set_boolean("swa-enabled", options.swa());
+  options_object->set_float("swa-start-percent", options.swa_start_percent());
+  options_object->set_float("swa-update-percent", options.swa_update_percent());
 
   json.set("options", options_object);
 

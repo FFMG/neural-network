@@ -256,6 +256,20 @@ public:
     return _cached_weights;
   }
 
+  // Standard incremental/running-mean SWA update, folding `snapshot`'s weight
+  // values into this instance (already the average of `existing_swa_count`
+  // prior snapshots). Never touches gradients/velocities/moments/timesteps/decays.
+  void accumulate_swa_average(const ResidualProjector& snapshot, size_t existing_swa_count)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    const double denom = static_cast<double>(existing_swa_count + 1);
+    for (size_t i = 0; i < _w_values.size(); ++i)
+    {
+      _w_values[i] += (snapshot._w_values[i] - _w_values[i]) / denom;
+    }
+    _weights_cache_dirty = true;
+  }
+
   inline void update_weight(size_t out, size_t in, double delta)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");

@@ -234,6 +234,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_enable_bptt", &NeuralNetworkOptions::with_enable_bptt)
         .def("with_bptt_max_ticks", &NeuralNetworkOptions::with_bptt_max_ticks)
         .def("with_update_training_monitor_percent", &NeuralNetworkOptions::with_update_training_monitor_percent)
+        .def("with_swa", &NeuralNetworkOptions::with_swa)
+        .def("with_swa_start_percent", &NeuralNetworkOptions::with_swa_start_percent)
+        .def("with_swa_update_percent", &NeuralNetworkOptions::with_swa_update_percent)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
         .def("build", &NeuralNetworkOptions::build);

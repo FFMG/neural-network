@@ -905,6 +905,276 @@ TEST(NetworkIntegrationTest, UseLayerNormalisationOptionSerialization)
   std::remove(test_path.c_str());
 }
 
+TEST(NetworkIntegrationTest, SwaOptionSerialization)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(1)
+    .with_swa(true)
+    .with_swa_start_percent(0.6)
+    .with_swa_update_percent(0.1)
+    .build();
+
+  ASSERT_TRUE(options.swa());
+  EXPECT_NEAR(options.swa_start_percent(), 0.6, 1e-9);
+  EXPECT_NEAR(options.swa_update_percent(), 0.1, 1e-9);
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_swa_option.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_TRUE(loaded_nn->options().swa());
+  EXPECT_NEAR(loaded_nn->options().swa_start_percent(), 0.6, 1e-9);
+  EXPECT_NEAR(loaded_nn->options().swa_update_percent(), 0.1, 1e-9);
+
+  std::remove(test_path.c_str());
+}
+
+static NeuralNetworkOptions create_swa_baseline_comparison_options(bool swa_enabled)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false)
+  };
+  auto builder = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.0))
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(40)
+    .with_shuffle_training_data(false)
+    .with_shuffle_bptt_batches(false)
+    .with_has_bias(true);
+  if (swa_enabled)
+  {
+    builder.with_swa(true).with_swa_start_percent(0.25).with_swa_update_percent(0.1);
+  }
+  return builder.build();
+}
+
+static void seed_swa_comparison_weights(NeuralNetwork& nn)
+{
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({ 10.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0 });
+  layers[1].set_b_values({ -5.0, -15.0, 0.0, 0.0 });
+  layers[2].set_w_values({ 10.0, -20.0, 0.0, 0.0 });
+  layers[2].set_b_values({ -5.0 });
+}
+
+TEST(NetworkIntegrationTest, SwaProducesAveragedWeightsDifferentFromBaseline)
+{
+  // Trains two otherwise-identical FF networks (same hand-seeded starting
+  // weights, no shuffling anywhere so both runs are fully deterministic)
+  // differing only in whether SWA is enabled, then asserts the SWA-enabled
+  // run's final weights actually differ from the plain baseline -- proving
+  // the averaging swap-in in NeuralNetwork::train() really replaces the
+  // trained weights rather than being a silent no-op.
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0}, {1.0}, {1.0}, {0.0}
+  };
+
+  NeuralNetwork nn_baseline(create_swa_baseline_comparison_options(false));
+  seed_swa_comparison_weights(nn_baseline);
+  nn_baseline.train(inputs, outputs);
+
+  NeuralNetwork nn_swa(create_swa_baseline_comparison_options(true));
+  seed_swa_comparison_weights(nn_swa);
+  nn_swa.train(inputs, outputs);
+
+  const auto& baseline_w = nn_baseline.get_layers()[2].get_w_values();
+  const auto& swa_w = nn_swa.get_layers()[2].get_w_values();
+  ASSERT_EQ(baseline_w.size(), swa_w.size());
+  bool any_different = false;
+  for (size_t i = 0; i < baseline_w.size(); ++i)
+  {
+    EXPECT_TRUE(std::isfinite(swa_w[i]));
+    if (std::abs(baseline_w[i] - swa_w[i]) > 1e-9)
+    {
+      any_different = true;
+    }
+  }
+  EXPECT_TRUE(any_different);
+}
+
+TEST(NetworkIntegrationTest, GRUSequenceConvergenceSwa)
+{
+  // Smoke test mirroring GRUSequenceConvergenceLayerNorm: verifies SWA
+  // wiring end-to-end through NeuralNetwork::train on a recurrent layer
+  // without throwing and without producing NaN/exploded predictions.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(1)
+    .with_swa(true)
+    .with_swa_start_percent(0.5)
+    .with_swa_update_percent(0.1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.1, 0.1, 0.1, 0.1}, {0.2, 0.2, 0.2, 0.2}, {0.3, 0.3, 0.3, 0.3},
+    {0.4, 0.4, 0.4, 0.4}, {0.5, 0.5, 0.5, 0.5}, {0.6, 0.6, 0.6, 0.6},
+    {0.7, 0.7, 0.7, 0.7}, {0.8, 0.8, 0.8, 0.8}, {0.9, 0.9, 0.9, 0.9}
+  };
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  for (const auto& row : predictions)
+  {
+    for (double v : row)
+    {
+      EXPECT_TRUE(std::isfinite(v));
+      EXPECT_LT(std::abs(v), 100.0);
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, LSTMSequenceConvergenceSwa)
+{
+  // Smoke test mirroring LSTMSequenceConvergenceLayerNorm, for SWA instead.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_swa(true)
+    .with_swa_start_percent(0.5)
+    .with_swa_update_percent(0.1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {}, {}, {0.3},
+    {}, {}, {0.6},
+    {}, {}, {0.9}
+  };
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  for (const auto& row : predictions)
+  {
+    for (double v : row)
+    {
+      EXPECT_TRUE(std::isfinite(v));
+      EXPECT_LT(std::abs(v), 100.0);
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, SwaWithMultiOutputBranches)
+{
+  // Smoke test that SWA's per-layer averaging correctly recurses through
+  // MultiOutputLayer's branches (MultiOutputLayer::accumulate_swa_average_impl)
+  // without crashing or hitting a branch/array size mismatch.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false)
+  };
+
+  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0);
+  OutputLayerDetails branch_a_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
+  OutputLayerDetails branch_b_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
+  std::vector<MultiOutputLayerDetails> multi_output_layer_details = {
+    MultiOutputLayerDetails({}, branch_a_output),
+    MultiOutputLayerDetails({}, branch_b_output)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 1, 2, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(multi_output_layer_details)
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(40)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_swa(true)
+    .with_swa_start_percent(0.25)
+    .with_swa_update_percent(0.1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.1, 0.2}, {0.2, 0.4}, {0.3, 0.6},
+    {0.4, 0.8}, {0.5, 1.0}, {0.6, 1.2},
+    {0.7, 1.4}, {0.8, 1.6}, {0.9, 1.8}
+  };
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  for (const auto& row : predictions)
+  {
+    for (double v : row)
+    {
+      EXPECT_TRUE(std::isfinite(v));
+      EXPECT_LT(std::abs(v), 100.0);
+    }
+  }
+}
+
 TEST(NetworkIntegrationTest, ShuffleBpttBatchesBehavior)
 {
   auto options_no_shuffle = NeuralNetworkOptions::create({ 2, 2, 1 })

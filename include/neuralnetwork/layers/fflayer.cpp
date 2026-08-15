@@ -854,6 +854,14 @@ double FFLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+void FFLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  const auto& other = static_cast<const FFLayer&>(snapshot);
+  swa_average_into(_w_values, other._w_values, existing_swa_count);
+  swa_average_into(_b_values, other._b_values, existing_swa_count);
+}
+
 void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");

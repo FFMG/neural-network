@@ -135,6 +135,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
     return 0.0;
   }
+  void accumulate_swa_average_impl(const Layer&, size_t) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+    // Purely a buffer source for branch inputs, no trainable weights.
+  }
 };
 
 class MultiOutputLayer final : public Layer, public OutputLayer
@@ -727,6 +732,21 @@ public:
       }
     }
     return sum;
+  }
+
+  void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    const auto& other = static_cast<const MultiOutputLayer&>(snapshot);
+    for (size_t b = 0; b < _branches.size(); ++b)
+    {
+      auto& branch = _branches[b];
+      const auto& other_branch = other._branches[b];
+      for (size_t l = 0; l < branch.layers.size(); ++l)
+      {
+        branch.layers[l]->accumulate_swa_average(*other_branch.layers[l], existing_swa_count);
+      }
+    }
   }
 
   [[nodiscard]] inline double get_temperature(unsigned range_index) const noexcept override

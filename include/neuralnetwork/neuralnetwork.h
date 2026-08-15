@@ -130,7 +130,11 @@ private:
   NeuralNetworkOptions _options;
   std::vector<std::shared_ptr<NeuralNetworkHelper>> _neural_network_helpers;
   std::vector<std::map<ErrorCalculation::type, double>> _saved_errors;
-  
+
+  // SWA scratch state, only ever populated/consumed within a single train() call.
+  std::unique_ptr<Layers> _swa_layers;
+  size_t _swa_snapshot_count = 0;
+
   Rng _rng;
 
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
