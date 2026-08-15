@@ -793,6 +793,18 @@ void Layer::apply_update_to_vector_internal(
   }
   break;
 
+  case OptimiserType::Lion:
+  {
+    const double beta1 = get_momentum();
+    const double beta2 = 0.99;
+    // Lion has no separate decoupled-decay variant (unlike Adam/AdamW, Nadam/NadamW), so
+    // decay is applied unconditionally whenever configured, the same way SGD applies it.
+    const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
+
+    simd::lion_step(values.data() + start, grads.data() + start, m1.data() + start, beta1, beta2, learning_rate, count, decay_ptr, clipping_scale);
+  }
+  break;
+
   default:
     Logger::panic("Unknown optimizer type:", (int)optimiser_type);
   }
@@ -930,6 +942,29 @@ void Layer::apply_update_to_weight(
       }
 
       values[idx] = current_weight - learning_rate * update_step;
+      grads[idx] = final_gradient;
+    }
+    break;
+
+    case OptimiserType::Lion:
+    {
+      const double beta1 = get_momentum(neuron_number);
+      const double beta2 = 0.99;
+
+      double update = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+      double sign_update = (update > 0.0) ? 1.0 : ((update < 0.0) ? -1.0 : 0.0);
+
+      double current_weight = values[idx];
+      // Lion has no separate decoupled-decay variant (unlike Adam/AdamW, Nadam/NadamW), so
+      // decay is applied unconditionally whenever configured, the same way SGD applies it.
+      if (!is_bias_index(values) && decays.size() > idx)
+      {
+        current_weight *= (1.0 - learning_rate * decays[idx]);
+      }
+
+      // Hard clamp to prevent catastrophic numerical explosion, matching simd::lion_step.
+      values[idx] = std::clamp(current_weight - learning_rate * sign_update, -100000.0, 100000.0);
+      m1[idx] = beta2 * m1[idx] + (1.0 - beta2) * final_gradient;
       grads[idx] = final_gradient;
     }
     break;

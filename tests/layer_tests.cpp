@@ -77,12 +77,15 @@ TEST(LayerTest, ResetOptimizerState) {
 TEST(LayerTest, OptimiserTypeToString) {
     EXPECT_EQ(optimiser_type_to_string(OptimiserType::Adam), "Adam");
     EXPECT_EQ(optimiser_type_to_string(OptimiserType::SGD), "SGD");
+    EXPECT_EQ(optimiser_type_to_string(OptimiserType::Lion), "Lion");
     EXPECT_EQ(optimiser_type_to_string(OptimiserType::None), "None");
 }
 
 TEST(LayerTest, StringToOptimiserType) {
     EXPECT_EQ(string_to_optimiser_type("Adam"), OptimiserType::Adam);
     EXPECT_EQ(string_to_optimiser_type("adamw"), OptimiserType::AdamW);
+    EXPECT_EQ(string_to_optimiser_type("lion"), OptimiserType::Lion);
+    EXPECT_EQ(string_to_optimiser_type("Lion"), OptimiserType::Lion);
     EXPECT_EQ(string_to_optimiser_type("sgd"), OptimiserType::SGD);
 }
 

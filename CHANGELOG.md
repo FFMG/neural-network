@@ -2,6 +2,24 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.19] - 2026-08-15
+
+### Added
+- Implemented the Lion (EvoLved Sign Momentum) optimiser:
+  - Added `simd::lion_step` (AVX2/FMA vectorised implementation with branchless sign computation and decoupled weight decay) and `simd::scalar_lion_step` in `include/neuralnetwork/common/simd_utils.h`.
+  - Added `OptimiserType::Lion` support in `Layer::apply_update_to_vector_internal` and `Layer::apply_update_to_weight` in `include/neuralnetwork/layers/layer.cpp`, enabling per-weight and vectorised updates across all layer architectures (`FFLayer`, `ElmanRNNLayer`, `GRURNNLayer`, `LSTMLayer`, `FFOutputLayer`, `MultiOutputLayer`).
+  - Added mathematical unit tests in `tests/layer_optimizer_tests.cpp` (`ApplyUpdateToWeightLion`, `ApplyUpdateToWeightLionWithDecay`, `ApplyUpdateToWeightLionZeroGradient`, `ApplyUpdateToVectorLion`, `ApplyUpdateToWeightLionClampsExtremeValues`, `ApplyUpdateToWeightLionWithClipping`, `ApplyUpdateToVectorLionSkipsDecayForBias`).
+  - Added SIMD unit tests in `tests/simd_utils_tests.cpp` (`ScalarLionStep`, `ScalarLionStepNoDecay`, `LionStep`, `LionStepNoDecay`, `LionStepWithClipping`, and `FmaEquivalenceVerify` Lion step verification).
+  - Added string conversion and parsing unit tests in `tests/layer_tests.cpp` (`OptimiserTypeToString`, `StringToOptimiserType`).
+  - Added integration test `XorFFConvergenceLion` in `tests/network_integration_tests.cpp`.
+
+### Fixed
+- `Layer::apply_update_to_weight`'s per-weight Lion path now clamps the updated value to `[-100000, 100000]`, matching the hard explosion guard already applied by the vectorised `simd::lion_step` path, so the two code paths can no longer diverge under extreme values.
+- Corrected `OptimiserType::LAMB` to `OptimiserType::Lamb` in Python pybind11 bindings (`python/bindings.cpp`).
+
+### Documentation
+- Updated `README.md` to list `Lion` among the supported optimisers.
+
 ## [1.1.18] - 2026-08-14
 
 ### Changed

@@ -48,7 +48,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("Nadam", OptimiserType::Nadam)
         .value("NadamW", OptimiserType::NadamW)
         .value("AMSGrad", OptimiserType::AMSGrad)
-        .value("LAMB", OptimiserType::LAMB)
+        .value("LAMB", OptimiserType::Lamb)
         .value("Lion", OptimiserType::Lion)
         .value("None_", OptimiserType::None)
         .export_values();

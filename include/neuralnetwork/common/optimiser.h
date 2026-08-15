@@ -20,7 +20,7 @@ enum class OptimiserType
   Nadam,
   NadamW,
   AMSGrad,
-  LAMB,
+  Lamb,
   Lion,
   None
 };
@@ -40,7 +40,7 @@ inline std::string optimiser_type_to_string(OptimiserType type)
   case OptimiserType::Nadam:     return "Nadam";
   case OptimiserType::NadamW:    return "NadamW";
   case OptimiserType::AMSGrad:   return "AMSGrad";
-  case OptimiserType::LAMB:      return "LAMB";
+  case OptimiserType::Lamb:      return "Lamb";
   case OptimiserType::Lion:      return "Lion";
   case OptimiserType::None:      return "None";
   default:
@@ -101,7 +101,7 @@ inline OptimiserType string_to_optimiser_type(const std::string& str)
   }
   if (lower_str == "lamb")
   {
-    return OptimiserType::LAMB;
+    return OptimiserType::Lamb;
   }
   if (lower_str == "lion")
   {
