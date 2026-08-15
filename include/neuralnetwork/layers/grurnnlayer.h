@@ -17,18 +17,19 @@ protected:
 
 public:
   GRURNNLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     double weight_decay,
     const Role layer_role,
-    const activation& activation_method, 
-    const OptimiserType& optimiser_type, 
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    bool use_layer_norm = false);
 
   GRURNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -42,7 +43,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    bool use_layer_norm = false);
 
   GRURNNLayer(
     unsigned layer_index,
@@ -115,6 +117,22 @@ public:
     const std::vector<double>& r_b_m2,
     const std::vector<long long>& r_b_timesteps,
     const std::vector<double>& r_b_decays,
+    // Recurrent-state LayerNorm (applied to the blended hidden state h_t)
+    const std::vector<double>& ln_h_gain_values,
+    const std::vector<double>& ln_h_gain_grads,
+    const std::vector<double>& ln_h_gain_velocities,
+    const std::vector<double>& ln_h_gain_m1,
+    const std::vector<double>& ln_h_gain_m2,
+    const std::vector<long long>& ln_h_gain_timesteps,
+    const std::vector<double>& ln_h_gain_decays,
+    const std::vector<double>& ln_h_bias_values,
+    const std::vector<double>& ln_h_bias_grads,
+    const std::vector<double>& ln_h_bias_velocities,
+    const std::vector<double>& ln_h_bias_m1,
+    const std::vector<double>& ln_h_bias_m2,
+    const std::vector<long long>& ln_h_bias_timesteps,
+    const std::vector<double>& ln_h_bias_decays,
+    bool use_layer_norm,
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
@@ -140,20 +158,31 @@ public:
     return true;
   }
 
-  /* 
-   * Multiplier = 4:
-   * 1. Update gate (z) pre-activation
-   * 2. Reset gate (r) pre-activation
+  /*
+   * Multiplier = 5:
+   * 1. Update gate (z), activated
+   * 2. Reset gate (r), activated
    * 3. Candidate state (h_hat) pre-activation
-   * 4. Dropout mask (stored to ensure consistency between forward and BPTT passes)
+   * 4. Candidate state (h_hat), activated
+   * 5. Dropout mask (stored to ensure consistency between forward and BPTT passes)
+   *
+   * LayerNormMultiplier = Multiplier + 1 is used instead whenever
+   * use_layer_norm is enabled, adding one extra slot:
+   * 6. Recurrent-state LayerNorm inv_std, cached in element [0] (the
+   *    remaining N_this-1 elements of this slot are unused); see
+   *    simd::layer_norm_forward/backward. get_pre_activation_multiplier()
+   *    returns whichever of the two applies to this instance, so existing
+   *    (non-LayerNorm) call sites and buffer sizing are unaffected.
    */
   static constexpr unsigned Multiplier = 5;
+  static constexpr unsigned LayerNormMultiplier = Multiplier + 1;
   static constexpr unsigned GateCount = 3; // Update, Reset, Candidate
+  static constexpr double LayerNormEpsilon = 1e-5;
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-    return Multiplier;
+    return _use_layer_norm ? LayerNormMultiplier : Multiplier;
   }
   void calculate_forward_feed(
       std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -363,6 +392,25 @@ public:
     return _r_b_timesteps;
   }
   [[nodiscard]] inline const std::vector<double>& get_r_b_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _r_b_decays; }
+
+  // Recurrent-state LayerNorm (applied to h_t)
+  [[nodiscard]] inline bool get_use_layer_norm() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _use_layer_norm; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_h_gain_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_gain_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_gain_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_h_bias_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_h_bias_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); return _ln_h_bias_decays; }
+  void set_ln_h_gain_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); _ln_h_gain_values = v; }
+  void set_ln_h_bias_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("GRURNNLayer"); _ln_h_bias_values = v; }
 
   void set_w_values(const std::vector<double>& v) override;
   void set_w_grads(const std::vector<double>& v) override;
@@ -663,6 +711,19 @@ private:
     AlignedVector h_hat_pre_buf;
     AlignedVector h_hat_val_buf;
 
+    // Recurrent-state LayerNorm scratch (only used when the layer has
+    // use_layer_norm enabled): per-timestep combined external+recurrent
+    // gradient buffer and its LayerNorm-backward output, plus this
+    // workspace's share of the gain/bias gradients, accumulated across the
+    // whole calculate_bptt_batch_chunk call and merged into the layer's
+    // _ln_h_gain_grads/_ln_h_bias_grads by calculate_hidden_gradients once
+    // every dispatched chunk has completed.
+    AlignedVector ln_dy_buf;
+    AlignedVector ln_dx_buf;
+    AlignedVector ln_zero_buf;
+    AlignedVector ln_h_gain_grad_accum;
+    AlignedVector ln_h_bias_grad_accum;
+
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
       grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
@@ -678,6 +739,11 @@ private:
       dh_hat_pre_deriv_buf.resize_and_zero(batch_chunk_size * n);
       h_hat_pre_buf.resize_and_zero(batch_chunk_size * n);
       h_hat_val_buf.resize_and_zero(batch_chunk_size * n);
+      ln_dy_buf.resize_and_zero(n);
+      ln_dx_buf.resize_and_zero(n);
+      ln_zero_buf.resize_and_zero(n);
+      ln_h_gain_grad_accum.resize_and_zero(n);
+      ln_h_bias_grad_accum.resize_and_zero(n);
     }
   };
 
@@ -699,6 +765,7 @@ private:
     const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
+  void initialize_layer_norm();
 
   void init_weights(
     std::vector<double>& values, std::vector<double>& grads,
@@ -773,6 +840,26 @@ private:
   std::vector<double> _r_b_m2;
   mutable std::vector<long long> _r_b_timesteps;
   std::vector<double> _r_b_decays;
+
+  // --- Recurrent-state LayerNorm (applied to the blended hidden state h_t) ---
+  bool _use_layer_norm = false;
+  std::vector<double> _ln_h_gain_values;
+  // Written from calculate_hidden_gradients(), which is const: this class
+  // already uses `mutable` for internal caches accumulated behind a const
+  // public interface (see _bias_cached, _rw_timesteps etc. above).
+  mutable std::vector<double> _ln_h_gain_grads;
+  std::vector<double> _ln_h_gain_velocities;
+  std::vector<double> _ln_h_gain_m1;
+  std::vector<double> _ln_h_gain_m2;
+  mutable std::vector<long long> _ln_h_gain_timesteps;
+  std::vector<double> _ln_h_gain_decays;
+  std::vector<double> _ln_h_bias_values;
+  mutable std::vector<double> _ln_h_bias_grads;
+  std::vector<double> _ln_h_bias_velocities;
+  std::vector<double> _ln_h_bias_m1;
+  std::vector<double> _ln_h_bias_m2;
+  mutable std::vector<long long> _ln_h_bias_timesteps;
+  std::vector<double> _ln_h_bias_decays;
 
   // Cached transposed recurrent weights
   BPTTWorkspace::AlignedVector _rw_values_T;

@@ -28,7 +28,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    bool use_layer_norm = false);
 
   LSTMLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -42,7 +43,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    bool use_layer_norm = false);
 
   LSTMLayer(
     unsigned layer_index,
@@ -137,6 +139,22 @@ public:
     const std::vector<double>& o_b_m2,
     const std::vector<long long>& o_b_timesteps,
     const std::vector<double>& o_b_decays,
+    // Recurrent-state LayerNorm (applied to the cell state c_t)
+    const std::vector<double>& ln_c_gain_values,
+    const std::vector<double>& ln_c_gain_grads,
+    const std::vector<double>& ln_c_gain_velocities,
+    const std::vector<double>& ln_c_gain_m1,
+    const std::vector<double>& ln_c_gain_m2,
+    const std::vector<long long>& ln_c_gain_timesteps,
+    const std::vector<double>& ln_c_gain_decays,
+    const std::vector<double>& ln_c_bias_values,
+    const std::vector<double>& ln_c_bias_grads,
+    const std::vector<double>& ln_c_bias_velocities,
+    const std::vector<double>& ln_c_bias_m1,
+    const std::vector<double>& ln_c_bias_m2,
+    const std::vector<long long>& ln_c_bias_timesteps,
+    const std::vector<double>& ln_c_bias_decays,
+    bool use_layer_norm,
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
@@ -174,12 +192,22 @@ public:
    * 7. Cell state (c) activated (tanh), cached from the forward pass for the same reason.
    */
   static constexpr unsigned Multiplier = 7;
+  // LayerNormMultiplier adds one extra slot beyond Multiplier, used instead
+  // whenever use_layer_norm is enabled:
+  // 8. Recurrent-state LayerNorm inv_std for the cell state c_t, cached in
+  //    element [0] (the remaining N_this-1 elements of this slot are
+  //    unused); see simd::layer_norm_forward/backward.
+  // get_pre_activation_multiplier() returns whichever of the two applies to
+  // this instance, so existing (non-LayerNorm) call sites and buffer sizing
+  // are unaffected.
+  static constexpr unsigned LayerNormMultiplier = Multiplier + 1;
   static constexpr unsigned GateCount = 4; // Forget, Input, Output, Candidate
+  static constexpr double LayerNormEpsilon = 1e-5;
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-    return Multiplier;
+    return _use_layer_norm ? LayerNormMultiplier : Multiplier;
   }
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
@@ -634,6 +662,25 @@ public:
     return _o_b_decays;
   }
 
+  // Recurrent-state LayerNorm (applied to c_t)
+  [[nodiscard]] inline bool get_use_layer_norm() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _use_layer_norm; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_c_gain_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_gain_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_gain_decays; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_c_bias_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_c_bias_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); return _ln_c_bias_decays; }
+  void set_ln_c_gain_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _ln_c_gain_values = v; }
+  void set_ln_c_bias_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("LSTMLayer"); _ln_c_bias_values = v; }
+
   void set_w_values(const std::vector<double>& v) override;
   void set_w_grads(const std::vector<double>& v) override;
   void set_w_velocities(const std::vector<double>& v) override;
@@ -1018,6 +1065,24 @@ private:
     AlignedVector dc_act_deriv;
     AlignedVector dg_act_deriv;
 
+    // Recurrent-state LayerNorm scratch (only used when the layer has
+    // use_layer_norm enabled). Unlike GRU, the output gate's gradient
+    // (do_out) depends on dh_curr directly rather than through dc, so
+    // lstm_bptt_gate_step's real dh_curr must stay unmodified; instead a
+    // substitute dc_next_in is computed (ln_dc_next_substitute_buf) so the
+    // kernel's internal dc = dh*o*dc_act_deriv + dc_next_in recomputes to
+    // exactly the LayerNorm-adjusted value. ln_dy_buf holds the raw
+    // (pre-LayerNorm) dc, ln_dx_buf its LayerNorm-backward output. This
+    // workspace's share of the gain/bias gradients is accumulated across
+    // the whole calculate_bptt_batch_chunk call and merged into the
+    // layer's _ln_c_gain_grads/_ln_c_bias_grads by calculate_hidden_gradients
+    // once every dispatched chunk has completed.
+    AlignedVector ln_dy_buf;
+    AlignedVector ln_dx_buf;
+    AlignedVector ln_dc_next_substitute_buf;
+    AlignedVector ln_c_gain_grad_accum;
+    AlignedVector ln_c_bias_grad_accum;
+
     void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
     {
       grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
@@ -1043,6 +1108,11 @@ private:
       dh_curr.resize_and_zero(batch_chunk_size * n);
       dc_act_deriv.resize_and_zero(batch_chunk_size * n);
       dg_act_deriv.resize_and_zero(batch_chunk_size * n);
+      ln_dy_buf.resize_and_zero(n);
+      ln_dx_buf.resize_and_zero(n);
+      ln_dc_next_substitute_buf.resize_and_zero(n);
+      ln_c_gain_grad_accum.resize_and_zero(n);
+      ln_c_bias_grad_accum.resize_and_zero(n);
     }
   };
 
@@ -1065,6 +1135,7 @@ private:
     const BPTTWorkspace::AlignedVector& o_rw_values_T) const;
 
   void initialize_recurrent_weights(double weight_decay);
+  void initialize_layer_norm();
 
   void init_weights(
     std::vector<double>& values, std::vector<double>& grads,
@@ -1111,6 +1182,26 @@ private:
   mutable std::vector<long long> _o_rw_timesteps;
   std::vector<double> _o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_decays;
   mutable std::vector<long long> _o_b_timesteps;
+
+  // --- Recurrent-state LayerNorm (applied to the cell state c_t) ---
+  bool _use_layer_norm = false;
+  std::vector<double> _ln_c_gain_values;
+  // Written from calculate_hidden_gradients(), which is const: this class
+  // already uses `mutable` for internal caches accumulated behind a const
+  // public interface (see _bias_cached, _rw_timesteps etc. above).
+  mutable std::vector<double> _ln_c_gain_grads;
+  std::vector<double> _ln_c_gain_velocities;
+  std::vector<double> _ln_c_gain_m1;
+  std::vector<double> _ln_c_gain_m2;
+  mutable std::vector<long long> _ln_c_gain_timesteps;
+  std::vector<double> _ln_c_gain_decays;
+  std::vector<double> _ln_c_bias_values;
+  mutable std::vector<double> _ln_c_bias_grads;
+  std::vector<double> _ln_c_bias_velocities;
+  std::vector<double> _ln_c_bias_m1;
+  std::vector<double> _ln_c_bias_m2;
+  mutable std::vector<long long> _ln_c_bias_timesteps;
+  std::vector<double> _ln_c_bias_decays;
 
   // Cached transposed recurrent weights
   BPTTWorkspace::AlignedVector _rw_values_T;
