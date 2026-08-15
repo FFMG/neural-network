@@ -13,30 +13,6 @@
 
 namespace myoddweb::nn
 {
-namespace detail
-{
-  struct ThreadBufferPool
-  {
-    std::vector<double> direct_buffers[256];
-    std::unordered_map<int, std::vector<double>> map_buffers;
-
-    std::vector<double>& get(int tag) noexcept
-    {
-      if (tag >= 0 && tag < 256)
-      {
-        return direct_buffers[tag];
-      }
-      return map_buffers[tag];
-    }
-  };
-
-  std::vector<double>& get_thread_temp_buffer(int tag) noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("TempBuffer");
-    static thread_local ThreadBufferPool pool;
-    return pool.get(tag);
-  }
-}
 
 std::unique_ptr<Layer> Layer::create_hidden_layer(
   unsigned layer_index,

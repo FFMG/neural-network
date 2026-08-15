@@ -324,29 +324,31 @@ TEST(LayerTest, TempBufferCorrectness)
     }
   }
 
-  // 2. Caching behaviour for small sizes
+  // 2. Sizing and vector access
   {
     TempBuffer<double, 101> buf1(100);
     EXPECT_EQ(buf1.size(), 100);
+    EXPECT_EQ(buf1.vec().size(), 100);
   }
   {
     TempBuffer<double, 101> buf2(200);
     EXPECT_EQ(buf2.size(), 200);
+    EXPECT_EQ(buf2.vec().size(), 200);
   }
   {
     TempBuffer<double, 101> buf3(50);
     EXPECT_EQ(buf3.size(), 50);
-    EXPECT_GE(buf3.vec().size(), 200);
+    EXPECT_EQ(buf3.vec().size(), 50);
   }
 
-  // 3. Tag isolation
+  // 3. Buffer isolation
   {
     TempBuffer<double, 102> buf_tag1(10);
     TempBuffer<double, 103> buf_tag2(10);
     EXPECT_NE(buf_tag1.data(), buf_tag2.data());
   }
 
-  // 4. Large size fallback
+  // 4. Large size buffer
   {
     TempBuffer<double, 104> large_buf(1500000);
     EXPECT_EQ(large_buf.size(), 1500000);
