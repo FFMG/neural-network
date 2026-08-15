@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.20] - 2026-08-15
+
+### Fixed
+- Fixed a training performance issue caused by nested thread-pool oversubscription in `Layers::update_weights` (`include/neuralnetwork/layers/layers.cpp`): gradient calculation and gradient application were dispatched per layer onto a `Layers`-owned `TaskQueuePool` (`_update_weights_pool`) whenever the combined workload crossed a threshold, while each dispatched layer's `calculate_and_store_gradients`/`apply_stored_gradients` could *also* re-enter that same layer's own internal `TaskQueuePool` for its per-batch chunking. With `number_of_threads` typically defaulting to `hardware_concurrency() - 1`, this created far more concurrently runnable OS threads than CPU cores on every batch of every epoch, causing contention rather than speedup.
+  - Removed the `_update_weights_pool` member, its `GradCalcTask`/`GradApplyTask` dispatch structs, and all associated allocation/copy/move/assignment plumbing from `Layers` (`include/neuralnetwork/layers/layers.h`, `include/neuralnetwork/layers/layers.cpp`).
+  - `Layers::update_weights` now always iterates layers sequentially for both gradient calculation and gradient application, relying solely on each layer's own already-tuned internal SIMD/thread-pool parallelism (unchanged) for a single level of parallelism instead of two nested ones.
+  - `Layers::set_number_of_threads` no longer recreates the removed pool.
+
+### Added
+- Added `NetworkIntegrationTest.UpdateWeightsTouchesEveryLayerAcrossThreadCounts` in `tests/network_integration_tests.cpp`: trains a 3-hidden-layer FF network with `number_of_threads` set to 1, 2, and 8, and verifies every hidden and output layer's weights (and biases, where present) actually change after training, guarding the layer loop bounds in the simplified `Layers::update_weights`.
+- Added `NetworkIntegrationTest.DeepNetworkConvergesWithExplicitThreadCount` in `tests/network_integration_tests.cpp`: reuses the known-good hand-set XOR weights from `XorFFConvergence` with `number_of_threads(4)` explicitly set, confirming training still converges correctly through the now-always-sequential `update_weights` loop.
+
 ## [1.1.19] - 2026-08-15
 
 ### Added

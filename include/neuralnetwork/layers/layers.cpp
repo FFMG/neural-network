@@ -10,11 +10,9 @@
 
 namespace myoddweb::nn
 {
-Layers::Layers(const NeuralNetworkOptions& options) noexcept :
-  _update_weights_pool(nullptr)
+Layers::Layers(const NeuralNetworkOptions& options) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
 
   const auto& topology = options.topology();
 
@@ -65,16 +63,13 @@ Layers::Layers(const NeuralNetworkOptions& options) noexcept :
 
 Layers::~Layers()
 {
-  delete _update_weights_pool;
-  _update_weights_pool = nullptr;
+  MYODDWEB_PROFILE_FUNCTION("Layers");
 }
 
-Layers::Layers(const Layers& src) noexcept :
-  _update_weights_pool(nullptr)
+Layers::Layers(const Layers& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   std::shared_lock<std::shared_mutex> lock(src._mutex);
-  _update_weights_pool = src._update_weights_pool ? new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads()) : nullptr;
   _layers.reserve(src._layers.size());
   for(const auto& layer : src._layers)
   {
@@ -86,10 +81,10 @@ Layers::Layers(const Layers& src) noexcept :
 
 Layers::Layers(
   const NeuralNetworkOptions& options,
-  const std::vector<std::unique_ptr<Layer>>& layers) noexcept :
-  _update_weights_pool(nullptr)
+  const std::vector<std::unique_ptr<Layer>>& layers) noexcept
 {
-  _update_weights_pool = new TaskQueuePool<void>(options.number_of_threads());
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  (void)options;
   _layers.reserve(layers.size());
   for (const auto& layer : layers)
   {
@@ -100,13 +95,9 @@ Layers::Layers(
 Layers::Layers(Layers&& src) noexcept :
   _layers(std::move(src._layers)),
   _training_gradients_buffer(std::move(src._training_gradients_buffer)),
-  _training_hidden_states_buffer(std::move(src._training_hidden_states_buffer)),
-  _update_weights_pool(nullptr)
+  _training_hidden_states_buffer(std::move(src._training_hidden_states_buffer))
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-
-  _update_weights_pool = src._update_weights_pool;
-  src._update_weights_pool = nullptr;
 }
 
 Layers& Layers::operator=(const Layers& src) noexcept
@@ -117,9 +108,6 @@ Layers& Layers::operator=(const Layers& src) noexcept
     std::unique_lock<std::shared_mutex> lhs_lock(_mutex, std::defer_lock);
     std::shared_lock<std::shared_mutex> rhs_lock(src._mutex, std::defer_lock);
     std::lock(lhs_lock, rhs_lock);
-
-    delete _update_weights_pool;
-    _update_weights_pool = src._update_weights_pool ? new TaskQueuePool<void>(src._update_weights_pool->get_number_of_threads()) : nullptr;
 
     _layers.clear();
     _layers.reserve(src._layers.size());
@@ -147,11 +135,6 @@ Layers& Layers::operator=(Layers&& src) noexcept
 
     _training_gradients_buffer = std::move(src._training_gradients_buffer);
     _training_hidden_states_buffer = std::move(src._training_hidden_states_buffer);
-
-    delete _update_weights_pool;
-    _update_weights_pool = src._update_weights_pool;
-
-    src._update_weights_pool = nullptr;
   }
   return *this;
 }
@@ -557,38 +540,6 @@ void Layers::calculate_back_propagation_hidden_layers(
   }
 }
 
-namespace
-{
-struct GradCalcTask
-{
-  Layer& layer_a;
-  const std::vector<GradientsAndOutputs>& batch_gradients;
-  const std::vector<HiddenStates>& hidden_states;
-  const Layer& layer_b;
-  size_t batch_size;
-  const NeuralNetworkOptions& options;
-
-  void operator()() const
-  {
-    MYODDWEB_PROFILE_FUNCTION("GradCalcTask");
-    layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-  }
-};
-
-struct GradApplyTask
-{
-  Layer& layer_a;
-  double learning_rate;
-  double clipping_scale;
-
-  void operator()() const
-  {
-    MYODDWEB_PROFILE_FUNCTION("GradApplyTask");
-    layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-  }
-};
-}
-
 size_t Layers::get_total_weights() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -618,33 +569,19 @@ void Layers::update_weights(
     return;
   }
 
-  const size_t total_weights = get_total_weights();
-
-  const bool use_pool = (_update_weights_pool != nullptr && _update_weights_pool->get_number_of_threads() > 1 && size() > 2);
-  const bool parallel_grad_calc = use_pool && (batch_size * total_weights >= 10000);
-  const bool parallel_grad_apply = use_pool && (total_weights >= 50000);
-
-  // 1. Have each layer calculate and store its own gradients in parallel if workload exceeds threshold
-  if (parallel_grad_calc)
+  // 1. Have each layer calculate and store its own gradients.
+  // This is intentionally sequential across layers: each layer already
+  // parallelises its own gradient calculation internally (via its own
+  // TaskQueuePool) once the workload is large enough to be worth it. Also
+  // dispatching layers in parallel here would nest a second thread pool
+  // inside the first, oversubscribing the CPU with far more runnable
+  // threads than cores and slowing training down rather than speeding it up.
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      auto& layer_b = *_layers[i - 1];
-      _update_weights_pool->enqueue(GradCalcTask{ layer_a, batch_gradients, hidden_states, layer_b, batch_size, options });
-    }
-    _update_weights_pool->get();
+    auto& layer_a = *_layers[i];
+    auto& layer_b = *_layers[i - 1];
+    layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
   }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      auto& layer_b = *_layers[i - 1];
-      layer_a.calculate_and_store_gradients(batch_gradients, hidden_states, layer_b, batch_size, options.bptt_max_ticks());
-    }
-  }
-
 
   // 2. Calculate global gradient norm for clipping if enabled
   double clipping_scale = 1.0;
@@ -668,24 +605,15 @@ void Layers::update_weights(
     }
   }
 
-  // 3. Apply the stored (and now clipped) gradients
+  // 3. Apply the stored (and now clipped) gradients.
+  // Sequential across layers for the same reason as step 1: each layer's
+  // own apply_stored_gradients() already threads its element-wise optimiser
+  // update internally when it is worth it.
   std::unique_lock<std::shared_mutex> write(_mutex);
-  if (parallel_grad_apply)
+  for (unsigned i = 1; i < size(); ++i)
   {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      _update_weights_pool->enqueue(GradApplyTask{ layer_a, learning_rate, clipping_scale });
-    }
-    _update_weights_pool->get();
-  }
-  else
-  {
-    for (unsigned i = 1; i < size(); ++i)
-    {
-      auto& layer_a = *_layers[i];
-      layer_a.apply_stored_gradients(learning_rate, clipping_scale);
-    }
+    auto& layer_a = *_layers[i];
+    layer_a.apply_stored_gradients(learning_rate, clipping_scale);
   }
 }
 
@@ -795,8 +723,6 @@ void Layers::set_number_of_threads(int number_of_threads)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   std::unique_lock<std::shared_mutex> lock(_mutex);
-  delete _update_weights_pool;
-  _update_weights_pool = new TaskQueuePool<void>(number_of_threads);
   for (auto& layer : _layers)
   {
     layer->set_number_of_threads(number_of_threads);

@@ -10,7 +10,6 @@
 #include "../neuralnetworkoptions.h"
 #include "../common/optimiser.h"
 #include "residualprojector.h"
-#include "../common/taskqueue.h"
 
 
 namespace myoddweb::nn
@@ -160,7 +159,6 @@ private:
   mutable size_t _total_weights = 0;
 
   mutable std::shared_mutex _mutex;
-  TaskQueuePool<void>* _update_weights_pool;
 };
 
 } // namespace myoddweb::nn
