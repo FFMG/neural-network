@@ -109,6 +109,7 @@
     <ClCompile Include="output_layer_details_tests.cpp" />
     <ClCompile Include="simd_utils_tests.cpp" />
     <ClCompile Include="simd_utils_mt_tests.cpp" />
+    <ClCompile Include="swa_tests.cpp" />
     <ClCompile Include="taskqueue_tests.cpp" />
     <ClCompile Include="taskqueue_comprehensive_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />

@@ -46,7 +46,10 @@ private:
     _bptt_max_ticks(0),
     _update_training_monitor_percent(0.0),
     _has_bias(true),
-    _log_training_info(true)
+    _log_training_info(true),
+    _swa_enabled(false),
+    _swa_start_percent(0.75),
+    _swa_update_percent(0.02)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -109,7 +112,10 @@ public:
     _bptt_max_ticks(nno._bptt_max_ticks),
     _update_training_monitor_percent(nno._update_training_monitor_percent),
     _has_bias(nno._has_bias),
-    _log_training_info(nno._log_training_info)
+    _log_training_info(nno._log_training_info),
+    _swa_enabled(nno._swa_enabled),
+    _swa_start_percent(nno._swa_start_percent),
+    _swa_update_percent(nno._swa_update_percent)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
   }
@@ -142,7 +148,10 @@ public:
     _bptt_max_ticks(nno._bptt_max_ticks),
     _update_training_monitor_percent(nno._update_training_monitor_percent),
     _has_bias(nno._has_bias),
-    _log_training_info(nno._log_training_info)
+    _log_training_info(nno._log_training_info),
+    _swa_enabled(nno._swa_enabled),
+    _swa_start_percent(nno._swa_start_percent),
+    _swa_update_percent(nno._swa_update_percent)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     nno._progress_callback = nullptr;
@@ -155,6 +164,9 @@ public:
     nno._clip_threshold = 1.0;
     nno._learning_rate_warmup_start = 0.0;
     nno._learning_rate_warmup_target = 0.0;
+    nno._swa_enabled = false;
+    nno._swa_start_percent = 0.75;
+    nno._swa_update_percent = 0.02;
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
@@ -190,6 +202,9 @@ public:
       _has_bias = nno._has_bias;
       _multi_output_layer_details = nno._multi_output_layer_details;
       _log_training_info = nno._log_training_info;
+      _swa_enabled = nno._swa_enabled;
+      _swa_start_percent = nno._swa_start_percent;
+      _swa_update_percent = nno._swa_update_percent;
     }
     return *this;
   }
@@ -227,7 +242,10 @@ public:
       _has_bias = nno._has_bias;
       _multi_output_layer_details = std::move(nno._multi_output_layer_details);
       _log_training_info = nno._log_training_info;
-      
+      _swa_enabled = nno._swa_enabled;
+      _swa_start_percent = nno._swa_start_percent;
+      _swa_update_percent = nno._swa_update_percent;
+
       nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
       nno._number_of_epoch = 0;
@@ -251,6 +269,9 @@ public:
       nno._learning_rate_restart_rate = 0;
       nno._learning_rate_restart_boost = 0;
       nno._number_of_threads = 0;
+      nno._swa_enabled = false;
+      nno._swa_start_percent = 0.75;
+      nno._swa_update_percent = 0.02;
     }
     return *this;
   }
@@ -429,7 +450,25 @@ public:
     _hidden_layers = hidden_layers;
     return *this;
   }
-  
+  NeuralNetworkOptions& with_swa(bool swa_enabled)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _swa_enabled = swa_enabled;
+    return *this;
+  }
+  NeuralNetworkOptions& with_swa_start_percent(double swa_start_percent)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _swa_start_percent = swa_start_percent;
+    return *this;
+  }
+  NeuralNetworkOptions& with_swa_update_percent(double swa_update_percent)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _swa_update_percent = swa_update_percent;
+    return *this;
+  }
+
   NeuralNetworkOptions& build()
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -539,6 +578,17 @@ public:
     {
       Logger::panic("The update training monitor percent must be between 0.0 and 1.0!");
     }
+    if (swa())
+    {
+      if (swa_start_percent() < 0.0 || swa_start_percent() >= 1.0)
+      {
+        Logger::panic("The SWA start percent must be between 0.0 (inclusive) and 1.0 (exclusive)!");
+      }
+      if (swa_update_percent() <= 0.0 || swa_update_percent() > 1.0)
+      {
+        Logger::panic("The SWA update percent must be greater than 0.0 and at most 1.0!");
+      }
+    }
     return *this;
   }
 
@@ -589,7 +639,10 @@ public:
       .with_enable_bptt(true)
       .with_bptt_max_ticks(0)
       .with_update_training_monitor_percent(0.0)
-      .with_log_training_info(true);
+      .with_log_training_info(true)
+      .with_swa(false)
+      .with_swa_start_percent(0.75)
+      .with_swa_update_percent(0.02);
   }
 
   [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -621,6 +674,9 @@ public:
   [[nodiscard]] inline bool log_training_info() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_training_info; }
   [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
+  [[nodiscard]] inline bool swa() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa_enabled; }
+  [[nodiscard]] inline double swa_start_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa_start_percent; }
+  [[nodiscard]] inline double swa_update_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa_update_percent; }
 
 private:
   std::vector<unsigned> _topology;
@@ -651,5 +707,8 @@ private:
   double _update_training_monitor_percent;
   bool _has_bias;
   bool _log_training_info;
+  bool _swa_enabled;
+  double _swa_start_percent;   //  fraction of total epochs after which SWA snapshotting begins
+  double _swa_update_percent;  //  cadence between SWA snapshots, same percent-of-epoch semantics as update_training_monitor_percent
 };
 } // namespace myoddweb::nn

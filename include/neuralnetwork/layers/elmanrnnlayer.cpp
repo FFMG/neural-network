@@ -904,6 +904,15 @@ double ElmanRNNLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+void ElmanRNNLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  const auto& other = static_cast<const ElmanRNNLayer&>(snapshot);
+  swa_average_into(_w_values, other._w_values, existing_swa_count);
+  swa_average_into(_rw_values, other._rw_values, existing_swa_count);
+  swa_average_into(_b_values, other._b_values, existing_swa_count);
+}
+
 namespace
 {
 struct ElmanGradCalcTask

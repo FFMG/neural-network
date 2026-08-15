@@ -555,6 +555,15 @@ size_t Layers::get_total_weights() const noexcept
   return _total_weights;
 }
 
+void Layers::accumulate_swa_average(const Layers& snapshot, size_t existing_swa_count)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    _layers[i]->accumulate_swa_average(*snapshot._layers[i], existing_swa_count);
+  }
+}
+
 void Layers::update_weights(
   const NeuralNetworkOptions& options,
   const std::vector<GradientsAndOutputs>& batch_gradients,

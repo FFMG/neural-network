@@ -1347,6 +1347,29 @@ double LSTMLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+void LSTMLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  const auto& other = static_cast<const LSTMLayer&>(snapshot);
+  swa_average_into(_w_values, other._w_values, existing_swa_count);
+  swa_average_into(_rw_values, other._rw_values, existing_swa_count);
+  swa_average_into(_b_values, other._b_values, existing_swa_count);
+  swa_average_into(_f_w_values, other._f_w_values, existing_swa_count);
+  swa_average_into(_f_rw_values, other._f_rw_values, existing_swa_count);
+  swa_average_into(_f_b_values, other._f_b_values, existing_swa_count);
+  swa_average_into(_i_w_values, other._i_w_values, existing_swa_count);
+  swa_average_into(_i_rw_values, other._i_rw_values, existing_swa_count);
+  swa_average_into(_i_b_values, other._i_b_values, existing_swa_count);
+  swa_average_into(_o_w_values, other._o_w_values, existing_swa_count);
+  swa_average_into(_o_rw_values, other._o_rw_values, existing_swa_count);
+  swa_average_into(_o_b_values, other._o_b_values, existing_swa_count);
+  if (_use_layer_normalisation)
+  {
+    swa_average_into(_ln_c_gain_values, other._ln_c_gain_values, existing_swa_count);
+    swa_average_into(_ln_c_bias_values, other._ln_c_bias_values, existing_swa_count);
+  }
+}
+
 void LSTMLayer::zero_gradients()
 {
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0); std::fill(_b_grads.begin(), _b_grads.end(), 0.0); std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);

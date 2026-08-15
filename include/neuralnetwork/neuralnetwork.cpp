@@ -815,6 +815,12 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   // Initial creation of BPTT batches before the epoch loop
   create_bptt_batches(batch_training_inputs, batch_training_outputs, bptt_in, bptt_out);
 
+  // Stochastic Weight Averaging: snapshot cadence starts once training has
+  // (presumably) reached its stable plateau.
+  const auto swa_start_epoch = static_cast<int>(std::round(_options.swa_start_percent() * number_of_epoch));
+  _swa_layers.reset();
+  _swa_snapshot_count = 0;
+
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
@@ -840,6 +846,23 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
         std::vector<std::vector<double>>::const_iterator inputs_it = bptt_in.cbegin() + i;
         std::vector<std::vector<double>>::const_iterator outputs_it = bptt_out.cbegin() + i;
         _layers.train(_options, _learning_rate, inputs_it, outputs_it, current_batch_size);
+      }
+
+      // Stochastic Weight Averaging: fold in a snapshot of the current
+      // weights once we are past the configured start epoch, at the
+      // configured cadence.
+      if (_options.swa() && epoch >= swa_start_epoch && base_helper->is_at_epoch_interval(_options.swa_update_percent()))
+      {
+        if (!_swa_layers)
+        {
+          _swa_layers = std::make_unique<Layers>(_layers);
+          _swa_snapshot_count = 1;
+        }
+        else
+        {
+          _swa_layers->accumulate_swa_average(_layers, _swa_snapshot_count);
+          ++_swa_snapshot_count;
+        }
       }
     }
     MYODDWEB_PROFILE_MARK();
@@ -874,6 +897,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
     MYODDWEB_PROFILE_MARK();
   }
+
+  // Stochastic Weight Averaging: replace the trained weights with the
+  // averaged snapshot before any final metrics/temperature calibration are
+  // computed, so everything downstream (logging, calibration, serialization)
+  // reflects the deployed, averaged model.
+  if (_swa_layers)
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    _layers = std::move(*_swa_layers);
+    _layers.cache_recurrent_weights();
+    Logger::info("Applied Stochastic Weight Averaging over ", _swa_snapshot_count, " snapshot(s).");
+  }
+  _swa_layers.reset();
+  _swa_snapshot_count = 0;
 
   if (Logger::can_info() && options().final_error_calculation_types().size() > 0)
   {

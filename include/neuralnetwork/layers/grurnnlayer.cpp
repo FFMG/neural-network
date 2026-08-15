@@ -2222,6 +2222,26 @@ double GRURNNLayer::get_gradient_norm_sq() const
   return norm_sq;
 }
 
+void GRURNNLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  const auto& other = static_cast<const GRURNNLayer&>(snapshot);
+  swa_average_into(_w_values, other._w_values, existing_swa_count);
+  swa_average_into(_rw_values, other._rw_values, existing_swa_count);
+  swa_average_into(_b_values, other._b_values, existing_swa_count);
+  swa_average_into(_z_w_values, other._z_w_values, existing_swa_count);
+  swa_average_into(_z_rw_values, other._z_rw_values, existing_swa_count);
+  swa_average_into(_z_b_values, other._z_b_values, existing_swa_count);
+  swa_average_into(_r_w_values, other._r_w_values, existing_swa_count);
+  swa_average_into(_r_rw_values, other._r_rw_values, existing_swa_count);
+  swa_average_into(_r_b_values, other._r_b_values, existing_swa_count);
+  if (_use_layer_normalisation)
+  {
+    swa_average_into(_ln_h_gain_values, other._ln_h_gain_values, existing_swa_count);
+    swa_average_into(_ln_h_bias_values, other._ln_h_bias_values, existing_swa_count);
+  }
+}
+
 void GRURNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");

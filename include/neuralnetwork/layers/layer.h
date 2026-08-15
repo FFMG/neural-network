@@ -674,7 +674,24 @@ public:
 
   virtual double get_gradient_norm_sq() const = 0;
 
-  virtual void zero_gradients() 
+  // Averages this layer's own SoA weight *value* arrays (never gradients,
+  // velocities, moments, timesteps or decays - those are optimiser state,
+  // meaningless once training has stopped) with the corresponding arrays of
+  // `snapshot`, treating `this` as a running SWA average that has already
+  // folded in `existing_swa_count` prior snapshots.
+  void accumulate_swa_average(const Layer& snapshot, size_t existing_swa_count)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    accumulate_swa_average_impl(snapshot, existing_swa_count);
+    if (_residual_projector != nullptr && snapshot._residual_projector != nullptr)
+    {
+      _residual_projector->accumulate_swa_average(*snapshot._residual_projector, existing_swa_count);
+    }
+  }
+
+  virtual void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) = 0;
+
+  virtual void zero_gradients()
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer"); 
     std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
@@ -1026,6 +1043,19 @@ public:
   }
 
 protected:
+  // Standard incremental/running-mean update: folds `snapshot` into
+  // `running_avg` (already the average of `existing_swa_count` prior
+  // snapshots) in place, so only one running-average copy is ever needed.
+  static inline void swa_average_into(std::vector<double>& running_avg, const std::vector<double>& snapshot, size_t existing_swa_count)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    const double denom = static_cast<double>(existing_swa_count + 1);
+    for (size_t i = 0; i < running_avg.size(); ++i)
+    {
+      running_avg[i] += (snapshot[i] - running_avg[i]) / denom;
+    }
+  }
+
   Layer(
     unsigned layer_index,
     const Role layer_role,

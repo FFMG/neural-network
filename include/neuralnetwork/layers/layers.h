@@ -89,6 +89,7 @@ public:
   std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
   [[nodiscard]] size_t get_total_weights() const noexcept;
+  void accumulate_swa_average(const Layers& snapshot, size_t existing_swa_count);
 
 private:
   [[nodiscard]] inline const Layer& layer(unsigned index) const
