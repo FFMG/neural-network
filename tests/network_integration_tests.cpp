@@ -209,6 +209,54 @@ TEST(NetworkIntegrationTest, XorFFConvergence)
   EXPECT_NEAR(predictions[3][0], 0.0, 0.15);
 }
 
+TEST(NetworkIntegrationTest, XorFFConvergenceLion)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Lion, 0.9)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Lion, 0.9))
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({
+    10.0, 10.0, 0.0, 0.0,
+    10.0, 10.0, 0.0, 0.0
+  });
+  layers[1].set_b_values({ -5.0, -15.0, 0.0, 0.0 });
+  layers[2].set_w_values({ 10.0, -20.0, 0.0, 0.0 });
+  layers[2].set_b_values({ -5.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0},
+    {0.0, 1.0},
+    {1.0, 0.0},
+    {1.0, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0},
+    {1.0},
+    {1.0},
+    {0.0}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(inputs);
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 0.0, 0.15);
+  EXPECT_NEAR(predictions[1][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[2][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[3][0], 0.0, 0.15);
+}
+
 TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {

@@ -50,6 +50,7 @@ myoddweb::nn::NeuralNetwork nn(options);
 * NadamW
 * Adagrad
 * RMSProp
+* Lion
 
 #### Not supported (yet)
 
@@ -57,7 +58,6 @@ myoddweb::nn::NeuralNetwork nn(options);
 * AdaDelta
 * AMSGrad
 * LAMB
-* Lion
 
 ## Python Bindings
 

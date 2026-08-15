@@ -142,6 +142,225 @@ TEST_F(LayerOptimizerTest, ApplyUpdateToWeightNadam) {
     EXPECT_NEAR(values[0], 0.999, 1e-6);
 }
 
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightLion) {
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.0 };
+    
+    double input_grad = 0.2;
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    // Lion Update (first step, beta1=0.0 since MockOptimizerLayer has momentum=0.0):
+    // beta1 = get_momentum(0) = 0.0, beta2 = 0.99
+    // update = beta1 * m1[0] + (1 - beta1) * final_grad = 0.0 * 0.0 + 1.0 * 0.2 = 0.2
+    // sign_update = sign(0.2) = 1.0
+    // values[0] = 1.0 - lr * sign_update = 1.0 - 0.01 * 1.0 = 0.99
+    // m1[0] = beta2 * m1[0] + (1 - beta2) * final_grad = 0.99 * 0.0 + 0.01 * 0.2 = 0.002
+    // grads[0] = 0.2
+    
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Lion, 0);
+    
+    EXPECT_NEAR(values[0], 0.99, 1e-9);
+    EXPECT_NEAR(m1[0], 0.002, 1e-9);
+    EXPECT_NEAR(grads[0], 0.2, 1e-9);
+
+    // Second step with negative gradient:
+    input_grad = -0.5;
+    // update = 0.0 * 0.002 + 1.0 * (-0.5) = -0.5
+    // sign_update = sign(-0.5) = -1.0
+    // values[0] = 0.99 - 0.01 * (-1.0) = 1.00
+    // m1[0] = 0.99 * 0.002 + 0.01 * (-0.5) = 0.00198 - 0.005 = -0.00302
+    // grads[0] = -0.5
+    
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Lion, 0);
+    
+    EXPECT_NEAR(values[0], 1.00, 1e-9);
+    EXPECT_NEAR(m1[0], -0.00302, 1e-9);
+    EXPECT_NEAR(grads[0], -0.5, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightLionWithDecay) {
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 2.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.05 }; // Weight decay
+    
+    double input_grad = 0.1;
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    // Lion with decoupled weight decay:
+    // current_weight = values[0] * (1.0 - lr * decays[0]) = 2.0 * (1.0 - 0.01 * 0.05) = 2.0 * 0.9995 = 1.999
+    // update = 0.0 * 0.0 + 1.0 * 0.1 = 0.1 -> sign_update = 1.0
+    // values[0] = 1.999 - lr * 1.0 = 1.989
+    // m1[0] = 0.99 * 0.0 + 0.01 * 0.1 = 0.001
+    
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Lion, 0);
+    
+    EXPECT_NEAR(values[0], 1.989, 1e-9);
+    EXPECT_NEAR(m1[0], 0.001, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightLionZeroGradient) {
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.5 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.0 };
+    
+    double input_grad = 0.0;
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    // Gradient is zero and momentum is zero:
+    // update = 0.0 -> sign_update = 0.0
+    // values[0] remains 1.5
+    // m1[0] remains 0.0
+    
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Lion, 0);
+    
+    EXPECT_NEAR(values[0], 1.5, 1e-9);
+    EXPECT_NEAR(m1[0], 0.0, 1e-9);
+    EXPECT_NEAR(grads[0], 0.0, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorLion) {
+    MockOptimizerLayer layer(4, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0 };
+    std::vector<double> grads = { 0.5, -0.5, 0.0, 1.2 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.0, 0.0, 0.0, 0.0 };
+    
+    double lr = 0.01;
+    double clipping = 1.0;
+    
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::Lion, 0, 4);
+    
+    // beta1 = 0.0, beta2 = 0.99
+    // elem 0: c = 0.5 > 0 -> sign = 1.0 -> val = 1.0 - 0.01 * 1.0 = 0.99, m1 = 0.01 * 0.5 = 0.005
+    // elem 1: c = -0.5 < 0 -> sign = -1.0 -> val = 2.0 - 0.01 * (-1.0) = 2.01, m1 = 0.01 * (-0.5) = -0.005
+    // elem 2: c = 0.0 -> sign = 0.0 -> val = 3.0, m1 = 0.0
+    // elem 3: c = 1.2 > 0 -> sign = 1.0 -> val = 4.0 - 0.01 * 1.0 = 3.99, m1 = 0.01 * 1.2 = 0.012
+    
+    EXPECT_NEAR(values[0], 0.99, 1e-9);
+    EXPECT_NEAR(values[1], 2.01, 1e-9);
+    EXPECT_NEAR(values[2], 3.0, 1e-9);
+    EXPECT_NEAR(values[3], 3.99, 1e-9);
+
+    EXPECT_NEAR(m1[0], 0.005, 1e-9);
+    EXPECT_NEAR(m1[1], -0.005, 1e-9);
+    EXPECT_NEAR(m1[2], 0.0, 1e-9);
+    EXPECT_NEAR(m1[3], 0.012, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightLionClampsExtremeValues) {
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> velocities;
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    double lr = 0.01;
+    double clipping = 1.0;
+
+    // Positive side: weight is just below the clamp bound and the update pushes it over.
+    // beta1 = 0.0 -> update = final_gradient = -1.0 -> sign_update = -1.0
+    // unclamped: 99999.995 - lr * (-1.0) = 100000.005 -> clamps to 100000.0
+    {
+        std::vector<double> values = { 99999.995 };
+        std::vector<double> grads = { 0.0 };
+        std::vector<double> m1 = { 0.0 };
+        std::vector<double> decays = { 0.0 };
+
+        layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, -1.0, lr, clipping, OptimiserType::Lion, 0);
+
+        EXPECT_NEAR(values[0], 100000.0, 1e-9);
+    }
+
+    // Negative side: weight is just above the negative clamp bound and the update pushes it under.
+    // beta1 = 0.0 -> update = final_gradient = 1.0 -> sign_update = 1.0
+    // unclamped: -99999.995 - lr * 1.0 = -100000.005 -> clamps to -100000.0
+    {
+        std::vector<double> values = { -99999.995 };
+        std::vector<double> grads = { 0.0 };
+        std::vector<double> m1 = { 0.0 };
+        std::vector<double> decays = { 0.0 };
+
+        layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, 1.0, lr, clipping, OptimiserType::Lion, 0);
+
+        EXPECT_NEAR(values[0], -100000.0, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightLionWithClipping) {
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.0 };
+
+    double input_grad = 2.0;
+    double lr = 0.01;
+    double clipping = 0.25;
+
+    // final_gradient = input_grad * clipping = 2.0 * 0.25 = 0.5
+    // beta1 = 0.0 -> update = 0.5 -> sign_update = 1.0
+    // values[0] = 1.0 - 0.01 * 1.0 = 0.99
+    // m1[0] = 0.99 * 0.0 + 0.01 * 0.5 = 0.005
+    // grads[0] = 0.5 (the clipped gradient, not the raw 2.0)
+
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Lion, 0);
+
+    EXPECT_NEAR(values[0], 0.99, 1e-9);
+    EXPECT_NEAR(m1[0], 0.005, 1e-9);
+    EXPECT_NEAR(grads[0], 0.5, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorLionSkipsDecayForBias) {
+    MockOptimizerLayer layer(4, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0 };
+    std::vector<double> grads = { 0.5, -0.5, 0.0, 1.2 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.5, 0.5, 0.5, 0.5 }; // Large decay that would be very visible if wrongly applied.
+
+    double lr = 0.01;
+    double clipping = 1.0;
+
+    // is_bias = true -> decay must be skipped even though decays[] is populated.
+    // Result should be identical to ApplyUpdateToVectorLion (decays = 0) above.
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, true, OptimiserType::Lion, 0, 4);
+
+    EXPECT_NEAR(values[0], 0.99, 1e-9);
+    EXPECT_NEAR(values[1], 2.01, 1e-9);
+    EXPECT_NEAR(values[2], 3.0, 1e-9);
+    EXPECT_NEAR(values[3], 3.99, 1e-9);
+
+    EXPECT_NEAR(m1[0], 0.005, 1e-9);
+    EXPECT_NEAR(m1[1], -0.005, 1e-9);
+    EXPECT_NEAR(m1[2], 0.0, 1e-9);
+    EXPECT_NEAR(m1[3], 0.012, 1e-9);
+}
+
 TEST_F(LayerOptimizerTest, ClippingRobustness) {
     MockOptimizerLayer layer(1, 1);
     std::vector<double> values = { 1.0 };

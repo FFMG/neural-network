@@ -1399,6 +1399,150 @@ public:
     scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);
   }
 
+  // Scalar fallback for lion_step
+  inline static void scalar_lion_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double b1,
+    double b2,
+    double lr,
+    size_t n,
+    const double* decays = nullptr,
+    size_t start = 0,
+    double clipping_scale = 1.0) noexcept
+  {
+    if (decays != nullptr)
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        double c = b1 * m1[j] + (1.0 - b1) * g;
+        double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+        double w = values[j] * (1.0 - lr * decays[j]);
+        values[j] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+        m1[j] = b2 * m1[j] + (1.0 - b2) * g;
+      }
+    }
+    else
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        double c = b1 * m1[j] + (1.0 - b1) * g;
+        double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+        double w = values[j];
+        values[j] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+        m1[j] = b2 * m1[j] + (1.0 - b2) * g;
+      }
+    }
+  }
+
+  // Full Lion Update Step (Evolved Sign Momentum)
+  inline static void lion_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double b1,
+    double b2,
+    double lr,
+    size_t n,
+    const double* decays = nullptr,
+    double clipping_scale = 1.0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_b1 = _mm256_set1_pd(b1);
+    __m256d vec_one_minus_b1 = _mm256_set1_pd(1.0 - b1);
+    __m256d vec_b2 = _mm256_set1_pd(b2);
+    __m256d vec_one_minus_b2 = _mm256_set1_pd(1.0 - b2);
+    __m256d vec_lr = _mm256_set1_pd(lr);
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_neg_one = _mm256_set1_pd(-1.0);
+    __m256d vec_zero = _mm256_setzero_pd();
+    __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
+    __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
+
+    if (decays != nullptr)
+    {
+      for (; j + 3 < n; j += 4)
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Direction c = b1 * m_{t-1} + (1 - b1) * g
+#ifdef SIMD_FMA_ENABLED
+        __m256d c = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b2, g, _mm256_mul_pd(vec_b2, cur_m1));
+#else
+        __m256d c = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m1), _mm256_mul_pd(vec_one_minus_b2, g));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+
+        // Sign(c)
+        __m256d gt_zero = _mm256_cmp_pd(c, vec_zero, _CMP_GT_OQ);
+        __m256d lt_zero = _mm256_cmp_pd(c, vec_zero, _CMP_LT_OQ);
+        __m256d sign_c = _mm256_blendv_pd(vec_zero, vec_one, gt_zero);
+        sign_c = _mm256_blendv_pd(sign_c, vec_neg_one, lt_zero);
+
+        // Decoupled weight decay and parameter update
+        __m256d d = _mm256_loadu_pd(&decays[j]);
+#ifdef SIMD_FMA_ENABLED
+        cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, sign_c, cur_w);
+#else
+        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, sign_c));
+#endif
+
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
+    }
+    else
+    {
+      for (; j + 3 < n; j += 4)
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Direction c = b1 * m_{t-1} + (1 - b1) * g
+#ifdef SIMD_FMA_ENABLED
+        __m256d c = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b2, g, _mm256_mul_pd(vec_b2, cur_m1));
+#else
+        __m256d c = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m1), _mm256_mul_pd(vec_one_minus_b2, g));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+
+        // Sign(c)
+        __m256d gt_zero = _mm256_cmp_pd(c, vec_zero, _CMP_GT_OQ);
+        __m256d lt_zero = _mm256_cmp_pd(c, vec_zero, _CMP_LT_OQ);
+        __m256d sign_c = _mm256_blendv_pd(vec_zero, vec_one, gt_zero);
+        sign_c = _mm256_blendv_pd(sign_c, vec_neg_one, lt_zero);
+
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, sign_c, cur_w);
+#else
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, sign_c));
+#endif
+
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
+    }
+#endif
+    scalar_lion_step(values, grads, m1, b1, b2, lr, n, decays, j, clipping_scale);
+  }
+
   // Scalar fallback for gru_bptt_gate_step
   inline static void scalar_gru_bptt_gate_step(
     size_t n,

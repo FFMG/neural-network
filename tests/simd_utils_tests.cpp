@@ -123,6 +123,61 @@ TEST(SimdUtilsTest, ScalarNadamStep) {
   expect_vec_near(values, expected_values);
 }
 
+TEST(SimdUtilsTest, ScalarLionStep) {
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01 };
+
+  double b1 = 0.9;
+  double b2 = 0.99;
+  double lr = 0.001;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+
+  for (size_t i = 0; i < n; ++i) {
+    double c = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+    double w = expected_values[i] * (1.0 - lr * decays[i]);
+    expected_values[i] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+    expected_m1[i] = b2 * expected_m1[i] + (1.0 - b2) * grads[i];
+  }
+
+  simd::scalar_lion_step(values.data(), grads.data(), m1.data(), b1, b2, lr, n, decays.data());
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, ScalarLionStepNoDecay) {
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+
+  double b1 = 0.9;
+  double b2 = 0.99;
+  double lr = 0.001;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+
+  for (size_t i = 0; i < n; ++i) {
+    double c = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+    double w = expected_values[i];
+    expected_values[i] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+    expected_m1[i] = b2 * expected_m1[i] + (1.0 - b2) * grads[i];
+  }
+
+  simd::scalar_lion_step(values.data(), grads.data(), m1.data(), b1, b2, lr, n, nullptr);
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(values, expected_values);
+}
+
 TEST(SimdUtilsTest, ScalarGruBpttGateStep) {
   const size_t n = 5;
   std::vector<double> grad_next = { 0.1, 0.2, 0.3, 0.4, 0.5 };
@@ -527,6 +582,95 @@ TEST(SimdUtilsTest, NadamStepWithClipping)
 
   expect_vec_near(m1, expected_m1);
   expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, LionStep) {
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01 };
+
+  double b1 = 0.9;
+  double b2 = 0.99;
+  double lr = 0.001;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+
+  for (size_t i = 0; i < n; ++i) {
+    double c = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+    double w = expected_values[i] * (1.0 - lr * decays[i]);
+    expected_values[i] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+    expected_m1[i] = b2 * expected_m1[i] + (1.0 - b2) * grads[i];
+  }
+
+  simd::lion_step(values.data(), grads.data(), m1.data(), b1, b2, lr, n, decays.data());
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, LionStepNoDecay)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+
+  double b1 = 0.9;
+  double b2 = 0.99;
+  double lr = 0.001;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    double c = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+    double w = expected_values[i];
+    expected_values[i] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+    expected_m1[i] = b2 * expected_m1[i] + (1.0 - b2) * grads[i];
+  }
+
+  simd::lion_step(values.data(), grads.data(), m1.data(), b1, b2, lr, n, nullptr);
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, LionStepWithClipping)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01 };
+  
+  double b1 = 0.9;
+  double b2 = 0.99;
+  double lr = 0.001;
+  double clipping_scale = 0.5;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    double clipped_grad = grads[i] * clipping_scale;
+    double c = b1 * expected_m1[i] + (1.0 - b1) * clipped_grad;
+    double sign_c = (c > 0.0) ? 1.0 : ((c < 0.0) ? -1.0 : 0.0);
+    double w = expected_values[i] * (1.0 - lr * decays[i]);
+    expected_values[i] = std::clamp(w - lr * sign_c, -100000.0, 100000.0);
+    expected_m1[i] = b2 * expected_m1[i] + (1.0 - b2) * clipped_grad;
+  }
+
+  simd::lion_step(values.data(), grads.data(), m1.data(), b1, b2, lr, n, decays.data(), clipping_scale);
+
+  expect_vec_near(m1, expected_m1);
   expect_vec_near(values, expected_values);
 }
 
@@ -1535,7 +1679,25 @@ TEST(SimdUtilsTest, FmaEquivalenceVerify)
     expect_vec_near(val_simd, val_scalar);
   }
 
-  // 3. GRU BPTT Gate Step Verify
+  // 3. Lion Step Verify
+  {
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1;
+
+    double lion_b1 = 0.9;
+    double lion_b2 = 0.99;
+
+    simd::lion_step(val_simd.data(), grads.data(), m1_simd.data(), lion_b1, lion_b2, lr, n, decays.data());
+    simd::scalar_lion_step(val_scalar.data(), grads.data(), m1_scalar.data(), lion_b1, lion_b2, lr, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+
+  // 4. GRU BPTT Gate Step Verify
   {
     std::vector<double> grad_next(n);
     std::vector<double> d_next_h(n);
