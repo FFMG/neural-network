@@ -10,6 +10,7 @@
 #include "neuralnetworkoptions.h"
 #include "helpers/neuralnetworkserializer.h"
 #include "test_helper.h"
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -165,7 +166,7 @@ TEST(NetworkIntegrationTest, LinearRegressionWithBiasConvergence)
 TEST(NetworkIntegrationTest, XorFFConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -213,7 +214,7 @@ TEST(NetworkIntegrationTest, XorFFConvergence)
 TEST(NetworkIntegrationTest, XorFFConvergenceLion)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Lion, 0.9)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Lion, 0.9, false)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -261,7 +262,7 @@ TEST(NetworkIntegrationTest, XorFFConvergenceLion)
 TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+    LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -311,7 +312,7 @@ TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
 TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+    LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -374,10 +375,139 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
   EXPECT_NEAR(predictions[2][0], 0.9, 1e-2);
 }
 
+// Smoke tests (not exact-convergence checks like LSTMSequenceConvergence
+// above, which hand-seeds near-solution weights that assume no
+// normalization is applied): confirm training a GRU/LSTM hidden layer with
+// use_layer_norm enabled, through the full NeuralNetwork::train pipeline
+// (forward, BPTT backward, optimiser step), completes without throwing and
+// produces finite, bounded predictions, and that the LayerNorm gain
+// actually moves away from its 1.0 identity initialization -- i.e. the
+// optimiser is really updating it, not silently skipping it.
+TEST(NetworkIntegrationTest, GRUSequenceConvergenceLayerNorm)
+{
+  // Output layer neuron count is deliberately matched to the GRU hidden
+  // size (4): GRURNNLayer::calculate_hidden_gradients_from_output_gradients
+  // routes the real output-layer gradient through a same-sized identity
+  // proxy layer, and a pre-existing (not LayerNorm-related) bug in that
+  // routing silently drops the gradient whenever the next layer's neuron
+  // count differs from the GRU's own. Matching sizes here sidesteps that
+  // bug so this test can focus purely on verifying LayerNorm wiring
+  // end-to-end through NeuralNetwork::train (multi-tick GRU BPTT backward
+  // correctness is already covered directly in
+  // grurnnlayer_tests.cpp/grurnnlayer_mt_tests.cpp without going through an
+  // FFOutputLayer).
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.1, 0.1, 0.1, 0.1}, {0.2, 0.2, 0.2, 0.2}, {0.3, 0.3, 0.3, 0.3},
+    {0.4, 0.4, 0.4, 0.4}, {0.5, 0.5, 0.5, 0.5}, {0.6, 0.6, 0.6, 0.6},
+    {0.7, 0.7, 0.7, 0.7}, {0.8, 0.8, 0.8, 0.8}, {0.9, 0.9, 0.9, 0.9}
+  };
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  GRURNNLayer& gru = static_cast<GRURNNLayer&>(layers[1]);
+  EXPECT_TRUE(gru.get_use_layer_norm());
+  const auto& gain_after = gru.get_ln_h_gain_values();
+  ASSERT_NE(gain_after, std::vector<double>(gain_after.size(), 1.0));
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  for (const auto& row : predictions)
+  {
+    for (double v : row)
+    {
+      EXPECT_TRUE(std::isfinite(v));
+      EXPECT_LT(std::abs(v), 100.0);
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, LSTMSequenceConvergenceLayerNorm)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1}, {0.2}, {0.3},
+    {0.4}, {0.5}, {0.6},
+    {0.7}, {0.8}, {0.9}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {}, {}, {0.3},
+    {}, {}, {0.6},
+    {}, {}, {0.9}
+  };
+  std::vector<std::vector<double>> think_inputs = {
+    {0.1, 0.2, 0.3},
+    {0.4, 0.5, 0.6},
+    {0.7, 0.8, 0.9}
+  };
+
+  EXPECT_NO_THROW(nn.train(inputs, outputs));
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  LSTMLayer& lstm = static_cast<LSTMLayer&>(layers[1]);
+  EXPECT_TRUE(lstm.get_use_layer_norm());
+  const auto& gain_after = lstm.get_ln_c_gain_values();
+  ASSERT_NE(gain_after, std::vector<double>(gain_after.size(), 1.0));
+
+  auto predictions = nn.think(think_inputs);
+  ASSERT_EQ(predictions.size(), 3);
+  for (const auto& row : predictions)
+  {
+    for (double v : row)
+    {
+      EXPECT_TRUE(std::isfinite(v));
+      EXPECT_LT(std::abs(v), 100.0);
+    }
+  }
+}
+
 TEST(NetworkIntegrationTest, GRUSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -447,7 +577,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergence)
 TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -519,7 +649,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
 TEST(NetworkIntegrationTest, GRUSequenceConvergenceMultiOutputBpttSuperviseLastStepOnly)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false)
   };
 
   EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0);
@@ -669,6 +799,112 @@ TEST(NetworkIntegrationTest, BpttSuperviseLastStepOnlySerializerSaveLoad)
   std::remove(test_path.c_str());
 }
 
+TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
+{
+  // Weight-value round-trip test: unlike BpttSuperviseLastStepOnlySerializerSaveLoad
+  // (which only checks an option survives save/load), this captures the
+  // GRU layer's LayerNorm gain/bias values before saving and asserts they
+  // come back identical after loading, exercising the new
+  // use-layer-norm/ln-h-gain-*/ln-h-bias-* serializer fields end-to-end.
+  // Output layer neuron count is deliberately matched to the GRU hidden
+  // size (3): GRURNNLayer::calculate_hidden_gradients_from_output_gradients
+  // routes the real output-layer gradient through a same-sized identity
+  // proxy layer, and a pre-existing (not LayerNorm-related) bug in that
+  // routing silently drops the gradient whenever the next layer's neuron
+  // count differs from the GRU's own. Matching sizes here sidesteps that
+  // bug so this test can focus purely on LayerNorm gain/bias serialization.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(3)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(1)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6} };
+  std::vector<std::vector<double>> outputs = { {0.1, 0.1, 0.1}, {0.2, 0.2, 0.2}, {0.3, 0.3, 0.3} };
+  nn.train(inputs, outputs);
+
+  auto& layers_before = const_cast<Layers&>(nn.get_layers());
+  GRURNNLayer& gru_before = static_cast<GRURNNLayer&>(layers_before[1]);
+  ASSERT_TRUE(gru_before.get_use_layer_norm());
+  const std::vector<double> gain_before = gru_before.get_ln_h_gain_values();
+  const std::vector<double> bias_before = gru_before.get_ln_h_bias_values();
+  // Sanity: training with a non-zero learning rate must have moved gain
+  // away from its 1.0 identity initialization at least somewhere, otherwise
+  // this test would trivially pass even if LayerNorm state weren't wired up.
+  ASSERT_NE(gain_before, std::vector<double>(gain_before.size(), 1.0));
+
+  std::string test_path = "test_layer_norm_gain_bias_serializer.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  auto& layers_after = const_cast<Layers&>(loaded_nn->get_layers());
+  GRURNNLayer& gru_after = static_cast<GRURNNLayer&>(layers_after[1]);
+  EXPECT_TRUE(gru_after.get_use_layer_norm());
+  const auto& gain_after = gru_after.get_ln_h_gain_values();
+  const auto& bias_after = gru_after.get_ln_h_bias_values();
+  ASSERT_EQ(gain_after.size(), gain_before.size());
+  ASSERT_EQ(bias_after.size(), bias_before.size());
+  // TinyJSON writes doubles as decimal text with finite precision, so a
+  // save/load round-trip is not guaranteed to be bit-for-bit identical --
+  // compare with a tight numeric tolerance instead of exact equality.
+  for (size_t i = 0; i < gain_after.size(); ++i)
+  {
+    EXPECT_NEAR(gain_after[i], gain_before[i], 1e-9);
+  }
+  for (size_t i = 0; i < bias_after.size(); ++i)
+  {
+    EXPECT_NEAR(bias_after[i], bias_before[i], 1e-9);
+  }
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, UseLayerNormOptionSerialization)
+{
+  // Unlike LayerNormGainBiasSerializerSaveLoad (which checks the trained
+  // gain/bias weight values), this checks that use_layer_norm survives as
+  // part of the NeuralNetworkOptions hidden-layer configuration itself --
+  // NeuralNetworkSerializer::add_hidden_layers/get_hidden_layers is a
+  // separate code path from the per-layer weight save/load functions
+  // (add_grurnnlayer/create_grurnnlayer etc.), following the
+  // BpttSuperviseLastStepOnlySerializerSaveLoad option-survives-round-trip
+  // pattern.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(1)
+    .build();
+
+  ASSERT_TRUE(options.hidden_layers()[0].get_use_layer_norm());
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_use_layer_norm_option.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  ASSERT_EQ(loaded_nn->options().hidden_layers().size(), 1);
+  EXPECT_TRUE(loaded_nn->options().hidden_layers()[0].get_use_layer_norm());
+
+  std::remove(test_path.c_str());
+}
+
 TEST(NetworkIntegrationTest, ShuffleBpttBatchesBehavior)
 {
   auto options_no_shuffle = NeuralNetworkOptions::create({ 2, 2, 1 })
@@ -735,9 +971,9 @@ TEST(NetworkIntegrationTest, UpdateWeightsTouchesEveryLayerAcrossThreadCounts)
   // sequential loop still visits and updates every hidden and output layer,
   // for a range of thread-count settings.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0),
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0),
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false)
   };
 
   std::vector<std::vector<double>> inputs = {
@@ -795,7 +1031,7 @@ TEST(NetworkIntegrationTest, DeepNetworkConvergesWithExplicitThreadCount)
   // training through the now-always-sequential Layers::update_weights loop
   // still converges correctly when number_of_threads is explicitly set above 1.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)

@@ -2339,5 +2339,236 @@ TEST(SimdUtilsTest, TransposeSingleRowAndColumn)
   check_transpose(40, 1);
 }
 
+TEST(SimdUtilsTest, LayerNormForwardIdentityGainBias)
+{
+  // gain=1, bias=0 reduces to plain standardization: zero mean, unit variance.
+  std::vector<double> a = { 1.0, 2.0, 3.0, 4.0 };
+  std::vector<double> gain = { 1.0, 1.0, 1.0, 1.0 };
+  std::vector<double> bias = { 0.0, 0.0, 0.0, 0.0 };
+  std::vector<double> y(4);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), eps, inv_std);
+
+  const double mean = 2.5;
+  const double var = 1.25; // mean((x-mean)^2) for {1,2,3,4}
+  const double expected_inv_std = 1.0 / std::sqrt(var + eps);
+  std::vector<double> expected_y = {
+    (1.0 - mean) * expected_inv_std,
+    (2.0 - mean) * expected_inv_std,
+    (3.0 - mean) * expected_inv_std,
+    (4.0 - mean) * expected_inv_std
+  };
+
+  EXPECT_NEAR(inv_std, expected_inv_std, EPSILON);
+  expect_vec_near(y, expected_y);
+}
+
+TEST(SimdUtilsTest, LayerNormForwardAppliesGainAndBias)
+{
+  std::vector<double> a = { 1.0, 2.0, 3.0, 4.0 };
+  std::vector<double> gain = { 2.0, 0.5, 1.0, -1.0 };
+  std::vector<double> bias = { 0.1, -0.2, 0.3, 0.0 };
+  std::vector<double> y(4);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), eps, inv_std);
+
+  const double mean = 2.5;
+  const double var = 1.25;
+  const double expected_inv_std = 1.0 / std::sqrt(var + eps);
+  std::vector<double> expected_y(4);
+  for (size_t j = 0; j < 4; ++j)
+  {
+    const double a_hat = (a[j] - mean) * expected_inv_std;
+    expected_y[j] = gain[j] * a_hat + bias[j];
+  }
+
+  expect_vec_near(y, expected_y);
+}
+
+TEST(SimdUtilsTest, LayerNormForwardConstantInputUsesEpsilon)
+{
+  // Zero variance: without the epsilon guard this would divide by zero.
+  std::vector<double> a = { 5.0, 5.0, 5.0, 5.0 };
+  std::vector<double> gain = { 1.0, 1.0, 1.0, 1.0 };
+  std::vector<double> bias = { 0.25, 0.25, 0.25, 0.25 };
+  std::vector<double> y(4);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), eps, inv_std);
+
+  EXPECT_NEAR(inv_std, 1.0 / std::sqrt(eps), EPSILON);
+  // a_hat is exactly zero for every element, so y == bias everywhere.
+  expect_vec_near(y, bias);
+}
+
+TEST(SimdUtilsTest, LayerNormForwardSingleElement)
+{
+  std::vector<double> a = { 7.0 };
+  std::vector<double> gain = { 3.0 };
+  std::vector<double> bias = { -1.0 };
+  std::vector<double> y(1);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), eps, inv_std);
+
+  // n=1 => mean == x, var == 0, a_hat == 0, y == bias.
+  EXPECT_NEAR(inv_std, 1.0 / std::sqrt(eps), EPSILON);
+  EXPECT_NEAR(y[0], -1.0, EPSILON);
+}
+
+TEST(SimdUtilsTest, LayerNormBackwardMatchesReferenceFormula)
+{
+  std::vector<double> a = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> gain = { 1.2, 0.8, 1.0, -0.5, 2.0 };
+  std::vector<double> bias = { 0.1, 0.0, -0.3, 0.2, 0.05 };
+  std::vector<double> y(5);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), eps, inv_std);
+
+  std::vector<double> dy = { 0.3, -0.1, 0.2, 0.05, -0.4 };
+  std::vector<double> dx(5, 0.0);
+  std::vector<double> dgain_accum(5, 0.0);
+  std::vector<double> dbias_accum(5, 0.0);
+
+  simd::layer_norm_backward(dy.data(), y.data(), gain.data(), bias.data(), inv_std, 5, dx.data(), dgain_accum.data(), dbias_accum.data());
+
+  // Independently-worked reference implementation of the same formula.
+  const size_t n = 5;
+  std::vector<double> a_hat(n), dhat(n);
+  double sum_dhat = 0.0, sum_dhat_ahat = 0.0;
+  for (size_t j = 0; j < n; ++j)
+  {
+    a_hat[j] = (y[j] - bias[j]) / gain[j];
+    dhat[j] = dy[j] * gain[j];
+    sum_dhat += dhat[j];
+    sum_dhat_ahat += dhat[j] * a_hat[j];
+  }
+  std::vector<double> expected_dx(n), expected_dgain(n), expected_dbias(n);
+  for (size_t j = 0; j < n; ++j)
+  {
+    expected_dx[j] = inv_std / static_cast<double>(n) * (static_cast<double>(n) * dhat[j] - sum_dhat - a_hat[j] * sum_dhat_ahat);
+    expected_dgain[j] = dy[j] * a_hat[j];
+    expected_dbias[j] = dy[j];
+  }
+
+  expect_vec_near(dx, expected_dx);
+  expect_vec_near(dgain_accum, expected_dgain);
+  expect_vec_near(dbias_accum, expected_dbias);
+}
+
+TEST(SimdUtilsTest, LayerNormBackwardAccumulatesIntoExistingGradients)
+{
+  // dgain_accum/dbias_accum must add to whatever is already there (batch
+  // accumulation), not overwrite it.
+  std::vector<double> a = { 1.0, 2.0, 3.0 };
+  std::vector<double> gain = { 1.0, 1.0, 1.0 };
+  std::vector<double> bias = { 0.0, 0.0, 0.0 };
+  std::vector<double> y(3);
+  double inv_std = 0.0;
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), a.size(), 1e-5, inv_std);
+
+  std::vector<double> dy = { 0.1, 0.2, 0.3 };
+  std::vector<double> dx(3, 0.0);
+  std::vector<double> dgain_accum = { 10.0, 20.0, 30.0 };
+  std::vector<double> dbias_accum = { -1.0, -2.0, -3.0 };
+  std::vector<double> dgain_before = dgain_accum;
+  std::vector<double> dbias_before = dbias_accum;
+
+  simd::layer_norm_backward(dy.data(), y.data(), gain.data(), bias.data(), inv_std, 3, dx.data(), dgain_accum.data(), dbias_accum.data());
+
+  for (size_t j = 0; j < 3; ++j)
+  {
+    const double a_hat = (y[j] - bias[j]) / gain[j];
+    EXPECT_NEAR(dgain_accum[j], dgain_before[j] + dy[j] * a_hat, EPSILON);
+    EXPECT_NEAR(dbias_accum[j], dbias_before[j] + dy[j], EPSILON);
+  }
+}
+
+TEST(SimdUtilsTest, LayerNormBackwardMatchesNumericalGradient)
+{
+  // Model-agnostic check of the hand-derived backward formula: pick a fixed
+  // "upstream gradient" dy and treat loss(a) = sum_j(dy[j] * y_j(a)) as a
+  // plain scalar function of the input vector `a` (gain/bias/dy held
+  // constant). By construction d(loss)/da_i is exactly dx[i] from
+  // layer_norm_backward, so central finite differences on loss(a) verify
+  // the analytic formula independently of the derivation above.
+  const size_t n = 6;
+  std::vector<double> a = { -1.5, 0.5, 2.0, 3.5, -0.25, 1.1 };
+  std::vector<double> gain = { 1.0, 1.3, 0.7, 1.0, -0.6, 2.1 };
+  std::vector<double> bias = { 0.0, 0.2, -0.1, 0.05, 0.0, -0.3 };
+  std::vector<double> dy = { 0.4, -0.2, 0.1, 0.3, -0.5, 0.15 };
+  const double eps = 1e-5;
+
+  auto loss = [&](const std::vector<double>& a_in) -> double
+  {
+    std::vector<double> y(n);
+    double inv_std = 0.0;
+    simd::layer_norm_forward(a_in.data(), gain.data(), bias.data(), y.data(), n, eps, inv_std);
+    double total = 0.0;
+    for (size_t j = 0; j < n; ++j)
+    {
+      total += dy[j] * y[j];
+    }
+    return total;
+  };
+
+  std::vector<double> y(n);
+  double inv_std = 0.0;
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), n, eps, inv_std);
+
+  std::vector<double> dx(n, 0.0);
+  std::vector<double> dgain_accum(n, 0.0);
+  std::vector<double> dbias_accum(n, 0.0);
+  simd::layer_norm_backward(dy.data(), y.data(), gain.data(), bias.data(), inv_std, n, dx.data(), dgain_accum.data(), dbias_accum.data());
+
+  const double h = 1e-6;
+  for (size_t i = 0; i < n; ++i)
+  {
+    std::vector<double> a_plus = a;
+    std::vector<double> a_minus = a;
+    a_plus[i] += h;
+    a_minus[i] -= h;
+    const double numerical = (loss(a_plus) - loss(a_minus)) / (2.0 * h);
+    EXPECT_NEAR(dx[i], numerical, 1e-5) << "at index " << i;
+  }
+}
+
+TEST(SimdUtilsTest, LayerNormBackwardZeroOrNearZeroGain)
+{
+  // Verifies that layer_norm_backward does not divide by zero or produce NaNs/Infs
+  // when gain contains zero or near-zero values.
+  const size_t n = 4;
+  std::vector<double> a = { 1.0, 2.0, 3.0, 4.0 };
+  std::vector<double> gain = { 0.0, 1e-15, -1e-15, 1.0 };
+  std::vector<double> bias = { 0.1, 0.0, -0.2, 0.5 };
+  std::vector<double> y(n);
+  double inv_std = 0.0;
+  const double eps = 1e-5;
+
+  simd::layer_norm_forward(a.data(), gain.data(), bias.data(), y.data(), n, eps, inv_std);
+
+  std::vector<double> dy = { 0.5, -0.25, 0.1, -0.8 };
+  std::vector<double> dx(n, 0.0);
+  std::vector<double> dgain_accum(n, 0.0);
+  std::vector<double> dbias_accum(n, 0.0);
+
+  simd::layer_norm_backward(dy.data(), y.data(), gain.data(), bias.data(), inv_std, n, dx.data(), dgain_accum.data(), dbias_accum.data());
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    EXPECT_TRUE(std::isfinite(dx[i])) << "dx[" << i << "] is not finite";
+    EXPECT_TRUE(std::isfinite(dgain_accum[i])) << "dgain_accum[" << i << "] is not finite";
+    EXPECT_TRUE(std::isfinite(dbias_accum[i])) << "dbias_accum[" << i << "] is not finite";
+  }
+}
+
+
 
 
