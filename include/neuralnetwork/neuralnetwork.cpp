@@ -817,7 +817,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
 
   // Stochastic Weight Averaging: snapshot cadence starts once training has
   // (presumably) reached its stable plateau.
-  const auto swa_start_epoch = static_cast<int>(std::round(_options.swa_start_percent() * number_of_epoch));
+  const auto swa_start_epoch = static_cast<int>(std::round(_options.stochastic_weight_averaging().start_percent() * number_of_epoch));
   _swa_layers.reset();
   _swa_snapshot_count = 0;
 
@@ -851,7 +851,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
       // Stochastic Weight Averaging: fold in a snapshot of the current
       // weights once we are past the configured start epoch, at the
       // configured cadence.
-      if (_options.swa() && epoch >= swa_start_epoch && base_helper->is_at_epoch_interval(_options.swa_update_percent()))
+      if (_options.stochastic_weight_averaging().enabled() && epoch >= swa_start_epoch && base_helper->is_at_epoch_interval(_options.stochastic_weight_averaging().update_percent()))
       {
         if (!_swa_layers)
         {

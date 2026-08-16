@@ -90,9 +90,7 @@ def run_general_example():
         .with_shuffle_training_data(True) \
         .with_data_is_unique(True) \
         .with_log_level(nn.LogLevel.Debug) \
-        .with_swa(True) \
-        .with_swa_start_percent(0.75) \
-        .with_swa_update_percent(0.05) \
+        .with_stochastic_weight_averaging(nn.StochasticWeightAveragingDetails(True, 0.75, 0.05)) \
         .build()
         
     # Optional progress callback (defined in Python!)

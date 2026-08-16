@@ -1116,14 +1116,12 @@ TEST(NetworkIntegrationTest, SwaOptionSerialization)
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_learning_rate(0.05)
     .with_number_of_epoch(1)
-    .with_swa(true)
-    .with_swa_start_percent(0.6)
-    .with_swa_update_percent(0.1)
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.6, 0.1))
     .build();
 
-  ASSERT_TRUE(options.swa());
-  EXPECT_NEAR(options.swa_start_percent(), 0.6, 1e-9);
-  EXPECT_NEAR(options.swa_update_percent(), 0.1, 1e-9);
+  ASSERT_TRUE(options.stochastic_weight_averaging().enabled());
+  EXPECT_NEAR(options.stochastic_weight_averaging().start_percent(), 0.6, 1e-9);
+  EXPECT_NEAR(options.stochastic_weight_averaging().update_percent(), 0.1, 1e-9);
 
   NeuralNetwork nn(options);
   std::vector<std::vector<double>> inputs = { {0.5} };
@@ -1135,9 +1133,9 @@ TEST(NetworkIntegrationTest, SwaOptionSerialization)
 
   auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
   ASSERT_NE(loaded_nn, nullptr);
-  EXPECT_TRUE(loaded_nn->options().swa());
-  EXPECT_NEAR(loaded_nn->options().swa_start_percent(), 0.6, 1e-9);
-  EXPECT_NEAR(loaded_nn->options().swa_update_percent(), 0.1, 1e-9);
+  EXPECT_TRUE(loaded_nn->options().stochastic_weight_averaging().enabled());
+  EXPECT_NEAR(loaded_nn->options().stochastic_weight_averaging().start_percent(), 0.6, 1e-9);
+  EXPECT_NEAR(loaded_nn->options().stochastic_weight_averaging().update_percent(), 0.1, 1e-9);
 
   std::remove(test_path.c_str());
 }
@@ -1157,7 +1155,7 @@ static NeuralNetworkOptions create_swa_baseline_comparison_options(bool swa_enab
     .with_has_bias(true);
   if (swa_enabled)
   {
-    builder.with_swa(true).with_swa_start_percent(0.25).with_swa_update_percent(0.1);
+    builder.with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.25, 0.1));
   }
   return builder.build();
 }
@@ -1227,9 +1225,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceSwa)
     .with_has_bias(true)
     .with_enable_bptt(true)
     .with_bptt_max_ticks(1)
-    .with_swa(true)
-    .with_swa_start_percent(0.5)
-    .with_swa_update_percent(0.1)
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.5, 0.1))
     .build();
 
   NeuralNetwork nn(options);
@@ -1280,9 +1276,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceSwa)
     .with_has_bias(true)
     .with_enable_bptt(true)
     .with_bptt_max_ticks(3)
-    .with_swa(true)
-    .with_swa_start_percent(0.5)
-    .with_swa_update_percent(0.1)
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.5, 0.1))
     .build();
 
   NeuralNetwork nn(options);
@@ -1344,9 +1338,7 @@ TEST(NetworkIntegrationTest, SwaWithMultiOutputBranches)
     .with_has_bias(true)
     .with_enable_bptt(true)
     .with_bptt_max_ticks(3)
-    .with_swa(true)
-    .with_swa_start_percent(0.25)
-    .with_swa_update_percent(0.1)
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.25, 0.1))
     .build();
 
   NeuralNetwork nn(options);

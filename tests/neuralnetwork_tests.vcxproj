@@ -104,6 +104,7 @@
     <ClCompile Include="multioutputlayer_tests.cpp" />
     <ClCompile Include="network_integration_tests.cpp" />
     <ClCompile Include="neuralnetworkhelper_tests.cpp" />
+    <ClCompile Include="stochastic_weight_averaging_details_tests.cpp" />
     <ClCompile Include="trainingmonitor_tests.cpp" />
     <ClCompile Include="neuralnetwork_tests.cpp" />
     <ClCompile Include="neuron_tests.cpp" />
@@ -133,6 +134,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\neuralnetwork\common\stochasticweightaveragingdetails.h" />
     <ClInclude Include="test_helper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

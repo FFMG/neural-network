@@ -1196,9 +1196,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_update_training_monitor_percent(update_training_monitor_percent)
     .with_has_bias(has_bias)
     .with_log_training_info(log_training_info)
-    .with_swa(swa_enabled)
-    .with_swa_start_percent(swa_start_percent)
-    .with_swa_update_percent(swa_update_percent);
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent));
 
   if (multi_output_layer_details.size())
   {
@@ -1520,9 +1518,9 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());
   options_object->set_boolean("log-training-info", options.log_training_info());
-  options_object->set_boolean("swa-enabled", options.swa());
-  options_object->set_float("swa-start-percent", options.swa_start_percent());
-  options_object->set_float("swa-update-percent", options.swa_update_percent());
+  options_object->set_boolean("swa-enabled", options.stochastic_weight_averaging().enabled());
+  options_object->set_float("swa-start-percent", options.stochastic_weight_averaging().start_percent());
+  options_object->set_float("swa-update-percent", options.stochastic_weight_averaging().update_percent());
 
   json.set("options", options_object);
 
