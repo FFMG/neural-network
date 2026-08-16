@@ -1023,8 +1023,8 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
       phlo->get<double>("weight-decay"),
       optimiser_type,
       momentum,
-      phlo->get_or<bool>("use-layer-normalisation", false),
-      phlo->get_or<unsigned>("attention-hidden-size", 0)
+      phlo->get<bool>("use-layer-normalisation"),
+      phlo->get<unsigned>("attention-hidden-size")
     ));
   }
   return hidden_layer;
@@ -2338,8 +2338,8 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         phlo->get<double>("weight-decay"),
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
         phlo->get<double>("momentum"),
-        phlo->get_or<bool>("use-layer-normalisation", false),
-        phlo->get_or<unsigned>("attention-hidden-size", 0)
+        phlo->get<bool>("use-layer-normalisation"),
+        phlo->get<unsigned>("attention-hidden-size")
       ));
     }
 
