@@ -2332,6 +2332,48 @@ TEST(NetworkIntegrationTest, UnsetSeedRoundTripsThroughSerializationAsNullopt)
   std::remove(test_path.c_str());
 }
 
+TEST(NetworkIntegrationTest, FloatingPointSerializationNearInt64MaxFraction)
+{
+  // Test that floats whose fractional part > 0.9223372036854775807 (LLONG_MAX / 10^19)
+  // do not saturate or overflow signed 64-bit integer conversion during TinyJSON serialization.
+  std::vector<double> test_floats = {
+    -0.93365601966497314,
+    0.98588064269909437,
+    0.92233720368547756,
+    0.92233720368547758,
+    0.999999999999999,
+    -0.999999999999999,
+    123.98765432109876,
+    -456.95432109876543
+  };
+
+  TinyJSON::TJValueObject root;
+  root.set_floats("test-values", test_floats);
+
+  std::string test_path = "test_float_precision_serializer.json";
+  std::remove(test_path.c_str());
+  TinyJSON::TJ::write_file(test_path.c_str(), root);
+
+  TinyJSON::parse_options options_parse = {};
+  options_parse.throw_exception = true;
+  std::unique_ptr<TinyJSON::TJValue> loaded_tj(TinyJSON::TJ::parse_file(test_path.c_str(), options_parse));
+  ASSERT_NE(loaded_tj, nullptr);
+
+  auto* obj = dynamic_cast<const TinyJSON::TJValueObject*>(loaded_tj.get());
+  ASSERT_NE(obj, nullptr);
+
+  auto loaded_floats = obj->get<std::vector<double>>("test-values");
+  ASSERT_EQ(loaded_floats.size(), test_floats.size());
+
+  for (size_t i = 0; i < test_floats.size(); ++i)
+  {
+    EXPECT_NEAR(loaded_floats[i], test_floats[i], 1e-9);
+  }
+
+  std::remove(test_path.c_str());
+}
+
+
 
 
 
