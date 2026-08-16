@@ -1027,6 +1027,8 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
     .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
+    .with_shuffle_training_data(false)
+    .with_seed(42)
     .with_enable_bptt(true)
     .with_bptt_max_ticks(1)
     .build();
@@ -1047,6 +1049,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   ASSERT_NE(gain_before, std::vector<double>(gain_before.size(), 1.0));
 
   std::string test_path = "test_layer_norm_gain_bias_serializer.json";
+  std::remove(test_path.c_str());
   NeuralNetworkSerializer::save(nn, test_path);
 
   auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
@@ -1062,6 +1065,60 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   // TinyJSON writes doubles as decimal text with finite precision, so a
   // save/load round-trip is not guaranteed to be bit-for-bit identical --
   // compare with a tight numeric tolerance instead of exact equality.
+  for (size_t i = 0; i < gain_after.size(); ++i)
+  {
+    EXPECT_NEAR(gain_after[i], gain_before[i], 1e-9);
+  }
+  for (size_t i = 0; i < bias_after.size(); ++i)
+  {
+    EXPECT_NEAR(bias_after[i], bias_before[i], 1e-9);
+  }
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, LSTMLayerNormGainBiasSerializerSaveLoad)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Lstm, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(3)
+    .with_shuffle_training_data(false)
+    .with_seed(42)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(1)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.1, 0.2}, {0.3, 0.4}, {0.5, 0.6} };
+  std::vector<std::vector<double>> outputs = { {0.1, 0.1, 0.1}, {0.2, 0.2, 0.2}, {0.3, 0.3, 0.3} };
+  nn.train(inputs, outputs);
+
+  auto& layers_before = const_cast<Layers&>(nn.get_layers());
+  LSTMLayer& lstm_before = static_cast<LSTMLayer&>(layers_before[1]);
+  ASSERT_TRUE(lstm_before.get_use_layer_normalisation());
+  const std::vector<double> gain_before = lstm_before.get_ln_c_gain_values();
+  const std::vector<double> bias_before = lstm_before.get_ln_c_bias_values();
+  ASSERT_NE(gain_before, std::vector<double>(gain_before.size(), 1.0));
+
+  std::string test_path = "test_lstm_layer_norm_gain_bias_serializer.json";
+  std::remove(test_path.c_str());
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  auto& layers_after = const_cast<Layers&>(loaded_nn->get_layers());
+  LSTMLayer& lstm_after = static_cast<LSTMLayer&>(layers_after[1]);
+  EXPECT_TRUE(lstm_after.get_use_layer_normalisation());
+  const auto& gain_after = lstm_after.get_ln_c_gain_values();
+  const auto& bias_after = lstm_after.get_ln_c_bias_values();
+  ASSERT_EQ(gain_after.size(), gain_before.size());
+  ASSERT_EQ(bias_after.size(), bias_before.size());
   for (size_t i = 0; i < gain_after.size(); ++i)
   {
     EXPECT_NEAR(gain_after[i], gain_before[i], 1e-9);
