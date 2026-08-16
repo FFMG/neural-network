@@ -284,13 +284,13 @@ Once training reaches `swa_start_percent` of `number_of_epoch`, a snapshot of th
 
 ```cpp
     auto options = NeuralNetworkOptions::create(topology)
-      .with_swa(true)
-      .with_swa_start_percent(0.75)  // start snapshotting after 75% of epochs
-      .with_swa_update_percent(0.02) // snapshot every 2% of epochs thereafter
+      .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.75, 0.02)) // enabled, start at 75% of epochs, update every 2%
+      // or using the helper overload:
+      // .with_stochastic_weight_averaging(true, 0.75, 0.02)
       .build();
 ```
 
-These fields are persisted by `NeuralNetworkSerializer::save`/`load`.
+These fields are encapsulated in `StochasticWeightAveragingDetails` and persisted by `NeuralNetworkSerializer::save`/`load`.
 
 ### General Training Options
 

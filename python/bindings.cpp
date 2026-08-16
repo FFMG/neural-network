@@ -6,6 +6,7 @@
 #include "neuralnetworkoptions.h"
 #include "common/activation.h"
 #include "common/optimiser.h"
+#include "common/stochasticweightaveragingdetails.h"
 #include "layers/layer.h"
 #include "layers/layerdetails.h"
 #include "layers/outputlayerdetails.h"
@@ -192,6 +193,16 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("hidden_layers", &MultiOutputLayerDetails::get_hidden_layers)
         .def_property_readonly("output_details", &MultiOutputLayerDetails::get_output_details);
 
+    py::class_<StochasticWeightAveragingDetails>(m, "StochasticWeightAveragingDetails")
+        .def(py::init<bool, double, double>(),
+             py::arg("swa_enabled"), py::arg("swa_start_percent"), py::arg("swa_update_percent"))
+        .def_property_readonly("enabled", &StochasticWeightAveragingDetails::enabled)
+        .def_property_readonly("swa_enabled", &StochasticWeightAveragingDetails::swa_enabled)
+        .def_property_readonly("start_percent", &StochasticWeightAveragingDetails::start_percent)
+        .def_property_readonly("swa_start_percent", &StochasticWeightAveragingDetails::swa_start_percent)
+        .def_property_readonly("update_percent", &StochasticWeightAveragingDetails::update_percent)
+        .def_property_readonly("swa_update_percent", &StochasticWeightAveragingDetails::swa_update_percent);
+
     py::class_<NeuralNetworkHelperMetrics>(m, "NeuralNetworkHelperMetrics")
         .def(py::init<>())
         .def(py::init<double, ErrorCalculation::type>())
@@ -237,9 +248,10 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_enable_bptt", &NeuralNetworkOptions::with_enable_bptt)
         .def("with_bptt_max_ticks", &NeuralNetworkOptions::with_bptt_max_ticks)
         .def("with_update_training_monitor_percent", &NeuralNetworkOptions::with_update_training_monitor_percent)
-        .def("with_swa", &NeuralNetworkOptions::with_swa)
-        .def("with_swa_start_percent", &NeuralNetworkOptions::with_swa_start_percent)
-        .def("with_swa_update_percent", &NeuralNetworkOptions::with_swa_update_percent)
+        .def("with_stochastic_weight_averaging", py::overload_cast<const StochasticWeightAveragingDetails&>(&NeuralNetworkOptions::with_stochastic_weight_averaging))
+        .def("with_stochastic_weight_averaging", py::overload_cast<bool, double, double>(&NeuralNetworkOptions::with_stochastic_weight_averaging),
+             py::arg("swa_enabled"), py::arg("swa_start_percent"), py::arg("swa_update_percent"))
+        .def("stochastic_weight_averaging", &NeuralNetworkOptions::stochastic_weight_averaging)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
         .def("build", &NeuralNetworkOptions::build);

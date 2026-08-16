@@ -95,6 +95,9 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 *   `nn.MultiOutputLayerDetails`: Specifications for configuring multiple output layers.
     *   `MultiOutputLayerDetails(hidden_layers, output_details)`: Constructor.
     *   Properties: `hidden_layers`, `output_details` (all read-only).
+*   `nn.StochasticWeightAveragingDetails`: Specifications for configuring Stochastic Weight Averaging (SWA).
+    *   `StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent)`: Constructor.
+    *   Properties: `enabled` / `swa_enabled`, `start_percent` / `swa_start_percent`, `update_percent` / `swa_update_percent` (all read-only).
 *   `nn.NeuralNetworkHelperMetrics`: Pair of metric values and their evaluation types.
     *   Properties: `error` (float), `error_type` (nn.ErrorCalculationType).
 *   `nn.NeuralNetworkHelper`: Tracking helper passed to the progress callback.
@@ -103,7 +106,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `calculate_forecast_metrics(error_types, in_sample=True)`: Calculates list of forecast metrics for the default output layer.
 *   `nn.NeuralNetworkOptions`: Builder for model options.
     *   `NeuralNetworkOptions.create(topology)`: Static builder factory. Returns an options builder instance.
-    *   Builder Methods: `with_has_bias`, `with_output_layer_details`, `with_number_of_epoch`, `with_batch_size`, `with_data_is_unique`, `with_progress_callback`, `with_number_of_threads`, `with_learning_rate`, `with_learning_rate_decay_rate`, `with_learning_rate_warmup`, `with_learning_rate_boost_rate`, `with_adaptive_learning_rates`, `with_hidden_layers`, `with_residual_layer_jump`, `with_clip_threshold`, `with_shuffle_training_data`, `with_shuffle_bptt_batches`, `with_bptt_supervise_last_step_only`, `with_enable_bptt`, `with_bptt_max_ticks`, `with_update_training_monitor_percent`, `with_swa`, `with_swa_start_percent`, `with_swa_update_percent`, `with_final_error_calculation_types`, `with_log_level`.
+    *   Builder Methods: `with_has_bias`, `with_output_layer_details`, `with_number_of_epoch`, `with_batch_size`, `with_data_is_unique`, `with_progress_callback`, `with_number_of_threads`, `with_learning_rate`, `with_learning_rate_decay_rate`, `with_learning_rate_warmup`, `with_learning_rate_boost_rate`, `with_adaptive_learning_rates`, `with_hidden_layers`, `with_residual_layer_jump`, `with_clip_threshold`, `with_shuffle_training_data`, `with_shuffle_bptt_batches`, `with_bptt_supervise_last_step_only`, `with_enable_bptt`, `with_bptt_max_ticks`, `with_update_training_monitor_percent`, `with_stochastic_weight_averaging(swa_details)` / `with_stochastic_weight_averaging(swa_enabled, swa_start_percent, swa_update_percent)`, `with_final_error_calculation_types`, `with_log_level`.
+    *   Properties / Methods: `stochastic_weight_averaging()` (returns `StochasticWeightAveragingDetails`).
     *   `build()`: Finalises and returns the immutable options object.
 *   `nn.NeuralNetwork`: Core neural network model.
     *   `NeuralNetwork(options)`: Constructor.

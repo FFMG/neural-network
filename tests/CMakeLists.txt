@@ -81,6 +81,7 @@ add_executable(neuralnetwork_tests
     output_layer_details_tests.cpp
     simd_utils_tests.cpp
     simd_utils_mt_tests.cpp
+    stochastic_weight_averaging_details_tests.cpp
     swa_tests.cpp
     taskqueue_tests.cpp
     taskqueue_comprehensive_tests.cpp
