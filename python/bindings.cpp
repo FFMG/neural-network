@@ -254,6 +254,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("stochastic_weight_averaging", &NeuralNetworkOptions::stochastic_weight_averaging)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
+        .def("with_seed", &NeuralNetworkOptions::with_seed)
+        .def("seed", &NeuralNetworkOptions::seed)
         .def("build", &NeuralNetworkOptions::build);
 
     // 4. NeuralNetwork

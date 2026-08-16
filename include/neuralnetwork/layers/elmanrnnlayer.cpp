@@ -23,7 +23,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   ElmanRNNLayer(
     layer_index,
@@ -38,7 +39,8 @@ ElmanRNNLayer::ElmanRNNLayer(
     residual_projector,
     number_of_threads,
     has_bias,
-    momentum
+    momentum,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -58,7 +60,8 @@ ElmanRNNLayer::ElmanRNNLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   Layer(
     layer_index,
@@ -68,16 +71,17 @@ ElmanRNNLayer::ElmanRNNLayer(
     residual_layer_number,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
-    create_neurons(dropout_rate, num_neurons_in_this_layer),
+    create_neurons(dropout_rate, num_neurons_in_this_layer, seed),
     has_bias,
     weight_decays,
     residual_projector,
     number_of_threads,
-    momentum
+    momentum,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0], seed);
   cache_recurrent_weights();
   allocate_workspace();
 }
@@ -235,7 +239,7 @@ ElmanRNNLayer::~ElmanRNNLayer()
   delete _identity_proxy;
 }
 
-void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
+void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed)
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const auto num_neurons = get_number_output_neurons();
@@ -246,7 +250,9 @@ void ElmanRNNLayer::initialize_recurrent_weights(double weight_decay)
   {
     for (unsigned int o = 0; o < num_neurons; ++o)
     {
-      _rw_values[i * num_neurons + o] = get_activation().weight_initialization(num_neurons, num_neurons);
+      const size_t flat_index = i * num_neurons + o;
+      const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), 1, flat_index))) : std::nullopt;
+      _rw_values[flat_index] = get_activation().weight_initialization(num_neurons, num_neurons, weight_seed);
     }
   }
 
@@ -390,7 +396,7 @@ void ElmanRNNLayer::calculate_forward_feed(
             const auto& neuron = neurons[j];
             if (neuron.is_dropout())
             {
-              if (neuron.must_randomly_drop())
+              if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 out = 0.0;
                 mask.data()[j] = 0.0;
@@ -644,7 +650,7 @@ void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
 
   if (_identity_proxy == nullptr)
   {
-    _identity_proxy = new FFLayer(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+    _identity_proxy = new FFLayer(0, static_cast<unsigned>(N_this), static_cast<unsigned>(N_this), 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
     std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
     for (unsigned i = 0; i < N_this; ++i)
     {

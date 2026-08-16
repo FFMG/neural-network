@@ -47,7 +47,7 @@ AttentionPoolLayer make_layer(unsigned N, unsigned d_a, bool has_bias)
 {
   AttentionPoolLayer layer(
     1, N, d_a, 0.0, Layer::Role::Hidden,
-    activation(activation::method::linear, 0.0), OptimiserType::SGD, 0.0, 1, has_bias, 0.0);
+    activation(activation::method::linear, 0.0), OptimiserType::SGD, 0.0, 1, has_bias, 0.0, std::nullopt);
   return layer;
 }
 } // namespace

@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(GRURNNLayerTest, Construction) {
-    GRURNNLayer layer(1, 2, 3, 0.01, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.9);
+    GRURNNLayer layer(1, 2, 3, 0.01, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.9, false, std::nullopt);
     EXPECT_EQ(layer.get_layer_index(), 1);
     EXPECT_EQ(layer.get_number_input_neurons(), 2);
     EXPECT_EQ(layer.get_number_neurons(), 3);
@@ -25,7 +25,7 @@ TEST_F(GRURNNLayerTest, Construction) {
 
 TEST_F(GRURNNLayerTest, ForwardFeedMathematicalVerification) {
     // 1 input, 1 neuron GRU
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     layer.set_z_w_values({ 0.5 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.2 });
     layer.set_r_w_values({ 0.6 }); layer.set_r_rw_values({ 0.2 }); layer.set_r_b_values({ 0.3 });
@@ -44,7 +44,7 @@ TEST_F(GRURNNLayerTest, ForwardFeedMathematicalVerification) {
 }
 
 TEST_F(GRURNNLayerTest, BPTTMathematicalVerification) {
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     layer.set_z_w_values({ 0.5 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.2 });
     layer.set_r_w_values({ 0.6 }); layer.set_r_rw_values({ 0.2 }); layer.set_r_b_values({ 0.3 });
@@ -75,7 +75,7 @@ TEST_F(GRURNNLayerTest, BPTTMathematicalVerification) {
 
 TEST_F(GRURNNLayerTest, LayerNormForwardNormalizesHiddenState) {
     // 1 input, 2 neurons, single timestep, LayerNorm enabled on h_t.
-    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
 
     layer.set_z_w_values({ 0.1, 0.2 }); layer.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_z_b_values({ 0.0, 0.0 });
     layer.set_r_w_values({ 0.0, 0.0 }); layer.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_r_b_values({ 0.0, 0.0 });
@@ -110,7 +110,7 @@ TEST_F(GRURNNLayerTest, LayerNormDisabledMatchesUnnormalizedForwardFeed) {
     // Same weights as LayerNormForwardNormalizesHiddenState but with
     // use_layer_normalisation left at its default (false): output must be the raw
     // (unnormalized) h_t, confirming the flag is a true no-op when unset.
-    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false);
+    GRURNNLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_z_w_values({ 0.1, 0.2 }); layer.set_z_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_z_b_values({ 0.0, 0.0 });
     layer.set_r_w_values({ 0.0, 0.0 }); layer.set_r_rw_values({ 0.0, 0.0, 0.0, 0.0 }); layer.set_r_b_values({ 0.0, 0.0 });
@@ -144,7 +144,7 @@ TEST_F(GRURNNLayerTest, LayerNormGainBiasGradientsMatchNumericalGradient) {
 
     auto make_layer = [&](const std::vector<double>& gain, const std::vector<double>& bias)
     {
-        GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+        GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
         layer.set_z_w_values({ 0.15, -0.22 }); layer.set_z_rw_values({ 0.05, -0.03, 0.02, 0.04 }); layer.set_z_b_values({ 0.01, -0.02 });
         layer.set_r_w_values({ -0.18, 0.27 }); layer.set_r_rw_values({ -0.04, 0.06, 0.03, -0.05 }); layer.set_r_b_values({ 0.0, 0.03 });
         layer.set_w_values({ 0.31, 0.44 });    layer.set_rw_values({ 0.07, -0.02, -0.06, 0.08 });   layer.set_b_values({ -0.01, 0.02 });
@@ -220,7 +220,7 @@ TEST_F(GRURNNLayerTest, LayerNormGainBiasGradientsMatchNumericalGradient) {
 TEST_F(GRURNNLayerTest, DropoutConsistency) {
     // Test that dropout mask is preserved and applied correctly in BPTT
     // Use high dropout rate (0.5) to ensure it triggers
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.5, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.5, nullptr, 1, true, 0.0, false, std::nullopt);
     
     layer.set_z_w_values({ 0.5 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.2 });
     layer.set_r_w_values({ 0.6 }); layer.set_r_rw_values({ 0.2 }); layer.set_r_b_values({ 0.3 });
@@ -262,7 +262,7 @@ TEST_F(GRURNNLayerTest, DropoutConsistency) {
 
 TEST_F(GRURNNLayerTest, SequenceUnrolling3Steps) {
     // 1 input, 1 neuron GRU
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     // Set weights to simple values
     layer.set_z_w_values({ 0.1 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.0 });
@@ -289,7 +289,7 @@ TEST_F(GRURNNLayerTest, DropoutStatisticalVerification) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 5000;
     double dropout_rate = 0.5;
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, false, std::nullopt);
 
     // Identity weights for hidden candidate, zero for gates to keep it simple
     layer.set_w_values(std::vector<double>(num_outputs, 1.0));
@@ -336,7 +336,7 @@ TEST_F(GRURNNLayerTest, DropoutNotInference) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1000;
     double dropout_rate = 0.5;
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_outputs, 1.0));
     layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
@@ -369,7 +369,7 @@ TEST_F(GRURNNLayerTest, DropoutNotInference) {
 TEST_F(GRURNNLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
     
@@ -411,7 +411,7 @@ TEST_F(GRURNNLayerTest, LearningRateRobustness) {
 TEST_F(GRURNNLayerTest, BPTTRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values({ 0.5 });   layer.set_rw_values({ 0.1 });   layer.set_b_values({ 0.2 });
     layer.set_z_w_values({ 0.5 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.2 });
@@ -461,7 +461,7 @@ TEST_F(GRURNNLayerTest, BPTTRobustness) {
 
 TEST_F(GRURNNLayerTest, ApplyStoredGradientsCacheUpdate)
 {
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.5 });
     layer.set_z_w_values({ 0.0 }); layer.set_z_rw_values({ 0.0 });
@@ -504,7 +504,7 @@ TEST_F(GRURNNLayerTest, ApplyStoredGradientsCacheUpdate)
 TEST_F(GRURNNLayerTest, InputGatesPrecalculationConsistency)
 {
     // Test that our pre-calculate input gates optimization matches sequential reference mathematical expectations.
-    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     // Set weights and biases to deterministic values
     layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -555,7 +555,7 @@ TEST_F(GRURNNLayerTest, InputGatesPrecalculationConsistency)
 
 TEST_F(GRURNNLayerTest, BiasCachingCorrectness)
 {
-    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
     
     layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.0 });
     layer.set_z_w_values({ 0.0 }); layer.set_z_rw_values({ 0.0 });
@@ -587,7 +587,7 @@ TEST_F(GRURNNLayerTest, BiasCachingCorrectness)
 TEST_F(GRURNNLayerTest, StateAndMemoryAllocationOptimizationVerification)
 {
     // A 2-input, 2-neuron GRU with 2 batches and 3 time steps
-    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
     layer.set_z_rw_values({ 0.15, 0.25, 0.35, 0.45 });
@@ -635,7 +635,7 @@ TEST_F(GRURNNLayerTest, TransposedWeightsAndFastBpttPassCorrectness) {
     // 2 inputs, 2 neurons, batch size 2, 2 time steps
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     // Populate weights
     layer.set_z_w_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -686,7 +686,7 @@ TEST_F(GRURNNLayerTest, BPTTCorrectnessAfterFillOptimization)
   // Verify that the std::fill optimization for temp_Uh_T_dh_hat maintains BPTT correctness.
   unsigned num_inputs = 2;
   unsigned num_outputs = 2;
-  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   layer.set_z_w_values({ 0.15, 0.25, 0.35, 0.45 });
   layer.set_z_rw_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -728,7 +728,7 @@ TEST_F(GRURNNLayerTest, BPTTWorkspaceResizeCorrectness)
 {
   unsigned num_inputs = 2;
   unsigned num_outputs = 2;
-  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   layer.set_z_w_values({ 0.15, 0.25, 0.35, 0.45 });
   layer.set_z_rw_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -791,10 +791,10 @@ TEST_F(GRURNNLayerTest, SingleVSMultiThreadedEquivalence)
   size_t num_time_steps = 20;
 
   // Layer 1: single threaded
-  GRURNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   // Layer 2: multi threaded
-  GRURNNLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0);
+  GRURNNLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
 
   // Helper to fill vectors with identical values
   auto initialize_weights = [&](GRURNNLayer& l)
@@ -880,7 +880,7 @@ TEST_F(GRURNNLayerTest, BPTTMultiStepBatchVerification)
   size_t batch_size = 5;
   size_t num_time_steps = 3;
 
-  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   layer.set_z_w_values({ 0.15, 0.25, 0.35, 0.45 });
   layer.set_z_rw_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -936,7 +936,7 @@ TEST_F(GRURNNLayerTest, BPTTSequenceLengthsVerification)
 
   for (size_t num_time_steps = 1; num_time_steps <= 12; ++num_time_steps)
   {
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_z_w_values(std::vector<double>(num_inputs * num_outputs, 0.1));
     layer.set_z_rw_values(std::vector<double>(num_outputs * num_outputs, 0.15));
@@ -991,7 +991,7 @@ TEST_F(GRURNNLayerTest, BPTTSequenceLengthsVerification)
 }
 
 TEST_F(GRURNNLayerTest, TempBufferReuseAndMultiIterationConsistency) {
-  GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   MockLayer prev_layer(0, 2);
   std::vector<unsigned> topology = { 2, 2 };
@@ -1037,7 +1037,7 @@ TEST_F(GRURNNLayerTest, GRURNNLayerCalculateAndStoreGradientsMathematicalSoundne
   const size_t batch_size = 4;
   const size_t num_time_steps = 3;
 
-  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   std::vector<unsigned> topology = { num_inputs, num_outputs };
   auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
@@ -1234,7 +1234,7 @@ namespace {
 
   GRURNNLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs, bool use_layer_normalisation = false)
   {
-    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_normalisation);
+    GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_normalisation, std::nullopt);
     layer.set_z_w_values(make_deterministic_weights(num_inputs, num_outputs, 0.15, 0.02));
     layer.set_z_rw_values(make_deterministic_weights(num_outputs, num_outputs, 0.12, -0.01));
     layer.set_z_b_values(make_deterministic_weights(1, num_outputs, 0.05, 0.0));

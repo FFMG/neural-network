@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(LSTMLayerTest, ConstructionAndTopology) {
-  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   EXPECT_EQ(layer.get_layer_index(), 1);
   EXPECT_EQ(layer.get_number_input_neurons(), 2);
@@ -28,7 +28,7 @@ TEST_F(LSTMLayerTest, ConstructionAndTopology) {
 
 TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {
   // 1 input, 1 hidden neuron
-  LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+  LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
 
   // Set weights to simple values
   layer.set_w_values({ 0.5 });
@@ -55,7 +55,7 @@ TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {
 
 TEST_F(LSTMLayerTest, LayerNormForwardNormalizesCellState) {
   // 1 input, 2 neurons, single timestep, LayerNorm enabled on c_t.
-  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, true);
+  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, true, std::nullopt);
 
   layer.set_f_w_values({ 0.1, -0.3 }); layer.set_f_rw_values({ 0.0, 0.0, 0.0, 0.0 });
   layer.set_i_w_values({ 0.5, 0.2 });  layer.set_i_rw_values({ 0.0, 0.0, 0.0, 0.0 });
@@ -83,7 +83,7 @@ TEST_F(LSTMLayerTest, LayerNormForwardNormalizesCellState) {
 }
 
 TEST_F(LSTMLayerTest, LayerNormDisabledMatchesUnnormalizedForwardFeed) {
-  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false);
+  LSTMLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
 
   layer.set_f_w_values({ 0.1, -0.3 }); layer.set_f_rw_values({ 0.0, 0.0, 0.0, 0.0 });
   layer.set_i_w_values({ 0.5, 0.2 });  layer.set_i_rw_values({ 0.0, 0.0, 0.0, 0.0 });
@@ -121,7 +121,7 @@ TEST_F(LSTMLayerTest, LayerNormGainBiasGradientsMatchNumericalGradient) {
 
   auto make_layer = [&](const std::vector<double>& gain, const std::vector<double>& bias)
   {
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
     layer.set_f_w_values({ 0.12, -0.24 }); layer.set_f_rw_values({ 0.05, -0.03, 0.02, 0.04 }); layer.set_f_b_values({ 0.01, -0.02 });
     layer.set_i_w_values({ 0.31, 0.18 });  layer.set_i_rw_values({ -0.04, 0.06, 0.03, -0.05 }); layer.set_i_b_values({ 0.0, 0.03 });
     layer.set_o_w_values({ -0.22, 0.27 }); layer.set_o_rw_values({ 0.07, -0.02, -0.06, 0.08 }); layer.set_o_b_values({ -0.01, 0.02 });
@@ -196,7 +196,7 @@ TEST_F(LSTMLayerTest, LayerNormGainBiasGradientsMatchNumericalGradient) {
 
 TEST_F(LSTMLayerTest, DropoutConsistencyVerification) {
   // 1 neuron with 100% dropout
-  LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, false, 0.0);
+  LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, false, 0.0, false, std::nullopt);
   layer.set_w_values({ 1.0 });
   layer.set_rw_values({ 1.0 });
   layer.set_f_w_values({ 1.0 });
@@ -229,7 +229,7 @@ TEST_F(LSTMLayerTest, DropoutStatisticalVerification) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 5000;
     double dropout_rate = 0.5;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_outputs * 4, 1.0));
     layer.set_rw_values(std::vector<double>(num_outputs * num_outputs * 4, 0.0));
@@ -271,7 +271,7 @@ TEST_F(LSTMLayerTest, DropoutNotInference) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1000;
     double dropout_rate = 0.5;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_outputs * 4, 1.0));
     layer.set_rw_values(std::vector<double>(num_outputs * num_outputs * 4, 0.0));
@@ -299,7 +299,7 @@ TEST_F(LSTMLayerTest, DropoutNotInference) {
 TEST_F(LSTMLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
     
@@ -350,7 +350,7 @@ TEST_F(LSTMLayerTest, LearningRateRobustness) {
 TEST_F(LSTMLayerTest, BPTTRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_f_w_values({ 0.2 }); layer.set_f_rw_values({ 0.3 }); layer.set_f_b_values({ 0.1 });
     layer.set_i_w_values({ 0.4 }); layer.set_i_rw_values({ 0.5 }); layer.set_i_b_values({ 0.1 });
@@ -406,7 +406,7 @@ TEST_F(LSTMLayerTest, ForwardFeedCachesActivatedCandidateAndCellStateForBptt) {
   // independently of any end-to-end gradient values.
   const unsigned num_inputs = 2;
   const unsigned num_neurons = 2;
-  LSTMLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  LSTMLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   layer.set_w_values({ 0.6, -0.4, 0.3, -0.2 });
   layer.set_rw_values({ 0.15, -0.25, 0.35, -0.1 });
@@ -464,7 +464,7 @@ TEST_F(LSTMLayerTest, ForwardFeedCachesActivatedCandidateAndCellStateForBptt) {
 
 TEST_F(LSTMLayerTest, ApplyStoredGradientsCacheUpdate)
 {
-    LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.5 });
     layer.set_f_w_values({ 0.0 }); layer.set_f_rw_values({ 0.0 });
@@ -512,7 +512,7 @@ TEST_F(LSTMLayerTest, BiasCachingCorrectness)
 {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values({ 1.0 });   layer.set_rw_values({ 0.0 });
     layer.set_f_w_values({ 0.0 }); layer.set_f_rw_values({ 0.0 });
@@ -547,7 +547,7 @@ TEST_F(LSTMLayerTest, TransposedWeightsAndFastBpttPassCorrectness) {
     // 2 inputs, 2 neurons, batch size 2, 2 time steps
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     // Populate weights
     layer.set_f_w_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -609,7 +609,7 @@ TEST_F(LSTMLayerTest, BPTTWorkspaceResizeCorrectness) {
     // 2 inputs, 2 outputs, batch size 2, 2 time steps
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_f_w_values({ 0.1, 0.2, 0.3, 0.4 });
     layer.set_f_rw_values({ 0.15, 0.25, 0.35, 0.45 });
@@ -673,10 +673,10 @@ TEST_F(LSTMLayerTest, SingleVSMultiThreadedEquivalence)
   size_t num_time_steps = 20;
 
   // Layer 1: single threaded
-  LSTMLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  LSTMLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   // Layer 2: multi threaded
-  LSTMLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0);
+  LSTMLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
 
   // Helper to fill vectors with identical values
   auto initialize_weights = [&](LSTMLayer& l)
@@ -771,7 +771,7 @@ TEST_F(LSTMLayerTest, BPTTSequenceLengthsVerification)
 
   for (size_t num_time_steps = 1; num_time_steps <= 12; ++num_time_steps)
   {
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.1));
     layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.15));
@@ -830,7 +830,7 @@ TEST_F(LSTMLayerTest, BPTTSequenceLengthsVerification)
 }
 
 TEST_F(LSTMLayerTest, TempBufferReuseAndMultiIterationConsistency) {
-  LSTMLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0);
+  LSTMLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
   MockLayer prev_layer(0, 2);
   std::vector<unsigned> topology = { 2, 2 };
@@ -897,7 +897,7 @@ namespace {
 
   LSTMLayer make_cross_talk_test_layer(unsigned num_inputs, unsigned num_outputs, bool use_layer_normalisation = false)
   {
-    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_normalisation);
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, use_layer_normalisation, std::nullopt);
     layer.set_f_w_values(lstm_make_deterministic_weights(num_inputs, num_outputs, 0.15, 0.02));
     layer.set_f_rw_values(lstm_make_deterministic_weights(num_outputs, num_outputs, 0.12, -0.01));
     layer.set_f_b_values(lstm_make_deterministic_weights(1, num_outputs, 0.05, 0.0));

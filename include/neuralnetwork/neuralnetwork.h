@@ -10,6 +10,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <random>
 #include <shared_mutex>
 #include <vector>
 
@@ -83,6 +84,8 @@ protected:
   // No protected methods defined yet
 
 private:
+  static std::mt19937 make_shuffle_engine(const NeuralNetworkOptions& options);
+
   void optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
   void train_single_batch(
@@ -136,6 +139,17 @@ private:
   size_t _swa_snapshot_count = 0;
 
   Rng _rng;
+
+  // Persistent, per-instance engine backing data/BPTT-batch shuffling
+  // (get_shuffled_indexes, create_shuffled_indexes_in_lock,
+  // recreate_batch_from_indexes, create_bptt_batches). Seeded once at
+  // construction from _options.seed() when set, so that with a seed,
+  // shuffle order is reproducible run-to-run; falls back to
+  // std::random_device (today's behaviour) when unset. Safe as a plain
+  // mutable member (not thread_local/atomic) because every call site is
+  // reached only from the single orchestrating training thread, never from
+  // a Layer's internal _task_queue_pool workers.
+  mutable std::mt19937 _shuffle_engine;
 
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
 };

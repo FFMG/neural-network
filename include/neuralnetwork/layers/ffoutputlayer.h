@@ -17,7 +17,8 @@ public:
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
     int number_of_threads,
-    bool has_bias);
+    bool has_bias,
+    std::optional<uint32_t> seed);
 
   FFOutputLayer(
     unsigned layer_index,

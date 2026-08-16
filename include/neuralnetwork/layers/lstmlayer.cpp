@@ -23,7 +23,8 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_normalisation) : LSTMLayer(
+    bool use_layer_normalisation,
+    std::optional<uint32_t> seed) : LSTMLayer(
     layer_index,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
@@ -37,7 +38,8 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     number_of_threads,
     has_bias,
     momentum,
-    use_layer_normalisation
+    use_layer_normalisation,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
@@ -57,7 +59,8 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_normalisation) : Layer(
+    bool use_layer_normalisation,
+    std::optional<uint32_t> seed) : Layer(
     layer_index,
     layer_role,
     activation_method,
@@ -65,17 +68,18 @@ LSTMLayer::LSTMLayer(unsigned layer_index,
     residual_layer_number,
     num_neurons_in_previous_layer,
     num_neurons_in_this_layer,
-    create_neurons(dropout_rate, num_neurons_in_this_layer),
+    create_neurons(dropout_rate, num_neurons_in_this_layer, seed),
     has_bias,
     weight_decays,
     residual_projector,
     number_of_threads,
-    momentum
+    momentum,
+    seed
   ),
   _use_layer_normalisation(use_layer_normalisation)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0]);
+  initialize_recurrent_weights(weight_decays.empty() ? 0.0 : weight_decays[0], seed);
   initialize_layer_norm();
   allocate_workspace();
 }
@@ -362,7 +366,7 @@ Layer* LSTMLayer::clone() const
   return new LSTMLayer(*this); 
 }
 
-void LSTMLayer::initialize_recurrent_weights(double weight_decay)
+void LSTMLayer::initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const auto num_neurons = get_number_neurons();
@@ -371,16 +375,34 @@ void LSTMLayer::initialize_recurrent_weights(double weight_decay)
   const size_t num_rec_weights = static_cast<size_t>(num_neurons) * num_neurons;
   const size_t num_inp_weights = static_cast<size_t>(num_inputs) * num_neurons;
 
-  init_weights(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, num_rec_weights, false, weight_decay);
-  if (num_inputs > 0) init_weights(_f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_timesteps, _f_w_decays, num_inp_weights, true, weight_decay);
-  init_weights(_f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_timesteps, _f_rw_decays, num_rec_weights, false, weight_decay);
-  if (has_bias()) init_bias(_f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_timesteps, _f_b_decays);
-  if (num_inputs > 0) init_weights(_i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_timesteps, _i_w_decays, num_inp_weights, true, weight_decay);
-  init_weights(_i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_timesteps, _i_rw_decays, num_rec_weights, false, weight_decay);
-  if (has_bias()) init_bias(_i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_timesteps, _i_b_decays);
-  if (num_inputs > 0) init_weights(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, num_inp_weights, true, weight_decay);
-  init_weights(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, num_rec_weights, false, weight_decay);
-  if (has_bias()) init_bias(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays);
+  init_weights(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, num_rec_weights, false, weight_decay, 0, seed);
+  if (num_inputs > 0)
+  {
+    init_weights(_f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_timesteps, _f_w_decays, num_inp_weights, true, weight_decay, 1, seed);
+  }
+  init_weights(_f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_timesteps, _f_rw_decays, num_rec_weights, false, weight_decay, 2, seed);
+  if (has_bias())
+  {
+    init_bias(_f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_timesteps, _f_b_decays);
+  }
+  if (num_inputs > 0)
+  {
+    init_weights(_i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_timesteps, _i_w_decays, num_inp_weights, true, weight_decay, 3, seed);
+  }
+  init_weights(_i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_timesteps, _i_rw_decays, num_rec_weights, false, weight_decay, 4, seed);
+  if (has_bias())
+  {
+    init_bias(_i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_timesteps, _i_b_decays);
+  }
+  if (num_inputs > 0)
+  {
+    init_weights(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, num_inp_weights, true, weight_decay, 5, seed);
+  }
+  init_weights(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, num_rec_weights, false, weight_decay, 6, seed);
+  if (has_bias())
+  {
+    init_bias(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays);
+  }
   cache_recurrent_weights();
 }
 
@@ -410,14 +432,18 @@ void LSTMLayer::initialize_layer_norm()
   _ln_c_bias_decays.assign(n, 0.0);
 }
 
-void LSTMLayer::init_weights(std::vector<double>& values, std::vector<double>& grads, std::vector<double>& velocities, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& timesteps, std::vector<double>& decays, size_t size, bool is_input, double weight_decay) const
+void LSTMLayer::init_weights(std::vector<double>& values, std::vector<double>& grads, std::vector<double>& velocities, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& timesteps, std::vector<double>& decays, size_t size, bool is_input, double weight_decay, unsigned block_tag, std::optional<uint32_t> seed) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const auto num_neurons = get_number_output_neurons();
   const auto num_inputs = get_number_input_neurons();
   values.resize(size);
   const unsigned f_in = is_input ? num_inputs : num_neurons;
-  for (size_t i = 0; i < size; ++i) values[i] = get_activation().weight_initialization(f_in, num_neurons);
+  for (size_t i = 0; i < size; ++i)
+  {
+    const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), block_tag, i))) : std::nullopt;
+    values[i] = get_activation().weight_initialization(f_in, num_neurons, weight_seed);
+  }
   grads.assign(size, 0.0);
   velocities.assign(size, 0.0);
   m1.assign(size, 0.0);
@@ -865,7 +891,7 @@ void LSTMLayer::finalize_forward_step(
       if (neuron.is_dropout())
       {
         const double dropout_rate = neuron.get_dropout_rate();
-        if (neuron.must_randomly_drop())
+        if (neuron.must_randomly_drop(b * num_time_steps + t))
         {
           out = 0.0;
           mask = 0.0;
@@ -1018,7 +1044,7 @@ void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
 
   if (_identity_proxy == nullptr)
   {
-    _identity_proxy = new FFLayer(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+    _identity_proxy = new FFLayer(0, N_this, N_this, 0.0, Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
     std::vector<double> id(static_cast<size_t>(N_this) * N_this, 0.0);
     for (unsigned i = 0; i < N_this; ++i)
     {

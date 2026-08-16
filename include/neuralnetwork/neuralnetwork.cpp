@@ -20,7 +20,8 @@ namespace myoddweb::nn
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(0.0),
   _layers(options),
-  _options(options)
+  _options(options),
+  _shuffle_engine(make_shuffle_engine(options))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
@@ -50,7 +51,8 @@ NeuralNetwork::NeuralNetwork(
   _learning_rate(options.learning_rate()),
   _layers(layers),
   _options(options),
-  _saved_errors(errors)
+  _saved_errors(errors),
+  _shuffle_engine(make_shuffle_engine(options))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
@@ -60,6 +62,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _layers(src._layers),
   _options(src._options),
   _saved_errors(src._saved_errors),
+  _shuffle_engine(src._shuffle_engine),
   _last_metrics(src._last_metrics)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -82,6 +85,7 @@ NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
   _options(std::move(src._options)),
   _neural_network_helpers(std::move(src._neural_network_helpers)),
   _saved_errors(std::move(src._saved_errors)),
+  _shuffle_engine(std::move(src._shuffle_engine)),
   _last_metrics(std::move(src._last_metrics))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -110,6 +114,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _layers = src._layers;
     _options = src._options;
     _saved_errors = src._saved_errors;
+    _shuffle_engine = src._shuffle_engine;
     _last_metrics = src._last_metrics;
 
     _neural_network_helpers.clear();
@@ -139,6 +144,7 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
     _layers = std::move(src._layers);
     _options = std::move(src._options);
     _saved_errors = std::move(src._saved_errors);
+    _shuffle_engine = std::move(src._shuffle_engine);
     _last_metrics = std::move(src._last_metrics);
 
     _neural_network_helpers = std::move(src._neural_network_helpers);
@@ -158,6 +164,20 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
 NeuralNetwork::~NeuralNetwork()
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+}
+
+std::mt19937 NeuralNetwork::make_shuffle_engine(const NeuralNetworkOptions& options)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  const auto& seed = options.seed();
+  if (seed.has_value())
+  {
+    // Distinct tag (1) so this engine's stream never collides with the
+    // per-layer weight-init/dropout seed derivations, which all start from
+    // the same base seed.
+    return std::mt19937(static_cast<std::mt19937::result_type>(Rng::derive(seed.value(), 1)));
+  }
+  return std::mt19937(std::random_device{}());
 }
 
 [[nodiscard]] const Layer& NeuralNetwork::get_layer(unsigned index) const
@@ -184,7 +204,7 @@ std::vector<size_t> NeuralNetwork::get_shuffled_indexes(size_t raw_size) const
   std::vector<size_t> shuffled_indexes(raw_size);
   std::iota(shuffled_indexes.begin(), shuffled_indexes.end(), 0);
 
-  thread_local std::mt19937 gen(std::random_device{}());
+  auto& gen = _shuffle_engine;
   std::shuffle(shuffled_indexes.begin(), shuffled_indexes.end(), gen);
   return shuffled_indexes;
 }
@@ -233,7 +253,7 @@ void NeuralNetwork::create_shuffled_indexes_in_lock(NeuralNetworkHelper& neural_
 
   break_indexes(indexes, data_is_unique, training_indexes, checking_indexes, final_check_indexes);
 
-  thread_local std::mt19937 gen(std::random_device{}());
+  auto& gen = _shuffle_engine;
   std::shuffle(training_indexes.begin(), training_indexes.end(), gen);
 
   neural_network_helper.move_indexes(std::move(training_indexes), std::move(checking_indexes), std::move(final_check_indexes));
@@ -288,7 +308,7 @@ void NeuralNetwork::recreate_batch_from_indexes(NeuralNetworkHelper& neural_netw
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   auto indexes = neural_network_helper.training_indexes();
-  thread_local std::mt19937 gen(std::random_device{}());
+  auto& gen = _shuffle_engine;
   std::shuffle(indexes.begin(), indexes.end(), gen);
   neural_network_helper.move_training_indexes(std::move(indexes));
   create_batch_from_indexes(neural_network_helper.training_indexes(), training_inputs, training_outputs, shuffled_training_inputs, shuffled_training_outputs);
@@ -563,7 +583,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     if (is_shuffled && bptt_inputs.size() > 1)
     {
       const size_t n = bptt_inputs.size();
-      thread_local std::mt19937 g(std::random_device{}());
+      auto& g = _shuffle_engine;
       std::uniform_int_distribution<size_t> dist;
       for (size_t i = n - 1; i > 0; --i)
       {
@@ -604,7 +624,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     if (is_shuffled && bptt_inputs.size() > 1)
     {
       const size_t n = bptt_inputs.size();
-      thread_local std::mt19937 g(std::random_device{}());
+      auto& g = _shuffle_engine;
       std::uniform_int_distribution<size_t> dist;
       for (size_t i = n - 1; i > 0; --i)
       {
@@ -640,7 +660,7 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   // 2. Shuffle indices instead of data if requested
   if (is_shuffled)
   {
-    thread_local std::mt19937 g(std::random_device{}());
+    auto& g = _shuffle_engine;
     std::shuffle(start_indices.begin(), start_indices.end(), g);
   }
 
@@ -1017,7 +1037,7 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
   std::vector<size_t> calibration_indices(training_inputs.size());
   std::iota(calibration_indices.begin(), calibration_indices.end(), 0);
   
-  thread_local std::mt19937 g(std::random_device{}());
+  auto& g = _shuffle_engine;
   std::shuffle(calibration_indices.begin(), calibration_indices.end(), g);
   calibration_indices.resize(num_samples);
 

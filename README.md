@@ -239,6 +239,20 @@ Individual layers can have dropout applied via `LayerDetails`. During training, 
     LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25, 0.0, OptimiserType::None, 0.0, false); // 25% dropout
 ```
 
+### Reproducibility (Seed)
+
+By default, every run of this library is non-deterministic: weight initialization, dropout masking, and data/BPTT-batch shuffling are all drawn from `std::random_device`, so two "identical" configs will diverge run to run. `NeuralNetworkOptions::with_seed(seed)` pins all three to a single `uint32_t` seed, so that an identical config plus an identical seed reproduces byte-identical training runs — a prerequisite for trusting any single-variable comparison between configs, rather than a coin flip against run-to-run noise.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_seed(42) // opt-in; omit (or pass std::nullopt) for today's non-deterministic behaviour
+      .build();
+```
+
+The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the default) preserves the exact non-deterministic behaviour of every prior release. When set, a single base seed derives independent, non-colliding sub-seeds per layer, per weight, and per neuron via a fast splitmix64-style mixer (`Rng::derive`) — so, unlike naively reusing one raw seed everywhere, no two weights or dropout streams collapse onto the same value. The seed is persisted by `NeuralNetworkSerializer::save`/`load`, and a reloaded network's dropout masking continues exactly as a fresh, identically-seeded run would have.
+
+**Known limitation:** dropout determinism is keyed off `(seed, layer, neuron, batch_index, timestep)`, not an epoch counter. With shuffling enabled (the default), the training example occupying a given batch slot changes every epoch, so this is not an issue in practice. If shuffling is disabled for a run (`shuffle_training_data(false)` with unique/non-shuffled data), the same physical sample will receive the same dropout mask on every epoch.
+
 ### Layer Normalization
 
 `Gru` and `Lstm` hidden layers can opt into recurrent-state Layer Normalization via the trailing `use_layer_normalisation` flag on `LayerDetails` (`false` when disabled, `true` when enabled). It normalizes the state each layer actually carries across timesteps — the blended hidden state for `Gru`, the cell state for `Lstm` — with its own learnable per-neuron gain (initialized to `1.0`) and bias (initialized to `0.0`), targeting the unstable activation scale that recurrent nets can build up over a long BPTT window. It is not available on `FF`/`Elman` layers. The flag, like the rest of a hidden layer's configuration, is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.

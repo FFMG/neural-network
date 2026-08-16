@@ -7,6 +7,7 @@
 #include "../common/logger.h"
 #include "neuralnetworkserializer.h"
 #include "../common/optimiser.h"
+#include "../common/rng.h"
 
 
 namespace myoddweb::nn
@@ -107,14 +108,21 @@ Layers NeuralNetworkSerializer::create_layers(
     Logger::panic("Could not locate the layers array.");
   }
 
+  const auto& base_seed = options.seed();
   for(unsigned layer_index = 0; layer_index < static_cast<unsigned>(number_of_layers); ++layer_index)
   {
     const auto* layer_object = static_cast<const TinyJSON::TJValueObject*>(layers_array->at(layer_index));
     std::string type = layer_object->get_string("layer-name");
+    // Recomputed the same way as during fresh construction (Layers::derive_layer_seed):
+    // one weight_initialization draw is never persisted, but a neuron's dropout
+    // seed_base isn't touched by load_weights either, so re-deriving it here from
+    // the reloaded network seed keeps post-load dropout behaviour identical to
+    // what a fresh, identically-seeded training run would have produced.
+    const auto layer_seed = base_seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(base_seed.value(), layer_index))) : std::nullopt;
     if (type == "fflayer")
     {
       layers.emplace_back(
-        create_fflayer(layer_index, *layer_object, options.number_of_threads())
+        create_fflayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -122,7 +130,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "ffoutputlayer")
     {
       layers.emplace_back(
-        create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.output_layer_details() )
+        create_ffoutputlayer(layer_index, *layer_object, options.number_of_threads(), options.output_layer_details(), layer_seed )
       );
       continue;
     }
@@ -130,7 +138,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "elmanrnnlayer")
     {
       layers.emplace_back(
-        create_elmanrnnlayer(layer_index, *layer_object, options.number_of_threads())
+        create_elmanrnnlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -138,7 +146,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "grurnnlayer")
     {
       layers.emplace_back(
-        create_grurnnlayer(layer_index, *layer_object, options.number_of_threads())
+        create_grurnnlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -146,7 +154,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "lstmlayer")
     {
       layers.emplace_back(
-        create_lstmlayer(layer_index, *layer_object, options.number_of_threads())
+        create_lstmlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -154,7 +162,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "multioutputlayer")
     {
       layers.emplace_back(
-        create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details())
+        create_multioutputlayer(layer_index, *layer_object, options.number_of_threads(), options.multi_output_layer_details(), layer_seed)
       );
       continue;
     }
@@ -162,7 +170,7 @@ Layers NeuralNetworkSerializer::create_layers(
     if (type == "attentionpoollayer")
     {
       layers.emplace_back(
-        create_attentionpoollayer(layer_index, *layer_object, options.number_of_threads())
+        create_attentionpoollayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -176,12 +184,13 @@ Layers NeuralNetworkSerializer::create_layers(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
@@ -263,12 +272,13 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_elmanrnnlayer(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
@@ -484,12 +494,13 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_grurnnlayer(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
@@ -690,12 +701,13 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto residual_layer_number = layer_object.get<int>("residual-layer-number");
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
@@ -764,11 +776,12 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_attentionpoollayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
-  int number_of_threads
+  int number_of_threads,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
@@ -866,12 +879,13 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
   int number_of_threads,
-  const std::vector<OutputLayerDetails>& output_layer_details
+  const std::vector<OutputLayerDetails>& output_layer_details,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   // get the neurons
-  auto neurons = get_neurons(layer_object, layer_index);
+  auto neurons = get_neurons(layer_object, layer_index, seed);
 
   auto number_input_neurons = layer_object.get<unsigned>("number-input-neurons");
   auto number_output_neurons = layer_object.get<unsigned>("number-output-neurons");
@@ -1159,6 +1173,9 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto swa_start_percent = options_object->get_or<double>("swa-start-percent", 0.75);
   const auto swa_update_percent = options_object->get_or<double>("swa-update-percent", 0.02);
 
+  const auto seed_enabled = options_object->get_or<bool>("seed-enabled", false);
+  const std::optional<uint32_t> seed = seed_enabled ? std::optional<uint32_t>(static_cast<uint32_t>(options_object->get_or<long long>("seed", 0))) : std::nullopt;
+
   const auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
   std::vector<ErrorCalculation::type> final_error_calculation_types = {};
   if (nullptr != final_error_calculation_types_array)
@@ -1196,7 +1213,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_update_training_monitor_percent(update_training_monitor_percent)
     .with_has_bias(has_bias)
     .with_log_training_info(log_training_info)
-    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent));
+    .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent))
+    .with_seed(seed);
 
   if (multi_output_layer_details.size())
   {
@@ -1281,7 +1299,7 @@ const TinyJSON::TJValueObject* NeuralNetworkSerializer::get_layer_object(const T
   return layer_object;
 }
 
-std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number)
+std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue& json, unsigned layer_number, std::optional<uint32_t> seed)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   const auto* layer_object = get_layer_object(json, layer_number);
@@ -1289,10 +1307,10 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
   {
     return {};
   }
-  return get_neurons(*layer_object, layer_number);
+  return get_neurons(*layer_object, layer_number, seed);
 }
 
-std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number)
+std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValueObject& layer_object, unsigned layer_number, std::optional<uint32_t> seed)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto layer_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("neurons"));
@@ -1322,11 +1340,17 @@ std::vector<Neuron> NeuralNetworkSerializer::get_neurons(const TinyJSON::TJValue
 
     const auto neuron_type = static_cast<Neuron::Type>(neuron_object->get<int>("neuron-type"));
     const auto dropout_rate = neuron_object->get<double>("dropout-rate");
-    
+
+    // Recomputed the same way as Layer::create_neurons, so a reloaded network's
+    // dropout masking stays identical to what a fresh, identically-seeded
+    // training run would have produced.
+    const auto seed_base = seed.has_value() ? std::optional<uint64_t>(Rng::derive(seed.value(), index)) : std::nullopt;
+
     auto neuron = Neuron(
       index,
       neuron_type,
-      dropout_rate
+      dropout_rate,
+      seed_base
     );
     neurons.push_back(neuron);
   }
@@ -1521,6 +1545,8 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("swa-enabled", options.stochastic_weight_averaging().enabled());
   options_object->set_float("swa-start-percent", options.stochastic_weight_averaging().start_percent());
   options_object->set_float("swa-update-percent", options.stochastic_weight_averaging().update_percent());
+  options_object->set_boolean("seed-enabled", options.seed().has_value());
+  options_object->set_number("seed", options.seed().has_value() ? static_cast<long long>(options.seed().value()) : 0LL);
 
   json.set("options", options_object);
 
@@ -2396,10 +2422,11 @@ void NeuralNetworkSerializer::add_multioutputlayer(const MultiOutputLayer& layer
 }
 
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_multioutputlayer(
-  unsigned layer_index, 
-  const TinyJSON::TJValueObject& layer_object, 
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
   int number_of_threads,
-  const std::vector<MultiOutputLayerDetails>& multi_output_layer_details
+  const std::vector<MultiOutputLayerDetails>& multi_output_layer_details,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -2414,7 +2441,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_multioutputlayer(
     number_output_neurons,
     multi_output_layer_details,
     number_of_threads,
-    has_bias
+    has_bias,
+    seed
   );
 
   auto* branches_array = dynamic_cast<const TinyJSON::TJValueArray*>(layer_object.try_get_value("branches"));

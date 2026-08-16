@@ -29,7 +29,8 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_normalisation = false);
+    bool use_layer_normalisation,
+    std::optional<uint32_t> seed);
 
   GRURNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -44,7 +45,8 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
-    bool use_layer_normalisation = false);
+    bool use_layer_normalisation,
+    std::optional<uint32_t> seed);
 
   GRURNNLayer(
     unsigned layer_index,
@@ -766,7 +768,7 @@ private:
     const BPTTWorkspace::AlignedVector& z_rw_values_T,
     const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
 
-  void initialize_recurrent_weights(double weight_decay);
+  void initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed);
   void initialize_layer_norm();
 
   void init_weights(
@@ -774,7 +776,7 @@ private:
     std::vector<double>& velocities, std::vector<double>& m1,
     std::vector<double>& m2, std::vector<long long>& timesteps,
     std::vector<double>& decays, size_t size, bool is_input,
-    double weight_decay) const;
+    double weight_decay, unsigned block_tag, std::optional<uint32_t> seed) const;
 
   void init_bias(
     std::vector<double>& values, std::vector<double>& grads,

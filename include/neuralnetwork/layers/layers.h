@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <shared_mutex>
 
 #include "../common/gradientsandoutputs.h"
@@ -145,13 +146,14 @@ private:
     size_t batch_size,
     const std::vector<HiddenStates>& hidden_states);
 
-  ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay);
-  static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias);
-  std::unique_ptr<Layer> create_hidden_layer(const Layer& previous_layer, int residual_layer_number, const LayerDetails& layer_details, int number_of_threads, bool has_bias);
-  std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias);
-  std::unique_ptr<Layer> create_multi_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details, int number_of_threads, bool has_bias);
+  ResidualProjector* create_residual_projector(const activation& activation_method, int residual_layer_number, int number_of_neurons_in_current_layer, double weight_decay, std::optional<uint32_t> seed);
+  static std::unique_ptr<Layer> create_input_layer(unsigned num_neurons_in_this_layer, int residual_layer_number, int number_of_threads, bool has_bias, std::optional<uint32_t> seed);
+  std::unique_ptr<Layer> create_hidden_layer(const Layer& previous_layer, int residual_layer_number, const LayerDetails& layer_details, int number_of_threads, bool has_bias, std::optional<uint32_t> seed);
+  std::unique_ptr<Layer> create_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<OutputLayerDetails>& output_layer_details, int number_of_threads, bool has_bias, std::optional<uint32_t> seed);
+  std::unique_ptr<Layer> create_multi_output_layer(unsigned num_neurons_in_this_layer, const Layer& previous_layer, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details, int number_of_threads, bool has_bias, std::optional<uint32_t> seed);
 
   int compute_residual_layer(int current_layer_index, int residual_layer_jump) const;
+  static std::optional<uint32_t> derive_layer_seed(std::optional<uint32_t> base_seed, uint64_t layer_index);
 
   std::vector<std::unique_ptr<Layer>> _layers;
 

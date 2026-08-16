@@ -63,8 +63,8 @@ TEST_F(LSTMLayerMTTest, ForwardFeedMTConsistency)
     const unsigned num_threads = get_test_threads();
     const unsigned num_timesteps = 10;
 
-    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, false, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -112,8 +112,8 @@ TEST_F(LSTMLayerMTTest, BackwardFeedMTConsistency)
     const unsigned num_threads = get_test_threads();
     const unsigned num_timesteps = 10;
 
-    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, false, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -191,8 +191,8 @@ TEST_F(LSTMLayerMTTest, LayerNormForwardAndBackwardMTConsistency)
     const unsigned num_threads = get_test_threads();
     const unsigned num_timesteps = 10;
 
-    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true);
-    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, true);
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, true, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -283,8 +283,8 @@ TEST_F(LSTMLayerMTTest, SmallBatchSizeThresholdFallback)
     const unsigned batch_size = 4; 
     const unsigned num_timesteps = 10;
 
-    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, false, std::nullopt);
 
     std::vector<double> w_vals(num_neurons * num_inputs * 4, 0.15);
     std::vector<double> rw_vals(num_neurons * num_neurons * 4, 0.25);

@@ -13,9 +13,9 @@ TEST(SwaTests, LayerRunningMeanMatchesDirectArithmeticMean)
   // Three "snapshots" of the same 2-input/2-neuron FF layer. Folding them
   // one at a time via the incremental running-mean update should produce
   // exactly the same result as a direct arithmetic mean of the three.
-  FFLayer running(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
-  FFLayer snap2(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
-  FFLayer snap3(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer running(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  FFLayer snap2(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  FFLayer snap3(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   running.set_w_values({ 1.0, 2.0, 3.0, 4.0 });
   running.set_b_values({ 10.0, 20.0 });

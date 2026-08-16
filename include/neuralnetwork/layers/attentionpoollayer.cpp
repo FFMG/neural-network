@@ -18,7 +18,8 @@ AttentionPoolLayer::AttentionPoolLayer(
   double dropout_rate,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   Layer(
     layer_index,
@@ -26,12 +27,13 @@ AttentionPoolLayer::AttentionPoolLayer(
     layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_previous_layer),
     optimiser_type,
     -1,
-    create_neurons(dropout_rate, num_neurons_in_previous_layer),
+    create_neurons(dropout_rate, num_neurons_in_previous_layer, seed),
     has_bias,
     std::vector<double>(static_cast<size_t>(num_neurons_in_previous_layer) * num_neurons_in_previous_layer, 0.0),
     nullptr,
     number_of_threads,
-    momentum
+    momentum,
+    seed
   ),
   _attention_hidden_size(attention_hidden_size)
 {
@@ -51,7 +53,9 @@ AttentionPoolLayer::AttentionPoolLayer(
   {
     for (size_t j = 0; j < d_a; ++j)
     {
-      _wa_values[i * d_a + j] = scoring_activation.weight_initialization(static_cast<unsigned>(N), static_cast<unsigned>(d_a));
+      const size_t flat_index = i * d_a + j;
+      const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), 0, flat_index))) : std::nullopt;
+      _wa_values[flat_index] = scoring_activation.weight_initialization(static_cast<unsigned>(N), static_cast<unsigned>(d_a), weight_seed);
     }
   }
   _wa_grads.assign(num_wa, 0.0);
@@ -72,7 +76,8 @@ AttentionPoolLayer::AttentionPoolLayer(
   _v_values.resize(d_a);
   for (size_t j = 0; j < d_a; ++j)
   {
-    _v_values[j] = scoring_activation.weight_initialization(static_cast<unsigned>(d_a), 1u);
+    const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), 1, j))) : std::nullopt;
+    _v_values[j] = scoring_activation.weight_initialization(static_cast<unsigned>(d_a), 1u, weight_seed);
   }
   _v_grads.assign(d_a, 0.0);
   _v_velocities.assign(d_a, 0.0);
@@ -400,7 +405,7 @@ void AttentionPoolLayer::calculate_forward_feed(
         const auto& neuron = neurons[j];
         if (neuron.is_dropout())
         {
-          if (neuron.must_randomly_drop())
+          if (neuron.must_randomly_drop(b))
           {
             output[j] = 0.0;
             mask[j] = 0.0;

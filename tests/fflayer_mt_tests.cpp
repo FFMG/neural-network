@@ -46,8 +46,8 @@ TEST_F(FFLayerMTTest, ForwardFeedMTConsistency)
     const unsigned batch_size = 256;
     const unsigned num_threads = get_test_threads();
 
-    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -97,13 +97,13 @@ TEST_F(FFLayerMTTest, BackwardFeedMTConsistency)
     const unsigned batch_size = 256;
     const unsigned num_threads = get_test_threads();
 
-    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
 
-    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
     std::vector<double> next_w(num_neurons * next_neurons);
     for (size_t i = 0; i < next_w.size(); ++i) 
     {
@@ -168,13 +168,13 @@ TEST_F(FFLayerMTTest, GradientStorageMTConsistency)
     const unsigned batch_size = 256;
     const unsigned num_threads = get_test_threads();
 
-    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
 
-    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
     std::vector<double> next_w(num_neurons * next_neurons, 0.1);
     next_layer.set_w_values(next_w);
 
@@ -240,10 +240,10 @@ TEST_F(FFLayerMTTest, ThreadLocalBufferCorrectnessAndStress)
     const unsigned next_neurons = 8;
     const unsigned num_threads = get_test_threads();
 
-    FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, std::nullopt);
     init_layer_weights(layer);
 
-    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer next_layer(2, num_neurons, next_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
     std::vector<double> next_w(num_neurons * next_neurons, 0.1);
     next_layer.set_w_values(next_w);
 
@@ -304,8 +304,8 @@ TEST_F(FFLayerMTTest, MediumWorkloadParallelExecutionVerification)
     const unsigned batch_size = 64;
     const unsigned num_threads = 4;
 
-    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0);
+    FFLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);

@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "libraries/instrumentor.h"
@@ -48,7 +49,8 @@ private:
     _update_training_monitor_percent(0.0),
     _has_bias(true),
     _log_training_info(true),
-    _swa(false, 0.75, 0.02)
+    _swa(false, 0.75, 0.02),
+    _seed(std::nullopt)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -113,7 +115,8 @@ public:
     _update_training_monitor_percent(nno._update_training_monitor_percent),
     _has_bias(nno._has_bias),
     _log_training_info(nno._log_training_info),
-    _swa(nno._swa)
+    _swa(nno._swa),
+    _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
   }
@@ -147,7 +150,8 @@ public:
     _update_training_monitor_percent(nno._update_training_monitor_percent),
     _has_bias(nno._has_bias),
     _log_training_info(nno._log_training_info),
-    _swa(std::move(nno._swa))
+    _swa(std::move(nno._swa)),
+    _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     nno._progress_callback = nullptr;
@@ -161,6 +165,7 @@ public:
     nno._learning_rate_warmup_start = 0.0;
     nno._learning_rate_warmup_target = 0.0;
     nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
+    nno._seed = std::nullopt;
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
@@ -197,6 +202,7 @@ public:
       _multi_output_layer_details = nno._multi_output_layer_details;
       _log_training_info = nno._log_training_info;
       _swa = nno._swa;
+      _seed = nno._seed;
     }
     return *this;
   }
@@ -235,6 +241,7 @@ public:
       _multi_output_layer_details = std::move(nno._multi_output_layer_details);
       _log_training_info = nno._log_training_info;
       _swa = std::move(nno._swa);
+      _seed = nno._seed;
 
       nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
@@ -260,6 +267,7 @@ public:
       nno._learning_rate_restart_boost = 0;
       nno._number_of_threads = 0;
       nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
+      nno._seed = std::nullopt;
     }
     return *this;
   }
@@ -450,6 +458,12 @@ public:
     _swa = StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent);
     return *this;
   }
+  NeuralNetworkOptions& with_seed(std::optional<uint32_t> seed) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _seed = seed;
+    return *this;
+  }
 
   NeuralNetworkOptions& build()
   {
@@ -626,7 +640,8 @@ public:
       .with_bptt_max_ticks(0)
       .with_update_training_monitor_percent(0.0)
       .with_log_training_info(true)
-      .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(false, 0.75, 0.02));
+      .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(false, 0.75, 0.02))
+      .with_seed(std::nullopt);
   }
 
   [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -659,6 +674,7 @@ public:
   [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
   [[nodiscard]] inline const StochasticWeightAveragingDetails& stochastic_weight_averaging() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa; }
+  [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
 
 private:
   std::vector<unsigned> _topology;
@@ -690,5 +706,6 @@ private:
   bool _has_bias;
   bool _log_training_info;
   StochasticWeightAveragingDetails _swa;
+  std::optional<uint32_t> _seed;
 };
 } // namespace myoddweb::nn

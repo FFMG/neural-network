@@ -214,7 +214,7 @@ TEST_F(LayerDetailsTest, ComplexArchitectureVerification) {
     MultiOutputLayerDetails modC({}, oC);
 
     std::vector<MultiOutputLayerDetails> details = { modA, modB, modC };
-    MultiOutputLayer layer(1, 2, 4, details, 1, true);
+    MultiOutputLayer layer(1, 2, 4, details, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
 
     // Setup Weights
@@ -329,7 +329,7 @@ TEST_F(LayerDetailsTest, RecurrentArchitectureVerification) {
     OutputLayerDetails oB(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB({hB}, oB);
 
-    MultiOutputLayer layer(1, 1, 2, { modA, modB }, 1, true);
+    MultiOutputLayer layer(1, 1, 2, { modA, modB }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
 
     // Branch A (RNN): W=[0.5], RW=[0.2], B=[0.1]
@@ -391,7 +391,7 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
                                      MultiOutputLayerDetails({h2}, o1), 
                                      MultiOutputLayerDetails({h3}, o1), 
                                      MultiOutputLayerDetails({h4}, o1), 
-                                     MultiOutputLayerDetails({h5}, o1) }, 1, false);
+                                     MultiOutputLayerDetails({h5}, o1) }, 1, false, std::nullopt);
     
     auto& branches = layer.get_mutable_branches();
     for(int i=0; i<5; ++i) {
