@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <memory>
 
 #include "../libraries/instrumentor.h"
@@ -1468,13 +1469,13 @@ TinyJSON::TJValue* NeuralNetworkSerializer::add_weight_param(const WeightParam& 
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto weight_param_object = new TinyJSON::TJValueObject();
-  weight_param_object->set_float("value", weight_param.get_value());
-  weight_param_object->set_float("raw-gradient", weight_param.get_raw_gradient());
-  weight_param_object->set_float("velocity", weight_param.get_velocity());
-  weight_param_object->set_float("first-moment-estimate", weight_param.get_first_moment_estimate());
-  weight_param_object->set_float("second-moment-estimate", weight_param.get_second_moment_estimate());
+  set_float(weight_param_object, "value", weight_param.get_value());
+  set_float(weight_param_object, "raw-gradient", weight_param.get_raw_gradient());
+  set_float(weight_param_object, "velocity", weight_param.get_velocity());
+  set_float(weight_param_object, "first-moment-estimate", weight_param.get_first_moment_estimate());
+  set_float(weight_param_object, "second-moment-estimate", weight_param.get_second_moment_estimate());
   weight_param_object->set_number("time-step", weight_param.get_timestep());
-  weight_param_object->set_float("weight-decay", weight_param.get_weight_decay());
+  set_float(weight_param_object, "weight-decay", weight_param.get_weight_decay());
   return weight_param_object;
 }
 
@@ -1512,19 +1513,19 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set("output-layer-details", output_layer_array);
   options_object->set("hidden-layers", hidden_layer_list);
   options_object->set_string("log-level", Logger::level_to_string(options.log_level()).c_str());
-  options_object->set_float("learning-rate", options.learning_rate());
-  options_object->set_float("learning-rate-warmup-start", options.learning_rate_warmup_start());
-  options_object->set_float("learning-rate-warmup-target", options.learning_rate_warmup_target());
+  set_float(options_object, "learning-rate", options.learning_rate());
+  set_float(options_object, "learning-rate-warmup-start", options.learning_rate_warmup_start());
+  set_float(options_object, "learning-rate-warmup-target", options.learning_rate_warmup_target());
   options_object->set_number("number-of-epoch", options.number_of_epoch());
   options_object->set_number("batch-size", options.batch_size());
   options_object->set_boolean("data-is-unique", options.data_is_unique());
   options_object->set_number("number-of-threads", options.number_of_threads());
-  options_object->set_float("learning-rate-decay-rate", options.learning_rate_decay_rate());
+  set_float(options_object, "learning-rate-decay-rate", options.learning_rate_decay_rate());
   options_object->set_boolean("adaptive-learning-rate", options.adaptive_learning_rate());
-  options_object->set_float("learning-rate-restart-rate", options.learning_rate_restart_rate());
-  options_object->set_float("learning-rate-restart-boost", options.learning_rate_restart_boost());
+  set_float(options_object, "learning-rate-restart-rate", options.learning_rate_restart_rate());
+  set_float(options_object, "learning-rate-restart-boost", options.learning_rate_restart_boost());
   options_object->set_number("residual-layer-jump", options.residual_layer_jump());
-  options_object->set_float("clip-threshold", options.clip_threshold());
+  set_float(options_object, "clip-threshold", options.clip_threshold());
   options_object->set_boolean("shuffle-training-data", options.shuffle_training_data());
   options_object->set_number("bptt-max-ticks", options.bptt_max_ticks());
 
@@ -1539,12 +1540,12 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
   options_object->set_boolean("bptt-supervise-last-step-only", options.bptt_supervise_last_step_only());
-  options_object->set_float("update-training-monitor-percent", options.update_training_monitor_percent());
+  set_float(options_object, "update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());
   options_object->set_boolean("log-training-info", options.log_training_info());
   options_object->set_boolean("swa-enabled", options.stochastic_weight_averaging().enabled());
-  options_object->set_float("swa-start-percent", options.stochastic_weight_averaging().start_percent());
-  options_object->set_float("swa-update-percent", options.stochastic_weight_averaging().update_percent());
+  set_float(options_object, "swa-start-percent", options.stochastic_weight_averaging().start_percent());
+  set_float(options_object, "swa-update-percent", options.stochastic_weight_averaging().update_percent());
   options_object->set_boolean("seed-enabled", options.seed().has_value());
   options_object->set_number("seed", options.seed().has_value() ? static_cast<long long>(options.seed().value()) : 0LL);
 
@@ -1575,11 +1576,11 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuro
   neuron_object->set_number("neuron-type", static_cast<unsigned>(neuron.get_type()));
   if(neuron.is_dropout())
   {
-    neuron_object->set_float("dropout-rate", neuron.get_dropout_rate());
+    set_float(neuron_object, "dropout-rate", neuron.get_dropout_rate());
   }
   else
   {
-    neuron_object->set_float("dropout-rate", 0.0);
+    set_float(neuron_object, "dropout-rate", 0.0);
   }
   return neuron_object;
 }
@@ -1602,31 +1603,31 @@ void NeuralNetworkSerializer::add_elmanrnnlayer(const ElmanRNNLayer& layer, Tiny
   add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
-  layer_object->set_floats("w-values", layer.get_w_values());
-  layer_object->set_floats("w-grads", layer.get_w_grads());
-  layer_object->set_floats("w-velocities", layer.get_w_velocities());
-  layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m2", layer.get_w_m2());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
-  layer_object->set_floats("w-decays", layer.get_w_decays());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
-  layer_object->set_floats("rw-values", layer.get_rw_values());
-  layer_object->set_floats("rw-grads", layer.get_rw_grads());
-  layer_object->set_floats("rw-velocities", layer.get_rw_velocities());
-  layer_object->set_floats("rw-m1", layer.get_rw_m1());
-  layer_object->set_floats("rw-m2", layer.get_rw_m2());
+  set_floats(layer_object, "rw-values", layer.get_rw_values());
+  set_floats(layer_object, "rw-grads", layer.get_rw_grads());
+  set_floats(layer_object, "rw-velocities", layer.get_rw_velocities());
+  set_floats(layer_object, "rw-m1", layer.get_rw_m1());
+  set_floats(layer_object, "rw-m2", layer.get_rw_m2());
   layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
-  layer_object->set_floats("rw-decays", layer.get_rw_decays());
+  set_floats(layer_object, "rw-decays", layer.get_rw_decays());
 
-  layer_object->set_float("momentum", layer.get_momentum());
+  set_float(layer_object, "momentum", layer.get_momentum());
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -1658,101 +1659,101 @@ void NeuralNetworkSerializer::add_grurnnlayer(const GRURNNLayer& layer, TinyJSON
   add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
 
-  layer_object->set_floats("w-values", layer.get_w_values());
-  layer_object->set_floats("w-grads", layer.get_w_grads());
-  layer_object->set_floats("w-velocities", layer.get_w_velocities());
-  layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m2", layer.get_w_m2());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
-  layer_object->set_floats("w-decays", layer.get_w_decays());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
-  layer_object->set_floats("rw-values", layer.get_rw_values());
-  layer_object->set_floats("rw-grads", layer.get_rw_grads());
-  layer_object->set_floats("rw-velocities", layer.get_rw_velocities());
-  layer_object->set_floats("rw-m1", layer.get_rw_m1());
-  layer_object->set_floats("rw-m2", layer.get_rw_m2());
+  set_floats(layer_object, "rw-values", layer.get_rw_values());
+  set_floats(layer_object, "rw-grads", layer.get_rw_grads());
+  set_floats(layer_object, "rw-velocities", layer.get_rw_velocities());
+  set_floats(layer_object, "rw-m1", layer.get_rw_m1());
+  set_floats(layer_object, "rw-m2", layer.get_rw_m2());
   layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
-  layer_object->set_floats("rw-decays", layer.get_rw_decays());
+  set_floats(layer_object, "rw-decays", layer.get_rw_decays());
 
-  layer_object->set_floats("z-w-values", layer.get_z_w_values());
-  layer_object->set_floats("z-w-grads", layer.get_z_w_grads());
-  layer_object->set_floats("z-w-velocities", layer.get_z_w_velocities());
-  layer_object->set_floats("z-w-m1", layer.get_z_w_m1());
-  layer_object->set_floats("z-w-m2", layer.get_z_w_m2());
+  set_floats(layer_object, "z-w-values", layer.get_z_w_values());
+  set_floats(layer_object, "z-w-grads", layer.get_z_w_grads());
+  set_floats(layer_object, "z-w-velocities", layer.get_z_w_velocities());
+  set_floats(layer_object, "z-w-m1", layer.get_z_w_m1());
+  set_floats(layer_object, "z-w-m2", layer.get_z_w_m2());
   layer_object->set_numbers("z-w-timesteps", layer.get_z_w_timesteps());
-  layer_object->set_floats("z-w-decays", layer.get_z_w_decays());
+  set_floats(layer_object, "z-w-decays", layer.get_z_w_decays());
   
-  layer_object->set_floats("z-rw-values", layer.get_z_rw_values());
-  layer_object->set_floats("z-rw-grads", layer.get_z_rw_grads());
-  layer_object->set_floats("z-rw-velocities", layer.get_z_rw_velocities());
-  layer_object->set_floats("z-rw-m1", layer.get_z_rw_m1());
-  layer_object->set_floats("z-rw-m2", layer.get_z_rw_m2());
+  set_floats(layer_object, "z-rw-values", layer.get_z_rw_values());
+  set_floats(layer_object, "z-rw-grads", layer.get_z_rw_grads());
+  set_floats(layer_object, "z-rw-velocities", layer.get_z_rw_velocities());
+  set_floats(layer_object, "z-rw-m1", layer.get_z_rw_m1());
+  set_floats(layer_object, "z-rw-m2", layer.get_z_rw_m2());
   layer_object->set_numbers("z-rw-timesteps", layer.get_z_rw_timesteps());
-  layer_object->set_floats("z-rw-decays", layer.get_z_rw_decays());
+  set_floats(layer_object, "z-rw-decays", layer.get_z_rw_decays());
 
-  layer_object->set_floats("z-b-values", layer.get_z_b_values());
-  layer_object->set_floats("z-b-grads", layer.get_z_b_grads());
-  layer_object->set_floats("z-b-velocities", layer.get_z_b_velocities());
-  layer_object->set_floats("z-b-m1", layer.get_z_b_m1());
-  layer_object->set_floats("z-b-m2", layer.get_z_b_m2());
+  set_floats(layer_object, "z-b-values", layer.get_z_b_values());
+  set_floats(layer_object, "z-b-grads", layer.get_z_b_grads());
+  set_floats(layer_object, "z-b-velocities", layer.get_z_b_velocities());
+  set_floats(layer_object, "z-b-m1", layer.get_z_b_m1());
+  set_floats(layer_object, "z-b-m2", layer.get_z_b_m2());
   layer_object->set_numbers("z-b-timesteps", layer.get_z_b_timesteps());
-  layer_object->set_floats("z-b-decays", layer.get_z_b_decays());
+  set_floats(layer_object, "z-b-decays", layer.get_z_b_decays());
 
   // Reset Gate (r)
-  layer_object->set_floats("r-w-values", layer.get_r_w_values());
-  layer_object->set_floats("r-w-grads", layer.get_r_w_grads());
-  layer_object->set_floats("r-w-velocities", layer.get_r_w_velocities());
-  layer_object->set_floats("r-w-m1", layer.get_r_w_m1());
-  layer_object->set_floats("r-w-m2", layer.get_r_w_m2());
+  set_floats(layer_object, "r-w-values", layer.get_r_w_values());
+  set_floats(layer_object, "r-w-grads", layer.get_r_w_grads());
+  set_floats(layer_object, "r-w-velocities", layer.get_r_w_velocities());
+  set_floats(layer_object, "r-w-m1", layer.get_r_w_m1());
+  set_floats(layer_object, "r-w-m2", layer.get_r_w_m2());
   layer_object->set_numbers("r-w-timesteps", layer.get_r_w_timesteps());
-  layer_object->set_floats("r-w-decays", layer.get_r_w_decays());
+  set_floats(layer_object, "r-w-decays", layer.get_r_w_decays());
 
-  layer_object->set_floats("r-rw-values", layer.get_r_rw_values());
-  layer_object->set_floats("r-rw-grads", layer.get_r_rw_grads());
-  layer_object->set_floats("r-rw-velocities", layer.get_r_rw_velocities());
-  layer_object->set_floats("r-rw-m1", layer.get_r_rw_m1());
-  layer_object->set_floats("r-rw-m2", layer.get_r_rw_m2());
+  set_floats(layer_object, "r-rw-values", layer.get_r_rw_values());
+  set_floats(layer_object, "r-rw-grads", layer.get_r_rw_grads());
+  set_floats(layer_object, "r-rw-velocities", layer.get_r_rw_velocities());
+  set_floats(layer_object, "r-rw-m1", layer.get_r_rw_m1());
+  set_floats(layer_object, "r-rw-m2", layer.get_r_rw_m2());
   layer_object->set_numbers("r-rw-timesteps", layer.get_r_rw_timesteps());
-  layer_object->set_floats("r-rw-decays", layer.get_r_rw_decays());
+  set_floats(layer_object, "r-rw-decays", layer.get_r_rw_decays());
 
-  layer_object->set_floats("r-b-values", layer.get_r_b_values());
-  layer_object->set_floats("r-b-grads", layer.get_r_b_grads());
-  layer_object->set_floats("r-b-velocities", layer.get_r_b_velocities());
-  layer_object->set_floats("r-b-m1", layer.get_r_b_m1());
-  layer_object->set_floats("r-b-m2", layer.get_r_b_m2());
+  set_floats(layer_object, "r-b-values", layer.get_r_b_values());
+  set_floats(layer_object, "r-b-grads", layer.get_r_b_grads());
+  set_floats(layer_object, "r-b-velocities", layer.get_r_b_velocities());
+  set_floats(layer_object, "r-b-m1", layer.get_r_b_m1());
+  set_floats(layer_object, "r-b-m2", layer.get_r_b_m2());
   layer_object->set_numbers("r-b-timesteps", layer.get_r_b_timesteps());
-  layer_object->set_floats("r-b-decays", layer.get_r_b_decays());
+  set_floats(layer_object, "r-b-decays", layer.get_r_b_decays());
 
   // Recurrent-state LayerNorm (applied to h_t)
   layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
   if (layer.get_use_layer_normalisation())
   {
-    layer_object->set_floats("ln-h-gain-values", layer.get_ln_h_gain_values());
-    layer_object->set_floats("ln-h-gain-grads", layer.get_ln_h_gain_grads());
-    layer_object->set_floats("ln-h-gain-velocities", layer.get_ln_h_gain_velocities());
-    layer_object->set_floats("ln-h-gain-m1", layer.get_ln_h_gain_m1());
-    layer_object->set_floats("ln-h-gain-m2", layer.get_ln_h_gain_m2());
+    set_floats(layer_object, "ln-h-gain-values", layer.get_ln_h_gain_values());
+    set_floats(layer_object, "ln-h-gain-grads", layer.get_ln_h_gain_grads());
+    set_floats(layer_object, "ln-h-gain-velocities", layer.get_ln_h_gain_velocities());
+    set_floats(layer_object, "ln-h-gain-m1", layer.get_ln_h_gain_m1());
+    set_floats(layer_object, "ln-h-gain-m2", layer.get_ln_h_gain_m2());
     layer_object->set_numbers("ln-h-gain-timesteps", layer.get_ln_h_gain_timesteps());
-    layer_object->set_floats("ln-h-gain-decays", layer.get_ln_h_gain_decays());
+    set_floats(layer_object, "ln-h-gain-decays", layer.get_ln_h_gain_decays());
 
-    layer_object->set_floats("ln-h-bias-values", layer.get_ln_h_bias_values());
-    layer_object->set_floats("ln-h-bias-grads", layer.get_ln_h_bias_grads());
-    layer_object->set_floats("ln-h-bias-velocities", layer.get_ln_h_bias_velocities());
-    layer_object->set_floats("ln-h-bias-m1", layer.get_ln_h_bias_m1());
-    layer_object->set_floats("ln-h-bias-m2", layer.get_ln_h_bias_m2());
+    set_floats(layer_object, "ln-h-bias-values", layer.get_ln_h_bias_values());
+    set_floats(layer_object, "ln-h-bias-grads", layer.get_ln_h_bias_grads());
+    set_floats(layer_object, "ln-h-bias-velocities", layer.get_ln_h_bias_velocities());
+    set_floats(layer_object, "ln-h-bias-m1", layer.get_ln_h_bias_m1());
+    set_floats(layer_object, "ln-h-bias-m2", layer.get_ln_h_bias_m2());
     layer_object->set_numbers("ln-h-bias-timesteps", layer.get_ln_h_bias_timesteps());
-    layer_object->set_floats("ln-h-bias-decays", layer.get_ln_h_bias_decays());
+    set_floats(layer_object, "ln-h-bias-decays", layer.get_ln_h_bias_decays());
   }
 
-  layer_object->set_float("momentum", layer.get_momentum());
+  set_float(layer_object, "momentum", layer.get_momentum());
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -1785,127 +1786,127 @@ void NeuralNetworkSerializer::add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJ
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
   
   // Candidate Gate (g) - uses standard w/rw/b
-  layer_object->set_floats("w-values", layer.get_w_values());
-  layer_object->set_floats("w-grads", layer.get_w_grads());
-  layer_object->set_floats("w-velocities", layer.get_w_velocities());
-  layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m2", layer.get_w_m2());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
-  layer_object->set_floats("w-decays", layer.get_w_decays());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
-  layer_object->set_floats("rw-values", layer.get_rw_values());
-  layer_object->set_floats("rw-grads", layer.get_rw_grads());
-  layer_object->set_floats("rw-velocities", layer.get_rw_velocities());
-  layer_object->set_floats("rw-m1", layer.get_rw_m1());
-  layer_object->set_floats("rw-m2", layer.get_rw_m2());
+  set_floats(layer_object, "rw-values", layer.get_rw_values());
+  set_floats(layer_object, "rw-grads", layer.get_rw_grads());
+  set_floats(layer_object, "rw-velocities", layer.get_rw_velocities());
+  set_floats(layer_object, "rw-m1", layer.get_rw_m1());
+  set_floats(layer_object, "rw-m2", layer.get_rw_m2());
   layer_object->set_numbers("rw-timesteps", layer.get_rw_timesteps());
-  layer_object->set_floats("rw-decays", layer.get_rw_decays());
+  set_floats(layer_object, "rw-decays", layer.get_rw_decays());
 
   // Forget Gate (f)
-  layer_object->set_floats("f-w-values", layer.get_f_w_values());
-  layer_object->set_floats("f-w-grads", layer.get_f_w_grads());
-  layer_object->set_floats("f-w-velocities", layer.get_f_w_velocities());
-  layer_object->set_floats("f-w-m1", layer.get_f_w_m1());
-  layer_object->set_floats("f-w-m2", layer.get_f_w_m2());
+  set_floats(layer_object, "f-w-values", layer.get_f_w_values());
+  set_floats(layer_object, "f-w-grads", layer.get_f_w_grads());
+  set_floats(layer_object, "f-w-velocities", layer.get_f_w_velocities());
+  set_floats(layer_object, "f-w-m1", layer.get_f_w_m1());
+  set_floats(layer_object, "f-w-m2", layer.get_f_w_m2());
   layer_object->set_numbers("f-w-timesteps", layer.get_f_w_timesteps());
-  layer_object->set_floats("f-w-decays", layer.get_f_w_decays());
+  set_floats(layer_object, "f-w-decays", layer.get_f_w_decays());
 
-  layer_object->set_floats("f-rw-values", layer.get_f_rw_values());
-  layer_object->set_floats("f-rw-grads", layer.get_f_rw_grads());
-  layer_object->set_floats("f-rw-velocities", layer.get_f_rw_velocities());
-  layer_object->set_floats("f-rw-m1", layer.get_f_rw_m1());
-  layer_object->set_floats("f-rw-m2", layer.get_f_rw_m2());
+  set_floats(layer_object, "f-rw-values", layer.get_f_rw_values());
+  set_floats(layer_object, "f-rw-grads", layer.get_f_rw_grads());
+  set_floats(layer_object, "f-rw-velocities", layer.get_f_rw_velocities());
+  set_floats(layer_object, "f-rw-m1", layer.get_f_rw_m1());
+  set_floats(layer_object, "f-rw-m2", layer.get_f_rw_m2());
   layer_object->set_numbers("f-rw-timesteps", layer.get_f_rw_timesteps());
-  layer_object->set_floats("f-rw-decays", layer.get_f_rw_decays());
+  set_floats(layer_object, "f-rw-decays", layer.get_f_rw_decays());
 
-  layer_object->set_floats("f-b-values", layer.get_f_b_values());
-  layer_object->set_floats("f-b-grads", layer.get_f_b_grads());
-  layer_object->set_floats("f-b-velocities", layer.get_f_b_velocities());
-  layer_object->set_floats("f-b-m1", layer.get_f_b_m1());
-  layer_object->set_floats("f-b-m2", layer.get_f_b_m2());
+  set_floats(layer_object, "f-b-values", layer.get_f_b_values());
+  set_floats(layer_object, "f-b-grads", layer.get_f_b_grads());
+  set_floats(layer_object, "f-b-velocities", layer.get_f_b_velocities());
+  set_floats(layer_object, "f-b-m1", layer.get_f_b_m1());
+  set_floats(layer_object, "f-b-m2", layer.get_f_b_m2());
   layer_object->set_numbers("f-b-timesteps", layer.get_f_b_timesteps());
-  layer_object->set_floats("f-b-decays", layer.get_f_b_decays());
+  set_floats(layer_object, "f-b-decays", layer.get_f_b_decays());
 
   // Input Gate (i)
-  layer_object->set_floats("i-w-values", layer.get_i_w_values());
-  layer_object->set_floats("i-w-grads", layer.get_i_w_grads());
-  layer_object->set_floats("i-w-velocities", layer.get_i_w_velocities());
-  layer_object->set_floats("i-w-m1", layer.get_i_w_m1());
-  layer_object->set_floats("i-w-m2", layer.get_i_w_m2());
+  set_floats(layer_object, "i-w-values", layer.get_i_w_values());
+  set_floats(layer_object, "i-w-grads", layer.get_i_w_grads());
+  set_floats(layer_object, "i-w-velocities", layer.get_i_w_velocities());
+  set_floats(layer_object, "i-w-m1", layer.get_i_w_m1());
+  set_floats(layer_object, "i-w-m2", layer.get_i_w_m2());
   layer_object->set_numbers("i-w-timesteps", layer.get_i_w_timesteps());
-  layer_object->set_floats("i-w-decays", layer.get_i_w_decays());
+  set_floats(layer_object, "i-w-decays", layer.get_i_w_decays());
 
-  layer_object->set_floats("i-rw-values", layer.get_i_rw_values());
-  layer_object->set_floats("i-rw-grads", layer.get_i_rw_grads());
-  layer_object->set_floats("i-rw-velocities", layer.get_i_rw_velocities());
-  layer_object->set_floats("i-rw-m1", layer.get_i_rw_m1());
-  layer_object->set_floats("i-rw-m2", layer.get_i_rw_m2());
+  set_floats(layer_object, "i-rw-values", layer.get_i_rw_values());
+  set_floats(layer_object, "i-rw-grads", layer.get_i_rw_grads());
+  set_floats(layer_object, "i-rw-velocities", layer.get_i_rw_velocities());
+  set_floats(layer_object, "i-rw-m1", layer.get_i_rw_m1());
+  set_floats(layer_object, "i-rw-m2", layer.get_i_rw_m2());
   layer_object->set_numbers("i-rw-timesteps", layer.get_i_rw_timesteps());
-  layer_object->set_floats("i-rw-decays", layer.get_i_rw_decays());
+  set_floats(layer_object, "i-rw-decays", layer.get_i_rw_decays());
 
-  layer_object->set_floats("i-b-values", layer.get_i_b_values());
-  layer_object->set_floats("i-b-grads", layer.get_i_b_grads());
-  layer_object->set_floats("i-b-velocities", layer.get_i_b_velocities());
-  layer_object->set_floats("i-b-m1", layer.get_i_b_m1());
-  layer_object->set_floats("i-b-m2", layer.get_i_b_m2());
+  set_floats(layer_object, "i-b-values", layer.get_i_b_values());
+  set_floats(layer_object, "i-b-grads", layer.get_i_b_grads());
+  set_floats(layer_object, "i-b-velocities", layer.get_i_b_velocities());
+  set_floats(layer_object, "i-b-m1", layer.get_i_b_m1());
+  set_floats(layer_object, "i-b-m2", layer.get_i_b_m2());
   layer_object->set_numbers("i-b-timesteps", layer.get_i_b_timesteps());
-  layer_object->set_floats("i-b-decays", layer.get_i_b_decays());
+  set_floats(layer_object, "i-b-decays", layer.get_i_b_decays());
 
   // Output Gate (o)
-  layer_object->set_floats("o-w-values", layer.get_o_w_values());
-  layer_object->set_floats("o-w-grads", layer.get_o_w_grads());
-  layer_object->set_floats("o-w-velocities", layer.get_o_w_velocities());
-  layer_object->set_floats("o-w-m1", layer.get_o_w_m1());
-  layer_object->set_floats("o-w-m2", layer.get_o_w_m2());
+  set_floats(layer_object, "o-w-values", layer.get_o_w_values());
+  set_floats(layer_object, "o-w-grads", layer.get_o_w_grads());
+  set_floats(layer_object, "o-w-velocities", layer.get_o_w_velocities());
+  set_floats(layer_object, "o-w-m1", layer.get_o_w_m1());
+  set_floats(layer_object, "o-w-m2", layer.get_o_w_m2());
   layer_object->set_numbers("o-w-timesteps", layer.get_o_w_timesteps());
-  layer_object->set_floats("o-w-decays", layer.get_o_w_decays());
+  set_floats(layer_object, "o-w-decays", layer.get_o_w_decays());
 
-  layer_object->set_floats("o-rw-values", layer.get_o_rw_values());
-  layer_object->set_floats("o-rw-grads", layer.get_o_rw_grads());
-  layer_object->set_floats("o-rw-velocities", layer.get_o_rw_velocities());
-  layer_object->set_floats("o-rw-m1", layer.get_o_rw_m1());
-  layer_object->set_floats("o-rw-m2", layer.get_o_rw_m2());
+  set_floats(layer_object, "o-rw-values", layer.get_o_rw_values());
+  set_floats(layer_object, "o-rw-grads", layer.get_o_rw_grads());
+  set_floats(layer_object, "o-rw-velocities", layer.get_o_rw_velocities());
+  set_floats(layer_object, "o-rw-m1", layer.get_o_rw_m1());
+  set_floats(layer_object, "o-rw-m2", layer.get_o_rw_m2());
   layer_object->set_numbers("o-rw-timesteps", layer.get_o_rw_timesteps());
-  layer_object->set_floats("o-rw-decays", layer.get_o_rw_decays());
+  set_floats(layer_object, "o-rw-decays", layer.get_o_rw_decays());
 
-  layer_object->set_floats("o-b-values", layer.get_o_b_values());
-  layer_object->set_floats("o-b-grads", layer.get_o_b_grads());
-  layer_object->set_floats("o-b-velocities", layer.get_o_b_velocities());
-  layer_object->set_floats("o-b-m1", layer.get_o_b_m1());
-  layer_object->set_floats("o-b-m2", layer.get_o_b_m2());
+  set_floats(layer_object, "o-b-values", layer.get_o_b_values());
+  set_floats(layer_object, "o-b-grads", layer.get_o_b_grads());
+  set_floats(layer_object, "o-b-velocities", layer.get_o_b_velocities());
+  set_floats(layer_object, "o-b-m1", layer.get_o_b_m1());
+  set_floats(layer_object, "o-b-m2", layer.get_o_b_m2());
   layer_object->set_numbers("o-b-timesteps", layer.get_o_b_timesteps());
-  layer_object->set_floats("o-b-decays", layer.get_o_b_decays());
+  set_floats(layer_object, "o-b-decays", layer.get_o_b_decays());
 
   // Recurrent-state LayerNorm (applied to c_t)
   layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
   if (layer.get_use_layer_normalisation())
   {
-    layer_object->set_floats("ln-c-gain-values", layer.get_ln_c_gain_values());
-    layer_object->set_floats("ln-c-gain-grads", layer.get_ln_c_gain_grads());
-    layer_object->set_floats("ln-c-gain-velocities", layer.get_ln_c_gain_velocities());
-    layer_object->set_floats("ln-c-gain-m1", layer.get_ln_c_gain_m1());
-    layer_object->set_floats("ln-c-gain-m2", layer.get_ln_c_gain_m2());
+    set_floats(layer_object, "ln-c-gain-values", layer.get_ln_c_gain_values());
+    set_floats(layer_object, "ln-c-gain-grads", layer.get_ln_c_gain_grads());
+    set_floats(layer_object, "ln-c-gain-velocities", layer.get_ln_c_gain_velocities());
+    set_floats(layer_object, "ln-c-gain-m1", layer.get_ln_c_gain_m1());
+    set_floats(layer_object, "ln-c-gain-m2", layer.get_ln_c_gain_m2());
     layer_object->set_numbers("ln-c-gain-timesteps", layer.get_ln_c_gain_timesteps());
-    layer_object->set_floats("ln-c-gain-decays", layer.get_ln_c_gain_decays());
+    set_floats(layer_object, "ln-c-gain-decays", layer.get_ln_c_gain_decays());
 
-    layer_object->set_floats("ln-c-bias-values", layer.get_ln_c_bias_values());
-    layer_object->set_floats("ln-c-bias-grads", layer.get_ln_c_bias_grads());
-    layer_object->set_floats("ln-c-bias-velocities", layer.get_ln_c_bias_velocities());
-    layer_object->set_floats("ln-c-bias-m1", layer.get_ln_c_bias_m1());
-    layer_object->set_floats("ln-c-bias-m2", layer.get_ln_c_bias_m2());
+    set_floats(layer_object, "ln-c-bias-values", layer.get_ln_c_bias_values());
+    set_floats(layer_object, "ln-c-bias-grads", layer.get_ln_c_bias_grads());
+    set_floats(layer_object, "ln-c-bias-velocities", layer.get_ln_c_bias_velocities());
+    set_floats(layer_object, "ln-c-bias-m1", layer.get_ln_c_bias_m1());
+    set_floats(layer_object, "ln-c-bias-m2", layer.get_ln_c_bias_m2());
     layer_object->set_numbers("ln-c-bias-timesteps", layer.get_ln_c_bias_timesteps());
-    layer_object->set_floats("ln-c-bias-decays", layer.get_ln_c_bias_decays());
+    set_floats(layer_object, "ln-c-bias-decays", layer.get_ln_c_bias_decays());
   }
 
-  layer_object->set_float("momentum", layer.get_momentum());
+  set_float(layer_object, "momentum", layer.get_momentum());
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -1936,23 +1937,23 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
-  layer_object->set_floats("w-values", layer.get_w_values());
-  layer_object->set_floats("w-grads", layer.get_w_grads());
-  layer_object->set_floats("w-velocities", layer.get_w_velocities());
-  layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m2", layer.get_w_m2());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
-  layer_object->set_floats("w-decays", layer.get_w_decays());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
-  layer_object->set_float("momentum", layer.get_momentum());
+  set_float(layer_object, "momentum", layer.get_momentum());
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -1985,39 +1986,39 @@ void NeuralNetworkSerializer::add_attentionpoollayer(const AttentionPoolLayer& l
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
   layer_object->set_number("attention-hidden-size", layer.get_attention_hidden_size());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
-  layer_object->set_floats("wa-values", layer.get_wa_values());
-  layer_object->set_floats("wa-grads", layer.get_wa_grads());
-  layer_object->set_floats("wa-velocities", layer.get_wa_velocities());
-  layer_object->set_floats("wa-m1", layer.get_wa_m1());
-  layer_object->set_floats("wa-m2", layer.get_wa_m2());
+  set_floats(layer_object, "wa-values", layer.get_wa_values());
+  set_floats(layer_object, "wa-grads", layer.get_wa_grads());
+  set_floats(layer_object, "wa-velocities", layer.get_wa_velocities());
+  set_floats(layer_object, "wa-m1", layer.get_wa_m1());
+  set_floats(layer_object, "wa-m2", layer.get_wa_m2());
   layer_object->set_numbers("wa-timesteps", layer.get_wa_timesteps());
-  layer_object->set_floats("wa-decays", layer.get_wa_decays());
+  set_floats(layer_object, "wa-decays", layer.get_wa_decays());
 
-  layer_object->set_floats("ba-values", layer.get_ba_values());
-  layer_object->set_floats("ba-grads", layer.get_ba_grads());
-  layer_object->set_floats("ba-velocities", layer.get_ba_velocities());
-  layer_object->set_floats("ba-m1", layer.get_ba_m1());
-  layer_object->set_floats("ba-m2", layer.get_ba_m2());
+  set_floats(layer_object, "ba-values", layer.get_ba_values());
+  set_floats(layer_object, "ba-grads", layer.get_ba_grads());
+  set_floats(layer_object, "ba-velocities", layer.get_ba_velocities());
+  set_floats(layer_object, "ba-m1", layer.get_ba_m1());
+  set_floats(layer_object, "ba-m2", layer.get_ba_m2());
   layer_object->set_numbers("ba-timesteps", layer.get_ba_timesteps());
-  layer_object->set_floats("ba-decays", layer.get_ba_decays());
+  set_floats(layer_object, "ba-decays", layer.get_ba_decays());
 
-  layer_object->set_floats("v-values", layer.get_v_values());
-  layer_object->set_floats("v-grads", layer.get_v_grads());
-  layer_object->set_floats("v-velocities", layer.get_v_velocities());
-  layer_object->set_floats("v-m1", layer.get_v_m1());
-  layer_object->set_floats("v-m2", layer.get_v_m2());
+  set_floats(layer_object, "v-values", layer.get_v_values());
+  set_floats(layer_object, "v-grads", layer.get_v_grads());
+  set_floats(layer_object, "v-velocities", layer.get_v_velocities());
+  set_floats(layer_object, "v-m1", layer.get_v_m1());
+  set_floats(layer_object, "v-m2", layer.get_v_m2());
   layer_object->set_numbers("v-timesteps", layer.get_v_timesteps());
-  layer_object->set_floats("v-decays", layer.get_v_decays());
+  set_floats(layer_object, "v-decays", layer.get_v_decays());
 
-  layer_object->set_float("momentum", layer.get_momentum());
+  set_float(layer_object, "momentum", layer.get_momentum());
 
   layers.add(layer_object);
   delete layer_array;
@@ -2042,21 +2043,21 @@ void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, Tiny
 
   layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
   layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
-  layer_object->set_floats("w-values", layer.get_w_values());
-  layer_object->set_floats("w-grads", layer.get_w_grads());
-  layer_object->set_floats("w-velocities", layer.get_w_velocities());
-  layer_object->set_floats("w-m1", layer.get_w_m1());
-  layer_object->set_floats("w-m2", layer.get_w_m2());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
   layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
-  layer_object->set_floats("w-decays", layer.get_w_decays());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
 
-  layer_object->set_floats("b-values", layer.get_b_values());
-  layer_object->set_floats("b-grads", layer.get_b_grads());
-  layer_object->set_floats("b-velocities", layer.get_b_velocities());
-  layer_object->set_floats("b-m1", layer.get_b_m1());
-  layer_object->set_floats("b-m2", layer.get_b_m2());
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
   layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
-  layer_object->set_floats("b-decays", layer.get_b_decays());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
 
   layers.add(layer_object);
   delete layer_array;
@@ -2072,14 +2073,14 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
     auto output_layer_object = new TinyJSON::TJValueObject();
     output_layer_object->set_number("size", output_layer_detail.get_size());
     output_layer_object->set_string("activation-method", activation::method_to_string(output_layer_detail.get_activation().get_method()).c_str());
-    output_layer_object->set_float("activation-alpha", output_layer_detail.get_activation().get_alpha());
-    output_layer_object->set_float("activation-temperature", output_layer_detail.get_activation().get_temperature());
-    output_layer_object->set_float("activation-inference-temperature", output_layer_detail.get_activation().get_inference_temperature());
+    set_float(output_layer_object, "activation-alpha", output_layer_detail.get_activation().get_alpha());
+    set_float(output_layer_object, "activation-temperature", output_layer_detail.get_activation().get_temperature());
+    set_float(output_layer_object, "activation-inference-temperature", output_layer_detail.get_activation().get_inference_temperature());
     output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer_detail.get_output_error_calculation_type()).c_str());
     add_error_evaluation_config(output_layer_object, output_layer_detail.get_error_evaluation_config());
-    output_layer_object->set("weight-decay", output_layer_detail.get_weight_decay());
+    set_float(output_layer_object, "weight-decay", output_layer_detail.get_weight_decay());
     output_layer_object->set("optimiser-type", optimiser_type_to_string(output_layer_detail.get_optimiser_type()).c_str());
-    output_layer_object->set("momentum", output_layer_detail.get_momentum());
+    set_float(output_layer_object, "momentum", output_layer_detail.get_momentum());
     output_layer_array->add(output_layer_object);
     delete output_layer_object;
   }
@@ -2090,12 +2091,12 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto error_evaluation_config_object = new TinyJSON::TJValueObject();
-  error_evaluation_config_object->set_float("neutral-tolerance", config.neutral_tolerance());
-  error_evaluation_config_object->set_float("confidence-threshold", config.confidence_threshold());
-  error_evaluation_config_object->set_float("huber-delta", config.huber_delta());
-  error_evaluation_config_object->set_float("direction-lambda", config.direction_lambda());
+  set_float(error_evaluation_config_object, "neutral-tolerance", config.neutral_tolerance());
+  set_float(error_evaluation_config_object, "confidence-threshold", config.confidence_threshold());
+  set_float(error_evaluation_config_object, "huber-delta", config.huber_delta());
+  set_float(error_evaluation_config_object, "direction-lambda", config.direction_lambda());
   error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty());
-  error_evaluation_config_object->set_float("cross-entropy-lambda", config.cross_entropy_lambda());
+  set_float(error_evaluation_config_object, "cross-entropy-lambda", config.cross_entropy_lambda());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
@@ -2112,13 +2113,13 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set("architecture", Layer::architecture_to_string(hl.get_layer_architecture()).c_str());
     hidden_layer_object->set("size", hl.get_size());
     hidden_layer_object->set("activation-method", activation::method_to_string(hl.get_activation().get_method()).c_str());
-    hidden_layer_object->set("activation-alpha", hl.get_activation().get_alpha());
-    hidden_layer_object->set_float("activation-temperature", hl.get_activation().get_temperature());
-    hidden_layer_object->set_float("activation-inference-temperature", hl.get_activation().get_inference_temperature());
-    hidden_layer_object->set("dropout", hl.get_dropout());
-    hidden_layer_object->set("weight-decay", hl.get_weight_decay());
+    set_float(hidden_layer_object, "activation-alpha", hl.get_activation().get_alpha());
+    set_float(hidden_layer_object, "activation-temperature", hl.get_activation().get_temperature());
+    set_float(hidden_layer_object, "activation-inference-temperature", hl.get_activation().get_inference_temperature());
+    set_float(hidden_layer_object, "dropout", hl.get_dropout());
+    set_float(hidden_layer_object, "weight-decay", hl.get_weight_decay());
     hidden_layer_object->set("optimiser-type", optimiser_type_to_string(hl.get_optimiser_type()).c_str());
-    hidden_layer_object->set("momentum", hl.get_momentum());
+    set_float(hidden_layer_object, "momentum", hl.get_momentum());
     hidden_layer_object->set_boolean("use-layer-normalisation", hl.get_use_layer_normalisation());
     hidden_layer_object->set("attention-hidden-size", hl.get_attention_hidden_size());
 
@@ -2138,13 +2139,13 @@ TinyJSON::TJValueObject* NeuralNetworkSerializer::add_residual_projector(const R
   auto residual_projector_object = new TinyJSON::TJValueObject();
   residual_projector_object->set_number("input-size", residual_projector->get_input_size());
   residual_projector_object->set_number("output-size", residual_projector->get_output_size());
-  residual_projector_object->set_floats("w-values", residual_projector->get_w_values());
-  residual_projector_object->set_floats("w-grads", residual_projector->get_w_grads());
-  residual_projector_object->set_floats("w-velocities", residual_projector->get_w_velocities());
-  residual_projector_object->set_floats("w-m1", residual_projector->get_w_m1());
-  residual_projector_object->set_floats("w-m2", residual_projector->get_w_m2());
+  set_floats(residual_projector_object, "w-values", residual_projector->get_w_values());
+  set_floats(residual_projector_object, "w-grads", residual_projector->get_w_grads());
+  set_floats(residual_projector_object, "w-velocities", residual_projector->get_w_velocities());
+  set_floats(residual_projector_object, "w-m1", residual_projector->get_w_m1());
+  set_floats(residual_projector_object, "w-m2", residual_projector->get_w_m2());
   residual_projector_object->set_numbers("w-timesteps", residual_projector->get_w_timesteps());
-  residual_projector_object->set_floats("w-decays", residual_projector->get_w_decays());
+  set_floats(residual_projector_object, "w-decays", residual_projector->get_w_decays());
   return residual_projector_object;
 }
 
@@ -2252,7 +2253,7 @@ void NeuralNetworkSerializer::add_errors(const NeuralNetwork& nn, TinyJSON::TJVa
     auto tj_errors_object = new TinyJSON::TJValueObject();
     for (const auto& metric : metrics)
     {
-      tj_errors_object->set_float(ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
+      set_float(tj_errors_object, ErrorCalculation::type_to_string(metric.error_type()).c_str(), metric.error());
     }
     tj_errors_array->add(tj_errors_object);
     delete tj_errors_object;
@@ -2274,9 +2275,9 @@ void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON
   {
     const auto& default_range = lha.ranges().front();
     json.set("activation-method", default_range.activation_method.method_to_string().c_str());
-    json.set("activation-alpha", default_range.activation_method.get_alpha());
-    json.set("activation-temperature", default_range.activation_method.get_temperature());
-    json.set("activation-inference-temperature", default_range.activation_method.get_inference_temperature());
+    set_float(json, "activation-alpha", default_range.activation_method.get_alpha());
+    set_float(json, "activation-temperature", default_range.activation_method.get_temperature());
+    set_float(json, "activation-inference-temperature", default_range.activation_method.get_inference_temperature());
   }
   else
   {
@@ -2297,9 +2298,9 @@ void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON
     range_object->set_number("start", r.start);
     range_object->set_number("end", r.end);
     range_object->set_string("activation-method", r.activation_method.method_to_string().c_str());
-    range_object->set_float("activation-alpha", r.activation_method.get_alpha());
-    range_object->set_float("activation-temperature", r.activation_method.get_temperature());
-    range_object->set_float("activation-inference-temperature", r.activation_method.get_inference_temperature());
+    set_float(range_object, "activation-alpha", r.activation_method.get_alpha());
+    set_float(range_object, "activation-temperature", r.activation_method.get_temperature());
+    set_float(range_object, "activation-inference-temperature", r.activation_method.get_inference_temperature());
     ranges_array->add(range_object);
     delete range_object;
   }
@@ -2310,8 +2311,8 @@ void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON
 void NeuralNetworkSerializer::add_training_learning_rate(const NeuralNetwork& nn, TinyJSON::TJValueObject& json)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
-  json.set_float("initial-learning-rate", nn.options().learning_rate());
-  json.set_float("final-learning-rate", nn.get_learning_rate());
+  set_float(json, "initial-learning-rate", nn.options().learning_rate());
+  set_float(json, "final-learning-rate", nn.get_learning_rate());
 }
 
 std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_layer_details(const TinyJSON::TJValueObject& options_object)
@@ -2870,6 +2871,103 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     auto projector = get_residual_projector(layer_object);
     layer.set_residual_projector(projector);
   }
+}
+
+TinyJSON::TJValue* NeuralNetworkSerializer::create_float_value(double value)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  if (std::isnan(value) || std::isinf(value))
+  {
+    return new TinyJSON::TJValueNumberFloat(static_cast<long double>(value));
+  }
+
+  const bool is_negative = (value < 0.0);
+  const double abs_val = is_negative ? -value : value;
+
+  double int_part = 0.0;
+  const double frac_part = std::modf(abs_val, &int_part);
+  unsigned long long whole = static_cast<unsigned long long>(int_part);
+
+  if (frac_part <= std::numeric_limits<double>::epsilon())
+  {
+    return new TinyJSON::TJValueNumberInt(whole, whole == 0 ? false : is_negative);
+  }
+
+  unsigned int decimal_digits = 0;
+  double temp = frac_part;
+  while (decimal_digits < 17)
+  {
+    temp *= 10.0;
+    double digit = 0.0;
+    temp = std::modf(temp, &digit);
+    ++decimal_digits;
+    if (std::abs(temp) <= std::numeric_limits<double>::epsilon())
+    {
+      break;
+    }
+  }
+
+  const double scaled = std::round(frac_part * std::pow(10.0, decimal_digits));
+  const double max_pow = std::pow(10.0, decimal_digits);
+  if (scaled >= max_pow)
+  {
+    ++whole;
+    return new TinyJSON::TJValueNumberInt(whole, whole == 0 ? false : is_negative);
+  }
+
+  unsigned long long fraction = static_cast<unsigned long long>(scaled);
+  while (fraction > 0 && (fraction % 10) == 0 && decimal_digits > 0)
+  {
+    fraction /= 10;
+    --decimal_digits;
+  }
+
+  if (fraction == 0)
+  {
+    return new TinyJSON::TJValueNumberInt(whole, whole == 0 ? false : is_negative);
+  }
+
+  return new TinyJSON::TJValueNumberFloat(whole, fraction, decimal_digits, is_negative);
+}
+
+void NeuralNetworkSerializer::set_float(TinyJSON::TJValueObject* object, const std::string& key, double value)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  if (object != nullptr)
+  {
+    auto* val = create_float_value(value);
+    object->set(key.c_str(), val);
+    delete val;
+  }
+}
+
+void NeuralNetworkSerializer::set_float(TinyJSON::TJValueObject& object, const std::string& key, double value)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  set_float(&object, key, value);
+}
+
+void NeuralNetworkSerializer::set_floats(TinyJSON::TJValueObject* object, const std::string& key, const std::vector<double>& values)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  if (object != nullptr)
+  {
+    auto* array = new TinyJSON::TJValueArray();
+    for (const auto& val : values)
+    {
+      auto* tj_val = create_float_value(val);
+      array->add(tj_val);
+      delete tj_val;
+    }
+    object->set(key.c_str(), array);
+    delete array;
+  }
+}
+
+void NeuralNetworkSerializer::set_floats(TinyJSON::TJValueObject& object, const std::string& key, const std::vector<double>& values)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  set_floats(&object, key, values);
 }
 
 } // namespace myoddweb::nn

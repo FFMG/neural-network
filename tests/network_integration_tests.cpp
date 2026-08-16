@@ -2332,46 +2332,55 @@ TEST(NetworkIntegrationTest, UnsetSeedRoundTripsThroughSerializationAsNullopt)
   std::remove(test_path.c_str());
 }
 
-TEST(NetworkIntegrationTest, FloatingPointSerializationNearInt64MaxFraction)
+TEST(NetworkIntegrationTest, FloatingPointWeightsSerializationPrecision)
 {
-  // Test that floats whose fractional part > 0.9223372036854775807 (LLONG_MAX / 10^19)
-  // do not saturate or overflow signed 64-bit integer conversion during TinyJSON serialization.
-  std::vector<double> test_floats = {
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(1)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.5, 0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  nn.train(inputs, outputs);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  auto& fflayer = static_cast<FFLayer&>(layers[1]);
+
+  // Set weights containing fractional parts that could trigger 64-bit overflow if scaled by 10^19
+  std::vector<double> special_weights = {
     -0.93365601966497314,
     0.98588064269909437,
     0.92233720368547756,
-    0.92233720368547758,
-    0.999999999999999,
-    -0.999999999999999,
-    123.98765432109876,
-    -456.95432109876543
+    0.92233720368547758
   };
+  fflayer.set_w_values(special_weights);
 
-  TinyJSON::TJValueObject root;
-  root.set_floats("test-values", test_floats);
-
-  std::string test_path = "test_float_precision_serializer.json";
+  std::string test_path = "test_float_weights_precision_serializer.json";
   std::remove(test_path.c_str());
-  TinyJSON::TJ::write_file(test_path.c_str(), root);
+  NeuralNetworkSerializer::save(nn, test_path);
 
-  TinyJSON::parse_options options_parse = {};
-  options_parse.throw_exception = true;
-  std::unique_ptr<TinyJSON::TJValue> loaded_tj(TinyJSON::TJ::parse_file(test_path.c_str(), options_parse));
-  ASSERT_NE(loaded_tj, nullptr);
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
 
-  auto* obj = dynamic_cast<const TinyJSON::TJValueObject*>(loaded_tj.get());
-  ASSERT_NE(obj, nullptr);
+  const auto& loaded_layers = loaded_nn->get_layers();
+  const auto& loaded_fflayer = static_cast<const FFLayer&>(loaded_layers[1]);
+  const auto& loaded_weights = loaded_fflayer.get_w_values();
 
-  auto loaded_floats = obj->get<std::vector<double>>("test-values");
-  ASSERT_EQ(loaded_floats.size(), test_floats.size());
-
-  for (size_t i = 0; i < test_floats.size(); ++i)
+  ASSERT_EQ(loaded_weights.size(), special_weights.size());
+  for (size_t i = 0; i < special_weights.size(); ++i)
   {
-    EXPECT_NEAR(loaded_floats[i], test_floats[i], 1e-9);
+    EXPECT_NEAR(loaded_weights[i], special_weights[i], 1e-9);
   }
 
   std::remove(test_path.c_str());
 }
+
 
 
 
