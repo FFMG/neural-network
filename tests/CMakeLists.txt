@@ -23,6 +23,7 @@ set(NN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../include/neuralnetwork")
 
 set(NN_SOURCES
     "${NN_SOURCE_DIR}/common/activation.cpp"
+    "${NN_SOURCE_DIR}/layers/attentionpoollayer.cpp"
     "${NN_SOURCE_DIR}/layers/elmanrnnlayer.cpp"
     "${NN_SOURCE_DIR}/layers/fflayer.cpp"
     "${NN_SOURCE_DIR}/layers/ffoutputlayer.cpp"
@@ -52,6 +53,7 @@ add_executable(neuralnetwork_tests
     activation_tests.cpp
     adaptive_learning_rate_scheduler_tests.cpp
     aligned_allocator_tests.cpp
+    attentionpoollayer_tests.cpp
     elmanrnnlayer_mt_tests.cpp
     elmanrnnlayer_tests.cpp
     error_calculation_tests.cpp

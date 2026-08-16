@@ -244,12 +244,14 @@ public:
       for (size_t i = 0; i < multi_output_layer_detail.get_hidden_layers().size(); ++i)
       {
         const auto& ld = multi_output_layer_detail.get_hidden_layer(static_cast<unsigned>(i));
+        const auto previous_layer_architecture = branch.layers.empty() ? Layer::Architecture::None : branch.layers.back()->get_layer_architecture();
         auto l = Layer::create_hidden_layer(
           (unsigned)branch.layers.size() + 1, // index in branch starts at 1
           prev_n,
           ld,
           number_of_threads,
-          has_bias
+          has_bias,
+          previous_layer_architecture
         );
         prev_n = ld.get_size();
         branch.layers.emplace_back(std::move(l));

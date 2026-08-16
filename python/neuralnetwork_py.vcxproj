@@ -93,6 +93,7 @@
   <ItemGroup>
     <ClCompile Include="bindings.cpp" />
     <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\attentionpoollayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\elmanrnnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\fflayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />

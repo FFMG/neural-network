@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "../layers/attentionpoollayer.h"
 #include "../layers/elmanrnnlayer.h"
 #include "errorcalculation.h"
 #include "../common/evaluationconfig.h"
@@ -54,6 +55,7 @@ private:
   static std::unique_ptr<Layer> create_grurnnlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_lstmlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static std::unique_ptr<Layer> create_multioutputlayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads, const std::vector<MultiOutputLayerDetails>& multi_output_layer_details);
+  static std::unique_ptr<Layer> create_attentionpoollayer(unsigned layer_index, const TinyJSON::TJValueObject& layer_object, int number_of_threads);
   static const TinyJSON::TJValueObject* get_layer_object(const TinyJSON::TJValue& json, unsigned layer_number);
   static const TinyJSON::TJValueArray* get_layers_array(const TinyJSON::TJValue& json);
   static int get_number_of_layers(const TinyJSON::TJValue& json);
@@ -77,6 +79,7 @@ private:
   static void add_grurnnlayer(const GRURNNLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_lstmlayer(const LSTMLayer& layer, TinyJSON::TJValueArray& layers);
   static void add_multioutputlayer(const MultiOutputLayer& layer, TinyJSON::TJValueArray& layers);
+  static void add_attentionpoollayer(const AttentionPoolLayer& layer, TinyJSON::TJValueArray& layers);
   static TinyJSON::TJValueObject* add_neuron(const Neuron& neuron);
   static void add_weight_params(const std::vector<WeightParam>& weight_params, TinyJSON::TJValueObject& parent);
   static TinyJSON::TJValue* add_weight_param(const WeightParam& weight_param);

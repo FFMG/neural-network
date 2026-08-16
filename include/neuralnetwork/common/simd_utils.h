@@ -2132,6 +2132,69 @@ public:
     }
   }
 
+  // Softmax forward, in-place, over a single contiguous range of `n` scores
+  // (e.g. the attention scores for one batch item across its BPTT window).
+  // Numerically stable via max-subtraction; guards the degenerate n==0 case.
+  // Called once per (batch, layer) rather than once per weight, so a plain
+  // scalar loop is used here rather than hand-written AVX2 intrinsics,
+  // matching layer_norm_forward's approach above.
+  inline static void softmax_forward(double* a, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    if (n == 0)
+    {
+      return;
+    }
+
+    double max_val = a[0];
+    for (size_t i = 1; i < n; ++i)
+    {
+      if (a[i] > max_val)
+      {
+        max_val = a[i];
+      }
+    }
+
+    double sum = 0.0;
+    for (size_t i = 0; i < n; ++i)
+    {
+      a[i] = std::exp(a[i] - max_val);
+      sum += a[i];
+    }
+
+    const double safe_sum = (sum > 1e-12) ? sum : 1e-12;
+    const double inv_sum = 1.0 / safe_sum;
+    for (size_t i = 0; i < n; ++i)
+    {
+      a[i] *= inv_sum;
+    }
+  }
+
+  // Softmax backward: given the cached forward output `y` (the softmax
+  // probabilities) and the upstream gradient `dy` (dL/dy), produces `dx`
+  // (dL/d of the pre-softmax scores) via the standard softmax
+  // Jacobian-vector product: dx[i] = y[i] * (dy[i] - sum_j y[j]*dy[j]).
+  // `dx` may alias `dy` for in-place use.
+  inline static void softmax_backward(const double* y, const double* dy, double* dx, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    if (n == 0)
+    {
+      return;
+    }
+
+    double dot = 0.0;
+    for (size_t i = 0; i < n; ++i)
+    {
+      dot += y[i] * dy[i];
+    }
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      dx[i] = y[i] * (dy[i] - dot);
+    }
+  }
+
   // Cache-blocked matrix transpose: dst[c * rows + r] = src[r * cols + c] for src of shape [rows x cols].
   // A naive row-by-row transpose writes to dst with a stride of `rows` elements, which thrashes the
   // cache for large matrices (e.g. GRU/FF weight caches). Tiling keeps both the read and write

@@ -35,7 +35,8 @@ private:
       0.01, // weight decay
       OptimiserType::Adam,
       0.9,
-      false
+      false,
+      0
     );
     options.with_hidden_layers(hidden_layers);
     options.build();

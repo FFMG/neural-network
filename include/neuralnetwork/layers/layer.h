@@ -235,7 +235,8 @@ public:
     Elman,
     Gru,
     Lstm,
-    MultiOutput
+    MultiOutput,
+    AttentionPool
   };
 
   enum class Role
@@ -252,6 +253,7 @@ public:
     const class LayerDetails& ld,
     int number_of_threads,
     bool has_bias,
+    Architecture previous_layer_architecture,
     int residual_layer_number = -1,
     ResidualProjector* residual_projector = nullptr
   );
@@ -278,6 +280,9 @@ public:
 
     case Architecture::MultiOutput:
       return "MultiOutput";
+
+    case Architecture::AttentionPool:
+      return "AttentionPool";
 
     default:
       Logger::panic("Unknown Layer architecture: ", (int)architecture);
@@ -315,6 +320,10 @@ public:
     if (lower_str == "multioutput")
     {
       return Architecture::MultiOutput;
+    }
+    if (lower_str == "attentionpool")
+    {
+      return Architecture::AttentionPool;
     }
     Logger::panic("Unknown Layer architecture: ", str);
   }

@@ -24,7 +24,8 @@ public:
     double weight_decay,
     OptimiserType optimiser_type,
     double momentum,
-    bool use_layer_normalisation) noexcept :
+    bool use_layer_normalisation,
+    unsigned attention_hidden_size) noexcept :
     _layer_architecture(layer_architecture),
     _layer_size(layer_size),
     _activation(activation),
@@ -32,7 +33,8 @@ public:
     _weight_decay(weight_decay),
     _optimiser_type(optimiser_type),
     _momentum(momentum),
-    _use_layer_normalisation(use_layer_normalisation)
+    _use_layer_normalisation(use_layer_normalisation),
+    _attention_hidden_size(attention_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -45,7 +47,8 @@ public:
     _weight_decay(src._weight_decay),
     _optimiser_type(src._optimiser_type),
     _momentum(src._momentum),
-    _use_layer_normalisation(src._use_layer_normalisation)
+    _use_layer_normalisation(src._use_layer_normalisation),
+    _attention_hidden_size(src._attention_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -58,7 +61,8 @@ public:
     _weight_decay(src._weight_decay),
     _optimiser_type( src._optimiser_type),
     _momentum( src._momentum),
-    _use_layer_normalisation(src._use_layer_normalisation)
+    _use_layer_normalisation(src._use_layer_normalisation),
+    _attention_hidden_size(src._attention_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_architecture = Layer::Architecture::None;
@@ -66,6 +70,7 @@ public:
     src._dropout = 0.0;
     src._weight_decay = 0;
     src._use_layer_normalisation = false;
+    src._attention_hidden_size = 0;
   }
 
   LayerDetails& operator=(const LayerDetails& src) noexcept
@@ -81,6 +86,7 @@ public:
       _optimiser_type = src._optimiser_type;
       _momentum = src._momentum;
       _use_layer_normalisation = src._use_layer_normalisation;
+      _attention_hidden_size = src._attention_hidden_size;
     }
     return *this;
   }
@@ -98,12 +104,14 @@ public:
       _optimiser_type = src._optimiser_type;
       _momentum = src._momentum;
       _use_layer_normalisation = src._use_layer_normalisation;
+      _attention_hidden_size = src._attention_hidden_size;
 
       src._layer_architecture = Layer::Architecture::None;
       src._layer_size = 0;
       src._dropout = 0.0;
       src._weight_decay = 0;
       src._use_layer_normalisation = false;
+      src._attention_hidden_size = 0;
     }
     return *this;
   }
@@ -152,6 +160,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _use_layer_normalisation;
   }
+  [[nodiscard]] inline unsigned get_attention_hidden_size() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _attention_hidden_size;
+  }
 private:
   Layer::Architecture _layer_architecture;
   unsigned _layer_size;
@@ -161,5 +174,6 @@ private:
   OptimiserType _optimiser_type;
   double _momentum;
   bool _use_layer_normalisation;
+  unsigned _attention_hidden_size;
 };
 } // namespace myoddweb::nn

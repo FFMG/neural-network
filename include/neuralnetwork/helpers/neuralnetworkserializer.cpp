@@ -159,6 +159,14 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
+    if (type == "attentionpoollayer")
+    {
+      layers.emplace_back(
+        create_attentionpoollayer(layer_index, *layer_object, options.number_of_threads())
+      );
+      continue;
+    }
+
     Logger::panic("Unknown Layer type:", type);
   }
 
@@ -753,6 +761,107 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   return layer;
 }
 
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_attentionpoollayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto neurons = get_neurons(layer_object, layer_index);
+
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::Role)layer_role_number;
+
+  auto lah = get_activation_helper(layer_object);
+
+  auto num_neurons = static_cast<unsigned>(neurons.size());
+  auto attention_hidden_size = layer_object.get<unsigned>("attention-hidden-size");
+
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
+
+  auto wa_values = layer_object.get<std::vector<double>>("wa-values");
+  auto wa_grads = layer_object.get<std::vector<double>>("wa-grads");
+  auto wa_velocities = layer_object.get<std::vector<double>>("wa-velocities");
+  auto wa_m1 = layer_object.get<std::vector<double>>("wa-m1");
+  auto wa_m2 = layer_object.get<std::vector<double>>("wa-m2");
+  auto wa_timesteps = layer_object.get<std::vector<long long>>("wa-timesteps");
+  auto wa_decays = layer_object.get<std::vector<double>>("wa-decays");
+
+  auto ba_values = layer_object.get<std::vector<double>>("ba-values");
+  auto ba_grads = layer_object.get<std::vector<double>>("ba-grads");
+  auto ba_velocities = layer_object.get<std::vector<double>>("ba-velocities");
+  auto ba_m1 = layer_object.get<std::vector<double>>("ba-m1");
+  auto ba_m2 = layer_object.get<std::vector<double>>("ba-m2");
+  auto ba_timesteps = layer_object.get<std::vector<long long>>("ba-timesteps");
+  auto ba_decays = layer_object.get<std::vector<double>>("ba-decays");
+
+  auto v_values = layer_object.get<std::vector<double>>("v-values");
+  auto v_grads = layer_object.get<std::vector<double>>("v-grads");
+  auto v_velocities = layer_object.get<std::vector<double>>("v-velocities");
+  auto v_m1 = layer_object.get<std::vector<double>>("v-m1");
+  auto v_m2 = layer_object.get<std::vector<double>>("v-m2");
+  auto v_timesteps = layer_object.get<std::vector<long long>>("v-timesteps");
+  auto v_decays = layer_object.get<std::vector<double>>("v-decays");
+
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
+
+  auto layer = std::make_unique<AttentionPoolLayer>(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    num_neurons,
+    attention_hidden_size,
+    neurons,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    wa_values,
+    wa_grads,
+    wa_velocities,
+    wa_m1,
+    wa_m2,
+    wa_timesteps,
+    wa_decays,
+    ba_values,
+    ba_grads,
+    ba_velocities,
+    ba_m1,
+    ba_m2,
+    ba_timesteps,
+    ba_decays,
+    v_values,
+    v_grads,
+    v_velocities,
+    v_m1,
+    v_m2,
+    v_timesteps,
+    v_decays,
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_ffoutputlayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
@@ -914,7 +1023,8 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
       phlo->get<double>("weight-decay"),
       optimiser_type,
       momentum,
-      phlo->get_or<bool>("use-layer-normalisation", false)
+      phlo->get_or<bool>("use-layer-normalisation", false),
+      phlo->get_or<unsigned>("attention-hidden-size", 0)
     ));
   }
   return hidden_layer;
@@ -1832,6 +1942,64 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   delete layer_object;
 }
 
+void NeuralNetworkSerializer::add_attentionpoollayer(const AttentionPoolLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "attentionpoollayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  add_activation_helper(layer, *layer_object);
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
+  layer_object->set_number("number-output-neurons", layer.get_number_output_neurons());
+  layer_object->set_number("attention-hidden-size", layer.get_attention_hidden_size());
+
+  layer_object->set_floats("b-values", layer.get_b_values());
+  layer_object->set_floats("b-grads", layer.get_b_grads());
+  layer_object->set_floats("b-velocities", layer.get_b_velocities());
+  layer_object->set_floats("b-m1", layer.get_b_m1());
+  layer_object->set_floats("b-m2", layer.get_b_m2());
+  layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
+  layer_object->set_floats("b-decays", layer.get_b_decays());
+
+  layer_object->set_floats("wa-values", layer.get_wa_values());
+  layer_object->set_floats("wa-grads", layer.get_wa_grads());
+  layer_object->set_floats("wa-velocities", layer.get_wa_velocities());
+  layer_object->set_floats("wa-m1", layer.get_wa_m1());
+  layer_object->set_floats("wa-m2", layer.get_wa_m2());
+  layer_object->set_numbers("wa-timesteps", layer.get_wa_timesteps());
+  layer_object->set_floats("wa-decays", layer.get_wa_decays());
+
+  layer_object->set_floats("ba-values", layer.get_ba_values());
+  layer_object->set_floats("ba-grads", layer.get_ba_grads());
+  layer_object->set_floats("ba-velocities", layer.get_ba_velocities());
+  layer_object->set_floats("ba-m1", layer.get_ba_m1());
+  layer_object->set_floats("ba-m2", layer.get_ba_m2());
+  layer_object->set_numbers("ba-timesteps", layer.get_ba_timesteps());
+  layer_object->set_floats("ba-decays", layer.get_ba_decays());
+
+  layer_object->set_floats("v-values", layer.get_v_values());
+  layer_object->set_floats("v-grads", layer.get_v_grads());
+  layer_object->set_floats("v-velocities", layer.get_v_velocities());
+  layer_object->set_floats("v-m1", layer.get_v_m1());
+  layer_object->set_floats("v-m2", layer.get_v_m2());
+  layer_object->set_numbers("v-timesteps", layer.get_v_timesteps());
+  layer_object->set_floats("v-decays", layer.get_v_decays());
+
+  layer_object->set_float("momentum", layer.get_momentum());
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
 void NeuralNetworkSerializer::add_ffoutputlayer(const FFOutputLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -1928,6 +2096,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set("optimiser-type", optimiser_type_to_string(hl.get_optimiser_type()).c_str());
     hidden_layer_object->set("momentum", hl.get_momentum());
     hidden_layer_object->set_boolean("use-layer-normalisation", hl.get_use_layer_normalisation());
+    hidden_layer_object->set("attention-hidden-size", hl.get_attention_hidden_size());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
@@ -2011,6 +2180,13 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
   if (nullptr != multioutputlayer)
   {
     add_multioutputlayer(*multioutputlayer, layers);
+    return;
+  }
+
+  auto attentionpoollayer = dynamic_cast<const AttentionPoolLayer*>(layer);
+  if (nullptr != attentionpoollayer)
+  {
+    add_attentionpoollayer(*attentionpoollayer, layers);
     return;
   }
 
@@ -2162,7 +2338,8 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         phlo->get<double>("weight-decay"),
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
         phlo->get<double>("momentum"),
-        phlo->get_or<bool>("use-layer-normalisation", false)
+        phlo->get_or<bool>("use-layer-normalisation", false),
+        phlo->get_or<unsigned>("attention-hidden-size", 0)
       ));
     }
 
@@ -2630,6 +2807,35 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     // Recurrent-state LayerNorm (applied to c_t)
     if (layer_object.has_key("ln-c-gain-values")) lstm_layer->set_ln_c_gain_values(layer_object.get<std::vector<double>>("ln-c-gain-values"));
     if (layer_object.has_key("ln-c-bias-values")) lstm_layer->set_ln_c_bias_values(layer_object.get<std::vector<double>>("ln-c-bias-values"));
+  }
+
+  // AttentionPool-specific weights (scoring projection Wa/ba and scoring vector v)
+  auto* attentionpool_layer = dynamic_cast<AttentionPoolLayer*>(&layer);
+  if (attentionpool_layer)
+  {
+    if (layer_object.has_key("wa-values")) attentionpool_layer->set_wa_values(layer_object.get<std::vector<double>>("wa-values"));
+    if (layer_object.has_key("wa-grads")) attentionpool_layer->set_wa_grads(layer_object.get<std::vector<double>>("wa-grads"));
+    if (layer_object.has_key("wa-velocities")) attentionpool_layer->set_wa_velocities(layer_object.get<std::vector<double>>("wa-velocities"));
+    if (layer_object.has_key("wa-m1")) attentionpool_layer->set_wa_m1(layer_object.get<std::vector<double>>("wa-m1"));
+    if (layer_object.has_key("wa-m2")) attentionpool_layer->set_wa_m2(layer_object.get<std::vector<double>>("wa-m2"));
+    if (layer_object.has_key("wa-timesteps")) attentionpool_layer->set_wa_timesteps(layer_object.get<std::vector<long long>>("wa-timesteps"));
+    if (layer_object.has_key("wa-decays")) attentionpool_layer->set_wa_decays(layer_object.get<std::vector<double>>("wa-decays"));
+
+    if (layer_object.has_key("ba-values")) attentionpool_layer->set_ba_values(layer_object.get<std::vector<double>>("ba-values"));
+    if (layer_object.has_key("ba-grads")) attentionpool_layer->set_ba_grads(layer_object.get<std::vector<double>>("ba-grads"));
+    if (layer_object.has_key("ba-velocities")) attentionpool_layer->set_ba_velocities(layer_object.get<std::vector<double>>("ba-velocities"));
+    if (layer_object.has_key("ba-m1")) attentionpool_layer->set_ba_m1(layer_object.get<std::vector<double>>("ba-m1"));
+    if (layer_object.has_key("ba-m2")) attentionpool_layer->set_ba_m2(layer_object.get<std::vector<double>>("ba-m2"));
+    if (layer_object.has_key("ba-timesteps")) attentionpool_layer->set_ba_timesteps(layer_object.get<std::vector<long long>>("ba-timesteps"));
+    if (layer_object.has_key("ba-decays")) attentionpool_layer->set_ba_decays(layer_object.get<std::vector<double>>("ba-decays"));
+
+    if (layer_object.has_key("v-values")) attentionpool_layer->set_v_values(layer_object.get<std::vector<double>>("v-values"));
+    if (layer_object.has_key("v-grads")) attentionpool_layer->set_v_grads(layer_object.get<std::vector<double>>("v-grads"));
+    if (layer_object.has_key("v-velocities")) attentionpool_layer->set_v_velocities(layer_object.get<std::vector<double>>("v-velocities"));
+    if (layer_object.has_key("v-m1")) attentionpool_layer->set_v_m1(layer_object.get<std::vector<double>>("v-m1"));
+    if (layer_object.has_key("v-m2")) attentionpool_layer->set_v_m2(layer_object.get<std::vector<double>>("v-m2"));
+    if (layer_object.has_key("v-timesteps")) attentionpool_layer->set_v_timesteps(layer_object.get<std::vector<long long>>("v-timesteps"));
+    if (layer_object.has_key("v-decays")) attentionpool_layer->set_v_decays(layer_object.get<std::vector<double>>("v-decays"));
   }
 
   // Residual projector
