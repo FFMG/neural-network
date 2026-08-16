@@ -23,7 +23,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
   bool has_bias,
   Architecture previous_layer_architecture,
   int residual_layer_number,
-  ResidualProjector* residual_projector
+  ResidualProjector* residual_projector,
+  std::optional<uint32_t> seed
 )
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -47,7 +48,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       residual_projector,
       number_of_threads,
       has_bias,
-      ld.get_momentum()
+      ld.get_momentum(),
+      seed
     );
 
   case Layer::Architecture::Elman:
@@ -68,7 +70,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       residual_projector,
       number_of_threads,
       has_bias,
-      ld.get_momentum()
+      ld.get_momentum(),
+      seed
     );
 
   case Layer::Architecture::Gru:
@@ -86,7 +89,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       number_of_threads,
       has_bias,
       ld.get_momentum(),
-      ld.get_use_layer_normalisation()
+      ld.get_use_layer_normalisation(),
+      seed
     );
 
   case Layer::Architecture::Lstm:
@@ -104,7 +108,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       number_of_threads,
       has_bias,
       ld.get_momentum(),
-      ld.get_use_layer_normalisation()
+      ld.get_use_layer_normalisation(),
+      seed
     );
 
   case Layer::Architecture::AttentionPool:
@@ -139,7 +144,8 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       ld.get_dropout(),
       number_of_threads,
       has_bias,
-      ld.get_momentum()
+      ld.get_momentum(),
+      seed
     );
 
   default:

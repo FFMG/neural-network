@@ -21,7 +21,7 @@ TEST_F(FFOutputLayerTest, ConstructorAndClone) {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::Adam, 0.9)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     EXPECT_EQ(layer.get_layer_index(), 1);
     EXPECT_EQ(layer.get_number_input_neurons(), num_inputs);
@@ -44,7 +44,7 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsMSE) {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
     
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
@@ -69,7 +69,7 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsBCE) {
         OutputLayerDetails(num_outputs, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::bce_loss, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
     
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
@@ -93,7 +93,7 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsCE) {
         OutputLayerDetails(num_outputs, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
     
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
@@ -122,7 +122,7 @@ TEST_F(FFOutputLayerTest, DropoutStatisticalVerification) {
 
     std::vector<Neuron> neurons;
     for (unsigned i = 0; i < num_outputs; ++i) {
-        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate);
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate, std::nullopt);
     }
 
     FFOutputLayer layer(
@@ -168,7 +168,7 @@ TEST_F(FFOutputLayerTest, DropoutNotInference) {
 
     std::vector<Neuron> neurons;
     for (unsigned i = 0; i < num_outputs; ++i) {
-        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate);
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate, std::nullopt);
     }
 
     FFOutputLayer layer(
@@ -208,7 +208,7 @@ TEST_F(FFOutputLayerTest, DropoutConsistencyVerification) {
     };
 
     std::vector<Neuron> neurons;
-    neurons.emplace_back(0, Neuron::Type::Dropout, dropout_rate);
+    neurons.emplace_back(0, Neuron::Type::Dropout, dropout_rate, std::nullopt);
 
     FFOutputLayer layer(
         1, details, num_inputs, num_outputs, neurons,
@@ -244,7 +244,7 @@ TEST_F(FFOutputLayerTest, MultiHeadOutput) {
     };
     unsigned num_outputs = 2;
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
     
     std::vector<unsigned> topology = { num_inputs, num_outputs };
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
@@ -269,7 +269,7 @@ TEST_F(FFOutputLayerTest, CalculateOutputMetrics) {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     std::vector<std::vector<double>> predictions = { { 0.8 }, { 0.4 } };
     std::vector<std::vector<double>> targets = { { 1.0 }, { 0.0 } };
@@ -306,7 +306,7 @@ TEST_F(FFOutputLayerTest, AllActivationTypes) {
         std::vector<OutputLayerDetails> details = {
             OutputLayerDetails(num_outputs, activation(m, 0.1), err, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
         };
-        FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+        FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
         
         std::vector<unsigned> topology = { num_inputs, num_outputs };
         auto batch_go = create_batch_gradients_and_outputs(topology, 1);
@@ -329,7 +329,7 @@ TEST_F(FFOutputLayerTest, GetMomentum) {
         OutputLayerDetails(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.1),
         OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.5)
     };
-    FFOutputLayer layer(1, details, 1, 5, 1, true);
+    FFOutputLayer layer(1, details, 1, 5, 1, true, std::nullopt);
 
     EXPECT_DOUBLE_EQ(layer.get_momentum(0), 0.1);
     EXPECT_DOUBLE_EQ(layer.get_momentum(1), 0.1);
@@ -343,7 +343,7 @@ TEST_F(FFOutputLayerTest, ApplyStoredGradients) {
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     layer.set_w_values({ 1.0 });
     layer.set_w_grads({ 0.1 });
@@ -359,7 +359,7 @@ TEST_F(FFOutputLayerTest, LearningRateRobustness) {
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
     
@@ -390,7 +390,7 @@ TEST_F(FFOutputLayerTest, SequentialGradients) {
     std::vector<OutputLayerDetails> details = {
         OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
@@ -413,7 +413,7 @@ TEST_F(FFOutputLayerTest, ForwardFeed) {
         OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     unsigned num_outputs = 2;
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
     layer.set_b_values({ 0.0, 0.0 });
@@ -438,7 +438,7 @@ TEST_F(FFOutputLayerTest, IterativeSoftmaxTraining) {
         OutputLayerDetails(num_outputs, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
     
     layer.set_w_values({ 0.1, -0.1, -0.1, 0.1 });
     layer.set_b_values({ 0.0, 0.0 });
@@ -490,7 +490,7 @@ TEST_F(FFOutputLayerTest, StateAndMemoryAllocationOptimizationVerification) {
         OutputLayerDetails(num_outputs, activation(activation::method::relu, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
     };
     
-    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true);
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
 
     layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
     layer.set_b_values({ 0.05, 0.15 });

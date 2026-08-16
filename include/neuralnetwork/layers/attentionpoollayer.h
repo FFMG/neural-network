@@ -26,7 +26,8 @@ public:
     double dropout_rate,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   AttentionPoolLayer(
     unsigned layer_index,

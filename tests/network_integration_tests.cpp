@@ -25,11 +25,11 @@ TEST(NetworkIntegrationTest, CrossLayerGradientPropagation) {
     unsigned num_neurons = 1;
     std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons, num_neurons };
 
-    FFLayer layer1(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    GRURNNLayer layer2(2, num_neurons, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
-    
+    FFLayer layer1(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    GRURNNLayer layer2(2, num_neurons, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
     OutputLayerDetails out_details(num_neurons, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 0.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.0);
-    FFOutputLayer layer3(3, { out_details }, num_neurons, num_neurons, 1, true);
+    FFOutputLayer layer3(3, { out_details }, num_neurons, num_neurons, 1, true, std::nullopt);
 
     // Set weights to identity for all layers
     layer1.set_w_values({ 1.0 }); layer1.set_b_values({ 0.0 });
@@ -2147,6 +2147,133 @@ TEST(NetworkIntegrationTest, ThinkConcurrentMultiThreadedInference)
   EXPECT_TRUE(success.load());
 }
 
+namespace {
+  // Shared topology for the seed-determinism tests below: a GRU hidden layer
+  // (exercises recurrent + gate weight-init seeding) with dropout enabled
+  // (exercises dropout seeding), plus shuffling enabled (exercises shuffle-
+  // order seeding) - so a passing test here is real end-to-end coverage of
+  // item 6a's goal, not just one mechanism in isolation.
+  NeuralNetworkOptions make_seed_test_options(std::optional<uint32_t> seed)
+  {
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.3, 0.0, OptimiserType::Adam, 0.9, false, 0)
+    };
+    return NeuralNetworkOptions::create({ 2, 4, 1 })
+      .with_hidden_layers(hidden_layers)
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::Adam, 0.9))
+      .with_learning_rate(0.05)
+      .with_number_of_epoch(5)
+      .with_shuffle_training_data(true)
+      .with_has_bias(true)
+      .with_seed(seed)
+      .build();
+  }
+
+  std::vector<std::vector<double>> get_all_layer_weights(const NeuralNetwork& nn)
+  {
+    std::vector<std::vector<double>> all_weights;
+    const auto& layers = nn.get_layers();
+    for (unsigned i = 0; i < layers.size(); ++i)
+    {
+      all_weights.push_back(layers[i].get_w_values());
+      all_weights.push_back(layers[i].get_b_values());
+    }
+    return all_weights;
+  }
+}
+
+TEST(NetworkIntegrationTest, SeedProducesIdenticalInitialWeights)
+{
+  NeuralNetwork nn1(make_seed_test_options(std::optional<uint32_t>(2026)));
+  NeuralNetwork nn2(make_seed_test_options(std::optional<uint32_t>(2026)));
+
+  EXPECT_EQ(get_all_layer_weights(nn1), get_all_layer_weights(nn2));
+}
+
+TEST(NetworkIntegrationTest, SeedProducesIdenticalTrainingOutcome)
+{
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0},
+    {0.2, 0.7}, {0.9, 0.1}, {0.4, 0.4}, {0.6, 0.3}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0}, {1.0}, {1.0}, {0.0}, {1.0}, {1.0}, {0.0}, {1.0}
+  };
+
+  NeuralNetwork nn1(make_seed_test_options(std::optional<uint32_t>(4242)));
+  NeuralNetwork nn2(make_seed_test_options(std::optional<uint32_t>(4242)));
+
+  nn1.train(inputs, outputs);
+  nn2.train(inputs, outputs);
+
+  EXPECT_EQ(get_all_layer_weights(nn1), get_all_layer_weights(nn2));
+
+  auto predictions1 = nn1.think(inputs);
+  auto predictions2 = nn2.think(inputs);
+  ASSERT_EQ(predictions1.size(), predictions2.size());
+  for (size_t i = 0; i < predictions1.size(); ++i)
+  {
+    ASSERT_EQ(predictions1[i].size(), predictions2[i].size());
+    for (size_t j = 0; j < predictions1[i].size(); ++j)
+    {
+      EXPECT_DOUBLE_EQ(predictions1[i][j], predictions2[i][j]);
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, DifferentSeedsProduceDifferentInitialWeights)
+{
+  NeuralNetwork nn1(make_seed_test_options(std::optional<uint32_t>(111)));
+  NeuralNetwork nn2(make_seed_test_options(std::optional<uint32_t>(222)));
+
+  EXPECT_NE(get_all_layer_weights(nn1), get_all_layer_weights(nn2));
+}
+
+TEST(NetworkIntegrationTest, UnseededRunsAreNotForciblyIdentical)
+{
+  // Sanity check that seeding is opt-in: two unseeded networks are not
+  // artificially pinned to each other (this would almost never coincidentally
+  // match given how many independent random draws feed into construction).
+  NeuralNetwork nn1(make_seed_test_options(std::nullopt));
+  NeuralNetwork nn2(make_seed_test_options(std::nullopt));
+
+  EXPECT_NE(get_all_layer_weights(nn1), get_all_layer_weights(nn2));
+}
+
+TEST(NetworkIntegrationTest, SeedRoundTripsThroughSerialization)
+{
+  NeuralNetwork nn(make_seed_test_options(std::optional<uint32_t>(31337)));
+  std::vector<std::vector<double>> inputs = { {0.5, 0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_seed_option_serializer.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  ASSERT_TRUE(loaded_nn->options().seed().has_value());
+  EXPECT_EQ(loaded_nn->options().seed().value(), 31337u);
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, UnsetSeedRoundTripsThroughSerializationAsNullopt)
+{
+  NeuralNetwork nn(make_seed_test_options(std::nullopt));
+  std::vector<std::vector<double>> inputs = { {0.5, 0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_no_seed_option_serializer.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_FALSE(loaded_nn->options().seed().has_value());
+
+  std::remove(test_path.c_str());
+}
 
 
 

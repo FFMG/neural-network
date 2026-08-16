@@ -2,6 +2,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <optional>
 #include "layers/fflayer.h"
 #include "common/gradientsandoutputs.h"
 #include "common/hiddenstates.h"
@@ -36,7 +37,7 @@ namespace test_helper {
   class MockLayer : public Layer {
   public:
     MockLayer(unsigned layer_index, unsigned num_neurons, unsigned num_inputs = 0) :
-      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_inputs, num_neurons, create_neurons(0.0, num_neurons), false, 0.0, nullptr, 1, 0.0) {}
+      Layer(layer_index, Layer::Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_inputs, num_neurons, create_neurons(0.0, num_neurons, std::nullopt), false, 0.0, nullptr, 1, 0.0, std::nullopt) {}
 
     Architecture get_layer_architecture() const override { return Architecture::None; }
     void calculate_forward_feed(std::vector<GradientsAndOutputs>&, const Layer&, const std::vector<std::vector<double>>&, std::vector<HiddenStates>&, size_t, bool) const override {}
@@ -49,8 +50,8 @@ namespace test_helper {
     void accumulate_swa_average_impl(const Layer&, size_t) override {}
     void apply_stored_gradients(double, double) override {}
 
-    static std::vector<Neuron> create_neurons_exposed(double dropout_rate, unsigned number_output_neurons) {
-      return Layer::create_neurons(dropout_rate, number_output_neurons);
+    static std::vector<Neuron> create_neurons_exposed(double dropout_rate, unsigned number_output_neurons, std::optional<uint32_t> seed) {
+      return Layer::create_neurons(dropout_rate, number_output_neurons, seed);
     }
   };
 

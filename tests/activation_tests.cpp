@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/activation.h"
+#include "common/rng.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -330,6 +331,70 @@ TEST_F(ActivationTest, DeterministicInitialization) {
   activation act_selu(activation::method::selu, 0.0);
   double actual_selu = act_selu.weight_initialization(fan_in, fan_out, seed);
   EXPECT_DOUBLE_EQ(expected_selu, actual_selu);
+}
+
+TEST_F(ActivationTest, RngDeriveIsDeterministic)
+{
+  EXPECT_EQ(Rng::derive(12345ULL, 0), Rng::derive(12345ULL, 0));
+  EXPECT_EQ(Rng::derive(12345ULL, 7, 3), Rng::derive(12345ULL, 7, 3));
+}
+
+TEST_F(ActivationTest, RngDeriveDiffersByInputs)
+{
+  // Different base seed, same indices.
+  EXPECT_NE(Rng::derive(1ULL, 0), Rng::derive(2ULL, 0));
+  // Same base seed, different first index.
+  EXPECT_NE(Rng::derive(1ULL, 0), Rng::derive(1ULL, 1));
+  // Same base seed and first index, different second index.
+  EXPECT_NE(Rng::derive(1ULL, 0, 0), Rng::derive(1ULL, 0, 1));
+}
+
+TEST_F(ActivationTest, RngDeriveSecondIndexDefaultsToZero)
+{
+  EXPECT_EQ(Rng::derive(999ULL, 5), Rng::derive(999ULL, 5, 0));
+}
+
+TEST_F(ActivationTest, RngDeriveDistributionSanity)
+{
+  // A weak but useful sanity check: derived values across many consecutive
+  // indices should not collapse to a small handful of outputs, and should
+  // spread roughly evenly across the low bit (avalanche sanity check).
+  const uint64_t base_seed = 2026ULL;
+  const int total = 20000;
+  int low_bit_set = 0;
+  std::vector<uint64_t> seen;
+  seen.reserve(total);
+  for (uint64_t i = 0; i < static_cast<uint64_t>(total); ++i)
+  {
+    const uint64_t v = Rng::derive(base_seed, i);
+    seen.push_back(v);
+    if (v & 1ULL)
+    {
+      ++low_bit_set;
+    }
+  }
+  std::sort(seen.begin(), seen.end());
+  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+  EXPECT_EQ(static_cast<int>(seen.size()), total) << "Derived values collided within " << total << " consecutive indices";
+
+  const double low_bit_rate = static_cast<double>(low_bit_set) / total;
+  EXPECT_NEAR(low_bit_rate, 0.5, 0.05);
+}
+
+TEST_F(ActivationTest, SeededWeightInitializationVariesByDerivedSeed)
+{
+  // Reproduces the real per-weight usage pattern: distinct weights in the
+  // same layer must derive distinct sub-seeds from the shared layer seed,
+  // or every weight would collapse to the same initial value.
+  activation act_relu(activation::method::relu, 0.0);
+  const uint32_t layer_seed = 777;
+
+  double w0 = act_relu.weight_initialization(10, 10, static_cast<uint32_t>(Rng::derive(layer_seed, 0)));
+  double w1 = act_relu.weight_initialization(10, 10, static_cast<uint32_t>(Rng::derive(layer_seed, 1)));
+  double w0_again = act_relu.weight_initialization(10, 10, static_cast<uint32_t>(Rng::derive(layer_seed, 0)));
+
+  EXPECT_NE(w0, w1);
+  EXPECT_DOUBLE_EQ(w0, w0_again);
 }
 
 TEST_F(ActivationTest, VectorizedActivateAndDerivative)

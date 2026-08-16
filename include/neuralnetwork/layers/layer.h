@@ -10,12 +10,15 @@
 #include "../helpers/neuralnetworkhelpermetrics.h"
 #include "../neuron.h"
 #include "../common/optimiser.h"
+#include "../common/rng.h"
 #include "residualprojector.h"
 #include "../common/taskqueue.h"
 #include "../common/weightparam.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -170,14 +173,14 @@ public:
     return _number_output_neurons;
   }
 
-  [[nodiscard]] inline double weight_initialization(unsigned output_neuron_number) const
+  [[nodiscard]] inline double weight_initialization(unsigned output_neuron_number, std::optional<uint32_t> seed) const
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
     for (const auto& r : _ranges)
     {
       if (output_neuron_number >= r.start && output_neuron_number < r.end)
       {
-        return r.activation_method.weight_initialization(get_number_input_neurons(), r.end - r.start);
+        return r.activation_method.weight_initialization(get_number_input_neurons(), r.end - r.start, seed);
       }
     }
     Logger::panic("Trying to initialize weight for neuron ", output_neuron_number, " which is not covered by any range!");
@@ -254,8 +257,9 @@ public:
     int number_of_threads,
     bool has_bias,
     Architecture previous_layer_architecture,
-    int residual_layer_number = -1,
-    ResidualProjector* residual_projector = nullptr
+    int residual_layer_number,
+    ResidualProjector* residual_projector,
+    std::optional<uint32_t> seed
   );
 
   [[nodiscard]] inline static std::string architecture_to_string(const Architecture& architecture)
@@ -1076,7 +1080,8 @@ protected:
     const std::vector<double>& weight_decays,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    double momentum
+    double momentum,
+    std::optional<uint32_t> seed
   ) :
     _layer_index(layer_index),
     _layer_role(layer_role),
@@ -1101,11 +1106,13 @@ protected:
     if (number_input_neurons > 0)
     {
       _w_values.resize(num_weights);
-      for (size_t i = 0; i < number_input_neurons; ++i) 
+      for (size_t i = 0; i < number_input_neurons; ++i)
       {
-        for (size_t j = 0; j < number_output_neurons; ++j) 
+        for (size_t j = 0; j < number_output_neurons; ++j)
         {
-          _w_values[i * number_output_neurons + j] = lah.weight_initialization(static_cast<unsigned>(j));
+          const size_t flat_index = i * number_output_neurons + j;
+          const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), flat_index))) : std::nullopt;
+          _w_values[flat_index] = lah.weight_initialization(static_cast<unsigned>(j), weight_seed);
         }
       }
       _w_grads.assign(num_weights, 0.0);
@@ -1139,7 +1146,8 @@ protected:
     const std::vector<double>& weight_decays,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    double momentum
+    double momentum,
+    std::optional<uint32_t> seed
   ) :
     Layer
     (
@@ -1153,7 +1161,8 @@ protected:
       weight_decays,
       residual_projector,
       number_of_threads,
-      momentum
+      momentum,
+      seed
     )
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -1172,7 +1181,8 @@ protected:
     double weight_decay,
     ResidualProjector* residual_projector,
     int number_of_threads,
-    double momentum
+    double momentum,
+    std::optional<uint32_t> seed
   ) : Layer(
     layer_index,
     layer_role,
@@ -1186,7 +1196,8 @@ protected:
     std::vector<double>(static_cast<size_t>(number_input_neurons) * number_output_neurons, weight_decay),
     residual_projector,
     number_of_threads,
-    momentum
+    momentum,
+    seed
   )
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -1304,14 +1315,15 @@ protected:
     }
   }
 
-  static std::vector<Neuron> create_neurons(double dropout_rate, unsigned number_output_neurons)
+  static std::vector<Neuron> create_neurons(double dropout_rate, unsigned number_output_neurons, std::optional<uint32_t> seed)
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     std::vector<Neuron> neurons;
     neurons.reserve(number_output_neurons);
     for (unsigned n = 0; n < number_output_neurons; ++n)
     {
-      neurons.emplace_back(n, dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout, dropout_rate);
+      const auto seed_base = seed.has_value() ? std::optional<uint64_t>(Rng::derive(seed.value(), n)) : std::nullopt;
+      neurons.emplace_back(n, dropout_rate <= 0.0 ? Neuron::Type::Normal : Neuron::Type::Dropout, dropout_rate, seed_base);
     }
     return neurons;
   }

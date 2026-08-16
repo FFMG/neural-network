@@ -30,7 +30,7 @@ TEST_F(MultiOutputLayerTest, ConstructionAndTopology) {
 
     std::vector<MultiOutputLayerDetails> details = { mod1, mod2 };
     
-    MultiOutputLayer layer(5, 4, 5, details, 1, true);
+    MultiOutputLayer layer(5, 4, 5, details, 1, true, std::nullopt);
 
     EXPECT_EQ(layer.get_layer_index(), 5);
     EXPECT_EQ(layer.get_number_input_neurons(), 4);
@@ -51,7 +51,7 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
     MultiOutputLayerDetails modB(hB, oB);
 
     std::vector<MultiOutputLayerDetails> details = { modA, modB };
-    MultiOutputLayer layer(1, 2, 3, details, 1, true);
+    MultiOutputLayer layer(1, 2, 3, details, 1, true, std::nullopt);
 
     auto& branches = layer.get_mutable_branches();
     
@@ -88,7 +88,7 @@ TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
     OutputLayerDetails oB(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
-    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true);
+    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
     branches[0].layers[0]->set_w_values({ 0.2, 0.4, 0.6, 0.8 });
     branches[0].layers[0]->set_b_values({ 0.1, -0.1 });
@@ -124,7 +124,7 @@ TEST_F(MultiOutputLayerTest, BackpropAndTrunkGradients) {
     OutputLayerDetails oB(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
-    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true);
+    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
 
     branches[0].layers[0]->set_w_values({ 0.1, 0.2, 0.3, 0.4 });
@@ -159,7 +159,7 @@ TEST_F(MultiOutputLayerTest, TemperatureMethods) {
     MultiOutputLayerDetails mod1(h, o1);
     MultiOutputLayerDetails mod2(h, o2);
     
-    MultiOutputLayer layer(0, 1, 3, { mod1, mod2 }, 1, true);
+    MultiOutputLayer layer(0, 1, 3, { mod1, mod2 }, 1, true, std::nullopt);
 
     EXPECT_NEAR(layer.get_temperature(0), 1.5, 1e-9);
     EXPECT_NEAR(layer.get_temperature(1), 2.0, 1e-9);
@@ -174,7 +174,7 @@ TEST_F(MultiOutputLayerTest, CalculateOutputMetrics) {
     MultiOutputLayerDetails mod1({}, o1);
     MultiOutputLayerDetails mod2({}, o2);
     
-    MultiOutputLayer layer(1, 1, 2, { mod1, mod2 }, 1, true);
+    MultiOutputLayer layer(1, 1, 2, { mod1, mod2 }, 1, true, std::nullopt);
     
     std::vector<std::vector<double>> predictions = { { 0.8, 0.4 } };
     std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
@@ -195,7 +195,7 @@ TEST_F(MultiOutputLayerTest, ActivationBranches) {
     MultiOutputLayerDetails mod2({}, o2);
     MultiOutputLayerDetails mod3({}, o3);
     
-    MultiOutputLayer layer(1, 1, 3, { mod1, mod2, mod3 }, 1, true);
+    MultiOutputLayer layer(1, 1, 3, { mod1, mod2, mod3 }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
     branches[0].layers[0]->set_w_values({ 1.0 }); branches[0].layers[0]->set_b_values({ 0.0 });
     branches[1].layers[0]->set_w_values({ 1.0 }); branches[1].layers[0]->set_b_values({ 0.0 });
@@ -218,7 +218,7 @@ TEST_F(MultiOutputLayerTest, ActivationBranches) {
 TEST_F(MultiOutputLayerTest, MultiTimeStepForwardFeed) {
     OutputLayerDetails o1(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     OutputLayerDetails o2(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-    MultiOutputLayer layer(1, 1, 2, { MultiOutputLayerDetails({}, o1), MultiOutputLayerDetails({}, o2) }, 1, true);
+    MultiOutputLayer layer(1, 1, 2, { MultiOutputLayerDetails({}, o1), MultiOutputLayerDetails({}, o2) }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
     branches[0].layers[0]->set_w_values({ 2.0 }); branches[0].layers[0]->set_b_values({ 0.0 });
     branches[1].layers[0]->set_w_values({ 3.0 }); branches[1].layers[0]->set_b_values({ 0.0 });
@@ -281,7 +281,7 @@ TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     OutputLayerDetails oB(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
-    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true);
+    MultiOutputLayer layer(1, 2, 3, { modA, modB }, 1, true, std::nullopt);
     auto& branches = layer.get_mutable_branches();
 
     branches[0].layers[0]->set_w_values({ 0.2, 0.4, 0.6, 0.8 });
@@ -326,7 +326,7 @@ TEST_F(MultiOutputLayerTest, DropoutStatisticalVerification) {
     OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod(h, o);
 
-    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true);
+    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true, std::nullopt);
     
     // Set weights to 1.0 so output = input * 1.0 (before dropout)
     auto& branch_h = *layer.get_mutable_branches()[0].layers[0];
@@ -374,7 +374,7 @@ TEST_F(MultiOutputLayerTest, DropoutNotInference) {
     OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod(h, o);
 
-    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true);
+    MultiOutputLayer layer(1, num_inputs, num_outputs, { mod }, 1, true, std::nullopt);
     layer.get_mutable_branches()[0].layers[0]->set_w_values(std::vector<double>(num_inputs * num_outputs, 1.0));
     layer.get_mutable_branches()[0].layers[0]->set_b_values(std::vector<double>(num_outputs, 0.0));
 

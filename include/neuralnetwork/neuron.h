@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 namespace myoddweb::nn
 {
 class Neuron
@@ -13,9 +16,10 @@ public:
 
 public:
   Neuron(
-    unsigned index, 
+    unsigned index,
     const Type& type,
-    const double dropout_rate
+    const double dropout_rate,
+    std::optional<uint64_t> seed_base
     );
 
   Neuron(const Neuron& src) noexcept;
@@ -42,7 +46,7 @@ public:
 
   [[nodiscard]] double get_dropout_rate() const;
 
-  [[nodiscard]] bool must_randomly_drop() const;
+  [[nodiscard]] bool must_randomly_drop(uint64_t call_index) const;
 
 private:
 
@@ -51,5 +55,6 @@ private:
   unsigned _index;
   Type _type;
   double _dropout_rate;
+  std::optional<uint64_t> _seed_base;
 };
 } // namespace myoddweb::nn

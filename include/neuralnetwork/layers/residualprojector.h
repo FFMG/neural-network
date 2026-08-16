@@ -1,11 +1,13 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 #include <mutex>
 
 #include "../libraries/instrumentor.h"
 
 #include "../common/activation.h"
+#include "../common/rng.h"
 #include "../common/weightparam.h"
 #include "../common/simd_utils.h"
 
@@ -19,7 +21,8 @@ public:
     unsigned input_size,       // size of residual_layer_outputs (e.g., 160)
     unsigned output_size,      // size of the target layer (e.g., 128)
     const activation& activation_method,
-    double weight_decay
+    double weight_decay,
+    std::optional<uint32_t> seed
   )
     :
     _input_size(input_size),
@@ -29,12 +32,13 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     const size_t num_weights = static_cast<size_t>(input_size) * output_size;
     _w_values.resize(num_weights);
-    //auto initial_weights = activation_method.weight_initialization(output_size, input_size);
-    for (size_t i = 0; i < input_size; ++i) 
+    for (size_t i = 0; i < input_size; ++i)
     {
-      for (size_t j = 0; j < output_size; ++j) 
+      for (size_t j = 0; j < output_size; ++j)
       {
-        _w_values[i * output_size + j] = activation_method.weight_initialization(input_size, output_size);
+        const size_t flat_index = i * output_size + j;
+        const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), flat_index))) : std::nullopt;
+        _w_values[flat_index] = activation_method.weight_initialization(input_size, output_size, weight_seed);
       }
     }
 
@@ -344,14 +348,15 @@ public:
     const activation& activation_method,
     unsigned input_size,
     unsigned  output_size,
-    double weight_decay
+    double weight_decay,
+    std::optional<uint32_t> seed
   ) noexcept
   {
     if (residual_layer_number == 0)
     {
       return nullptr;
     }
-    return new ResidualProjector(input_size, output_size, activation_method, weight_decay);
+    return new ResidualProjector(input_size, output_size, activation_method, weight_decay, seed);
   }
 
 private:

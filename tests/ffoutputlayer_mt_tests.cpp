@@ -51,8 +51,8 @@ TEST_F(FFOutputLayerMTTest, ForwardFeedMTConsistency)
         OutputLayerDetails(num_neurons / 2, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::bce_loss, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
     };
 
-    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true);
-    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true);
+    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true, std::nullopt);
+    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -106,8 +106,8 @@ TEST_F(FFOutputLayerMTTest, OutputGradientsMTConsistency)
         OutputLayerDetails(num_neurons / 2, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
     };
 
-    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true);
-    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true);
+    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true, std::nullopt);
+    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);
@@ -170,8 +170,8 @@ TEST_F(FFOutputLayerMTTest, GradientStorageMTConsistency)
         OutputLayerDetails(num_neurons, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
     };
 
-    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true);
-    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true);
+    FFOutputLayer layer_st(1, details, num_inputs, num_neurons, 1, true, std::nullopt);
+    FFOutputLayer layer_mt(1, details, num_inputs, num_neurons, num_threads, true, std::nullopt);
 
     init_layer_weights(layer_st);
     init_layer_weights(layer_mt);

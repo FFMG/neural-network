@@ -17,18 +17,19 @@ protected:
 
 public:
   ElmanRNNLayer(unsigned layer_index,
-    unsigned num_neurons_in_previous_layer, 
-    unsigned num_neurons_in_this_layer, 
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
     double weight_decay,
     const Role layer_role,
-    const activation& activation_method, 
-    const OptimiserType& optimiser_type, 
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
     int residual_layer_number,
     double dropout_rate,
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   ElmanRNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -42,7 +43,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   ElmanRNNLayer(
     unsigned layer_index,
@@ -298,7 +300,7 @@ private:
     std::vector<double>& batch_pre_act
     ) const;
 
-  void initialize_recurrent_weights(double weight_decay);
+  void initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed);
   
   // SoA for recurrent weights
   std::vector<double> _rw_values;

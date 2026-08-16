@@ -22,7 +22,8 @@ FFLayer::FFLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   FFLayer(
     layer_index,
@@ -37,7 +38,8 @@ FFLayer::FFLayer(
     residual_projector,
     number_of_threads,
     has_bias,
-    momentum
+    momentum,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -56,7 +58,8 @@ FFLayer::FFLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   FFLayer(
     layer_index,
@@ -69,7 +72,8 @@ FFLayer::FFLayer(
     residual_projector,
     number_of_threads,
     has_bias,
-    momentum
+    momentum,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -86,7 +90,8 @@ FFLayer::FFLayer(
   ResidualProjector* residual_projector,
   int number_of_threads,
   bool has_bias,
-  double momentum
+  double momentum,
+  std::optional<uint32_t> seed
 ) :
   Layer(
     layer_index,
@@ -94,12 +99,13 @@ FFLayer::FFLayer(
     lah,
     optimiser_type,
     residual_layer_number,
-    create_neurons(dropout_rate, lah.get_number_output_neurons()),
+    create_neurons(dropout_rate, lah.get_number_output_neurons(), seed),
     has_bias,
     weight_decays,
     residual_projector,
     number_of_threads,
-    momentum
+    momentum,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -461,7 +467,7 @@ void FFLayer::run_post_gemm(
             double output = current_pre_act[j];
             if (neuron.is_dropout())
             {
-              if (neuron.must_randomly_drop())
+              if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 output = 0.0;
                 mask_buf.data()[j] = 0.0;

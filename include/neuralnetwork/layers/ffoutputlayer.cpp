@@ -13,7 +13,8 @@ FFOutputLayer::FFOutputLayer(
   unsigned num_neurons_in_previous_layer,
   unsigned num_neurons_in_this_layer,
   int number_of_threads,
-  bool has_bias
+  bool has_bias,
+  std::optional<uint32_t> seed
 ) :
   FFLayer(
     layer_index,
@@ -25,8 +26,9 @@ FFOutputLayer::FFOutputLayer(
     0.0,      //  no dropout for output layer
     nullptr,  //  no residual projector
     number_of_threads,
-    has_bias, 
-    0.0),
+    has_bias,
+    0.0,
+    seed),
   OutputLayer(output_layer_details)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
@@ -488,7 +490,7 @@ void FFOutputLayer::run_post_gemm(
             double output = current_pre_act[j];
             if (neuron.is_dropout())
             {
-              if (neuron.must_randomly_drop())
+              if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 output = 0.0;
                 mask_ptr[j] = 0.0;

@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(ElmanRNNLayerTest, ConstructionAndTopology) {
-  ElmanRNNLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   EXPECT_EQ(layer.get_layer_index(), 1);
   EXPECT_EQ(layer.get_number_input_neurons(), 2);
@@ -27,7 +27,7 @@ TEST_F(ElmanRNNLayerTest, ConstructionAndTopology) {
 }
 
 TEST_F(ElmanRNNLayerTest, ForwardFeedMathematicalVerification) {
-  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
   layer.set_rw_values({ 0.5, 0.6, 0.7, 0.8 });
@@ -50,7 +50,7 @@ TEST_F(ElmanRNNLayerTest, ForwardFeedMathematicalVerification) {
 }
 
 TEST_F(ElmanRNNLayerTest, BPTTMathematicalVerification) {
-  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.5 });
   layer.set_rw_values({ 0.8 });
@@ -79,7 +79,7 @@ TEST_F(ElmanRNNLayerTest, BPTTMathematicalVerification) {
 }
 
 TEST_F(ElmanRNNLayerTest, GradientStorageVerification) {
-  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
   layer.set_w_values({ 0.5 });
   layer.set_rw_values({ 0.8 });
 
@@ -100,7 +100,7 @@ TEST_F(ElmanRNNLayerTest, GradientStorageVerification) {
 }
 
 TEST_F(ElmanRNNLayerTest, DropoutConsistencyVerification) {
-  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, false, 0.0);
+  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, false, 0.0, std::nullopt);
   layer.set_w_values({ 1.0 });
   layer.set_rw_values({ 1.0 });
 
@@ -127,7 +127,7 @@ TEST_F(ElmanRNNLayerTest, DropoutStatisticalVerification) {
   unsigned num_inputs = 1;
   unsigned num_outputs = 5000;
   double dropout_rate = 0.5;
-  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values(std::vector<double>(num_outputs, 1.0));
   layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
@@ -158,7 +158,7 @@ TEST_F(ElmanRNNLayerTest, DropoutNotInference) {
   unsigned num_inputs = 1;
   unsigned num_outputs = 1000;
   double dropout_rate = 0.5;
-  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values(std::vector<double>(num_outputs, 1.0));
   layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
@@ -182,7 +182,7 @@ TEST_F(ElmanRNNLayerTest, DropoutNotInference) {
 TEST_F(ElmanRNNLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
     
@@ -205,7 +205,7 @@ TEST_F(ElmanRNNLayerTest, LearningRateRobustness) {
 
 TEST_F(ElmanRNNLayerTest, ApplyStoredGradientsCacheUpdate)
 {
-  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0);
+  ElmanRNNLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
 
   layer.set_w_values({ 1.0 });
   layer.set_rw_values({ 0.5 });
@@ -239,7 +239,7 @@ TEST_F(ElmanRNNLayerTest, ApplyStoredGradientsCacheUpdate)
 
 TEST_F(ElmanRNNLayerTest, IdentityProxyCachingAndLifecycle)
 {
-  ElmanRNNLayer layer1(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer1(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   
   std::vector<unsigned> topology = { 2, 3 };
   auto batch_go = create_batch_gradients_and_outputs(topology, 2);
@@ -258,7 +258,7 @@ TEST_F(ElmanRNNLayerTest, IdentityProxyCachingAndLifecycle)
   EXPECT_NO_THROW(layer2.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
 
   // Test copy assignment
-  ElmanRNNLayer layer3(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer3(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   layer3 = layer1;
   EXPECT_NO_THROW(layer3.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
 
@@ -267,7 +267,7 @@ TEST_F(ElmanRNNLayerTest, IdentityProxyCachingAndLifecycle)
   EXPECT_NO_THROW(layer4.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
 
   // Test move assignment
-  ElmanRNNLayer layer5(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer5(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   layer5 = std::move(layer4);
   EXPECT_NO_THROW(layer5.calculate_hidden_gradients_from_output_gradients(batch_go, batch_output_grads, batch_hs, 2, 2));
 }
@@ -276,7 +276,7 @@ TEST_F(ElmanRNNLayerTest, BPTTWorkspaceResizeCorrectness)
 {
   unsigned num_inputs = 2;
   unsigned num_outputs = 2;
-  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
   layer.set_rw_values({ 0.15, 0.25, 0.35, 0.45 });
@@ -331,10 +331,10 @@ TEST_F(ElmanRNNLayerTest, SingleVSMultiThreadedEquivalence)
   size_t num_time_steps = 20;
 
   // Layer 1: single threaded
-  ElmanRNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   // Layer 2: multi threaded
-  ElmanRNNLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0);
+  ElmanRNNLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 4, true, 0.0, std::nullopt);
 
   // Set identical weights
   std::vector<double> weights(num_inputs * num_outputs, 0.05);
@@ -418,7 +418,7 @@ TEST_F(ElmanRNNLayerTest, BPTTMultiStepBatchVerification)
   size_t batch_size = 5;
   size_t num_time_steps = 3;
 
-  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
   layer.set_rw_values({ 0.15, 0.25, 0.35, 0.45 });
@@ -466,7 +466,7 @@ TEST_F(ElmanRNNLayerTest, BPTTSequenceLengthsVerification)
 
   for (size_t num_time_steps = 1; num_time_steps <= 12; ++num_time_steps)
   {
-    ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     std::vector<double> w_vals(num_inputs * num_outputs, 0.1);
     std::vector<double> rw_vals(num_outputs * num_outputs, 0.2);
@@ -516,7 +516,7 @@ TEST_F(ElmanRNNLayerTest, BPTTSequenceLengthsVerification)
 }
 
 TEST_F(ElmanRNNLayerTest, TempBufferReuseAndMultiIterationConsistency) {
-  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.2, -0.3, 0.4, 0.5 });
   layer.set_rw_values({ 0.1, 0.2, -0.1, 0.3 });
@@ -566,7 +566,7 @@ TEST_F(ElmanRNNLayerTest, ElmanRNNLayerCalculateAndStoreGradientsMathematicalSou
   const size_t batch_size = 4;
   const size_t num_time_steps = 3;
 
-  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   std::vector<unsigned> topology = { num_inputs, num_outputs };
   auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);

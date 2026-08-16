@@ -91,6 +91,7 @@ def run_general_example():
         .with_data_is_unique(True) \
         .with_log_level(nn.LogLevel.Debug) \
         .with_stochastic_weight_averaging(nn.StochasticWeightAveragingDetails(True, 0.75, 0.05)) \
+        .with_seed(42) \
         .build()
         
     # Optional progress callback (defined in Python!)

@@ -24,7 +24,7 @@ class MultiInputProxyLayer final : public Layer
 {
 public:
   MultiInputProxyLayer(unsigned num_neurons) :
-    Layer(0, Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0)
+    Layer(0, Role::Input, activation(activation::method::linear, 0.0), OptimiserType::None, -1, num_neurons, num_neurons, {}, false, 0.0, nullptr, 1, 0.0, std::nullopt)
   {
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
   }
@@ -227,46 +227,55 @@ public:
     unsigned num_outputs,
     const std::vector<MultiOutputLayerDetails>& multi_output_layer_details,
     int number_of_threads,
-    bool has_bias
+    bool has_bias,
+    std::optional<uint32_t> seed
   ) :
-    Layer(layer_index, Role::MultiOutput, create_layer_activation_helper(num_inputs, num_outputs, extract_output_details(multi_output_layer_details)), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0),
+    Layer(layer_index, Role::MultiOutput, create_layer_activation_helper(num_inputs, num_outputs, extract_output_details(multi_output_layer_details)), OptimiserType::None, -1, {}, has_bias, Layer::create_w_decays(num_inputs, num_outputs, 0.0), nullptr, number_of_threads, 0.0, seed),
     OutputLayer(extract_output_details(multi_output_layer_details))
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
-    
-    for (const auto& multi_output_layer_detail : multi_output_layer_details)
+
+    for (size_t branch_index = 0; branch_index < multi_output_layer_details.size(); ++branch_index)
     {
+      const auto& multi_output_layer_detail = multi_output_layer_details[branch_index];
+      const auto branch_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), branch_index))) : std::nullopt;
       Branch branch;
       unsigned prev_n = num_inputs;
       branch.topology.push_back(num_inputs); // index 0 is input to branch
-      
+
       // Hidden layers in branch
       for (size_t i = 0; i < multi_output_layer_detail.get_hidden_layers().size(); ++i)
       {
         const auto& ld = multi_output_layer_detail.get_hidden_layer(static_cast<unsigned>(i));
         const auto previous_layer_architecture = branch.layers.empty() ? Layer::Architecture::None : branch.layers.back()->get_layer_architecture();
+        const auto sub_layer_seed = branch_seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(branch_seed.value(), i))) : std::nullopt;
         auto l = Layer::create_hidden_layer(
           (unsigned)branch.layers.size() + 1, // index in branch starts at 1
           prev_n,
           ld,
           number_of_threads,
           has_bias,
-          previous_layer_architecture
+          previous_layer_architecture,
+          -1,
+          nullptr,
+          sub_layer_seed
         );
         prev_n = ld.get_size();
         branch.layers.emplace_back(std::move(l));
         branch.topology.push_back(prev_n);
       }
-      
+
       // Output layer in branch
       std::vector<OutputLayerDetails> olds = { multi_output_layer_detail.get_output_details()};
+      const auto output_sub_layer_seed = branch_seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(branch_seed.value(), multi_output_layer_detail.get_hidden_layers().size()))) : std::nullopt;
       auto ol = std::make_unique<FFOutputLayer>(
         (unsigned)branch.layers.size() + 1,
         olds,
         prev_n,
         multi_output_layer_detail.get_output_details().get_size(),
         number_of_threads,
-        has_bias
+        has_bias,
+        output_sub_layer_seed
       );
       branch.layers.emplace_back(std::move(ol));
       branch.topology.push_back(multi_output_layer_detail.get_output_details().get_size());

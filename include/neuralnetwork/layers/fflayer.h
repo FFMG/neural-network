@@ -23,7 +23,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   FFLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
@@ -37,7 +38,8 @@ public:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   FFLayer(
     unsigned layer_index,
@@ -167,7 +169,8 @@ protected:
     ResidualProjector* residual_projector,
     int number_of_threads,
     bool has_bias,
-    double momentum);
+    double momentum,
+    std::optional<uint32_t> seed);
 
   void run_gemm(
     size_t b_start,

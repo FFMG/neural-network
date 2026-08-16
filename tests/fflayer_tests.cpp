@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(FFLayerTest, ConstructionAndTopology) {
-    FFLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     EXPECT_EQ(layer.get_layer_index(), 1);
     EXPECT_EQ(layer.get_number_input_neurons(), 2);
@@ -30,7 +30,7 @@ TEST_F(FFLayerTest, DropoutStatisticalVerification) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 5000;
     double dropout_rate = 0.5;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_outputs, 1.0));
     layer.set_b_values(std::vector<double>(num_outputs, 0.0));
@@ -60,7 +60,7 @@ TEST_F(FFLayerTest, DropoutNotInference) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1000;
     double dropout_rate = 0.5;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values(std::vector<double>(num_outputs, 1.0));
     layer.set_b_values(std::vector<double>(num_outputs, 0.0));
@@ -84,7 +84,7 @@ TEST_F(FFLayerTest, DropoutConsistencyVerification) {
     // 1 neuron with 100% dropout
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 1.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0 });
     layer.set_b_values({ 0.0 });
@@ -114,7 +114,7 @@ TEST_F(FFLayerTest, DropoutConsistencyVerification) {
 TEST_F(FFLayerTest, ForwardFeedReLU) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0, 1.0, -1.0, 1.0 }); // W[in][out]: W[0][0]=1, W[0][1]=1, W[1][0]=-1, W[1][1]=1
     layer.set_b_values({ 0.0, 0.0 });
@@ -135,7 +135,7 @@ TEST_F(FFLayerTest, ForwardFeedReLU) {
 TEST_F(FFLayerTest, ForwardFeedTanh) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0 });
     layer.set_b_values({ 0.0 });
@@ -156,7 +156,7 @@ TEST_F(FFLayerTest, ForwardFeedTanh) {
 TEST_F(FFLayerTest, ForwardFeedSoftmax) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::softmax, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::softmax, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 }); // Identity
     layer.set_b_values({ 0.0, 0.0 });
@@ -178,7 +178,7 @@ TEST_F(FFLayerTest, ForwardFeedSoftmax) {
 TEST_F(FFLayerTest, ForwardFeedSequential) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 0.5, -0.2 });
     layer.set_b_values({ 0.1 });
@@ -215,7 +215,7 @@ TEST_F(FFLayerTest, AllActivationTypes) {
     std::vector<unsigned> topology = { num_inputs, num_outputs };
 
     for (auto m : methods) {
-        FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(m, 0.1), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+        FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(m, 0.1), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
         layer.set_w_values({ 1.0 });
         layer.set_b_values({ 0.0 });
 
@@ -234,8 +234,8 @@ TEST_F(FFLayerTest, CalculateHiddenGradients) {
     unsigned num_outputs = 2;
     unsigned next_outputs = 1;
 
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
-    FFLayer next_layer(2, num_outputs, next_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer next_layer(2, num_outputs, next_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 }); // Identity for simplicity
     layer.set_b_values({ 0.0, 0.0 });
@@ -263,7 +263,7 @@ TEST_F(FFLayerTest, CalculateHiddenGradients) {
 TEST_F(FFLayerTest, CalculateAndStoreGradients) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
@@ -282,7 +282,7 @@ TEST_F(FFLayerTest, CalculateAndStoreGradients) {
 TEST_F(FFLayerTest, ApplyStoredGradients) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     layer.set_w_values({ 1.0 });
     layer.set_b_values({ 0.5 });
@@ -301,7 +301,7 @@ TEST_F(FFLayerTest, ApplyStoredGradients) {
 TEST_F(FFLayerTest, LearningRateRobustness) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     std::vector<double> learning_rates = { 0.0, 0.0001, 0.01, 0.5, 1.0, 2.0 };
     
@@ -329,7 +329,7 @@ TEST_F(FFLayerTest, LearningRateRobustness) {
 TEST_F(FFLayerTest, SequentialGradients) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
@@ -348,7 +348,7 @@ TEST_F(FFLayerTest, SequentialGradients) {
 TEST_F(FFLayerTest, SequentialGradientsBatch2) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 1;
-    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
     MockLayer prev_layer(0, num_inputs);
     std::vector<unsigned> topology = { num_inputs, num_outputs };
@@ -372,12 +372,12 @@ TEST_F(FFLayerTest, ForwardFeedAndGradientsBiasBehaviour)
   unsigned num_outputs = 2;
   
   // Create layer with bias
-  FFLayer layer_with_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer_with_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   layer_with_bias.set_w_values({ 1.0, 0.5, 0.2, 1.5 });
   layer_with_bias.set_b_values({ 0.3, -0.4 });
   
   // Create layer without bias
-  FFLayer layer_no_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0);
+  FFLayer layer_no_bias(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
   layer_no_bias.set_w_values({ 1.0, 0.5, 0.2, 1.5 });
   
   MockLayer prev_layer(0, num_inputs);
@@ -420,7 +420,7 @@ TEST_F(FFLayerTest, OversizedBiasVectorSafety)
   unsigned num_outputs = 1;
   
   // Create layer with bias
-  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   layer.set_w_values({ 1.0, 0.5 });
   
   // Set oversized bias vector (size 3, whereas output size is 1)
@@ -444,7 +444,7 @@ TEST_F(FFLayerTest, DirectNextGradientsRetrieval)
   unsigned num_inputs = 2;
   unsigned num_outputs = 2;
   unsigned next_outputs = 1;
-  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   MockLayer next_layer(2, next_outputs);
 
   layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
@@ -478,7 +478,7 @@ TEST_F(FFLayerTest, DirectOutputGradientsRetrieval)
   unsigned num_inputs = 2;
   unsigned num_outputs = 2;
   unsigned next_outputs = 2;
-  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
   layer.set_b_values({ 0.0, 0.0 });
@@ -506,7 +506,7 @@ TEST_F(FFLayerTest, DirectOutputGradientsRetrieval)
 TEST_F(FFLayerTest, StateAndMemoryAllocationOptimizationVerification)
 {
   // A 2-input, 2-neuron FFLayer with 2 batches and 3 time steps
-  FFLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::relu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   layer.set_w_values({ 0.1, 0.2, 0.3, 0.4 });
   layer.set_b_values({ 0.05, 0.15 });
@@ -544,7 +544,7 @@ TEST_F(FFLayerTest, StateAndMemoryAllocationOptimizationVerification)
 TEST_F(FFLayerTest, TransposedWeightsCacheAndFastBackwardPass)
 {
   // Create a layer: 3 inputs, 4 outputs
-  FFLayer layer(1, 3, 4, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, 3, 4, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   // Set weights: shape [3, 4]
   std::vector<double> weights = {
@@ -575,7 +575,7 @@ TEST_F(FFLayerTest, TransposedWeightsCacheAndFastBackwardPass)
 
   // Test backpropagation results:
   // Next layer has 4 inputs, 2 outputs.
-  FFLayer next_layer(2, 4, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer next_layer(2, 4, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
   std::vector<double> next_weights = {
     0.15, 0.25,
     0.35, 0.45,
@@ -634,7 +634,7 @@ TEST_F(FFLayerTest, BatchForwardFeedInputCopyingSequenceAndBiasVerification)
 {
   const unsigned num_inputs = 4;
   const unsigned num_neurons = 2;
-  FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0);
+  FFLayer layer(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
   // Set weights: W is size 4 x 2: row 0 = [1, 0], row 1 = [0, 1], row 2 = [0, 0], row 3 = [0, 0]
   std::vector<double> weights = { 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 };
