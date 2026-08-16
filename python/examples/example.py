@@ -26,15 +26,46 @@ def run_general_example():
     hidden_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     hidden_layers = [
         nn.LayerDetails(
-            nn.LayerArchitecture.FF, 
-            8, 
-            hidden_activation, 
-            0.0, 
-            0.0, 
-            nn.OptimiserType.Adam, 
+            nn.LayerArchitecture.FF,
+            8,
+            hidden_activation,
+            0.0,
+            0.0,
+            nn.OptimiserType.Adam,
             0.9
         )
     ]
+
+    # Example of an AttentionPool layer: it must immediately follow a Gru/Lstm
+    # layer, its own size must match that layer's hidden size, and it needs a
+    # non-zero attention_hidden_size (the internal scoring-projection width).
+    # Not wired into this XOR example's (non-recurrent) topology below - shown
+    # here purely to demonstrate the LayerDetails shape end-to-end.
+    attention_hidden_layers = [
+        nn.LayerDetails(
+            nn.LayerArchitecture.Gru,
+            8,
+            hidden_activation,
+            0.0,
+            0.0,
+            nn.OptimiserType.Adam,
+            0.9,
+            False,
+            0
+        ),
+        nn.LayerDetails(
+            nn.LayerArchitecture.AttentionPool,
+            8,
+            nn.Activation(nn.ActivationMethod.Linear, 0.0),
+            0.0,
+            0.0,
+            nn.OptimiserType.Adam,
+            0.9,
+            False,
+            16
+        )
+    ]
+    nn.Logger.debug(f"Example AttentionPool hidden layers configured: {len(attention_hidden_layers)} layers.")
     
     # Expose individual output layer settings
     out_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)

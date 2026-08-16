@@ -2569,6 +2569,109 @@ TEST(SimdUtilsTest, LayerNormBackwardZeroOrNearZeroGain)
   }
 }
 
+TEST(SimdUtilsTest, SoftmaxForwardSumsToOne)
+{
+  std::vector<double> scores = { 1.0, 2.0, 3.0, 0.5 };
+  simd::softmax_forward(scores.data(), scores.size());
+
+  double total = 0.0;
+  for (const auto v : scores)
+  {
+    EXPECT_GE(v, 0.0);
+    total += v;
+  }
+  EXPECT_NEAR(total, 1.0, EPSILON);
+}
+
+TEST(SimdUtilsTest, SoftmaxForwardUniformOnEqualScores)
+{
+  std::vector<double> scores = { 5.0, 5.0, 5.0, 5.0 };
+  simd::softmax_forward(scores.data(), scores.size());
+
+  for (const auto v : scores)
+  {
+    EXPECT_NEAR(v, 0.25, EPSILON);
+  }
+}
+
+TEST(SimdUtilsTest, SoftmaxForwardSingleElement)
+{
+  std::vector<double> scores = { 42.0 };
+  simd::softmax_forward(scores.data(), scores.size());
+  EXPECT_NEAR(scores[0], 1.0, EPSILON);
+}
+
+TEST(SimdUtilsTest, SoftmaxForwardNumericallyStableOnLargeValues)
+{
+  // Without max-subtraction this would overflow exp() and produce NaN.
+  std::vector<double> scores = { 1000.0, 1000.5, 999.0 };
+  simd::softmax_forward(scores.data(), scores.size());
+
+  double total = 0.0;
+  for (const auto v : scores)
+  {
+    EXPECT_TRUE(std::isfinite(v));
+    total += v;
+  }
+  EXPECT_NEAR(total, 1.0, EPSILON);
+}
+
+TEST(SimdUtilsTest, SoftmaxBackwardMatchesNumericalGradient)
+{
+  // Model-agnostic check: loss(scores) = sum_j(dy[j] * softmax(scores)[j]),
+  // dx from softmax_backward should match central finite differences on
+  // loss(scores) treated as a plain scalar function of the raw scores.
+  const size_t n = 4;
+  std::vector<double> scores = { 0.3, -1.2, 2.1, 0.7 };
+  std::vector<double> dy = { 0.4, -0.2, 0.1, 0.3 };
+
+  auto loss = [&](const std::vector<double>& scores_in) -> double
+  {
+    std::vector<double> y = scores_in;
+    simd::softmax_forward(y.data(), n);
+    double total = 0.0;
+    for (size_t j = 0; j < n; ++j)
+    {
+      total += dy[j] * y[j];
+    }
+    return total;
+  };
+
+  std::vector<double> y = scores;
+  simd::softmax_forward(y.data(), n);
+
+  std::vector<double> dx(n, 0.0);
+  simd::softmax_backward(y.data(), dy.data(), dx.data(), n);
+
+  const double h = 1e-6;
+  for (size_t i = 0; i < n; ++i)
+  {
+    std::vector<double> scores_plus = scores;
+    std::vector<double> scores_minus = scores;
+    scores_plus[i] += h;
+    scores_minus[i] -= h;
+    const double numerical = (loss(scores_plus) - loss(scores_minus)) / (2.0 * h);
+    EXPECT_NEAR(dx[i], numerical, 1e-5) << "at index " << i;
+  }
+}
+
+TEST(SimdUtilsTest, SoftmaxBackwardZeroWhenUniformGradient)
+{
+  // When the upstream gradient is the same for every element, the softmax
+  // Jacobian-vector product collapses to zero (sum_j y[j] == 1 exactly cancels).
+  const size_t n = 3;
+  std::vector<double> y = { 0.2, 0.5, 0.3 };
+  std::vector<double> dy = { 0.7, 0.7, 0.7 };
+  std::vector<double> dx(n, 0.0);
+
+  simd::softmax_backward(y.data(), dy.data(), dx.data(), n);
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    EXPECT_NEAR(dx[i], 0.0, EPSILON);
+  }
+}
+
 
 
 

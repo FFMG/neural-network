@@ -82,6 +82,7 @@
     <ClCompile Include="activation_tests.cpp" />
     <ClCompile Include="adaptive_learning_rate_scheduler_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
+    <ClCompile Include="attentionpoollayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_mt_tests.cpp" />
     <ClCompile Include="error_calculation_tests.cpp" />
@@ -114,6 +115,7 @@
     <ClCompile Include="taskqueue_comprehensive_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />
     <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\attentionpoollayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\elmanrnnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\fflayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />

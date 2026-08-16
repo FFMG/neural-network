@@ -405,3 +405,6 @@ FodyWeavers.xsd
 # Test build directories
 tests/build/
 
+# Claude assistant files
+.claude/
+

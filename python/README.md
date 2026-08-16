@@ -62,6 +62,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `Gru`: Gated Recurrent Unit (GRU) layer.
     *   `Lstm`: Long Short-Term Memory (LSTM) layer.
     *   `MultiOutput`: Container for multiple parallel output layers.
+    *   `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
 *   `nn.LayerRole`: Structural role of a layer.
     *   `Input`: Network input layer.
     *   `Hidden`: Network hidden layer.
@@ -86,8 +87,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `EvaluationConfig(neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda, epsilon)`: Constructor.
     *   Properties: `neutral_tolerance`, `confidence_threshold`, `huber_delta`, `direction_lambda`, `use_direction_penalty`, `cross_entropy_lambda`, `epsilon` (all read-only).
 *   `nn.LayerDetails`: Specifications for configuring a hidden layer.
-    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is only valid for `Gru`/`Lstm` architectures.
-    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation` (all read-only).
+    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is only valid for `Gru`/`Lstm` architectures. `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`.
+    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size` (all read-only).
 *   `nn.OutputLayerDetails`: Specifications for configuring the output layer.
     *   `OutputLayerDetails(size, activation, error_type, evaluation_config, weight_decay, optimiser_type, momentum)`: Constructor.
     *   Properties: `size`, `activation`, `output_error_calculation_type`, `error_evaluation_config`, `weight_decay`, `optimiser_type`, `momentum` (all read-only).
@@ -114,6 +115,15 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
     *   `load(filepath)`: Static method to load a network instance from a JSON file.
+
+### Attention Pooling
+
+`nn.LayerArchitecture.AttentionPool` provides additive (Bahdanau-style) attention pooling over the full BPTT window of a preceding `Gru` or `Lstm` hidden layer:
+* Must immediately follow a `Gru` or `Lstm` hidden layer.
+* `LayerDetails`' `size` must equal the preceding recurrent layer's hidden size (pooling never changes dimensionality).
+* `use_layer_normalisation` must be `False`.
+* `attention_hidden_size` must be non-zero (sets the internal scoring-projection width).
+* Requires `with_enable_bptt(True)`.
 
 ### Examples
 
@@ -233,6 +243,7 @@ g++ -O3 -Wall -shared -std=c++17 -fPIC -I../include \
     $(python3 -m pybind11 --includes) \
     bindings.cpp \
     ../include/neuralnetwork/common/activation.cpp \
+    ../include/neuralnetwork/layers/attentionpoollayer.cpp \
     ../include/neuralnetwork/layers/elmanrnnlayer.cpp \
     ../include/neuralnetwork/layers/fflayer.cpp \
     ../include/neuralnetwork/layers/ffoutputlayer.cpp \

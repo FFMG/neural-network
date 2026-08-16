@@ -112,6 +112,7 @@ The hidden layer configuration allows you to define the architecture of your net
   * `Elman`: Simple recurrent layer.
   * `Gru`: Gated recurrent unit layer.
   * `Lstm`: Long Short-Term Memory layer.
+  * `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
 * **Layer size:** Number of neurons in the hidden layer.
 * **Activation:** The activation object (method, alpha, and temperature).
 * **Weight Decay:** Regularization strength.
@@ -245,6 +246,35 @@ Individual layers can have dropout applied via `LayerDetails`. During training, 
 ```cpp
     LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true); // Layer Normalisation enabled
 ```
+
+### Attention Pooling
+
+Recurrent layers (`Gru`/`Lstm`/`Elman`) compress a whole BPTT window into a single fixed-size hidden state, and every downstream layer normally only ever sees the *last* timestep of it. An `AttentionPool` hidden layer instead sits immediately after a `Gru` or `Lstm` layer, consumes the full T-timestep hidden-state sequence, learns a per-timestep additive (Bahdanau-style) attention weight, and produces a single pooled context vector — letting the network learn which past ticks matter most instead of always using the final one.
+
+`AttentionPool` layers have some structural constraints, all enforced (panic on violation) by `Layer::create_hidden_layer`:
+*   Must immediately follow a `Gru` or `Lstm` hidden layer (not `Elman`, not `FF`).
+*   `LayerDetails`' `size` must equal the preceding recurrent layer's hidden size — pooling never changes dimensionality.
+*   `use_layer_normalisation` must be `false`.
+*   `attention_hidden_size` (the internal scoring-projection width) must be non-zero.
+*   Residual connections (`residual_layer_number >= 0`) are not supported.
+*   Requires `with_enable_bptt(true)`.
+
+```cpp
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0),
+      LayerDetails(Layer::Architecture::AttentionPool, 32, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 16), // 16-wide attention scoring projection
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_hidden_layers(hidden_layers)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(24)
+      .build();
+```
+
+The layer's own trained weights (the scoring projection and scoring vector) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `attention_hidden_size` configuration.
+
+**Known limitation:** because `AttentionPool`'s own backward pass has to fully chain-rule its attention math itself (rather than a simple weight-matrix multiply), it relies on the same "direct gradient injection" mechanism already used for recurrent-layer stacking. When the layer directly above `AttentionPool` (typically the output layer) also uses that mechanism, gradient flow through it is affected by the same pre-existing identity-proxy limitation described in the [1.1.21] Known Issues — matching the layer-size requirement above (`layer.size` equal to the preceding recurrent layer's hidden size) keeps this shape-compatible enough for gradients to flow, but this is inherited scope, not fixed by this feature.
 
 ### Stochastic Weight Averaging (SWA)
 

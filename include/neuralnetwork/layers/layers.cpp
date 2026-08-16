@@ -271,6 +271,7 @@ std::unique_ptr<Layer> Layers::create_hidden_layer(
     layer_details,
     number_of_threads,
     has_bias,
+    previous_layer.get_layer_architecture(),
     residual_layer_number,
     create_residual_projector(layer_details.get_activation(), residual_layer_number, num_neurons_in_this_layer, weight_decay)
   );

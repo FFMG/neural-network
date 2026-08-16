@@ -66,9 +66,10 @@ private:
           activation(activation::method::sigmoid, 0.01), 
           0.0, 
           0.05, 
-          OptimiserType::SGD, 
-          0.99, 
-          false)
+          OptimiserType::SGD,
+          0.99,
+          false,
+          0)
       );
     }
 
@@ -496,6 +497,10 @@ public:
       if (hl.get_dropout() < 0.0 || hl.get_dropout() > 1.0)
       {
         Logger::panic("The dropout rate must be between 0 and 1!");
+      }
+      if (hl.get_layer_architecture() == Layer::Architecture::AttentionPool && !enable_bptt())
+      {
+        Logger::panic("AttentionPool hidden layers require enable_bptt to be true.");
       }
     }
 

@@ -19,7 +19,7 @@ protected:
 
 TEST_F(MultiOutputLayerTest, ConstructionAndTopology) {
     // Branch 1: 2 hidden neurons, 2 output neurons
-    std::vector<LayerDetails> h1 = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> h1 = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails o1(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod1(h1, o1);
 
@@ -42,7 +42,7 @@ TEST_F(MultiOutputLayerTest, ConstructionAndTopology) {
 }
 
 TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
-    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
@@ -80,7 +80,7 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
 TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
-    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
@@ -116,7 +116,7 @@ TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
 }
 
 TEST_F(MultiOutputLayerTest, BackpropAndTrunkGradients) {
-    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails oA(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
@@ -273,11 +273,11 @@ TEST_F(MultiOutputLayerTest, MultiInputProxyLayerTest) {
 TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
-    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails oA(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA(hA, oA);
 
-    std::vector<LayerDetails> hB = { LayerDetails(Layer::Architecture::FF, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> hB = { LayerDetails(Layer::Architecture::FF, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails oB(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB(hB, oB);
 
@@ -322,7 +322,7 @@ TEST_F(MultiOutputLayerTest, DropoutStatisticalVerification) {
     const unsigned num_outputs = 5000;
     const double dropout_rate = 0.5;
 
-    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod(h, o);
 
@@ -370,7 +370,7 @@ TEST_F(MultiOutputLayerTest, DropoutNotInference) {
     const unsigned num_outputs = 100;
     const double dropout_rate = 0.5;
 
-    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0, false) };
+    std::vector<LayerDetails> h = { LayerDetails(Layer::Architecture::FF, num_outputs, activation(activation::method::linear, 0.0), dropout_rate, 0.0, OptimiserType::SGD, 0.0, false, 0) };
     OutputLayerDetails o(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails mod(h, o);
 

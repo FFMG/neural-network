@@ -12,7 +12,7 @@ private:
   {
     std::vector<unsigned> topology = {3,2,1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.99, false)
+      LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.99, false, 0)
     };
 
     auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.99);

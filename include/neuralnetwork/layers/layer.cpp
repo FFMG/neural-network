@@ -9,6 +9,7 @@
 #include "elmanrnnlayer.h"
 #include "grurnnlayer.h"
 #include "lstmlayer.h"
+#include "attentionpoollayer.h"
 
 
 namespace myoddweb::nn
@@ -20,6 +21,7 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
   const LayerDetails& ld,
   int number_of_threads,
   bool has_bias,
+  Architecture previous_layer_architecture,
   int residual_layer_number,
   ResidualProjector* residual_projector
 )
@@ -103,6 +105,41 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       has_bias,
       ld.get_momentum(),
       ld.get_use_layer_normalisation()
+    );
+
+  case Layer::Architecture::AttentionPool:
+    if (previous_layer_architecture != Layer::Architecture::Gru && previous_layer_architecture != Layer::Architecture::Lstm)
+    {
+      Logger::panic("AttentionPool hidden layers must immediately follow a Gru or Lstm hidden layer.");
+    }
+    if (ld.get_size() != number_input_neurons)
+    {
+      Logger::panic("AttentionPool hidden layers must have the same size as the recurrent layer they pool over.");
+    }
+    if (ld.get_use_layer_normalisation())
+    {
+      Logger::panic("LayerNorm (use_layer_normalisation) is not supported for AttentionPool hidden layers.");
+    }
+    if (ld.get_attention_hidden_size() == 0)
+    {
+      Logger::panic("AttentionPool hidden layers must have a non-zero attention_hidden_size.");
+    }
+    if (residual_layer_number >= 0)
+    {
+      Logger::panic("Residual connections are not supported for AttentionPool hidden layers.");
+    }
+    return std::make_unique<AttentionPoolLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_attention_hidden_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      ld.get_dropout(),
+      number_of_threads,
+      has_bias,
+      ld.get_momentum()
     );
 
   default:
