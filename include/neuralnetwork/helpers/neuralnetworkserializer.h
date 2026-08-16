@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <array>
 #include <cstdint>
 #include <map>
@@ -91,5 +91,11 @@ private:
   static TinyJSON::TJValueObject* add_residual_projector(const ResidualProjector* residual_projector);
   static TinyJSON::TJValueArray* add_hidden_layers(const std::vector<LayerDetails>& hidden_layers);
   static TinyJSON::TJValueArray* add_output_layer_details(const std::vector<OutputLayerDetails>& output_layer_details);
+
+  static TinyJSON::TJValue* create_float_value(double value);
+  static void set_float(TinyJSON::TJValueObject* object, const std::string& key, double value);
+  static void set_float(TinyJSON::TJValueObject& object, const std::string& key, double value);
+  static void set_floats(TinyJSON::TJValueObject* object, const std::string& key, const std::vector<double>& values);
+  static void set_floats(TinyJSON::TJValueObject& object, const std::string& key, const std::vector<double>& values);
 };
 } // namespace myoddweb::nn
