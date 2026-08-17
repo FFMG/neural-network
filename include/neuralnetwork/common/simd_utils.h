@@ -3399,6 +3399,29 @@ public:
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
     const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vec_z0 = _mm256_loadu_pd(z + j);
+      __m256d vec_z1 = _mm256_loadu_pd(z + j + 4);
+      __m256d vec_prev0 = _mm256_loadu_pd(prev_h + j);
+      __m256d vec_prev1 = _mm256_loadu_pd(prev_h + j + 4);
+      __m256d vec_h_hat0 = _mm256_loadu_pd(h_hat + j);
+      __m256d vec_h_hat1 = _mm256_loadu_pd(h_hat + j + 4);
+
+      __m256d vec_one_minus_z0 = _mm256_sub_pd(one, vec_z0);
+      __m256d vec_one_minus_z1 = _mm256_sub_pd(one, vec_z1);
+#ifdef SIMD_FMA_ENABLED
+      __m256d vec_res0 = _mm256_fmadd_pd(vec_z0, vec_h_hat0, _mm256_mul_pd(vec_one_minus_z0, vec_prev0));
+      __m256d vec_res1 = _mm256_fmadd_pd(vec_z1, vec_h_hat1, _mm256_mul_pd(vec_one_minus_z1, vec_prev1));
+#else
+      __m256d vec_res0 = _mm256_add_pd(_mm256_mul_pd(vec_one_minus_z0, vec_prev0), _mm256_mul_pd(vec_z0, vec_h_hat0));
+      __m256d vec_res1 = _mm256_add_pd(_mm256_mul_pd(vec_one_minus_z1, vec_prev1), _mm256_mul_pd(vec_z1, vec_h_hat1));
+#endif
+      _mm256_storeu_pd(current_h + j, vec_res0);
+      _mm256_storeu_pd(current_h + j + 4, vec_res1);
+      _mm256_storeu_pd(batch_output_seq + j, vec_res0);
+      _mm256_storeu_pd(batch_output_seq + j + 4, vec_res1);
+    }
     for (; j + 3 < n; j += 4)
     {
       __m256d vec_z = _mm256_loadu_pd(z + j);

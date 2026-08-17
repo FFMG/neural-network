@@ -2,6 +2,21 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.26] - 2026-08-17
+
+### Changed
+- Optimized `GRURNNLayer::calculate_and_store_gradients_chunk` in `include/neuralnetwork/layers/grurnnlayer.cpp`:
+  - Inverted the loop hierarchy to make batch index $b$ and timestep $t$ the outer loops, consolidating bias, input weight, and recurrent weight gradient accumulation into a single chronological traversal over the batch and sequence history, eliminating cache thrashing and redundant accessor calls.
+  - Vectorised outer-product gradient updates across all 6 weight matrices ($W_h, W_z, W_r, RW_h, RW_z, RW_r$) using 4-wide (`simd::mul_add_four_scalars`), 2-wide (`simd::mul_add_two_scalars`), and 1-wide (`simd::mul_add_three` / `simd::mul_add_three_scalars`) AVX2 kernels to keep gate gradients in vector registers and L1 cache.
+- Optimized `simd::gru_output_step` in `include/neuralnetwork/common/simd_utils.h`:
+  - Added 8-double dual `__m256d` AVX2 loop unrolling to maximize FMA pipeline utilization during GRU forward propagation.
+
+### Added
+- Added unit test `SimdUtilsTest.GruOutputStepLargeVector` in `tests/simd_utils_tests.cpp` verifying 8-wide, 4-wide, and scalar remainder paths in `simd::gru_output_step`.
+- Added unit tests in `tests/grurnnlayer_tests.cpp`:
+  - `GRURNNLayerTest.CalculateAndStoreGradientsVariousTopologiesMathematicalProof`: analytically proves gradient accumulation against exact paper formulas ($10^{-14}$ precision) across asymmetric 4-wide/2-wide/1-wide topologies.
+  - `GRURNNLayerTest.CalculateAndStoreGradientsSingleStepEquivalence`: verifies single-step BPTT gradient updates and asserts zero recurrent gradient leakage at $t = 0$.
+
 ## [1.1.25] - 2026-08-17
 
 ### Fixed
