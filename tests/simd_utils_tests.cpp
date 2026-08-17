@@ -1550,6 +1550,29 @@ TEST(SimdUtilsTest, GruOutputStep) {
   expect_vec_near(actual_seq, expected);
 }
 
+TEST(SimdUtilsTest, GruOutputStepLargeVector)
+{
+  const size_t n = 23;
+  std::vector<double> z(n);
+  std::vector<double> prev_h(n);
+  std::vector<double> h_hat(n);
+  std::vector<double> expected(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    z[i] = 0.1 + 0.03 * static_cast<double>(i);
+    prev_h[i] = 1.0 + 0.2 * static_cast<double>(i);
+    h_hat[i] = -0.5 - 0.1 * static_cast<double>(i);
+    expected[i] = (1.0 - z[i]) * prev_h[i] + z[i] * h_hat[i];
+  }
+
+  std::vector<double> actual_h(n, 0.0);
+  std::vector<double> actual_seq(n, 0.0);
+  simd::gru_output_step(z.data(), prev_h.data(), h_hat.data(), actual_h.data(), actual_seq.data(), n);
+
+  expect_vec_near(actual_h, expected);
+  expect_vec_near(actual_seq, expected);
+}
+
 TEST(SimdUtilsTest, LstmCellStep) {
   std::vector<double> f = { 0.9, 0.8, 0.7, 0.6, 0.5 };
   std::vector<double> i = { 0.1, 0.2, 0.3, 0.4, 0.5 };

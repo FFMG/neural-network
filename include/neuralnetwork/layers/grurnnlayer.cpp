@@ -1913,116 +1913,112 @@ void GRURNNLayer::calculate_and_store_gradients_chunk(
     return;
   }
 
-  if (has_bias())
+  for (size_t b = start; b < end; ++b)
   {
-    for (size_t b = start; b < end; ++b)
+    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+    if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
     {
-      const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
-      {
-        continue;
-      }
+      continue;
+    }
+    const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+    const auto& layer_states = hidden_states[b].at(get_layer_index());
 
-      for (int t = t_start; t >= t_end; --t)
-      {
-        const size_t base_idx = t * GateCount * num_outputs;
-        const double* gh = &rnn_grads[base_idx];
-        const double* gz = &rnn_grads[base_idx + num_outputs];
-        const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
+    for (int t = t_start; t >= t_end; --t)
+    {
+      const size_t base_idx = t * GateCount * num_outputs;
+      const double* gh = &rnn_grads[base_idx];
+      const double* gz = &rnn_grads[base_idx + num_outputs];
+      const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
 
+      if (has_bias())
+      {
         simd::add_vectors(gh, local_b_grads.data(), num_outputs);
         simd::add_vectors(gz, local_z_b_grads.data(), num_outputs);
         simd::add_vectors(gr, local_r_b_grads.data(), num_outputs);
       }
-    }
-  }
 
-  for (size_t i = 0; i < num_inputs; ++i)
-  {
-    double* w_row = &local_w_grads[i * num_outputs];
-    double* z_w_row = &local_z_w_grads[i * num_outputs];
-    double* r_w_row = &local_r_w_grads[i * num_outputs];
-
-    for (size_t b = start; b < end; ++b)
-    {
-      const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
+      const double* prev_input_ptr = nullptr;
+      if (prev_outputs.size() == num_inputs)
       {
-        continue;
+        prev_input_ptr = prev_outputs.data();
       }
-      const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
-
-      for (int t = t_start; t >= t_end; --t)
+      else if (prev_outputs.size() >= static_cast<size_t>(t + 1) * num_inputs)
       {
-        const double* prev_input_ptr = nullptr;
-        if (prev_outputs.size() == num_inputs)
-        {
-          prev_input_ptr = prev_outputs.data();
-        }
-        else if (prev_outputs.size() >= static_cast<size_t>(t + 1) * num_inputs)
-        {
-          prev_input_ptr = &prev_outputs[t * num_inputs];
-        }
-
-        if (!prev_input_ptr)
-        {
-          continue;
-        }
-
-        const size_t base_idx = t * GateCount * num_outputs;
-        const double* gh = &rnn_grads[base_idx];
-        const double* gz = &rnn_grads[base_idx + num_outputs];
-        const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
-
-        const double x_val = prev_input_ptr[i];
-        simd::mul_add_three(x_val, gh, gz, gr, w_row, z_w_row, r_w_row, num_outputs);
-      }
-    }
-  }
-
-  for (size_t k = 0; k < num_outputs; ++k)
-  {
-    double* rw_row = &local_rw_grads[k * num_outputs];
-    double* z_rw_row = &local_z_rw_grads[k * num_outputs];
-    double* r_rw_row = &local_r_rw_grads[k * num_outputs];
-
-    for (size_t b = start; b < end; ++b)
-    {
-      const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
-      {
-        continue;
+        prev_input_ptr = &prev_outputs[t * num_inputs];
       }
 
-      for (int t = t_start; t >= t_end; --t)
+      if (prev_input_ptr != nullptr)
       {
-        if (t <= 0)
+        size_t i = 0;
+        for (; i + 3 < num_inputs; i += 4)
         {
-          continue;
-        }
+          const double x0 = prev_input_ptr[i];
+          const double x1 = prev_input_ptr[i + 1];
+          const double x2 = prev_input_ptr[i + 2];
+          const double x3 = prev_input_ptr[i + 3];
 
-        const double* prev_hidden_ptr = hidden_states[b].at(get_layer_index())[t - 1].get_hidden_state_values().data();
-        const auto& packed = hidden_states[b].at(get_layer_index())[t].get_pre_activation_sums();
+          simd::mul_add_four_scalars(x0, x1, x2, x3, gh, &local_w_grads[i * num_outputs], &local_w_grads[(i + 1) * num_outputs], &local_w_grads[(i + 2) * num_outputs], &local_w_grads[(i + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, gz, &local_z_w_grads[i * num_outputs], &local_z_w_grads[(i + 1) * num_outputs], &local_z_w_grads[(i + 2) * num_outputs], &local_z_w_grads[(i + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, gr, &local_r_w_grads[i * num_outputs], &local_r_w_grads[(i + 1) * num_outputs], &local_r_w_grads[(i + 2) * num_outputs], &local_r_w_grads[(i + 3) * num_outputs], num_outputs);
+        }
+        for (; i + 1 < num_inputs; i += 2)
+        {
+          const double x0 = prev_input_ptr[i];
+          const double x1 = prev_input_ptr[i + 1];
+
+          simd::mul_add_two_scalars(x0, x1, gh, &local_w_grads[i * num_outputs], &local_w_grads[(i + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(x0, x1, gz, &local_z_w_grads[i * num_outputs], &local_z_w_grads[(i + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(x0, x1, gr, &local_r_w_grads[i * num_outputs], &local_r_w_grads[(i + 1) * num_outputs], num_outputs);
+        }
+        for (; i < num_inputs; ++i)
+        {
+          simd::mul_add_three(prev_input_ptr[i], gh, gz, gr, &local_w_grads[i * num_outputs], &local_z_w_grads[i * num_outputs], &local_r_w_grads[i * num_outputs], num_outputs);
+        }
+      }
+
+      if (t > 0)
+      {
+        const double* prev_hidden_ptr = layer_states[t - 1].get_hidden_state_values().data();
+        const auto& packed = layer_states[t].get_pre_activation_sums();
         const double* r_vals = &packed[num_outputs];
 
-        const size_t base_idx = t * GateCount * num_outputs;
-        const double* gh = &rnn_grads[base_idx];
-        const double* gz = &rnn_grads[base_idx + num_outputs];
-        const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
+        size_t k = 0;
+        for (; k + 3 < num_outputs; k += 4)
+        {
+          const double hp0 = prev_hidden_ptr[k];
+          const double hp1 = prev_hidden_ptr[k + 1];
+          const double hp2 = prev_hidden_ptr[k + 2];
+          const double hp3 = prev_hidden_ptr[k + 3];
 
-        const double hp = prev_hidden_ptr[k];
-        const double rv = r_vals[k];
+          const double rv0 = r_vals[k];
+          const double rv1 = r_vals[k + 1];
+          const double rv2 = r_vals[k + 2];
+          const double rv3 = r_vals[k + 3];
 
-        simd::mul_add_three_scalars(
-          rv * hp, hp, hp,
-          gh, gz, gr,
-          rw_row,
-          z_rw_row,
-          r_rw_row,
-          num_outputs
-        );
+          simd::mul_add_four_scalars(rv0 * hp0, rv1 * hp1, rv2 * hp2, rv3 * hp3, gh, &local_rw_grads[k * num_outputs], &local_rw_grads[(k + 1) * num_outputs], &local_rw_grads[(k + 2) * num_outputs], &local_rw_grads[(k + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gz, &local_z_rw_grads[k * num_outputs], &local_z_rw_grads[(k + 1) * num_outputs], &local_z_rw_grads[(k + 2) * num_outputs], &local_z_rw_grads[(k + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gr, &local_r_rw_grads[k * num_outputs], &local_r_rw_grads[(k + 1) * num_outputs], &local_r_rw_grads[(k + 2) * num_outputs], &local_r_rw_grads[(k + 3) * num_outputs], num_outputs);
+        }
+        for (; k + 1 < num_outputs; k += 2)
+        {
+          const double hp0 = prev_hidden_ptr[k];
+          const double hp1 = prev_hidden_ptr[k + 1];
+
+          const double rv0 = r_vals[k];
+          const double rv1 = r_vals[k + 1];
+
+          simd::mul_add_two_scalars(rv0 * hp0, rv1 * hp1, gh, &local_rw_grads[k * num_outputs], &local_rw_grads[(k + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(hp0, hp1, gz, &local_z_rw_grads[k * num_outputs], &local_z_rw_grads[(k + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(hp0, hp1, gr, &local_r_rw_grads[k * num_outputs], &local_r_rw_grads[(k + 1) * num_outputs], num_outputs);
+        }
+        for (; k < num_outputs; ++k)
+        {
+          const double hp = prev_hidden_ptr[k];
+          const double rv = r_vals[k];
+          simd::mul_add_three_scalars(rv * hp, hp, hp, gh, gz, gr, &local_rw_grads[k * num_outputs], &local_z_rw_grads[k * num_outputs], &local_r_rw_grads[k * num_outputs], num_outputs);
+        }
       }
     }
   }
