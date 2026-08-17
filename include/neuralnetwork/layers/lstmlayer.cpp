@@ -1056,143 +1056,239 @@ void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
   calculate_hidden_gradients(batch_gradients_and_outputs, *_identity_proxy, batch_output_gradients, batch_hidden_states, batch_size, bptt_max_ticks);
 }
 
+namespace
+{
+struct LstmGradCalcTask
+{
+  const LSTMLayer& layer;
+  size_t start;
+  size_t end;
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
+  const std::vector<HiddenStates>& hidden_states;
+  unsigned prev_layer_index;
+  size_t num_inputs;
+  size_t num_outputs;
+  size_t num_time_steps;
+  int t_start;
+  int t_end;
+  std::vector<double>& local_w_grads;
+  std::vector<double>& local_rw_grads;
+  std::vector<double>& local_f_w_grads;
+  std::vector<double>& local_f_rw_grads;
+  std::vector<double>& local_i_w_grads;
+  std::vector<double>& local_i_rw_grads;
+  std::vector<double>& local_o_w_grads;
+  std::vector<double>& local_o_rw_grads;
+  std::vector<double>& local_b_grads;
+  std::vector<double>& local_f_b_grads;
+  std::vector<double>& local_i_b_grads;
+  std::vector<double>& local_o_b_grads;
+
+  void operator()() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("LstmGradCalcTask");
+    layer.calculate_and_store_gradients_chunk(
+      start,
+      end,
+      batch_gradients_and_outputs,
+      hidden_states,
+      prev_layer_index,
+      num_inputs,
+      num_outputs,
+      num_time_steps,
+      t_start,
+      t_end,
+      local_w_grads,
+      local_rw_grads,
+      local_f_w_grads,
+      local_f_rw_grads,
+      local_i_w_grads,
+      local_i_rw_grads,
+      local_o_w_grads,
+      local_o_rw_grads,
+      local_b_grads,
+      local_f_b_grads,
+      local_i_b_grads,
+      local_o_b_grads
+    );
+  }
+};
+}
+
+void LSTMLayer::calculate_and_store_gradients_chunk(
+  size_t start,
+  size_t end,
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  unsigned prev_layer_index,
+  size_t num_inputs,
+  size_t num_outputs,
+  size_t num_time_steps,
+  int t_start,
+  int t_end,
+  std::vector<double>& local_w_grads,
+  std::vector<double>& local_rw_grads,
+  std::vector<double>& local_f_w_grads,
+  std::vector<double>& local_f_rw_grads,
+  std::vector<double>& local_i_w_grads,
+  std::vector<double>& local_i_rw_grads,
+  std::vector<double>& local_o_w_grads,
+  std::vector<double>& local_o_rw_grads,
+  std::vector<double>& local_b_grads,
+  std::vector<double>& local_f_b_grads,
+  std::vector<double>& local_i_b_grads,
+  std::vector<double>& local_o_b_grads) const
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  if (start >= end)
+  {
+    return;
+  }
+
+  for (size_t b = start; b < end; ++b)
+  {
+    const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+    if (rnn_grads.size() != static_cast<size_t>(num_time_steps) * GateCount * num_outputs)
+    {
+      continue;
+    }
+    const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
+    const auto& layer_states = hidden_states[b].at(get_layer_index());
+
+    for (int t = t_start; t >= t_end; --t)
+    {
+      const size_t base_idx = t * GateCount * num_outputs;
+      const double* df = &rnn_grads[base_idx];
+      const double* di = &rnn_grads[base_idx + num_outputs];
+      const double* do_gate = &rnn_grads[base_idx + 2 * num_outputs];
+      const double* dg = &rnn_grads[base_idx + 3 * num_outputs]; // Gate 4 (Candidate)
+
+      if (has_bias())
+      {
+        simd::add_vectors(df, local_f_b_grads.data(), num_outputs);
+        simd::add_vectors(di, local_i_b_grads.data(), num_outputs);
+        simd::add_vectors(do_gate, local_o_b_grads.data(), num_outputs);
+        simd::add_vectors(dg, local_b_grads.data(), num_outputs);
+      }
+
+      const double* prev_input_ptr = nullptr;
+      if (prev_outputs.size() == num_inputs)
+      {
+        prev_input_ptr = prev_outputs.data();
+      }
+      else if (prev_outputs.size() >= static_cast<size_t>(t + 1) * num_inputs)
+      {
+        prev_input_ptr = &prev_outputs[t * num_inputs];
+      }
+
+      if (prev_input_ptr != nullptr)
+      {
+        size_t k = 0;
+        for (; k + 3 < num_inputs; k += 4)
+        {
+          const double x0 = prev_input_ptr[k];
+          const double x1 = prev_input_ptr[k + 1];
+          const double x2 = prev_input_ptr[k + 2];
+          const double x3 = prev_input_ptr[k + 3];
+
+          simd::mul_add_four_scalars(x0, x1, x2, x3, df, &local_f_w_grads[k * num_outputs], &local_f_w_grads[(k + 1) * num_outputs], &local_f_w_grads[(k + 2) * num_outputs], &local_f_w_grads[(k + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, di, &local_i_w_grads[k * num_outputs], &local_i_w_grads[(k + 1) * num_outputs], &local_i_w_grads[(k + 2) * num_outputs], &local_i_w_grads[(k + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, do_gate, &local_o_w_grads[k * num_outputs], &local_o_w_grads[(k + 1) * num_outputs], &local_o_w_grads[(k + 2) * num_outputs], &local_o_w_grads[(k + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, dg, &local_w_grads[k * num_outputs], &local_w_grads[(k + 1) * num_outputs], &local_w_grads[(k + 2) * num_outputs], &local_w_grads[(k + 3) * num_outputs], num_outputs);
+        }
+        for (; k + 1 < num_inputs; k += 2)
+        {
+          const double x0 = prev_input_ptr[k];
+          const double x1 = prev_input_ptr[k + 1];
+
+          simd::mul_add_two_scalars(x0, x1, df, &local_f_w_grads[k * num_outputs], &local_f_w_grads[(k + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(x0, x1, di, &local_i_w_grads[k * num_outputs], &local_i_w_grads[(k + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(x0, x1, do_gate, &local_o_w_grads[k * num_outputs], &local_o_w_grads[(k + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(x0, x1, dg, &local_w_grads[k * num_outputs], &local_w_grads[(k + 1) * num_outputs], num_outputs);
+        }
+        for (; k < num_inputs; ++k)
+        {
+          simd::mul_add_four(prev_input_ptr[k], df, di, do_gate, dg, &local_f_w_grads[k * num_outputs], &local_i_w_grads[k * num_outputs], &local_o_w_grads[k * num_outputs], &local_w_grads[k * num_outputs], num_outputs);
+        }
+      }
+
+      if (t > 0)
+      {
+        const double* prev_hidden_ptr = layer_states[t - 1].get_hidden_state_values().data();
+        size_t rk = 0;
+        for (; rk + 3 < num_outputs; rk += 4)
+        {
+          const double hp0 = prev_hidden_ptr[rk];
+          const double hp1 = prev_hidden_ptr[rk + 1];
+          const double hp2 = prev_hidden_ptr[rk + 2];
+          const double hp3 = prev_hidden_ptr[rk + 3];
+
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, df, &local_f_rw_grads[rk * num_outputs], &local_f_rw_grads[(rk + 1) * num_outputs], &local_f_rw_grads[(rk + 2) * num_outputs], &local_f_rw_grads[(rk + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, di, &local_i_rw_grads[rk * num_outputs], &local_i_rw_grads[(rk + 1) * num_outputs], &local_i_rw_grads[(rk + 2) * num_outputs], &local_i_rw_grads[(rk + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, do_gate, &local_o_rw_grads[rk * num_outputs], &local_o_rw_grads[(rk + 1) * num_outputs], &local_o_rw_grads[(rk + 2) * num_outputs], &local_o_rw_grads[(rk + 3) * num_outputs], num_outputs);
+          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, dg, &local_rw_grads[rk * num_outputs], &local_rw_grads[(rk + 1) * num_outputs], &local_rw_grads[(rk + 2) * num_outputs], &local_rw_grads[(rk + 3) * num_outputs], num_outputs);
+        }
+        for (; rk + 1 < num_outputs; rk += 2)
+        {
+          const double hp0 = prev_hidden_ptr[rk];
+          const double hp1 = prev_hidden_ptr[rk + 1];
+
+          simd::mul_add_two_scalars(hp0, hp1, df, &local_f_rw_grads[rk * num_outputs], &local_f_rw_grads[(rk + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(hp0, hp1, di, &local_i_rw_grads[rk * num_outputs], &local_i_rw_grads[(rk + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(hp0, hp1, do_gate, &local_o_rw_grads[rk * num_outputs], &local_o_rw_grads[(rk + 1) * num_outputs], num_outputs);
+          simd::mul_add_two_scalars(hp0, hp1, dg, &local_rw_grads[rk * num_outputs], &local_rw_grads[(rk + 1) * num_outputs], num_outputs);
+        }
+        for (; rk < num_outputs; ++rk)
+        {
+          simd::mul_add_four(prev_hidden_ptr[rk], df, di, do_gate, dg, &local_f_rw_grads[rk * num_outputs], &local_i_rw_grads[rk * num_outputs], &local_o_rw_grads[rk * num_outputs], &local_rw_grads[rk * num_outputs], num_outputs);
+        }
+      }
+    }
+  }
+}
+
 void LSTMLayer::calculate_and_store_gradients(
-const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  const Layer& previous_layer,
+  size_t batch_size,
+  int bptt_max_ticks)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   if (batch_size == 0)
   {
     return;
   }
-  const size_t N_this = get_number_neurons();
-  const size_t N_prev = previous_layer.get_number_neurons();
-  const size_t T = hidden_states[0].at(get_layer_index()).size();
+  const unsigned num_outputs = get_number_neurons();
+  const unsigned num_inputs = get_number_input_neurons();
+  const unsigned num_time_steps = static_cast<unsigned>(hidden_states[0].at(get_layer_index()).size());
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
   const auto num_threads = get_number_of_threads();
+  const size_t N_this = num_outputs;
+  const size_t N_prev = previous_layer.get_number_neurons();
+  const size_t T = num_time_steps;
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * T * N_this * (N_prev + N_this) * 4) / 100000))) : 1;
-
-  auto run_chunk = [&](
-    size_t start,
-    size_t end,
-    std::vector<double>& local_w_grads,
-    std::vector<double>& local_b_grads,
-    std::vector<double>& local_rw_grads,
-    std::vector<double>& local_f_w_grads,
-    std::vector<double>& local_f_b_grads,
-    std::vector<double>& local_f_rw_grads,
-    std::vector<double>& local_i_w_grads,
-    std::vector<double>& local_i_b_grads,
-    std::vector<double>& local_i_rw_grads,
-    std::vector<double>& local_o_w_grads,
-    std::vector<double>& local_o_b_grads,
-    std::vector<double>& local_o_rw_grads)
-  {
-    for (size_t b = start; b < end; ++b)
-    {
-      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
-      if (packed_grads.empty())
-      {
-        continue;
-      }
-      const auto& layer_states = hidden_states[b].at(get_layer_index());
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
-      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
-
-      for (size_t t = 0; t < T; ++t)
-      {
-        const double* df = &packed_grads[t * GateCount * N_this];
-        const double* di = &packed_grads[t * GateCount * N_this + N_this];
-        const double* do_gate = &packed_grads[t * GateCount * N_this + 2 * N_this];
-        const double* dg = &packed_grads[t * GateCount * N_this + 3 * N_this]; // Gate 4 (Candidate)
-        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
-        const double* h_prev = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
-
-        if (has_bias())
-        {
-          simd::add_vectors(df, local_f_b_grads.data(), N_this);
-          simd::add_vectors(di, local_i_b_grads.data(), N_this);
-          simd::add_vectors(do_gate, local_o_b_grads.data(), N_this);
-          simd::add_vectors(dg, local_b_grads.data(), N_this);
-        }
-
-        // Weight Gradients (Outer Product) - Vectorized over N_this
-        size_t k = 0;
-        for (; k + 3 < N_prev; k += 4)
-        {
-          const double x0 = x_t[k];
-          const double x1 = x_t[k + 1];
-          const double x2 = x_t[k + 2];
-          const double x3 = x_t[k + 3];
-
-          simd::mul_add_four_scalars(x0, x1, x2, x3, df, &local_f_w_grads[k * N_this], &local_f_w_grads[(k + 1) * N_this], &local_f_w_grads[(k + 2) * N_this], &local_f_w_grads[(k + 3) * N_this], N_this);
-          simd::mul_add_four_scalars(x0, x1, x2, x3, di, &local_i_w_grads[k * N_this], &local_i_w_grads[(k + 1) * N_this], &local_i_w_grads[(k + 2) * N_this], &local_i_w_grads[(k + 3) * N_this], N_this);
-          simd::mul_add_four_scalars(x0, x1, x2, x3, do_gate, &local_o_w_grads[k * N_this], &local_o_w_grads[(k + 1) * N_this], &local_o_w_grads[(k + 2) * N_this], &local_o_w_grads[(k + 3) * N_this], N_this);
-          simd::mul_add_four_scalars(x0, x1, x2, x3, dg, &local_w_grads[k * N_this], &local_w_grads[(k + 1) * N_this], &local_w_grads[(k + 2) * N_this], &local_w_grads[(k + 3) * N_this], N_this);
-        }
-        for (; k + 1 < N_prev; k += 2)
-        {
-          const double x0 = x_t[k];
-          const double x1 = x_t[k + 1];
-
-          simd::mul_add_two_scalars(x0, x1, df, &local_f_w_grads[k * N_this], &local_f_w_grads[(k + 1) * N_this], N_this);
-          simd::mul_add_two_scalars(x0, x1, di, &local_i_w_grads[k * N_this], &local_i_w_grads[(k + 1) * N_this], N_this);
-          simd::mul_add_two_scalars(x0, x1, do_gate, &local_o_w_grads[k * N_this], &local_o_w_grads[(k + 1) * N_this], N_this);
-          simd::mul_add_two_scalars(x0, x1, dg, &local_w_grads[k * N_this], &local_w_grads[(k + 1) * N_this], N_this);
-        }
-        for (; k < N_prev; ++k)
-        {
-          simd::mul_add_four(x_t[k], df, di, do_gate, dg, &local_f_w_grads[k * N_this], &local_i_w_grads[k * N_this], &local_o_w_grads[k * N_this], &local_w_grads[k * N_this], N_this);
-        }
-
-        // Recurrent Weight Gradients (Outer Product) - Vectorized over N_this
-        if (h_prev)
-        {
-          size_t rk = 0;
-          for (; rk + 3 < N_this; rk += 4)
-          {
-            const double hp0 = h_prev[rk];
-            const double hp1 = h_prev[rk + 1];
-            const double hp2 = h_prev[rk + 2];
-            const double hp3 = h_prev[rk + 3];
-
-            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, df, &local_f_rw_grads[rk * N_this], &local_f_rw_grads[(rk + 1) * N_this], &local_f_rw_grads[(rk + 2) * N_this], &local_f_rw_grads[(rk + 3) * N_this], N_this);
-            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, di, &local_i_rw_grads[rk * N_this], &local_i_rw_grads[(rk + 1) * N_this], &local_i_rw_grads[(rk + 2) * N_this], &local_i_rw_grads[(rk + 3) * N_this], N_this);
-            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, do_gate, &local_o_rw_grads[rk * N_this], &local_o_rw_grads[(rk + 1) * N_this], &local_o_rw_grads[(rk + 2) * N_this], &local_o_rw_grads[(rk + 3) * N_this], N_this);
-            simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, dg, &local_rw_grads[rk * N_this], &local_rw_grads[(rk + 1) * N_this], &local_rw_grads[(rk + 2) * N_this], &local_rw_grads[(rk + 3) * N_this], N_this);
-          }
-          for (; rk + 1 < N_this; rk += 2)
-          {
-            const double hp0 = h_prev[rk];
-            const double hp1 = h_prev[rk + 1];
-
-            simd::mul_add_two_scalars(hp0, hp1, df, &local_f_rw_grads[rk * N_this], &local_f_rw_grads[(rk + 1) * N_this], N_this);
-            simd::mul_add_two_scalars(hp0, hp1, di, &local_i_rw_grads[rk * N_this], &local_i_rw_grads[(rk + 1) * N_this], N_this);
-            simd::mul_add_two_scalars(hp0, hp1, do_gate, &local_o_rw_grads[rk * N_this], &local_o_rw_grads[(rk + 1) * N_this], N_this);
-            simd::mul_add_two_scalars(hp0, hp1, dg, &local_rw_grads[rk * N_this], &local_rw_grads[(rk + 1) * N_this], N_this);
-          }
-          for (; rk < N_this; ++rk)
-          {
-            simd::mul_add_four(h_prev[rk], df, di, do_gate, dg, &local_f_rw_grads[rk * N_this], &local_i_rw_grads[rk * N_this], &local_o_rw_grads[rk * N_this], &local_rw_grads[rk * N_this], N_this);
-          }
-        }
-      }
-    }
-  };
 
   const bool use_multithreading = (active_threads > 1);
   if (!use_multithreading)
   {
     zero_gradients();
-    run_chunk(
+    calculate_and_store_gradients_chunk(
       0, batch_size,
-      _w_grads, _b_grads, _rw_grads,
-      _f_w_grads, _f_b_grads, _f_rw_grads,
-      _i_w_grads, _i_b_grads, _i_rw_grads,
-      _o_w_grads, _o_b_grads, _o_rw_grads
+      batch_gradients_and_outputs, hidden_states,
+      prev_layer_index, num_inputs, num_outputs, num_time_steps,
+      t_start, t_end,
+      _w_grads, _rw_grads,
+      _f_w_grads, _f_rw_grads,
+      _i_w_grads, _i_rw_grads,
+      _o_w_grads, _o_rw_grads,
+      _b_grads, _f_b_grads, _i_b_grads, _o_b_grads
     );
   }
   else
@@ -1250,28 +1346,28 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     {
       _thread_w_grads[t].resize(_w_grads.size());
       std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-      _thread_b_grads[t].resize(_b_grads.size());
+      _thread_b_grads[t].resize(has_bias() ? N_this : 0);
       std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
       _thread_rw_grads[t].resize(_rw_grads.size());
       std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
 
       _thread_f_w_grads[t].resize(_f_w_grads.size());
       std::fill(_thread_f_w_grads[t].begin(), _thread_f_w_grads[t].end(), 0.0);
-      _thread_f_b_grads[t].resize(_f_b_grads.size());
+      _thread_f_b_grads[t].resize(has_bias() ? N_this : 0);
       std::fill(_thread_f_b_grads[t].begin(), _thread_f_b_grads[t].end(), 0.0);
       _thread_f_rw_grads[t].resize(_f_rw_grads.size());
       std::fill(_thread_f_rw_grads[t].begin(), _thread_f_rw_grads[t].end(), 0.0);
 
       _thread_i_w_grads[t].resize(_i_w_grads.size());
       std::fill(_thread_i_w_grads[t].begin(), _thread_i_w_grads[t].end(), 0.0);
-      _thread_i_b_grads[t].resize(_i_b_grads.size());
+      _thread_i_b_grads[t].resize(has_bias() ? N_this : 0);
       std::fill(_thread_i_b_grads[t].begin(), _thread_i_b_grads[t].end(), 0.0);
       _thread_i_rw_grads[t].resize(_i_rw_grads.size());
       std::fill(_thread_i_rw_grads[t].begin(), _thread_i_rw_grads[t].end(), 0.0);
 
       _thread_o_w_grads[t].resize(_o_w_grads.size());
       std::fill(_thread_o_w_grads[t].begin(), _thread_o_w_grads[t].end(), 0.0);
-      _thread_o_b_grads[t].resize(_o_b_grads.size());
+      _thread_o_b_grads[t].resize(has_bias() ? N_this : 0);
       std::fill(_thread_o_b_grads[t].begin(), _thread_o_b_grads[t].end(), 0.0);
       _thread_o_rw_grads[t].resize(_o_rw_grads.size());
       std::fill(_thread_o_rw_grads[t].begin(), _thread_o_rw_grads[t].end(), 0.0);
@@ -1284,16 +1380,18 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([this, start, end, t, &run_chunk]()
-          { 
-            run_chunk(
-              start, end,
-              _thread_w_grads[t], _thread_b_grads[t], _thread_rw_grads[t],
-              _thread_f_w_grads[t], _thread_f_b_grads[t], _thread_f_rw_grads[t],
-              _thread_i_w_grads[t], _thread_i_b_grads[t], _thread_i_rw_grads[t],
-              _thread_o_w_grads[t], _thread_o_b_grads[t], _thread_o_rw_grads[t]
-            ); 
-          });
+        _task_queue_pool->enqueue(LstmGradCalcTask{
+          *this,
+          start, end,
+          batch_gradients_and_outputs, hidden_states,
+          prev_layer_index, num_inputs, num_outputs, num_time_steps,
+          t_start, t_end,
+          _thread_w_grads[t], _thread_rw_grads[t],
+          _thread_f_w_grads[t], _thread_f_rw_grads[t],
+          _thread_i_w_grads[t], _thread_i_rw_grads[t],
+          _thread_o_w_grads[t], _thread_o_rw_grads[t],
+          _thread_b_grads[t], _thread_f_b_grads[t], _thread_i_b_grads[t], _thread_o_b_grads[t]
+        });
       }
       start = end;
     }
@@ -1313,10 +1411,13 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
       simd::add_vectors(_thread_i_rw_grads[t].data(), _i_rw_grads.data(), _i_rw_grads.size());
       simd::add_vectors(_thread_o_rw_grads[t].data(), _o_rw_grads.data(), _o_rw_grads.size());
 
-      simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
-      simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
-      simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
-      simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
+      if (has_bias())
+      {
+        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+        simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
+        simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
+        simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
+      }
     }
   }
 
@@ -1326,17 +1427,20 @@ const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::
     simd::scale_vector(v.data(), inv_batch, v.size());
   };
   norm(_w_grads);
-  norm(_b_grads);
   norm(_rw_grads);
   norm(_f_w_grads);
-  norm(_f_b_grads);
   norm(_f_rw_grads);
   norm(_i_w_grads);
-  norm(_i_b_grads);
   norm(_i_rw_grads);
   norm(_o_w_grads);
-  norm(_o_b_grads);
   norm(_o_rw_grads);
+  if (has_bias())
+  {
+    norm(_b_grads);
+    norm(_f_b_grads);
+    norm(_i_b_grads);
+    norm(_o_b_grads);
+  }
   if (_use_layer_normalisation)
   {
     // Already fully accumulated by calculate_hidden_gradients() (Phase A);
@@ -1664,13 +1768,10 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
   }
 
   const size_t batch_size_chunk = end - start;
-  const size_t total_elements = batch_size_chunk * N_this;
+  const auto& act = get_activation();
 
   for (int t = t_start; t >= t_end; --t)
   {
-    // 1. Gather raw inputs, plus the tanh(g)/tanh(c) activations already computed
-    // and cached during the forward pass (packed slots 5 and 6), so we don't have
-    // to re-evaluate the activation function here.
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
       size_t b = start + b_idx;
@@ -1678,25 +1779,6 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       const auto& state = layer_states[t];
       const auto packed = state.get_pre_activation_sums();
       const auto c_curr = state.get_cell_state_values();
-
-      std::copy(c_curr.begin(), c_curr.end(), &workspace.c_vals[b_idx * N_this]);
-      std::copy(&packed[3 * N_this], &packed[3 * N_this] + N_this, &workspace.g_vals[b_idx * N_this]);
-      std::copy(&packed[5 * N_this], &packed[5 * N_this] + N_this, &workspace.f_vals[b_idx * N_this]);
-      std::copy(&packed[6 * N_this], &packed[6 * N_this] + N_this, &workspace.tanh_c_vals[b_idx * N_this]);
-    }
-
-    // 2. Contiguous derivative (activated values reused from the forward pass, see above)
-    const auto& act = get_activation();
-    act.activate_derivative(workspace.c_vals.data(), workspace.c_vals.data() + total_elements, workspace.tanh_c_vals.data(), workspace.dc_act_deriv.data());
-    act.activate_derivative(workspace.g_vals.data(), workspace.g_vals.data() + total_elements, workspace.f_vals.data(), workspace.dg_act_deriv.data());
-
-    // 3. Batch loop for gate steps
-    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
-    {
-      size_t b = start + b_idx;
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-      const auto& state = layer_states[t];
-      const auto packed = state.get_pre_activation_sums();
       const bool has_prev = (t > 0);
       const auto c_prev = has_prev ? layer_states[t - 1].get_cell_state_values() : std::span<const double>();
 
@@ -1729,11 +1811,16 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       double* di_chunk = &workspace.chunk_di[b_idx * N_this];
       double* do_chunk = &workspace.chunk_do[b_idx * N_this];
       double* dg_chunk = &workspace.chunk_dg[b_idx * N_this];
-      double* activated_c_chunk = &workspace.tanh_c_vals[b_idx * N_this];
-      double* activated_g_chunk = &workspace.f_vals[b_idx * N_this];
+
+      const double* activated_g_chunk = &packed[5 * N_this];
+      const double* activated_c_chunk = &packed[6 * N_this];
 
       double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
       double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
+
+      // Contiguous derivative computed directly from cached activations without copying
+      act.activate_derivative(c_curr.data(), c_curr.data() + N_this, activated_c_chunk, dc_act_deriv);
+      act.activate_derivative(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk, dg_act_deriv);
 
       if (_use_layer_normalisation)
       {
@@ -1813,8 +1900,11 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         );
       }
 
-      double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      std::fill(dx_t, dx_t + N_prev, 0.0);
+      if (N_prev > 0)
+      {
+        double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
+        std::fill(dx_t, dx_t + N_prev, 0.0);
+      }
 
       std::fill(dh_next, dh_next + N_this, 0.0);
 
@@ -1825,84 +1915,91 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       std::copy(dg_chunk, dg_chunk + N_this, grad_out_t + 3 * N_this);
     }
 
-    // Now run batched GEMM operations outside the batch loop:
-    run_recurrent_gemm_backward(
-      0, end - start, N_this,
-      _f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(),
-      workspace.chunk_df.data(), workspace.chunk_di.data(), workspace.chunk_do.data(), workspace.chunk_dg.data(),
-      workspace.d_next_h.data()
-    );
-
-    size_t b = 0;
-    for (; b + 3 < batch_size_chunk; b += 4)
+    // Recurrent GEMM backward produces dh_next for the prior timestep (t - 1).
+    // On the final timestep (t == t_end), dh_next is never consumed, so skip it.
+    if (t > t_end)
     {
-      const double* f0 = workspace.chunk_df.data() + b * N_this;
-      const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
-      const double* f2 = workspace.chunk_df.data() + (b + 2) * N_this;
-      const double* f3 = workspace.chunk_df.data() + (b + 3) * N_this;
-
-      const double* i0 = workspace.chunk_di.data() + b * N_this;
-      const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
-      const double* i2 = workspace.chunk_di.data() + (b + 2) * N_this;
-      const double* i3 = workspace.chunk_di.data() + (b + 3) * N_this;
-
-      const double* o0 = workspace.chunk_do.data() + b * N_this;
-      const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
-      const double* o2 = workspace.chunk_do.data() + (b + 2) * N_this;
-      const double* o3 = workspace.chunk_do.data() + (b + 3) * N_this;
-
-      const double* g0 = workspace.chunk_dg.data() + b * N_this;
-      const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
-      const double* g2 = workspace.chunk_dg.data() + (b + 2) * N_this;
-      const double* g3 = workspace.chunk_dg.data() + (b + 3) * N_this;
-
-      double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
-      double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
-      double* y2 = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
-      double* y3 = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
-
-      simd::gemm_four_batches(f0, f1, f2, f3, _f_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-      simd::gemm_four_batches(i0, i1, i2, i3, _i_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-      simd::gemm_four_batches(o0, o1, o2, o3, _o_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-      simd::gemm_four_batches(g0, g1, g2, g3, _w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      run_recurrent_gemm_backward(
+        0, end - start, N_this,
+        _f_rw_values_T.data(), _i_rw_values_T.data(), _o_rw_values_T.data(), _rw_values_T.data(),
+        workspace.chunk_df.data(), workspace.chunk_di.data(), workspace.chunk_do.data(), workspace.chunk_dg.data(),
+        workspace.d_next_h.data()
+      );
     }
 
-    for (; b + 1 < batch_size_chunk; b += 2)
+    if (N_prev > 0)
     {
-      const double* f0 = workspace.chunk_df.data() + b * N_this;
-      const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
+      size_t b = 0;
+      for (; b + 3 < batch_size_chunk; b += 4)
+      {
+        const double* f0 = workspace.chunk_df.data() + b * N_this;
+        const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
+        const double* f2 = workspace.chunk_df.data() + (b + 2) * N_this;
+        const double* f3 = workspace.chunk_df.data() + (b + 3) * N_this;
 
-      const double* i0 = workspace.chunk_di.data() + b * N_this;
-      const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
+        const double* i0 = workspace.chunk_di.data() + b * N_this;
+        const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
+        const double* i2 = workspace.chunk_di.data() + (b + 2) * N_this;
+        const double* i3 = workspace.chunk_di.data() + (b + 3) * N_this;
 
-      const double* o0 = workspace.chunk_do.data() + b * N_this;
-      const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
+        const double* o0 = workspace.chunk_do.data() + b * N_this;
+        const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
+        const double* o2 = workspace.chunk_do.data() + (b + 2) * N_this;
+        const double* o3 = workspace.chunk_do.data() + (b + 3) * N_this;
 
-      const double* g0 = workspace.chunk_dg.data() + b * N_this;
-      const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
+        const double* g0 = workspace.chunk_dg.data() + b * N_this;
+        const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
+        const double* g2 = workspace.chunk_dg.data() + (b + 2) * N_this;
+        const double* g3 = workspace.chunk_dg.data() + (b + 3) * N_this;
 
-      double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
-      double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+        double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+        double* y2 = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
+        double* y3 = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
 
-      simd::gemm_two_batches(f0, f1, _f_w_values_T.data(), y0, y1, N_this, N_prev);
-      simd::gemm_two_batches(i0, i1, _i_w_values_T.data(), y0, y1, N_this, N_prev);
-      simd::gemm_two_batches(o0, o1, _o_w_values_T.data(), y0, y1, N_this, N_prev);
-      simd::gemm_two_batches(g0, g1, _w_values_T.data(), y0, y1, N_this, N_prev);
-    }
+        simd::gemm_four_batches(f0, f1, f2, f3, _f_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_batches(i0, i1, i2, i3, _i_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_batches(o0, o1, o2, o3, _o_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_batches(g0, g1, g2, g3, _w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+      }
 
-    for (; b < batch_size_chunk; ++b)
-    {
-      const double* f = workspace.chunk_df.data() + b * N_this;
-      const double* i = workspace.chunk_di.data() + b * N_this;
-      const double* o = workspace.chunk_do.data() + b * N_this;
-      const double* g = workspace.chunk_dg.data() + b * N_this;
+      for (; b + 1 < batch_size_chunk; b += 2)
+      {
+        const double* f0 = workspace.chunk_df.data() + b * N_this;
+        const double* f1 = workspace.chunk_df.data() + (b + 1) * N_this;
 
-      double* y = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        const double* i0 = workspace.chunk_di.data() + b * N_this;
+        const double* i1 = workspace.chunk_di.data() + (b + 1) * N_this;
 
-      simd::gemm_one_batch(f, _f_w_values_T.data(), y, N_this, N_prev);
-      simd::gemm_one_batch(i, _i_w_values_T.data(), y, N_this, N_prev);
-      simd::gemm_one_batch(o, _o_w_values_T.data(), y, N_this, N_prev);
-      simd::gemm_one_batch(g, _w_values_T.data(), y, N_this, N_prev);
+        const double* o0 = workspace.chunk_do.data() + b * N_this;
+        const double* o1 = workspace.chunk_do.data() + (b + 1) * N_this;
+
+        const double* g0 = workspace.chunk_dg.data() + b * N_this;
+        const double* g1 = workspace.chunk_dg.data() + (b + 1) * N_this;
+
+        double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+        double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
+
+        simd::gemm_two_batches(f0, f1, _f_w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_two_batches(i0, i1, _i_w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_two_batches(o0, o1, _o_w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_two_batches(g0, g1, _w_values_T.data(), y0, y1, N_this, N_prev);
+      }
+
+      for (; b < batch_size_chunk; ++b)
+      {
+        const double* f = workspace.chunk_df.data() + b * N_this;
+        const double* i = workspace.chunk_di.data() + b * N_this;
+        const double* o = workspace.chunk_do.data() + b * N_this;
+        const double* g = workspace.chunk_dg.data() + b * N_this;
+
+        double* y = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
+
+        simd::gemm_one_batch(f, _f_w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_one_batch(i, _i_w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_one_batch(o, _o_w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_one_batch(g, _w_values_T.data(), y, N_this, N_prev);
+      }
     }
   }
 

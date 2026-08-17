@@ -251,6 +251,30 @@ public:
     size_t batch_size,
     int bptt_max_ticks) override;
 
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    unsigned prev_layer_index,
+    size_t num_inputs,
+    size_t num_outputs,
+    size_t num_time_steps,
+    int t_start,
+    int t_end,
+    std::vector<double>& local_w_grads,
+    std::vector<double>& local_rw_grads,
+    std::vector<double>& local_f_w_grads,
+    std::vector<double>& local_f_rw_grads,
+    std::vector<double>& local_i_w_grads,
+    std::vector<double>& local_i_rw_grads,
+    std::vector<double>& local_o_w_grads,
+    std::vector<double>& local_o_rw_grads,
+    std::vector<double>& local_b_grads,
+    std::vector<double>& local_f_b_grads,
+    std::vector<double>& local_i_b_grads,
+    std::vector<double>& local_o_b_grads) const;
+
   [[nodiscard]] double get_gradient_norm_sq() const override;
 
   void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) override;
@@ -1052,19 +1076,6 @@ private:
     AlignedVector chunk_di;
     AlignedVector chunk_do;
     AlignedVector chunk_dg;
-    AlignedVector f_vals;
-    AlignedVector i_vals;
-    AlignedVector o_vals;
-    AlignedVector g_vals;
-    AlignedVector c_vals;
-    AlignedVector c_prev_vals;
-    AlignedVector tanh_c_vals;
-
-    // For Tiling
-    AlignedVector temp_Uf_T_df;
-    AlignedVector temp_Ui_T_di;
-    AlignedVector temp_Uo_T_do;
-    AlignedVector temp_Ug_T_dg;
     AlignedVector dh_curr;
     AlignedVector dc_act_deriv;
     AlignedVector dg_act_deriv;
@@ -1098,17 +1109,6 @@ private:
       chunk_di.resize_and_zero(batch_chunk_size * n);
       chunk_do.resize_and_zero(batch_chunk_size * n);
       chunk_dg.resize_and_zero(batch_chunk_size * n);
-      f_vals.resize_and_zero(batch_chunk_size * n);
-      i_vals.resize_and_zero(batch_chunk_size * n);
-      o_vals.resize_and_zero(batch_chunk_size * n);
-      g_vals.resize_and_zero(batch_chunk_size * n);
-      c_vals.resize_and_zero(batch_chunk_size * n);
-      c_prev_vals.resize_and_zero(batch_chunk_size * n);
-      tanh_c_vals.resize_and_zero(batch_chunk_size * n);
-      temp_Uf_T_df.resize_and_zero(batch_chunk_size * n);
-      temp_Ui_T_di.resize_and_zero(batch_chunk_size * n);
-      temp_Uo_T_do.resize_and_zero(batch_chunk_size * n);
-      temp_Ug_T_dg.resize_and_zero(batch_chunk_size * n);
       dh_curr.resize_and_zero(batch_chunk_size * n);
       dc_act_deriv.resize_and_zero(batch_chunk_size * n);
       dg_act_deriv.resize_and_zero(batch_chunk_size * n);

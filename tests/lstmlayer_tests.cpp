@@ -1083,6 +1083,314 @@ TEST_F(LSTMLayerTest, NoBatchCrossTalkLayerNormTraining)
   assert_no_lstm_batch_cross_talk(2, 3, 7, 3, 3, true, true);
 }
 
+TEST_F(LSTMLayerTest, CalculateAndStoreGradientsVariousTopologiesMathematicalProof)
+{
+  const unsigned num_inputs = 7;
+  const unsigned num_outputs = 5;
+  const size_t batch_size = 3;
+  const size_t num_time_steps = 3;
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  std::vector<std::vector<double>> inputs_data(batch_size * num_time_steps, std::vector<double>(num_inputs));
+  std::vector<std::vector<double>> df_data(batch_size * num_time_steps, std::vector<double>(num_outputs));
+  std::vector<std::vector<double>> di_data(batch_size * num_time_steps, std::vector<double>(num_outputs));
+  std::vector<std::vector<double>> do_data(batch_size * num_time_steps, std::vector<double>(num_outputs));
+  std::vector<std::vector<double>> dg_data(batch_size * num_time_steps, std::vector<double>(num_outputs));
+  std::vector<std::vector<double>> prev_h_data(batch_size * num_time_steps, std::vector<double>(num_outputs));
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> rnn_inputs;
+    std::vector<double> rnn_gate_grads;
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const size_t idx = b * num_time_steps + t;
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        inputs_data[idx][i] = std::sin(static_cast<double>(b + 1) * 2.3 + static_cast<double>(t + 1) * 1.7 + static_cast<double>(i + 1) * 0.9);
+        rnn_inputs.push_back(inputs_data[idx][i]);
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        df_data[idx][j] = std::cos(static_cast<double>(b + 1) * 1.1 + static_cast<double>(t + 1) * 0.7 + static_cast<double>(j + 1) * 1.3);
+        di_data[idx][j] = std::sin(static_cast<double>(b + 1) * 0.8 + static_cast<double>(t + 1) * 1.4 + static_cast<double>(j + 1) * 0.5);
+        do_data[idx][j] = std::cos(static_cast<double>(b + 1) * 1.5 + static_cast<double>(t + 1) * 0.9 + static_cast<double>(j + 1) * 1.1);
+        dg_data[idx][j] = std::sin(static_cast<double>(b + 1) * 1.2 + static_cast<double>(t + 1) * 1.3 + static_cast<double>(j + 1) * 0.8);
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        rnn_gate_grads.push_back(df_data[idx][j]);
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        rnn_gate_grads.push_back(di_data[idx][j]);
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        rnn_gate_grads.push_back(do_data[idx][j]);
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        rnn_gate_grads.push_back(dg_data[idx][j]);
+      }
+
+      std::vector<double> hidden_vals(num_outputs);
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        hidden_vals[j] = std::tanh(static_cast<double>(b + 1) * 0.4 + static_cast<double>(t + 1) * 0.6 + static_cast<double>(j + 1) * 0.2);
+      }
+      batch_hs[b].at(1)[t].set_hidden_state_values(hidden_vals);
+
+      if (t > 0)
+      {
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+          prev_h_data[idx][j] = batch_hs[b].at(1)[t - 1].get_hidden_state_values()[j];
+        }
+      }
+    }
+    batch_go[b].set_rnn_outputs(0, rnn_inputs);
+    batch_go[b].set_rnn_gate_gradients(1, rnn_gate_grads);
+  }
+
+  MockLayer prev_layer(0, num_inputs);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  std::vector<double> expected_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> expected_f_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> expected_i_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> expected_o_w_grads(num_inputs * num_outputs, 0.0);
+
+  std::vector<double> expected_rw_grads(num_outputs * num_outputs, 0.0);
+  std::vector<double> expected_f_rw_grads(num_outputs * num_outputs, 0.0);
+  std::vector<double> expected_i_rw_grads(num_outputs * num_outputs, 0.0);
+  std::vector<double> expected_o_rw_grads(num_outputs * num_outputs, 0.0);
+
+  std::vector<double> expected_b_grads(num_outputs, 0.0);
+  std::vector<double> expected_f_b_grads(num_outputs, 0.0);
+  std::vector<double> expected_i_b_grads(num_outputs, 0.0);
+  std::vector<double> expected_o_b_grads(num_outputs, 0.0);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const size_t idx = b * num_time_steps + t;
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+          const double x_val = inputs_data[idx][i];
+          expected_f_w_grads[i * num_outputs + j] += x_val * df_data[idx][j];
+          expected_i_w_grads[i * num_outputs + j] += x_val * di_data[idx][j];
+          expected_o_w_grads[i * num_outputs + j] += x_val * do_data[idx][j];
+          expected_w_grads[i * num_outputs + j]   += x_val * dg_data[idx][j];
+        }
+      }
+      if (t > 0)
+      {
+        for (size_t k = 0; k < num_outputs; ++k)
+        {
+          const double hp = prev_h_data[idx][k];
+          for (size_t j = 0; j < num_outputs; ++j)
+          {
+            expected_f_rw_grads[k * num_outputs + j] += hp * df_data[idx][j];
+            expected_i_rw_grads[k * num_outputs + j] += hp * di_data[idx][j];
+            expected_o_rw_grads[k * num_outputs + j] += hp * do_data[idx][j];
+            expected_rw_grads[k * num_outputs + j]   += hp * dg_data[idx][j];
+          }
+        }
+      }
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        expected_f_b_grads[j] += df_data[idx][j];
+        expected_i_b_grads[j] += di_data[idx][j];
+        expected_o_b_grads[j] += do_data[idx][j];
+        expected_b_grads[j]   += dg_data[idx][j];
+      }
+    }
+  }
+
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
+  for (size_t m = 0; m < expected_w_grads.size(); ++m)
+  {
+    expected_w_grads[m] *= inv_batch;
+    expected_f_w_grads[m] *= inv_batch;
+    expected_i_w_grads[m] *= inv_batch;
+    expected_o_w_grads[m] *= inv_batch;
+  }
+  for (size_t m = 0; m < expected_rw_grads.size(); ++m)
+  {
+    expected_rw_grads[m] *= inv_batch;
+    expected_f_rw_grads[m] *= inv_batch;
+    expected_i_rw_grads[m] *= inv_batch;
+    expected_o_rw_grads[m] *= inv_batch;
+  }
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    expected_b_grads[j] *= inv_batch;
+    expected_f_b_grads[j] *= inv_batch;
+    expected_i_b_grads[j] *= inv_batch;
+    expected_o_b_grads[j] *= inv_batch;
+  }
+
+  const auto& actual_w_grads = layer.get_w_grads();
+  const auto& actual_f_w_grads = layer.get_f_w_grads();
+  const auto& actual_i_w_grads = layer.get_i_w_grads();
+  const auto& actual_o_w_grads = layer.get_o_w_grads();
+
+  const auto& actual_rw_grads = layer.get_rw_grads();
+  const auto& actual_f_rw_grads = layer.get_f_rw_grads();
+  const auto& actual_i_rw_grads = layer.get_i_rw_grads();
+  const auto& actual_o_rw_grads = layer.get_o_rw_grads();
+
+  const auto& actual_b_grads = layer.get_b_grads();
+  const auto& actual_f_b_grads = layer.get_f_b_grads();
+  const auto& actual_i_b_grads = layer.get_i_b_grads();
+  const auto& actual_o_b_grads = layer.get_o_b_grads();
+
+  for (size_t m = 0; m < expected_w_grads.size(); ++m)
+  {
+    EXPECT_NEAR(actual_w_grads[m], expected_w_grads[m], 1e-12);
+    EXPECT_NEAR(actual_f_w_grads[m], expected_f_w_grads[m], 1e-12);
+    EXPECT_NEAR(actual_i_w_grads[m], expected_i_w_grads[m], 1e-12);
+    EXPECT_NEAR(actual_o_w_grads[m], expected_o_w_grads[m], 1e-12);
+  }
+
+  for (size_t m = 0; m < expected_rw_grads.size(); ++m)
+  {
+    EXPECT_NEAR(actual_rw_grads[m], expected_rw_grads[m], 1e-12);
+    EXPECT_NEAR(actual_f_rw_grads[m], expected_f_rw_grads[m], 1e-12);
+    EXPECT_NEAR(actual_i_rw_grads[m], expected_i_rw_grads[m], 1e-12);
+    EXPECT_NEAR(actual_o_rw_grads[m], expected_o_rw_grads[m], 1e-12);
+  }
+
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    EXPECT_NEAR(actual_b_grads[j], expected_b_grads[j], 1e-12);
+    EXPECT_NEAR(actual_f_b_grads[j], expected_f_b_grads[j], 1e-12);
+    EXPECT_NEAR(actual_i_b_grads[j], expected_i_b_grads[j], 1e-12);
+    EXPECT_NEAR(actual_o_b_grads[j], expected_o_b_grads[j], 1e-12);
+  }
+}
+
+TEST_F(LSTMLayerTest, CalculateAndStoreGradientsSingleStepEquivalence)
+{
+  const unsigned num_inputs = 4;
+  const unsigned num_outputs = 4;
+  const size_t batch_size = 2;
+  const size_t num_time_steps = 1;
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go[b].set_rnn_outputs(0, { 1.0, 0.5, -0.5, 0.25 });
+    batch_go[b].set_rnn_gate_gradients(1, {
+      0.1, 0.2, 0.3, 0.4, // df
+      0.2, 0.3, 0.4, 0.5, // di
+      0.3, 0.4, 0.5, 0.6, // do
+      0.4, 0.5, 0.6, 0.7  // dg
+    });
+  }
+
+  MockLayer prev_layer(0, num_inputs);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  // Recurrent weight gradients must be exactly 0 since t=0 has no previous hidden state
+  for (double rw_g : layer.get_rw_grads())
+  {
+    EXPECT_DOUBLE_EQ(rw_g, 0.0);
+  }
+  for (double f_rw_g : layer.get_f_rw_grads())
+  {
+    EXPECT_DOUBLE_EQ(f_rw_g, 0.0);
+  }
+  for (double i_rw_g : layer.get_i_rw_grads())
+  {
+    EXPECT_DOUBLE_EQ(i_rw_g, 0.0);
+  }
+  for (double o_rw_g : layer.get_o_rw_grads())
+  {
+    EXPECT_DOUBLE_EQ(o_rw_g, 0.0);
+  }
+
+  // Input weights and biases must be non-zero
+  EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
+}
+
+TEST_F(LSTMLayerTest, CalculateAndStoreGradientsBpttMaxTicksTruncation)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 1;
+  const size_t num_time_steps = 4;
+  const int bptt_max_ticks = 2; // only t=2 and t=3 should be accumulated
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  // Set sequence of distinct inputs
+  std::vector<double> rnn_inputs = {
+    1.0, 1.0,  // t=0
+    2.0, 2.0,  // t=1
+    4.0, 4.0,  // t=2
+    8.0, 8.0   // t=3
+  };
+  batch_go[0].set_rnn_outputs(0, rnn_inputs);
+
+  // Set distinct gate gradients (df, di, do, dg = 1.0 everywhere)
+  std::vector<double> rnn_gate_grads(num_time_steps * LSTMLayer::GateCount * num_outputs, 1.0);
+  batch_go[0].set_rnn_gate_gradients(1, rnn_gate_grads);
+
+  // Set distinct hidden states
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    batch_hs[0].at(1)[t].set_hidden_state_values({ static_cast<double>(t + 1), static_cast<double>(t + 1) });
+  }
+
+  MockLayer prev_layer(0, num_inputs);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, bptt_max_ticks);
+
+  // For bptt_max_ticks=2 (t=3 and t=2):
+  // Bias gradient: 1.0 (at t=3) + 1.0 (at t=2) = 2.0
+  for (double b_g : layer.get_b_grads())
+  {
+    EXPECT_NEAR(b_g, 2.0, 1e-12);
+  }
+  for (double f_b_g : layer.get_f_b_grads())
+  {
+    EXPECT_NEAR(f_b_g, 2.0, 1e-12);
+  }
+
+  // Input weight gradient for x_0:
+  // t=3: 8.0 * 1.0 = 8.0
+  // t=2: 4.0 * 1.0 = 4.0
+  // total = 12.0
+  EXPECT_NEAR(layer.get_w_grads()[0], 12.0, 1e-12);
+  EXPECT_NEAR(layer.get_f_w_grads()[0], 12.0, 1e-12);
+
+  // Recurrent weight gradient for h_prev_0:
+  // t=3: h_prev (t=2) = 3.0 * 1.0 = 3.0
+  // t=2: h_prev (t=1) = 2.0 * 1.0 = 2.0
+  // total = 5.0
+  EXPECT_NEAR(layer.get_rw_grads()[0], 5.0, 1e-12);
+  EXPECT_NEAR(layer.get_f_rw_grads()[0], 5.0, 1e-12);
+}
+
 
 
 
