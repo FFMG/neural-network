@@ -188,11 +188,11 @@ public:
   [[nodiscard]] inline const TrainingMonitor& training_monitor(unsigned output_layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    if (output_layer >= _training_monitors.size())
+    if (output_layer >= _training_monitors->size())
     {
       Logger::panic("Output layer index is out of bounds for the training monitors.");
     }
-    return _training_monitors[output_layer];
+    return (*_training_monitors)[output_layer];
   }
 
   /**
@@ -204,11 +204,11 @@ public:
   [[nodiscard]] inline TrainingMonitor& training_monitor(unsigned output_layer)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-    if (output_layer >= _training_monitors.size())
+    if (output_layer >= _training_monitors->size())
     {
       Logger::panic("Output layer index is out of bounds for the training monitors.");
     }
-    return _training_monitors[output_layer];
+    return (*_training_monitors)[output_layer];
   }
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
@@ -313,7 +313,7 @@ private:
   std::shared_ptr<std::vector<size_t>> _training_indexes;
   std::shared_ptr<std::vector<size_t>> _checking_indexes;
   std::shared_ptr<std::vector<size_t>> _final_check_indexes;
-  std::vector<TrainingMonitor> _training_monitors;
+  std::shared_ptr<std::vector<TrainingMonitor>> _training_monitors;
   double _duration_ms;
   std::chrono::steady_clock::time_point _last_epoch_time;
   std::vector<double> _epoch_durations;
