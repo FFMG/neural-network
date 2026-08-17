@@ -2,6 +2,26 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.27] - 2026-08-17
+
+### Changed
+- Optimized `LSTMLayer` and BPTT execution pipeline:
+  - Streamlined `LSTMLayer::BPTTWorkspace` in `include/neuralnetwork/layers/lstmlayer.h` by eliminating 11 unused and redundant vector allocations (`temp_Uf_T_df`, `temp_Ui_T_di`, `temp_Uo_T_do`, `temp_Ug_T_dg`, `c_prev_vals`, `i_vals`, `o_vals`, `f_vals`, `g_vals`, `c_vals`, `tanh_c_vals`), cutting dynamic memory churn and zeroing overhead per BPTT pass.
+  - Eliminated intermediate buffer gathering in `LSTMLayer::calculate_bptt_batch_chunk`, evaluating activation derivatives directly in-place from cached hidden states without copying.
+  - Skipped redundant transposed recurrent GEMM calculations (`run_recurrent_gemm_backward`) at the final BPTT timestep ($t == t_{end}$), saving 4 matrix-vector products per batch item.
+  - Guarded input weight backward GEMM passes with `if (N_prev > 0)` to skip unnecessary matrix math for input-less configurations.
+  - Implemented `LSTMLayer::calculate_and_store_gradients_chunk` with truncated timestep bounds ($t_{start}$ down to $t_{end}$) governed by `bptt_max_ticks`, eliminating outer product and bias gradient calculation outside the truncated BPTT window.
+  - Replaced thread pool inline lambdas with the named functor `LstmGradCalcTask` in `LSTMLayer::calculate_and_store_gradients`.
+- Optimized `simd::lstm_cell_step` in `include/neuralnetwork/common/simd_utils.h`:
+  - Added 8-double dual `__m256d` AVX2 + FMA loop unrolling to maximize execution port saturation during LSTM forward cell state updates.
+
+### Added
+- Added unit test `SimdUtilsTest.LstmCellStepLargeVector` in `tests/simd_utils_tests.cpp` validating 8-wide AVX2 unrolling, 4-wide path, and scalar tail.
+- Added unit tests in `tests/lstmlayer_tests.cpp`:
+  - `LSTMLayerTest.CalculateAndStoreGradientsVariousTopologiesMathematicalProof`: analytically verifies gradient accumulation for all 4 gates ($W_f, W_i, W_o, W_g$, $RW_f, RW_i, RW_o, RW_g$, $b_f, b_i, b_o, b_g$) across asymmetric topologies ($10^{-12}$ precision).
+  - `LSTMLayerTest.CalculateAndStoreGradientsSingleStepEquivalence`: verifies single-step gradient accumulation and asserts zero recurrent gradient leakage at $t = 0$.
+  - `LSTMLayerTest.CalculateAndStoreGradientsBpttMaxTicksTruncation`: validates that gradient accumulation correctly respects `bptt_max_ticks` truncation.
+
 ## [1.1.26] - 2026-08-17
 
 ### Changed

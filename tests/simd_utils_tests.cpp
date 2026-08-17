@@ -1573,7 +1573,8 @@ TEST(SimdUtilsTest, GruOutputStepLargeVector)
   expect_vec_near(actual_seq, expected);
 }
 
-TEST(SimdUtilsTest, LstmCellStep) {
+TEST(SimdUtilsTest, LstmCellStep)
+{
   std::vector<double> f = { 0.9, 0.8, 0.7, 0.6, 0.5 };
   std::vector<double> i = { 0.1, 0.2, 0.3, 0.4, 0.5 };
   std::vector<double> g_act = { 1.5, -1.5, 2.5, -2.5, 3.5 };
@@ -1585,6 +1586,28 @@ TEST(SimdUtilsTest, LstmCellStep) {
   }
 
   simd::lstm_cell_step(f.data(), i.data(), g_act.data(), current_c.data(), f.size());
+
+  expect_vec_near(current_c, expected);
+}
+
+TEST(SimdUtilsTest, LstmCellStepLargeVector)
+{
+  const size_t n = 23;
+  std::vector<double> f(n);
+  std::vector<double> i(n);
+  std::vector<double> g_act(n);
+  std::vector<double> current_c(n);
+  std::vector<double> expected(n);
+  for (size_t j = 0; j < n; ++j)
+  {
+    f[j] = 0.9 - 0.02 * static_cast<double>(j);
+    i[j] = 0.1 + 0.03 * static_cast<double>(j);
+    g_act[j] = -1.2 + 0.15 * static_cast<double>(j);
+    current_c[j] = 0.5 + 0.25 * static_cast<double>(j);
+    expected[j] = f[j] * current_c[j] + i[j] * g_act[j];
+  }
+
+  simd::lstm_cell_step(f.data(), i.data(), g_act.data(), current_c.data(), n);
 
   expect_vec_near(current_c, expected);
 }

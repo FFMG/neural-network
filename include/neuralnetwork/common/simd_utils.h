@@ -3467,6 +3467,27 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t j = 0;
 #ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vec_f0 = _mm256_loadu_pd(f + j);
+      __m256d vec_f1 = _mm256_loadu_pd(f + j + 4);
+      __m256d vec_i0 = _mm256_loadu_pd(i + j);
+      __m256d vec_i1 = _mm256_loadu_pd(i + j + 4);
+      __m256d vec_g0 = _mm256_loadu_pd(g_act + j);
+      __m256d vec_g1 = _mm256_loadu_pd(g_act + j + 4);
+      __m256d vec_c0 = _mm256_loadu_pd(current_c + j);
+      __m256d vec_c1 = _mm256_loadu_pd(current_c + j + 4);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d vec_res0 = _mm256_fmadd_pd(vec_f0, vec_c0, _mm256_mul_pd(vec_i0, vec_g0));
+      __m256d vec_res1 = _mm256_fmadd_pd(vec_f1, vec_c1, _mm256_mul_pd(vec_i1, vec_g1));
+#else
+      __m256d vec_res0 = _mm256_add_pd(_mm256_mul_pd(vec_f0, vec_c0), _mm256_mul_pd(vec_i0, vec_g0));
+      __m256d vec_res1 = _mm256_add_pd(_mm256_mul_pd(vec_f1, vec_c1), _mm256_mul_pd(vec_i1, vec_g1));
+#endif
+      _mm256_storeu_pd(current_c + j, vec_res0);
+      _mm256_storeu_pd(current_c + j + 4, vec_res1);
+    }
     for (; j + 3 < n; j += 4)
     {
       __m256d vec_f = _mm256_loadu_pd(f + j);
