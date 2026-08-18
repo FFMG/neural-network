@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -801,6 +801,8 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_selfattentionlayer(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
   auto neurons = get_neurons(layer_object, layer_index, seed);
 
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
+
   auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
   if (optimiser_type_string == nullptr)
   {
@@ -956,10 +958,13 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_selfattentionlayer(
 
   double momentum = layer_object.get_or<double>("momentum", 0.0);
 
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
+
   auto layer = std::make_unique<SelfAttentionLayer>(
     layer_index,
     layer_role,
     optimiser_type,
+    residual_layer_number,
     num_neurons,
     number_of_heads,
     feed_forward_hidden_size,
@@ -982,6 +987,7 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_selfattentionlayer(
     ln1_bias_values, ln1_bias_grads, ln1_bias_velocities, ln1_bias_m1, ln1_bias_m2, ln1_bias_timesteps, ln1_bias_decays,
     ln2_gain_values, ln2_gain_grads, ln2_gain_velocities, ln2_gain_m1, ln2_gain_m2, ln2_gain_timesteps, ln2_gain_decays,
     ln2_bias_values, ln2_bias_grads, ln2_bias_velocities, ln2_bias_m1, ln2_bias_m2, ln2_bias_timesteps, ln2_bias_decays,
+    residual_projector.get(),
     number_of_threads,
     lah,
     momentum
@@ -2273,8 +2279,9 @@ void NeuralNetworkSerializer::add_selfattentionlayer(const SelfAttentionLayer& l
     layer_array->add(neuron_object);
     delete neuron_object;
   }
-  layer_object->set_string("layer-name", "selfattentionlayer");
+    layer_object->set_string("layer-name", "selfattentionlayer");
   layer_object->set("neurons", layer_array);
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
   layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
   add_activation_helper(layer, *layer_object);
   layer_object->set_number("layer-role", (int)layer.get_layer_role());
@@ -2416,7 +2423,16 @@ void NeuralNetworkSerializer::add_selfattentionlayer(const SelfAttentionLayer& l
   set_floats(layer_object, "ln2-bias-m1", layer.get_ln2_bias_m1());
   set_floats(layer_object, "ln2-bias-m2", layer.get_ln2_bias_m2());
   layer_object->set_numbers("ln2-bias-timesteps", layer.get_ln2_bias_timesteps());
-  set_floats(layer_object, "ln2-bias-decays", layer.get_ln2_bias_decays());
+    set_floats(layer_object, "ln2-bias-decays", layer.get_ln2_bias_decays());
+
+  set_float(layer_object, "momentum", layer.get_momentum());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
 
   layers.add(layer_object);
   delete layer_array;
