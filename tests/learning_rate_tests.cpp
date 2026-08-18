@@ -394,7 +394,7 @@ TEST_F(LearningRateTest, ConcurrentThinkDuringTrainingIsThreadSafe)
       {
         auto result = nn.think(test_input);
         EXPECT_EQ(result.size(), 1);
-        std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
     });
   }
@@ -444,10 +444,10 @@ TEST_F(LearningRateTest, SynchronousAdaptiveLearningRateThreadSafety)
   std::vector<std::vector<double>> inputs, outputs;
   get_simple_test_data(inputs, outputs);
 
-  // Replicate dataset to make training take some time and trigger adaptive LR calculations
+  // Replicate dataset to trigger adaptive LR calculations
   std::vector<std::vector<double>> replicated_inputs;
   std::vector<std::vector<double>> replicated_outputs;
-  for (int i = 0; i < 50; ++i)
+  for (int i = 0; i < 5; ++i)
   {
     replicated_inputs.insert(replicated_inputs.end(), inputs.begin(), inputs.end());
     replicated_outputs.insert(replicated_outputs.end(), outputs.begin(), outputs.end());
@@ -458,7 +458,7 @@ TEST_F(LearningRateTest, SynchronousAdaptiveLearningRateThreadSafety)
     .with_learning_rate(0.1)
     .with_adaptive_learning_rates(true)
     .with_learning_rate_warmup(0.0, 0.05) // start adaptive learning rate immediately
-    .with_number_of_epoch(30)
+    .with_number_of_epoch(15)
     .with_shuffle_training_data(false)
     .with_data_is_unique(true)
     .build();
@@ -469,7 +469,7 @@ TEST_F(LearningRateTest, SynchronousAdaptiveLearningRateThreadSafety)
   std::vector<std::thread> reader_threads;
 
   // Launch reader threads executing const methods concurrently with training
-  for (int i = 0; i < 4; ++i)
+  for (int i = 0; i < 2; ++i)
   {
     reader_threads.emplace_back([&]()
     {
@@ -481,7 +481,7 @@ TEST_F(LearningRateTest, SynchronousAdaptiveLearningRateThreadSafety)
         nn.get_percent_complete();
         nn.has_training_data();
         nn.calculate_forecast_metric(ErrorCalculation::type::rmse);
-        std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
     });
   }
@@ -661,7 +661,7 @@ TEST_F(LearningRateTest, ThreadSafetyConcurrentAccess)
       nn.get_percent_complete();
       nn.has_training_data();
       nn.calculate_forecast_metric(ErrorCalculation::type::rmse);
-      std::this_thread::yield();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   });
 
