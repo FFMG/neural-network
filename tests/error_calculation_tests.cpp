@@ -495,8 +495,8 @@ TEST_F(ErrorCalculationTest, ComplexArchitectureIntegration) {
   auto options = NeuralNetworkOptions::create({2, 3, 3, 1})
          .with_log_level(Logger::LogLevel::Information)
          .with_hidden_layers({
-           LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0),
-           LayerDetails(Layer::Architecture::Elman, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0)
+           LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0),
+           LayerDetails(Layer::Architecture::Elman, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0)
          })
          .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, config, 0.0, OptimiserType::None, 0.0))
          .build();
@@ -534,7 +534,7 @@ TEST_F(ErrorCalculationTest, MultiOutputArchitectureIntegration) {
   auto options = NeuralNetworkOptions::create({2, 5, 3}) // 3 outputs
          .with_log_level(Logger::LogLevel::Information)
          .with_hidden_layers({
-           LayerDetails(Layer::Architecture::FF, 5, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0)
+           LayerDetails(Layer::Architecture::FF, 5, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0)
          })
          .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, config, 0.0, OptimiserType::None, 0.0))
          .build();

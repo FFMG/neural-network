@@ -63,7 +63,7 @@ TEST(SwaTests, LayersAccumulateSwaAveragePropagatesAcrossLayers)
   // Layers::accumulate_swa_average folds a snapshot into every layer, not
   // just the first one.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0)
+    LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
     .with_hidden_layers(hidden_layers)

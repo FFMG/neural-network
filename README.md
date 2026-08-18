@@ -113,6 +113,8 @@ The hidden layer configuration allows you to define the architecture of your net
   * `Gru`: Gated recurrent unit layer.
   * `Lstm`: Long Short-Term Memory layer.
   * `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
+  * `Tcn`: Dilated causal 1D convolution ("Temporal Convolutional Network" block) over a window of preceding timesteps (see "TCN" below).
+  * `SelfAttention`: Multi-head causal self-attention plus a position-wise feed-forward sub-block (see "Self-Attention" below).
 * **Layer size:** Number of neurons in the hidden layer.
 * **Activation:** The activation object (method, alpha, and temperature).
 * **Weight Decay:** Regularization strength.
@@ -122,10 +124,10 @@ The hidden layer configuration allows you to define the architecture of your net
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false),
-      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false),
-      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.2, 0.05, OptimiserType::AdamW, 0.95, false),
-      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false),
+      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.2, 0.05, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -149,7 +151,7 @@ Multi Output Layers allow the network to split from a central trunk into multipl
     // Branch 1: Shallow path, 2 outputs
     MultiOutputLayerDetails b1
     (
-      { LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false) },
+      { LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0) },
       OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b1);
@@ -158,15 +160,15 @@ Multi Output Layers allow the network to split from a central trunk into multipl
     MultiOutputLayerDetails b2
     (
       {
-        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false),
-        LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false)
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0),
+        LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0)
       },
       OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b2);
 
     auto options = NeuralNetworkOptions::create(topology)
-      .with_hidden_layers({ LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false) })
+      .with_hidden_layers({ LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0) })
       .with_output_layer_details(multi_output_layer_details)
       .build();
 ```
@@ -236,7 +238,7 @@ The library supports various strategies to manage learning rate dynamics:
 Individual layers can have dropout applied via `LayerDetails`. During training, neurons are randomly deactivated according to the dropout rate, and the remaining activations are scaled by `1 / (1 - rate)` to maintain the expected sum. Dropout is automatically disabled during inference (`think`).
 
 ```cpp
-    LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25, 0.0, OptimiserType::None, 0.0, false); // 25% dropout
+    LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0); // 25% dropout
 ```
 
 ### Reproducibility (Seed)
@@ -258,7 +260,7 @@ The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the
 `Gru` and `Lstm` hidden layers can opt into recurrent-state Layer Normalization via the trailing `use_layer_normalisation` flag on `LayerDetails` (`false` when disabled, `true` when enabled). It normalizes the state each layer actually carries across timesteps — the blended hidden state for `Gru`, the cell state for `Lstm` — with its own learnable per-neuron gain (initialized to `1.0`) and bias (initialized to `0.0`), targeting the unstable activation scale that recurrent nets can build up over a long BPTT window. It is not available on `FF`/`Elman` layers. The flag, like the rest of a hidden layer's configuration, is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.
 
 ```cpp
-    LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true); // Layer Normalisation enabled
+    LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0); // Layer Normalisation enabled
 ```
 
 ### Attention Pooling
@@ -275,8 +277,8 @@ Recurrent layers (`Gru`/`Lstm`/`Elman`) compress a whole BPTT window into a sing
 
 ```cpp
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0),
-      LayerDetails(Layer::Architecture::AttentionPool, 32, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 16), // 16-wide attention scoring projection
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::AttentionPool, 32, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 16, 0, 0, 0, 0), // 16-wide attention scoring projection
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -289,6 +291,64 @@ Recurrent layers (`Gru`/`Lstm`/`Elman`) compress a whole BPTT window into a sing
 The layer's own trained weights (the scoring projection and scoring vector) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `attention_hidden_size` configuration.
 
 **Known limitation:** because `AttentionPool`'s own backward pass has to fully chain-rule its attention math itself (rather than a simple weight-matrix multiply), it relies on the same "direct gradient injection" mechanism already used for recurrent-layer stacking. When the layer directly above `AttentionPool` (typically the output layer) also uses that mechanism, gradient flow through it is affected by the same pre-existing identity-proxy limitation described in the [1.1.21] Known Issues — matching the layer-size requirement above (`layer.size` equal to the preceding recurrent layer's hidden size) keeps this shape-compatible enough for gradients to flow, but this is inherited scope, not fixed by this feature.
+
+### TCN
+
+A `Tcn` hidden layer applies a dilated causal 1D convolution: for every output timestep `t` it gathers the `kernel_size` dilated input taps `{X[t - j*dilation] : j = 0..kernel_size-1}` (zero-padded where `t - j*dilation < 0`) into one flat vector and applies a single dense affine map + activation — letting the network look at a whole window of past ticks at once through widening receptive fields, rather than threading a single compressed hidden state forward the way `Elman`/`Gru`/`Lstm` do. It is always strictly causal (it never looks ahead) with no configuration flag to disable this. Unlike `AttentionPool`, a `Tcn` layer may follow any preceding layer type — including being the very first hidden layer — and may change channel width between its input and output. Stacking a dilation schedule (e.g. `1, 2, 4, 8`) is done the same way `Gru`/`Lstm` layers are already stacked: add multiple `Tcn` entries to `hidden_layers`, each with a different `dilation`.
+
+`Tcn` layers have some structural constraints, all enforced (panic on violation) by `Layer::create_hidden_layer` or `NeuralNetworkOptions::build()`:
+*   `kernel_size` must be non-zero.
+*   `dilation` must be non-zero.
+*   `use_layer_normalisation` must be `false` (not supported).
+*   Requires `with_enable_bptt(true)`.
+*   The layer's receptive field (`1 + (kernel_size - 1) * dilation`) must not exceed `bptt_max_ticks`.
+
+Unlike `AttentionPool`, a `Tcn` layer accepts the library's existing external residual-connection mechanism (`with_residual_layer_jump`) — a jump of `1` gives the classic per-block TCN skip connection.
+
+```cpp
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 1, 0, 0), // kernel_size=3, dilation=1
+      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 2, 0, 0), // kernel_size=3, dilation=2
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_hidden_layers(hidden_layers)
+      .with_residual_layer_jump(1)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(24)
+      .build();
+```
+
+The layer's own trained weights (reusing the same dense weight/bias arrays every hidden layer already has) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `kernel_size`/`dilation` configuration.
+
+### Self-Attention
+
+A `SelfAttentionLayer` hidden layer (`Layer::Architecture::SelfAttention`) is a small Transformer encoder block: it adds a fixed (non-learned) sinusoidal positional encoding to the preceding layer's T-timestep window, computes Q/K/V projections, runs causally-masked scaled dot-product attention independently per head, projects the concatenated heads back to width, adds that as a residual (optionally through LayerNorm), runs a position-wise feed-forward sub-block, and adds *that* as a second residual (optionally through a second LayerNorm). These two residuals are internal to the block's own math and always on - they are unrelated to the external `residual_layer_number`/`residual_projector` mechanism (also supported here, forwarded to the base class exactly like `FF`/`Gru`/`Lstm`/`Tcn`).
+
+`SelfAttention` layers have some structural constraints, all enforced (panic on violation) by `Layer::create_hidden_layer` or `NeuralNetworkOptions::build()`:
+*   `number_of_heads` must be non-zero and must evenly divide `LayerDetails`' `size`.
+*   `feed_forward_hidden_size` must be non-zero.
+*   `LayerDetails`' `size` must equal the size of the layer it attends over (no dimension-changing projection in v1).
+*   `use_layer_normalisation` IS supported (deliberate divergence from `AttentionPool`, which forbids it) - it controls the two internal LayerNorms described above.
+*   Requires `with_enable_bptt(true)` and `bptt_max_ticks() > 1`.
+
+Unlike `AttentionPool`, a `SelfAttention` layer has no previous-architecture restriction - it may be the very first hidden layer, or follow anything.
+
+```cpp
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(Layer::Architecture::SelfAttention, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0, 4, 64), // 4 heads, feed_forward_hidden_size=64, LayerNorm enabled
+    };
+
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_hidden_layers(hidden_layers)
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(24)
+      .build();
+```
+
+The layer's own trained weights (Q/K/V/output projections, the feed-forward sub-block's two dense layers, and - when enabled - both LayerNorms' gain/bias) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `number_of_heads`/`feed_forward_hidden_size` configuration.
+
+**Known limitation:** unlike every other layer in this library, `SelfAttention`'s per-batch-item scratch (the per-head attention-score matrix) scales `O(T^2)` in the window length `T`, not linearly - budget `bptt_max_ticks` accordingly for this layer type.
 
 ### Stochastic Weight Averaging (SWA)
 

@@ -63,6 +63,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `Lstm`: Long Short-Term Memory (LSTM) layer.
     *   `MultiOutput`: Container for multiple parallel output layers.
     *   `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
+    *   `Tcn`: Dilated causal 1D convolution ("Temporal Convolutional Network" block) over a window of preceding timesteps (see "TCN" below).
+    *   `SelfAttention`: Multi-head causal self-attention plus a position-wise feed-forward sub-block (see "Self-Attention" below).
 *   `nn.LayerRole`: Structural role of a layer.
     *   `Input`: Network input layer.
     *   `Hidden`: Network hidden layer.
@@ -87,8 +89,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `EvaluationConfig(neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda, epsilon)`: Constructor.
     *   Properties: `neutral_tolerance`, `confidence_threshold`, `huber_delta`, `direction_lambda`, `use_direction_penalty`, `cross_entropy_lambda`, `epsilon` (all read-only).
 *   `nn.LayerDetails`: Specifications for configuring a hidden layer.
-    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is only valid for `Gru`/`Lstm` architectures. `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`.
-    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size` (all read-only).
+    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, and also for `SelfAttention` (see "Self-Attention" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`.
+    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size`, `kernel_size`, `dilation`, `number_of_heads`, `feed_forward_hidden_size` (all read-only).
 *   `nn.OutputLayerDetails`: Specifications for configuring the output layer.
     *   `OutputLayerDetails(size, activation, error_type, evaluation_config, weight_decay, optimiser_type, momentum)`: Constructor.
     *   Properties: `size`, `activation`, `output_error_calculation_type`, `error_evaluation_config`, `weight_decay`, `optimiser_type`, `momentum` (all read-only).
@@ -128,6 +130,30 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * `use_layer_normalisation` must be `False`.
 * `attention_hidden_size` must be non-zero (sets the internal scoring-projection width).
 * Requires `with_enable_bptt(True)`.
+
+### TCN
+
+`nn.LayerArchitecture.Tcn` applies a dilated causal 1D convolution over a window of preceding timesteps:
+* May follow any preceding layer type, including being the first hidden layer (unlike `AttentionPool`).
+* `kernel_size` and `dilation` must both be non-zero.
+* `use_layer_normalisation` must be `False`.
+* Always strictly causal - no configuration flag to disable this.
+* Requires `with_enable_bptt(True)`.
+* The receptive field (`1 + (kernel_size - 1) * dilation`) must not exceed `bptt_max_ticks`.
+
+### Self-Attention
+
+`nn.LayerArchitecture.SelfAttention` applies multi-head causal self-attention plus a position-wise feed-forward sub-block (a small Transformer encoder layer) over a window of preceding timesteps:
+* May follow any preceding layer type, including being the first hidden layer (unlike `AttentionPool`).
+* `LayerDetails`' `size` must equal the preceding layer's size (no dimension-changing projection in v1).
+* `number_of_heads` must be non-zero and must evenly divide `size`.
+* `feed_forward_hidden_size` must be non-zero.
+* `use_layer_normalisation` IS supported (unlike `AttentionPool`, which forbids it) - it controls two internal LayerNorms, one after the attention residual and one after the feed-forward residual.
+* These two residuals are always on and internal to the block's own math - they are separate from the external `residual_layer_jump` mechanism, which `SelfAttention` also accepts.
+* Uses a fixed (non-learned) sinusoidal positional encoding - no extra configuration or trainable weights.
+* Always strictly causal - no configuration flag to disable this.
+* Requires `with_enable_bptt(True)` and `bptt_max_ticks` greater than 1.
+* Per-batch-item memory/compute scales `O(T^2)` in the window length `T` (via the per-head attention-score matrix), unlike every other layer type here, which scales linearly in `T`.
 
 ### Examples
 
@@ -253,6 +279,8 @@ g++ -O3 -Wall -shared -std=c++17 -fPIC -I../include \
     ../include/neuralnetwork/layers/ffoutputlayer.cpp \
     ../include/neuralnetwork/layers/grurnnlayer.cpp \
     ../include/neuralnetwork/layers/lstmlayer.cpp \
+    ../include/neuralnetwork/layers/tcnlayer.cpp \
+    ../include/neuralnetwork/layers/selfattentionlayer.cpp \
     ../include/neuralnetwork/layers/layer.cpp \
     ../include/neuralnetwork/layers/layers.cpp \
     ../include/neuralnetwork/libraries/TinyJSON.cpp \

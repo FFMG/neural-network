@@ -315,30 +315,30 @@ TEST(LayerTest, LayersSetNumberOfThreads) {
 TEST(LayerTest, CreateHiddenLayerRejectsLayerNormOnFFAndElman) {
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails ff_with_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0);
+    LayerDetails ff_with_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0);
     EXPECT_THROW(Layer::create_hidden_layer(1, 3, ff_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
 
-    LayerDetails elman_with_ln(Layer::Architecture::Elman, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0);
+    LayerDetails elman_with_ln(Layer::Architecture::Elman, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0);
     EXPECT_THROW(Layer::create_hidden_layer(1, 3, elman_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
 
     // Same architectures without the flag are unaffected.
-    LayerDetails ff_without_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0);
+    LayerDetails ff_without_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
     EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, ff_without_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
 }
 
 TEST(LayerTest, CreateHiddenLayerAcceptsLayerNormOnGruAndLstm) {
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails gru_with_ln(Layer::Architecture::Gru, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0);
+    LayerDetails gru_with_ln(Layer::Architecture::Gru, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0);
     EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, gru_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
 
-    LayerDetails lstm_with_ln(Layer::Architecture::Lstm, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0);
+    LayerDetails lstm_with_ln(Layer::Architecture::Lstm, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0);
     EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, lstm_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
 }
 
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolOnNonRecurrentPrevious) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::FF, -1, nullptr, std::nullopt), std::runtime_error);
@@ -346,7 +346,7 @@ TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolOnNonRecurrentPrevious) {
 
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolOnElman) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Elman, -1, nullptr, std::nullopt), std::runtime_error);
 }
@@ -354,38 +354,147 @@ TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolOnElman) {
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolSizeMismatch) {
     activation act(activation::method::linear, 0.0);
     // previous (Gru) layer has 4 neurons, but the AttentionPool layer's own size is 5.
-    LayerDetails ld(Layer::Architecture::AttentionPool, 5, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 5, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Gru, -1, nullptr, std::nullopt), std::runtime_error);
 }
 
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolWithLayerNorm) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 8, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Gru, -1, nullptr, std::nullopt), std::runtime_error);
 }
 
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolZeroHiddenSize) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Lstm, -1, nullptr, std::nullopt), std::runtime_error);
 }
 
 TEST(LayerTest, CreateHiddenLayerRejectsAttentionPoolWithResidual) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8, 0, 0, 0, 0);
 
     EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Gru, 0, nullptr, std::nullopt), std::runtime_error);
 }
 
 TEST(LayerTest, CreateHiddenLayerAcceptsAttentionPoolAfterGruOrLstm) {
     activation act(activation::method::linear, 0.0);
-    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8);
+    LayerDetails ld(Layer::Architecture::AttentionPool, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 8, 0, 0, 0, 0);
 
     EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Gru, -1, nullptr, std::nullopt));
     EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Lstm, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsTcnZeroKernelSize) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 1, 0, 0);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsTcnZeroDilation) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 0, 0, 0);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsTcnWithLayerNorm) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 3, 1, 0, 0);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsTcnAsFirstHiddenLayer) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0);
+
+    // Unlike AttentionPool, Tcn has no previous-architecture restriction: it
+    // may be the very first hidden layer (previous_layer_architecture == None)
+    // or follow any architecture.
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsTcnAfterLstm) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0);
+
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Lstm, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsTcnWithResidual) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::Tcn, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0);
+
+    // Unlike AttentionPool, Tcn accepts the external residual mechanism.
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::FF, 0, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsTcnChangingChannelWidth) {
+    activation act(activation::method::linear, 0.0);
+    // Tcn's own size (6) need not match the preceding layer's size (4) -
+    // unlike AttentionPool, which enforces size preservation.
+    LayerDetails ld(Layer::Architecture::Tcn, 6, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0);
+
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::FF, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsSelfAttentionZeroNumberOfHeads) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::SelfAttention, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 8);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsSelfAttentionHeadsNotDividingSize) {
+    activation act(activation::method::linear, 0.0);
+    // size=5 is not evenly divisible by number_of_heads=2.
+    LayerDetails ld(Layer::Architecture::SelfAttention, 5, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 8);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 5, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsSelfAttentionZeroFeedForwardHiddenSize) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::SelfAttention, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 0);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsSelfAttentionSizeMismatch) {
+    activation act(activation::method::linear, 0.0);
+    // previous layer has 4 neurons, but SelfAttention's own size is 6.
+    LayerDetails ld(Layer::Architecture::SelfAttention, 6, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 8);
+
+    EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::FF, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsSelfAttentionAsFirstHiddenLayer) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::SelfAttention, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 8);
+
+    // Unlike AttentionPool, SelfAttention has no previous-architecture
+    // restriction: it may be the very first hidden layer.
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsSelfAttentionWithLayerNormalisation) {
+    activation act(activation::method::linear, 0.0);
+    // Deliberate divergence from AttentionPool, which panics on this flag.
+    LayerDetails ld(Layer::Architecture::SelfAttention, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 2, 8);
+
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::Lstm, -1, nullptr, std::nullopt));
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsSelfAttentionWithResidual) {
+    activation act(activation::method::linear, 0.0);
+    LayerDetails ld(Layer::Architecture::SelfAttention, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 8);
+
+    EXPECT_NO_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::FF, 0, nullptr, std::nullopt));
 }
 
 TEST(LayerTest, TempBufferCorrectness)
@@ -568,7 +677,7 @@ TEST(LayerTest, LayersTrainGradientClippingDisabledFastPath) {
 
 TEST(LayerTest, LayersTrainRecurrentSequenceBackprop) {
   auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
-    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99, false, 0) })
+    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99, false, 0, 0, 0, 0, 0) })
     .with_enable_bptt(true)
     .with_bptt_max_ticks(3)
     .build();
@@ -597,7 +706,7 @@ TEST(LayerTest, LayersTrainRecurrentSequenceBackprop) {
 
 TEST(LayerTest, LayerTypeIdentificationVirtuals) {
   auto elman_options = NeuralNetworkOptions::create({ 2, 4, 2 })
-    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99, false, 0) })
+    .with_hidden_layers({ LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::sigmoid, 0.01), 0.0, 0.05, OptimiserType::SGD, 0.99, false, 0, 0, 0, 0, 0) })
     .build();
   Layers elman_layers(elman_options);
 
@@ -830,8 +939,8 @@ TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerTest");
   // Build a multi-layer network with a recurrent layer preceding an output layer
-  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0);
-  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0);
+  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
 
   auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
     .with_hidden_layers({ ff_detail, elman_detail })
@@ -885,7 +994,7 @@ TEST(LayerTest, LayersTrainAsymmetricLayerSizesNoBufferOverflow)
 
   for (auto arch : architectures)
   {
-    LayerDetails hidden_detail(arch, 24, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0);
+    LayerDetails hidden_detail(arch, 24, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0);
     auto options = NeuralNetworkOptions::create({ 52, 24, 10 })
       .with_hidden_layers({ hidden_detail })
       .with_enable_bptt(true)
@@ -969,7 +1078,7 @@ TEST(LayerTest, LayersForwardFeedResidualLeakDoesNotContaminateNonResidualLayer)
     OptimiserType::None,
     0.0);
 
-  LayerDetails hidden_detail(Layer::Architecture::FF, width, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0);
+  LayerDetails hidden_detail(Layer::Architecture::FF, width, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0);
 
   auto options = NeuralNetworkOptions::create({ 2, width, width })
     .with_hidden_layers({ hidden_detail })
