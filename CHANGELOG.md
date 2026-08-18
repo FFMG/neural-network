@@ -2,6 +2,37 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.29] - 2026-08-18
+
+### Added
+- Implemented a multi-head causal self-attention hidden layer, a small Transformer encoder block (`SelfAttentionLayer` / `Layer::Architecture::SelfAttention`):
+  - Adds a fixed (non-learned) sinusoidal positional encoding, computes Q/K/V projections, runs causally-masked scaled dot-product attention independently per head, projects the concatenated heads back to width, adds it as an internal residual (optionally through LayerNorm), runs a position-wise feed-forward sub-block, and adds that as a second internal residual (optionally through a second LayerNorm).
+  - Always strictly causal, with no configuration flag to disable this.
+  - May follow any preceding hidden layer type, including being the first hidden layer (unlike `AttentionPool`).
+  - Unlike `AttentionPool`, `use_layer_normalisation` IS supported, and the layer accepts the existing external residual-connection mechanism (`residual_layer_number`/`residual_projector`) - distinct from its own always-on internal residuals.
+  - Added `number_of_heads` and `feed_forward_hidden_size` configuration to `LayerDetails`.
+  - Added eight new trainable weight families (Q/K/V/output projections, the feed-forward sub-block's two dense layers, and two LayerNorms' gain/bias), each with the full values/grads/velocities/m1/m2/timesteps/decays optimizer-state sextet.
+  - Added forward pass, full manual backpropagation (reusing `simd::layer_norm_forward`/`layer_norm_backward` and `simd::softmax_forward`/`softmax_backward`), gradient calculation, and weight optimization.
+  - Added placement/validation panics in `Layer::create_hidden_layer` (non-zero `number_of_heads` evenly dividing layer size, non-zero `feed_forward_hidden_size`, size must match the layer attended over) and in `NeuralNetworkOptions::build()` (requires `enable_bptt`, requires `bptt_max_ticks() > 1`).
+  - Added JSON serialization/deserialization for `SelfAttention` layer parameters and all sixteen weight families in `NeuralNetworkSerializer`.
+  - Exposed `Layer::Architecture::SelfAttention` and `number_of_heads`/`feed_forward_hidden_size` in Python bindings.
+- Added unit and integration tests covering forward/backward correctness (hand-derived causal-masking check and per-family numerical-gradient checks), placement validation, LayerNorm toggling, batch isolation, SWA averaging, cloning, serializer round-trips, and thread-count invariance in `tests/selfattentionlayer_tests.cpp`, `tests/selfattentionlayer_mt_tests.cpp`, `tests/layer_tests.cpp`, `tests/layer_details_tests.cpp`, and `tests/network_integration_tests.cpp`.
+
+## [1.1.28] - 2026-08-18
+
+### Added
+- Implemented a dilated causal 1D convolution ("Temporal Convolutional Network" block) hidden layer (`TcnLayer` / `Layer::Architecture::Tcn`):
+  - For each output timestep, gathers the `kernel_size` dilated input taps (zero-padded where out of range) into one flat vector and applies a single dense affine map + activation, reusing the base `Layer` weight/bias SoA arrays rather than a bespoke weight family.
+  - Always strictly causal, with no configuration flag to disable this.
+  - May follow any preceding hidden layer type, including being the first hidden layer (unlike `AttentionPool`), and may change channel width between input and output.
+  - Accepts the existing external residual-connection mechanism (`residual_layer_number`/`residual_projector`), unlike `AttentionPool`.
+  - Added `kernel_size` and `dilation` configuration to `LayerDetails`.
+  - Added forward pass (im2col-style dilated gather), analytic backpropagation (weight-matrix backward + scatter-add across dilated source timesteps), gradient calculation, and weight optimization, multithreaded by batch item via the layer's own `TaskQueuePool`.
+  - Added placement/validation panics in `Layer::create_hidden_layer` (non-zero `kernel_size`/`dilation`, no LayerNorm support) and in `NeuralNetworkOptions::build()` (requires `enable_bptt`, receptive field must not exceed `bptt_max_ticks`).
+  - Added JSON serialization/deserialization for `Tcn` layer parameters and trained weights in `NeuralNetworkSerializer`.
+  - Exposed `Layer::Architecture::Tcn` and `kernel_size`/`dilation` in Python bindings.
+- Added unit and integration tests covering forward/backward correctness (hand-computed and numerical-gradient checks), placement validation, residual support, batch isolation, SWA averaging, cloning, serializer round-trips, and single-vs-multi-threaded equivalence in `tests/tcnlayer_tests.cpp`, `tests/tcnlayer_mt_tests.cpp`, `tests/layer_tests.cpp`, `tests/layer_details_tests.cpp`, and `tests/network_integration_tests.cpp`.
+
 ## [1.1.27] - 2026-08-17
 
 ### Changed

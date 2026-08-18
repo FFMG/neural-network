@@ -25,7 +25,11 @@ public:
     OptimiserType optimiser_type,
     double momentum,
     bool use_layer_normalisation,
-    unsigned attention_hidden_size) noexcept :
+    unsigned attention_hidden_size,
+    unsigned kernel_size,
+    unsigned dilation,
+    unsigned number_of_heads,
+    unsigned feed_forward_hidden_size) noexcept :
     _layer_architecture(layer_architecture),
     _layer_size(layer_size),
     _activation(activation),
@@ -34,7 +38,11 @@ public:
     _optimiser_type(optimiser_type),
     _momentum(momentum),
     _use_layer_normalisation(use_layer_normalisation),
-    _attention_hidden_size(attention_hidden_size)
+    _attention_hidden_size(attention_hidden_size),
+    _kernel_size(kernel_size),
+    _dilation(dilation),
+    _number_of_heads(number_of_heads),
+    _feed_forward_hidden_size(feed_forward_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -48,7 +56,11 @@ public:
     _optimiser_type(src._optimiser_type),
     _momentum(src._momentum),
     _use_layer_normalisation(src._use_layer_normalisation),
-    _attention_hidden_size(src._attention_hidden_size)
+    _attention_hidden_size(src._attention_hidden_size),
+    _kernel_size(src._kernel_size),
+    _dilation(src._dilation),
+    _number_of_heads(src._number_of_heads),
+    _feed_forward_hidden_size(src._feed_forward_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -62,7 +74,11 @@ public:
     _optimiser_type( src._optimiser_type),
     _momentum( src._momentum),
     _use_layer_normalisation(src._use_layer_normalisation),
-    _attention_hidden_size(src._attention_hidden_size)
+    _attention_hidden_size(src._attention_hidden_size),
+    _kernel_size(src._kernel_size),
+    _dilation(src._dilation),
+    _number_of_heads(src._number_of_heads),
+    _feed_forward_hidden_size(src._feed_forward_hidden_size)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_architecture = Layer::Architecture::None;
@@ -71,6 +87,10 @@ public:
     src._weight_decay = 0;
     src._use_layer_normalisation = false;
     src._attention_hidden_size = 0;
+    src._kernel_size = 0;
+    src._dilation = 0;
+    src._number_of_heads = 0;
+    src._feed_forward_hidden_size = 0;
   }
 
   LayerDetails& operator=(const LayerDetails& src) noexcept
@@ -87,6 +107,10 @@ public:
       _momentum = src._momentum;
       _use_layer_normalisation = src._use_layer_normalisation;
       _attention_hidden_size = src._attention_hidden_size;
+      _kernel_size = src._kernel_size;
+      _dilation = src._dilation;
+      _number_of_heads = src._number_of_heads;
+      _feed_forward_hidden_size = src._feed_forward_hidden_size;
     }
     return *this;
   }
@@ -105,6 +129,10 @@ public:
       _momentum = src._momentum;
       _use_layer_normalisation = src._use_layer_normalisation;
       _attention_hidden_size = src._attention_hidden_size;
+      _kernel_size = src._kernel_size;
+      _dilation = src._dilation;
+      _number_of_heads = src._number_of_heads;
+      _feed_forward_hidden_size = src._feed_forward_hidden_size;
 
       src._layer_architecture = Layer::Architecture::None;
       src._layer_size = 0;
@@ -112,6 +140,10 @@ public:
       src._weight_decay = 0;
       src._use_layer_normalisation = false;
       src._attention_hidden_size = 0;
+      src._kernel_size = 0;
+      src._dilation = 0;
+      src._number_of_heads = 0;
+      src._feed_forward_hidden_size = 0;
     }
     return *this;
   }
@@ -165,6 +197,26 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _attention_hidden_size;
   }
+  [[nodiscard]] inline unsigned get_kernel_size() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _kernel_size;
+  }
+  [[nodiscard]] inline unsigned get_dilation() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _dilation;
+  }
+  [[nodiscard]] inline unsigned get_number_of_heads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _number_of_heads;
+  }
+  [[nodiscard]] inline unsigned get_feed_forward_hidden_size() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _feed_forward_hidden_size;
+  }
 private:
   Layer::Architecture _layer_architecture;
   unsigned _layer_size;
@@ -175,5 +227,9 @@ private:
   double _momentum;
   bool _use_layer_normalisation;
   unsigned _attention_hidden_size;
+  unsigned _kernel_size;
+  unsigned _dilation;
+  unsigned _number_of_heads;
+  unsigned _feed_forward_hidden_size;
 };
 } // namespace myoddweb::nn

@@ -81,6 +81,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("Lstm", Layer::Architecture::Lstm)
         .value("MultiOutput", Layer::Architecture::MultiOutput)
         .value("AttentionPool", Layer::Architecture::AttentionPool)
+        .value("Tcn", Layer::Architecture::Tcn)
+        .value("SelfAttention", Layer::Architecture::SelfAttention)
         .export_values();
 
     py::enum_<Layer::Role>(m, "LayerRole")
@@ -164,10 +166,11 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("epsilon", &EvaluationConfig::epsilon);
 
     py::class_<LayerDetails>(m, "LayerDetails")
-        .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool, unsigned>(),
+        .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool, unsigned, unsigned, unsigned, unsigned, unsigned>(),
              py::arg("architecture"), py::arg("size"), py::arg("activation"), py::arg("dropout"),
              py::arg("weight_decay"), py::arg("optimiser_type"), py::arg("momentum"), py::arg("use_layer_normalisation") = false,
-             py::arg("attention_hidden_size") = 0)
+             py::arg("attention_hidden_size") = 0, py::arg("kernel_size") = 0, py::arg("dilation") = 0,
+             py::arg("number_of_heads") = 0, py::arg("feed_forward_hidden_size") = 0)
         .def_property_readonly("architecture", &LayerDetails::get_layer_architecture)
         .def_property_readonly("size", &LayerDetails::get_size)
         .def_property_readonly("activation", &LayerDetails::get_activation)
@@ -176,7 +179,11 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("optimiser_type", &LayerDetails::get_optimiser_type)
         .def_property_readonly("momentum", &LayerDetails::get_momentum)
         .def_property_readonly("use_layer_normalisation", &LayerDetails::get_use_layer_normalisation)
-        .def_property_readonly("attention_hidden_size", &LayerDetails::get_attention_hidden_size);
+        .def_property_readonly("attention_hidden_size", &LayerDetails::get_attention_hidden_size)
+        .def_property_readonly("kernel_size", &LayerDetails::get_kernel_size)
+        .def_property_readonly("dilation", &LayerDetails::get_dilation)
+        .def_property_readonly("number_of_heads", &LayerDetails::get_number_of_heads)
+        .def_property_readonly("feed_forward_hidden_size", &LayerDetails::get_feed_forward_hidden_size);
 
     py::class_<OutputLayerDetails>(m, "OutputLayerDetails")
         .def(py::init<unsigned, const activation&, const ErrorCalculation::type&, const EvaluationConfig&, double, OptimiserType, double>())

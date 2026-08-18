@@ -33,6 +33,8 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/layers/layers.cpp"
     "${NN_SOURCE_DIR}/libraries/TinyJSON.cpp"
     "${NN_SOURCE_DIR}/layers/lstmlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/tcnlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/selfattentionlayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
     "${NN_SOURCE_DIR}/helpers/neuralnetworkhelper.cpp"
     "${NN_SOURCE_DIR}/helpers/neuralnetworkserializer.cpp"
@@ -82,8 +84,12 @@ add_executable(neuralnetwork_tests
     output_layer_details_tests.cpp
     simd_utils_tests.cpp
     simd_utils_mt_tests.cpp
+    selfattentionlayer_mt_tests.cpp
+    selfattentionlayer_tests.cpp
     stochastic_weight_averaging_details_tests.cpp
     swa_tests.cpp
+    tcnlayer_mt_tests.cpp
+    tcnlayer_tests.cpp
     taskqueue_tests.cpp
     taskqueue_comprehensive_tests.cpp
     weight_param_tests.cpp

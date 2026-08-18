@@ -32,7 +32,13 @@ def run_general_example():
             0.0,
             0.0,
             nn.OptimiserType.Adam,
-            0.9
+            0.9,
+            False,
+            0,
+            0,
+            0,
+            0,
+            0
         )
     ]
 
@@ -51,6 +57,10 @@ def run_general_example():
             nn.OptimiserType.Adam,
             0.9,
             False,
+            0,
+            0,
+            0,
+            0,
             0
         ),
         nn.LayerDetails(
@@ -62,11 +72,67 @@ def run_general_example():
             nn.OptimiserType.Adam,
             0.9,
             False,
-            16
+            16,
+            0,
+            0,
+            0,
+            0
         )
     ]
     nn.Logger.debug(f"Example AttentionPool hidden layers configured: {len(attention_hidden_layers)} layers.")
-    
+
+    # Example of a Tcn (dilated causal convolution) layer: it may follow any
+    # layer type (including being the first hidden layer), reads a window of
+    # kernel_size dilated taps per output timestep, and is always strictly
+    # causal. LayerNorm is not supported. Not wired into this XOR example's
+    # (non-recurrent) topology below - shown here purely to demonstrate the
+    # LayerDetails shape end-to-end.
+    tcn_hidden_layers = [
+        nn.LayerDetails(
+            nn.LayerArchitecture.Tcn,
+            8,
+            hidden_activation,
+            0.0,
+            0.0,
+            nn.OptimiserType.Adam,
+            0.9,
+            False,
+            0,
+            3,
+            1,
+            0,
+            0
+        )
+    ]
+    nn.Logger.debug(f"Example Tcn hidden layers configured: {len(tcn_hidden_layers)} layers.")
+
+    # Example of a SelfAttention layer: multi-head causal self-attention plus
+    # a position-wise feed-forward sub-block. It may follow any layer type
+    # (including being the first hidden layer), its own size must match the
+    # layer it attends over, number_of_heads must evenly divide that size,
+    # and feed_forward_hidden_size must be non-zero. Unlike AttentionPool,
+    # use_layer_normalisation IS supported here. Not wired into this XOR
+    # example's (non-recurrent) topology below - shown here purely to
+    # demonstrate the LayerDetails shape end-to-end.
+    self_attention_hidden_layers = [
+        nn.LayerDetails(
+            nn.LayerArchitecture.SelfAttention,
+            8,
+            hidden_activation,
+            0.0,
+            0.0,
+            nn.OptimiserType.Adam,
+            0.9,
+            True,
+            0,
+            0,
+            0,
+            2,
+            16
+        )
+    ]
+    nn.Logger.debug(f"Example SelfAttention hidden layers configured: {len(self_attention_hidden_layers)} layers.")
+
     # Expose individual output layer settings
     out_activation = nn.Activation(nn.ActivationMethod.Sigmoid, 1.0)
     out_layer = nn.OutputLayerDetails(

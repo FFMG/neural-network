@@ -10,6 +10,8 @@
 #include "grurnnlayer.h"
 #include "lstmlayer.h"
 #include "attentionpoollayer.h"
+#include "tcnlayer.h"
+#include "selfattentionlayer.h"
 
 
 namespace myoddweb::nn
@@ -144,6 +146,75 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       ld.get_dropout(),
       number_of_threads,
       has_bias,
+      ld.get_momentum(),
+      seed
+    );
+
+  case Layer::Architecture::Tcn:
+    if (ld.get_kernel_size() == 0)
+    {
+      Logger::panic("Tcn hidden layers must have a non-zero kernel_size.");
+    }
+    if (ld.get_dilation() == 0)
+    {
+      Logger::panic("Tcn hidden layers must have a non-zero dilation.");
+    }
+    if (ld.get_use_layer_normalisation())
+    {
+      Logger::panic("LayerNorm (use_layer_normalisation) is only supported for Gru/Lstm hidden layers, not Tcn.");
+    }
+    return std::make_unique<TcnLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_kernel_size(),
+      ld.get_dilation(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_momentum(),
+      seed
+    );
+
+  case Layer::Architecture::SelfAttention:
+    if (ld.get_number_of_heads() == 0)
+    {
+      Logger::panic("SelfAttention hidden layers must have a non-zero number_of_heads.");
+    }
+    if (ld.get_size() % ld.get_number_of_heads() != 0)
+    {
+      Logger::panic("SelfAttention hidden layers require layer size to be evenly divisible by number_of_heads.");
+    }
+    if (ld.get_feed_forward_hidden_size() == 0)
+    {
+      Logger::panic("SelfAttention hidden layers must have a non-zero feed_forward_hidden_size.");
+    }
+    if (ld.get_size() != number_input_neurons)
+    {
+      Logger::panic("SelfAttention hidden layers must have the same size as the layer they attend over.");
+    }
+    return std::make_unique<SelfAttentionLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_number_of_heads(),
+      ld.get_feed_forward_hidden_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_use_layer_normalisation(),
       ld.get_momentum(),
       seed
     );

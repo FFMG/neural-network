@@ -70,7 +70,9 @@ private:
           OptimiserType::SGD,
           0.99,
           false,
-          0)
+          0,
+          0,
+          0, 0, 0)
       );
     }
 
@@ -496,6 +498,29 @@ public:
       if (hl.get_layer_architecture() == Layer::Architecture::AttentionPool && !enable_bptt())
       {
         Logger::panic("AttentionPool hidden layers require enable_bptt to be true.");
+      }
+      if (hl.get_layer_architecture() == Layer::Architecture::Tcn)
+      {
+        if (!enable_bptt())
+        {
+          Logger::panic("Tcn hidden layers require enable_bptt to be true.");
+        }
+        const auto receptive_field = 1u + (hl.get_kernel_size() - 1u) * hl.get_dilation();
+        if (receptive_field > static_cast<unsigned>(bptt_max_ticks()))
+        {
+          Logger::panic("Tcn hidden layer receptive field (1 + (kernel_size-1)*dilation) exceeds bptt_max_ticks.");
+        }
+      }
+      if (hl.get_layer_architecture() == Layer::Architecture::SelfAttention)
+      {
+        if (!enable_bptt())
+        {
+          Logger::panic("SelfAttention hidden layers require enable_bptt to be true.");
+        }
+        if (bptt_max_ticks() <= 1)
+        {
+          Logger::panic("SelfAttention hidden layers require bptt_max_ticks to be greater than 1.");
+        }
       }
     }
 

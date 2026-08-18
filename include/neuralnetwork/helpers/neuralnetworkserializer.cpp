@@ -176,6 +176,22 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
+    if (type == "tcnlayer")
+    {
+      layers.emplace_back(
+        create_tcnlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
+      );
+      continue;
+    }
+
+    if (type == "selfattentionlayer")
+    {
+      layers.emplace_back(
+        create_selfattentionlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
+      );
+      continue;
+    }
+
     Logger::panic("Unknown Layer type:", type);
   }
 
@@ -699,6 +715,281 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_lstmlayer(
   return layer;
 }
 
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_tcnlayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads,
+  std::optional<uint32_t> seed
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  // get the neurons
+  auto neurons = get_neurons(layer_object, layer_index, seed);
+
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::Role)layer_role_number;
+
+  auto lah = get_activation_helper(layer_object);
+
+  auto kernel_size = layer_object.get<unsigned>("kernel-size");
+  auto dilation = layer_object.get<unsigned>("dilation");
+
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
+
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
+
+  auto layer = std::make_unique<TcnLayer>(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    residual_layer_number,
+    kernel_size,
+    dilation,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    residual_projector.get(),
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_selfattentionlayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads,
+  std::optional<uint32_t> seed
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto neurons = get_neurons(layer_object, layer_index, seed);
+
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::Role)layer_role_number;
+
+  auto lah = get_activation_helper(layer_object);
+
+  auto num_neurons = static_cast<unsigned>(neurons.size());
+  auto number_of_heads = layer_object.get<unsigned>("number-of-heads");
+  auto feed_forward_hidden_size = layer_object.get<unsigned>("feed-forward-hidden-size");
+  auto use_layer_normalisation = layer_object.get<bool>("use-layer-normalisation");
+
+  auto b_values = layer_object.get<std::vector<double>>("b-values");
+  auto b_grads = layer_object.get<std::vector<double>>("b-grads");
+  auto b_velocities = layer_object.get<std::vector<double>>("b-velocities");
+  auto b_m1 = layer_object.get<std::vector<double>>("b-m1");
+  auto b_m2 = layer_object.get<std::vector<double>>("b-m2");
+  auto b_timesteps = layer_object.get<std::vector<long long>>("b-timesteps");
+  auto b_decays = layer_object.get<std::vector<double>>("b-decays");
+
+  auto wq_values = layer_object.get<std::vector<double>>("wq-values");
+  auto wq_grads = layer_object.get<std::vector<double>>("wq-grads");
+  auto wq_velocities = layer_object.get<std::vector<double>>("wq-velocities");
+  auto wq_m1 = layer_object.get<std::vector<double>>("wq-m1");
+  auto wq_m2 = layer_object.get<std::vector<double>>("wq-m2");
+  auto wq_timesteps = layer_object.get<std::vector<long long>>("wq-timesteps");
+  auto wq_decays = layer_object.get<std::vector<double>>("wq-decays");
+
+  auto bq_values = layer_object.get<std::vector<double>>("bq-values");
+  auto bq_grads = layer_object.get<std::vector<double>>("bq-grads");
+  auto bq_velocities = layer_object.get<std::vector<double>>("bq-velocities");
+  auto bq_m1 = layer_object.get<std::vector<double>>("bq-m1");
+  auto bq_m2 = layer_object.get<std::vector<double>>("bq-m2");
+  auto bq_timesteps = layer_object.get<std::vector<long long>>("bq-timesteps");
+  auto bq_decays = layer_object.get<std::vector<double>>("bq-decays");
+
+  auto wk_values = layer_object.get<std::vector<double>>("wk-values");
+  auto wk_grads = layer_object.get<std::vector<double>>("wk-grads");
+  auto wk_velocities = layer_object.get<std::vector<double>>("wk-velocities");
+  auto wk_m1 = layer_object.get<std::vector<double>>("wk-m1");
+  auto wk_m2 = layer_object.get<std::vector<double>>("wk-m2");
+  auto wk_timesteps = layer_object.get<std::vector<long long>>("wk-timesteps");
+  auto wk_decays = layer_object.get<std::vector<double>>("wk-decays");
+
+  auto bk_values = layer_object.get<std::vector<double>>("bk-values");
+  auto bk_grads = layer_object.get<std::vector<double>>("bk-grads");
+  auto bk_velocities = layer_object.get<std::vector<double>>("bk-velocities");
+  auto bk_m1 = layer_object.get<std::vector<double>>("bk-m1");
+  auto bk_m2 = layer_object.get<std::vector<double>>("bk-m2");
+  auto bk_timesteps = layer_object.get<std::vector<long long>>("bk-timesteps");
+  auto bk_decays = layer_object.get<std::vector<double>>("bk-decays");
+
+  auto wv_values = layer_object.get<std::vector<double>>("wv-values");
+  auto wv_grads = layer_object.get<std::vector<double>>("wv-grads");
+  auto wv_velocities = layer_object.get<std::vector<double>>("wv-velocities");
+  auto wv_m1 = layer_object.get<std::vector<double>>("wv-m1");
+  auto wv_m2 = layer_object.get<std::vector<double>>("wv-m2");
+  auto wv_timesteps = layer_object.get<std::vector<long long>>("wv-timesteps");
+  auto wv_decays = layer_object.get<std::vector<double>>("wv-decays");
+
+  auto bv_values = layer_object.get<std::vector<double>>("bv-values");
+  auto bv_grads = layer_object.get<std::vector<double>>("bv-grads");
+  auto bv_velocities = layer_object.get<std::vector<double>>("bv-velocities");
+  auto bv_m1 = layer_object.get<std::vector<double>>("bv-m1");
+  auto bv_m2 = layer_object.get<std::vector<double>>("bv-m2");
+  auto bv_timesteps = layer_object.get<std::vector<long long>>("bv-timesteps");
+  auto bv_decays = layer_object.get<std::vector<double>>("bv-decays");
+
+  auto wo_values = layer_object.get<std::vector<double>>("wo-values");
+  auto wo_grads = layer_object.get<std::vector<double>>("wo-grads");
+  auto wo_velocities = layer_object.get<std::vector<double>>("wo-velocities");
+  auto wo_m1 = layer_object.get<std::vector<double>>("wo-m1");
+  auto wo_m2 = layer_object.get<std::vector<double>>("wo-m2");
+  auto wo_timesteps = layer_object.get<std::vector<long long>>("wo-timesteps");
+  auto wo_decays = layer_object.get<std::vector<double>>("wo-decays");
+
+  auto bo_values = layer_object.get<std::vector<double>>("bo-values");
+  auto bo_grads = layer_object.get<std::vector<double>>("bo-grads");
+  auto bo_velocities = layer_object.get<std::vector<double>>("bo-velocities");
+  auto bo_m1 = layer_object.get<std::vector<double>>("bo-m1");
+  auto bo_m2 = layer_object.get<std::vector<double>>("bo-m2");
+  auto bo_timesteps = layer_object.get<std::vector<long long>>("bo-timesteps");
+  auto bo_decays = layer_object.get<std::vector<double>>("bo-decays");
+
+  auto ff1_w_values = layer_object.get<std::vector<double>>("ff1-w-values");
+  auto ff1_w_grads = layer_object.get<std::vector<double>>("ff1-w-grads");
+  auto ff1_w_velocities = layer_object.get<std::vector<double>>("ff1-w-velocities");
+  auto ff1_w_m1 = layer_object.get<std::vector<double>>("ff1-w-m1");
+  auto ff1_w_m2 = layer_object.get<std::vector<double>>("ff1-w-m2");
+  auto ff1_w_timesteps = layer_object.get<std::vector<long long>>("ff1-w-timesteps");
+  auto ff1_w_decays = layer_object.get<std::vector<double>>("ff1-w-decays");
+
+  auto ff1_b_values = layer_object.get<std::vector<double>>("ff1-b-values");
+  auto ff1_b_grads = layer_object.get<std::vector<double>>("ff1-b-grads");
+  auto ff1_b_velocities = layer_object.get<std::vector<double>>("ff1-b-velocities");
+  auto ff1_b_m1 = layer_object.get<std::vector<double>>("ff1-b-m1");
+  auto ff1_b_m2 = layer_object.get<std::vector<double>>("ff1-b-m2");
+  auto ff1_b_timesteps = layer_object.get<std::vector<long long>>("ff1-b-timesteps");
+  auto ff1_b_decays = layer_object.get<std::vector<double>>("ff1-b-decays");
+
+  auto ff2_w_values = layer_object.get<std::vector<double>>("ff2-w-values");
+  auto ff2_w_grads = layer_object.get<std::vector<double>>("ff2-w-grads");
+  auto ff2_w_velocities = layer_object.get<std::vector<double>>("ff2-w-velocities");
+  auto ff2_w_m1 = layer_object.get<std::vector<double>>("ff2-w-m1");
+  auto ff2_w_m2 = layer_object.get<std::vector<double>>("ff2-w-m2");
+  auto ff2_w_timesteps = layer_object.get<std::vector<long long>>("ff2-w-timesteps");
+  auto ff2_w_decays = layer_object.get<std::vector<double>>("ff2-w-decays");
+
+  auto ff2_b_values = layer_object.get<std::vector<double>>("ff2-b-values");
+  auto ff2_b_grads = layer_object.get<std::vector<double>>("ff2-b-grads");
+  auto ff2_b_velocities = layer_object.get<std::vector<double>>("ff2-b-velocities");
+  auto ff2_b_m1 = layer_object.get<std::vector<double>>("ff2-b-m1");
+  auto ff2_b_m2 = layer_object.get<std::vector<double>>("ff2-b-m2");
+  auto ff2_b_timesteps = layer_object.get<std::vector<long long>>("ff2-b-timesteps");
+  auto ff2_b_decays = layer_object.get<std::vector<double>>("ff2-b-decays");
+
+  auto ln1_gain_values = layer_object.get<std::vector<double>>("ln1-gain-values");
+  auto ln1_gain_grads = layer_object.get<std::vector<double>>("ln1-gain-grads");
+  auto ln1_gain_velocities = layer_object.get<std::vector<double>>("ln1-gain-velocities");
+  auto ln1_gain_m1 = layer_object.get<std::vector<double>>("ln1-gain-m1");
+  auto ln1_gain_m2 = layer_object.get<std::vector<double>>("ln1-gain-m2");
+  auto ln1_gain_timesteps = layer_object.get<std::vector<long long>>("ln1-gain-timesteps");
+  auto ln1_gain_decays = layer_object.get<std::vector<double>>("ln1-gain-decays");
+
+  auto ln1_bias_values = layer_object.get<std::vector<double>>("ln1-bias-values");
+  auto ln1_bias_grads = layer_object.get<std::vector<double>>("ln1-bias-grads");
+  auto ln1_bias_velocities = layer_object.get<std::vector<double>>("ln1-bias-velocities");
+  auto ln1_bias_m1 = layer_object.get<std::vector<double>>("ln1-bias-m1");
+  auto ln1_bias_m2 = layer_object.get<std::vector<double>>("ln1-bias-m2");
+  auto ln1_bias_timesteps = layer_object.get<std::vector<long long>>("ln1-bias-timesteps");
+  auto ln1_bias_decays = layer_object.get<std::vector<double>>("ln1-bias-decays");
+
+  auto ln2_gain_values = layer_object.get<std::vector<double>>("ln2-gain-values");
+  auto ln2_gain_grads = layer_object.get<std::vector<double>>("ln2-gain-grads");
+  auto ln2_gain_velocities = layer_object.get<std::vector<double>>("ln2-gain-velocities");
+  auto ln2_gain_m1 = layer_object.get<std::vector<double>>("ln2-gain-m1");
+  auto ln2_gain_m2 = layer_object.get<std::vector<double>>("ln2-gain-m2");
+  auto ln2_gain_timesteps = layer_object.get<std::vector<long long>>("ln2-gain-timesteps");
+  auto ln2_gain_decays = layer_object.get<std::vector<double>>("ln2-gain-decays");
+
+  auto ln2_bias_values = layer_object.get<std::vector<double>>("ln2-bias-values");
+  auto ln2_bias_grads = layer_object.get<std::vector<double>>("ln2-bias-grads");
+  auto ln2_bias_velocities = layer_object.get<std::vector<double>>("ln2-bias-velocities");
+  auto ln2_bias_m1 = layer_object.get<std::vector<double>>("ln2-bias-m1");
+  auto ln2_bias_m2 = layer_object.get<std::vector<double>>("ln2-bias-m2");
+  auto ln2_bias_timesteps = layer_object.get<std::vector<long long>>("ln2-bias-timesteps");
+  auto ln2_bias_decays = layer_object.get<std::vector<double>>("ln2-bias-decays");
+
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
+
+  auto layer = std::make_unique<SelfAttentionLayer>(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    num_neurons,
+    number_of_heads,
+    feed_forward_hidden_size,
+    use_layer_normalisation,
+    neurons,
+    b_values, b_grads, b_velocities, b_m1, b_m2, b_timesteps, b_decays,
+    wq_values, wq_grads, wq_velocities, wq_m1, wq_m2, wq_timesteps, wq_decays,
+    bq_values, bq_grads, bq_velocities, bq_m1, bq_m2, bq_timesteps, bq_decays,
+    wk_values, wk_grads, wk_velocities, wk_m1, wk_m2, wk_timesteps, wk_decays,
+    bk_values, bk_grads, bk_velocities, bk_m1, bk_m2, bk_timesteps, bk_decays,
+    wv_values, wv_grads, wv_velocities, wv_m1, wv_m2, wv_timesteps, wv_decays,
+    bv_values, bv_grads, bv_velocities, bv_m1, bv_m2, bv_timesteps, bv_decays,
+    wo_values, wo_grads, wo_velocities, wo_m1, wo_m2, wo_timesteps, wo_decays,
+    bo_values, bo_grads, bo_velocities, bo_m1, bo_m2, bo_timesteps, bo_decays,
+    ff1_w_values, ff1_w_grads, ff1_w_velocities, ff1_w_m1, ff1_w_m2, ff1_w_timesteps, ff1_w_decays,
+    ff1_b_values, ff1_b_grads, ff1_b_velocities, ff1_b_m1, ff1_b_m2, ff1_b_timesteps, ff1_b_decays,
+    ff2_w_values, ff2_w_grads, ff2_w_velocities, ff2_w_m1, ff2_w_m2, ff2_w_timesteps, ff2_w_decays,
+    ff2_b_values, ff2_b_grads, ff2_b_velocities, ff2_b_m1, ff2_b_m2, ff2_b_timesteps, ff2_b_decays,
+    ln1_gain_values, ln1_gain_grads, ln1_gain_velocities, ln1_gain_m1, ln1_gain_m2, ln1_gain_timesteps, ln1_gain_decays,
+    ln1_bias_values, ln1_bias_grads, ln1_bias_velocities, ln1_bias_m1, ln1_bias_m2, ln1_bias_timesteps, ln1_bias_decays,
+    ln2_gain_values, ln2_gain_grads, ln2_gain_velocities, ln2_gain_m1, ln2_gain_m2, ln2_gain_timesteps, ln2_gain_decays,
+    ln2_bias_values, ln2_bias_grads, ln2_bias_velocities, ln2_bias_m1, ln2_bias_m2, ln2_bias_timesteps, ln2_bias_decays,
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
@@ -1039,7 +1330,11 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
       optimiser_type,
       momentum,
       phlo->get<bool>("use-layer-normalisation"),
-      phlo->get<unsigned>("attention-hidden-size")
+      phlo->get<unsigned>("attention-hidden-size"),
+      phlo->get<unsigned>("kernel-size"),
+      phlo->get<unsigned>("dilation"),
+      phlo->get<unsigned>("number-of-heads"),
+      phlo->get<unsigned>("feed-forward-hidden-size")
     ));
   }
   return hidden_layer;
@@ -1967,6 +2262,216 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   delete layer_object;
 }
 
+void NeuralNetworkSerializer::add_selfattentionlayer(const SelfAttentionLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "selfattentionlayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  add_activation_helper(layer, *layer_object);
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
+  layer_object->set_number("number-of-heads", layer.get_number_of_heads());
+  layer_object->set_number("feed-forward-hidden-size", layer.get_feed_forward_hidden_size());
+  layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
+
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
+  layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
+
+  set_floats(layer_object, "wq-values", layer.get_wq_values());
+  set_floats(layer_object, "wq-grads", layer.get_wq_grads());
+  set_floats(layer_object, "wq-velocities", layer.get_wq_velocities());
+  set_floats(layer_object, "wq-m1", layer.get_wq_m1());
+  set_floats(layer_object, "wq-m2", layer.get_wq_m2());
+  layer_object->set_numbers("wq-timesteps", layer.get_wq_timesteps());
+  set_floats(layer_object, "wq-decays", layer.get_wq_decays());
+
+  set_floats(layer_object, "bq-values", layer.get_bq_values());
+  set_floats(layer_object, "bq-grads", layer.get_bq_grads());
+  set_floats(layer_object, "bq-velocities", layer.get_bq_velocities());
+  set_floats(layer_object, "bq-m1", layer.get_bq_m1());
+  set_floats(layer_object, "bq-m2", layer.get_bq_m2());
+  layer_object->set_numbers("bq-timesteps", layer.get_bq_timesteps());
+  set_floats(layer_object, "bq-decays", layer.get_bq_decays());
+
+  set_floats(layer_object, "wk-values", layer.get_wk_values());
+  set_floats(layer_object, "wk-grads", layer.get_wk_grads());
+  set_floats(layer_object, "wk-velocities", layer.get_wk_velocities());
+  set_floats(layer_object, "wk-m1", layer.get_wk_m1());
+  set_floats(layer_object, "wk-m2", layer.get_wk_m2());
+  layer_object->set_numbers("wk-timesteps", layer.get_wk_timesteps());
+  set_floats(layer_object, "wk-decays", layer.get_wk_decays());
+
+  set_floats(layer_object, "bk-values", layer.get_bk_values());
+  set_floats(layer_object, "bk-grads", layer.get_bk_grads());
+  set_floats(layer_object, "bk-velocities", layer.get_bk_velocities());
+  set_floats(layer_object, "bk-m1", layer.get_bk_m1());
+  set_floats(layer_object, "bk-m2", layer.get_bk_m2());
+  layer_object->set_numbers("bk-timesteps", layer.get_bk_timesteps());
+  set_floats(layer_object, "bk-decays", layer.get_bk_decays());
+
+  set_floats(layer_object, "wv-values", layer.get_wv_values());
+  set_floats(layer_object, "wv-grads", layer.get_wv_grads());
+  set_floats(layer_object, "wv-velocities", layer.get_wv_velocities());
+  set_floats(layer_object, "wv-m1", layer.get_wv_m1());
+  set_floats(layer_object, "wv-m2", layer.get_wv_m2());
+  layer_object->set_numbers("wv-timesteps", layer.get_wv_timesteps());
+  set_floats(layer_object, "wv-decays", layer.get_wv_decays());
+
+  set_floats(layer_object, "bv-values", layer.get_bv_values());
+  set_floats(layer_object, "bv-grads", layer.get_bv_grads());
+  set_floats(layer_object, "bv-velocities", layer.get_bv_velocities());
+  set_floats(layer_object, "bv-m1", layer.get_bv_m1());
+  set_floats(layer_object, "bv-m2", layer.get_bv_m2());
+  layer_object->set_numbers("bv-timesteps", layer.get_bv_timesteps());
+  set_floats(layer_object, "bv-decays", layer.get_bv_decays());
+
+  set_floats(layer_object, "wo-values", layer.get_wo_values());
+  set_floats(layer_object, "wo-grads", layer.get_wo_grads());
+  set_floats(layer_object, "wo-velocities", layer.get_wo_velocities());
+  set_floats(layer_object, "wo-m1", layer.get_wo_m1());
+  set_floats(layer_object, "wo-m2", layer.get_wo_m2());
+  layer_object->set_numbers("wo-timesteps", layer.get_wo_timesteps());
+  set_floats(layer_object, "wo-decays", layer.get_wo_decays());
+
+  set_floats(layer_object, "bo-values", layer.get_bo_values());
+  set_floats(layer_object, "bo-grads", layer.get_bo_grads());
+  set_floats(layer_object, "bo-velocities", layer.get_bo_velocities());
+  set_floats(layer_object, "bo-m1", layer.get_bo_m1());
+  set_floats(layer_object, "bo-m2", layer.get_bo_m2());
+  layer_object->set_numbers("bo-timesteps", layer.get_bo_timesteps());
+  set_floats(layer_object, "bo-decays", layer.get_bo_decays());
+
+  set_floats(layer_object, "ff1-w-values", layer.get_ff1_w_values());
+  set_floats(layer_object, "ff1-w-grads", layer.get_ff1_w_grads());
+  set_floats(layer_object, "ff1-w-velocities", layer.get_ff1_w_velocities());
+  set_floats(layer_object, "ff1-w-m1", layer.get_ff1_w_m1());
+  set_floats(layer_object, "ff1-w-m2", layer.get_ff1_w_m2());
+  layer_object->set_numbers("ff1-w-timesteps", layer.get_ff1_w_timesteps());
+  set_floats(layer_object, "ff1-w-decays", layer.get_ff1_w_decays());
+
+  set_floats(layer_object, "ff1-b-values", layer.get_ff1_b_values());
+  set_floats(layer_object, "ff1-b-grads", layer.get_ff1_b_grads());
+  set_floats(layer_object, "ff1-b-velocities", layer.get_ff1_b_velocities());
+  set_floats(layer_object, "ff1-b-m1", layer.get_ff1_b_m1());
+  set_floats(layer_object, "ff1-b-m2", layer.get_ff1_b_m2());
+  layer_object->set_numbers("ff1-b-timesteps", layer.get_ff1_b_timesteps());
+  set_floats(layer_object, "ff1-b-decays", layer.get_ff1_b_decays());
+
+  set_floats(layer_object, "ff2-w-values", layer.get_ff2_w_values());
+  set_floats(layer_object, "ff2-w-grads", layer.get_ff2_w_grads());
+  set_floats(layer_object, "ff2-w-velocities", layer.get_ff2_w_velocities());
+  set_floats(layer_object, "ff2-w-m1", layer.get_ff2_w_m1());
+  set_floats(layer_object, "ff2-w-m2", layer.get_ff2_w_m2());
+  layer_object->set_numbers("ff2-w-timesteps", layer.get_ff2_w_timesteps());
+  set_floats(layer_object, "ff2-w-decays", layer.get_ff2_w_decays());
+
+  set_floats(layer_object, "ff2-b-values", layer.get_ff2_b_values());
+  set_floats(layer_object, "ff2-b-grads", layer.get_ff2_b_grads());
+  set_floats(layer_object, "ff2-b-velocities", layer.get_ff2_b_velocities());
+  set_floats(layer_object, "ff2-b-m1", layer.get_ff2_b_m1());
+  set_floats(layer_object, "ff2-b-m2", layer.get_ff2_b_m2());
+  layer_object->set_numbers("ff2-b-timesteps", layer.get_ff2_b_timesteps());
+  set_floats(layer_object, "ff2-b-decays", layer.get_ff2_b_decays());
+
+  set_floats(layer_object, "ln1-gain-values", layer.get_ln1_gain_values());
+  set_floats(layer_object, "ln1-gain-grads", layer.get_ln1_gain_grads());
+  set_floats(layer_object, "ln1-gain-velocities", layer.get_ln1_gain_velocities());
+  set_floats(layer_object, "ln1-gain-m1", layer.get_ln1_gain_m1());
+  set_floats(layer_object, "ln1-gain-m2", layer.get_ln1_gain_m2());
+  layer_object->set_numbers("ln1-gain-timesteps", layer.get_ln1_gain_timesteps());
+  set_floats(layer_object, "ln1-gain-decays", layer.get_ln1_gain_decays());
+
+  set_floats(layer_object, "ln1-bias-values", layer.get_ln1_bias_values());
+  set_floats(layer_object, "ln1-bias-grads", layer.get_ln1_bias_grads());
+  set_floats(layer_object, "ln1-bias-velocities", layer.get_ln1_bias_velocities());
+  set_floats(layer_object, "ln1-bias-m1", layer.get_ln1_bias_m1());
+  set_floats(layer_object, "ln1-bias-m2", layer.get_ln1_bias_m2());
+  layer_object->set_numbers("ln1-bias-timesteps", layer.get_ln1_bias_timesteps());
+  set_floats(layer_object, "ln1-bias-decays", layer.get_ln1_bias_decays());
+
+  set_floats(layer_object, "ln2-gain-values", layer.get_ln2_gain_values());
+  set_floats(layer_object, "ln2-gain-grads", layer.get_ln2_gain_grads());
+  set_floats(layer_object, "ln2-gain-velocities", layer.get_ln2_gain_velocities());
+  set_floats(layer_object, "ln2-gain-m1", layer.get_ln2_gain_m1());
+  set_floats(layer_object, "ln2-gain-m2", layer.get_ln2_gain_m2());
+  layer_object->set_numbers("ln2-gain-timesteps", layer.get_ln2_gain_timesteps());
+  set_floats(layer_object, "ln2-gain-decays", layer.get_ln2_gain_decays());
+
+  set_floats(layer_object, "ln2-bias-values", layer.get_ln2_bias_values());
+  set_floats(layer_object, "ln2-bias-grads", layer.get_ln2_bias_grads());
+  set_floats(layer_object, "ln2-bias-velocities", layer.get_ln2_bias_velocities());
+  set_floats(layer_object, "ln2-bias-m1", layer.get_ln2_bias_m1());
+  set_floats(layer_object, "ln2-bias-m2", layer.get_ln2_bias_m2());
+  layer_object->set_numbers("ln2-bias-timesteps", layer.get_ln2_bias_timesteps());
+  set_floats(layer_object, "ln2-bias-decays", layer.get_ln2_bias_decays());
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
+void NeuralNetworkSerializer::add_tcnlayer(const TcnLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "tcnlayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  add_activation_helper(layer, *layer_object);
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
+  layer_object->set_number("kernel-size", layer.get_kernel_size());
+  layer_object->set_number("dilation", layer.get_dilation());
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
+  layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
+
+  set_floats(layer_object, "b-values", layer.get_b_values());
+  set_floats(layer_object, "b-grads", layer.get_b_grads());
+  set_floats(layer_object, "b-velocities", layer.get_b_velocities());
+  set_floats(layer_object, "b-m1", layer.get_b_m1());
+  set_floats(layer_object, "b-m2", layer.get_b_m2());
+  layer_object->set_numbers("b-timesteps", layer.get_b_timesteps());
+  set_floats(layer_object, "b-decays", layer.get_b_decays());
+
+  set_float(layer_object, "momentum", layer.get_momentum());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
 void NeuralNetworkSerializer::add_attentionpoollayer(const AttentionPoolLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -2122,6 +2627,10 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     set_float(hidden_layer_object, "momentum", hl.get_momentum());
     hidden_layer_object->set_boolean("use-layer-normalisation", hl.get_use_layer_normalisation());
     hidden_layer_object->set("attention-hidden-size", hl.get_attention_hidden_size());
+    hidden_layer_object->set("kernel-size", hl.get_kernel_size());
+    hidden_layer_object->set("dilation", hl.get_dilation());
+    hidden_layer_object->set("number-of-heads", hl.get_number_of_heads());
+    hidden_layer_object->set("feed-forward-hidden-size", hl.get_feed_forward_hidden_size());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
@@ -2212,6 +2721,20 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
   if (nullptr != attentionpoollayer)
   {
     add_attentionpoollayer(*attentionpoollayer, layers);
+    return;
+  }
+
+  auto tcnlayer = dynamic_cast<const TcnLayer*>(layer);
+  if (nullptr != tcnlayer)
+  {
+    add_tcnlayer(*tcnlayer, layers);
+    return;
+  }
+
+  auto selfattentionlayer = dynamic_cast<const SelfAttentionLayer*>(layer);
+  if (nullptr != selfattentionlayer)
+  {
+    add_selfattentionlayer(*selfattentionlayer, layers);
     return;
   }
 
@@ -2364,7 +2887,11 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
         phlo->get<double>("momentum"),
         phlo->get<bool>("use-layer-normalisation"),
-        phlo->get<unsigned>("attention-hidden-size")
+        phlo->get<unsigned>("attention-hidden-size"),
+        phlo->get<unsigned>("kernel-size"),
+        phlo->get<unsigned>("dilation"),
+        phlo->get<unsigned>("number-of-heads"),
+        phlo->get<unsigned>("feed-forward-hidden-size")
       ));
     }
 

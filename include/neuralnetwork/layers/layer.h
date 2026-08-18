@@ -239,7 +239,9 @@ public:
     Gru,
     Lstm,
     MultiOutput,
-    AttentionPool
+    AttentionPool,
+    Tcn,
+    SelfAttention
   };
 
   enum class Role
@@ -288,6 +290,12 @@ public:
     case Architecture::AttentionPool:
       return "AttentionPool";
 
+    case Architecture::Tcn:
+      return "Tcn";
+
+    case Architecture::SelfAttention:
+      return "SelfAttention";
+
     default:
       Logger::panic("Unknown Layer architecture: ", (int)architecture);
     }
@@ -328,6 +336,14 @@ public:
     if (lower_str == "attentionpool")
     {
       return Architecture::AttentionPool;
+    }
+    if (lower_str == "tcn")
+    {
+      return Architecture::Tcn;
+    }
+    if (lower_str == "selfattention")
+    {
+      return Architecture::SelfAttention;
     }
     Logger::panic("Unknown Layer architecture: ", str);
   }

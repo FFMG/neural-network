@@ -13,7 +13,7 @@ private:
   static NeuralNetwork* create_neural_network(Logger::LogLevel log_level)
   {
     MYODDWEB_PROFILE_FUNCTION("ExampleLstm");
-    // 1. For un ivariate sequence forecasting use input size = 1
+    // 1. For univariate sequence forecasting use input size = 1
     std::vector<unsigned> topology = { 1, 10, 1 };
 
     // 2. Configure options
@@ -36,6 +36,10 @@ private:
       OptimiserType::Adam,
       0.9,
       false,
+      0,
+      0,
+      0,
+      0,
       0
     );
     options.with_hidden_layers(hidden_layers);
@@ -51,7 +55,7 @@ public:
     TEST_START("LSTM sequence test.")
     NeuralNetwork* nn = create_neural_network(log_level);
 
-    // 3. Prepare training data for a uni variate sequence:
+    // 3. Prepare training data for a univariate sequence:
     // Sequence: [0.1, 0.2, 0.3, 0.4] -> Target: [0.5]
     std::vector<double> sequence = { 0.1, 0.2, 0.3, 0.4 };
     // wrap as batch of one sequence (sequence length must be divisible by input_size (1))
@@ -62,7 +66,7 @@ public:
     Logger::info("Training LSTM on simple sequence...");
     nn->train(inputs, targets);
 
-    // 5. Test — call the batch think overload (pass the sequence in the same form)
+    // 5. Test - call the batch think overload (pass the sequence in the same form)
     auto prediction_batch = nn->think(inputs);
     if (!prediction_batch.empty())
     {
