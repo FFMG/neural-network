@@ -163,9 +163,13 @@
     <ClInclude Include="..\include\neuralnetwork\common\activation.h" />
     <ClInclude Include="..\include\neuralnetwork\helpers\adaptivelearningratescheduler.h" />
     <ClInclude Include="..\include\neuralnetwork\common\aligned_allocator.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\denormal_disabler.h" />
     <ClInclude Include="..\include\neuralnetwork\common\evaluationconfig.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\inline_task.h" />
     <ClInclude Include="..\include\neuralnetwork\common\stochasticweightaveragingdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\common\tempbuffer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\attentionpoollayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\layergradients.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\tcnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\selfattentionlayer.h" />
     <ClInclude Include="addingproblem.h" />
