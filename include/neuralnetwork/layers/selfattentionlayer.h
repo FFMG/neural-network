@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "layer.h"
 
 #include <array>
@@ -51,6 +51,7 @@ public:
     unsigned layer_index,
     const Role layer_role,
     const OptimiserType optimiser_type,
+    int residual_layer_number,
     unsigned num_neurons,
     unsigned number_of_heads,
     unsigned feed_forward_hidden_size,
@@ -79,6 +80,7 @@ public:
     const std::vector<double>& ln1_bias_values, const std::vector<double>& ln1_bias_grads, const std::vector<double>& ln1_bias_velocities, const std::vector<double>& ln1_bias_m1, const std::vector<double>& ln1_bias_m2, const std::vector<long long>& ln1_bias_timesteps, const std::vector<double>& ln1_bias_decays,
     const std::vector<double>& ln2_gain_values, const std::vector<double>& ln2_gain_grads, const std::vector<double>& ln2_gain_velocities, const std::vector<double>& ln2_gain_m1, const std::vector<double>& ln2_gain_m2, const std::vector<long long>& ln2_gain_timesteps, const std::vector<double>& ln2_gain_decays,
     const std::vector<double>& ln2_bias_values, const std::vector<double>& ln2_bias_grads, const std::vector<double>& ln2_bias_velocities, const std::vector<double>& ln2_bias_m1, const std::vector<double>& ln2_bias_m2, const std::vector<long long>& ln2_bias_timesteps, const std::vector<double>& ln2_bias_decays,
+    const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
     double momentum) noexcept;
@@ -120,149 +122,661 @@ public:
   // family are optimizer/gradient state that NeuralNetworkSerializer's load
   // path restores via the raw-SoA constructor above, exactly like every
   // other layer's deserialize constructor.
-  [[nodiscard]] const std::vector<double>& get_wq_values() const noexcept { return _wq.values; }
-  [[nodiscard]] const std::vector<double>& get_wq_grads() const noexcept { return _wq.grads; }
-  [[nodiscard]] const std::vector<double>& get_wq_velocities() const noexcept { return _wq.velocities; }
-  [[nodiscard]] const std::vector<double>& get_wq_m1() const noexcept { return _wq.m1; }
-  [[nodiscard]] const std::vector<double>& get_wq_m2() const noexcept { return _wq.m2; }
-  [[nodiscard]] const std::vector<long long>& get_wq_timesteps() const noexcept { return _wq.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_wq_decays() const noexcept { return _wq.decays; }
-  inline void set_wq_values(const std::vector<double>& v) { _wq.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_wq_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wq_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wq_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wq_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wq_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_wq_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wq_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wq.decays;
+  }
+    inline void set_wq_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _wq.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_bq_values() const noexcept { return _bq.values; }
-  [[nodiscard]] const std::vector<double>& get_bq_grads() const noexcept { return _bq.grads; }
-  [[nodiscard]] const std::vector<double>& get_bq_velocities() const noexcept { return _bq.velocities; }
-  [[nodiscard]] const std::vector<double>& get_bq_m1() const noexcept { return _bq.m1; }
-  [[nodiscard]] const std::vector<double>& get_bq_m2() const noexcept { return _bq.m2; }
-  [[nodiscard]] const std::vector<long long>& get_bq_timesteps() const noexcept { return _bq.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_bq_decays() const noexcept { return _bq.decays; }
-  inline void set_bq_values(const std::vector<double>& v) { _bq.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_bq_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bq_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bq_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bq_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bq_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_bq_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bq_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bq.decays;
+  }
+    inline void set_bq_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _bq.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_wk_values() const noexcept { return _wk.values; }
-  [[nodiscard]] const std::vector<double>& get_wk_grads() const noexcept { return _wk.grads; }
-  [[nodiscard]] const std::vector<double>& get_wk_velocities() const noexcept { return _wk.velocities; }
-  [[nodiscard]] const std::vector<double>& get_wk_m1() const noexcept { return _wk.m1; }
-  [[nodiscard]] const std::vector<double>& get_wk_m2() const noexcept { return _wk.m2; }
-  [[nodiscard]] const std::vector<long long>& get_wk_timesteps() const noexcept { return _wk.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_wk_decays() const noexcept { return _wk.decays; }
-  inline void set_wk_values(const std::vector<double>& v) { _wk.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_wk_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wk_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wk_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wk_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wk_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_wk_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wk_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wk.decays;
+  }
+    inline void set_wk_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _wk.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_bk_values() const noexcept { return _bk.values; }
-  [[nodiscard]] const std::vector<double>& get_bk_grads() const noexcept { return _bk.grads; }
-  [[nodiscard]] const std::vector<double>& get_bk_velocities() const noexcept { return _bk.velocities; }
-  [[nodiscard]] const std::vector<double>& get_bk_m1() const noexcept { return _bk.m1; }
-  [[nodiscard]] const std::vector<double>& get_bk_m2() const noexcept { return _bk.m2; }
-  [[nodiscard]] const std::vector<long long>& get_bk_timesteps() const noexcept { return _bk.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_bk_decays() const noexcept { return _bk.decays; }
-  inline void set_bk_values(const std::vector<double>& v) { _bk.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_bk_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bk_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bk_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bk_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bk_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_bk_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bk_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bk.decays;
+  }
+    inline void set_bk_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _bk.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_wv_values() const noexcept { return _wv.values; }
-  [[nodiscard]] const std::vector<double>& get_wv_grads() const noexcept { return _wv.grads; }
-  [[nodiscard]] const std::vector<double>& get_wv_velocities() const noexcept { return _wv.velocities; }
-  [[nodiscard]] const std::vector<double>& get_wv_m1() const noexcept { return _wv.m1; }
-  [[nodiscard]] const std::vector<double>& get_wv_m2() const noexcept { return _wv.m2; }
-  [[nodiscard]] const std::vector<long long>& get_wv_timesteps() const noexcept { return _wv.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_wv_decays() const noexcept { return _wv.decays; }
-  inline void set_wv_values(const std::vector<double>& v) { _wv.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_wv_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wv_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wv_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wv_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wv_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_wv_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wv_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wv.decays;
+  }
+    inline void set_wv_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _wv.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_bv_values() const noexcept { return _bv.values; }
-  [[nodiscard]] const std::vector<double>& get_bv_grads() const noexcept { return _bv.grads; }
-  [[nodiscard]] const std::vector<double>& get_bv_velocities() const noexcept { return _bv.velocities; }
-  [[nodiscard]] const std::vector<double>& get_bv_m1() const noexcept { return _bv.m1; }
-  [[nodiscard]] const std::vector<double>& get_bv_m2() const noexcept { return _bv.m2; }
-  [[nodiscard]] const std::vector<long long>& get_bv_timesteps() const noexcept { return _bv.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_bv_decays() const noexcept { return _bv.decays; }
-  inline void set_bv_values(const std::vector<double>& v) { _bv.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_bv_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bv_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bv_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bv_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bv_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_bv_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bv_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bv.decays;
+  }
+    inline void set_bv_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _bv.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_wo_values() const noexcept { return _wo.values; }
-  [[nodiscard]] const std::vector<double>& get_wo_grads() const noexcept { return _wo.grads; }
-  [[nodiscard]] const std::vector<double>& get_wo_velocities() const noexcept { return _wo.velocities; }
-  [[nodiscard]] const std::vector<double>& get_wo_m1() const noexcept { return _wo.m1; }
-  [[nodiscard]] const std::vector<double>& get_wo_m2() const noexcept { return _wo.m2; }
-  [[nodiscard]] const std::vector<long long>& get_wo_timesteps() const noexcept { return _wo.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_wo_decays() const noexcept { return _wo.decays; }
-  inline void set_wo_values(const std::vector<double>& v) { _wo.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_wo_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wo_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wo_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wo_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wo_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_wo_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_wo_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _wo.decays;
+  }
+    inline void set_wo_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _wo.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_bo_values() const noexcept { return _bo.values; }
-  [[nodiscard]] const std::vector<double>& get_bo_grads() const noexcept { return _bo.grads; }
-  [[nodiscard]] const std::vector<double>& get_bo_velocities() const noexcept { return _bo.velocities; }
-  [[nodiscard]] const std::vector<double>& get_bo_m1() const noexcept { return _bo.m1; }
-  [[nodiscard]] const std::vector<double>& get_bo_m2() const noexcept { return _bo.m2; }
-  [[nodiscard]] const std::vector<long long>& get_bo_timesteps() const noexcept { return _bo.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_bo_decays() const noexcept { return _bo.decays; }
-  inline void set_bo_values(const std::vector<double>& v) { _bo.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_bo_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bo_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bo_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bo_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bo_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_bo_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_bo_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _bo.decays;
+  }
+    inline void set_bo_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _bo.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ff1_w_values() const noexcept { return _ff1_w.values; }
-  [[nodiscard]] const std::vector<double>& get_ff1_w_grads() const noexcept { return _ff1_w.grads; }
-  [[nodiscard]] const std::vector<double>& get_ff1_w_velocities() const noexcept { return _ff1_w.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ff1_w_m1() const noexcept { return _ff1_w.m1; }
-  [[nodiscard]] const std::vector<double>& get_ff1_w_m2() const noexcept { return _ff1_w.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ff1_w_timesteps() const noexcept { return _ff1_w.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ff1_w_decays() const noexcept { return _ff1_w.decays; }
-  inline void set_ff1_w_values(const std::vector<double>& v) { _ff1_w.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ff1_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_w.decays;
+  }
+    inline void set_ff1_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ff1_w.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ff1_b_values() const noexcept { return _ff1_b.values; }
-  [[nodiscard]] const std::vector<double>& get_ff1_b_grads() const noexcept { return _ff1_b.grads; }
-  [[nodiscard]] const std::vector<double>& get_ff1_b_velocities() const noexcept { return _ff1_b.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ff1_b_m1() const noexcept { return _ff1_b.m1; }
-  [[nodiscard]] const std::vector<double>& get_ff1_b_m2() const noexcept { return _ff1_b.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ff1_b_timesteps() const noexcept { return _ff1_b.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ff1_b_decays() const noexcept { return _ff1_b.decays; }
-  inline void set_ff1_b_values(const std::vector<double>& v) { _ff1_b.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ff1_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff1_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff1_b.decays;
+  }
+    inline void set_ff1_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ff1_b.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ff2_w_values() const noexcept { return _ff2_w.values; }
-  [[nodiscard]] const std::vector<double>& get_ff2_w_grads() const noexcept { return _ff2_w.grads; }
-  [[nodiscard]] const std::vector<double>& get_ff2_w_velocities() const noexcept { return _ff2_w.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ff2_w_m1() const noexcept { return _ff2_w.m1; }
-  [[nodiscard]] const std::vector<double>& get_ff2_w_m2() const noexcept { return _ff2_w.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ff2_w_timesteps() const noexcept { return _ff2_w.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ff2_w_decays() const noexcept { return _ff2_w.decays; }
-  inline void set_ff2_w_values(const std::vector<double>& v) { _ff2_w.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ff2_w_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_w_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_w.decays;
+  }
+    inline void set_ff2_w_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ff2_w.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ff2_b_values() const noexcept { return _ff2_b.values; }
-  [[nodiscard]] const std::vector<double>& get_ff2_b_grads() const noexcept { return _ff2_b.grads; }
-  [[nodiscard]] const std::vector<double>& get_ff2_b_velocities() const noexcept { return _ff2_b.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ff2_b_m1() const noexcept { return _ff2_b.m1; }
-  [[nodiscard]] const std::vector<double>& get_ff2_b_m2() const noexcept { return _ff2_b.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ff2_b_timesteps() const noexcept { return _ff2_b.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ff2_b_decays() const noexcept { return _ff2_b.decays; }
-  inline void set_ff2_b_values(const std::vector<double>& v) { _ff2_b.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ff2_b_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ff2_b_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ff2_b.decays;
+  }
+    inline void set_ff2_b_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ff2_b.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_values() const noexcept { return _ln1_gain.values; }
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_grads() const noexcept { return _ln1_gain.grads; }
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_velocities() const noexcept { return _ln1_gain.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_m1() const noexcept { return _ln1_gain.m1; }
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_m2() const noexcept { return _ln1_gain.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ln1_gain_timesteps() const noexcept { return _ln1_gain.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ln1_gain_decays() const noexcept { return _ln1_gain.decays; }
-  inline void set_ln1_gain_values(const std::vector<double>& v) { _ln1_gain.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ln1_gain_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_gain_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_gain.decays;
+  }
+    inline void set_ln1_gain_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ln1_gain.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_values() const noexcept { return _ln1_bias.values; }
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_grads() const noexcept { return _ln1_bias.grads; }
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_velocities() const noexcept { return _ln1_bias.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_m1() const noexcept { return _ln1_bias.m1; }
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_m2() const noexcept { return _ln1_bias.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ln1_bias_timesteps() const noexcept { return _ln1_bias.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ln1_bias_decays() const noexcept { return _ln1_bias.decays; }
-  inline void set_ln1_bias_values(const std::vector<double>& v) { _ln1_bias.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ln1_bias_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln1_bias_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln1_bias.decays;
+  }
+    inline void set_ln1_bias_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ln1_bias.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_values() const noexcept { return _ln2_gain.values; }
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_grads() const noexcept { return _ln2_gain.grads; }
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_velocities() const noexcept { return _ln2_gain.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_m1() const noexcept { return _ln2_gain.m1; }
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_m2() const noexcept { return _ln2_gain.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ln2_gain_timesteps() const noexcept { return _ln2_gain.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ln2_gain_decays() const noexcept { return _ln2_gain.decays; }
-  inline void set_ln2_gain_values(const std::vector<double>& v) { _ln2_gain.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ln2_gain_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_gain_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_gain.decays;
+  }
+    inline void set_ln2_gain_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ln2_gain.values = v;
+  }
 
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_values() const noexcept { return _ln2_bias.values; }
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_grads() const noexcept { return _ln2_bias.grads; }
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_velocities() const noexcept { return _ln2_bias.velocities; }
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_m1() const noexcept { return _ln2_bias.m1; }
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_m2() const noexcept { return _ln2_bias.m2; }
-  [[nodiscard]] const std::vector<long long>& get_ln2_bias_timesteps() const noexcept { return _ln2_bias.timesteps; }
-  [[nodiscard]] const std::vector<double>& get_ln2_bias_decays() const noexcept { return _ln2_bias.decays; }
-  inline void set_ln2_bias_values(const std::vector<double>& v) { _ln2_bias.values = v; }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_values() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.values;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_grads() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.grads;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_velocities() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.velocities;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_m1() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.m1;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_m2() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.m2;
+  }
+    [[nodiscard]] inline const std::vector<long long>& get_ln2_bias_timesteps() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.timesteps;
+  }
+    [[nodiscard]] inline const std::vector<double>& get_ln2_bias_decays() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _ln2_bias.decays;
+  }
+    inline void set_ln2_bias_values(const std::vector<double>& v)
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    _ln2_bias.values = v;
+  }
 
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,

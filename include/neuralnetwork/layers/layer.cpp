@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <unordered_map>
 #include "layer.h"
 #include "../common/tempbuffer.h"
@@ -161,7 +161,7 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
     }
     if (ld.get_use_layer_normalisation())
     {
-      Logger::panic("LayerNorm (use_layer_normalisation) is only supported for Gru/Lstm hidden layers, not Tcn.");
+      Logger::panic("LayerNorm (use_layer_normalisation) is not supported for Tcn hidden layers.");
     }
     return std::make_unique<TcnLayer>(
       layer_index,

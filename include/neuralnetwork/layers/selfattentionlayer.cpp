@@ -1,4 +1,4 @@
-#include "../libraries/instrumentor.h"
+﻿#include "../libraries/instrumentor.h"
 #include "selfattentionlayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
@@ -157,6 +157,7 @@ SelfAttentionLayer::SelfAttentionLayer(
   unsigned layer_index,
   const Role layer_role,
   const OptimiserType optimiser_type,
+  int residual_layer_number,
   unsigned num_neurons,
   unsigned number_of_heads,
   unsigned feed_forward_hidden_size,
@@ -185,6 +186,7 @@ SelfAttentionLayer::SelfAttentionLayer(
   const std::vector<double>& ln1_bias_values, const std::vector<double>& ln1_bias_grads, const std::vector<double>& ln1_bias_velocities, const std::vector<double>& ln1_bias_m1, const std::vector<double>& ln1_bias_m2, const std::vector<long long>& ln1_bias_timesteps, const std::vector<double>& ln1_bias_decays,
   const std::vector<double>& ln2_gain_values, const std::vector<double>& ln2_gain_grads, const std::vector<double>& ln2_gain_velocities, const std::vector<double>& ln2_gain_m1, const std::vector<double>& ln2_gain_m2, const std::vector<long long>& ln2_gain_timesteps, const std::vector<double>& ln2_gain_decays,
   const std::vector<double>& ln2_bias_values, const std::vector<double>& ln2_bias_grads, const std::vector<double>& ln2_bias_velocities, const std::vector<double>& ln2_bias_m1, const std::vector<double>& ln2_bias_m2, const std::vector<long long>& ln2_bias_timesteps, const std::vector<double>& ln2_bias_decays,
+  const ResidualProjector* residual_projector,
   int number_of_threads,
   const layer_activation_helper& lah,
   double momentum
@@ -193,7 +195,7 @@ SelfAttentionLayer::SelfAttentionLayer(
     layer_index,
     layer_role,
     optimiser_type,
-    -1,
+    residual_layer_number,
     neurons,
     std::vector<double>(static_cast<size_t>(num_neurons) * num_neurons, 0.0),
     std::vector<double>(static_cast<size_t>(num_neurons) * num_neurons, 0.0),
@@ -209,7 +211,7 @@ SelfAttentionLayer::SelfAttentionLayer(
     b_m2,
     b_timesteps,
     b_decays,
-    nullptr,
+    residual_projector,
     number_of_threads,
     lah,
     momentum

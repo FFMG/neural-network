@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "layers/attentionpoollayer.h"
 #include "layers/tcnlayer.h"
 #include "layers/selfattentionlayer.h"
@@ -2758,3 +2758,69 @@ TEST(NetworkIntegrationTest, FloatingPointWeightsSerializationPrecision)
 
 
 
+
+TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndMomentum)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(
+      Layer::Architecture::SelfAttention,
+      4,
+      activation(activation::method::relu, 0.01),
+      0.0,
+      0.01,
+      OptimiserType::AdamW,
+      0.88,
+      true,
+      0, 0, 0,
+      2,
+      8)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 4, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.01, OptimiserType::AdamW, 0.88))
+    .with_residual_layer_jump(1)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(8)
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(1)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8 } };
+  std::vector<std::vector<double>> targets = { { 0.5, 0.5 } };
+  nn.train(inputs, targets);
+
+  auto pred_before = nn.think(inputs);
+
+  std::string test_path = "test_selfattention_serializer_roundtrip.json";
+  std::remove(test_path.c_str());
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  const auto& loaded_layers = loaded_nn->get_layers();
+  ASSERT_GE(loaded_layers.size(), 2u);
+  const auto* sa_layer = dynamic_cast<const SelfAttentionLayer*>(&loaded_layers[1]);
+  ASSERT_NE(sa_layer, nullptr);
+
+  EXPECT_EQ(sa_layer->get_residual_layer_number(), 0);
+  EXPECT_NEAR(sa_layer->get_momentum(), 0.88, 1e-9);
+  EXPECT_TRUE(sa_layer->get_use_layer_normalisation());
+  EXPECT_EQ(sa_layer->get_number_of_heads(), 2u);
+  EXPECT_EQ(sa_layer->get_feed_forward_hidden_size(), 8u);
+
+  auto pred_after = loaded_nn->think(inputs);
+  ASSERT_EQ(pred_before.size(), pred_after.size());
+  for (size_t b = 0; b < pred_before.size(); ++b)
+  {
+    ASSERT_EQ(pred_before[b].size(), pred_after[b].size());
+    for (size_t o = 0; o < pred_before[b].size(); ++o)
+    {
+      EXPECT_NEAR(pred_before[b][o], pred_after[b][o], 1e-9);
+    }
+  }
+
+  std::remove(test_path.c_str());
+}
