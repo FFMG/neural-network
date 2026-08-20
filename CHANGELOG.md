@@ -1,6 +1,20 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to the `neural-network` library will be documented in this file.
+
+## [1.1.30] - 2026-08-19
+
+### Changed
+- Optimised `LSTMLayer` and BPTT performance bottlenecks:
+  - Implemented fused four-matrix GEMM routines (`simd::gemm_four_matrices_four_batches`, `simd::gemm_four_matrices_two_batches`, and `simd::gemm_four_matrices_one_batch`) in `include/neuralnetwork/common/simd_utils.h` to accumulate all 4 gate contributions ($f, i, o, g$) into register accumulators simultaneously, eliminating 75% of memory load/store roundtrips for recurrent backward GEMMs (`run_recurrent_gemm_backward`) and input backward GEMMs (`dx_matrix`).
+  - Added specialized `simd::lstm_bptt_gate_step_tanh` fusing tanh derivative calculation ($1 - y^2$) directly into the AVX2 vector registers of the gate step, bypassing two function calls and workspace buffer roundtrips (`dc_act_deriv` and `dg_act_deriv`) per batch item per timestep.
+  - Removed redundant double-clamping of `dh_curr` in `simd::lstm_bptt_gate_step`, eliminating 4 redundant vector clamp instructions per 8 elements in the inner BPTT loop.
+  - Simplified vector arithmetic in `simd::lstm_bptt_upstream_step` to compute `(upstream + dh_next) * mask`, saving 2 vector multiplication instructions per 8 elements.
+  - Implemented `simd::add_four_vectors` for vectorised 4-gate bias gradient accumulation in `LSTMLayer::calculate_and_store_gradients_chunk`.
+
+### Added
+- Added unit tests `SimdUtilsTest.GemmFourMatricesBatches`, `SimdUtilsTest.LstmBpttGateStepTanhVsStandard`, and `SimdUtilsTest.AddFourVectors` in `tests/simd_utils_tests.cpp`.
+- Added multi-batch, multi-timestep numerical gradient equivalence test `LSTMLayerTest.FastBpttKernelsNumericalGradientEquivalence` in `tests/lstmlayer_tests.cpp`.
 
 ## [1.1.29] - 2026-08-18
 

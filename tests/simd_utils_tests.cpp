@@ -2718,6 +2718,212 @@ TEST(SimdUtilsTest, SoftmaxBackwardZeroWhenUniformGradient)
   }
 }
 
+TEST(SimdUtilsTest, GemmFourMatricesBatches)
+{
+  const size_t n_in = 13;
+  const size_t n_out = 19;
+
+  std::vector<double> W0(n_in * n_out);
+  std::vector<double> W1(n_in * n_out);
+  std::vector<double> W2(n_in * n_out);
+  std::vector<double> W3(n_in * n_out);
+  for (size_t i = 0; i < n_in * n_out; ++i)
+  {
+    W0[i] = std::sin(static_cast<double>(i) * 0.1);
+    W1[i] = std::cos(static_cast<double>(i) * 0.2);
+    W2[i] = std::sin(static_cast<double>(i) * 0.3 + 1.0);
+    W3[i] = std::cos(static_cast<double>(i) * 0.4 - 0.5);
+  }
+
+  // 4 batches, 4 inputs each
+  std::vector<double> x0_0(n_in), x0_1(n_in), x0_2(n_in), x0_3(n_in);
+  std::vector<double> x1_0(n_in), x1_1(n_in), x1_2(n_in), x1_3(n_in);
+  std::vector<double> x2_0(n_in), x2_1(n_in), x2_2(n_in), x2_3(n_in);
+  std::vector<double> x3_0(n_in), x3_1(n_in), x3_2(n_in), x3_3(n_in);
+  for (size_t i = 0; i < n_in; ++i)
+  {
+    x0_0[i] = 0.1 * static_cast<double>(i + 1);
+    x0_1[i] = -0.05 * static_cast<double>(i + 2);
+    x0_2[i] = 0.08 * static_cast<double>(i + 3);
+    x0_3[i] = -0.12 * static_cast<double>(i + 4);
+
+    x1_0[i] = -0.07 * static_cast<double>(i + 1);
+    x1_1[i] = 0.14 * static_cast<double>(i + 2);
+    x1_2[i] = -0.03 * static_cast<double>(i + 3);
+    x1_3[i] = 0.09 * static_cast<double>(i + 4);
+
+    x2_0[i] = 0.11 * static_cast<double>(i + 1);
+    x2_1[i] = -0.06 * static_cast<double>(i + 2);
+    x2_2[i] = 0.15 * static_cast<double>(i + 3);
+    x2_3[i] = -0.04 * static_cast<double>(i + 4);
+
+    x3_0[i] = -0.02 * static_cast<double>(i + 1);
+    x3_1[i] = 0.05 * static_cast<double>(i + 2);
+    x3_2[i] = -0.13 * static_cast<double>(i + 3);
+    x3_3[i] = 0.07 * static_cast<double>(i + 4);
+  }
+
+  // 1) Test 4 batches
+  std::vector<double> y0_seq(n_out, 0.5), y1_seq(n_out, -0.3), y2_seq(n_out, 0.2), y3_seq(n_out, -0.1);
+  std::vector<double> y0_fused = y0_seq, y1_fused = y1_seq, y2_fused = y2_seq, y3_fused = y3_seq;
+
+  simd::gemm_four_batches(x0_0.data(), x0_1.data(), x0_2.data(), x0_3.data(), W0.data(), y0_seq.data(), y1_seq.data(), y2_seq.data(), y3_seq.data(), n_in, n_out);
+  simd::gemm_four_batches(x1_0.data(), x1_1.data(), x1_2.data(), x1_3.data(), W1.data(), y0_seq.data(), y1_seq.data(), y2_seq.data(), y3_seq.data(), n_in, n_out);
+  simd::gemm_four_batches(x2_0.data(), x2_1.data(), x2_2.data(), x2_3.data(), W2.data(), y0_seq.data(), y1_seq.data(), y2_seq.data(), y3_seq.data(), n_in, n_out);
+  simd::gemm_four_batches(x3_0.data(), x3_1.data(), x3_2.data(), x3_3.data(), W3.data(), y0_seq.data(), y1_seq.data(), y2_seq.data(), y3_seq.data(), n_in, n_out);
+
+  simd::gemm_four_matrices_four_batches(
+    x0_0.data(), x0_1.data(), x0_2.data(), x0_3.data(), W0.data(),
+    x1_0.data(), x1_1.data(), x1_2.data(), x1_3.data(), W1.data(),
+    x2_0.data(), x2_1.data(), x2_2.data(), x2_3.data(), W2.data(),
+    x3_0.data(), x3_1.data(), x3_2.data(), x3_3.data(), W3.data(),
+    y0_fused.data(), y1_fused.data(), y2_fused.data(), y3_fused.data(),
+    n_in, n_out);
+
+  for (size_t i = 0; i < n_out; ++i)
+  {
+    EXPECT_NEAR(y0_fused[i], y0_seq[i], 1e-10) << "batch 0 at " << i;
+    EXPECT_NEAR(y1_fused[i], y1_seq[i], 1e-10) << "batch 1 at " << i;
+    EXPECT_NEAR(y2_fused[i], y2_seq[i], 1e-10) << "batch 2 at " << i;
+    EXPECT_NEAR(y3_fused[i], y3_seq[i], 1e-10) << "batch 3 at " << i;
+  }
+
+  // 2) Test 2 batches
+  std::vector<double> y0_2_seq(n_out, 0.4), y1_2_seq(n_out, -0.2);
+  std::vector<double> y0_2_fused = y0_2_seq, y1_2_fused = y1_2_seq;
+
+  simd::gemm_two_batches(x0_0.data(), x0_1.data(), W0.data(), y0_2_seq.data(), y1_2_seq.data(), n_in, n_out);
+  simd::gemm_two_batches(x1_0.data(), x1_1.data(), W1.data(), y0_2_seq.data(), y1_2_seq.data(), n_in, n_out);
+  simd::gemm_two_batches(x2_0.data(), x2_1.data(), W2.data(), y0_2_seq.data(), y1_2_seq.data(), n_in, n_out);
+  simd::gemm_two_batches(x3_0.data(), x3_1.data(), W3.data(), y0_2_seq.data(), y1_2_seq.data(), n_in, n_out);
+
+  simd::gemm_four_matrices_two_batches(
+    x0_0.data(), x0_1.data(), W0.data(),
+    x1_0.data(), x1_1.data(), W1.data(),
+    x2_0.data(), x2_1.data(), W2.data(),
+    x3_0.data(), x3_1.data(), W3.data(),
+    y0_2_fused.data(), y1_2_fused.data(),
+    n_in, n_out);
+
+  for (size_t i = 0; i < n_out; ++i)
+  {
+    EXPECT_NEAR(y0_2_fused[i], y0_2_seq[i], 1e-10) << "2-batch 0 at " << i;
+    EXPECT_NEAR(y1_2_fused[i], y1_2_seq[i], 1e-10) << "2-batch 1 at " << i;
+  }
+
+  // 3) Test 1 batch
+  std::vector<double> y_1_seq(n_out, 0.7);
+  std::vector<double> y_1_fused = y_1_seq;
+
+  simd::gemm_one_batch(x0_0.data(), W0.data(), y_1_seq.data(), n_in, n_out);
+  simd::gemm_one_batch(x1_0.data(), W1.data(), y_1_seq.data(), n_in, n_out);
+  simd::gemm_one_batch(x2_0.data(), W2.data(), y_1_seq.data(), n_in, n_out);
+  simd::gemm_one_batch(x3_0.data(), W3.data(), y_1_seq.data(), n_in, n_out);
+
+  simd::gemm_four_matrices_one_batch(
+    x0_0.data(), W0.data(),
+    x1_0.data(), W1.data(),
+    x2_0.data(), W2.data(),
+    x3_0.data(), W3.data(),
+    y_1_fused.data(),
+    n_in, n_out);
+
+  for (size_t i = 0; i < n_out; ++i)
+  {
+    EXPECT_NEAR(y_1_fused[i], y_1_seq[i], 1e-10) << "1-batch at " << i;
+  }
+}
+
+TEST(SimdUtilsTest, LstmBpttGateStepTanhVsStandard)
+{
+  const size_t n = 11;
+  std::vector<double> dh_curr(n), dc_next_in(n), f(n), i(n), o(n), g_act(n), c_act(n), c_prev(n);
+  for (size_t j = 0; j < n; ++j)
+  {
+    dh_curr[j] = 0.2 * static_cast<double>(j + 1) - 1.0;
+    dc_next_in[j] = 0.05 * static_cast<double>(j + 1);
+    f[j] = 0.1 + 0.08 * static_cast<double>(j);
+    i[j] = 0.15 + 0.07 * static_cast<double>(j);
+    o[j] = 0.2 + 0.06 * static_cast<double>(j);
+    g_act[j] = std::tanh(0.3 * static_cast<double>(j + 1) - 1.5);
+    c_act[j] = std::tanh(0.25 * static_cast<double>(j + 1) - 1.2);
+    c_prev[j] = 0.1 * static_cast<double>(j);
+  }
+
+  std::vector<double> dc_act_deriv(n), dg_act_deriv(n);
+  for (size_t j = 0; j < n; ++j)
+  {
+    dc_act_deriv[j] = 1.0 - c_act[j] * c_act[j];
+    dg_act_deriv[j] = 1.0 - g_act[j] * g_act[j];
+  }
+
+  std::vector<double> df_std(n), di_std(n), do_std(n), dg_std(n), dc_next_std(n);
+  std::vector<double> df_tanh(n), di_tanh(n), do_tanh(n), dg_tanh(n), dc_next_tanh(n);
+
+  simd::lstm_bptt_gate_step(
+    n,
+    dh_curr.data(), dc_next_in.data(),
+    f.data(), i.data(), o.data(),
+    nullptr, g_act.data(), c_act.data(),
+    c_prev.data(), true,
+    df_std.data(), di_std.data(), do_std.data(), dg_std.data(), dc_next_std.data(),
+    dc_act_deriv.data(), dg_act_deriv.data());
+
+  simd::lstm_bptt_gate_step_tanh(
+    n,
+    dh_curr.data(), dc_next_in.data(),
+    f.data(), i.data(), o.data(),
+    g_act.data(), c_act.data(),
+    c_prev.data(), true,
+    df_tanh.data(), di_tanh.data(), do_tanh.data(), dg_tanh.data(), dc_next_tanh.data());
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    EXPECT_NEAR(df_tanh[j], df_std[j], 1e-12) << "df at " << j;
+    EXPECT_NEAR(di_tanh[j], di_std[j], 1e-12) << "di at " << j;
+    EXPECT_NEAR(do_tanh[j], do_std[j], 1e-12) << "do at " << j;
+    EXPECT_NEAR(dg_tanh[j], dg_std[j], 1e-12) << "dg at " << j;
+    EXPECT_NEAR(dc_next_tanh[j], dc_next_std[j], 1e-12) << "dc_next at " << j;
+  }
+}
+
+TEST(SimdUtilsTest, AddFourVectors)
+{
+  const size_t n = 17;
+  std::vector<double> x0(n), x1(n), x2(n), x3(n);
+  std::vector<double> y0_seq(n), y1_seq(n), y2_seq(n), y3_seq(n);
+  std::vector<double> y0_fused(n), y1_fused(n), y2_fused(n), y3_fused(n);
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    x0[i] = 1.0 + i;
+    x1[i] = 2.0 + i * 0.5;
+    x2[i] = 3.0 - i * 0.25;
+    x3[i] = 4.0 + i * 2.0;
+
+    y0_seq[i] = y0_fused[i] = 10.0;
+    y1_seq[i] = y1_fused[i] = 20.0;
+    y2_seq[i] = y2_fused[i] = 30.0;
+    y3_seq[i] = y3_fused[i] = 40.0;
+  }
+
+  simd::add_vectors(x0.data(), y0_seq.data(), n);
+  simd::add_vectors(x1.data(), y1_seq.data(), n);
+  simd::add_vectors(x2.data(), y2_seq.data(), n);
+  simd::add_vectors(x3.data(), y3_seq.data(), n);
+
+  simd::add_four_vectors(x0.data(), x1.data(), x2.data(), x3.data(), y0_fused.data(), y1_fused.data(), y2_fused.data(), y3_fused.data(), n);
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    EXPECT_NEAR(y0_fused[i], y0_seq[i], 1e-12) << "at " << i;
+    EXPECT_NEAR(y1_fused[i], y1_seq[i], 1e-12) << "at " << i;
+    EXPECT_NEAR(y2_fused[i], y2_seq[i], 1e-12) << "at " << i;
+    EXPECT_NEAR(y3_fused[i], y3_seq[i], 1e-12) << "at " << i;
+  }
+}
+
+
 
 
 

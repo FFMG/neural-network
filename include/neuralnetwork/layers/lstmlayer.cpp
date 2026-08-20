@@ -1167,10 +1167,7 @@ void LSTMLayer::calculate_and_store_gradients_chunk(
 
       if (has_bias())
       {
-        simd::add_vectors(df, local_f_b_grads.data(), num_outputs);
-        simd::add_vectors(di, local_i_b_grads.data(), num_outputs);
-        simd::add_vectors(do_gate, local_o_b_grads.data(), num_outputs);
-        simd::add_vectors(dg, local_b_grads.data(), num_outputs);
+        simd::add_four_vectors(df, di, do_gate, dg, local_f_b_grads.data(), local_i_b_grads.data(), local_o_b_grads.data(), local_b_grads.data(), num_outputs);
       }
 
       const double* prev_input_ptr = nullptr;
@@ -1815,54 +1812,16 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       const double* activated_g_chunk = &packed[5 * N_this];
       const double* activated_c_chunk = &packed[6 * N_this];
 
-      double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
-      double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
-
-      // Contiguous derivative computed directly from cached activations without copying
-      act.activate_derivative(c_curr.data(), c_curr.data() + N_this, activated_c_chunk, dc_act_deriv);
-      act.activate_derivative(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk, dg_act_deriv);
-
-      if (_use_layer_normalisation)
+      const bool is_tanh = (act.get_method() == activation::method::tanh);
+      if (is_tanh && !_use_layer_normalisation)
       {
-        // Unlike GRU's h_t, LSTM's do_out (output gate gradient) depends on
-        // dh_curr directly, not through dc, so dh_curr must be passed to
-        // the kernel unmodified. Instead, replicate the kernel's own
-        // dc = clamp(dh_curr)*o*dc_act_deriv + dc_next_in formula here to
-        // get the raw (pre-LayerNorm) dc, run it through LayerNorm
-        // backward, then solve for the dc_next_in substitute that makes
-        // the kernel's internal recomputation of dc equal the
-        // LayerNorm-adjusted value: dc_next_in' = dc_next_in + (dc_ln - dc).
-        double* dc_raw = workspace.ln_dy_buf.data();
-        double* dc_ln = workspace.ln_dx_buf.data();
-        double* dc_next_substitute = workspace.ln_dc_next_substitute_buf.data();
-
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          const double dh_clamped = std::clamp(dh_curr[j], -50.0, 50.0);
-          dc_raw[j] = dh_clamped * do_ptr[j] * dc_act_deriv[j] + dc_next[j];
-        }
-
-        const auto y_c = state.get_cell_state_values();
-        const double inv_std_c = packed[Multiplier * N_this];
-
-        simd::layer_norm_backward(
-          dc_raw, y_c.data(), _ln_c_gain_values.data(), _ln_c_bias_values.data(), inv_std_c, N_this,
-          dc_ln, workspace.ln_c_gain_grad_accum.data(), workspace.ln_c_bias_grad_accum.data()
-        );
-
-        for (size_t j = 0; j < N_this; ++j)
-        {
-          dc_next_substitute[j] = dc_next[j] + dc_ln[j] - dc_raw[j];
-        }
-
-        simd::lstm_bptt_gate_step(
+        simd::lstm_bptt_gate_step_tanh(
           N_this,
           dh_curr,
-          dc_next_substitute,
+          dc_next,
           df_ptr,
           di_ptr,
           do_ptr,
-          g_pre_ptr,
           activated_g_chunk,
           activated_c_chunk,
           c_prev.data(),
@@ -1871,33 +1830,95 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
           di_chunk,
           do_chunk,
           dg_chunk,
-          dc_next,
-          dc_act_deriv,
-          dg_act_deriv
+          dc_next
         );
       }
       else
       {
-        simd::lstm_bptt_gate_step(
-          N_this,
-          dh_curr,
-          dc_next,
-          df_ptr,
-          di_ptr,
-          do_ptr,
-          g_pre_ptr,
-          activated_g_chunk,
-          activated_c_chunk,
-          c_prev.data(),
-          has_prev,
-          df_chunk,
-          di_chunk,
-          do_chunk,
-          dg_chunk,
-          dc_next,
-          dc_act_deriv,
-          dg_act_deriv
-        );
+        double* dc_act_deriv = &workspace.dc_act_deriv[b_idx * N_this];
+        double* dg_act_deriv = &workspace.dg_act_deriv[b_idx * N_this];
+
+        // Contiguous derivative computed directly from cached activations without copying
+        act.activate_derivative(c_curr.data(), c_curr.data() + N_this, activated_c_chunk, dc_act_deriv);
+        act.activate_derivative(g_pre_ptr, g_pre_ptr + N_this, activated_g_chunk, dg_act_deriv);
+
+        if (_use_layer_normalisation)
+        {
+          // Unlike GRU's h_t, LSTM's do_out (output gate gradient) depends on
+          // dh_curr directly, not through dc, so dh_curr must be passed to
+          // the kernel unmodified. Instead, replicate the kernel's own
+          // dc = clamp(dh_curr)*o*dc_act_deriv + dc_next_in formula here to
+          // get the raw (pre-LayerNorm) dc, run it through LayerNorm
+          // backward, then solve for the dc_next_in substitute that makes
+          // the kernel's internal recomputation of dc equal the
+          // LayerNorm-adjusted value: dc_next_in' = dc_next_in + (dc_ln - dc).
+          double* dc_raw = workspace.ln_dy_buf.data();
+          double* dc_ln = workspace.ln_dx_buf.data();
+          double* dc_next_substitute = workspace.ln_dc_next_substitute_buf.data();
+
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            const double dh_clamped = std::clamp(dh_curr[j], -50.0, 50.0);
+            dc_raw[j] = dh_clamped * do_ptr[j] * dc_act_deriv[j] + dc_next[j];
+          }
+
+          const auto y_c = state.get_cell_state_values();
+          const double inv_std_c = packed[Multiplier * N_this];
+
+          simd::layer_norm_backward(
+            dc_raw, y_c.data(), _ln_c_gain_values.data(), _ln_c_bias_values.data(), inv_std_c, N_this,
+            dc_ln, workspace.ln_c_gain_grad_accum.data(), workspace.ln_c_bias_grad_accum.data()
+          );
+
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            dc_next_substitute[j] = dc_next[j] + dc_ln[j] - dc_raw[j];
+          }
+
+          simd::lstm_bptt_gate_step(
+            N_this,
+            dh_curr,
+            dc_next_substitute,
+            df_ptr,
+            di_ptr,
+            do_ptr,
+            g_pre_ptr,
+            activated_g_chunk,
+            activated_c_chunk,
+            c_prev.data(),
+            has_prev,
+            df_chunk,
+            di_chunk,
+            do_chunk,
+            dg_chunk,
+            dc_next,
+            dc_act_deriv,
+            dg_act_deriv
+          );
+        }
+        else
+        {
+          simd::lstm_bptt_gate_step(
+            N_this,
+            dh_curr,
+            dc_next,
+            df_ptr,
+            di_ptr,
+            do_ptr,
+            g_pre_ptr,
+            activated_g_chunk,
+            activated_c_chunk,
+            c_prev.data(),
+            has_prev,
+            df_chunk,
+            di_chunk,
+            do_chunk,
+            dg_chunk,
+            dc_next,
+            dc_act_deriv,
+            dg_act_deriv
+          );
+        }
       }
 
       if (N_prev > 0)
@@ -1957,10 +1978,12 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         double* y2 = &workspace.dx_matrix[((b + 2) * num_time_steps + t) * N_prev];
         double* y3 = &workspace.dx_matrix[((b + 3) * num_time_steps + t) * N_prev];
 
-        simd::gemm_four_batches(f0, f1, f2, f3, _f_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-        simd::gemm_four_batches(i0, i1, i2, i3, _i_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-        simd::gemm_four_batches(o0, o1, o2, o3, _o_w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
-        simd::gemm_four_batches(g0, g1, g2, g3, _w_values_T.data(), y0, y1, y2, y3, N_this, N_prev);
+        simd::gemm_four_matrices_four_batches(
+          f0, f1, f2, f3, _f_w_values_T.data(),
+          i0, i1, i2, i3, _i_w_values_T.data(),
+          o0, o1, o2, o3, _o_w_values_T.data(),
+          g0, g1, g2, g3, _w_values_T.data(),
+          y0, y1, y2, y3, N_this, N_prev);
       }
 
       for (; b + 1 < batch_size_chunk; b += 2)
@@ -1980,10 +2003,12 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         double* y0 = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
         double* y1 = &workspace.dx_matrix[((b + 1) * num_time_steps + t) * N_prev];
 
-        simd::gemm_two_batches(f0, f1, _f_w_values_T.data(), y0, y1, N_this, N_prev);
-        simd::gemm_two_batches(i0, i1, _i_w_values_T.data(), y0, y1, N_this, N_prev);
-        simd::gemm_two_batches(o0, o1, _o_w_values_T.data(), y0, y1, N_this, N_prev);
-        simd::gemm_two_batches(g0, g1, _w_values_T.data(), y0, y1, N_this, N_prev);
+        simd::gemm_four_matrices_two_batches(
+          f0, f1, _f_w_values_T.data(),
+          i0, i1, _i_w_values_T.data(),
+          o0, o1, _o_w_values_T.data(),
+          g0, g1, _w_values_T.data(),
+          y0, y1, N_this, N_prev);
       }
 
       for (; b < batch_size_chunk; ++b)
@@ -1995,10 +2020,12 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
         double* y = &workspace.dx_matrix[(b * num_time_steps + t) * N_prev];
 
-        simd::gemm_one_batch(f, _f_w_values_T.data(), y, N_this, N_prev);
-        simd::gemm_one_batch(i, _i_w_values_T.data(), y, N_this, N_prev);
-        simd::gemm_one_batch(o, _o_w_values_T.data(), y, N_this, N_prev);
-        simd::gemm_one_batch(g, _w_values_T.data(), y, N_this, N_prev);
+        simd::gemm_four_matrices_one_batch(
+          f, _f_w_values_T.data(),
+          i, _i_w_values_T.data(),
+          o, _o_w_values_T.data(),
+          g, _w_values_T.data(),
+          y, N_this, N_prev);
       }
     }
   }
@@ -2441,10 +2468,12 @@ void LSTMLayer::run_recurrent_gemm_backward(
     double* y2 = dh_next_batch + (b + 2) * N_this;
     double* y3 = dh_next_batch + (b + 3) * N_this;
 
-    simd::gemm_four_batches(f0, f1, f2, f3, U_f_T, y0, y1, y2, y3, N_this, N_this);
-    simd::gemm_four_batches(i0, i1, i2, i3, U_i_T, y0, y1, y2, y3, N_this, N_this);
-    simd::gemm_four_batches(o0, o1, o2, o3, U_o_T, y0, y1, y2, y3, N_this, N_this);
-    simd::gemm_four_batches(g0, g1, g2, g3, U_g_T, y0, y1, y2, y3, N_this, N_this);
+    simd::gemm_four_matrices_four_batches(
+      f0, f1, f2, f3, U_f_T,
+      i0, i1, i2, i3, U_i_T,
+      o0, o1, o2, o3, U_o_T,
+      g0, g1, g2, g3, U_g_T,
+      y0, y1, y2, y3, N_this, N_this);
   }
 
   for (; b + 1 < b_end; b += 2)
@@ -2464,10 +2493,12 @@ void LSTMLayer::run_recurrent_gemm_backward(
     double* y0 = dh_next_batch + b * N_this;
     double* y1 = dh_next_batch + (b + 1) * N_this;
 
-    simd::gemm_two_batches(f0, f1, U_f_T, y0, y1, N_this, N_this);
-    simd::gemm_two_batches(i0, i1, U_i_T, y0, y1, N_this, N_this);
-    simd::gemm_two_batches(o0, o1, U_o_T, y0, y1, N_this, N_this);
-    simd::gemm_two_batches(g0, g1, U_g_T, y0, y1, N_this, N_this);
+    simd::gemm_four_matrices_two_batches(
+      f0, f1, U_f_T,
+      i0, i1, U_i_T,
+      o0, o1, U_o_T,
+      g0, g1, U_g_T,
+      y0, y1, N_this, N_this);
   }
 
   for (; b < b_end; ++b)
@@ -2478,10 +2509,12 @@ void LSTMLayer::run_recurrent_gemm_backward(
     const double* g = dg_batch + b * N_this;
     double* y = dh_next_batch + b * N_this;
 
-    simd::gemm_one_batch(f, U_f_T, y, N_this, N_this);
-    simd::gemm_one_batch(i, U_i_T, y, N_this, N_this);
-    simd::gemm_one_batch(o, U_o_T, y, N_this, N_this);
-    simd::gemm_one_batch(g, U_g_T, y, N_this, N_this);
+    simd::gemm_four_matrices_one_batch(
+      f, U_f_T,
+      i, U_i_T,
+      o, U_o_T,
+      g, U_g_T,
+      y, N_this, N_this);
   }
 }
 
