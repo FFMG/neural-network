@@ -2923,6 +2923,207 @@ TEST(SimdUtilsTest, AddFourVectors)
   }
 }
 
+TEST(SimdUtilsTest, GemmFourWeightsBatches)
+{
+  const size_t N_prev = 7;
+  const size_t N_this = 11;
+
+  std::vector<double> W0(N_prev * N_this), W1(N_prev * N_this), W2(N_prev * N_this), W3(N_prev * N_this);
+  for (size_t i = 0; i < N_prev * N_this; ++i)
+  {
+    W0[i] = 0.1 * static_cast<double>(i + 1);
+    W1[i] = -0.05 * static_cast<double>(i + 2);
+    W2[i] = 0.02 * static_cast<double>(i + 3);
+    W3[i] = -0.08 * static_cast<double>(i + 4);
+  }
+
+  std::vector<double> x0(N_prev), x1(N_prev), x2(N_prev), x3(N_prev);
+  for (size_t i = 0; i < N_prev; ++i)
+  {
+    x0[i] = 0.5 * static_cast<double>(i + 1);
+    x1[i] = -0.3 * static_cast<double>(i + 2);
+    x2[i] = 0.7 * static_cast<double>(i + 3);
+    x3[i] = -0.4 * static_cast<double>(i + 4);
+  }
+
+  // 1. Four batches test
+  std::vector<double> y0_0_seq(N_this, 1.0), y1_0_seq(N_this, 2.0), y2_0_seq(N_this, 3.0), y3_0_seq(N_this, 4.0);
+  std::vector<double> y0_1_seq(N_this, 5.0), y1_1_seq(N_this, 6.0), y2_1_seq(N_this, 7.0), y3_1_seq(N_this, 8.0);
+  std::vector<double> y0_2_seq(N_this, 9.0), y1_2_seq(N_this, 10.0), y2_2_seq(N_this, 11.0), y3_2_seq(N_this, 12.0);
+  std::vector<double> y0_3_seq(N_this, 13.0), y1_3_seq(N_this, 14.0), y2_3_seq(N_this, 15.0), y3_3_seq(N_this, 16.0);
+
+  simd::gemm_one_batch(x0.data(), W0.data(), y0_0_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x1.data(), W0.data(), y1_0_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x2.data(), W0.data(), y2_0_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x3.data(), W0.data(), y3_0_seq.data(), N_prev, N_this);
+
+  simd::gemm_one_batch(x0.data(), W1.data(), y0_1_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x1.data(), W1.data(), y1_1_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x2.data(), W1.data(), y2_1_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x3.data(), W1.data(), y3_1_seq.data(), N_prev, N_this);
+
+  simd::gemm_one_batch(x0.data(), W2.data(), y0_2_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x1.data(), W2.data(), y1_2_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x2.data(), W2.data(), y2_2_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x3.data(), W2.data(), y3_2_seq.data(), N_prev, N_this);
+
+  simd::gemm_one_batch(x0.data(), W3.data(), y0_3_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x1.data(), W3.data(), y1_3_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x2.data(), W3.data(), y2_3_seq.data(), N_prev, N_this);
+  simd::gemm_one_batch(x3.data(), W3.data(), y3_3_seq.data(), N_prev, N_this);
+
+  std::vector<double> y0_0_fused(N_this, 1.0), y1_0_fused(N_this, 2.0), y2_0_fused(N_this, 3.0), y3_0_fused(N_this, 4.0);
+  std::vector<double> y0_1_fused(N_this, 5.0), y1_1_fused(N_this, 6.0), y2_1_fused(N_this, 7.0), y3_1_fused(N_this, 8.0);
+  std::vector<double> y0_2_fused(N_this, 9.0), y1_2_fused(N_this, 10.0), y2_2_fused(N_this, 11.0), y3_2_fused(N_this, 12.0);
+  std::vector<double> y0_3_fused(N_this, 13.0), y1_3_fused(N_this, 14.0), y2_3_fused(N_this, 15.0), y3_3_fused(N_this, 16.0);
+
+  simd::gemm_four_weights_four_batches(
+    x0.data(), x1.data(), x2.data(), x3.data(),
+    W0.data(), W1.data(), W2.data(), W3.data(),
+    y0_0_fused.data(), y1_0_fused.data(), y2_0_fused.data(), y3_0_fused.data(),
+    y0_1_fused.data(), y1_1_fused.data(), y2_1_fused.data(), y3_1_fused.data(),
+    y0_2_fused.data(), y1_2_fused.data(), y2_2_fused.data(), y3_2_fused.data(),
+    y0_3_fused.data(), y1_3_fused.data(), y2_3_fused.data(), y3_3_fused.data(),
+    N_prev, N_this);
+
+  for (size_t j = 0; j < N_this; ++j)
+  {
+    EXPECT_NEAR(y0_0_fused[j], y0_0_seq[j], 1e-12) << "4-batch W0 at " << j;
+    EXPECT_NEAR(y1_0_fused[j], y1_0_seq[j], 1e-12) << "4-batch W0 at " << j;
+    EXPECT_NEAR(y2_0_fused[j], y2_0_seq[j], 1e-12) << "4-batch W0 at " << j;
+    EXPECT_NEAR(y3_0_fused[j], y3_0_seq[j], 1e-12) << "4-batch W0 at " << j;
+
+    EXPECT_NEAR(y0_1_fused[j], y0_1_seq[j], 1e-12) << "4-batch W1 at " << j;
+    EXPECT_NEAR(y1_1_fused[j], y1_1_seq[j], 1e-12) << "4-batch W1 at " << j;
+    EXPECT_NEAR(y2_1_fused[j], y2_1_seq[j], 1e-12) << "4-batch W1 at " << j;
+    EXPECT_NEAR(y3_1_fused[j], y3_1_seq[j], 1e-12) << "4-batch W1 at " << j;
+
+    EXPECT_NEAR(y0_2_fused[j], y0_2_seq[j], 1e-12) << "4-batch W2 at " << j;
+    EXPECT_NEAR(y1_2_fused[j], y1_2_seq[j], 1e-12) << "4-batch W2 at " << j;
+    EXPECT_NEAR(y2_2_fused[j], y2_2_seq[j], 1e-12) << "4-batch W2 at " << j;
+    EXPECT_NEAR(y3_2_fused[j], y3_2_seq[j], 1e-12) << "4-batch W2 at " << j;
+
+    EXPECT_NEAR(y0_3_fused[j], y0_3_seq[j], 1e-12) << "4-batch W3 at " << j;
+    EXPECT_NEAR(y1_3_fused[j], y1_3_seq[j], 1e-12) << "4-batch W3 at " << j;
+    EXPECT_NEAR(y2_3_fused[j], y2_3_seq[j], 1e-12) << "4-batch W3 at " << j;
+    EXPECT_NEAR(y3_3_fused[j], y3_3_seq[j], 1e-12) << "4-batch W3 at " << j;
+  }
+
+  // 2. Two batches test
+  std::vector<double> y0_0_two(N_this, 1.0), y1_0_two(N_this, 2.0);
+  std::vector<double> y0_1_two(N_this, 5.0), y1_1_two(N_this, 6.0);
+  std::vector<double> y0_2_two(N_this, 9.0), y1_2_two(N_this, 10.0);
+  std::vector<double> y0_3_two(N_this, 13.0), y1_3_two(N_this, 14.0);
+
+  simd::gemm_four_weights_two_batches(
+    x0.data(), x1.data(),
+    W0.data(), W1.data(), W2.data(), W3.data(),
+    y0_0_two.data(), y1_0_two.data(),
+    y0_1_two.data(), y1_1_two.data(),
+    y0_2_two.data(), y1_2_two.data(),
+    y0_3_two.data(), y1_3_two.data(),
+    N_prev, N_this);
+
+  for (size_t j = 0; j < N_this; ++j)
+  {
+    EXPECT_NEAR(y0_0_two[j], y0_0_seq[j], 1e-12) << "2-batch W0 at " << j;
+    EXPECT_NEAR(y1_0_two[j], y1_0_seq[j], 1e-12) << "2-batch W0 at " << j;
+    EXPECT_NEAR(y0_1_two[j], y0_1_seq[j], 1e-12) << "2-batch W1 at " << j;
+    EXPECT_NEAR(y1_1_two[j], y1_1_seq[j], 1e-12) << "2-batch W1 at " << j;
+    EXPECT_NEAR(y0_2_two[j], y0_2_seq[j], 1e-12) << "2-batch W2 at " << j;
+    EXPECT_NEAR(y1_2_two[j], y1_2_seq[j], 1e-12) << "2-batch W2 at " << j;
+    EXPECT_NEAR(y0_3_two[j], y0_3_seq[j], 1e-12) << "2-batch W3 at " << j;
+    EXPECT_NEAR(y1_3_two[j], y1_3_seq[j], 1e-12) << "2-batch W3 at " << j;
+  }
+
+  // 3. One batch test
+  std::vector<double> y0_one(N_this, 1.0), y1_one(N_this, 5.0), y2_one(N_this, 9.0), y3_one(N_this, 13.0);
+  simd::gemm_four_weights_one_batch(
+    x0.data(),
+    W0.data(), W1.data(), W2.data(), W3.data(),
+    y0_one.data(), y1_one.data(), y2_one.data(), y3_one.data(),
+    N_prev, N_this);
+
+  for (size_t j = 0; j < N_this; ++j)
+  {
+    EXPECT_NEAR(y0_one[j], y0_0_seq[j], 1e-12) << "1-batch W0 at " << j;
+    EXPECT_NEAR(y1_one[j], y0_1_seq[j], 1e-12) << "1-batch W1 at " << j;
+    EXPECT_NEAR(y2_one[j], y0_2_seq[j], 1e-12) << "1-batch W2 at " << j;
+    EXPECT_NEAR(y3_one[j], y0_3_seq[j], 1e-12) << "1-batch W3 at " << j;
+  }
+}
+
+TEST(SimdUtilsTest, LstmForwardStepTanhVsStandard)
+{
+  const size_t n = 15;
+  std::vector<double> f_raw(n), i_raw(n), o_raw(n), g_raw(n);
+  std::vector<double> c_prev(n);
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    f_raw[j] = 0.2 * static_cast<double>(j) - 1.0;
+    i_raw[j] = -0.15 * static_cast<double>(j) + 0.5;
+    o_raw[j] = 0.3 * static_cast<double>(j) - 0.7;
+    g_raw[j] = -0.25 * static_cast<double>(j) + 0.8;
+    c_prev[j] = 0.1 * static_cast<double>(j + 1);
+  }
+
+  // Baseline scalar step
+  std::vector<double> f_base = f_raw, i_base = i_raw, o_base = o_raw;
+  std::vector<double> g_act_base(n), c_act_base(n), c_prev_base = c_prev;
+  std::vector<double> h_out_base(n), mask_base(n), seq_out_base(n);
+
+  simd::scalar_lstm_forward_step_tanh(
+    n,
+    f_base.data(), i_base.data(), o_base.data(),
+    g_raw.data(), g_act_base.data(),
+    c_prev_base.data(), c_act_base.data(),
+    h_out_base.data(), mask_base.data(), seq_out_base.data());
+
+  // Vectorized fused step
+  std::vector<double> f_simd = f_raw, i_simd = i_raw, o_simd = o_raw;
+  std::vector<double> g_act_simd(n), c_act_simd(n), c_prev_simd = c_prev;
+  std::vector<double> h_out_simd(n), mask_simd(n), seq_out_simd(n);
+
+  simd::lstm_forward_step_tanh(
+    n,
+    f_simd.data(), i_simd.data(), o_simd.data(),
+    g_raw.data(), g_act_simd.data(),
+    c_prev_simd.data(), c_act_simd.data(),
+    h_out_simd.data(), mask_simd.data(), seq_out_simd.data());
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    EXPECT_NEAR(f_simd[j], f_base[j], 1e-6) << "f at " << j;
+    EXPECT_NEAR(i_simd[j], i_base[j], 1e-6) << "i at " << j;
+    EXPECT_NEAR(o_simd[j], o_base[j], 1e-6) << "o at " << j;
+    EXPECT_NEAR(g_act_simd[j], g_act_base[j], 1e-6) << "g_act at " << j;
+    EXPECT_NEAR(c_prev_simd[j], c_prev_base[j], 1e-6) << "c_curr at " << j;
+    EXPECT_NEAR(c_act_simd[j], c_act_base[j], 1e-6) << "c_act at " << j;
+    EXPECT_NEAR(mask_simd[j], mask_base[j], 1e-6) << "mask at " << j;
+    EXPECT_NEAR(h_out_simd[j], h_out_base[j], 1e-6) << "h_out at " << j;
+    EXPECT_NEAR(seq_out_simd[j], seq_out_base[j], 1e-6) << "seq_out at " << j;
+  }
+}
+
+TEST(SimdUtilsTest, SumSqFour)
+{
+  const size_t n = 29;
+  std::vector<double> v0(n), v1(n), v2(n), v3(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    v0[i] = 0.5 * static_cast<double>(i + 1);
+    v1[i] = -0.2 * static_cast<double>(i + 2);
+    v2[i] = 0.8 * static_cast<double>(i + 3);
+    v3[i] = -0.3 * static_cast<double>(i + 4);
+  }
+
+  double expected = simd::sum_sq(v0.data(), n) + simd::sum_sq(v1.data(), n) + simd::sum_sq(v2.data(), n) + simd::sum_sq(v3.data(), n);
+  double actual = simd::sum_sq_four(v0.data(), v1.data(), v2.data(), v3.data(), n);
+
+  EXPECT_NEAR(actual, expected, 1e-11);
+}
+
 
 
 

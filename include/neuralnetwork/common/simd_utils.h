@@ -1326,6 +1326,499 @@ public:
     }
   }
 
+  // Vectorized fused GEMM for four weight matrices with the same four input batches:
+  // y_b_k += x_b * W_k  for b in {0, 1, 2, 3}, k in {0, 1, 2, 3}
+  inline static void gemm_four_weights_four_batches(
+    const double* x0, const double* x1, const double* x2, const double* x3,
+    const double* W0, const double* W1, const double* W2, const double* W3,
+    double* y0_0, double* y1_0, double* y2_0, double* y3_0,
+    double* y0_1, double* y1_1, double* y2_1, double* y3_1,
+    double* y0_2, double* y1_2, double* y2_2, double* y3_2,
+    double* y0_3, double* y1_3, double* y2_3, double* y3_3,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0_0 = _mm256_loadu_pd(&y0_0[j]);
+      __m256d vec_y1_0 = _mm256_loadu_pd(&y1_0[j]);
+      __m256d vec_y2_0 = _mm256_loadu_pd(&y2_0[j]);
+      __m256d vec_y3_0 = _mm256_loadu_pd(&y3_0[j]);
+
+      __m256d vec_y0_1 = _mm256_loadu_pd(&y0_1[j]);
+      __m256d vec_y1_1 = _mm256_loadu_pd(&y1_1[j]);
+      __m256d vec_y2_1 = _mm256_loadu_pd(&y2_1[j]);
+      __m256d vec_y3_1 = _mm256_loadu_pd(&y3_1[j]);
+
+      __m256d vec_y0_2 = _mm256_loadu_pd(&y0_2[j]);
+      __m256d vec_y1_2 = _mm256_loadu_pd(&y1_2[j]);
+      __m256d vec_y2_2 = _mm256_loadu_pd(&y2_2[j]);
+      __m256d vec_y3_2 = _mm256_loadu_pd(&y3_2[j]);
+
+      __m256d vec_y0_3 = _mm256_loadu_pd(&y0_3[j]);
+      __m256d vec_y1_3 = _mm256_loadu_pd(&y1_3[j]);
+      __m256d vec_y2_3 = _mm256_loadu_pd(&y2_3[j]);
+      __m256d vec_y3_3 = _mm256_loadu_pd(&y3_3[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+        __m256d vec_x2 = _mm256_set1_pd(x2[i]);
+        __m256d vec_x3 = _mm256_set1_pd(x3[i]);
+
+        __m256d vec_w0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w1 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w2 = _mm256_loadu_pd(W2 + row_offset);
+        __m256d vec_w3 = _mm256_loadu_pd(W3 + row_offset);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0 = _mm256_fmadd_pd(vec_w0, vec_x0, vec_y0_0);
+        vec_y1_0 = _mm256_fmadd_pd(vec_w0, vec_x1, vec_y1_0);
+        vec_y2_0 = _mm256_fmadd_pd(vec_w0, vec_x2, vec_y2_0);
+        vec_y3_0 = _mm256_fmadd_pd(vec_w0, vec_x3, vec_y3_0);
+
+        vec_y0_1 = _mm256_fmadd_pd(vec_w1, vec_x0, vec_y0_1);
+        vec_y1_1 = _mm256_fmadd_pd(vec_w1, vec_x1, vec_y1_1);
+        vec_y2_1 = _mm256_fmadd_pd(vec_w1, vec_x2, vec_y2_1);
+        vec_y3_1 = _mm256_fmadd_pd(vec_w1, vec_x3, vec_y3_1);
+
+        vec_y0_2 = _mm256_fmadd_pd(vec_w2, vec_x0, vec_y0_2);
+        vec_y1_2 = _mm256_fmadd_pd(vec_w2, vec_x1, vec_y1_2);
+        vec_y2_2 = _mm256_fmadd_pd(vec_w2, vec_x2, vec_y2_2);
+        vec_y3_2 = _mm256_fmadd_pd(vec_w2, vec_x3, vec_y3_2);
+
+        vec_y0_3 = _mm256_fmadd_pd(vec_w3, vec_x0, vec_y0_3);
+        vec_y1_3 = _mm256_fmadd_pd(vec_w3, vec_x1, vec_y1_3);
+        vec_y2_3 = _mm256_fmadd_pd(vec_w3, vec_x2, vec_y2_3);
+        vec_y3_3 = _mm256_fmadd_pd(vec_w3, vec_x3, vec_y3_3);
+#else
+        vec_y0_0 = _mm256_add_pd(vec_y0_0, _mm256_mul_pd(vec_w0, vec_x0));
+        vec_y1_0 = _mm256_add_pd(vec_y1_0, _mm256_mul_pd(vec_w0, vec_x1));
+        vec_y2_0 = _mm256_add_pd(vec_y2_0, _mm256_mul_pd(vec_w0, vec_x2));
+        vec_y3_0 = _mm256_add_pd(vec_y3_0, _mm256_mul_pd(vec_w0, vec_x3));
+
+        vec_y0_1 = _mm256_add_pd(vec_y0_1, _mm256_mul_pd(vec_w1, vec_x0));
+        vec_y1_1 = _mm256_add_pd(vec_y1_1, _mm256_mul_pd(vec_w1, vec_x1));
+        vec_y2_1 = _mm256_add_pd(vec_y2_1, _mm256_mul_pd(vec_w1, vec_x2));
+        vec_y3_1 = _mm256_add_pd(vec_y3_1, _mm256_mul_pd(vec_w1, vec_x3));
+
+        vec_y0_2 = _mm256_add_pd(vec_y0_2, _mm256_mul_pd(vec_w2, vec_x0));
+        vec_y1_2 = _mm256_add_pd(vec_y1_2, _mm256_mul_pd(vec_w2, vec_x1));
+        vec_y2_2 = _mm256_add_pd(vec_y2_2, _mm256_mul_pd(vec_w2, vec_x2));
+        vec_y3_2 = _mm256_add_pd(vec_y3_2, _mm256_mul_pd(vec_w2, vec_x3));
+
+        vec_y0_3 = _mm256_add_pd(vec_y0_3, _mm256_mul_pd(vec_w3, vec_x0));
+        vec_y1_3 = _mm256_add_pd(vec_y1_3, _mm256_mul_pd(vec_w3, vec_x1));
+        vec_y2_3 = _mm256_add_pd(vec_y2_3, _mm256_mul_pd(vec_w3, vec_x2));
+        vec_y3_3 = _mm256_add_pd(vec_y3_3, _mm256_mul_pd(vec_w3, vec_x3));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0_0[j], vec_y0_0);
+      _mm256_storeu_pd(&y1_0[j], vec_y1_0);
+      _mm256_storeu_pd(&y2_0[j], vec_y2_0);
+      _mm256_storeu_pd(&y3_0[j], vec_y3_0);
+
+      _mm256_storeu_pd(&y0_1[j], vec_y0_1);
+      _mm256_storeu_pd(&y1_1[j], vec_y1_1);
+      _mm256_storeu_pd(&y2_1[j], vec_y2_1);
+      _mm256_storeu_pd(&y3_1[j], vec_y3_1);
+
+      _mm256_storeu_pd(&y0_2[j], vec_y0_2);
+      _mm256_storeu_pd(&y1_2[j], vec_y1_2);
+      _mm256_storeu_pd(&y2_2[j], vec_y2_2);
+      _mm256_storeu_pd(&y3_2[j], vec_y3_2);
+
+      _mm256_storeu_pd(&y0_3[j], vec_y0_3);
+      _mm256_storeu_pd(&y1_3[j], vec_y1_3);
+      _mm256_storeu_pd(&y2_3[j], vec_y2_3);
+      _mm256_storeu_pd(&y3_3[j], vec_y3_3);
+    }
+#endif
+    if (j < N_this)
+    {
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w0_row = W0 + i * N_this;
+        const double* w1_row = W1 + i * N_this;
+        const double* w2_row = W2 + i * N_this;
+        const double* w3_row = W3 + i * N_this;
+
+        const double x0_val = x0[i];
+        const double x1_val = x1[i];
+        const double x2_val = x2[i];
+        const double x3_val = x3[i];
+
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y0_0[col] += x0_val * w0_row[col];
+          y1_0[col] += x1_val * w0_row[col];
+          y2_0[col] += x2_val * w0_row[col];
+          y3_0[col] += x3_val * w0_row[col];
+
+          y0_1[col] += x0_val * w1_row[col];
+          y1_1[col] += x1_val * w1_row[col];
+          y2_1[col] += x2_val * w1_row[col];
+          y3_1[col] += x3_val * w1_row[col];
+
+          y0_2[col] += x0_val * w2_row[col];
+          y1_2[col] += x1_val * w2_row[col];
+          y2_2[col] += x2_val * w2_row[col];
+          y3_2[col] += x3_val * w2_row[col];
+
+          y0_3[col] += x0_val * w3_row[col];
+          y1_3[col] += x1_val * w3_row[col];
+          y2_3[col] += x2_val * w3_row[col];
+          y3_3[col] += x3_val * w3_row[col];
+        }
+      }
+    }
+  }
+
+  // Vectorized fused GEMM for four weight matrices with the same two input batches:
+  // y_b_k += x_b * W_k  for b in {0, 1}, k in {0, 1, 2, 3}
+  inline static void gemm_four_weights_two_batches(
+    const double* x0, const double* x1,
+    const double* W0, const double* W1, const double* W2, const double* W3,
+    double* y0_0, double* y1_0,
+    double* y0_1, double* y1_1,
+    double* y0_2, double* y1_2,
+    double* y0_3, double* y1_3,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0_0_0 = _mm256_loadu_pd(&y0_0[j]);
+      __m256d vec_y0_0_1 = _mm256_loadu_pd(&y0_0[j + 4]);
+      __m256d vec_y1_0_0 = _mm256_loadu_pd(&y1_0[j]);
+      __m256d vec_y1_0_1 = _mm256_loadu_pd(&y1_0[j + 4]);
+
+      __m256d vec_y0_1_0 = _mm256_loadu_pd(&y0_1[j]);
+      __m256d vec_y0_1_1 = _mm256_loadu_pd(&y0_1[j + 4]);
+      __m256d vec_y1_1_0 = _mm256_loadu_pd(&y1_1[j]);
+      __m256d vec_y1_1_1 = _mm256_loadu_pd(&y1_1[j + 4]);
+
+      __m256d vec_y0_2_0 = _mm256_loadu_pd(&y0_2[j]);
+      __m256d vec_y0_2_1 = _mm256_loadu_pd(&y0_2[j + 4]);
+      __m256d vec_y1_2_0 = _mm256_loadu_pd(&y1_2[j]);
+      __m256d vec_y1_2_1 = _mm256_loadu_pd(&y1_2[j + 4]);
+
+      __m256d vec_y0_3_0 = _mm256_loadu_pd(&y0_3[j]);
+      __m256d vec_y0_3_1 = _mm256_loadu_pd(&y0_3[j + 4]);
+      __m256d vec_y1_3_0 = _mm256_loadu_pd(&y1_3[j]);
+      __m256d vec_y1_3_1 = _mm256_loadu_pd(&y1_3[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+        __m256d vec_w0_0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w0_1 = _mm256_loadu_pd(W0 + row_offset + 4);
+        __m256d vec_w1_0 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w1_1 = _mm256_loadu_pd(W1 + row_offset + 4);
+        __m256d vec_w2_0 = _mm256_loadu_pd(W2 + row_offset);
+        __m256d vec_w2_1 = _mm256_loadu_pd(W2 + row_offset + 4);
+        __m256d vec_w3_0 = _mm256_loadu_pd(W3 + row_offset);
+        __m256d vec_w3_1 = _mm256_loadu_pd(W3 + row_offset + 4);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0_0 = _mm256_fmadd_pd(vec_w0_0, vec_x0, vec_y0_0_0);
+        vec_y0_0_1 = _mm256_fmadd_pd(vec_w0_1, vec_x0, vec_y0_0_1);
+        vec_y1_0_0 = _mm256_fmadd_pd(vec_w0_0, vec_x1, vec_y1_0_0);
+        vec_y1_0_1 = _mm256_fmadd_pd(vec_w0_1, vec_x1, vec_y1_0_1);
+
+        vec_y0_1_0 = _mm256_fmadd_pd(vec_w1_0, vec_x0, vec_y0_1_0);
+        vec_y0_1_1 = _mm256_fmadd_pd(vec_w1_1, vec_x0, vec_y0_1_1);
+        vec_y1_1_0 = _mm256_fmadd_pd(vec_w1_0, vec_x1, vec_y1_1_0);
+        vec_y1_1_1 = _mm256_fmadd_pd(vec_w1_1, vec_x1, vec_y1_1_1);
+
+        vec_y0_2_0 = _mm256_fmadd_pd(vec_w2_0, vec_x0, vec_y0_2_0);
+        vec_y0_2_1 = _mm256_fmadd_pd(vec_w2_1, vec_x0, vec_y0_2_1);
+        vec_y1_2_0 = _mm256_fmadd_pd(vec_w2_0, vec_x1, vec_y1_2_0);
+        vec_y1_2_1 = _mm256_fmadd_pd(vec_w2_1, vec_x1, vec_y1_2_1);
+
+        vec_y0_3_0 = _mm256_fmadd_pd(vec_w3_0, vec_x0, vec_y0_3_0);
+        vec_y0_3_1 = _mm256_fmadd_pd(vec_w3_1, vec_x0, vec_y0_3_1);
+        vec_y1_3_0 = _mm256_fmadd_pd(vec_w3_0, vec_x1, vec_y1_3_0);
+        vec_y1_3_1 = _mm256_fmadd_pd(vec_w3_1, vec_x1, vec_y1_3_1);
+#else
+        vec_y0_0_0 = _mm256_add_pd(vec_y0_0_0, _mm256_mul_pd(vec_w0_0, vec_x0));
+        vec_y0_0_1 = _mm256_add_pd(vec_y0_0_1, _mm256_mul_pd(vec_w0_1, vec_x0));
+        vec_y1_0_0 = _mm256_add_pd(vec_y1_0_0, _mm256_mul_pd(vec_w0_0, vec_x1));
+        vec_y1_0_1 = _mm256_add_pd(vec_y1_0_1, _mm256_mul_pd(vec_w0_1, vec_x1));
+
+        vec_y0_1_0 = _mm256_add_pd(vec_y0_1_0, _mm256_mul_pd(vec_w1_0, vec_x0));
+        vec_y0_1_1 = _mm256_add_pd(vec_y0_1_1, _mm256_mul_pd(vec_w1_1, vec_x0));
+        vec_y1_1_0 = _mm256_add_pd(vec_y1_1_0, _mm256_mul_pd(vec_w1_0, vec_x1));
+        vec_y1_1_1 = _mm256_add_pd(vec_y1_1_1, _mm256_mul_pd(vec_w1_1, vec_x1));
+
+        vec_y0_2_0 = _mm256_add_pd(vec_y0_2_0, _mm256_mul_pd(vec_w2_0, vec_x0));
+        vec_y0_2_1 = _mm256_add_pd(vec_y0_2_1, _mm256_mul_pd(vec_w2_1, vec_x0));
+        vec_y1_2_0 = _mm256_add_pd(vec_y1_2_0, _mm256_mul_pd(vec_w2_0, vec_x1));
+        vec_y1_2_1 = _mm256_add_pd(vec_y1_2_1, _mm256_mul_pd(vec_w2_1, vec_x1));
+
+        vec_y0_3_0 = _mm256_add_pd(vec_y0_3_0, _mm256_mul_pd(vec_w3_0, vec_x0));
+        vec_y0_3_1 = _mm256_add_pd(vec_y0_3_1, _mm256_mul_pd(vec_w3_1, vec_x0));
+        vec_y1_3_0 = _mm256_add_pd(vec_y1_3_0, _mm256_mul_pd(vec_w3_0, vec_x1));
+        vec_y1_3_1 = _mm256_add_pd(vec_y1_3_1, _mm256_mul_pd(vec_w3_1, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0_0[j], vec_y0_0_0);
+      _mm256_storeu_pd(&y0_0[j + 4], vec_y0_0_1);
+      _mm256_storeu_pd(&y1_0[j], vec_y1_0_0);
+      _mm256_storeu_pd(&y1_0[j + 4], vec_y1_0_1);
+
+      _mm256_storeu_pd(&y0_1[j], vec_y0_1_0);
+      _mm256_storeu_pd(&y0_1[j + 4], vec_y0_1_1);
+      _mm256_storeu_pd(&y1_1[j], vec_y1_1_0);
+      _mm256_storeu_pd(&y1_1[j + 4], vec_y1_1_1);
+
+      _mm256_storeu_pd(&y0_2[j], vec_y0_2_0);
+      _mm256_storeu_pd(&y0_2[j + 4], vec_y0_2_1);
+      _mm256_storeu_pd(&y1_2[j], vec_y1_2_0);
+      _mm256_storeu_pd(&y1_2[j + 4], vec_y1_2_1);
+
+      _mm256_storeu_pd(&y0_3[j], vec_y0_3_0);
+      _mm256_storeu_pd(&y0_3[j + 4], vec_y0_3_1);
+      _mm256_storeu_pd(&y1_3[j], vec_y1_3_0);
+      _mm256_storeu_pd(&y1_3[j + 4], vec_y1_3_1);
+    }
+
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0_0 = _mm256_loadu_pd(&y0_0[j]);
+      __m256d vec_y1_0 = _mm256_loadu_pd(&y1_0[j]);
+      __m256d vec_y0_1 = _mm256_loadu_pd(&y0_1[j]);
+      __m256d vec_y1_1 = _mm256_loadu_pd(&y1_1[j]);
+      __m256d vec_y0_2 = _mm256_loadu_pd(&y0_2[j]);
+      __m256d vec_y1_2 = _mm256_loadu_pd(&y1_2[j]);
+      __m256d vec_y0_3 = _mm256_loadu_pd(&y0_3[j]);
+      __m256d vec_y1_3 = _mm256_loadu_pd(&y1_3[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+        __m256d vec_w0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w1 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w2 = _mm256_loadu_pd(W2 + row_offset);
+        __m256d vec_w3 = _mm256_loadu_pd(W3 + row_offset);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0 = _mm256_fmadd_pd(vec_w0, vec_x0, vec_y0_0);
+        vec_y1_0 = _mm256_fmadd_pd(vec_w0, vec_x1, vec_y1_0);
+
+        vec_y0_1 = _mm256_fmadd_pd(vec_w1, vec_x0, vec_y0_1);
+        vec_y1_1 = _mm256_fmadd_pd(vec_w1, vec_x1, vec_y1_1);
+
+        vec_y0_2 = _mm256_fmadd_pd(vec_w2, vec_x0, vec_y0_2);
+        vec_y1_2 = _mm256_fmadd_pd(vec_w2, vec_x1, vec_y1_2);
+
+        vec_y0_3 = _mm256_fmadd_pd(vec_w3, vec_x0, vec_y0_3);
+        vec_y1_3 = _mm256_fmadd_pd(vec_w3, vec_x1, vec_y1_3);
+#else
+        vec_y0_0 = _mm256_add_pd(vec_y0_0, _mm256_mul_pd(vec_w0, vec_x0));
+        vec_y1_0 = _mm256_add_pd(vec_y1_0, _mm256_mul_pd(vec_w0, vec_x1));
+
+        vec_y0_1 = _mm256_add_pd(vec_y0_1, _mm256_mul_pd(vec_w1, vec_x0));
+        vec_y1_1 = _mm256_add_pd(vec_y1_1, _mm256_mul_pd(vec_w1, vec_x1));
+
+        vec_y0_2 = _mm256_add_pd(vec_y0_2, _mm256_mul_pd(vec_w2, vec_x0));
+        vec_y1_2 = _mm256_add_pd(vec_y1_2, _mm256_mul_pd(vec_w2, vec_x1));
+
+        vec_y0_3 = _mm256_add_pd(vec_y0_3, _mm256_mul_pd(vec_w3, vec_x0));
+        vec_y1_3 = _mm256_add_pd(vec_y1_3, _mm256_mul_pd(vec_w3, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0_0[j], vec_y0_0);
+      _mm256_storeu_pd(&y1_0[j], vec_y1_0);
+      _mm256_storeu_pd(&y0_1[j], vec_y0_1);
+      _mm256_storeu_pd(&y1_1[j], vec_y1_1);
+      _mm256_storeu_pd(&y0_2[j], vec_y0_2);
+      _mm256_storeu_pd(&y1_2[j], vec_y1_2);
+      _mm256_storeu_pd(&y0_3[j], vec_y0_3);
+      _mm256_storeu_pd(&y1_3[j], vec_y1_3);
+    }
+#endif
+    if (j < N_this)
+    {
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w0_row = W0 + i * N_this;
+        const double* w1_row = W1 + i * N_this;
+        const double* w2_row = W2 + i * N_this;
+        const double* w3_row = W3 + i * N_this;
+
+        const double x0_val = x0[i];
+        const double x1_val = x1[i];
+
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y0_0[col] += x0_val * w0_row[col];
+          y1_0[col] += x1_val * w0_row[col];
+
+          y0_1[col] += x0_val * w1_row[col];
+          y1_1[col] += x1_val * w1_row[col];
+
+          y0_2[col] += x0_val * w2_row[col];
+          y1_2[col] += x1_val * w2_row[col];
+
+          y0_3[col] += x0_val * w3_row[col];
+          y1_3[col] += x1_val * w3_row[col];
+        }
+      }
+    }
+  }
+
+  // Vectorized fused GEMM for four weight matrices with one input batch:
+  // y_k += x * W_k  for k in {0, 1, 2, 3}
+  inline static void gemm_four_weights_one_batch(
+    const double* x,
+    const double* W0, const double* W1, const double* W2, const double* W3,
+    double* y0, double* y1, double* y2, double* y3,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0_0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y0_1 = _mm256_loadu_pd(&y0[j + 4]);
+      __m256d vec_y1_0 = _mm256_loadu_pd(&y1[j]);
+      __m256d vec_y1_1 = _mm256_loadu_pd(&y1[j + 4]);
+      __m256d vec_y2_0 = _mm256_loadu_pd(&y2[j]);
+      __m256d vec_y2_1 = _mm256_loadu_pd(&y2[j + 4]);
+      __m256d vec_y3_0 = _mm256_loadu_pd(&y3[j]);
+      __m256d vec_y3_1 = _mm256_loadu_pd(&y3[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+        __m256d vec_w0_0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w0_1 = _mm256_loadu_pd(W0 + row_offset + 4);
+        __m256d vec_w1_0 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w1_1 = _mm256_loadu_pd(W1 + row_offset + 4);
+        __m256d vec_w2_0 = _mm256_loadu_pd(W2 + row_offset);
+        __m256d vec_w2_1 = _mm256_loadu_pd(W2 + row_offset + 4);
+        __m256d vec_w3_0 = _mm256_loadu_pd(W3 + row_offset);
+        __m256d vec_w3_1 = _mm256_loadu_pd(W3 + row_offset + 4);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0_0 = _mm256_fmadd_pd(vec_w0_0, vec_x, vec_y0_0);
+        vec_y0_1 = _mm256_fmadd_pd(vec_w0_1, vec_x, vec_y0_1);
+
+        vec_y1_0 = _mm256_fmadd_pd(vec_w1_0, vec_x, vec_y1_0);
+        vec_y1_1 = _mm256_fmadd_pd(vec_w1_1, vec_x, vec_y1_1);
+
+        vec_y2_0 = _mm256_fmadd_pd(vec_w2_0, vec_x, vec_y2_0);
+        vec_y2_1 = _mm256_fmadd_pd(vec_w2_1, vec_x, vec_y2_1);
+
+        vec_y3_0 = _mm256_fmadd_pd(vec_w3_0, vec_x, vec_y3_0);
+        vec_y3_1 = _mm256_fmadd_pd(vec_w3_1, vec_x, vec_y3_1);
+#else
+        vec_y0_0 = _mm256_add_pd(vec_y0_0, _mm256_mul_pd(vec_w0_0, vec_x));
+        vec_y0_1 = _mm256_add_pd(vec_y0_1, _mm256_mul_pd(vec_w0_1, vec_x));
+
+        vec_y1_0 = _mm256_add_pd(vec_y1_0, _mm256_mul_pd(vec_w1_0, vec_x));
+        vec_y1_1 = _mm256_add_pd(vec_y1_1, _mm256_mul_pd(vec_w1_1, vec_x));
+
+        vec_y2_0 = _mm256_add_pd(vec_y2_0, _mm256_mul_pd(vec_w2_0, vec_x));
+        vec_y2_1 = _mm256_add_pd(vec_y2_1, _mm256_mul_pd(vec_w2_1, vec_x));
+
+        vec_y3_0 = _mm256_add_pd(vec_y3_0, _mm256_mul_pd(vec_w3_0, vec_x));
+        vec_y3_1 = _mm256_add_pd(vec_y3_1, _mm256_mul_pd(vec_w3_1, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0_0);
+      _mm256_storeu_pd(&y0[j + 4], vec_y0_1);
+      _mm256_storeu_pd(&y1[j], vec_y1_0);
+      _mm256_storeu_pd(&y1[j + 4], vec_y1_1);
+      _mm256_storeu_pd(&y2[j], vec_y2_0);
+      _mm256_storeu_pd(&y2[j + 4], vec_y2_1);
+      _mm256_storeu_pd(&y3[j], vec_y3_0);
+      _mm256_storeu_pd(&y3[j + 4], vec_y3_1);
+    }
+
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y0[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y1[j]);
+      __m256d vec_y2 = _mm256_loadu_pd(&y2[j]);
+      __m256d vec_y3 = _mm256_loadu_pd(&y3[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+        __m256d vec_w0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w1 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w2 = _mm256_loadu_pd(W2 + row_offset);
+        __m256d vec_w3 = _mm256_loadu_pd(W3 + row_offset);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0, vec_x, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w1, vec_x, vec_y1);
+        vec_y2 = _mm256_fmadd_pd(vec_w2, vec_x, vec_y2);
+        vec_y3 = _mm256_fmadd_pd(vec_w3, vec_x, vec_y3);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0, vec_x));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w1, vec_x));
+        vec_y2 = _mm256_add_pd(vec_y2, _mm256_mul_pd(vec_w2, vec_x));
+        vec_y3 = _mm256_add_pd(vec_y3, _mm256_mul_pd(vec_w3, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y0[j], vec_y0);
+      _mm256_storeu_pd(&y1[j], vec_y1);
+      _mm256_storeu_pd(&y2[j], vec_y2);
+      _mm256_storeu_pd(&y3[j], vec_y3);
+    }
+#endif
+    if (j < N_this)
+    {
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w0_row = W0 + i * N_this;
+        const double* w1_row = W1 + i * N_this;
+        const double* w2_row = W2 + i * N_this;
+        const double* w3_row = W3 + i * N_this;
+
+        const double x_val = x[i];
+
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y0[col] += x_val * w0_row[col];
+          y1[col] += x_val * w1_row[col];
+          y2[col] += x_val * w2_row[col];
+          y3[col] += x_val * w3_row[col];
+        }
+      }
+    }
+  }
+
   // Scalar fallback for gemm_transposed_four_batches
   inline static void scalar_gemm_transposed_four_batches(
     const double* x0, const double* x1, const double* x2, const double* x3,
@@ -2715,6 +3208,50 @@ public:
     return total;
   }
 
+  // Calculate sum of squares across four vectors in parallel (sum(v0_i^2 + v1_i^2 + v2_i^2 + v3_i^2))
+  inline static double sum_sq_four(const double* v0, const double* v1, const double* v2, const double* v3, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+    double total = 0.0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_total0 = _mm256_setzero_pd();
+    __m256d vec_total1 = _mm256_setzero_pd();
+    __m256d vec_total2 = _mm256_setzero_pd();
+    __m256d vec_total3 = _mm256_setzero_pd();
+
+    for (; i + 3 < n; i += 4)
+    {
+      __m256d vec_v0 = _mm256_loadu_pd(v0 + i);
+      __m256d vec_v1 = _mm256_loadu_pd(v1 + i);
+      __m256d vec_v2 = _mm256_loadu_pd(v2 + i);
+      __m256d vec_v3 = _mm256_loadu_pd(v3 + i);
+
+#ifdef SIMD_FMA_ENABLED
+      vec_total0 = _mm256_fmadd_pd(vec_v0, vec_v0, vec_total0);
+      vec_total1 = _mm256_fmadd_pd(vec_v1, vec_v1, vec_total1);
+      vec_total2 = _mm256_fmadd_pd(vec_v2, vec_v2, vec_total2);
+      vec_total3 = _mm256_fmadd_pd(vec_v3, vec_v3, vec_total3);
+#else
+      vec_total0 = _mm256_add_pd(vec_total0, _mm256_mul_pd(vec_v0, vec_v0));
+      vec_total1 = _mm256_add_pd(vec_total1, _mm256_mul_pd(vec_v1, vec_v1));
+      vec_total2 = _mm256_add_pd(vec_total2, _mm256_mul_pd(vec_v2, vec_v2));
+      vec_total3 = _mm256_add_pd(vec_total3, _mm256_mul_pd(vec_v3, vec_v3));
+#endif
+    }
+    __m256d vec_total = _mm256_add_pd(
+      _mm256_add_pd(vec_total0, vec_total1),
+      _mm256_add_pd(vec_total2, vec_total3)
+    );
+    total = horizontal_sum(vec_total);
+#endif
+    for (; i < n; ++i)
+    {
+      total += v0[i] * v0[i] + v1[i] * v1[i] + v2[i] * v2[i] + v3[i] * v3[i];
+    }
+    return total;
+  }
+
   // Layer normalization forward step, applied over the n-element feature
   // axis of a single (batch item, timestep) slice: normalizes `a` to zero
   // mean / unit variance (population variance, +eps for stability), then
@@ -3804,6 +4341,47 @@ public:
     scalar_add_vectors(x, y, n, j);
   }
 
+  // Scalar fallback for sub_vectors
+  inline static void scalar_sub_vectors(const double* a, const double* b, double* dest, size_t n, size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      dest[j] = a[j] - b[j];
+    }
+  }
+
+  // Vector-vector subtraction (dest = a - b)
+  inline static void sub_vectors(const double* a, const double* b, double* dest, size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 15 < n; j += 16)
+    {
+      __m256d vec_a0 = _mm256_loadu_pd(a + j);
+      __m256d vec_b0 = _mm256_loadu_pd(b + j);
+      __m256d vec_a1 = _mm256_loadu_pd(a + j + 4);
+      __m256d vec_b1 = _mm256_loadu_pd(b + j + 4);
+      __m256d vec_a2 = _mm256_loadu_pd(a + j + 8);
+      __m256d vec_b2 = _mm256_loadu_pd(b + j + 8);
+      __m256d vec_a3 = _mm256_loadu_pd(a + j + 12);
+      __m256d vec_b3 = _mm256_loadu_pd(b + j + 12);
+
+      _mm256_storeu_pd(dest + j, _mm256_sub_pd(vec_a0, vec_b0));
+      _mm256_storeu_pd(dest + j + 4, _mm256_sub_pd(vec_a1, vec_b1));
+      _mm256_storeu_pd(dest + j + 8, _mm256_sub_pd(vec_a2, vec_b2));
+      _mm256_storeu_pd(dest + j + 12, _mm256_sub_pd(vec_a3, vec_b3));
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_a = _mm256_loadu_pd(a + j);
+      __m256d vec_b = _mm256_loadu_pd(b + j);
+      _mm256_storeu_pd(dest + j, _mm256_sub_pd(vec_a, vec_b));
+    }
+#endif
+    scalar_sub_vectors(a, b, dest, n, j);
+  }
+
   // Vectorized addition for four vectors (y0 += x0, y1 += x1, y2 += x2, y3 += x3)
   inline static void add_four_vectors(
     const double* x0, const double* x1, const double* x2, const double* x3,
@@ -4320,6 +4898,174 @@ public:
     scalar_lstm_cell_step(f, i, g_act, current_c, n, j);
   }
 
+  // Scalar fallback for lstm_forward_step_tanh
+  inline static void scalar_lstm_forward_step_tanh(
+    size_t n,
+    double* f_ptr,
+    double* i_ptr,
+    double* o_ptr,
+    const double* g_raw_ptr,
+    double* g_act_ptr,
+    double* c_prev_slice,
+    double* c_act_ptr,
+    double* h_out_slice,
+    double* mask_ptr,
+    double* batch_out_seq,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      const double z_f = f_ptr[j];
+      const double f = z_f >= 0.0 ? (1.0 / (1.0 + std::exp(-z_f))) : (std::exp(z_f) / (1.0 + std::exp(z_f)));
+      const double z_i = i_ptr[j];
+      const double i = z_i >= 0.0 ? (1.0 / (1.0 + std::exp(-z_i))) : (std::exp(z_i) / (1.0 + std::exp(z_i)));
+      const double z_o = o_ptr[j];
+      const double o = z_o >= 0.0 ? (1.0 / (1.0 + std::exp(-z_o))) : (std::exp(z_o) / (1.0 + std::exp(z_o)));
+      const double g_act = std::tanh(g_raw_ptr[j]);
+
+      const double c_curr = f * c_prev_slice[j] + i * g_act;
+      const double c_act = std::tanh(c_curr);
+      const double h = o * c_act;
+
+      f_ptr[j] = f;
+      i_ptr[j] = i;
+      o_ptr[j] = o;
+      g_act_ptr[j] = g_act;
+      c_prev_slice[j] = c_curr;
+      c_act_ptr[j] = c_act;
+      if (mask_ptr != nullptr)
+      {
+        mask_ptr[j] = 1.0;
+      }
+      h_out_slice[j] = h;
+      if (batch_out_seq != nullptr)
+      {
+        batch_out_seq[j] = h;
+      }
+    }
+  }
+
+  // Vectorized fused LSTM forward step for standard tanh activation
+  inline static void lstm_forward_step_tanh(
+    size_t n,
+    double* f_ptr,
+    double* i_ptr,
+    double* o_ptr,
+    const double* g_raw_ptr,
+    double* g_act_ptr,
+    double* c_prev_slice,
+    double* c_act_ptr,
+    double* h_out_slice,
+    double* mask_ptr,
+    double* batch_out_seq) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vf_raw0 = _mm256_loadu_pd(f_ptr + j);
+      __m256d vf_raw1 = _mm256_loadu_pd(f_ptr + j + 4);
+      __m256d vi_raw0 = _mm256_loadu_pd(i_ptr + j);
+      __m256d vi_raw1 = _mm256_loadu_pd(i_ptr + j + 4);
+      __m256d vo_raw0 = _mm256_loadu_pd(o_ptr + j);
+      __m256d vo_raw1 = _mm256_loadu_pd(o_ptr + j + 4);
+      __m256d vg_raw0 = _mm256_loadu_pd(g_raw_ptr + j);
+      __m256d vg_raw1 = _mm256_loadu_pd(g_raw_ptr + j + 4);
+
+      __m256d vf0 = sigmoid_pd(vf_raw0);
+      __m256d vf1 = sigmoid_pd(vf_raw1);
+      __m256d vi0 = sigmoid_pd(vi_raw0);
+      __m256d vi1 = sigmoid_pd(vi_raw1);
+      __m256d vo0 = sigmoid_pd(vo_raw0);
+      __m256d vo1 = sigmoid_pd(vo_raw1);
+      __m256d vg_act0 = tanh_pd(vg_raw0);
+      __m256d vg_act1 = tanh_pd(vg_raw1);
+
+      __m256d vc_prev0 = _mm256_loadu_pd(c_prev_slice + j);
+      __m256d vc_prev1 = _mm256_loadu_pd(c_prev_slice + j + 4);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d vc_curr0 = _mm256_fmadd_pd(vi0, vg_act0, _mm256_mul_pd(vf0, vc_prev0));
+      __m256d vc_curr1 = _mm256_fmadd_pd(vi1, vg_act1, _mm256_mul_pd(vf1, vc_prev1));
+#else
+      __m256d vc_curr0 = _mm256_add_pd(_mm256_mul_pd(vf0, vc_prev0), _mm256_mul_pd(vi0, vg_act0));
+      __m256d vc_curr1 = _mm256_add_pd(_mm256_mul_pd(vf1, vc_prev1), _mm256_mul_pd(vi1, vg_act1));
+#endif
+      __m256d vc_act0 = tanh_pd(vc_curr0);
+      __m256d vc_act1 = tanh_pd(vc_curr1);
+
+      __m256d vh0 = _mm256_mul_pd(vo0, vc_act0);
+      __m256d vh1 = _mm256_mul_pd(vo1, vc_act1);
+
+      _mm256_storeu_pd(f_ptr + j, vf0);
+      _mm256_storeu_pd(f_ptr + j + 4, vf1);
+      _mm256_storeu_pd(i_ptr + j, vi0);
+      _mm256_storeu_pd(i_ptr + j + 4, vi1);
+      _mm256_storeu_pd(o_ptr + j, vo0);
+      _mm256_storeu_pd(o_ptr + j + 4, vo1);
+      _mm256_storeu_pd(g_act_ptr + j, vg_act0);
+      _mm256_storeu_pd(g_act_ptr + j + 4, vg_act1);
+      _mm256_storeu_pd(c_prev_slice + j, vc_curr0);
+      _mm256_storeu_pd(c_prev_slice + j + 4, vc_curr1);
+      _mm256_storeu_pd(c_act_ptr + j, vc_act0);
+      _mm256_storeu_pd(c_act_ptr + j + 4, vc_act1);
+
+      if (mask_ptr != nullptr)
+      {
+        _mm256_storeu_pd(mask_ptr + j, one);
+        _mm256_storeu_pd(mask_ptr + j + 4, one);
+      }
+      _mm256_storeu_pd(h_out_slice + j, vh0);
+      _mm256_storeu_pd(h_out_slice + j + 4, vh1);
+      if (batch_out_seq != nullptr)
+      {
+        _mm256_storeu_pd(batch_out_seq + j, vh0);
+        _mm256_storeu_pd(batch_out_seq + j + 4, vh1);
+      }
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vf_raw = _mm256_loadu_pd(f_ptr + j);
+      __m256d vi_raw = _mm256_loadu_pd(i_ptr + j);
+      __m256d vo_raw = _mm256_loadu_pd(o_ptr + j);
+      __m256d vg_raw = _mm256_loadu_pd(g_raw_ptr + j);
+
+      __m256d vf = sigmoid_pd(vf_raw);
+      __m256d vi = sigmoid_pd(vi_raw);
+      __m256d vo = sigmoid_pd(vo_raw);
+      __m256d vg_act = tanh_pd(vg_raw);
+
+      __m256d vc_prev = _mm256_loadu_pd(c_prev_slice + j);
+#ifdef SIMD_FMA_ENABLED
+      __m256d vc_curr = _mm256_fmadd_pd(vi, vg_act, _mm256_mul_pd(vf, vc_prev));
+#else
+      __m256d vc_curr = _mm256_add_pd(_mm256_mul_pd(vf, vc_prev), _mm256_mul_pd(vi, vg_act));
+#endif
+      __m256d vc_act = tanh_pd(vc_curr);
+      __m256d vh = _mm256_mul_pd(vo, vc_act);
+
+      _mm256_storeu_pd(f_ptr + j, vf);
+      _mm256_storeu_pd(i_ptr + j, vi);
+      _mm256_storeu_pd(o_ptr + j, vo);
+      _mm256_storeu_pd(g_act_ptr + j, vg_act);
+      _mm256_storeu_pd(c_prev_slice + j, vc_curr);
+      _mm256_storeu_pd(c_act_ptr + j, vc_act);
+      if (mask_ptr != nullptr)
+      {
+        _mm256_storeu_pd(mask_ptr + j, one);
+      }
+      _mm256_storeu_pd(h_out_slice + j, vh);
+      if (batch_out_seq != nullptr)
+      {
+        _mm256_storeu_pd(batch_out_seq + j, vh);
+      }
+    }
+#endif
+    scalar_lstm_forward_step_tanh(n, f_ptr, i_ptr, o_ptr, g_raw_ptr, g_act_ptr, c_prev_slice, c_act_ptr, h_out_slice, mask_ptr, batch_out_seq, j);
+  }
+
   // Scalar fallback for sgd_step
   inline static void scalar_sgd_step(
     double* values,
@@ -4535,6 +5281,15 @@ public:
 #endif
 
     return y3;
+  }
+
+  inline static __m256d sigmoid_pd(__m256d x) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d exp_neg_x = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), x));
+    __m256d denom = _mm256_add_pd(vec_one, exp_neg_x);
+    return reciprocal_pd(denom);
   }
 
   inline static __m256d tanh_pd(__m256d x) noexcept

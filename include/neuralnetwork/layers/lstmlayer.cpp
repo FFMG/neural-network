@@ -575,10 +575,14 @@ void LSTMLayer::calculate_forward_feed(
       double* y3_o = y3_f + 2 * N_this;
       double* y3_g = y3_f + 3 * N_this;
 
-      simd::gemm_four_batches(x0, x1, x2, x3, W_f, y0_f, y1_f, y2_f, y3_f, N_prev, N_this);
-      simd::gemm_four_batches(x0, x1, x2, x3, W_i, y0_i, y1_i, y2_i, y3_i, N_prev, N_this);
-      simd::gemm_four_batches(x0, x1, x2, x3, W_o, y0_o, y1_o, y2_o, y3_o, N_prev, N_this);
-      simd::gemm_four_batches(x0, x1, x2, x3, W_g, y0_g, y1_g, y2_g, y3_g, N_prev, N_this);
+      simd::gemm_four_weights_four_batches(
+        x0, x1, x2, x3,
+        W_f, W_i, W_o, W_g,
+        y0_f, y1_f, y2_f, y3_f,
+        y0_i, y1_i, y2_i, y3_i,
+        y0_o, y1_o, y2_o, y3_o,
+        y0_g, y1_g, y2_g, y3_g,
+        N_prev, N_this);
     }
 
     for (; step + 1 < step_end; step += 2)
@@ -596,10 +600,14 @@ void LSTMLayer::calculate_forward_feed(
       double* y1_o = y1_f + 2 * N_this;
       double* y1_g = y1_f + 3 * N_this;
 
-      simd::gemm_two_batches(x0, x1, W_f, y0_f, y1_f, N_prev, N_this);
-      simd::gemm_two_batches(x0, x1, W_i, y0_i, y1_i, N_prev, N_this);
-      simd::gemm_two_batches(x0, x1, W_o, y0_o, y1_o, N_prev, N_this);
-      simd::gemm_two_batches(x0, x1, W_g, y0_g, y1_g, N_prev, N_this);
+      simd::gemm_four_weights_two_batches(
+        x0, x1,
+        W_f, W_i, W_o, W_g,
+        y0_f, y1_f,
+        y0_i, y1_i,
+        y0_o, y1_o,
+        y0_g, y1_g,
+        N_prev, N_this);
     }
 
     for (; step < step_end; ++step)
@@ -610,10 +618,11 @@ void LSTMLayer::calculate_forward_feed(
       double* y_o = y_f + 2 * N_this;
       double* y_g = y_f + 3 * N_this;
 
-      simd::gemm_one_batch(x_row, W_f, y_f, N_prev, N_this);
-      simd::gemm_one_batch(x_row, W_i, y_i, N_prev, N_this);
-      simd::gemm_one_batch(x_row, W_o, y_o, N_prev, N_this);
-      simd::gemm_one_batch(x_row, W_g, y_g, N_prev, N_this);
+      simd::gemm_four_weights_one_batch(
+        x_row,
+        W_f, W_i, W_o, W_g,
+        y_f, y_i, y_o, y_g,
+        N_prev, N_this);
     }
   };
 
@@ -712,11 +721,15 @@ void LSTMLayer::calculate_forward_feed(
         double* o0 = p0 + 2 * N_this; double* o1 = p1 + 2 * N_this; double* o2 = p2 + 2 * N_this; double* o3 = p3 + 2 * N_this;
         double* gg0 = p0 + 3 * N_this; double* gg1 = p1 + 3 * N_this; double* gg2 = p2 + 3 * N_this; double* gg3 = p3 + 3 * N_this;
 
-        // Recurrent-to-Gates (U * h_{t-1}), batched across the 4 items
-        simd::gemm_four_batches(hp0, hp1, hp2, hp3, _f_rw_values.data(), f0, f1, f2, f3, N_this, N_this);
-        simd::gemm_four_batches(hp0, hp1, hp2, hp3, _i_rw_values.data(), i0, i1, i2, i3, N_this, N_this);
-        simd::gemm_four_batches(hp0, hp1, hp2, hp3, _o_rw_values.data(), o0, o1, o2, o3, N_this, N_this);
-        simd::gemm_four_batches(hp0, hp1, hp2, hp3, _rw_values.data(), gg0, gg1, gg2, gg3, N_this, N_this);
+        // Recurrent-to-Gates (U * h_{t-1}), batched across the 4 items with fused 4-matrix kernel
+        simd::gemm_four_weights_four_batches(
+          hp0, hp1, hp2, hp3,
+          _f_rw_values.data(), _i_rw_values.data(), _o_rw_values.data(), _rw_values.data(),
+          f0, f1, f2, f3,
+          i0, i1, i2, i3,
+          o0, o1, o2, o3,
+          gg0, gg1, gg2, gg3,
+          N_this, N_this);
 
         finalize_forward_step(b, t, N_this, num_time_steps, hp0, cp0, p0, batch_residual_output_values, batch_output_sequences.vec(), batch_hidden_states, is_training);
         finalize_forward_step(b + 1, t, N_this, num_time_steps, hp1, cp1, p1, batch_residual_output_values, batch_output_sequences.vec(), batch_hidden_states, is_training);
@@ -746,10 +759,14 @@ void LSTMLayer::calculate_forward_feed(
         double* o0 = p0 + 2 * N_this; double* o1 = p1 + 2 * N_this;
         double* gg0 = p0 + 3 * N_this; double* gg1 = p1 + 3 * N_this;
 
-        simd::gemm_two_batches(hp0, hp1, _f_rw_values.data(), f0, f1, N_this, N_this);
-        simd::gemm_two_batches(hp0, hp1, _i_rw_values.data(), i0, i1, N_this, N_this);
-        simd::gemm_two_batches(hp0, hp1, _o_rw_values.data(), o0, o1, N_this, N_this);
-        simd::gemm_two_batches(hp0, hp1, _rw_values.data(), gg0, gg1, N_this, N_this);
+        simd::gemm_four_weights_two_batches(
+          hp0, hp1,
+          _f_rw_values.data(), _i_rw_values.data(), _o_rw_values.data(), _rw_values.data(),
+          f0, f1,
+          i0, i1,
+          o0, o1,
+          gg0, gg1,
+          N_this, N_this);
 
         finalize_forward_step(b, t, N_this, num_time_steps, hp0, cp0, p0, batch_residual_output_values, batch_output_sequences.vec(), batch_hidden_states, is_training);
         finalize_forward_step(b + 1, t, N_this, num_time_steps, hp1, cp1, p1, batch_residual_output_values, batch_output_sequences.vec(), batch_hidden_states, is_training);
@@ -770,10 +787,11 @@ void LSTMLayer::calculate_forward_feed(
         double* o0 = p0 + 2 * N_this;
         double* gg0 = p0 + 3 * N_this;
 
-        simd::gemm_one_batch(hp0, _f_rw_values.data(), f0, N_this, N_this);
-        simd::gemm_one_batch(hp0, _i_rw_values.data(), i0, N_this, N_this);
-        simd::gemm_one_batch(hp0, _o_rw_values.data(), o0, N_this, N_this);
-        simd::gemm_one_batch(hp0, _rw_values.data(), gg0, N_this, N_this);
+        simd::gemm_four_weights_one_batch(
+          hp0,
+          _f_rw_values.data(), _i_rw_values.data(), _o_rw_values.data(), _rw_values.data(),
+          f0, i0, o0, gg0,
+          N_this, N_this);
 
         finalize_forward_step(b, t, N_this, num_time_steps, hp0, cp0, p0, batch_residual_output_values, batch_output_sequences.vec(), batch_hidden_states, is_training);
       }
@@ -832,6 +850,7 @@ void LSTMLayer::finalize_forward_step(
   double* i_ptr = item_packed + N_this;
   double* o_ptr = item_packed + 2 * N_this;
   double* g_ptr = item_packed + 3 * N_this;
+  double* mask_ptr = item_packed + 4 * N_this;
   double* g_act_ptr = item_packed + 5 * N_this;
   double* c_act_ptr = item_packed + 6 * N_this;
 
@@ -841,83 +860,100 @@ void LSTMLayer::finalize_forward_step(
     simd::add_vectors(batch_residual_output_values[b].data(), g_ptr, N_this);
   }
 
-  // Activations. Written straight into their final packed slots (5 and 6)
-  // instead of separate scratch buffers, since BPTT reads them back from
-  // there via get_pre_activation_sums().
-  std::copy(g_ptr, g_ptr + N_this, g_act_ptr);
-  get_activation().activate(g_act_ptr, g_act_ptr + N_this, is_training);
+  const bool has_dropout = is_training && get_dropout() > 0.0;
+  const bool is_standard_tanh = !_use_layer_normalisation && !has_dropout && get_activation().get_method() == activation::method::tanh;
 
-  static const activation sigmoid_act(activation::method::sigmoid, 1.0);
-  sigmoid_act.activate(f_ptr, f_ptr + 3 * N_this);
-
-  simd::lstm_cell_step(
-    f_ptr,
-    i_ptr,
-    g_act_ptr,
-    c_prev_slice,
-    N_this
-  );
-
-  // Recurrent-state LayerNorm: normalize the cell state c_t in place before
-  // it is cached/propagated, so both the value that feeds tanh(c_t) -> h_t
-  // and the value carried forward as c_{t-1} are normalized. The inv_std
-  // needed to undo this in the backward pass is cached in element [0] of
-  // the new Multiplier slot (see the class-level comment on Multiplier);
-  // a_hat is cheaply recoverable there from the cached (normalized)
-  // cell_state_values via (y - bias) / gain, so no other new storage is
-  // required.
-  if (_use_layer_normalisation)
+  if (is_standard_tanh)
   {
-    double inv_std = 0.0;
-    simd::layer_norm_forward(c_prev_slice, _ln_c_gain_values.data(), _ln_c_bias_values.data(), c_prev_slice, N_this, LayerNormEpsilon, inv_std);
-    item_packed[Multiplier * N_this] = inv_std;
-  }
-
-  std::copy(c_prev_slice, c_prev_slice + N_this, c_act_ptr);
-  get_activation().activate(c_act_ptr, c_act_ptr + N_this, is_training);
-
-  if (is_training && get_dropout() > 0.0)
-  {
-    const auto& neurons = get_neurons();
-    double* mask_ptr = item_packed + 4 * N_this;
-    for (size_t j = 0; j < N_this; ++j)
-    {
-      double o = o_ptr[j];
-      double activated_c = c_act_ptr[j];
-      double out = o * activated_c;
-
-      double mask = 1.0;
-      const auto& neuron = neurons[j];
-      if (neuron.is_dropout())
-      {
-        const double dropout_rate = neuron.get_dropout_rate();
-        if (neuron.must_randomly_drop(b * num_time_steps + t))
-        {
-          out = 0.0;
-          mask = 0.0;
-        }
-        else
-        {
-          mask = 1.0 / (1.0 - dropout_rate);
-          out *= mask;
-        }
-      }
-      mask_ptr[j] = mask;
-
-      h_prev_slice[j] = out;
-      batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
-    }
+    double* out_seq = &batch_output_sequences[(b * num_time_steps + t) * N_this];
+    simd::lstm_forward_step_tanh(
+      N_this,
+      f_ptr,
+      i_ptr,
+      o_ptr,
+      g_ptr,
+      g_act_ptr,
+      c_prev_slice,
+      c_act_ptr,
+      h_prev_slice,
+      mask_ptr,
+      out_seq
+    );
   }
   else
   {
-    std::fill_n(item_packed + GateCount * N_this, N_this, 1.0);
-    simd::mul_vectors(
-      o_ptr,
-      c_act_ptr,
-      h_prev_slice,
+    // Activations. Written straight into their final packed slots (5 and 6)
+    // instead of separate scratch buffers, since BPTT reads them back from
+    // there via get_pre_activation_sums().
+    std::copy(g_ptr, g_ptr + N_this, g_act_ptr);
+    get_activation().activate(g_act_ptr, g_act_ptr + N_this, is_training);
+
+    static const activation sigmoid_act(activation::method::sigmoid, 1.0);
+    sigmoid_act.activate(f_ptr, f_ptr + 3 * N_this);
+
+    simd::lstm_cell_step(
+      f_ptr,
+      i_ptr,
+      g_act_ptr,
+      c_prev_slice,
       N_this
     );
-    std::copy(h_prev_slice, h_prev_slice + N_this, &batch_output_sequences[(b * num_time_steps + t) * N_this]);
+
+    // Recurrent-state LayerNorm: normalize the cell state c_t in place before
+    // it is cached/propagated, so both the value that feeds tanh(c_t) -> h_t
+    // and the value carried forward as c_{t-1} are normalized.
+    if (_use_layer_normalisation)
+    {
+      double inv_std = 0.0;
+      simd::layer_norm_forward(c_prev_slice, _ln_c_gain_values.data(), _ln_c_bias_values.data(), c_prev_slice, N_this, LayerNormEpsilon, inv_std);
+      item_packed[Multiplier * N_this] = inv_std;
+    }
+
+    std::copy(c_prev_slice, c_prev_slice + N_this, c_act_ptr);
+    get_activation().activate(c_act_ptr, c_act_ptr + N_this, is_training);
+
+    if (has_dropout)
+    {
+      const auto& neurons = get_neurons();
+      for (size_t j = 0; j < N_this; ++j)
+      {
+        double o = o_ptr[j];
+        double activated_c = c_act_ptr[j];
+        double out = o * activated_c;
+
+        double mask = 1.0;
+        const auto& neuron = neurons[j];
+        if (neuron.is_dropout())
+        {
+          const double dropout_rate = neuron.get_dropout_rate();
+          if (neuron.must_randomly_drop(b * num_time_steps + t))
+          {
+            out = 0.0;
+            mask = 0.0;
+          }
+          else
+          {
+            mask = 1.0 / (1.0 - dropout_rate);
+            out *= mask;
+          }
+        }
+        mask_ptr[j] = mask;
+
+        h_prev_slice[j] = out;
+        batch_output_sequences[(b * num_time_steps + t) * N_this + j] = out;
+      }
+    }
+    else
+    {
+      std::fill_n(mask_ptr, N_this, 1.0);
+      simd::mul_vectors(
+        o_ptr,
+        c_act_ptr,
+        h_prev_slice,
+        N_this
+      );
+      std::copy(h_prev_slice, h_prev_slice + N_this, &batch_output_sequences[(b * num_time_steps + t) * N_this]);
+    }
   }
 
   // Store states
@@ -941,19 +977,30 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
     const size_t T = states.size();
     deltas.assign(T * N_this, 0.0);
     const std::vector<double>& targets = *(target_outputs_begin + b);
-    for (size_t t = 0; t < T; ++t)
+    if (targets.size() == T * N_this)
     {
-      const auto& given = states[t].get_hidden_state_values();
-      for (size_t j = 0; j < N_this; ++j)
+      for (size_t t = 0; t < T; ++t)
       {
-        size_t idx = t * N_this + j;
-        if (idx < targets.size())
+        const auto& given = states[t].get_hidden_state_values();
+        simd::sub_vectors(given.data(), &targets[t * N_this], deltas.data() + t * N_this, N_this);
+      }
+    }
+    else
+    {
+      for (size_t t = 0; t < T; ++t)
+      {
+        const auto& given = states[t].get_hidden_state_values();
+        for (size_t j = 0; j < N_this; ++j)
         {
-          deltas.data()[idx] = given[j] - targets[idx];
-        }
-        else
-        {
-          deltas.data()[idx] = 0.0;
+          size_t idx = t * N_this + j;
+          if (idx < targets.size())
+          {
+            deltas.data()[idx] = given[j] - targets[idx];
+          }
+          else
+          {
+            deltas.data()[idx] = 0.0;
+          }
         }
       }
     }
@@ -1398,22 +1445,22 @@ void LSTMLayer::calculate_and_store_gradients(
     zero_gradients();
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
-      simd::add_vectors(_thread_f_w_grads[t].data(), _f_w_grads.data(), _f_w_grads.size());
-      simd::add_vectors(_thread_i_w_grads[t].data(), _i_w_grads.data(), _i_w_grads.size());
-      simd::add_vectors(_thread_o_w_grads[t].data(), _o_w_grads.data(), _o_w_grads.size());
-
-      simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
-      simd::add_vectors(_thread_f_rw_grads[t].data(), _f_rw_grads.data(), _f_rw_grads.size());
-      simd::add_vectors(_thread_i_rw_grads[t].data(), _i_rw_grads.data(), _i_rw_grads.size());
-      simd::add_vectors(_thread_o_rw_grads[t].data(), _o_rw_grads.data(), _o_rw_grads.size());
-
-      if (has_bias())
+      if (!_w_grads.empty())
       {
-        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
-        simd::add_vectors(_thread_f_b_grads[t].data(), _f_b_grads.data(), _f_b_grads.size());
-        simd::add_vectors(_thread_i_b_grads[t].data(), _i_b_grads.data(), _i_b_grads.size());
-        simd::add_vectors(_thread_o_b_grads[t].data(), _o_b_grads.data(), _o_b_grads.size());
+        simd::add_four_vectors(_thread_w_grads[t].data(), _thread_f_w_grads[t].data(), _thread_i_w_grads[t].data(), _thread_o_w_grads[t].data(),
+                               _w_grads.data(), _f_w_grads.data(), _i_w_grads.data(), _o_w_grads.data(), _w_grads.size());
+      }
+
+      if (!_rw_grads.empty())
+      {
+        simd::add_four_vectors(_thread_rw_grads[t].data(), _thread_f_rw_grads[t].data(), _thread_i_rw_grads[t].data(), _thread_o_rw_grads[t].data(),
+                               _rw_grads.data(), _f_rw_grads.data(), _i_rw_grads.data(), _o_rw_grads.data(), _rw_grads.size());
+      }
+
+      if (has_bias() && !_b_grads.empty())
+      {
+        simd::add_four_vectors(_thread_b_grads[t].data(), _thread_f_b_grads[t].data(), _thread_i_b_grads[t].data(), _thread_o_b_grads[t].data(),
+                               _b_grads.data(), _f_b_grads.data(), _i_b_grads.data(), _o_b_grads.data(), _b_grads.size());
       }
     }
   }
@@ -1450,21 +1497,19 @@ void LSTMLayer::calculate_and_store_gradients(
 
 double LSTMLayer::get_gradient_norm_sq() const
 {
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   double norm_sq = 0.0;
-  norm_sq += simd::sum_sq(_w_grads.data(), _w_grads.size());
-  norm_sq += simd::sum_sq(_rw_grads.data(), _rw_grads.size());
-  norm_sq += simd::sum_sq(_f_w_grads.data(), _f_w_grads.size());
-  norm_sq += simd::sum_sq(_f_rw_grads.data(), _f_rw_grads.size());
-  norm_sq += simd::sum_sq(_i_w_grads.data(), _i_w_grads.size());
-  norm_sq += simd::sum_sq(_i_rw_grads.data(), _i_rw_grads.size());
-  norm_sq += simd::sum_sq(_o_w_grads.data(), _o_w_grads.size());
-  norm_sq += simd::sum_sq(_o_rw_grads.data(), _o_rw_grads.size());
-  if (has_bias())
+  if (!_w_grads.empty())
   {
-    norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
-    norm_sq += simd::sum_sq(_f_b_grads.data(), _f_b_grads.size());
-    norm_sq += simd::sum_sq(_i_b_grads.data(), _i_b_grads.size());
-    norm_sq += simd::sum_sq(_o_b_grads.data(), _o_b_grads.size());
+    norm_sq += simd::sum_sq_four(_w_grads.data(), _f_w_grads.data(), _i_w_grads.data(), _o_w_grads.data(), _w_grads.size());
+  }
+  if (!_rw_grads.empty())
+  {
+    norm_sq += simd::sum_sq_four(_rw_grads.data(), _f_rw_grads.data(), _i_rw_grads.data(), _o_rw_grads.data(), _rw_grads.size());
+  }
+  if (has_bias() && !_b_grads.empty())
+  {
+    norm_sq += simd::sum_sq_four(_b_grads.data(), _f_b_grads.data(), _i_b_grads.data(), _o_b_grads.data(), _b_grads.size());
   }
   if (_use_layer_normalisation)
   {

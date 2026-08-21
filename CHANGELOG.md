@@ -2,6 +2,20 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.31] - 2026-08-21
+
+### Changed
+- Optimised `LSTMLayer` forward feed and gradient pipeline:
+  - Implemented fused four-weight GEMM routines (`simd::gemm_four_weights_four_batches`, `simd::gemm_four_weights_two_batches`, and `simd::gemm_four_weights_one_batch`) in `include/neuralnetwork/common/simd_utils.h` to calculate pre-activations for all 4 gates ($f, i, o, g$) in parallel from shared input streams, eliminating 75% of input broadcast and memory stream overhead in `precalc_gates` and `recurrent_pass`.
+  - Implemented single-pass register-fused `simd::lstm_forward_step_tanh` fusing gate sigmoid activations, candidate tanh activation, cell state update ($c_t = f \cdot c_{t-1} + i \cdot g$), cell state tanh activation, hidden state output ($h_t = o \cdot \tanh(c_t)$), and mask initialisation in vector registers without intermediate memory roundtrips in `finalize_forward_step`.
+  - Added fast-path vectorised target gradient subtraction in `LSTMLayer::calculate_output_gradients` via `simd::sub_vectors`.
+  - Vectorised multi-threaded gradient reduction in `LSTMLayer::calculate_and_store_gradients` using `simd::add_four_vectors` across all 4 gate weight, recurrent weight, and bias buffers.
+  - Accelerated gradient norm calculation in `LSTMLayer::get_gradient_norm_sq()` using `simd::sum_sq_four`.
+
+### Added
+- Added unit tests `SimdUtilsTest.GemmFourWeightsBatches`, `SimdUtilsTest.LstmForwardStepTanhVsStandard`, and `SimdUtilsTest.SumSqFour` in `tests/simd_utils_tests.cpp`.
+- Added forward pass equivalence and output gradient tests `LSTMLayerTest.ForwardFeedFusedEquivalence` and `LSTMLayerTest.OutputGradientsFusedEquivalence` in `tests/lstmlayer_tests.cpp`.
+
 ## [1.1.30] - 2026-08-19
 
 ### Changed
