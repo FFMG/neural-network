@@ -1511,6 +1511,159 @@ TEST_F(LSTMLayerTest, FastBpttKernelsNumericalGradientEquivalence)
   }
 }
 
+TEST_F(LSTMLayerTest, ForwardFeedFusedEquivalence)
+{
+  const unsigned num_inputs = 5;
+  const unsigned num_outputs = 4;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 3;
+
+  std::vector<unsigned int> topology = { num_inputs, num_outputs, 2 };
+
+  LSTMLayer layer(
+    1,
+    num_inputs,
+    num_outputs,
+    0.0,
+    Layer::Role::Hidden,
+    activation(activation::method::tanh, 1.0),
+    OptimiserType::Adam,
+    -1,
+    0.0,
+    nullptr,
+    1,
+    true,
+    0.0,
+    false,
+    std::nullopt);
+
+  MockLayer prev_layer(0, num_inputs);
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> inputs(num_time_steps * num_inputs);
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      inputs[i] = 0.2 * static_cast<double>(b + 1) * std::sin(static_cast<double>(i + 1));
+    }
+    batch_go[b].set_rnn_outputs(0, inputs);
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, false);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_outs = batch_go[b].get_rnn_outputs(1);
+    EXPECT_EQ(rnn_outs.size(), num_time_steps * num_outputs);
+    for (size_t i = 0; i < rnn_outs.size(); ++i)
+    {
+      EXPECT_TRUE(std::isfinite(rnn_outs[i]));
+      EXPECT_GE(rnn_outs[i], -1.0);
+      EXPECT_LE(rnn_outs[i], 1.0);
+    }
+
+    const auto& last_outs = batch_go[b].get_outputs(1);
+    EXPECT_EQ(last_outs.size(), num_outputs);
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+      EXPECT_DOUBLE_EQ(last_outs[j], rnn_outs[(num_time_steps - 1) * num_outputs + j]);
+    }
+
+    const auto& states = batch_hs[b].at(1);
+    EXPECT_EQ(states.size(), num_time_steps);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const auto& h = states[t].get_hidden_state_values();
+      const auto& c = states[t].get_cell_state_values();
+      const auto packed = states[t].get_pre_activation_sums();
+
+      EXPECT_EQ(h.size(), num_outputs);
+      EXPECT_EQ(c.size(), num_outputs);
+      EXPECT_EQ(packed.size(), LSTMLayer::Multiplier * num_outputs);
+
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        EXPECT_TRUE(std::isfinite(h[j]));
+        EXPECT_TRUE(std::isfinite(c[j]));
+        EXPECT_DOUBLE_EQ(h[j], rnn_outs[t * num_outputs + j]);
+      }
+    }
+  }
+}
+
+TEST_F(LSTMLayerTest, OutputGradientsFusedEquivalence)
+{
+  const unsigned num_inputs = 3;
+  const unsigned num_outputs = 4;
+  const size_t num_time_steps = 2;
+  const size_t batch_size = 2;
+
+  std::vector<unsigned int> topology = { num_inputs, num_outputs };
+
+  LSTMLayer layer(
+    0,
+    num_inputs,
+    num_outputs,
+    0.0,
+    Layer::Role::Hidden,
+    activation(activation::method::tanh, 1.0),
+    OptimiserType::Adam,
+    -1,
+    0.0,
+    nullptr,
+    1,
+    true,
+    0.0,
+    false,
+    std::nullopt);
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  // Populate hidden states
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      std::vector<double> h(num_outputs);
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        h[j] = 0.1 * static_cast<double>(b * 10 + t * 4 + j);
+      }
+      batch_hs[b].at(0)[t].set_hidden_state_values(h.data(), num_outputs);
+    }
+  }
+
+  std::vector<std::vector<double>> targets(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+    {
+      targets[b][i] = 0.05 * static_cast<double>(i + 1);
+    }
+  }
+
+  layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, batch_size);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_grads = batch_go[b].get_rnn_gradients(0);
+    EXPECT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const auto& h = batch_hs[b].at(0)[t].get_hidden_state_values();
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        double expected = h[j] - targets[b][t * num_outputs + j];
+        EXPECT_NEAR(rnn_grads[t * num_outputs + j], expected, 1e-12);
+      }
+    }
+  }
+}
+
 
 
 
