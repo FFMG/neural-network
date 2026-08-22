@@ -27,6 +27,7 @@ public:
 #ifdef SIMD_AVX2_ENABLED
   inline static double horizontal_sum(__m256d v) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     __m128d lo = _mm256_castpd256_pd128(v);
     __m128d hi = _mm256_extractf128_pd(v, 1);
     __m128d sum128 = _mm_add_pd(lo, hi);
@@ -37,6 +38,7 @@ public:
   // Scalar fallback for mul_add
   inline static void scalar_mul_add(const double x, const double* w, double* y, size_t n, size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       y[j] += x * w[j];
@@ -80,6 +82,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       y0[j] += x * w0[j];
@@ -140,6 +143,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       y0[j] += x * w0[j];
@@ -214,6 +218,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       y0[j] += x * w0[j];
@@ -293,6 +298,7 @@ public:
     double* y0, double* y1, double* y2,
     size_t n, size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       y0[j] += x0 * w0[j];
@@ -308,6 +314,7 @@ public:
     double* y0, double* y1, double* y2, double* y3,
     size_t n, size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       double w_val = w[j];
@@ -325,6 +332,7 @@ public:
     double* y0, double* y1,
     size_t n, size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       double w_val = w[j];
@@ -1826,6 +1834,7 @@ public:
     double* y0, double* y1, double* y2, double* y3,
     size_t N_this, size_t N_next) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t r = 0; r < N_this; ++r)
     {
       const double* row = W + r * N_next;
@@ -1855,6 +1864,7 @@ public:
     double* y0, double* y1,
     size_t N_this, size_t N_next) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t r = 0; r < N_this; ++r)
     {
       const double* row = W + r * N_next;
@@ -2005,6 +2015,7 @@ public:
   // Scalar fallback for dot_product
   [[nodiscard]] inline static double scalar_dot_product(const double* a, const double* b, size_t n, size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     double total_sum = 0.0;
     for (size_t j = start; j < n; ++j)
     {
@@ -2084,6 +2095,7 @@ public:
     size_t start = 0,
     double clipping_scale = 1.0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     if (decays != nullptr)
@@ -2253,6 +2265,7 @@ public:
     size_t start = 0,
     double clipping_scale = 1.0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
     const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
     if (decays != nullptr)
@@ -2439,6 +2452,7 @@ public:
     size_t start = 0,
     double clipping_scale = 1.0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     if (decays != nullptr)
     {
       for (size_t j = start; j < n; ++j)
@@ -2586,6 +2600,7 @@ public:
     const double* h_hat_pre_deriv_vals,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     (void)h_hat_pre_vals;
     const size_t s = (start < n) ? start : n;
 #if defined(__GNUC__) && !defined(__clang__)
@@ -2731,6 +2746,7 @@ public:
     double* dh_next_out,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     const size_t s = (start < n) ? start : n;
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
@@ -2841,6 +2857,7 @@ public:
     const double* dg_act_deriv_vals,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     (void)g_pre_vals;
     const size_t s = (start < n) ? start : n;
 #if defined(__GNUC__) && !defined(__clang__)
@@ -3018,6 +3035,202 @@ public:
       dg_out[k] = dc * i[k] * dg_deriv_s;
       dc_next_out[k] = dc * f[k];
     }
+  }
+
+  // Scalar fallback for lstm_bptt_gate_step_gelu
+  inline static void scalar_lstm_bptt_gate_step_gelu(
+    size_t n,
+    const double* dh_curr,
+    const double* dc_next_in,
+    const double* f,
+    const double* i,
+    const double* o,
+    const double* g_pre_vals,
+    const double* activated_g_vals,
+    const double* activated_c_vals,
+    const double* c_curr_vals,
+    const double* c_prev,
+    bool has_prev,
+    double* df_out,
+    double* di_out,
+    double* do_out,
+    double* dg_out,
+    double* dc_next_out,
+    size_t start = 0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const double sqrt_2_over_pi = 0.7978845608028654;
+    for (size_t k = start; k < n; ++k)
+    {
+      double dh = std::clamp(dh_curr[k], -50.0, 50.0);
+      double act_c = activated_c_vals[k];
+      double do_gate_s = dh * act_c * o[k] * (1.0 - o[k]);
+
+      const double c_val = c_curr_vals[k];
+      const double c_val3 = c_val * c_val * c_val;
+      const double tanh_c = std::tanh(sqrt_2_over_pi * (c_val + 0.044715 * c_val3));
+      const double dc_deriv_s = 0.5 + 0.5 * tanh_c +
+        (0.5 * c_val * (1.0 - tanh_c * tanh_c) * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * c_val * c_val));
+
+      double dc = dh * o[k] * dc_deriv_s + dc_next_in[k];
+      double g_act = activated_g_vals[k];
+
+      const double g_val = g_pre_vals[k];
+      const double g_val3 = g_val * g_val * g_val;
+      const double tanh_g = std::tanh(sqrt_2_over_pi * (g_val + 0.044715 * g_val3));
+      const double dg_deriv_s = 0.5 + 0.5 * tanh_g +
+        (0.5 * g_val * (1.0 - tanh_g * tanh_g) * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * g_val * g_val));
+
+      df_out[k] = dc * (has_prev ? c_prev[k] : 0.0) * f[k] * (1.0 - f[k]);
+      di_out[k] = dc * g_act * i[k] * (1.0 - i[k]);
+      do_out[k] = do_gate_s;
+      dg_out[k] = dc * i[k] * dg_deriv_s;
+      dc_next_out[k] = dc * f[k];
+    }
+  }
+
+  // Specialized LSTM BPTT Gate Step with fused GELU derivatives
+  inline static void lstm_bptt_gate_step_gelu(
+    size_t n,
+    const double* dh_curr,
+    const double* dc_next_in,
+    const double* f,
+    const double* i,
+    const double* o,
+    const double* g_pre_vals,
+    const double* activated_g_vals,
+    const double* activated_c_vals,
+    const double* c_curr_vals,
+    const double* c_prev,
+    bool has_prev,
+    double* df_out,
+    double* di_out,
+    double* do_out,
+    double* dg_out,
+    double* dc_next_out) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    const __m256d clip_limit = _mm256_set1_pd(50.0);
+    const __m256d neg_clip_limit = _mm256_set1_pd(-50.0);
+
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d dh_raw0 = _mm256_loadu_pd(&dh_curr[j]);
+      __m256d dh_raw1 = _mm256_loadu_pd(&dh_curr[j + 4]);
+
+      __m256d dh0 = _mm256_max_pd(_mm256_min_pd(dh_raw0, clip_limit), neg_clip_limit);
+      __m256d dh1 = _mm256_max_pd(_mm256_min_pd(dh_raw1, clip_limit), neg_clip_limit);
+
+      __m256d o_gate0 = _mm256_loadu_pd(&o[j]);
+      __m256d o_gate1 = _mm256_loadu_pd(&o[j + 4]);
+
+      __m256d dc_nxt0 = _mm256_loadu_pd(&dc_next_in[j]);
+      __m256d dc_nxt1 = _mm256_loadu_pd(&dc_next_in[j + 4]);
+
+      __m256d act_c0 = _mm256_loadu_pd(&activated_c_vals[j]);
+      __m256d act_c1 = _mm256_loadu_pd(&activated_c_vals[j + 4]);
+
+      __m256d do_gate_v0 = _mm256_mul_pd(_mm256_mul_pd(dh0, act_c0), _mm256_mul_pd(o_gate0, _mm256_sub_pd(one, o_gate0)));
+      __m256d do_gate_v1 = _mm256_mul_pd(_mm256_mul_pd(dh1, act_c1), _mm256_mul_pd(o_gate1, _mm256_sub_pd(one, o_gate1)));
+
+      __m256d c_val0 = _mm256_loadu_pd(&c_curr_vals[j]);
+      __m256d c_val1 = _mm256_loadu_pd(&c_curr_vals[j + 4]);
+
+      __m256d dc_deriv0 = gelu_derivative_pd(c_val0);
+      __m256d dc_deriv1 = gelu_derivative_pd(c_val1);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d dc0 = _mm256_fmadd_pd(_mm256_mul_pd(dh0, o_gate0), dc_deriv0, dc_nxt0);
+      __m256d dc1 = _mm256_fmadd_pd(_mm256_mul_pd(dh1, o_gate1), dc_deriv1, dc_nxt1);
+#else
+      __m256d dc0 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh0, o_gate0), dc_deriv0), dc_nxt0);
+      __m256d dc1 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh1, o_gate1), dc_deriv1), dc_nxt1);
+#endif
+
+      __m256d f_gate0 = _mm256_loadu_pd(&f[j]);
+      __m256d f_gate1 = _mm256_loadu_pd(&f[j + 4]);
+
+      __m256d i_gate0 = _mm256_loadu_pd(&i[j]);
+      __m256d i_gate1 = _mm256_loadu_pd(&i[j + 4]);
+
+      __m256d cp0 = has_prev ? _mm256_loadu_pd(&c_prev[j]) : _mm256_setzero_pd();
+      __m256d cp1 = has_prev ? _mm256_loadu_pd(&c_prev[j + 4]) : _mm256_setzero_pd();
+
+      __m256d g_act0 = _mm256_loadu_pd(&activated_g_vals[j]);
+      __m256d g_act1 = _mm256_loadu_pd(&activated_g_vals[j + 4]);
+
+      __m256d g_pre0 = _mm256_loadu_pd(&g_pre_vals[j]);
+      __m256d g_pre1 = _mm256_loadu_pd(&g_pre_vals[j + 4]);
+
+      __m256d dg_deriv0 = gelu_derivative_pd(g_pre0);
+      __m256d dg_deriv1 = gelu_derivative_pd(g_pre1);
+
+      __m256d df0 = _mm256_mul_pd(_mm256_mul_pd(dc0, cp0), _mm256_mul_pd(f_gate0, _mm256_sub_pd(one, f_gate0)));
+      __m256d df1 = _mm256_mul_pd(_mm256_mul_pd(dc1, cp1), _mm256_mul_pd(f_gate1, _mm256_sub_pd(one, f_gate1)));
+
+      __m256d di0 = _mm256_mul_pd(_mm256_mul_pd(dc0, g_act0), _mm256_mul_pd(i_gate0, _mm256_sub_pd(one, i_gate0)));
+      __m256d di1 = _mm256_mul_pd(_mm256_mul_pd(dc1, g_act1), _mm256_mul_pd(i_gate1, _mm256_sub_pd(one, i_gate1)));
+
+      __m256d dg0 = _mm256_mul_pd(_mm256_mul_pd(dc0, i_gate0), dg_deriv0);
+      __m256d dg1 = _mm256_mul_pd(_mm256_mul_pd(dc1, i_gate1), dg_deriv1);
+
+      _mm256_storeu_pd(&df_out[j], df0);
+      _mm256_storeu_pd(&df_out[j + 4], df1);
+
+      _mm256_storeu_pd(&di_out[j], di0);
+      _mm256_storeu_pd(&di_out[j + 4], di1);
+
+      _mm256_storeu_pd(&do_out[j], do_gate_v0);
+      _mm256_storeu_pd(&do_out[j + 4], do_gate_v1);
+
+      _mm256_storeu_pd(&dg_out[j], dg0);
+      _mm256_storeu_pd(&dg_out[j + 4], dg1);
+
+      _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc0, f_gate0));
+      _mm256_storeu_pd(&dc_next_out[j + 4], _mm256_mul_pd(dc1, f_gate1));
+    }
+
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d dh_raw = _mm256_loadu_pd(&dh_curr[j]);
+      __m256d dh = _mm256_max_pd(_mm256_min_pd(dh_raw, clip_limit), neg_clip_limit);
+      __m256d o_gate = _mm256_loadu_pd(&o[j]);
+      __m256d dc_nxt = _mm256_loadu_pd(&dc_next_in[j]);
+
+      __m256d act_c = _mm256_loadu_pd(&activated_c_vals[j]);
+      __m256d do_gate_v = _mm256_mul_pd(_mm256_mul_pd(dh, act_c), _mm256_mul_pd(o_gate, _mm256_sub_pd(one, o_gate)));
+
+      __m256d c_val = _mm256_loadu_pd(&c_curr_vals[j]);
+      __m256d dc_deriv = gelu_derivative_pd(c_val);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d dc = _mm256_fmadd_pd(_mm256_mul_pd(dh, o_gate), dc_deriv, dc_nxt);
+#else
+      __m256d dc = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(dh, o_gate), dc_deriv), dc_nxt);
+#endif
+
+      __m256d f_gate = _mm256_loadu_pd(&f[j]);
+      __m256d i_gate = _mm256_loadu_pd(&i[j]);
+      __m256d cp = has_prev ? _mm256_loadu_pd(&c_prev[j]) : _mm256_setzero_pd();
+      __m256d g_act = _mm256_loadu_pd(&activated_g_vals[j]);
+      __m256d g_pre = _mm256_loadu_pd(&g_pre_vals[j]);
+      __m256d dg_deriv = gelu_derivative_pd(g_pre);
+
+      __m256d df = _mm256_mul_pd(_mm256_mul_pd(dc, cp), _mm256_mul_pd(f_gate, _mm256_sub_pd(one, f_gate)));
+      __m256d di = _mm256_mul_pd(_mm256_mul_pd(dc, g_act), _mm256_mul_pd(i_gate, _mm256_sub_pd(one, i_gate)));
+      __m256d dg = _mm256_mul_pd(_mm256_mul_pd(dc, i_gate), dg_deriv);
+
+      _mm256_storeu_pd(&df_out[j], df);
+      _mm256_storeu_pd(&di_out[j], di);
+      _mm256_storeu_pd(&do_out[j], do_gate_v);
+      _mm256_storeu_pd(&dg_out[j], dg);
+      _mm256_storeu_pd(&dc_next_out[j], _mm256_mul_pd(dc, f_gate));
+    }
+#endif
+    scalar_lstm_bptt_gate_step_gelu(n, dh_curr, dc_next_in, f, i, o, g_pre_vals, activated_g_vals, activated_c_vals, c_curr_vals, c_prev, has_prev, df_out, di_out, do_out, dg_out, dc_next_out, j);
   }
 
   // LSTM BPTT Gate Step
@@ -4913,6 +5126,7 @@ public:
     double* batch_out_seq,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t j = start; j < n; ++j)
     {
       const double z_f = f_ptr[j];
@@ -5066,6 +5280,180 @@ public:
     scalar_lstm_forward_step_tanh(n, f_ptr, i_ptr, o_ptr, g_raw_ptr, g_act_ptr, c_prev_slice, c_act_ptr, h_out_slice, mask_ptr, batch_out_seq, j);
   }
 
+  // Scalar fallback for lstm_forward_step_gelu
+  inline static void scalar_lstm_forward_step_gelu(
+    size_t n,
+    double* f_ptr,
+    double* i_ptr,
+    double* o_ptr,
+    const double* g_raw_ptr,
+    double* g_act_ptr,
+    double* c_prev_slice,
+    double* c_act_ptr,
+    double* h_out_slice,
+    double* mask_ptr,
+    double* batch_out_seq,
+    size_t start = 0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const double sqrt_2_over_pi = 0.7978845608028654;
+    for (size_t j = start; j < n; ++j)
+    {
+      const double z_f = f_ptr[j];
+      const double f = z_f >= 0.0 ? (1.0 / (1.0 + std::exp(-z_f))) : (std::exp(z_f) / (1.0 + std::exp(z_f)));
+      const double z_i = i_ptr[j];
+      const double i = z_i >= 0.0 ? (1.0 / (1.0 + std::exp(-z_i))) : (std::exp(z_i) / (1.0 + std::exp(z_i)));
+      const double z_o = o_ptr[j];
+      const double o = z_o >= 0.0 ? (1.0 / (1.0 + std::exp(-z_o))) : (std::exp(z_o) / (1.0 + std::exp(z_o)));
+
+      const double g_raw = g_raw_ptr[j];
+      const double g_raw3 = g_raw * g_raw * g_raw;
+      const double g_act = 0.5 * g_raw * (1.0 + std::tanh(sqrt_2_over_pi * (g_raw + 0.044715 * g_raw3)));
+
+      const double c_curr = f * c_prev_slice[j] + i * g_act;
+      const double c_curr3 = c_curr * c_curr * c_curr;
+      const double c_act = 0.5 * c_curr * (1.0 + std::tanh(sqrt_2_over_pi * (c_curr + 0.044715 * c_curr3)));
+      const double h = o * c_act;
+
+      f_ptr[j] = f;
+      i_ptr[j] = i;
+      o_ptr[j] = o;
+      g_act_ptr[j] = g_act;
+      c_prev_slice[j] = c_curr;
+      c_act_ptr[j] = c_act;
+      if (mask_ptr != nullptr)
+      {
+        mask_ptr[j] = 1.0;
+      }
+      h_out_slice[j] = h;
+      if (batch_out_seq != nullptr)
+      {
+        batch_out_seq[j] = h;
+      }
+    }
+  }
+
+  // Vectorized fused LSTM forward step for standard gelu activation
+  inline static void lstm_forward_step_gelu(
+    size_t n,
+    double* f_ptr,
+    double* i_ptr,
+    double* o_ptr,
+    const double* g_raw_ptr,
+    double* g_act_ptr,
+    double* c_prev_slice,
+    double* c_act_ptr,
+    double* h_out_slice,
+    double* mask_ptr,
+    double* batch_out_seq) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d one = _mm256_set1_pd(1.0);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vf_raw0 = _mm256_loadu_pd(f_ptr + j);
+      __m256d vf_raw1 = _mm256_loadu_pd(f_ptr + j + 4);
+      __m256d vi_raw0 = _mm256_loadu_pd(i_ptr + j);
+      __m256d vi_raw1 = _mm256_loadu_pd(i_ptr + j + 4);
+      __m256d vo_raw0 = _mm256_loadu_pd(o_ptr + j);
+      __m256d vo_raw1 = _mm256_loadu_pd(o_ptr + j + 4);
+      __m256d vg_raw0 = _mm256_loadu_pd(g_raw_ptr + j);
+      __m256d vg_raw1 = _mm256_loadu_pd(g_raw_ptr + j + 4);
+
+      __m256d vf0 = sigmoid_pd(vf_raw0);
+      __m256d vf1 = sigmoid_pd(vf_raw1);
+      __m256d vi0 = sigmoid_pd(vi_raw0);
+      __m256d vi1 = sigmoid_pd(vi_raw1);
+      __m256d vo0 = sigmoid_pd(vo_raw0);
+      __m256d vo1 = sigmoid_pd(vo_raw1);
+      __m256d vg_act0 = gelu_pd(vg_raw0);
+      __m256d vg_act1 = gelu_pd(vg_raw1);
+
+      __m256d vc_prev0 = _mm256_loadu_pd(c_prev_slice + j);
+      __m256d vc_prev1 = _mm256_loadu_pd(c_prev_slice + j + 4);
+
+#ifdef SIMD_FMA_ENABLED
+      __m256d vc_curr0 = _mm256_fmadd_pd(vi0, vg_act0, _mm256_mul_pd(vf0, vc_prev0));
+      __m256d vc_curr1 = _mm256_fmadd_pd(vi1, vg_act1, _mm256_mul_pd(vf1, vc_prev1));
+#else
+      __m256d vc_curr0 = _mm256_add_pd(_mm256_mul_pd(vf0, vc_prev0), _mm256_mul_pd(vi0, vg_act0));
+      __m256d vc_curr1 = _mm256_add_pd(_mm256_mul_pd(vf1, vc_prev1), _mm256_mul_pd(vi1, vg_act1));
+#endif
+      __m256d vc_act0 = gelu_pd(vc_curr0);
+      __m256d vc_act1 = gelu_pd(vc_curr1);
+
+      __m256d vh0 = _mm256_mul_pd(vo0, vc_act0);
+      __m256d vh1 = _mm256_mul_pd(vo1, vc_act1);
+
+      _mm256_storeu_pd(f_ptr + j, vf0);
+      _mm256_storeu_pd(f_ptr + j + 4, vf1);
+      _mm256_storeu_pd(i_ptr + j, vi0);
+      _mm256_storeu_pd(i_ptr + j + 4, vi1);
+      _mm256_storeu_pd(o_ptr + j, vo0);
+      _mm256_storeu_pd(o_ptr + j + 4, vo1);
+      _mm256_storeu_pd(g_act_ptr + j, vg_act0);
+      _mm256_storeu_pd(g_act_ptr + j + 4, vg_act1);
+      _mm256_storeu_pd(c_prev_slice + j, vc_curr0);
+      _mm256_storeu_pd(c_prev_slice + j + 4, vc_curr1);
+      _mm256_storeu_pd(c_act_ptr + j, vc_act0);
+      _mm256_storeu_pd(c_act_ptr + j + 4, vc_act1);
+
+      if (mask_ptr != nullptr)
+      {
+        _mm256_storeu_pd(mask_ptr + j, one);
+        _mm256_storeu_pd(mask_ptr + j + 4, one);
+      }
+      _mm256_storeu_pd(h_out_slice + j, vh0);
+      _mm256_storeu_pd(h_out_slice + j + 4, vh1);
+      if (batch_out_seq != nullptr)
+      {
+        _mm256_storeu_pd(batch_out_seq + j, vh0);
+        _mm256_storeu_pd(batch_out_seq + j + 4, vh1);
+      }
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vf_raw = _mm256_loadu_pd(f_ptr + j);
+      __m256d vi_raw = _mm256_loadu_pd(i_ptr + j);
+      __m256d vo_raw = _mm256_loadu_pd(o_ptr + j);
+      __m256d vg_raw = _mm256_loadu_pd(g_raw_ptr + j);
+
+      __m256d vf = sigmoid_pd(vf_raw);
+      __m256d vi = sigmoid_pd(vi_raw);
+      __m256d vo = sigmoid_pd(vo_raw);
+      __m256d vg_act = gelu_pd(vg_raw);
+
+      __m256d vc_prev = _mm256_loadu_pd(c_prev_slice + j);
+#ifdef SIMD_FMA_ENABLED
+      __m256d vc_curr = _mm256_fmadd_pd(vi, vg_act, _mm256_mul_pd(vf, vc_prev));
+#else
+      __m256d vc_curr = _mm256_add_pd(_mm256_mul_pd(vf, vc_prev), _mm256_mul_pd(vi, vg_act));
+#endif
+      __m256d vc_act = gelu_pd(vc_curr);
+      __m256d vh = _mm256_mul_pd(vo, vc_act);
+
+      _mm256_storeu_pd(f_ptr + j, vf);
+      _mm256_storeu_pd(i_ptr + j, vi);
+      _mm256_storeu_pd(o_ptr + j, vo);
+      _mm256_storeu_pd(g_act_ptr + j, vg_act);
+      _mm256_storeu_pd(c_prev_slice + j, vc_curr);
+      _mm256_storeu_pd(c_act_ptr + j, vc_act);
+      if (mask_ptr != nullptr)
+      {
+        _mm256_storeu_pd(mask_ptr + j, one);
+      }
+      _mm256_storeu_pd(h_out_slice + j, vh);
+      if (batch_out_seq != nullptr)
+      {
+        _mm256_storeu_pd(batch_out_seq + j, vh);
+      }
+    }
+#endif
+    scalar_lstm_forward_step_gelu(n, f_ptr, i_ptr, o_ptr, g_raw_ptr, g_act_ptr, c_prev_slice, c_act_ptr, h_out_slice, mask_ptr, batch_out_seq, j);
+  }
+
   // Scalar fallback for sgd_step
   inline static void scalar_sgd_step(
     double* values,
@@ -5079,6 +5467,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t i = start; i < n; ++i)
     {
       double grad = grads[i] * clipping_scale;
@@ -5155,6 +5544,7 @@ public:
     size_t n,
     size_t start = 0) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     for (size_t i = start; i < n; ++i)
     {
       double grad = grads[i] * clipping_scale;
@@ -5251,6 +5641,7 @@ public:
 
   inline static __m256d reciprocal_pd(__m256d x) noexcept
   {
+    MYODDWEB_PROFILE_FUNCTION("simd");
     const __m256d vec_two = _mm256_set1_pd(2.0);
     __m128 x_float = _mm256_cvtpd_ps(x);
     __m128 y0_float = _mm_rcp_ps(x_float);
@@ -5308,6 +5699,57 @@ public:
     __m256d val = _mm256_sub_pd(term, vec_one);
     __m256d x_sign = _mm256_and_pd(x, sign_mask);
     return _mm256_xor_pd(val, x_sign);
+  }
+
+  inline static __m256d gelu_pd(__m256d x) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const __m256d vec_half = _mm256_set1_pd(0.5);
+    const __m256d vec_one = _mm256_set1_pd(1.0);
+    const __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
+    const __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
+
+    __m256d vx2 = _mm256_mul_pd(x, x);
+    __m256d vx3 = _mm256_mul_pd(vx2, x);
+#ifdef SIMD_FMA_ENABLED
+    __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, x);
+#else
+    __m256d inner = _mm256_add_pd(x, _mm256_mul_pd(vec_coeff2, vx3));
+#endif
+    __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
+    __m256d tanh_val = tanh_pd(arg);
+    return _mm256_mul_pd(_mm256_mul_pd(vec_half, x), _mm256_add_pd(vec_one, tanh_val));
+  }
+
+  inline static __m256d gelu_derivative_pd(__m256d x) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const __m256d vec_half = _mm256_set1_pd(0.5);
+    const __m256d vec_one = _mm256_set1_pd(1.0);
+    const __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
+    const __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
+    const __m256d vec_coeff3 = _mm256_set1_pd(3.0 * 0.044715);
+
+    __m256d vx2 = _mm256_mul_pd(x, x);
+    __m256d vx3 = _mm256_mul_pd(vx2, x);
+#ifdef SIMD_FMA_ENABLED
+    __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, x);
+#else
+    __m256d inner = _mm256_add_pd(x, _mm256_mul_pd(vec_coeff2, vx3));
+#endif
+    __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
+    __m256d tanh_term = tanh_pd(arg);
+
+    __m256d term1 = _mm256_fmadd_pd(vec_half, tanh_term, vec_half); // 0.5 + 0.5 * tanh_term
+    __m256d one_minus_t2 = _mm256_sub_pd(vec_one, _mm256_mul_pd(tanh_term, tanh_term));
+    __m256d half_x = _mm256_mul_pd(vec_half, x);
+#ifdef SIMD_FMA_ENABLED
+    __m256d factor = _mm256_fmadd_pd(vec_coeff3, vx2, vec_one); // 1.0 + 3.0 * 0.044715 * x^2
+#else
+    __m256d factor = _mm256_add_pd(vec_one, _mm256_mul_pd(vec_coeff3, vx2));
+#endif
+    __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(half_x, one_minus_t2), vec_coeff1), factor);
+    return _mm256_add_pd(term1, term2);
   }
 
   inline static __m256d log_pd(__m256d x) noexcept
@@ -5850,22 +6292,19 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
-    __m256d vec_half = _mm256_set1_pd(0.5);
-    __m256d vec_one = _mm256_set1_pd(1.0);
-    __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
-    __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
+    for (; i + 7 < size; i += 8)
+    {
+      __m256d vx0 = _mm256_loadu_pd(begin + i);
+      __m256d vx1 = _mm256_loadu_pd(begin + i + 4);
+      __m256d res0 = gelu_pd(vx0);
+      __m256d res1 = gelu_pd(vx1);
+      _mm256_storeu_pd(begin + i, res0);
+      _mm256_storeu_pd(begin + i + 4, res1);
+    }
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d vx3 = _mm256_mul_pd(_mm256_mul_pd(vx, vx), vx);
-#ifdef SIMD_FMA_ENABLED
-      __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, vx);
-#else
-      __m256d inner = _mm256_add_pd(vx, _mm256_mul_pd(vec_coeff2, vx3));
-#endif
-      __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
-      __m256d tanh_val = tanh_pd(arg);
-      __m256d res = _mm256_mul_pd(_mm256_mul_pd(vec_half, vx), _mm256_add_pd(vec_one, tanh_val));
+      __m256d res = gelu_pd(vx);
       _mm256_storeu_pd(begin + i, res);
     }
 #endif
@@ -5883,35 +6322,19 @@ public:
     MYODDWEB_PROFILE_FUNCTION("simd");
     size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
-    __m256d vec_half = _mm256_set1_pd(0.5);
-    __m256d vec_one = _mm256_set1_pd(1.0);
-    __m256d vec_coeff1 = _mm256_set1_pd(0.7978845608028654); // sqrt(2/pi)
-    __m256d vec_coeff2 = _mm256_set1_pd(0.044715);
-    __m256d vec_coeff3 = _mm256_set1_pd(3.0 * 0.044715);
+    for (; i + 7 < size; i += 8)
+    {
+      __m256d vx0 = _mm256_loadu_pd(begin + i);
+      __m256d vx1 = _mm256_loadu_pd(begin + i + 4);
+      __m256d res0 = gelu_derivative_pd(vx0);
+      __m256d res1 = gelu_derivative_pd(vx1);
+      _mm256_storeu_pd(out + i, res0);
+      _mm256_storeu_pd(out + i + 4, res1);
+    }
     for (; i + 3 < size; i += 4)
     {
       __m256d vx = _mm256_loadu_pd(begin + i);
-      __m256d vx2 = _mm256_mul_pd(vx, vx);
-      __m256d vx3 = _mm256_mul_pd(vx2, vx);
-#ifdef SIMD_FMA_ENABLED
-      __m256d inner = _mm256_fmadd_pd(vec_coeff2, vx3, vx);
-#else
-      __m256d inner = _mm256_add_pd(vx, _mm256_mul_pd(vec_coeff2, vx3));
-#endif
-      __m256d arg = _mm256_mul_pd(vec_coeff1, inner);
-      __m256d tanh_term = tanh_pd(arg);
-
-      __m256d term1 = _mm256_fmadd_pd(vec_half, tanh_term, vec_half); // 0.5 + 0.5 * tanh_term
-      __m256d one_minus_t2 = _mm256_sub_pd(vec_one, _mm256_mul_pd(tanh_term, tanh_term));
-      __m256d half_x = _mm256_mul_pd(vec_half, vx);
-      
-#ifdef SIMD_FMA_ENABLED
-      __m256d factor = _mm256_fmadd_pd(vec_coeff3, vx2, vec_one); // 1.0 + 3.0 * 0.044715 * x^2
-#else
-      __m256d factor = _mm256_add_pd(vec_one, _mm256_mul_pd(vec_coeff3, vx2));
-#endif
-      __m256d term2 = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(half_x, one_minus_t2), vec_coeff1), factor);
-      __m256d res = _mm256_add_pd(term1, term2);
+      __m256d res = gelu_derivative_pd(vx);
       _mm256_storeu_pd(out + i, res);
     }
 #endif

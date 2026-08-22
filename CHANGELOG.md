@@ -2,6 +2,19 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.32] - 2026-08-22
+
+### Changed
+- Optimised `LSTMLayer` forward feed and BPTT backward pass for GELU activation:
+  - Added fused vectorised AVX2 functions `simd::gelu_pd` and `simd::gelu_derivative_pd` in `include/neuralnetwork/common/simd_utils.h`.
+  - Implemented register-fused `simd::lstm_forward_step_gelu` fusing gate sigmoid activations, candidate GELU activation, cell state update ($c_t = f \cdot c_{t-1} + i \cdot g$), cell state GELU activation, and hidden state output ($h_t = o \cdot \text{gelu}(c_t)$) in vector registers without intermediate memory roundtrips.
+  - Implemented fused `simd::lstm_bptt_gate_step_gelu` integrating GELU derivative calculations directly into the AVX2 vector registers of the LSTM BPTT gate step, eliminating dynamic derivative buffer writing (`dc_act_deriv` and `dg_act_deriv`) and separate scalar passes.
+  - Refactored `simd::gelu_activate` and `simd::gelu_derivative` to leverage `gelu_pd` and `gelu_derivative_pd` with 8-wide AVX2 unrolling.
+
+### Added
+- Added unit tests `SimdUtilsTest.LstmForwardStepGeluVsStandard` and `SimdUtilsTest.LstmBpttGateStepGeluVsStandard` in `tests/simd_utils_tests.cpp`.
+- Added unit tests `LSTMLayerTest.GeluForwardFeedEquivalence` and `LSTMLayerTest.GeluBpttNumericalGradientEquivalence` in `tests/lstmlayer_tests.cpp`.
+
 ## [1.1.31] - 2026-08-21
 
 ### Changed
