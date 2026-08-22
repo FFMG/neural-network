@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "helpers/errorcalculation.h"
 #include "common/logger.h"
 #include "neuralnetwork.h"
@@ -33,7 +33,7 @@ private:
     std::vector<unsigned> topology = { 1, 16, 2 };
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Gru, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::Gru, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     // Define multiple output layers

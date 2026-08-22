@@ -33,11 +33,11 @@ private:
     
     std::vector<LayerDetails> hidden_layers = {
       // Layer 1: GRU
-      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
       // Layer 2: FF (We will manually make this multi-head below)
-      LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::mish, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::mish, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
       // Layer 3: FF
-      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     auto options = NeuralNetworkOptions::create(topology)

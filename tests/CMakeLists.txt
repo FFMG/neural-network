@@ -35,6 +35,7 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/layers/lstmlayer.cpp"
     "${NN_SOURCE_DIR}/layers/tcnlayer.cpp"
     "${NN_SOURCE_DIR}/layers/selfattentionlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/embeddinglayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
     "${NN_SOURCE_DIR}/helpers/neuralnetworkhelper.cpp"
     "${NN_SOURCE_DIR}/helpers/neuralnetworkserializer.cpp"
@@ -59,6 +60,7 @@ add_executable(neuralnetwork_tests
     attentionpoollayer_tests.cpp
     elmanrnnlayer_mt_tests.cpp
     elmanrnnlayer_tests.cpp
+    embeddinglayer_tests.cpp
     error_calculation_tests.cpp
     fflayer_mt_tests.cpp
     fflayer_tests.cpp

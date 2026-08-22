@@ -125,10 +125,10 @@ The hidden layer configuration allows you to define the architecture of your net
 ```cpp
     std::vector<unsigned> topology = {2, 8, 8, 8, 8, 1};
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.2, 0.05, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Lstm, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.2, 0.05, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -152,7 +152,7 @@ Multi Output Layers allow the network to split from a central trunk into multipl
     // Branch 1: Shallow path, 2 outputs
     MultiOutputLayerDetails b1
     (
-      { LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0) },
+      { LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0) },
       OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b1);
@@ -161,15 +161,15 @@ Multi Output Layers allow the network to split from a central trunk into multipl
     MultiOutputLayerDetails b2
     (
       {
-        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0),
-        LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0)
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+        LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0)
       },
       OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b2);
 
     auto options = NeuralNetworkOptions::create(topology)
-      .with_hidden_layers({ LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0) })
+      .with_hidden_layers({ LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0) })
       .with_output_layer_details(multi_output_layer_details)
       .build();
 ```
@@ -239,7 +239,7 @@ The library supports various strategies to manage learning rate dynamics:
 Individual layers can have dropout applied via `LayerDetails`. During training, neurons are randomly deactivated according to the dropout rate, and the remaining activations are scaled by `1 / (1 - rate)` to maintain the expected sum. Dropout is automatically disabled during inference (`think`).
 
 ```cpp
-    LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0); // 25% dropout
+    LayerDetails hl(Layer::Architecture::FF, 64, activation(activation::method::relu, 0.01), 0.25, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0); // 25% dropout
 ```
 
 ### Reproducibility (Seed)
@@ -252,7 +252,7 @@ By default, every run of this library is non-deterministic: weight initializatio
       .build();
 ```
 
-The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the default) preserves the exact non-deterministic behaviour of every prior release. When set, a single base seed derives independent, non-colliding sub-seeds per layer, per weight, and per neuron via a fast splitmix64-style mixer (`Rng::derive`) — so, unlike naively reusing one raw seed everywhere, no two weights or dropout streams collapse onto the same value. The seed is persisted by `NeuralNetworkSerializer::save`/`load`, and a reloaded network's dropout masking continues exactly as a fresh, identically-seeded run would have.
+The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the default) preserves the exact non-deterministic behaviour of every prior release. When set, a single base seed derives independent, non-colliding sub-seeds per layer, per weight, and per neuron via a fast splitmix64-style mixer (`Rng::derive`) — so, unlike naively reusing one raw seed everywhere, no two weights or dropout streams collapse onto the same value. The seed is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.
 
 **Known limitation:** dropout determinism is keyed off `(seed, layer, neuron, batch_index, timestep)`, not an epoch counter. With shuffling enabled (the default), the training example occupying a given batch slot changes every epoch, so this is not an issue in practice. If shuffling is disabled for a run (`shuffle_training_data(false)` with unique/non-shuffled data), the same physical sample will receive the same dropout mask on every epoch.
 
@@ -261,7 +261,7 @@ The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the
 `Gru` and `Lstm` hidden layers can opt into recurrent-state Layer Normalization via the trailing `use_layer_normalisation` flag on `LayerDetails` (`false` when disabled, `true` when enabled). It normalizes the state each layer actually carries across timesteps — the blended hidden state for `Gru`, the cell state for `Lstm` — with its own learnable per-neuron gain (initialized to `1.0`) and bias (initialized to `0.0`), targeting the unstable activation scale that recurrent nets can build up over a long BPTT window. It is not available on `FF`/`Elman` layers. The flag, like the rest of a hidden layer's configuration, is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.
 
 ```cpp
-    LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0); // Layer Normalisation enabled
+    LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0, 0, 0, 0, 0); // Layer Normalisation enabled
 ```
 
 ### Attention Pooling
@@ -278,8 +278,8 @@ Recurrent layers (`Gru`/`Lstm`/`Elman`) compress a whole BPTT window into a sing
 
 ```cpp
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::AttentionPool, 32, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 16, 0, 0, 0, 0), // 16-wide attention scoring projection
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::AttentionPool, 32, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 16, 0, 0, 0, 0, 0, 0), // 16-wide attention scoring projection
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -308,8 +308,8 @@ Unlike `AttentionPool`, a `Tcn` layer accepts the library's existing external re
 
 ```cpp
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 1, 0, 0), // kernel_size=3, dilation=1
-      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 2, 0, 0), // kernel_size=3, dilation=2
+      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 1, 0, 0, 0, 0), // kernel_size=3, dilation=1
+      LayerDetails(Layer::Architecture::Tcn, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 3, 2, 0, 0, 0, 0), // kernel_size=3, dilation=2
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -337,7 +337,7 @@ Unlike `AttentionPool`, a `SelfAttention` layer has no previous-architecture res
 
 ```cpp
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::SelfAttention, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0, 4, 64), // 4 heads, feed_forward_hidden_size=64, LayerNorm enabled
+      LayerDetails(Layer::Architecture::SelfAttention, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0, 4, 64, 0, 0), // 4 heads, feed_forward_hidden_size=64, LayerNorm enabled
     };
 
     auto options = NeuralNetworkOptions::create(topology)
@@ -350,6 +350,29 @@ Unlike `AttentionPool`, a `SelfAttention` layer has no previous-architecture res
 The layer's own trained weights (Q/K/V/output projections, the feed-forward sub-block's two dense layers, and - when enabled - both LayerNorms' gain/bias) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `number_of_heads`/`feed_forward_hidden_size` configuration.
 
 **Known limitation:** unlike every other layer in this library, `SelfAttention`'s per-batch-item scratch (the per-head attention-score matrix) scales `O(T^2)` in the window length `T`, not linearly - budget `bptt_max_ticks` accordingly for this layer type.
+
+### Embedding Layer (Categorical Entity Embeddings)
+
+An `EmbeddingLayer` (`Layer::Architecture::Embedding`) maps discrete categorical integer IDs (e.g., day-of-week, ticker asset ID, market regime category) into continuous dense embedding vectors of dimension $D$.
+
+For $K$ categorical input features and embedding dimension $D$, the layer outputs $K \times D$ continuous values:
+* `vocabulary_size`: The maximum number of discrete categories $V$ (IDs in range $[0, V-1]$).
+* `embedding_dimension`: The dense embedding vector dimension $D$.
+* `size`: Must equal $K \times D$.
+
+```cpp
+    // Example: 2 categorical inputs mapped to 8-dimensional embeddings -> layer size = 16
+    std::vector<LayerDetails> hidden_layers = {
+      LayerDetails(Layer::Architecture::Embedding, 16, activation(activation::method::linear, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 100, 8), // vocab_size=100, embed_dim=8
+      LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::AdamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
+    };
+
+    auto options = NeuralNetworkOptions::create({ 2, 16, 32, 1 })
+      .with_hidden_layers(hidden_layers)
+      .build();
+```
+
+The embedding lookup weights ($V \times D$) are trained via backpropagation and persisted by `NeuralNetworkSerializer::save`/`load`.
 
 ### Stochastic Weight Averaging (SWA)
 

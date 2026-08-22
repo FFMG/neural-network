@@ -169,7 +169,7 @@ TEST(NetworkIntegrationTest, LinearRegressionWithBiasConvergence)
 TEST(NetworkIntegrationTest, XorFFConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -217,7 +217,7 @@ TEST(NetworkIntegrationTest, XorFFConvergence)
 TEST(NetworkIntegrationTest, XorFFConvergenceLion)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Lion, 0.9, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Lion, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -265,7 +265,7 @@ TEST(NetworkIntegrationTest, XorFFConvergenceLion)
 TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -315,7 +315,7 @@ TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
 TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -400,7 +400,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceLayerNorm)
   // grurnnlayer_tests.cpp/grurnnlayer_mt_tests.cpp without going through an
   // FFOutputLayer).
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
@@ -455,7 +455,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceLayerNorm)
 TEST(NetworkIntegrationTest, LSTMSequenceConvergenceLayerNorm)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -521,8 +521,8 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceAttentionPool)
   // independently, via numerical-gradient checks, in
   // attentionpoollayer_tests.cpp).
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::AttentionPool, 4, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, 4, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
@@ -581,8 +581,8 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceAttentionPool)
 TEST(NetworkIntegrationTest, LSTMSequenceConvergenceAttentionPool)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::AttentionPool, 4, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, 4, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
@@ -634,8 +634,8 @@ TEST(NetworkIntegrationTest, AttentionPoolSerializerSaveLoad)
   // pattern: captures the AttentionPool layer's wa/ba/v values before saving
   // and asserts they come back identical after loading.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::AttentionPool, 3, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 5, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, 3, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 5, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3, 3 })
     .with_hidden_layers(hidden_layers)
@@ -694,8 +694,8 @@ TEST(NetworkIntegrationTest, AttentionPoolSerializerSaveLoad)
 TEST(NetworkIntegrationTest, AttentionPoolRequiresBpttOptionValidation)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::AttentionPool, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 4, 0, 0, 0, 0, 0, 0)
   };
 
   EXPECT_THROW(
@@ -718,7 +718,7 @@ TEST(NetworkIntegrationTest, TCNSequenceConvergence)
   // preceding recurrent layer (unlike AttentionPool), so this is the
   // simplest possible end-to-end wiring check for the layer.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Tcn, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0)
+    LayerDetails(Layer::Architecture::Tcn, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
@@ -780,7 +780,7 @@ TEST(NetworkIntegrationTest, TCNSerializerSaveLoad)
   // pattern: captures the Tcn layer's weight/bias values and kernel_size/
   // dilation before saving and asserts they come back identical after loading.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Tcn, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 2, 0, 0)
+    LayerDetails(Layer::Architecture::Tcn, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 2, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
@@ -836,7 +836,7 @@ TEST(NetworkIntegrationTest, TCNSerializerSaveLoad)
 TEST(NetworkIntegrationTest, TCNRequiresBpttOptionValidation)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0)
+    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0, 0, 0)
   };
 
   EXPECT_THROW(
@@ -859,7 +859,7 @@ TEST(NetworkIntegrationTest, TCNReceptiveFieldValidation)
   // receptive_field = 1 + (kernel_size - 1) * dilation = 1 + (3-1)*4 = 9,
   // which exceeds bptt_max_ticks(5).
   std::vector<LayerDetails> hidden_layers_too_wide = {
-    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 4, 0, 0)
+    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 4, 0, 0, 0, 0)
   };
   EXPECT_THROW(
     NeuralNetworkOptions::create({ 1, 2, 1 })
@@ -871,7 +871,7 @@ TEST(NetworkIntegrationTest, TCNReceptiveFieldValidation)
 
   // receptive_field = 1 + (3-1)*1 = 3, within bptt_max_ticks(5).
   std::vector<LayerDetails> hidden_layers_ok = {
-    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0)
+    LayerDetails(Layer::Architecture::Tcn, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 1, 0, 0, 0, 0)
   };
   EXPECT_NO_THROW(
     NeuralNetworkOptions::create({ 1, 2, 1 })
@@ -887,7 +887,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSequenceConvergence)
   // SelfAttention needs no preceding recurrent layer (unlike AttentionPool),
   // so this is the simplest possible end-to-end wiring check for the layer.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::SelfAttention, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 2, 8)
+    LayerDetails(Layer::Architecture::SelfAttention, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 2, 8, 0, 0)
   };
   // SelfAttention (unlike Tcn) requires its own size to match the layer it
   // attends over - since it is the first (and only) hidden layer here, that
@@ -954,7 +954,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializerSaveLoad)
   // a missed serializer key here would otherwise silently corrupt a
   // saved/reloaded model.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::SelfAttention, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 2, 6)
+    LayerDetails(Layer::Architecture::SelfAttention, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 2, 6, 0, 0)
   };
   // SelfAttention (unlike Tcn) requires its own size to match the layer it
   // attends over - since it is the first (and only) hidden layer here, that
@@ -1053,7 +1053,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializerSaveLoad)
 TEST(NetworkIntegrationTest, SelfAttentionRequiresBpttOptionValidation)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::SelfAttention, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 4)
+    LayerDetails(Layer::Architecture::SelfAttention, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 2, 4, 0, 0)
   };
 
   EXPECT_THROW(
@@ -1082,7 +1082,7 @@ TEST(NetworkIntegrationTest, SelfAttentionRequiresBpttOptionValidation)
 TEST(NetworkIntegrationTest, GRUSequenceConvergence)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -1152,7 +1152,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergence)
 TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -1224,7 +1224,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
 TEST(NetworkIntegrationTest, GRUSequenceConvergenceMultiOutputBpttSuperviseLastStepOnly)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
 
   EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0);
@@ -1389,7 +1389,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   // count differs from the GRU's own. Matching sizes here sidesteps that
   // bug so this test can focus purely on LayerNorm gain/bias serialization.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
@@ -1449,7 +1449,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
 TEST(NetworkIntegrationTest, LSTMLayerNormGainBiasSerializerSaveLoad)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Lstm, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
@@ -1511,7 +1511,7 @@ TEST(NetworkIntegrationTest, UseLayerNormalisationOptionSerialization)
   // BpttSuperviseLastStepOnlySerializerSaveLoad option-survives-round-trip
   // pattern.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -1569,7 +1569,7 @@ TEST(NetworkIntegrationTest, SwaOptionSerialization)
 static NeuralNetworkOptions create_swa_baseline_comparison_options(bool swa_enabled)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto builder = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -1639,7 +1639,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceSwa)
   // wiring end-to-end through NeuralNetwork::train on a recurrent layer
   // without throwing and without producing NaN/exploded predictions.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
@@ -1690,7 +1690,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceSwa)
 {
   // Smoke test mirroring LSTMSequenceConvergenceLayerNorm, for SWA instead.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -1743,9 +1743,8 @@ TEST(NetworkIntegrationTest, SwaWithMultiOutputBranches)
   // MultiOutputLayer's branches (MultiOutputLayer::accumulate_swa_average_impl)
   // without crashing or hitting a branch/array size mismatch.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
-
   EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0);
   OutputLayerDetails branch_a_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
   OutputLayerDetails branch_b_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
@@ -1865,9 +1864,9 @@ TEST(NetworkIntegrationTest, UpdateWeightsTouchesEveryLayerAcrossThreadCounts)
   // sequential loop still visits and updates every hidden and output layer,
   // for a range of thread-count settings.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0),
-    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::FF, 6, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
 
   std::vector<std::vector<double>> inputs = {
@@ -1925,7 +1924,7 @@ TEST(NetworkIntegrationTest, DeepNetworkConvergesWithExplicitThreadCount)
   // training through the now-always-sequential Layers::update_weights loop
   // still converges correctly when number_of_threads is explicitly set above 1.
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::Adam, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
@@ -2582,7 +2581,7 @@ namespace {
   NeuralNetworkOptions make_seed_test_options(std::optional<uint32_t> seed)
   {
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.3, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.3, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
     return NeuralNetworkOptions::create({ 2, 4, 1 })
       .with_hidden_layers(hidden_layers)
@@ -2704,7 +2703,7 @@ TEST(NetworkIntegrationTest, UnsetSeedRoundTripsThroughSerializationAsNullopt)
 TEST(NetworkIntegrationTest, FloatingPointWeightsSerializationPrecision)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
   };
   auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
     .with_hidden_layers(hidden_layers)
@@ -2750,15 +2749,6 @@ TEST(NetworkIntegrationTest, FloatingPointWeightsSerializationPrecision)
   std::remove(test_path.c_str());
 }
 
-
-
-
-
-
-
-
-
-
 TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndMomentum)
 {
   std::vector<LayerDetails> hidden_layers = {
@@ -2773,7 +2763,8 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndM
       true,
       0, 0, 0,
       2,
-      8)
+      8,
+      0, 0)
   };
 
   auto options = NeuralNetworkOptions::create({ 4, 4, 2 })
@@ -2828,7 +2819,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndM
 TEST(NetworkIntegrationTest, QuickGeluSerializerSaveLoad)
 {
   std::vector<LayerDetails> hidden_layers = {
-    LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::quickGelu, 1.702), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+    LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::quickGelu, 1.702), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
   };
 
   auto options = NeuralNetworkOptions::create({ 4, 8, 2 })

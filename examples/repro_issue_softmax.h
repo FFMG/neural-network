@@ -35,8 +35,8 @@ private:
 
     std::vector<LayerDetails> trunk_hidden_layers = 
     {
-      LayerDetails(Layer::Architecture::Gru, 64, activation(activation::method::tanh, 0.1), 0.1, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.1), 0.1, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::Gru, 64, activation(activation::method::tanh, 0.1), 0.1, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.1), 0.1, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     std::vector<MultiOutputLayerDetails> multi_output_layer_details;
@@ -45,8 +45,8 @@ private:
     MultiOutputLayerDetails b0
     (
       { 
-        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
-        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
       },
       OutputLayerDetails(2, activation(activation::method::tanh, 0.1), ErrorCalculation::type::huber_direction_loss, EvaluationConfig(0.01, 0.15, 0.3, 0.3, false, 1.0), 0.0, OptimiserType::NadamW, 0.99)
     );
@@ -55,8 +55,8 @@ private:
     MultiOutputLayerDetails b1
     (
       {
-        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
-        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+        LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+        LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0, 0.0001, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
       },
       OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, EvaluationConfig(0.0, 0.2, 1.0, 0.3, false, 1.0), 0.0, OptimiserType::NadamW, 0.99)
     );

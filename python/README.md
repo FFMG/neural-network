@@ -66,6 +66,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
     *   `Tcn`: Dilated causal 1D convolution ("Temporal Convolutional Network" block) over a window of preceding timesteps (see "TCN" below).
     *   `SelfAttention`: Multi-head causal self-attention plus a position-wise feed-forward sub-block (see "Self-Attention" below).
+    *   `Embedding`: Categorical entity embeddings mapping discrete integer IDs to dense continuous vectors (see "Embedding" below).
 *   `nn.LayerRole`: Structural role of a layer.
     *   `Input`: Network input layer.
     *   `Hidden`: Network hidden layer.
@@ -90,8 +91,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `EvaluationConfig(neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda, epsilon)`: Constructor.
     *   Properties: `neutral_tolerance`, `confidence_threshold`, `huber_delta`, `direction_lambda`, `use_direction_penalty`, `cross_entropy_lambda`, `epsilon` (all read-only).
 *   `nn.LayerDetails`: Specifications for configuring a hidden layer.
-    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, and also for `SelfAttention` (see "Self-Attention" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`.
-    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size`, `kernel_size`, `dilation`, `number_of_heads`, `feed_forward_hidden_size` (all read-only).
+    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0, vocabulary_size=0, embedding_dimension=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, and also for `SelfAttention` (see "Self-Attention" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`. `vocabulary_size`/`embedding_dimension` configure an `Embedding` layer's discrete categorical entity lookup table (see "Embedding" below).
+    *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size`, `kernel_size`, `dilation`, `number_of_heads`, `feed_forward_hidden_size`, `vocabulary_size`, `embedding_dimension` (all read-only).
 *   `nn.OutputLayerDetails`: Specifications for configuring the output layer.
     *   `OutputLayerDetails(size, activation, error_type, evaluation_config, weight_decay, optimiser_type, momentum)`: Constructor.
     *   Properties: `size`, `activation`, `output_error_calculation_type`, `error_evaluation_config`, `weight_decay`, `optimiser_type`, `momentum` (all read-only).
@@ -155,6 +156,14 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * Always strictly causal - no configuration flag to disable this.
 * Requires `with_enable_bptt(True)` and `bptt_max_ticks` greater than 1.
 * Per-batch-item memory/compute scales `O(T^2)` in the window length `T` (via the per-head attention-score matrix), unlike every other layer type here, which scales linearly in `T`.
+
+### Embedding
+
+`nn.LayerArchitecture.Embedding` maps discrete categorical integer IDs (e.g. symbol IDs, day-of-week) to continuous dense embedding vectors:
+* `vocabulary_size`: Maximum number of unique categories $V$.
+* `embedding_dimension`: Dimension $D$ of each embedding vector.
+* `size`: Must equal number of input features $\times D$.
+* Weights are trained via backpropagation and can be saved/loaded via `NeuralNetworkSerializer`.
 
 ### Examples
 

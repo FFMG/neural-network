@@ -29,7 +29,9 @@ public:
     unsigned kernel_size,
     unsigned dilation,
     unsigned number_of_heads,
-    unsigned feed_forward_hidden_size) noexcept :
+    unsigned feed_forward_hidden_size,
+    unsigned vocabulary_size,
+    unsigned embedding_dimension) noexcept :
     _layer_architecture(layer_architecture),
     _layer_size(layer_size),
     _activation(activation),
@@ -42,7 +44,9 @@ public:
     _kernel_size(kernel_size),
     _dilation(dilation),
     _number_of_heads(number_of_heads),
-    _feed_forward_hidden_size(feed_forward_hidden_size)
+    _feed_forward_hidden_size(feed_forward_hidden_size),
+    _vocabulary_size(vocabulary_size),
+    _embedding_dimension(embedding_dimension)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -60,7 +64,9 @@ public:
     _kernel_size(src._kernel_size),
     _dilation(src._dilation),
     _number_of_heads(src._number_of_heads),
-    _feed_forward_hidden_size(src._feed_forward_hidden_size)
+    _feed_forward_hidden_size(src._feed_forward_hidden_size),
+    _vocabulary_size(src._vocabulary_size),
+    _embedding_dimension(src._embedding_dimension)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
   }
@@ -78,7 +84,9 @@ public:
     _kernel_size(src._kernel_size),
     _dilation(src._dilation),
     _number_of_heads(src._number_of_heads),
-    _feed_forward_hidden_size(src._feed_forward_hidden_size)
+    _feed_forward_hidden_size(src._feed_forward_hidden_size),
+    _vocabulary_size(src._vocabulary_size),
+    _embedding_dimension(src._embedding_dimension)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     src._layer_architecture = Layer::Architecture::None;
@@ -91,6 +99,8 @@ public:
     src._dilation = 0;
     src._number_of_heads = 0;
     src._feed_forward_hidden_size = 0;
+    src._vocabulary_size = 0;
+    src._embedding_dimension = 0;
   }
 
   LayerDetails& operator=(const LayerDetails& src) noexcept
@@ -111,6 +121,8 @@ public:
       _dilation = src._dilation;
       _number_of_heads = src._number_of_heads;
       _feed_forward_hidden_size = src._feed_forward_hidden_size;
+      _vocabulary_size = src._vocabulary_size;
+      _embedding_dimension = src._embedding_dimension;
     }
     return *this;
   }
@@ -133,6 +145,8 @@ public:
       _dilation = src._dilation;
       _number_of_heads = src._number_of_heads;
       _feed_forward_hidden_size = src._feed_forward_hidden_size;
+      _vocabulary_size = src._vocabulary_size;
+      _embedding_dimension = src._embedding_dimension;
 
       src._layer_architecture = Layer::Architecture::None;
       src._layer_size = 0;
@@ -144,6 +158,8 @@ public:
       src._dilation = 0;
       src._number_of_heads = 0;
       src._feed_forward_hidden_size = 0;
+      src._vocabulary_size = 0;
+      src._embedding_dimension = 0;
     }
     return *this;
   }
@@ -217,6 +233,16 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _feed_forward_hidden_size;
   }
+  [[nodiscard]] inline unsigned get_vocabulary_size() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _vocabulary_size;
+  }
+  [[nodiscard]] inline unsigned get_embedding_dimension() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    return _embedding_dimension;
+  }
 private:
   Layer::Architecture _layer_architecture;
   unsigned _layer_size;
@@ -231,5 +257,7 @@ private:
   unsigned _dilation;
   unsigned _number_of_heads;
   unsigned _feed_forward_hidden_size;
+  unsigned _vocabulary_size;
+  unsigned _embedding_dimension;
 };
 } // namespace myoddweb::nn
