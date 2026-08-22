@@ -1363,14 +1363,24 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
     Logger::panic("Could not locate the error-evaluation-config section!");
   }
 
+  const double epsilon = error_evaluation_config_object->try_get_value("epsilon") != nullptr
+    ? error_evaluation_config_object->get<double>("epsilon")
+    : 1e-12;
+
+  const double label_smoothing = error_evaluation_config_object->try_get_value("label-smoothing") != nullptr
+    ? error_evaluation_config_object->get<double>("label-smoothing")
+    : 0.0;
+
   return EvaluationConfig(
     error_evaluation_config_object->get<double>("neutral-tolerance"),
     error_evaluation_config_object->get<double>("confidence-threshold"),
     error_evaluation_config_object->get<double>("huber-delta"),
     error_evaluation_config_object->get<double>("direction-lambda"),
     error_evaluation_config_object->get_boolean("use-direction-penalty"),
-    error_evaluation_config_object->get<double>("cross-entropy-lambda")
-        );
+    error_evaluation_config_object->get<double>("cross-entropy-lambda"),
+    epsilon,
+    label_smoothing
+  );
 }
 
 std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJSON::TJValueObject& options_object)
@@ -2739,10 +2749,11 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
   set_float(error_evaluation_config_object, "direction-lambda", config.direction_lambda());
   error_evaluation_config_object->set_boolean("use-direction-penalty", config.use_direction_penalty());
   set_float(error_evaluation_config_object, "cross-entropy-lambda", config.cross_entropy_lambda());
+  set_float(error_evaluation_config_object, "epsilon", config.epsilon());
+  set_float(error_evaluation_config_object, "label-smoothing", config.label_smoothing());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;
-
 }
 
 TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::vector<LayerDetails>& hidden_layers)

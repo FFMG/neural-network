@@ -913,6 +913,47 @@ public:
     return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
   }
 
+  [[nodiscard]] static std::vector<double> smooth_labels(std::span<const double> targets, double label_smoothing)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (label_smoothing < 0.0 || label_smoothing >= 1.0)
+    {
+      Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
+    }
+    std::vector<double> smoothed(targets.size(), 0.0);
+    smooth_labels(targets, std::span<double>(smoothed), label_smoothing);
+    return smoothed;
+  }
+
+  static void smooth_labels(std::span<const double> targets, std::span<double> destination, double label_smoothing)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (label_smoothing < 0.0 || label_smoothing >= 1.0)
+    {
+      Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
+    }
+    if (targets.size() != destination.size())
+    {
+      Logger::panic("Targets and destination spans must have the same size.");
+    }
+    if (targets.empty())
+    {
+      return;
+    }
+    if (label_smoothing == 0.0)
+    {
+      std::copy(targets.begin(), targets.end(), destination.begin());
+      return;
+    }
+    const size_t num_classes = targets.size();
+    const double smooth_prior = label_smoothing / static_cast<double>(num_classes);
+    const double one_minus_smoothing = 1.0 - label_smoothing;
+    for (size_t i = 0; i < num_classes; ++i)
+    {
+      destination[i] = targets[i] * one_minus_smoothing + smooth_prior;
+    }
+  }
+
   static double calculate_bce_loss(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -921,6 +962,9 @@ public:
 
     const auto eps = evaluation_config.epsilon();
     const double one_minus_eps = 1.0 - eps;
+    const double label_smoothing = evaluation_config.label_smoothing();
+    const double one_minus_smoothing = 1.0 - label_smoothing;
+    const double half_smoothing = 0.5 * label_smoothing;
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -939,7 +983,8 @@ public:
       for (size_t i = 0; i < vec_len; ++i)
       {
         const auto p = std::clamp(pred_ptr[i], eps, one_minus_eps);
-        const auto y = gt_ptr[i];
+        const auto raw_y = gt_ptr[i];
+        const auto y = (label_smoothing > 0.0) ? (raw_y * one_minus_smoothing + half_smoothing) : raw_y;
 
         total_bce += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
         ++count;
@@ -987,9 +1032,10 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     double total_loss = 0.0;
     size_t sequence_count = 0;
-    const double eps = 1e-12;
+    const double eps = evaluation_config.epsilon();
     const double one_minus_eps = 1.0 - eps;
     const double cross_entropy_lambda = evaluation_config.cross_entropy_lambda();
+    const double label_smoothing = evaluation_config.label_smoothing();
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -1004,14 +1050,20 @@ public:
       const double* gt_ptr = gt.data();
       const double* pred_ptr = pred.data();
       const size_t vec_len = gt.size();
+      const double smooth_prior = (vec_len > 0 && label_smoothing > 0.0) ? (label_smoothing / static_cast<double>(vec_len)) : 0.0;
+      const double one_minus_smoothing = 1.0 - label_smoothing;
 
       double sample_loss = 0.0;
       for (size_t i = 0; i < vec_len; ++i)
       {
-        if (gt_ptr[i] > 0.0)
+        const double y = (label_smoothing > 0.0)
+          ? (gt_ptr[i] * one_minus_smoothing + smooth_prior)
+          : gt_ptr[i];
+
+        if (y > 0.0)
         {
           const double p = std::clamp(pred_ptr[i], eps, one_minus_eps);
-          sample_loss += -gt_ptr[i] * std::log(p);
+          sample_loss += -y * std::log(p);
         }
       }
       total_loss += sample_loss;

@@ -40,6 +40,8 @@ private:
       0,
       0,
       0,
+      0,
+      0,
       0
     );
     options.with_hidden_layers(hidden_layers);

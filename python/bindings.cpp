@@ -151,21 +151,23 @@ PYBIND11_MODULE(neuralnetwork, m) {
 
     py::class_<EvaluationConfig>(m, "EvaluationConfig")
         .def(py::init<>())
-        .def(py::init<double, double, double, double, bool, double, double>(),
+        .def(py::init<double, double, double, double, bool, double, double, double>(),
              py::arg("neutral_tolerance"),
              py::arg("confidence_threshold"),
              py::arg("huber_delta"),
              py::arg("direction_lambda"),
              py::arg("use_direction_penalty"),
              py::arg("cross_entropy_lambda"),
-             py::arg("epsilon") = 1e-12)
+             py::arg("epsilon"),
+             py::arg("label_smoothing"))
         .def_property_readonly("neutral_tolerance", &EvaluationConfig::neutral_tolerance)
         .def_property_readonly("confidence_threshold", &EvaluationConfig::confidence_threshold)
         .def_property_readonly("huber_delta", &EvaluationConfig::huber_delta)
         .def_property_readonly("direction_lambda", &EvaluationConfig::direction_lambda)
         .def_property_readonly("use_direction_penalty", &EvaluationConfig::use_direction_penalty)
         .def_property_readonly("cross_entropy_lambda", &EvaluationConfig::cross_entropy_lambda)
-        .def_property_readonly("epsilon", &EvaluationConfig::epsilon);
+        .def_property_readonly("epsilon", &EvaluationConfig::epsilon)
+        .def_property_readonly("label_smoothing", &EvaluationConfig::label_smoothing);
 
     py::class_<LayerDetails>(m, "LayerDetails")
         .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned>(),

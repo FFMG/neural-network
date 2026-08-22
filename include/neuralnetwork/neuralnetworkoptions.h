@@ -81,7 +81,7 @@ private:
         topology.back(), 
         activation(activation::method::sigmoid, 0.01), 
         ErrorCalculation::type::mse, 
-        { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 
+        { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 
         0.05,
         OptimiserType::SGD, 
         0.99));
@@ -312,7 +312,7 @@ public:
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, OptimiserType optimiser_type, double momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, optimiser_type, momentum));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, optimiser_type, momentum));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -648,7 +648,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)
@@ -700,6 +700,14 @@ public:
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
   [[nodiscard]] inline const StochasticWeightAveragingDetails& stochastic_weight_averaging() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa; }
   [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
+  inline void set_output_layer_inference_temperature(unsigned head_idx, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    if (head_idx < _output_layer_details.size())
+    {
+      _output_layer_details[head_idx].set_inference_temperature(t);
+    }
+  }
 
 private:
   std::vector<unsigned> _topology;

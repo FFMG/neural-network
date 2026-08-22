@@ -100,6 +100,8 @@ private:
       0, 
       0,
       0,
+      0,
+      0,
       0
     );
     hidden_layers.emplace_back(
@@ -111,6 +113,8 @@ private:
       OptimiserType::Adam,
       0.9,
       false,
+      0,
+      0,
       0,
       0,
       0,

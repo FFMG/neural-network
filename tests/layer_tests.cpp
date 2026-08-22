@@ -195,8 +195,8 @@ TEST(LayerTest, CalculateErrorDeltasHuberDirectionPenalty)
   MockLayer layer(0, 1);
   std::vector<double> deltas(1, 0.0);
 
-  EvaluationConfig config_penalty(0.01, 0.15, 1.0, 0.5, true, 1.0);
-  EvaluationConfig config_no_penalty(0.01, 0.15, 1.0, 0.5, false, 1.0);
+  EvaluationConfig config_penalty(0.01, 0.15, 1.0, 0.5, true, 1.0, 1e-12, 0.0);
+  EvaluationConfig config_no_penalty(0.01, 0.15, 1.0, 0.5, false, 1.0, 1e-12, 0.0);
 
   // Case 1: Sign mismatch, target is -1.0, output is 0.5
   // use_direction_penalty is true
@@ -1073,7 +1073,7 @@ TEST(LayerTest, LayersForwardFeedResidualLeakDoesNotContaminateNonResidualLayer)
     width,
     activation(activation::method::linear, 0.0),
     ErrorCalculation::type::mse,
-    { 0.0, 0.0, 1.0, 0.0, false, 1.0 },
+    { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
     0.0,
     OptimiserType::None,
     0.0);
@@ -1102,6 +1102,56 @@ TEST(LayerTest, LayersForwardFeedResidualLeakDoesNotContaminateNonResidualLayer)
   {
     EXPECT_DOUBLE_EQ(result[i], output_bias[i]);
   }
+}
+
+TEST(LayerTest, CalculateErrorDeltasSoftmaxWithLabelSmoothing)
+{
+  // 3 classes, epsilon = 0.1, temperature = 1.0, ce_lambda = 1.0
+  // Target: [1.0, 0.0, 0.0]
+  // y_smooth: [0.9333333333333333, 0.03333333333333333, 0.03333333333333333]
+  // Given: [0.7, 0.2, 0.1]
+  // delta_0 = (0.7 - y_smooth[0]) * 1.0 = 0.7 - 0.9333333333333333 = -0.23333333333333334
+  // delta_1 = (0.2 - y_smooth[1]) * 1.0 = 0.2 - 0.03333333333333333 = 0.16666666666666666
+  // delta_2 = (0.1 - y_smooth[2]) * 1.0 = 0.1 - 0.03333333333333333 = 0.06666666666666667
+  unsigned num_classes = 3;
+  MockLayer layer(0, num_classes);
+  layer.get_activation_helper().set_bounds(activation(activation::method::softmax, 0.0, 1.0), 0, num_classes);
+
+  std::vector<double> deltas(num_classes, 0.0);
+  std::vector<double> targets = { 1.0, 0.0, 0.0 };
+  std::vector<double> given = { 0.7, 0.2, 0.1 };
+
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1);
+  layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::cross_entropy, config_smooth, activation::method::softmax, 0, num_classes - 1);
+
+  const double y_smooth_0 = 1.0 * 0.9 + 0.1 / 3.0;
+  const double y_smooth_1 = 0.1 / 3.0;
+  const double y_smooth_2 = 0.1 / 3.0;
+
+  EXPECT_NEAR(deltas[0], (0.7 - y_smooth_0), 1e-9);
+  EXPECT_NEAR(deltas[1], (0.2 - y_smooth_1), 1e-9);
+  EXPECT_NEAR(deltas[2], (0.1 - y_smooth_2), 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasBCEWithLabelSmoothing)
+{
+  // 2 neurons, sigmoid, epsilon = 0.1
+  // Targets: [1.0, 0.0]
+  // y_smooth: [1.0 * 0.9 + 0.05, 0.0 * 0.9 + 0.05] = [0.95, 0.05]
+  // Given: [0.8, 0.4]
+  // inv_num_neurons = 0.5
+  // delta_0 = (0.8 - 0.95) * 0.5 = -0.15 * 0.5 = -0.075
+  // delta_1 = (0.4 - 0.05) * 0.5 = 0.35 * 0.5 = 0.175
+  MockLayer layer(0, 2);
+  std::vector<double> deltas(2, 0.0);
+  std::vector<double> targets = { 1.0, 0.0 };
+  std::vector<double> given = { 0.8, 0.4 };
+
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1);
+  layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::bce_loss, config_smooth, activation::method::sigmoid, 0, 1);
+
+  EXPECT_NEAR(deltas[0], -0.075, 1e-9);
+  EXPECT_NEAR(deltas[1], 0.175, 1e-9);
 }
 
 

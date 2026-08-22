@@ -28,7 +28,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -52,6 +52,8 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -69,6 +71,8 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -79,12 +83,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\embeddinglayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\tcnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\selfattentionlayer.cpp" />
     <ClCompile Include="activation_tests.cpp" />
     <ClCompile Include="adaptive_learning_rate_scheduler_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
     <ClCompile Include="attentionpoollayer_tests.cpp" />
+    <ClCompile Include="embeddinglayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_mt_tests.cpp" />
     <ClCompile Include="error_calculation_tests.cpp" />

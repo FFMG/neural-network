@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 
@@ -137,6 +137,11 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _momentum;
+  }
+  inline void set_inference_temperature(double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    _activation.set_inference_temperature(t);
   }
 private:
   unsigned _layer_size;

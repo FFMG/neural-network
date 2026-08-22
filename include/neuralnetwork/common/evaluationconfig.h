@@ -1,6 +1,7 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
+#include "logger.h"
 
 
 namespace myoddweb::nn
@@ -9,7 +10,7 @@ class EvaluationConfig final
 {
 public:
   EvaluationConfig() noexcept :
-    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12)
+    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -21,16 +22,22 @@ public:
     double direction_lambda,
     bool   use_direction_penalty,
     double cross_entropy_lambda,
-    double epsilon = 1e-12) noexcept :
+    double epsilon,
+    double label_smoothing) :
     _neutral_tolerance(neutral_tolerance),
     _confidence_threshold(confidence_threshold),
     _huber_delta(huber_delta),
     _direction_lambda(direction_lambda),
     _use_direction_penalty(use_direction_penalty),
     _cross_entropy_lambda(cross_entropy_lambda),
-    _epsilon(epsilon)
+    _epsilon(epsilon),
+    _label_smoothing(label_smoothing)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    if (_label_smoothing < 0.0 || _label_smoothing >= 1.0)
+    {
+      Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
+    }
   }
 
   EvaluationConfig(const EvaluationConfig& src) noexcept :
@@ -40,7 +47,8 @@ public:
     _direction_lambda(src._direction_lambda),
     _use_direction_penalty(src._use_direction_penalty),
     _cross_entropy_lambda(src._cross_entropy_lambda),
-    _epsilon(src._epsilon)
+    _epsilon(src._epsilon),
+    _label_smoothing(src._label_smoothing)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -57,6 +65,7 @@ public:
       _use_direction_penalty = src._use_direction_penalty;
       _cross_entropy_lambda = src._cross_entropy_lambda;
       _epsilon = src._epsilon;
+      _label_smoothing = src._label_smoothing;
     }
     return *this;
   }
@@ -96,6 +105,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     return _epsilon;
   }
+  [[nodiscard]] inline double label_smoothing() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    return _label_smoothing;
+  }
 private:
   double _neutral_tolerance;
   double _confidence_threshold;
@@ -103,7 +117,8 @@ private:
   double _direction_lambda;
   bool _use_direction_penalty;
   double _cross_entropy_lambda;
-  double _epsilon = 1e-8;
+  double _epsilon;
+  double _label_smoothing;
 };
 
 } // namespace myoddweb::nn

@@ -36,7 +36,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -49,7 +49,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -113,6 +113,8 @@
       <TreatWarningAsError>false</TreatWarningAsError>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <AdditionalIncludeDirectories>../include/neuralnetwork/</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -131,6 +133,8 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <AdditionalIncludeDirectories>../include/neuralnetwork/</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -149,6 +153,7 @@
     <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\grurnnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\embeddinglayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\layer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\layers.cpp" />
     <ClCompile Include="..\include\neuralnetwork\libraries\TinyJSON.cpp" />
@@ -187,6 +192,7 @@
     <ClInclude Include="..\include\neuralnetwork\layers\ffoutputlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\grurnnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\lstmlayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\embeddinglayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\layer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\elmanrnnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\helpers\errorcalculation.h" />

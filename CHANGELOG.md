@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.35] - 2026-08-22
+
+### Added
+- Added Label Smoothing Regularisation ($\alpha \in [0.0, 1.0)$) across classification loss metrics and output layer gradient delta calculations:
+  - Extended `EvaluationConfig` with `_label_smoothing` (private member, const accessor `label_smoothing()`, 8-parameter constructor without default parameters, and $[0.0, 1.0)$ range validation).
+  - Added out-of-place and in-place `ErrorCalculation::smooth_labels()` helper functions for multi-class and binary targets.
+  - Vectorised Cross-Entropy and Binary Cross-Entropy loss calculations in `ErrorCalculation` with fused label smoothing.
+  - Vectorised AVX2 `_mm256_fmadd_pd` forward loss and backward output delta calculations in `Layer::calculate_cross_entropy_error_deltas` and `Layer::calculate_bce_error_deltas` with scalar fallback paths.
+  - Added JSON serialization and deserialization support for `"label-smoothing"` in `NeuralNetworkSerializer` with backwards compatibility for legacy model files.
+  - Added Python bindings in `python/bindings.cpp` for `EvaluationConfig` with `label_smoothing`.
+  - Added comprehensive unit and integration tests in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
+
 ## [1.1.34] - 2026-08-22
 
 ### Added

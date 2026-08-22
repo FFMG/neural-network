@@ -87,7 +87,7 @@ public:
     std::vector<LayerDetails> hidden_layers = {
         LayerDetails(Layer::Architecture::Gru, 100, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::Adam, 0.9);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::linear, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.5, OptimiserType::Adam, 0.9);
     
     auto options = NeuralNetworkOptions::create(topology)
         .with_batch_size(batch_size)
