@@ -5752,6 +5752,38 @@ public:
     return _mm256_add_pd(term1, term2);
   }
 
+  inline static __m256d quick_gelu_pd(__m256d x, double alpha = 1.702) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+    const __m256d vec_coeff = _mm256_set1_pd(coeff);
+    const __m256d vec_one = _mm256_set1_pd(1.0);
+    const __m256d vz = _mm256_mul_pd(vec_coeff, x);
+    const __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
+    const __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
+    const __m256d r_denom = reciprocal_pd(denom);
+    return _mm256_mul_pd(x, r_denom);
+  }
+
+  inline static __m256d quick_gelu_derivative_pd(__m256d x, double alpha = 1.702) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+    const __m256d vec_coeff = _mm256_set1_pd(coeff);
+    const __m256d vec_one = _mm256_set1_pd(1.0);
+    const __m256d vz = _mm256_mul_pd(vec_coeff, x);
+    const __m256d exp_neg_z = exp_pd(_mm256_sub_pd(_mm256_setzero_pd(), vz));
+    const __m256d denom = _mm256_add_pd(vec_one, exp_neg_z);
+    const __m256d sigmoid = reciprocal_pd(denom);
+    const __m256d one_minus_sig = _mm256_sub_pd(vec_one, sigmoid);
+#ifdef SIMD_FMA_ENABLED
+    const __m256d term = _mm256_fmadd_pd(_mm256_mul_pd(vec_coeff, x), one_minus_sig, vec_one);
+#else
+    const __m256d term = _mm256_add_pd(vec_one, _mm256_mul_pd(_mm256_mul_pd(vec_coeff, x), one_minus_sig));
+#endif
+    return _mm256_mul_pd(sigmoid, term);
+  }
+
   inline static __m256d log_pd(__m256d x) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("simd");
@@ -6347,6 +6379,65 @@ public:
       out[i] = 0.5 + 0.5 * tanh_term +
         (0.5 * x * (1.0 - tanh_term * tanh_term) *
           sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
+    }
+  }
+
+  inline static void quick_gelu_activate(double* begin, size_t size, double alpha = 1.702) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+#ifdef SIMD_AVX2_ENABLED
+    for (; i + 7 < size; i += 8)
+    {
+      __m256d vx0 = _mm256_loadu_pd(begin + i);
+      __m256d vx1 = _mm256_loadu_pd(begin + i + 4);
+      __m256d res0 = quick_gelu_pd(vx0, coeff);
+      __m256d res1 = quick_gelu_pd(vx1, coeff);
+      _mm256_storeu_pd(begin + i, res0);
+      _mm256_storeu_pd(begin + i + 4, res1);
+    }
+    for (; i + 3 < size; i += 4)
+    {
+      __m256d vx = _mm256_loadu_pd(begin + i);
+      __m256d res = quick_gelu_pd(vx, coeff);
+      _mm256_storeu_pd(begin + i, res);
+    }
+#endif
+    for (; i < size; ++i)
+    {
+      const double z = coeff * begin[i];
+      begin[i] = begin[i] / (1.0 + std::exp(-z));
+    }
+  }
+
+  inline static void quick_gelu_derivative(const double* begin, size_t size, double* out, double alpha = 1.702) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t i = 0;
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+#ifdef SIMD_AVX2_ENABLED
+    for (; i + 7 < size; i += 8)
+    {
+      __m256d vx0 = _mm256_loadu_pd(begin + i);
+      __m256d vx1 = _mm256_loadu_pd(begin + i + 4);
+      __m256d res0 = quick_gelu_derivative_pd(vx0, coeff);
+      __m256d res1 = quick_gelu_derivative_pd(vx1, coeff);
+      _mm256_storeu_pd(out + i, res0);
+      _mm256_storeu_pd(out + i + 4, res1);
+    }
+    for (; i + 3 < size; i += 4)
+    {
+      __m256d vx = _mm256_loadu_pd(begin + i);
+      __m256d res = quick_gelu_derivative_pd(vx, coeff);
+      _mm256_storeu_pd(out + i, res);
+    }
+#endif
+    for (; i < size; ++i)
+    {
+      const double z = coeff * begin[i];
+      const double sig = 1.0 / (1.0 + std::exp(-z));
+      out[i] = sig + coeff * begin[i] * sig * (1.0 - sig);
     }
   }
 

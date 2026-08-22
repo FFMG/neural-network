@@ -88,6 +88,18 @@ namespace math_expect {
            (0.5 * x * (1.0 - tanh_term * tanh_term) * std::sqrt(2.0 / M_PI) * (1.0 + 3.0 * 0.044715 * x * x));
   }
 
+  double quick_gelu(double x, double alpha) {
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+    const double z = std::clamp(coeff * x, -60.0, 60.0);
+    return x / (1.0 + std::exp(-z));
+  }
+  double quick_gelu_deriv(double x, double alpha) {
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+    const double z = std::clamp(coeff * x, -60.0, 60.0);
+    const double sig = 1.0 / (1.0 + std::exp(-z));
+    return sig + coeff * x * sig * (1.0 - sig);
+  }
+
   void softmax(std::vector<double>& input) {
     if (input.empty()) return;
     double max_val = *std::max_element(input.begin(), input.end());
@@ -196,6 +208,25 @@ TEST_F(ActivationTest, SwishWithBetaTwo) {
 TEST_F(ActivationTest, GELU) {
   test_activation(activation::method::gelu, math_expect::gelu);
   test_derivative(activation::method::gelu, math_expect::gelu_deriv);
+}
+
+TEST_F(ActivationTest, QuickGELU) {
+  test_activation(activation::method::quickGelu, math_expect::quick_gelu, true);
+  test_derivative(activation::method::quickGelu, math_expect::quick_gelu_deriv, true);
+}
+
+TEST_F(ActivationTest, QuickGELUWithCustomAlpha) {
+  const double custom_alpha = 1.5;
+  activation act(activation::method::quickGelu, custom_alpha);
+  for (double val : test_values) {
+    double expected = math_expect::quick_gelu(val, custom_alpha);
+    double actual = act.activate(val);
+    EXPECT_NEAR(expected, actual, tolerance) << "Failed activation for QuickGELU (alpha=1.5) at x=" << val;
+    
+    double expected_deriv = math_expect::quick_gelu_deriv(val, custom_alpha);
+    double actual_deriv = act.activate_derivative(val);
+    EXPECT_NEAR(expected_deriv, actual_deriv, tolerance) << "Failed derivative for QuickGELU (alpha=1.5) at x=" << val;
+  }
 }
 
 TEST_F(ActivationTest, SoftmaxArray) {
@@ -409,7 +440,8 @@ TEST_F(ActivationTest, VectorizedActivateAndDerivative)
     activation::method::selu,
     activation::method::elu,
     activation::method::swish,
-    activation::method::gelu
+    activation::method::gelu,
+    activation::method::quickGelu
   };
 
   for (auto method : methods)
@@ -913,6 +945,7 @@ TEST_F(ActivationTest, AllMethodsStringRoundtripCoverage)
     activation::method::swish,
     activation::method::mish,
     activation::method::gelu,
+    activation::method::quickGelu,
     activation::method::elu,
     activation::method::softmax
   };
@@ -929,6 +962,7 @@ TEST_F(ActivationTest, AllMethodsStringRoundtripCoverage)
   EXPECT_EQ(activation::string_to_method("LiNeAr"), activation::method::linear);
   EXPECT_EQ(activation::string_to_method("sIgMoId"), activation::method::sigmoid);
   EXPECT_EQ(activation::string_to_method("TaNh"), activation::method::tanh);
+  EXPECT_EQ(activation::string_to_method("QuIcKgElU"), activation::method::quickGelu);
   EXPECT_EQ(activation::string_to_method("sOfTmAx"), activation::method::softmax);
 }
 
@@ -981,7 +1015,14 @@ TEST_F(ActivationTest, HandCalculatedAnalyticalProofs)
   const double expected_swish_one = 1.0 / (1.0 + std::exp(-1.0));
   EXPECT_NEAR(act_swish.activate(1.0), expected_swish_one, 1e-12);
 
-  // 9. Softmax with Temperature Scaling
+  // 9. QuickGELU: f(0) = 0.0, f'(0) = 0.5; f(1.0) = 1 / (1 + exp(-1.702))
+  activation act_qgelu(activation::method::quickGelu, 0.0);
+  EXPECT_DOUBLE_EQ(act_qgelu.activate(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(act_qgelu.activate_derivative(0.0), 0.5);
+  const double expected_qgelu_one = 1.0 / (1.0 + std::exp(-1.702));
+  EXPECT_NEAR(act_qgelu.activate(1.0), expected_qgelu_one, 1e-12);
+
+  // 10. Softmax with Temperature Scaling
   // Input: [1.0, 0.0] with T=0.5 -> Scaled logit diff = 1.0 / 0.5 = 2.0
   // P(0) = exp(0) / (exp(0) + exp(-2.0)) = 1 / (1 + exp(-2.0))
   activation act_softmax(activation::method::softmax, 1.0, 0.5, 0.5);

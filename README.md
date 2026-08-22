@@ -36,6 +36,7 @@ myoddweb::nn::NeuralNetwork nn(options);
 * selu
 * swish
 * gelu
+* quickGelu
 * mish
 * elu
 * softmax

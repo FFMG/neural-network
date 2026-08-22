@@ -3242,6 +3242,57 @@ TEST(SimdUtilsTest, LstmBpttGateStepGeluVsStandard)
   }
 }
 
+TEST(SimdUtilsTest, QuickGeluActivateAndDerivativeVsScalar)
+{
+  const std::vector<size_t> sizes = { 1, 3, 4, 7, 8, 15, 29, 64 };
+  const std::vector<double> alphas = { 0.0, 1.702, 1.5 };
+
+  for (double alpha : alphas)
+  {
+    const double coeff = (alpha > 0.0) ? alpha : 1.702;
+
+    for (size_t n : sizes)
+    {
+      std::vector<double> input_simd(n);
+      std::vector<double> input_scalar(n);
+      for (size_t i = 0; i < n; ++i)
+      {
+        double x = -3.0 + 0.15 * static_cast<double>(i);
+        input_simd[i] = x;
+        input_scalar[i] = x;
+      }
+
+      // Forward activation
+      simd::quick_gelu_activate(input_simd.data(), n, alpha);
+      for (size_t i = 0; i < n; ++i)
+      {
+        const double z = coeff * input_scalar[i];
+        input_scalar[i] = input_scalar[i] / (1.0 + std::exp(-z));
+        EXPECT_NEAR(input_simd[i], input_scalar[i], 1e-6) << "Activation mismatch at size " << n << ", idx " << i;
+      }
+
+      // Derivative
+      std::vector<double> deriv_simd(n);
+      std::vector<double> deriv_scalar(n);
+      std::vector<double> x_vals(n);
+      for (size_t i = 0; i < n; ++i)
+      {
+        x_vals[i] = -3.0 + 0.15 * static_cast<double>(i);
+      }
+
+      simd::quick_gelu_derivative(x_vals.data(), n, deriv_simd.data(), alpha);
+      for (size_t i = 0; i < n; ++i)
+      {
+        const double z = coeff * x_vals[i];
+        const double sig = 1.0 / (1.0 + std::exp(-z));
+        deriv_scalar[i] = sig + coeff * x_vals[i] * sig * (1.0 - sig);
+        EXPECT_NEAR(deriv_simd[i], deriv_scalar[i], 1e-6) << "Derivative mismatch at size " << n << ", idx " << i;
+      }
+    }
+  }
+}
+
+
 
 
 

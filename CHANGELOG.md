@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.33] - 2026-08-22
+
+### Added
+- Added `QuickGELU` activation function ($f(x) = x \cdot \sigma(\alpha x) = \frac{x}{1 + e^{-\alpha x}}$ with default $\alpha = 1.702$):
+  - Added `activation::method::quickGelu` to `activation::method` enum in `include/neuralnetwork/common/activation.h`.
+  - Added scalar functions `calculate_quickGelu` and `calculate_quickGelu_derivative` in `include/neuralnetwork/common/activation.cpp`.
+  - Added vectorised AVX2 kernels `simd::quick_gelu_pd`, `simd::quick_gelu_derivative_pd`, `simd::quick_gelu_activate`, and `simd::quick_gelu_derivative` in `include/neuralnetwork/common/simd_utils.h` with 8-wide unrolled SIMD vector loops.
+  - Added He normal weight initialisation support for `quickGelu`.
+  - Added Python binding enum export `ActivationMethod.QuickGelu` in `python/bindings.cpp`.
+  - Updated documentation in `README.md` and `python/README.md`.
+  - Added unit tests `ActivationTest.QuickGELU`, `ActivationTest.QuickGELUWithCustomAlpha`, `SimdUtilsTest.QuickGeluActivateAndDerivativeVsScalar`, and updated vectorized and string roundtrip test suites.
+
 ## [1.1.32] - 2026-08-22
 
 ### Changed
