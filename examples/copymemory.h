@@ -1,4 +1,4 @@
-﻿#include <vector>
+#include <vector>
 #include <random>
 
 #include "common/logger.h"
@@ -30,8 +30,8 @@ public:
     };
 
     std::vector<LayerDetails> hidden_layers = { 
-      LayerDetails(Layer::Architecture::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.5, OptimiserType::NadamW, 0.9);

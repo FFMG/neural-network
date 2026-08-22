@@ -241,7 +241,8 @@ public:
     MultiOutput,
     AttentionPool,
     Tcn,
-    SelfAttention
+    SelfAttention,
+    Embedding
   };
 
   enum class Role
@@ -296,6 +297,9 @@ public:
     case Architecture::SelfAttention:
       return "SelfAttention";
 
+    case Architecture::Embedding:
+      return "Embedding";
+
     default:
       Logger::panic("Unknown Layer architecture: ", (int)architecture);
     }
@@ -344,6 +348,10 @@ public:
     if (lower_str == "selfattention")
     {
       return Architecture::SelfAttention;
+    }
+    if (lower_str == "embedding")
+    {
+      return Architecture::Embedding;
     }
     Logger::panic("Unknown Layer architecture: ", str);
   }
@@ -604,7 +612,7 @@ public:
     return _layer_activation_helper;
   }
 
-  [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept
+  [[nodiscard]] virtual unsigned get_number_input_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_activation_helper.get_number_input_neurons();

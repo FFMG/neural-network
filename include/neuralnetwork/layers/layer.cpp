@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <unordered_map>
 #include "layer.h"
 #include "../common/tempbuffer.h"
@@ -12,6 +12,7 @@
 #include "attentionpoollayer.h"
 #include "tcnlayer.h"
 #include "selfattentionlayer.h"
+#include "embeddinglayer.h"
 
 
 namespace myoddweb::nn
@@ -215,6 +216,40 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       number_of_threads,
       has_bias,
       ld.get_use_layer_normalisation(),
+      ld.get_momentum(),
+      seed
+    );
+
+  case Layer::Architecture::Embedding:
+    if (ld.get_vocabulary_size() == 0)
+    {
+      Logger::panic("Embedding hidden layers must have a non-zero vocabulary_size.");
+    }
+    if (ld.get_embedding_dimension() == 0)
+    {
+      Logger::panic("Embedding hidden layers must have a non-zero embedding_dimension.");
+    }
+    if (ld.get_size() != number_input_neurons * ld.get_embedding_dimension())
+    {
+      Logger::panic("Embedding hidden layers require layer size to equal number_input_neurons * embedding_dimension.");
+    }
+    if (ld.get_use_layer_normalisation())
+    {
+      Logger::panic("LayerNorm (use_layer_normalisation) is not supported for Embedding hidden layers.");
+    }
+    return std::make_unique<EmbeddingLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_vocabulary_size(),
+      ld.get_embedding_dimension(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
       ld.get_momentum(),
       seed
     );

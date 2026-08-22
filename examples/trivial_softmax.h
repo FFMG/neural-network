@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "helpers/errorcalculation.h"
 #include "common/logger.h"
 #include "helpers/neuralnetworkserializer.h"
@@ -14,8 +14,8 @@ private:
   {
     std::vector<unsigned> topology = { 1, 32, 64, 5 };
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0),
-      LayerDetails(Layer::Architecture::Gru, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+      LayerDetails(Layer::Architecture::Gru, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     auto options = NeuralNetworkOptions::create(topology)

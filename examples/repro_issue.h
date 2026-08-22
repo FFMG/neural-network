@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "helpers/errorcalculation.h"
 #include "common/logger.h"
 #include "neuralnetwork.h"
@@ -30,7 +30,7 @@ private:
     std::vector<unsigned> topology = { 1, 16, 7 }; // 1 input, 16 hidden, 2 reg + 5 softmax = 7 outputs
 
     std::vector<LayerDetails> hidden_layers = {
-      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0)
+      LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
     // Define compound output layers

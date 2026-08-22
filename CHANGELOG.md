@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.34] - 2026-08-22
+
+### Added
+- Added `EmbeddingLayer` architecture (`Layer::Architecture::Embedding`) for categorical entity embeddings:
+  - Supports embedding lookup tables mapping categorical input feature indices to dense continuous vector representations ($V \times D$).
+  - Full BPTT forward feed, recurrent outputs, activations, and inverted dropout support.
+  - Multi-threaded gradient accumulation with `_thread_w_grads` and `_task_queue_pool`.
+  - Added JSON serialization and deserialization support in `NeuralNetworkSerializer`.
+  - Added Python bindings with `LayerArchitecture.Embedding`, `vocabulary_size`, and `embedding_dimension` in `python/bindings.cpp`.
+  - Extended `LayerDetails` constructor and properties with `vocabulary_size` and `embedding_dimension`.
+  - Added comprehensive test suite `EmbeddingLayerTest` in `tests/embeddinglayer_tests.cpp` covering construction, invalid parameter validation, hand-computed forward pass, index clamping, finite-difference gradient verification, multi-threaded accumulation equivalence, serializer round-trip, and end-to-end training convergence.
+
 ## [1.1.33] - 2026-08-22
 
 ### Added

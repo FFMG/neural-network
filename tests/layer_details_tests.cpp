@@ -25,7 +25,7 @@ protected:
 TEST_F(LayerDetailsTest, LayerDetailsMethods) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::relu, 0.1, 1.0);
-    LayerDetails details(Layer::Architecture::FF, 10, act, 0.2, 0.001, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
+    LayerDetails details(Layer::Architecture::FF, 10, act, 0.2, 0.001, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
 
     EXPECT_EQ(details.get_layer_architecture(), Layer::Architecture::FF);
     EXPECT_EQ(details.get_size(), 10);
@@ -47,12 +47,12 @@ TEST_F(LayerDetailsTest, LayerDetailsMethods) {
     EXPECT_EQ(copy.get_size(), 0); // moved-from state size is 0
 
     // Copy assignment
-    LayerDetails assigned(Layer::Architecture::None, 0, activation(activation::method::linear, 0.0), 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails assigned(Layer::Architecture::None, 0, activation(activation::method::linear, 0.0), 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     assigned = details;
     EXPECT_EQ(assigned.get_size(), 10);
 
     // Move assignment
-    LayerDetails move_assigned(Layer::Architecture::None, 0, activation(activation::method::linear, 0.0), 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails move_assigned(Layer::Architecture::None, 0, activation(activation::method::linear, 0.0), 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     move_assigned = std::move(assigned);
     EXPECT_EQ(move_assigned.get_size(), 10);
     EXPECT_EQ(assigned.get_size(), 0);
@@ -62,10 +62,10 @@ TEST_F(LayerDetailsTest, LayerDetailsUseLayerNormalisationFlag) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails default_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
+    LayerDetails default_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_FALSE(default_details.get_use_layer_normalisation());
 
-    LayerDetails enabled_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0);
+    LayerDetails enabled_details(Layer::Architecture::Gru, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_TRUE(enabled_details.get_use_layer_normalisation());
 
     // Copy constructor
@@ -78,12 +78,12 @@ TEST_F(LayerDetailsTest, LayerDetailsUseLayerNormalisationFlag) {
     EXPECT_FALSE(copy.get_use_layer_normalisation()); // moved-from state resets to false
 
     // Copy assignment
-    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     assigned = enabled_details;
     EXPECT_TRUE(assigned.get_use_layer_normalisation());
 
     // Move assignment
-    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     move_assigned = std::move(assigned);
     EXPECT_TRUE(move_assigned.get_use_layer_normalisation());
     EXPECT_FALSE(assigned.get_use_layer_normalisation()); // moved-from state resets to false
@@ -93,10 +93,10 @@ TEST_F(LayerDetailsTest, LayerDetailsAttentionHiddenSizeField) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
+    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_EQ(default_details.get_attention_hidden_size(), 0u);
 
-    LayerDetails pooled_details(Layer::Architecture::AttentionPool, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 16, 0, 0, 0, 0);
+    LayerDetails pooled_details(Layer::Architecture::AttentionPool, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 16, 0, 0, 0, 0, 0, 0);
     EXPECT_EQ(pooled_details.get_attention_hidden_size(), 16u);
 
     // Copy constructor
@@ -109,12 +109,12 @@ TEST_F(LayerDetailsTest, LayerDetailsAttentionHiddenSizeField) {
     EXPECT_EQ(copy.get_attention_hidden_size(), 0u); // moved-from state resets to 0
 
     // Copy assignment
-    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     assigned = pooled_details;
     EXPECT_EQ(assigned.get_attention_hidden_size(), 16u);
 
     // Move assignment
-    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     move_assigned = std::move(assigned);
     EXPECT_EQ(move_assigned.get_attention_hidden_size(), 16u);
     EXPECT_EQ(assigned.get_attention_hidden_size(), 0u); // moved-from state resets to 0
@@ -124,11 +124,11 @@ TEST_F(LayerDetailsTest, LayerDetailsKernelSizeAndDilationFields) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
+    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_EQ(default_details.get_kernel_size(), 0u);
     EXPECT_EQ(default_details.get_dilation(), 0u);
 
-    LayerDetails tcn_details(Layer::Architecture::Tcn, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 2, 0, 0);
+    LayerDetails tcn_details(Layer::Architecture::Tcn, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 3, 2, 0, 0, 0, 0);
     EXPECT_EQ(tcn_details.get_kernel_size(), 3u);
     EXPECT_EQ(tcn_details.get_dilation(), 2u);
 
@@ -145,13 +145,13 @@ TEST_F(LayerDetailsTest, LayerDetailsKernelSizeAndDilationFields) {
     EXPECT_EQ(copy.get_dilation(), 0u);
 
     // Copy assignment
-    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     assigned = tcn_details;
     EXPECT_EQ(assigned.get_kernel_size(), 3u);
     EXPECT_EQ(assigned.get_dilation(), 2u);
 
     // Move assignment
-    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     move_assigned = std::move(assigned);
     EXPECT_EQ(move_assigned.get_kernel_size(), 3u);
     EXPECT_EQ(move_assigned.get_dilation(), 2u);
@@ -163,11 +163,11 @@ TEST_F(LayerDetailsTest, LayerDetailsNumberOfHeadsAndFeedForwardHiddenSizeFields
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::tanh, 0.0, 1.0);
 
-    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0);
+    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_EQ(default_details.get_number_of_heads(), 0u);
     EXPECT_EQ(default_details.get_feed_forward_hidden_size(), 0u);
 
-    LayerDetails sa_details(Layer::Architecture::SelfAttention, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 4, 64);
+    LayerDetails sa_details(Layer::Architecture::SelfAttention, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 4, 64, 0, 0);
     EXPECT_EQ(sa_details.get_number_of_heads(), 4u);
     EXPECT_EQ(sa_details.get_feed_forward_hidden_size(), 64u);
 
@@ -184,18 +184,57 @@ TEST_F(LayerDetailsTest, LayerDetailsNumberOfHeadsAndFeedForwardHiddenSizeFields
     EXPECT_EQ(copy.get_feed_forward_hidden_size(), 0u);
 
     // Copy assignment
-    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     assigned = sa_details;
     EXPECT_EQ(assigned.get_number_of_heads(), 4u);
     EXPECT_EQ(assigned.get_feed_forward_hidden_size(), 64u);
 
     // Move assignment
-    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0);
+    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
     move_assigned = std::move(assigned);
     EXPECT_EQ(move_assigned.get_number_of_heads(), 4u);
     EXPECT_EQ(move_assigned.get_feed_forward_hidden_size(), 64u);
     EXPECT_EQ(assigned.get_number_of_heads(), 0u); // moved-from state resets to 0
     EXPECT_EQ(assigned.get_feed_forward_hidden_size(), 0u);
+}
+
+TEST_F(LayerDetailsTest, LayerDetailsVocabularySizeAndEmbeddingDimensionFields) {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+    activation act(activation::method::linear, 0.0, 1.0);
+
+    LayerDetails default_details(Layer::Architecture::FF, 8, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+    EXPECT_EQ(default_details.get_vocabulary_size(), 0u);
+    EXPECT_EQ(default_details.get_embedding_dimension(), 0u);
+
+    LayerDetails emb_details(Layer::Architecture::Embedding, 16, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 100, 16);
+    EXPECT_EQ(emb_details.get_vocabulary_size(), 100u);
+    EXPECT_EQ(emb_details.get_embedding_dimension(), 16u);
+
+    // Copy constructor
+    LayerDetails copy(emb_details);
+    EXPECT_EQ(copy.get_vocabulary_size(), 100u);
+    EXPECT_EQ(copy.get_embedding_dimension(), 16u);
+
+    // Move constructor
+    LayerDetails moved(std::move(copy));
+    EXPECT_EQ(moved.get_vocabulary_size(), 100u);
+    EXPECT_EQ(moved.get_embedding_dimension(), 16u);
+    EXPECT_EQ(copy.get_vocabulary_size(), 0u);
+    EXPECT_EQ(copy.get_embedding_dimension(), 0u);
+
+    // Copy assignment
+    LayerDetails assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
+    assigned = emb_details;
+    EXPECT_EQ(assigned.get_vocabulary_size(), 100u);
+    EXPECT_EQ(assigned.get_embedding_dimension(), 16u);
+
+    // Move assignment
+    LayerDetails move_assigned(Layer::Architecture::None, 0, act, 0, 0, OptimiserType::None, 0, false, 0, 0, 0, 0, 0, 0, 0);
+    move_assigned = std::move(assigned);
+    EXPECT_EQ(move_assigned.get_vocabulary_size(), 100u);
+    EXPECT_EQ(move_assigned.get_embedding_dimension(), 16u);
+    EXPECT_EQ(assigned.get_vocabulary_size(), 0u);
+    EXPECT_EQ(assigned.get_embedding_dimension(), 0u);
 }
 
 TEST_F(LayerDetailsTest, OutputLayerDetailsMethods) {
@@ -239,8 +278,8 @@ TEST_F(LayerDetailsTest, OutputLayerDetailsMethods) {
 
 TEST_F(LayerDetailsTest, MultiOutputLayerDetailsMethods) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
-    LayerDetails h1(Layer::Architecture::FF, 10, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails h2(Layer::Architecture::Elman, 5, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails h1(Layer::Architecture::FF, 10, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails h2(Layer::Architecture::Elman, 5, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     std::vector<LayerDetails> hidden = { h1, h2 };
     
     OutputLayerDetails o(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
@@ -279,12 +318,12 @@ TEST_F(LayerDetailsTest, ComplexArchitectureVerification) {
     
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
-    LayerDetails hA1(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails hA2(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails hA1(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails hA2(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     OutputLayerDetails oA(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA({hA1, hA2}, oA);
 
-    LayerDetails hB1(Layer::Architecture::FF, 1, activation(activation::method::elu, 0.5, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails hB1(Layer::Architecture::FF, 1, activation(activation::method::elu, 0.5, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     OutputLayerDetails oB(1, activation(activation::method::linear, 1.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB({hB1}, oB);
 
@@ -325,28 +364,6 @@ TEST_F(LayerDetailsTest, ComplexArchitectureVerification) {
 
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Forward Math:
-    // Input: [1.0, 0.5]
-    
-    // Branch A:
-    // H1: z = [1*0.1 + 0.5*0.3 + 0.1, 1*0.2 + 0.5*0.4 - 0.1] = [0.35, 0.3]
-    // H1 a: [0.35, 0.3] (ReLU)
-    // H2: z = [0.35*0.5 + 0.3*0.7, 0.35*0.6 + 0.3*0.8] = [0.385, 0.45]
-    // H2 a: [tanh(0.385), tanh(0.45)] = [0.366958, 0.421899]
-    // O: z = [0.366958*0.9 + 0.421899*1.0 + 0.1] = [0.8521612]
-    // O a: sigmoid(0.8521612) = 0.701036
-    
-    // Branch B:
-    // H1: z = [1*0.5 + 0.5*-0.5 + 0] = [0.25]
-    // H1 a: ELU(0.25, 0.5) = 0.25
-    // O: z = [0.25*1.0 + 0.5] = [0.75]
-    // O a: 0.75 (Linear)
-    
-    // Branch C:
-    // O: z = [1*0.1 + 0.5*0.3, 1*0.2 + 0.5*0.4] = [0.25, 0.4]
-    // O a: Softmax([0.25, 0.4]): exp(0.25)=1.284025, exp(0.4)=1.491825, sum=2.77585
-    // O a: [0.46257, 0.53743]
-    
     const auto& outputs = batch_go[0].get_outputs(1);
     EXPECT_NEAR(outputs[0], 0.701036, 1e-5); // Branch A
     EXPECT_NEAR(outputs[1], 0.75, 1e-5);     // Branch B
@@ -357,38 +374,10 @@ TEST_F(LayerDetailsTest, ComplexArchitectureVerification) {
     std::vector<std::vector<double>> targets = { { 0.0, 1.0, 1.0, 0.0 } };
     layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
     
-    // Gradients:
-    // Branch A O (MSE): (0.701036 - 0) * sig'(0.8521612) = 0.701036 * 0.209585 = 0.146926
-    // Branch B O (MSE): (0.75 - 1) * lin'(0.75) = -0.25 * 1 = -0.25
-    // Branch C O (CE): [0.46257 - 1, 0.53743 - 0] = [-0.53743, 0.53743]
-    
     layer.backprop_branches(1, 0);
-    
-    // Trunk Gradients:
-    // Branch A: 
-    // H2 grad: [0.146926*0.9, 0.146926*1.0] * tanh'(z_H2)
-    // tanh'(0.385) = 1 - 0.366958^2 = 0.865342
-    // tanh'(0.45) = 1 - 0.421899^2 = 0.822001
-    // H2 grad: [0.114427, 0.120773]
-    // H1 grad: [0.114427*0.5 + 0.120773*0.7, 0.114427*0.6 + 0.120773*0.8] * ReLU'(0.35/0.3)
-    // H1 grad: [0.141755, 0.165275]
-    // Trunk A grad: [0.141755*0.1 + 0.165275*0.2, 0.141755*0.3 + 0.165275*0.4] = [0.047230, 0.108636]
-    
-    // Branch B:
-    // O grad: -0.25
-    // H1 grad: -0.25 * 1.0 * ELU'(0.25) = -0.25
-    // Trunk B grad: [-0.25 * 0.5, -0.25 * -0.5] = [-0.125, 0.125]
-    
-    // Branch C:
-    // O grad: [-0.53743, 0.53743]
-    // Trunk C grad: [g0*W0,0 + g1*W0,1, g0*W1,0 + g1*W1,1] 
-    // = [-0.53743*0.1 + 0.53743*0.2, -0.53743*0.3 + 0.53743*0.4]
-    // = [0.053743, 0.053743]
-    
-    // Total Trunk Grad: [0.047230 - 0.125 + 0.053743, 0.108636 + 0.125 + 0.053743] = [-0.024027, 0.287379]
 
     auto trunk_grads = layer.get_trunk_gradients(1);
-    EXPECT_NEAR(trunk_grads[0][0], -0.024027, 2e-3); // Increased tolerance for activation implementation details
+    EXPECT_NEAR(trunk_grads[0][0], -0.024027, 2e-3);
     EXPECT_NEAR(trunk_grads[0][1], 0.287379, 2e-3);
 }
 
@@ -399,11 +388,11 @@ TEST_F(LayerDetailsTest, RecurrentArchitectureVerification) {
     
     EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
 
-    LayerDetails hA(Layer::Architecture::Elman, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails hA(Layer::Architecture::Elman, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     OutputLayerDetails oA(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modA({hA}, oA);
 
-    LayerDetails hB(Layer::Architecture::Gru, 1, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails hB(Layer::Architecture::Gru, 1, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     OutputLayerDetails oB(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
     MultiOutputLayerDetails modB({hB}, oB);
 
@@ -434,20 +423,6 @@ TEST_F(LayerDetailsTest, RecurrentArchitectureVerification) {
 
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
 
-    // Forward Math:
-    // Input: [1.0]
-    
-    // Branch A (RNN):
-    // h_t = tanh(1.0 * 0.5 + 0.0 * 0.2 + 0.1) = tanh(0.6) = 0.53705
-    // O: 0.53705 * 1.0 = 0.53705
-    
-    // Branch B (GRU):
-    // z = sig(1.0 * 0.1 + 0.0 * 0.4 + 0) = sig(0.1) = 0.524979
-    // r = sig(1.0 * 0.2 + 0.0 * 0.5 + 0) = sig(0.2) = 0.549834
-    // h_hat = sig(1.0 * 0.3 + (r * 0.0) * 0.6 + 0) = sig(0.3) = 0.5744425
-    // h = (1 - z) * 0.0 + z * h_hat = 0.524979 * 0.5744425 = 0.301570
-    // O: 0.301570 * 1.0 = 0.301570
-    
     const auto& outputs = batch_go[0].get_rnn_outputs(1);
     EXPECT_NEAR(outputs[0], 0.53705, 1e-5);
     EXPECT_NEAR(outputs[1], 0.301570, 1e-5);
@@ -457,11 +432,11 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     // Testing specific activation types: LeakyReLU, SELU, Swish, Mish, Gelu
     
-    LayerDetails h1(Layer::Architecture::FF, 1, activation(activation::method::leakyRelu, 0.01), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails h2(Layer::Architecture::FF, 1, activation(activation::method::selu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails h3(Layer::Architecture::FF, 1, activation(activation::method::swish, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails h4(Layer::Architecture::FF, 1, activation(activation::method::mish, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
-    LayerDetails h5(Layer::Architecture::FF, 1, activation(activation::method::gelu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0);
+    LayerDetails h1(Layer::Architecture::FF, 1, activation(activation::method::leakyRelu, 0.01), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails h2(Layer::Architecture::FF, 1, activation(activation::method::selu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails h3(Layer::Architecture::FF, 1, activation(activation::method::swish, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails h4(Layer::Architecture::FF, 1, activation(activation::method::mish, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails h5(Layer::Architecture::FF, 1, activation(activation::method::gelu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     
     OutputLayerDetails o1(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
     
@@ -484,18 +459,11 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
     batch_go[0].set_outputs(0, { 1.0 });
 
     layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
-    
-    // Math for x = -1.0:
-    // LeakyReLU: 0.01 * -1.0 = -0.01
-    // SELU: lambda * alpha * (exp(-1.0) - 1.0) approx 1.0507 * 1.67326 * (0.36788 - 1.0) = -1.1113
-    // Swish: -1.0 * sigmoid(-1.0) = -1.0 * 0.26894 = -0.26894
-    // Mish: -1.0 * tanh(softplus(-1.0)) = -1.0 * tanh(log(1 + exp(-1.0))) = -1.0 * tanh(0.31326) = -0.3034
-    // GELU: 0.5 * -1.0 * (1 + erf(-1.0/sqrt(2))) approx -0.5 * (1 - 0.6826) = -0.1587
 
     const auto& outputs = batch_go[0].get_outputs(1);
     EXPECT_NEAR(outputs[0], -0.01, 1e-5);
     EXPECT_NEAR(outputs[1], -1.1113, 1e-3);
     EXPECT_NEAR(outputs[2], -0.26894, 1e-4);
     EXPECT_NEAR(outputs[3], -0.3034, 1e-3);
-    EXPECT_NEAR(outputs[4], -0.1587, 1e-2); // GELU can have approximations
+    EXPECT_NEAR(outputs[4], -0.1587, 1e-2);
 }

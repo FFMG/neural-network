@@ -1,4 +1,4 @@
-﻿#include <algorithm>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -188,6 +188,14 @@ Layers NeuralNetworkSerializer::create_layers(
     {
       layers.emplace_back(
         create_selfattentionlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
+      );
+      continue;
+    }
+
+    if (type == "embeddinglayer")
+    {
+      layers.emplace_back(
+        create_embeddinglayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
       );
       continue;
     }
@@ -996,6 +1004,72 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_selfattentionlayer(
   return layer;
 }
 
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_embeddinglayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads,
+  std::optional<uint32_t> seed
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto neurons = get_neurons(layer_object, layer_index, seed);
+
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
+
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::Role)layer_role_number;
+
+  auto lah = get_activation_helper(layer_object);
+
+  auto num_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto num_output_neurons = layer_object.get<unsigned>("number-output-neurons");
+  auto vocabulary_size = layer_object.get<unsigned>("vocabulary-size");
+  auto embedding_dimension = layer_object.get<unsigned>("embedding-dimension");
+
+  auto w_values = layer_object.get<std::vector<double>>("w-values");
+  auto w_grads = layer_object.get<std::vector<double>>("w-grads");
+  auto w_velocities = layer_object.get<std::vector<double>>("w-velocities");
+  auto w_m1 = layer_object.get<std::vector<double>>("w-m1");
+  auto w_m2 = layer_object.get<std::vector<double>>("w-m2");
+  auto w_timesteps = layer_object.get<std::vector<long long>>("w-timesteps");
+  auto w_decays = layer_object.get<std::vector<double>>("w-decays");
+
+  auto momentum = layer_object.get<double>("momentum");
+  auto residual_projector = std::unique_ptr<ResidualProjector>(get_residual_projector(layer_object));
+
+  auto layer = std::make_unique<EmbeddingLayer>(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    residual_layer_number,
+    vocabulary_size,
+    embedding_dimension,
+    num_input_neurons,
+    num_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    residual_projector.get(),
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
 std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   unsigned layer_index,
   const TinyJSON::TJValueObject& layer_object,
@@ -1340,7 +1414,9 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
       phlo->get<unsigned>("kernel-size"),
       phlo->get<unsigned>("dilation"),
       phlo->get<unsigned>("number-of-heads"),
-      phlo->get<unsigned>("feed-forward-hidden-size")
+      phlo->get<unsigned>("feed-forward-hidden-size"),
+      phlo->get_or<unsigned>("vocabulary-size", 0),
+      phlo->get_or<unsigned>("embedding-dimension", 0)
     ));
   }
   return hidden_layer;
@@ -2439,6 +2515,51 @@ void NeuralNetworkSerializer::add_selfattentionlayer(const SelfAttentionLayer& l
   delete layer_object;
 }
 
+void NeuralNetworkSerializer::add_embeddinglayer(const EmbeddingLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "embeddinglayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
+  layer_object->set_number("number-output-neurons", layer.get_number_neurons());
+  layer_object->set_number("vocabulary-size", layer.get_vocabulary_size());
+  layer_object->set_number("embedding-dimension", layer.get_embedding_dimension());
+  layer_object->set_number("layer-index", layer.get_layer_index());
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
+  set_float(layer_object, "momentum", layer.get_momentum());
+
+  add_activation_helper(layer, *layer_object);
+
+  set_floats(layer_object, "w-values", layer.get_w_values());
+  set_floats(layer_object, "w-grads", layer.get_w_grads());
+  set_floats(layer_object, "w-velocities", layer.get_w_velocities());
+  set_floats(layer_object, "w-m1", layer.get_w_m1());
+  set_floats(layer_object, "w-m2", layer.get_w_m2());
+  layer_object->set_numbers("w-timesteps", layer.get_w_timesteps());
+  set_floats(layer_object, "w-decays", layer.get_w_decays());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
 void NeuralNetworkSerializer::add_tcnlayer(const TcnLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -2647,6 +2768,8 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     hidden_layer_object->set("dilation", hl.get_dilation());
     hidden_layer_object->set("number-of-heads", hl.get_number_of_heads());
     hidden_layer_object->set("feed-forward-hidden-size", hl.get_feed_forward_hidden_size());
+    hidden_layer_object->set("vocabulary-size", hl.get_vocabulary_size());
+    hidden_layer_object->set("embedding-dimension", hl.get_embedding_dimension());
 
     hidden_layers_array->add(hidden_layer_object);
     delete hidden_layer_object;
@@ -2751,6 +2874,13 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
   if (nullptr != selfattentionlayer)
   {
     add_selfattentionlayer(*selfattentionlayer, layers);
+    return;
+  }
+
+  auto embeddinglayer = dynamic_cast<const EmbeddingLayer*>(layer);
+  if (nullptr != embeddinglayer)
+  {
+    add_embeddinglayer(*embeddinglayer, layers);
     return;
   }
 
@@ -2907,7 +3037,9 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
         phlo->get<unsigned>("kernel-size"),
         phlo->get<unsigned>("dilation"),
         phlo->get<unsigned>("number-of-heads"),
-        phlo->get<unsigned>("feed-forward-hidden-size")
+        phlo->get<unsigned>("feed-forward-hidden-size"),
+        phlo->get_or<unsigned>("vocabulary-size", 0),
+        phlo->get_or<unsigned>("embedding-dimension", 0)
       ));
     }
 
