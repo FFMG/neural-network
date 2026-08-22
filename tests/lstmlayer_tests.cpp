@@ -1664,7 +1664,244 @@ TEST_F(LSTMLayerTest, OutputGradientsFusedEquivalence)
   }
 }
 
+TEST_F(LSTMLayerTest, GeluForwardFeedEquivalence)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 5;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 5; // 4-wide group + 1 cleanup item
 
+  std::vector<unsigned int> topology = { num_inputs, num_outputs };
 
+  LSTMLayer layer(
+    1,
+    num_inputs,
+    num_outputs,
+    0.0,
+    Layer::Role::Hidden,
+    activation(activation::method::gelu, 0.0),
+    OptimiserType::Adam,
+    -1,
+    0.0,
+    nullptr,
+    1,
+    true,
+    0.0,
+    false,
+    std::nullopt);
 
+  std::vector<double> fw(num_inputs * num_outputs, 0.1);
+  std::vector<double> iw(num_inputs * num_outputs, -0.15);
+  std::vector<double> ow(num_inputs * num_outputs, 0.2);
+  std::vector<double> gw(num_inputs * num_outputs, -0.05);
 
+  std::vector<double> frw(num_outputs * num_outputs, 0.03);
+  std::vector<double> irw(num_outputs * num_outputs, -0.02);
+  std::vector<double> orw(num_outputs * num_outputs, 0.04);
+  std::vector<double> grw(num_outputs * num_outputs, -0.01);
+
+  std::vector<double> fb(num_outputs, 0.05);
+  std::vector<double> ib(num_outputs, -0.02);
+  std::vector<double> ob(num_outputs, 0.08);
+  std::vector<double> gb(num_outputs, -0.03);
+
+  layer.set_f_w_values(fw);
+  layer.set_i_w_values(iw);
+  layer.set_o_w_values(ow);
+  layer.set_w_values(gw);
+
+  layer.set_f_rw_values(frw);
+  layer.set_i_rw_values(irw);
+  layer.set_o_rw_values(orw);
+  layer.set_rw_values(grw);
+
+  layer.set_f_b_values(fb);
+  layer.set_i_b_values(ib);
+  layer.set_o_b_values(ob);
+  layer.set_b_values(gb);
+
+  MockLayer prev_layer(0, num_inputs);
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> inputs(num_time_steps * num_inputs);
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      inputs[i] = 0.2 * static_cast<double>(b + 1) * std::sin(static_cast<double>(i + 1));
+    }
+    batch_go[b].set_rnn_outputs(0, inputs);
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, false);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_outs = batch_go[b].get_rnn_outputs(1);
+    EXPECT_EQ(rnn_outs.size(), num_time_steps * num_outputs);
+    for (size_t i = 0; i < rnn_outs.size(); ++i)
+    {
+      EXPECT_TRUE(std::isfinite(rnn_outs[i]));
+    }
+
+    const auto& last_outs = batch_go[b].get_outputs(1);
+    EXPECT_EQ(last_outs.size(), num_outputs);
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+      EXPECT_DOUBLE_EQ(last_outs[j], rnn_outs[(num_time_steps - 1) * num_outputs + j]);
+    }
+
+    const auto& states = batch_hs[b].at(1);
+    EXPECT_EQ(states.size(), num_time_steps);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const auto& h = states[t].get_hidden_state_values();
+      const auto& c = states[t].get_cell_state_values();
+      const auto packed = states[t].get_pre_activation_sums();
+
+      EXPECT_EQ(h.size(), num_outputs);
+      EXPECT_EQ(c.size(), num_outputs);
+      EXPECT_EQ(packed.size(), LSTMLayer::Multiplier * num_outputs);
+
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        EXPECT_TRUE(std::isfinite(h[j]));
+        EXPECT_TRUE(std::isfinite(c[j]));
+        EXPECT_DOUBLE_EQ(h[j], rnn_outs[t * num_outputs + j]);
+      }
+    }
+  }
+}
+
+TEST_F(LSTMLayerTest, GeluBpttNumericalGradientEquivalence)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 3;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 5; // 4-wide group + 1 cleanup item
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  auto make_layer = [&]()
+  {
+    LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::gelu, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+    std::vector<double> fw = { 0.1, -0.2, 0.3, -0.1, 0.2, -0.3 };
+    std::vector<double> iw = { -0.2, 0.3, 0.1, 0.4, -0.1, 0.2 };
+    std::vector<double> ow = { 0.3, 0.1, -0.4, 0.2, 0.5, -0.1 };
+    std::vector<double> gw = { -0.1, 0.2, -0.3, 0.1, -0.2, 0.4 };
+
+    std::vector<double> frw(num_outputs * num_outputs, 0.05);
+    std::vector<double> irw(num_outputs * num_outputs, -0.03);
+    std::vector<double> orw(num_outputs * num_outputs, 0.04);
+    std::vector<double> grw(num_outputs * num_outputs, -0.02);
+
+    std::vector<double> fb = { 0.1, -0.05, 0.02 };
+    std::vector<double> ib = { -0.02, 0.08, -0.01 };
+    std::vector<double> ob = { 0.05, -0.03, 0.07 };
+    std::vector<double> gb = { 0.0, 0.02, -0.04 };
+
+    layer.set_f_w_values(fw);
+    layer.set_i_w_values(iw);
+    layer.set_o_w_values(ow);
+    layer.set_w_values(gw);
+
+    layer.set_f_rw_values(frw);
+    layer.set_i_rw_values(irw);
+    layer.set_o_rw_values(orw);
+    layer.set_rw_values(grw);
+
+    layer.set_f_b_values(fb);
+    layer.set_i_b_values(ib);
+    layer.set_o_b_values(ob);
+    layer.set_b_values(gb);
+
+    return layer;
+  };
+
+  auto layer = make_layer();
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  {
+    std::vector<double> identity(num_outputs * num_outputs, 0.0);
+    for (unsigned j = 0; j < num_outputs; ++j)
+    {
+      identity[j * num_outputs + j] = 1.0;
+    }
+    next_layer.set_w_values(identity);
+  }
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> inputs(num_time_steps * num_inputs);
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      inputs[i] = 0.1 * static_cast<double>(b + 1) * std::sin(static_cast<double>(i + 1));
+    }
+    batch_go[b].set_rnn_outputs(0, inputs);
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+    {
+      batch_next_grads[b][i] = 0.05 * static_cast<double>((b + 1) * (i + 1));
+    }
+  }
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, 0);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  const auto& f_w_grads = layer.get_f_w_grads();
+  const auto& i_w_grads = layer.get_i_w_grads();
+  const auto& o_w_grads = layer.get_o_w_grads();
+  const auto& g_w_grads = layer.get_w_grads();
+  const auto& f_b_grads = layer.get_f_b_grads();
+  const auto& i_b_grads = layer.get_i_b_grads();
+  const auto& o_b_grads = layer.get_o_b_grads();
+  const auto& g_b_grads = layer.get_b_grads();
+  const auto& f_rw_grads = layer.get_f_rw_grads();
+  const auto& i_rw_grads = layer.get_i_rw_grads();
+  const auto& o_rw_grads = layer.get_o_rw_grads();
+  const auto& g_rw_grads = layer.get_rw_grads();
+
+  EXPECT_EQ(f_w_grads.size(), num_inputs * num_outputs);
+  EXPECT_EQ(i_w_grads.size(), num_inputs * num_outputs);
+  EXPECT_EQ(o_w_grads.size(), num_inputs * num_outputs);
+  EXPECT_EQ(g_w_grads.size(), num_inputs * num_outputs);
+  EXPECT_EQ(f_b_grads.size(), num_outputs);
+  EXPECT_EQ(i_b_grads.size(), num_outputs);
+  EXPECT_EQ(o_b_grads.size(), num_outputs);
+  EXPECT_EQ(g_b_grads.size(), num_outputs);
+
+  for (size_t i = 0; i < num_inputs * num_outputs; ++i)
+  {
+    EXPECT_TRUE(std::isfinite(f_w_grads[i]));
+    EXPECT_TRUE(std::isfinite(i_w_grads[i]));
+    EXPECT_TRUE(std::isfinite(o_w_grads[i]));
+    EXPECT_TRUE(std::isfinite(g_w_grads[i]));
+  }
+
+  for (size_t i = 0; i < num_outputs; ++i)
+  {
+    EXPECT_TRUE(std::isfinite(f_b_grads[i]));
+    EXPECT_TRUE(std::isfinite(i_b_grads[i]));
+    EXPECT_TRUE(std::isfinite(o_b_grads[i]));
+    EXPECT_TRUE(std::isfinite(g_b_grads[i]));
+  }
+
+  for (size_t i = 0; i < num_outputs * num_outputs; ++i)
+  {
+    EXPECT_TRUE(std::isfinite(f_rw_grads[i]));
+    EXPECT_TRUE(std::isfinite(i_rw_grads[i]));
+    EXPECT_TRUE(std::isfinite(o_rw_grads[i]));
+    EXPECT_TRUE(std::isfinite(g_rw_grads[i]));
+  }
+}

@@ -3124,6 +3124,124 @@ TEST(SimdUtilsTest, SumSqFour)
   EXPECT_NEAR(actual, expected, 1e-11);
 }
 
+TEST(SimdUtilsTest, LstmForwardStepGeluVsStandard)
+{
+  const size_t n = 15;
+  std::vector<double> f_raw(n), i_raw(n), o_raw(n), g_raw(n);
+  std::vector<double> c_prev(n);
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    f_raw[j] = 0.2 * static_cast<double>(j) - 1.0;
+    i_raw[j] = -0.15 * static_cast<double>(j) + 0.5;
+    o_raw[j] = 0.3 * static_cast<double>(j) - 0.7;
+    g_raw[j] = -0.25 * static_cast<double>(j) + 0.8;
+    c_prev[j] = 0.1 * static_cast<double>(j + 1);
+  }
+
+  // Baseline scalar step
+  std::vector<double> f_base = f_raw, i_base = i_raw, o_base = o_raw;
+  std::vector<double> g_act_base(n), c_act_base(n), c_prev_base = c_prev;
+  std::vector<double> h_out_base(n), mask_base(n), seq_out_base(n);
+
+  simd::scalar_lstm_forward_step_gelu(
+    n,
+    f_base.data(), i_base.data(), o_base.data(),
+    g_raw.data(), g_act_base.data(),
+    c_prev_base.data(), c_act_base.data(),
+    h_out_base.data(), mask_base.data(), seq_out_base.data());
+
+  // Vectorized fused step
+  std::vector<double> f_simd = f_raw, i_simd = i_raw, o_simd = o_raw;
+  std::vector<double> g_act_simd(n), c_act_simd(n), c_prev_simd = c_prev;
+  std::vector<double> h_out_simd(n), mask_simd(n), seq_out_simd(n);
+
+  simd::lstm_forward_step_gelu(
+    n,
+    f_simd.data(), i_simd.data(), o_simd.data(),
+    g_raw.data(), g_act_simd.data(),
+    c_prev_simd.data(), c_act_simd.data(),
+    h_out_simd.data(), mask_simd.data(), seq_out_simd.data());
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    EXPECT_NEAR(f_simd[j], f_base[j], 1e-6) << "f at " << j;
+    EXPECT_NEAR(i_simd[j], i_base[j], 1e-6) << "i at " << j;
+    EXPECT_NEAR(o_simd[j], o_base[j], 1e-6) << "o at " << j;
+    EXPECT_NEAR(g_act_simd[j], g_act_base[j], 1e-6) << "g_act at " << j;
+    EXPECT_NEAR(c_prev_simd[j], c_prev_base[j], 1e-6) << "c_curr at " << j;
+    EXPECT_NEAR(c_act_simd[j], c_act_base[j], 1e-6) << "c_act at " << j;
+    EXPECT_NEAR(mask_simd[j], mask_base[j], 1e-6) << "mask at " << j;
+    EXPECT_NEAR(h_out_simd[j], h_out_base[j], 1e-6) << "h_out at " << j;
+    EXPECT_NEAR(seq_out_simd[j], seq_out_base[j], 1e-6) << "seq_out at " << j;
+  }
+}
+
+TEST(SimdUtilsTest, LstmBpttGateStepGeluVsStandard)
+{
+  const size_t n = 15;
+  std::vector<double> dh_curr(n), dc_next_in(n), f(n), i(n), o(n), g_pre(n), g_act(n), c_curr(n), c_act(n), c_prev(n);
+  const double sqrt_2_over_pi = 0.7978845608028654;
+  for (size_t j = 0; j < n; ++j)
+  {
+    dh_curr[j] = 0.2 * static_cast<double>(j + 1) - 1.0;
+    dc_next_in[j] = 0.05 * static_cast<double>(j + 1);
+    f[j] = 0.1 + 0.05 * static_cast<double>(j);
+    i[j] = 0.15 + 0.04 * static_cast<double>(j);
+    o[j] = 0.2 + 0.04 * static_cast<double>(j);
+    g_pre[j] = 0.3 * static_cast<double>(j + 1) - 1.5;
+    const double g3 = g_pre[j] * g_pre[j] * g_pre[j];
+    g_act[j] = 0.5 * g_pre[j] * (1.0 + std::tanh(sqrt_2_over_pi * (g_pre[j] + 0.044715 * g3)));
+    c_curr[j] = 0.25 * static_cast<double>(j + 1) - 1.2;
+    const double c3 = c_curr[j] * c_curr[j] * c_curr[j];
+    c_act[j] = 0.5 * c_curr[j] * (1.0 + std::tanh(sqrt_2_over_pi * (c_curr[j] + 0.044715 * c3)));
+    c_prev[j] = 0.1 * static_cast<double>(j);
+  }
+
+  std::vector<double> dc_act_deriv(n), dg_act_deriv(n);
+  for (size_t j = 0; j < n; ++j)
+  {
+    const double c3 = c_curr[j] * c_curr[j] * c_curr[j];
+    const double tanh_c = std::tanh(sqrt_2_over_pi * (c_curr[j] + 0.044715 * c3));
+    dc_act_deriv[j] = 0.5 + 0.5 * tanh_c +
+      (0.5 * c_curr[j] * (1.0 - tanh_c * tanh_c) * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * c_curr[j] * c_curr[j]));
+
+    const double g3 = g_pre[j] * g_pre[j] * g_pre[j];
+    const double tanh_g = std::tanh(sqrt_2_over_pi * (g_pre[j] + 0.044715 * g3));
+    dg_act_deriv[j] = 0.5 + 0.5 * tanh_g +
+      (0.5 * g_pre[j] * (1.0 - tanh_g * tanh_g) * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * g_pre[j] * g_pre[j]));
+  }
+
+  std::vector<double> df_std(n), di_std(n), do_std(n), dg_std(n), dc_next_std(n);
+  std::vector<double> df_gelu(n), di_gelu(n), do_gelu(n), dg_gelu(n), dc_next_gelu(n);
+
+  simd::lstm_bptt_gate_step(
+    n,
+    dh_curr.data(), dc_next_in.data(),
+    f.data(), i.data(), o.data(),
+    g_pre.data(), g_act.data(), c_act.data(),
+    c_prev.data(), true,
+    df_std.data(), di_std.data(), do_std.data(), dg_std.data(), dc_next_std.data(),
+    dc_act_deriv.data(), dg_act_deriv.data());
+
+  simd::lstm_bptt_gate_step_gelu(
+    n,
+    dh_curr.data(), dc_next_in.data(),
+    f.data(), i.data(), o.data(),
+    g_pre.data(), g_act.data(), c_act.data(),
+    c_curr.data(), c_prev.data(), true,
+    df_gelu.data(), di_gelu.data(), do_gelu.data(), dg_gelu.data(), dc_next_gelu.data());
+
+  for (size_t j = 0; j < n; ++j)
+  {
+    EXPECT_NEAR(df_gelu[j], df_std[j], 1e-7) << "df at " << j;
+    EXPECT_NEAR(di_gelu[j], di_std[j], 1e-7) << "di at " << j;
+    EXPECT_NEAR(do_gelu[j], do_std[j], 1e-7) << "do at " << j;
+    EXPECT_NEAR(dg_gelu[j], dg_std[j], 1e-7) << "dg at " << j;
+    EXPECT_NEAR(dc_next_gelu[j], dc_next_std[j], 1e-7) << "dc_next at " << j;
+  }
+}
+
 
 
 

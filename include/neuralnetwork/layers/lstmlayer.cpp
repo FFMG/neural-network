@@ -862,11 +862,29 @@ void LSTMLayer::finalize_forward_step(
 
   const bool has_dropout = is_training && get_dropout() > 0.0;
   const bool is_standard_tanh = !_use_layer_normalisation && !has_dropout && get_activation().get_method() == activation::method::tanh;
+  const bool is_standard_gelu = !_use_layer_normalisation && !has_dropout && get_activation().get_method() == activation::method::gelu;
 
   if (is_standard_tanh)
   {
     double* out_seq = &batch_output_sequences[(b * num_time_steps + t) * N_this];
     simd::lstm_forward_step_tanh(
+      N_this,
+      f_ptr,
+      i_ptr,
+      o_ptr,
+      g_ptr,
+      g_act_ptr,
+      c_prev_slice,
+      c_act_ptr,
+      h_prev_slice,
+      mask_ptr,
+      out_seq
+    );
+  }
+  else if (is_standard_gelu)
+  {
+    double* out_seq = &batch_output_sequences[(b * num_time_steps + t) * N_this];
+    simd::lstm_forward_step_gelu(
       N_this,
       f_ptr,
       i_ptr,
@@ -1858,6 +1876,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       const double* activated_c_chunk = &packed[6 * N_this];
 
       const bool is_tanh = (act.get_method() == activation::method::tanh);
+      const bool is_gelu = (act.get_method() == activation::method::gelu);
       if (is_tanh && !_use_layer_normalisation)
       {
         simd::lstm_bptt_gate_step_tanh(
@@ -1869,6 +1888,28 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
           do_ptr,
           activated_g_chunk,
           activated_c_chunk,
+          c_prev.data(),
+          has_prev,
+          df_chunk,
+          di_chunk,
+          do_chunk,
+          dg_chunk,
+          dc_next
+        );
+      }
+      else if (is_gelu && !_use_layer_normalisation)
+      {
+        simd::lstm_bptt_gate_step_gelu(
+          N_this,
+          dh_curr,
+          dc_next,
+          df_ptr,
+          di_ptr,
+          do_ptr,
+          g_pre_ptr,
+          activated_g_chunk,
+          activated_c_chunk,
+          c_curr.data(),
           c_prev.data(),
           has_prev,
           df_chunk,
