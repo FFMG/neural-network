@@ -27,6 +27,7 @@ public:
     swish,
     mish,
     gelu,
+    quickGelu,
     elu,
     softmax
   };
@@ -65,6 +66,8 @@ public:
       return calculate_mish(x, _alpha);
     case method::gelu:
       return calculate_gelu(x, _alpha);
+    case method::quickGelu:
+      return calculate_quickGelu(x, _alpha);
     case method::softmax:
       return calculate_softmax(x, _alpha);
     }
@@ -102,6 +105,8 @@ public:
       return calculate_mish_derivative(x, _alpha);
     case method::gelu:
       return calculate_gelu_derivative(x, _alpha);
+    case method::quickGelu:
+      return calculate_quickGelu_derivative(x, _alpha);
     case method::softmax:
       return calculate_softmax_derivative(x, _alpha);
     }
@@ -174,6 +179,8 @@ private:
   [[nodiscard]] static double calculate_mish_derivative(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_gelu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_gelu_derivative(double x, double alpha) noexcept;
+  [[nodiscard]] static double calculate_quickGelu(double x, double alpha) noexcept;
+  [[nodiscard]] static double calculate_quickGelu_derivative(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu_derivative(double x, double alpha) noexcept;
   static void calculate_softmax(double* begin, double* end, double temperature);

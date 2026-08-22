@@ -33,6 +33,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("Swish", activation::method::swish)
         .value("Mish", activation::method::mish)
         .value("Gelu", activation::method::gelu)
+        .value("QuickGelu", activation::method::quickGelu)
         .value("Elu", activation::method::elu)
         .value("Softmax", activation::method::softmax)
         .export_values();

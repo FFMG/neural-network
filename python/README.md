@@ -21,6 +21,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `Swish`: Swish activation function.
     *   `Mish`: Mish activation function.
     *   `Gelu`: Gaussian Error Linear Unit.
+    *   `QuickGelu`: Fast Sigmoid-based Gaussian Error Linear Unit approximation ($x \cdot \sigma(1.702 x)$).
     *   `Elu`: Exponential Linear Unit.
     *   `Softmax`: Softmax activation function.
 *   `nn.OptimiserType`: Gradient descent optimisers.

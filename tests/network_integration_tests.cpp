@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/attentionpoollayer.h"
 #include "layers/tcnlayer.h"
 #include "layers/selfattentionlayer.h"
@@ -2810,6 +2810,63 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndM
   EXPECT_TRUE(sa_layer->get_use_layer_normalisation());
   EXPECT_EQ(sa_layer->get_number_of_heads(), 2u);
   EXPECT_EQ(sa_layer->get_feed_forward_hidden_size(), 8u);
+
+  auto pred_after = loaded_nn->think(inputs);
+  ASSERT_EQ(pred_before.size(), pred_after.size());
+  for (size_t b = 0; b < pred_before.size(); ++b)
+  {
+    ASSERT_EQ(pred_before[b].size(), pred_after[b].size());
+    for (size_t o = 0; o < pred_before[b].size(); ++o)
+    {
+      EXPECT_NEAR(pred_before[b][o], pred_after[b][o], 1e-9);
+    }
+  }
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, QuickGeluSerializerSaveLoad)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::quickGelu, 1.702), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 4, 8, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(
+      2,
+      activation(activation::method::quickGelu, 1.5),
+      ErrorCalculation::type::mse,
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0 },
+      0.0,
+      OptimiserType::Adam,
+      0.9))
+    .with_learning_rate(0.01)
+    .with_batch_size(1)
+    .with_number_of_epoch(5)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.2, 0.8, -0.1 }, { -0.3, 0.4, -0.6, 0.2 } };
+  std::vector<std::vector<double>> targets = { { 0.1, 0.9 }, { 0.8, 0.2 } };
+  nn.train(inputs, targets);
+
+  auto pred_before = nn.think(inputs);
+
+  std::string test_path = "test_quickgelu_serializer_roundtrip.json";
+  std::remove(test_path.c_str());
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  const auto& loaded_layers = loaded_nn->get_layers();
+  ASSERT_EQ(loaded_layers.size(), 3u);
+  EXPECT_EQ(loaded_layers[1].get_activation().get_method(), activation::method::quickGelu);
+  EXPECT_NEAR(loaded_layers[1].get_activation().get_alpha(), 1.702, 1e-6);
+
+  EXPECT_EQ(loaded_layers[2].get_activation(0).get_method(), activation::method::quickGelu);
+  EXPECT_NEAR(loaded_layers[2].get_activation(0).get_alpha(), 1.5, 1e-6);
 
   auto pred_after = loaded_nn->think(inputs);
   ASSERT_EQ(pred_before.size(), pred_after.size());

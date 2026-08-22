@@ -62,6 +62,10 @@ activation::activation(const method method, double alpha, double temperature, do
     _activate_ptr = &calculate_gelu;
     _derivative_ptr = &calculate_gelu_derivative;
     break;
+  case activation::method::quickGelu:
+    _activate_ptr = &calculate_quickGelu;
+    _derivative_ptr = &calculate_quickGelu_derivative;
+    break;
   case activation::method::swish:
     _activate_ptr = &calculate_swish;
     _derivative_ptr = &calculate_swish_derivative;
@@ -192,6 +196,9 @@ void activation::activate(double* begin, double* end, bool is_training) const
   case method::gelu:
     simd::gelu_activate(begin, size);
     break;
+  case method::quickGelu:
+    simd::quick_gelu_activate(begin, size, _alpha);
+    break;
   case method::mish:
     simd::mish_activate(begin, size);
     break;
@@ -237,6 +244,9 @@ void activation::activate_derivative(const double* begin, const double* end, con
     break;
   case method::gelu:
     simd::gelu_derivative(begin, size, out);
+    break;
+  case method::quickGelu:
+    simd::quick_gelu_derivative(begin, size, out, _alpha);
     break;
   case method::mish:
     simd::mish_derivative(begin, size, out);
@@ -558,6 +568,27 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
       sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
 }
 
+double activation::calculate_quickGelu(double x, double alpha) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  constexpr double MAX_EXP_INPUT = 60.0;
+  const double coeff = (alpha > 0.0) ? alpha : 1.702;
+  const double z = coeff * x;
+  const double exp_term = std::exp(std::clamp(-z, -MAX_EXP_INPUT, MAX_EXP_INPUT));
+  return x / (1.0 + exp_term);
+}
+
+double activation::calculate_quickGelu_derivative(double x, double alpha) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("activation");
+  constexpr double MAX_EXP_INPUT = 60.0;
+  const double coeff = (alpha > 0.0) ? alpha : 1.702;
+  const double z = coeff * x;
+  const double clamped_z = std::clamp(z, -MAX_EXP_INPUT, MAX_EXP_INPUT);
+  const double sigmoid = 1.0 / (1.0 + std::exp(-clamped_z));
+  return sigmoid + coeff * x * sigmoid * (1.0 - sigmoid);
+}
+
 double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
@@ -576,6 +607,7 @@ double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std:
   case activation::method::leakyRelu:
   case activation::method::PRelu:
   case activation::method::gelu:
+  case activation::method::quickGelu:
   case activation::method::elu:
   case activation::method::swish:
   case activation::method::mish:
@@ -704,6 +736,10 @@ activation::method activation::string_to_method(const std::string& str)
   {
     return method::gelu;
   }
+  if (iequals(str, "quickgelu"))
+  {
+    return method::quickGelu;
+  }
   if (iequals(str, "elu"))
   {
     return method::elu;
@@ -741,6 +777,8 @@ std::string activation::method_to_string(method m)
     return "mish";
   case method::gelu:
     return "gelu";
+  case method::quickGelu:
+    return "quickGelu";
   case method::elu:
     return "elu";
   case method::softmax:
