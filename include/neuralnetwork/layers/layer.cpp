@@ -902,6 +902,7 @@ void Layer::apply_update_to_vector(
 
   double p1 = 1.0;
   double p2 = 1.0;
+  double rect_factor = 0.0;
   if (optimiser_type == OptimiserType::Adam || optimiser_type == OptimiserType::AdamW ||
       optimiser_type == OptimiserType::Nadam || optimiser_type == OptimiserType::NadamW)
   {
@@ -915,6 +916,30 @@ void Layer::apply_update_to_vector(
     p1 = 1.0 - std::pow(beta1, ts);
     p2 = 1.0 - std::pow(beta2, ts);
   }
+  else if (optimiser_type == OptimiserType::RAdam)
+  {
+    if (!timesteps.empty() && start < timesteps.size())
+    {
+      ++timesteps[start];
+    }
+    const double beta1 = get_momentum();
+    const double beta2 = 0.999;
+    const double ts = (!timesteps.empty() && start < timesteps.size()) ? static_cast<double>(timesteps[start]) : 1.0;
+    const double beta2_t = std::pow(beta2, ts);
+    p1 = 1.0 - std::pow(beta1, ts);
+    p2 = 1.0 - beta2_t;
+
+    const double rho_inf = 2.0 / (1.0 - beta2) - 1.0;
+    const double rho_t = (p2 > 1e-15) ? (rho_inf - (2.0 * ts * beta2_t) / p2) : 0.0;
+    if (rho_t > 5.0)
+    {
+      rect_factor = std::sqrt(((rho_t - 4.0) * (rho_t - 2.0) * rho_inf) / ((rho_inf - 4.0) * (rho_inf - 2.0) * rho_t));
+    }
+    else
+    {
+      rect_factor = 0.0;
+    }
+  }
 
   if (count == 0 && _task_queue_pool != nullptr && _task_queue_pool->get_number_of_threads() > 1 && n >= 4096)
   {
@@ -926,9 +951,9 @@ void Layer::apply_update_to_vector(
       size_t chunk_end = std::min(chunk_start + chunk_size, start + n);
       if (chunk_start < chunk_end)
       {
-        _task_queue_pool->enqueue([&values, &grads, &velocities, &m1, &m2, &decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end, p1, p2, this]()
+        _task_queue_pool->enqueue([&values, &grads, &velocities, &m1, &m2, &decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end, p1, p2, rect_factor, this]()
         {
-          apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end - chunk_start, p1, p2);
+          apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end - chunk_start, p1, p2, rect_factor);
         });
       }
     }
@@ -936,7 +961,7 @@ void Layer::apply_update_to_vector(
   }
   else
   {
-    apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, start, n, p1, p2);
+    apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, start, n, p1, p2, rect_factor);
   }
 }
 
@@ -954,7 +979,8 @@ void Layer::apply_update_to_vector_internal(
     size_t start,
     size_t count,
     double p1,
-    double p2)
+    double p2,
+    double rect_factor)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
@@ -1005,6 +1031,17 @@ void Layer::apply_update_to_vector_internal(
     const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
 
     simd::lion_step(values.data() + start, grads.data() + start, m1.data() + start, beta1, beta2, learning_rate, count, decay_ptr, clipping_scale);
+  }
+  break;
+
+  case OptimiserType::RAdam:
+  {
+    const double beta1 = get_momentum();
+    const double beta2 = 0.999;
+    const double epsilon = 1e-8;
+    const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
+
+    simd::radam_step(values.data() + start, grads.data() + start, m1.data() + start, m2.data() + start, beta1, beta2, p1, p2, rect_factor, learning_rate, epsilon, count, decay_ptr, clipping_scale);
   }
   break;
 
@@ -1168,6 +1205,50 @@ void Layer::apply_update_to_weight(
       // Hard clamp to prevent catastrophic numerical explosion, matching simd::lion_step.
       values[idx] = std::clamp(current_weight - learning_rate * sign_update, -100000.0, 100000.0);
       m1[idx] = beta2 * m1[idx] + (1.0 - beta2) * final_gradient;
+      grads[idx] = final_gradient;
+    }
+    break;
+
+    case OptimiserType::RAdam:
+    {
+      const double beta1 = get_momentum(neuron_number);
+      const double beta2 = 0.999;
+      const double epsilon = 1e-8;
+
+      const long long time_step = ++timesteps[idx];
+
+      m1[idx] = beta1 * m1[idx] + (1.0 - beta1) * final_gradient;
+      m2[idx] = beta2 * m2[idx] + (1.0 - beta2) * (final_gradient * final_gradient);
+
+      const double ts = static_cast<double>(time_step);
+      const double beta2_t = std::pow(beta2, ts);
+      const double p1 = 1.0 - std::pow(beta1, ts);
+      const double p2 = 1.0 - beta2_t;
+
+      const double rho_inf = 2.0 / (1.0 - beta2) - 1.0;
+      const double rho_t = (p2 > 1e-15) ? (rho_inf - (2.0 * ts * beta2_t) / p2) : 0.0;
+
+      double m_hat = (p1 > 1e-15) ? (m1[idx] / p1) : m1[idx];
+      double update_step = 0.0;
+
+      if (rho_t > 5.0)
+      {
+        const double r_t = std::sqrt(((rho_t - 4.0) * (rho_t - 2.0) * rho_inf) / ((rho_inf - 4.0) * (rho_inf - 2.0) * rho_t));
+        const double v_hat = (p2 > 1e-15) ? (m2[idx] / p2) : m2[idx];
+        update_step = r_t * (m_hat / (std::sqrt(v_hat) + epsilon));
+      }
+      else
+      {
+        update_step = m_hat;
+      }
+
+      double current_weight = values[idx];
+      if (!is_bias_index(values) && decays.size() > idx)
+      {
+        current_weight *= (1.0 - learning_rate * decays[idx]);
+      }
+
+      values[idx] = std::clamp(current_weight - learning_rate * update_step, -100000.0, 100000.0);
       grads[idx] = final_gradient;
     }
     break;

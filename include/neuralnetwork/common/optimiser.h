@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "logger.h"
 
 #include <algorithm>
@@ -22,6 +22,7 @@ enum class OptimiserType
   AMSGrad,
   Lamb,
   Lion,
+  RAdam,
   None
 };
 
@@ -42,6 +43,7 @@ inline std::string optimiser_type_to_string(OptimiserType type)
   case OptimiserType::AMSGrad:   return "AMSGrad";
   case OptimiserType::Lamb:      return "Lamb";
   case OptimiserType::Lion:      return "Lion";
+  case OptimiserType::RAdam:     return "RAdam";
   case OptimiserType::None:      return "None";
   default:
     Logger::panic("Unknown OptimiserType value");
@@ -106,6 +108,10 @@ inline OptimiserType string_to_optimiser_type(const std::string& str)
   if (lower_str == "lion")
   {
     return OptimiserType::Lion;
+  }
+  if (lower_str == "radam")
+  {
+    return OptimiserType::RAdam;
   }
   if (lower_str == "none")
   {

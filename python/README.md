@@ -38,6 +38,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `AMSGrad`: Variant of Adam using the maximum of past squared gradients.
     *   `LAMB`: Layer-wise Adaptive Moments optimizer for Batch training.
     *   `Lion`: EvoLved Sign Momentum (Lion) optimizer.
+    *   `RAdam`: Rectified Adam optimizer with dynamic variance rectification.
     *   `None_`: Disabled optimiser.
 *   `nn.ErrorCalculationType`: Error evaluation functions.
     *   `None_`: Disabled error calculation.

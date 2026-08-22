@@ -442,3 +442,122 @@ TEST_F(LayerOptimizerTest, LazyTimestepSynchronization) {
     }
 }
 
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightRAdamEarlyStep)
+{
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2 = { 0.0 };
+    std::vector<long long> timesteps = { 0 };
+    std::vector<double> decays = { 0.0 };
+
+    double input_grad = 0.1;
+    double lr = 0.001;
+    double clipping = 1.0;
+
+    // RAdam Update at t=1:
+    // beta1=0.0 (momentum for MockOptimizerLayer), beta2=0.999
+    // m1 = 0.0 * 0.0 + (1-0.0) * 0.1 = 0.1
+    // m2 = 0.999 * 0.0 + (1-0.999) * 0.01 = 0.00001
+    // rho_inf = 2 / (1 - 0.999) - 1 = 1999
+    // rho_1 = 1999 - 2 * 1 * 0.999 / (1 - 0.999) = 1999 - 1998 = 1.0 <= 5.0
+    // Unadapted momentum update: update_step = m_hat = 0.1 / (1 - 0^1) = 0.1
+    // value = 1.0 - 0.001 * 0.1 = 0.9999
+
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::RAdam, 0);
+
+    EXPECT_NEAR(values[0], 0.9999, 1e-9);
+    EXPECT_NEAR(m1[0], 0.1, 1e-9);
+    EXPECT_NEAR(m2[0], 0.00001, 1e-9);
+    EXPECT_EQ(timesteps[0], 1);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightRAdamTractableStep)
+{
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.1 };
+    std::vector<double> m2 = { 0.01 };
+    std::vector<long long> timesteps = { 9 }; // next step is t=10
+    std::vector<double> decays = { 0.0 };
+
+    double input_grad = 0.1;
+    double lr = 0.001;
+    double clipping = 1.0;
+
+    // t=10, beta1=0.0, beta2=0.999
+    // m1_new = 0.1
+    // m2_new = 0.999 * 0.01 + 0.001 * 0.01 = 0.01
+    // beta2_t = pow(0.999, 10) approx 0.9900448802
+    // p2 = 1 - beta2_t approx 0.0099551198
+    // rho_inf = 1999
+    // rho_t = 1999 - (20 * beta2_t) / p2 approx 10.0 > 5.0 (tractable)
+    const double beta2 = 0.999;
+    const double ts = 10.0;
+    const double beta2_t = std::pow(beta2, ts);
+    const double p2 = 1.0 - beta2_t;
+    const double rho_inf = 2.0 / (1.0 - beta2) - 1.0;
+    const double rho_t = rho_inf - (2.0 * ts * beta2_t) / p2;
+    const double r_t = std::sqrt(((rho_t - 4.0) * (rho_t - 2.0) * rho_inf) / ((rho_inf - 4.0) * (rho_inf - 2.0) * rho_t));
+
+    const double m_hat = 0.1; // beta1=0
+    const double v_hat = 0.01 / p2;
+    const double update_step = r_t * (m_hat / (std::sqrt(v_hat) + 1e-8));
+    const double expected_val = 1.0 - lr * update_step;
+
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::RAdam, 0);
+
+    EXPECT_NEAR(values[0], expected_val, 1e-9);
+    EXPECT_EQ(timesteps[0], 10);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightRAdamDecoupledDecay)
+{
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 2.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2 = { 0.0 };
+    std::vector<long long> timesteps = { 0 };
+    std::vector<double> decays = { 0.05 };
+
+    double input_grad = 0.1;
+    double lr = 0.01;
+    double clipping = 1.0;
+
+    // t=1: unadapted momentum update_step = 0.1
+    // weight decay: 2.0 * (1 - 0.01 * 0.05) = 2.0 * 0.9995 = 1.999
+    // value = 1.999 - 0.01 * 0.1 = 1.999 - 0.001 = 1.998
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::RAdam, 0);
+
+    EXPECT_NEAR(values[0], 1.998, 1e-9);
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorRAdam)
+{
+    MockOptimizerLayer layer(3, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0 };
+    std::vector<double> grads = { 0.1, 0.2, 0.3 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0 };
+    std::vector<double> decays = { 0.0, 0.0, 0.0 };
+
+    double lr = 0.001;
+    double clipping = 1.0;
+
+    // Vector update with RAdam at t=1 (unadapted)
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::RAdam, 0, 3);
+
+    EXPECT_EQ(timesteps[0], 1);
+    EXPECT_NEAR(values[0], 1.0 - 0.001 * 0.1, 1e-9);
+    EXPECT_NEAR(values[1], 2.0 - 0.001 * 0.2, 1e-9);
+    EXPECT_NEAR(values[2], 3.0 - 0.001 * 0.3, 1e-9);
+}
+

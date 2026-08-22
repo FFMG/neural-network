@@ -2439,6 +2439,210 @@ public:
     scalar_nadam_step(values, grads, m1, m2, b1, b2, p1, p2, lr, epsilon, n, decays, j, clipping_scale);
   }
 
+  // Scalar fallback for radam_step
+  inline static void scalar_radam_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double* m2,
+    double b1,
+    double b2,
+    double p1,
+    double p2,
+    double rect_factor,
+    double lr,
+    double epsilon,
+    size_t n,
+    const double* decays = nullptr,
+    size_t start = 0,
+    double clipping_scale = 1.0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
+    const bool is_tractable = (rect_factor > 0.0);
+
+    if (decays != nullptr)
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double update = 0.0;
+        if (is_tractable)
+        {
+          double v_hat = m2[j] * inv_p2;
+          update = rect_factor * (m_hat / (std::sqrt(v_hat) + epsilon));
+        }
+        else
+        {
+          update = m_hat;
+        }
+        double w = values[j] * (1.0 - lr * decays[j]);
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+      }
+    }
+    else
+    {
+      for (size_t j = start; j < n; ++j)
+      {
+        double g = grads[j] * clipping_scale;
+        m1[j] = b1 * m1[j] + (1.0 - b1) * g;
+        m2[j] = b2 * m2[j] + (1.0 - b2) * (g * g);
+        double m_hat = m1[j] * inv_p1;
+        double update = 0.0;
+        if (is_tractable)
+        {
+          double v_hat = m2[j] * inv_p2;
+          update = rect_factor * (m_hat / (std::sqrt(v_hat) + epsilon));
+        }
+        else
+        {
+          update = m_hat;
+        }
+        double w = values[j];
+        values[j] = std::clamp(w - lr * update, -100000.0, 100000.0);
+      }
+    }
+  }
+
+  // Full RAdam Update Step
+  inline static void radam_step(
+    double* values,
+    const double* grads,
+    double* m1,
+    double* m2,
+    double b1,
+    double b2,
+    double p1,
+    double p2,
+    double rect_factor,
+    double lr,
+    double epsilon,
+    size_t n,
+    const double* decays = nullptr,
+    double clipping_scale = 1.0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const double inv_p1 = (p1 > 1e-15) ? 1.0 / p1 : 1.0;
+    const double inv_p2 = (p2 > 1e-15) ? 1.0 / p2 : 1.0;
+    const bool is_tractable = (rect_factor > 0.0);
+
+    __m256d vec_b1 = _mm256_set1_pd(b1);
+    __m256d vec_one_minus_b1 = _mm256_set1_pd(1.0 - b1);
+    __m256d vec_b2 = _mm256_set1_pd(b2);
+    __m256d vec_one_minus_b2 = _mm256_set1_pd(1.0 - b2);
+    __m256d vec_inv_p1 = _mm256_set1_pd(inv_p1);
+    __m256d vec_inv_p2 = _mm256_set1_pd(inv_p2);
+    __m256d vec_rect = _mm256_set1_pd(rect_factor);
+    __m256d vec_lr = _mm256_set1_pd(lr);
+    __m256d vec_eps = _mm256_set1_pd(epsilon);
+    __m256d vec_one = _mm256_set1_pd(1.0);
+    __m256d vec_clamp_max = _mm256_set1_pd(100000.0);
+    __m256d vec_clamp_min = _mm256_set1_pd(-100000.0);
+    __m256d vec_clip = _mm256_set1_pd(clipping_scale);
+
+    if (decays != nullptr)
+    {
+      for (; j + 3 < n; j += 4)
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d update;
+        if (is_tractable)
+        {
+          __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+          __m256d scaled = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
+          update = _mm256_mul_pd(vec_rect, scaled);
+        }
+        else
+        {
+          update = m_hat;
+        }
+
+        __m256d d = _mm256_loadu_pd(&decays[j]);
+#ifdef SIMD_FMA_ENABLED
+        cur_w = _mm256_mul_pd(cur_w, _mm256_fnmadd_pd(vec_lr, d, vec_one));
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+#else
+        cur_w = _mm256_mul_pd(cur_w, _mm256_sub_pd(vec_one, _mm256_mul_pd(vec_lr, d)));
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+#endif
+
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
+    }
+    else
+    {
+      for (; j + 3 < n; j += 4)
+      {
+        __m256d raw_g = _mm256_loadu_pd(&grads[j]);
+        __m256d g = _mm256_mul_pd(raw_g, vec_clip);
+        __m256d cur_m1 = _mm256_loadu_pd(&m1[j]);
+        __m256d cur_m2 = _mm256_loadu_pd(&m2[j]);
+        __m256d cur_w = _mm256_loadu_pd(&values[j]);
+
+        // Moments update
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_m1 = _mm256_fmadd_pd(vec_one_minus_b1, g, _mm256_mul_pd(vec_b1, cur_m1));
+        __m256d g_sq = _mm256_mul_pd(g, g);
+        __m256d next_m2 = _mm256_fmadd_pd(vec_one_minus_b2, g_sq, _mm256_mul_pd(vec_b2, cur_m2));
+#else
+        __m256d next_m1 = _mm256_add_pd(_mm256_mul_pd(vec_b1, cur_m1), _mm256_mul_pd(vec_one_minus_b1, g));
+        __m256d next_m2 = _mm256_add_pd(_mm256_mul_pd(vec_b2, cur_m2), _mm256_mul_pd(vec_one_minus_b2, _mm256_mul_pd(g, g)));
+#endif
+        _mm256_storeu_pd(&m1[j], next_m1);
+        _mm256_storeu_pd(&m2[j], next_m2);
+
+        __m256d m_hat = _mm256_mul_pd(next_m1, vec_inv_p1);
+        __m256d update;
+        if (is_tractable)
+        {
+          __m256d v_hat = _mm256_mul_pd(next_m2, vec_inv_p2);
+          __m256d scaled = _mm256_div_pd(m_hat, _mm256_add_pd(_mm256_sqrt_pd(v_hat), vec_eps));
+          update = _mm256_mul_pd(vec_rect, scaled);
+        }
+        else
+        {
+          update = m_hat;
+        }
+
+#ifdef SIMD_FMA_ENABLED
+        __m256d next_w_raw = _mm256_fnmadd_pd(vec_lr, update, cur_w);
+#else
+        __m256d next_w_raw = _mm256_sub_pd(cur_w, _mm256_mul_pd(vec_lr, update));
+#endif
+
+        __m256d next_w = _mm256_max_pd(_mm256_min_pd(next_w_raw, vec_clamp_max), vec_clamp_min);
+        _mm256_storeu_pd(&values[j], next_w);
+      }
+    }
+#endif
+    scalar_radam_step(values, grads, m1, m2, b1, b2, p1, p2, rect_factor, lr, epsilon, n, decays, j, clipping_scale);
+  }
+
   // Scalar fallback for lion_step
   inline static void scalar_lion_step(
     double* values,
