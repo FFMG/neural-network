@@ -456,19 +456,12 @@ void TcnLayer::calculate_hidden_gradients(
     }
 
     const size_t T_avail = (src.size() == N_next) ? T : std::min(T, src.size() / N_next);
+    const double* W_next = next_layer.get_w_values().data();
     for (size_t t = 0; t < T_avail; ++t)
     {
       const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
       double* out_row = raw.data() + t * N_out;
-      for (size_t o = 0; o < N_out; ++o)
-      {
-        double sum = 0.0;
-        for (size_t j = 0; j < N_next; ++j)
-        {
-          sum += nd[j] * next_layer.get_weight_value(static_cast<unsigned>(o), static_cast<unsigned>(j));
-        }
-        out_row[o] = sum;
-      }
+      simd::gemm_transposed_one_batch(nd, W_next, out_row, N_out, N_next);
     }
   }
 

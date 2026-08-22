@@ -625,15 +625,7 @@ void AttentionPoolLayer::calculate_hidden_gradients(
 
     // Chain-rule through next_layer's dense weight matrix: raw_delta[i] = sum_j next_grad[j] * W_next[i,j]
     double* raw = raw_delta_all.data() + b * N;
-    for (size_t i = 0; i < N; ++i)
-    {
-      double sum = 0.0;
-      for (size_t j = 0; j < N_next; ++j)
-      {
-        sum += next_grad[j] * next_layer.get_weight_value(static_cast<unsigned>(i), static_cast<unsigned>(j));
-      }
-      raw[i] = sum;
-    }
+    simd::gemm_transposed_one_batch(next_grad.data(), next_layer.get_w_values().data(), raw, N, N_next);
   }
 
   finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());

@@ -51,7 +51,7 @@ public:
     const ResidualProjector* residual_projector,
     int number_of_threads,
     const layer_activation_helper& lah,
-    double momentum) noexcept;
+    double momentum);
 
   EmbeddingLayer(const EmbeddingLayer& src) noexcept;
   EmbeddingLayer(EmbeddingLayer&& src) noexcept;
@@ -75,12 +75,6 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
     return _embedding_dimension;
-  }
-
-  [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept override
-  {
-    MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
-    return _num_neurons_in_previous_layer;
   }
 
   void calculate_forward_feed(
@@ -151,7 +145,6 @@ private:
 
   unsigned _vocabulary_size;
   unsigned _embedding_dimension;
-  unsigned _num_neurons_in_previous_layer;
   mutable std::vector<std::vector<double>> _thread_w_grads;
 };
 

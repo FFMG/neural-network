@@ -612,7 +612,7 @@ public:
     return _layer_activation_helper;
   }
 
-  [[nodiscard]] virtual unsigned get_number_input_neurons() const noexcept
+  [[nodiscard]] inline unsigned get_number_input_neurons() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_activation_helper.get_number_input_neurons();

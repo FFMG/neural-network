@@ -63,8 +63,8 @@ activation::activation(const method method, double alpha, double temperature, do
     _derivative_ptr = &calculate_gelu_derivative;
     break;
   case activation::method::quickGelu:
-    _activate_ptr = &calculate_quickGelu;
-    _derivative_ptr = &calculate_quickGelu_derivative;
+    _activate_ptr = &calculate_quick_gelu;
+    _derivative_ptr = &calculate_quick_gelu_derivative;
     break;
   case activation::method::swish:
     _activate_ptr = &calculate_swish;
@@ -568,25 +568,18 @@ double activation::calculate_gelu_derivative(double x, double) noexcept
       sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x * x));
 }
 
-double activation::calculate_quickGelu(double x, double alpha) noexcept
+double activation::calculate_quick_gelu(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  constexpr double MAX_EXP_INPUT = 60.0;
   const double coeff = (alpha > 0.0) ? alpha : 1.702;
-  const double z = coeff * x;
-  const double exp_term = std::exp(std::clamp(-z, -MAX_EXP_INPUT, MAX_EXP_INPUT));
-  return x / (1.0 + exp_term);
+  return calculate_swish(x, coeff);
 }
 
-double activation::calculate_quickGelu_derivative(double x, double alpha) noexcept
+double activation::calculate_quick_gelu_derivative(double x, double alpha) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
-  constexpr double MAX_EXP_INPUT = 60.0;
   const double coeff = (alpha > 0.0) ? alpha : 1.702;
-  const double z = coeff * x;
-  const double clamped_z = std::clamp(z, -MAX_EXP_INPUT, MAX_EXP_INPUT);
-  const double sigmoid = 1.0 / (1.0 + std::exp(-clamped_z));
-  return sigmoid + coeff * x * sigmoid * (1.0 - sigmoid);
+  return calculate_swish_derivative(x, coeff);
 }
 
 double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std::optional<uint32_t> seed) const

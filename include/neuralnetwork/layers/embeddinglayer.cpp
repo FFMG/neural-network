@@ -76,8 +76,7 @@ EmbeddingLayer::EmbeddingLayer(
     layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_previous_layer * embedding_dimension),
     momentum),
   _vocabulary_size(vocabulary_size),
-  _embedding_dimension(embedding_dimension),
-  _num_neurons_in_previous_layer(num_neurons_in_previous_layer)
+  _embedding_dimension(embedding_dimension)
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
   if (_vocabulary_size == 0)
@@ -110,7 +109,7 @@ EmbeddingLayer::EmbeddingLayer(
   const ResidualProjector* residual_projector,
   int number_of_threads,
   const layer_activation_helper& lah,
-  double momentum) noexcept :
+  double momentum) :
   Layer(
     layer_index,
     layer_role,
@@ -136,18 +135,25 @@ EmbeddingLayer::EmbeddingLayer(
     lah,
     momentum),
   _vocabulary_size(vocabulary_size),
-  _embedding_dimension(embedding_dimension),
-  _num_neurons_in_previous_layer(number_input_neurons)
+  _embedding_dimension(embedding_dimension)
 {
+  (void)number_input_neurons;
   (void)number_output_neurons;
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
+  if (_vocabulary_size == 0)
+  {
+    throw std::invalid_argument("EmbeddingLayer: vocabulary_size must be greater than 0");
+  }
+  if (_embedding_dimension == 0)
+  {
+    throw std::invalid_argument("EmbeddingLayer: embedding_dimension must be greater than 0");
+  }
 }
 
 EmbeddingLayer::EmbeddingLayer(const EmbeddingLayer& src) noexcept :
   Layer(src),
   _vocabulary_size(src._vocabulary_size),
-  _embedding_dimension(src._embedding_dimension),
-  _num_neurons_in_previous_layer(src._num_neurons_in_previous_layer)
+  _embedding_dimension(src._embedding_dimension)
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
 }
@@ -156,7 +162,6 @@ EmbeddingLayer::EmbeddingLayer(EmbeddingLayer&& src) noexcept :
   Layer(std::move(src)),
   _vocabulary_size(src._vocabulary_size),
   _embedding_dimension(src._embedding_dimension),
-  _num_neurons_in_previous_layer(src._num_neurons_in_previous_layer),
   _thread_w_grads(std::move(src._thread_w_grads))
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
@@ -170,7 +175,6 @@ EmbeddingLayer& EmbeddingLayer::operator=(const EmbeddingLayer& src) noexcept
     Layer::operator=(src);
     _vocabulary_size = src._vocabulary_size;
     _embedding_dimension = src._embedding_dimension;
-    _num_neurons_in_previous_layer = src._num_neurons_in_previous_layer;
   }
   return *this;
 }
@@ -183,7 +187,6 @@ EmbeddingLayer& EmbeddingLayer::operator=(EmbeddingLayer&& src) noexcept
     Layer::operator=(std::move(src));
     _vocabulary_size = src._vocabulary_size;
     _embedding_dimension = src._embedding_dimension;
-    _num_neurons_in_previous_layer = src._num_neurons_in_previous_layer;
     _thread_w_grads = std::move(src._thread_w_grads);
   }
   return *this;
@@ -268,7 +271,7 @@ void EmbeddingLayer::calculate_forward_feed(
       {
         const double x_val = in_step[k];
         int cat_idx = std::clamp(static_cast<int>(std::round(x_val)), 0, static_cast<int>(_vocabulary_size - 1));
-        const double* w_row = &_w_values[cat_idx * _embedding_dimension];
+        const double* w_row = &_w_values[static_cast<size_t>(cat_idx) * _embedding_dimension];
         std::copy(w_row, w_row + _embedding_dimension, current_pre_act + k * _embedding_dimension);
       }
 
@@ -441,15 +444,7 @@ void EmbeddingLayer::calculate_hidden_gradients(
     {
       const double* g_next_row = flattened_next_grads_buffer.data() + eb * N_next;
       double* g_this_row = flattened_this_grads_buffer.data() + eb * N_this;
-      for (size_t i = 0; i < N_this; ++i)
-      {
-        double sum = 0.0;
-        for (size_t j = 0; j < N_next; ++j)
-        {
-          sum += g_next_row[j] * W_next[i * N_next + j];
-        }
-        g_this_row[i] = sum;
-      }
+      simd::gemm_transposed_one_batch(g_next_row, W_next, g_this_row, N_this, N_next);
     }
   }
 
@@ -652,7 +647,7 @@ void EmbeddingLayer::calculate_and_store_gradients(
     }
   }
 
-  const double scale = 1.0 / static_cast<double>(batch_size * num_time_steps);
+  const double scale = 1.0 / static_cast<double>(batch_size);
   simd::scale_vector(_w_grads.data(), scale, _w_grads.size());
 }
 
@@ -695,7 +690,7 @@ void EmbeddingLayer::calculate_and_store_gradients_chunk(
       {
         const double x_val = x_t[k];
         int cat_idx = std::clamp(static_cast<int>(std::round(x_val)), 0, static_cast<int>(_vocabulary_size - 1));
-        double* w_grad_row = &w_grads_out[cat_idx * _embedding_dimension];
+        double* w_grad_row = &w_grads_out[static_cast<size_t>(cat_idx) * _embedding_dimension];
         const double* g_slice = &g_t[k * _embedding_dimension];
         simd::add_vectors(g_slice, w_grad_row, _embedding_dimension);
       }
