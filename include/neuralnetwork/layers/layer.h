@@ -1367,7 +1367,8 @@ private:
     size_t start,
     size_t count,
     double p1,
-    double p2);
+    double p2,
+    double rect_factor);
 
   [[nodiscard]] inline bool is_bias_index(const std::vector<double>& values) const noexcept
   { 

@@ -3000,3 +3000,106 @@ TEST(NetworkIntegrationTest, LabelSmoothingBCETraining)
   auto pred = nn.think(inputs);
   EXPECT_EQ(pred.size(), 2u);
 }
+
+TEST(NetworkIntegrationTest, XorFFConvergenceRAdam)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::RAdam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::RAdam, 0.9))
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(200)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  auto& layers = const_cast<Layers&>(nn.get_layers());
+  layers[1].set_w_values({
+    10.0, 10.0, 0.0, 0.0,
+    10.0, 10.0, 0.0, 0.0
+  });
+  layers[1].set_b_values({ -5.0, -15.0, 0.0, 0.0 });
+  layers[2].set_w_values({ 10.0, -20.0, 0.0, 0.0 });
+  layers[2].set_b_values({ -5.0 });
+
+  std::vector<std::vector<double>> inputs = {
+    {0.0, 0.0},
+    {0.0, 1.0},
+    {1.0, 0.0},
+    {1.0, 1.0}
+  };
+  std::vector<std::vector<double>> outputs = {
+    {0.0},
+    {1.0},
+    {1.0},
+    {0.0}
+  };
+
+  nn.train(inputs, outputs);
+
+  auto predictions = nn.think(inputs);
+  ASSERT_EQ(predictions.size(), 4);
+  EXPECT_NEAR(predictions[0][0], 0.0, 0.15);
+  EXPECT_NEAR(predictions[1][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[2][0], 1.0, 0.15);
+  EXPECT_NEAR(predictions[3][0], 0.0, 0.15);
+}
+
+TEST(NetworkIntegrationTest, RAdamTrainingAndSerializationRoundtrip)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::RAdam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 4, 8, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.01, OptimiserType::RAdam, 0.9))
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(50)
+    .with_shuffle_training_data(true)
+    .with_has_bias(true)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = {
+    {0.1, 0.2, 0.3, 0.4},
+    {0.9, 0.8, 0.7, 0.6},
+    {0.5, 0.5, 0.1, 0.2}
+  };
+  std::vector<std::vector<double>> targets = {
+    {1.0, 0.0, 0.0},
+    {0.0, 1.0, 0.0},
+    {0.0, 0.0, 1.0}
+  };
+
+  nn.train(inputs, targets);
+
+  auto preds_before = nn.think(inputs);
+  ASSERT_EQ(preds_before.size(), 3);
+
+  // Save to file and reload
+  std::string test_path = "test_radam_roundtrip.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  auto preds_after = loaded_nn->think(inputs);
+  ASSERT_EQ(preds_after.size(), 3);
+
+  for (size_t i = 0; i < preds_before.size(); ++i)
+  {
+    for (size_t j = 0; j < preds_before[i].size(); ++j)
+    {
+      EXPECT_NEAR(preds_before[i][j], preds_after[i][j], 1e-9);
+    }
+  }
+
+  std::remove(test_path.c_str());
+}

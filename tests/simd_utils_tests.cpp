@@ -674,6 +674,120 @@ TEST(SimdUtilsTest, LionStepWithClipping)
   expect_vec_near(values, expected_values);
 }
 
+TEST(SimdUtilsTest, RAdamStepTractable)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> m2 = { 0.001, 0.002, 0.003, 0.004, 0.005 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.65;
+  double p2 = 0.01;
+  double rect_factor = 0.85; // rho_t > 5.0 tractable
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+  std::vector<double> expected_m2 = m2;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    expected_m1[i] = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    expected_m2[i] = b2 * expected_m2[i] + (1.0 - b2) * (grads[i] * grads[i]);
+    double m_hat = expected_m1[i] / p1;
+    double v_hat = expected_m2[i] / p2;
+    double update = rect_factor * (m_hat / (std::sqrt(v_hat) + eps));
+    double w = expected_values[i] * (1.0 - lr * decays[i]);
+    expected_values[i] = std::clamp(w - lr * update, -100000.0, 100000.0);
+  }
+
+  simd::radam_step(values.data(), grads.data(), m1.data(), m2.data(), b1, b2, p1, p2, rect_factor, lr, eps, n, decays.data());
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, RAdamStepIntractable)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> m2 = { 0.001, 0.002, 0.003, 0.004, 0.005 };
+  std::vector<double> decays = { 0.01, 0.01, 0.01, 0.01, 0.01 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.1;
+  double p2 = 0.001;
+  double rect_factor = 0.0; // rho_t <= 5.0 intractable (unadapted momentum)
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+  std::vector<double> expected_m2 = m2;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    expected_m1[i] = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    expected_m2[i] = b2 * expected_m2[i] + (1.0 - b2) * (grads[i] * grads[i]);
+    double m_hat = expected_m1[i] / p1;
+    double update = m_hat;
+    double w = expected_values[i] * (1.0 - lr * decays[i]);
+    expected_values[i] = std::clamp(w - lr * update, -100000.0, 100000.0);
+  }
+
+  simd::radam_step(values.data(), grads.data(), m1.data(), m2.data(), b1, b2, p1, p2, rect_factor, lr, eps, n, decays.data());
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
+TEST(SimdUtilsTest, RAdamStepNoDecay)
+{
+  const size_t n = 5;
+  std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+  std::vector<double> grads = { 0.1, -0.2, 0.3, -0.4, 0.5 };
+  std::vector<double> m1 = { 0.01, 0.02, 0.03, 0.04, 0.05 };
+  std::vector<double> m2 = { 0.001, 0.002, 0.003, 0.004, 0.005 };
+
+  double b1 = 0.9;
+  double b2 = 0.999;
+  double p1 = 0.65;
+  double p2 = 0.01;
+  double rect_factor = 0.85;
+  double lr = 0.001;
+  double eps = 1e-8;
+
+  std::vector<double> expected_values = values;
+  std::vector<double> expected_m1 = m1;
+  std::vector<double> expected_m2 = m2;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    expected_m1[i] = b1 * expected_m1[i] + (1.0 - b1) * grads[i];
+    expected_m2[i] = b2 * expected_m2[i] + (1.0 - b2) * (grads[i] * grads[i]);
+    double m_hat = expected_m1[i] / p1;
+    double v_hat = expected_m2[i] / p2;
+    double update = rect_factor * (m_hat / (std::sqrt(v_hat) + eps));
+    expected_values[i] = std::clamp(expected_values[i] - lr * update, -100000.0, 100000.0);
+  }
+
+  simd::radam_step(values.data(), grads.data(), m1.data(), m2.data(), b1, b2, p1, p2, rect_factor, lr, eps, n, nullptr);
+
+  expect_vec_near(m1, expected_m1);
+  expect_vec_near(m2, expected_m2);
+  expect_vec_near(values, expected_values);
+}
+
 TEST(SimdUtilsTest, GruBpttGateStep) {
   const size_t n = 5;
   std::vector<double> grad_next = { 0.1, 0.2, 0.3, 0.4, 0.5 };
@@ -1740,6 +1854,30 @@ TEST(SimdUtilsTest, FmaEquivalenceVerify)
     simd::scalar_lion_step(val_scalar.data(), grads.data(), m1_scalar.data(), lion_b1, lion_b2, lr, n, decays.data());
 
     expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(val_simd, val_scalar);
+  }
+
+  // 4. RAdam Step Verify (Tractable and Intractable)
+  {
+    std::vector<double> val_simd = values;
+    std::vector<double> m1_simd = m1;
+    std::vector<double> m2_simd = m2;
+
+    std::vector<double> val_scalar = values;
+    std::vector<double> m1_scalar = m1;
+    std::vector<double> m2_scalar = m2;
+
+    double radam_b1 = 0.9;
+    double radam_b2 = 0.999;
+    double p1 = 0.65;
+    double p2 = 0.01;
+    double rect_factor = 0.85;
+
+    simd::radam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), radam_b1, radam_b2, p1, p2, rect_factor, lr, eps, n, decays.data());
+    simd::scalar_radam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), radam_b1, radam_b2, p1, p2, rect_factor, lr, eps, n, decays.data());
+
+    expect_vec_near(m1_simd, m1_scalar);
+    expect_vec_near(m2_simd, m2_scalar);
     expect_vec_near(val_simd, val_scalar);
   }
 

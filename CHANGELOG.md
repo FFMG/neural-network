@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.36] - 2026-08-22
+
+### Added
+- Implemented RAdam (Rectified Adam) Optimiser (`OptimiserType::RAdam`):
+  - Dynamically calculates the degrees of freedom of the approximated moving average ($\rho_t$).
+  - Smoothly transitions between unadapted momentum SGD ($\rho_t \le 5$) and variance-rectified adaptive updates ($\rho_t > 5$) via rectification factor $r_t = \sqrt{\frac{(\rho_t - 4)(\rho_t - 2)\rho_\infty}{(\rho_\infty - 4)(\rho_\infty - 2)\rho_t}}$.
+  - Full AVX2 SIMD vectorised acceleration with FMA3 (`_mm256_fmadd_pd`, `_mm256_fnmadd_pd`) in `simd::radam_step` and scalar fallback `simd::scalar_radam_step`.
+  - Supports decoupled weight decay with configurable per-layer decays.
+  - Seamless JSON serialization and deserialization in `NeuralNetworkSerializer` with full backwards and forwards compatibility.
+  - Added Python bindings in `python/bindings.cpp` exposing `OptimiserType.RAdam`.
+  - Comprehensive unit and integration test coverage across early-step unadapted momentum, tractable variance rectification, decoupled decay, SIMD equivalence across vector sizes, and end-to-end training.
+
 ## [1.1.35] - 2026-08-22
 
 ### Added
