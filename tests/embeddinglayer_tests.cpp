@@ -362,7 +362,7 @@ TEST(EmbeddingLayerTest, SerializerSaveLoadRoundTrip)
       1,
       activation(activation::method::sigmoid, 0.0),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0 },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
       0.01,
       OptimiserType::AdamW,
       0.9))
@@ -451,7 +451,7 @@ TEST(EmbeddingLayerTest, EndToEndTrainingConvergence)
       1,
       activation(activation::method::linear, 0.0),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0 },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
       0.0,
       OptimiserType::SGD,
       0.0))

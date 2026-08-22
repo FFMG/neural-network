@@ -36,7 +36,7 @@ NeuralNetwork::NeuralNetwork(
       topology.back(), 
       activation(output_layer_activation, 0.01), 
       ErrorCalculation::type::mse, 
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.05, OptimiserType::SGD, 0.99))
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
   (void)hidden_layer_activation;
@@ -1110,6 +1110,7 @@ void NeuralNetwork::optimize_inference_temperature(const std::vector<std::vector
 
     // Apply the optimized temperature
     const_cast<Layer&>(last_layer).set_inference_temperature(head_idx, best_T);
+    _options.set_output_layer_inference_temperature(head_idx, best_T);
     Logger::info("Head #", head_idx, " optimized inference temperature: ", std::fixed, std::setprecision(4), best_T, " (NLL: ", min_nll / num_samples, ")");
   }
 }

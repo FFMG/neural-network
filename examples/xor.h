@@ -15,7 +15,7 @@ private:
       LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::sigmoid, 1.0), 0.0, 0.0, OptimiserType::SGD, 0.99, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0 }, 0.0, OptimiserType::SGD, 0.99);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::SGD, 0.99);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)

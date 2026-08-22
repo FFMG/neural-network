@@ -326,7 +326,7 @@ protected:
     {-0.9, -0.7, 0.1, 0.4, 0.8}
   };
 
-  EvaluationConfig config{0.05, 0.5, 1.0, 0.1, true, 1.0, 1e-7};
+  EvaluationConfig config{0.05, 0.5, 1.0, 0.1, true, 1.0, 1e-7, 0.0};
   double tolerance = 1e-9;
 
   void SetUp() override {}
@@ -462,7 +462,7 @@ TEST_F(ErrorCalculationTest, PredictionCoverageSigmoidUsesNeutralBaseline) {
   // Sigmoid's neutral point is 0.5, not 0.0: a value near 0.0 is a *confident* "down" call,
   // not an unconfident one. calculate_prediction_coverage must measure distance from 0.5,
   // exactly like calculate_directional_confidence_score already does for sigmoid.
-  EvaluationConfig sigmoid_config{ 0.05, 0.3, 1.0, 0.1, true, 1.0, 1e-7 };
+  EvaluationConfig sigmoid_config{ 0.05, 0.3, 1.0, 0.1, true, 1.0, 1e-7, 0.0 };
   std::vector<std::vector<double>> sigmoid_predictions = {
     { 0.05 },  // |0.05 - 0.5| = 0.45 > 0.3 -> confident (strongly "down")
     { 0.95 },  // |0.95 - 0.5| = 0.45 > 0.3 -> confident (strongly "up")
@@ -594,13 +594,13 @@ TEST_F(ErrorCalculationTest, EvaluationConfigSensitivity) {
 
   // Huber delta = 0.1. Error = 0.5. Abs error = 0.5 > 0.1.
   // Loss = 0.1 * (0.5 - 0.5 * 0.1) = 0.1 * 0.45 = 0.045
-  EvaluationConfig c1{0.0, 0.0, 0.1, 0.0, false, 0.0, 1e-12};
+  EvaluationConfig c1{0.0, 0.0, 0.1, 0.0, false, 0.0, 1e-12, 0.0};
   double h1 = ErrorCalculation::calculate_huber_loss_error(gt, pr, c1);
   EXPECT_NEAR(h1, 0.045, tolerance);
 
   // Huber delta = 1.0. Error = 0.5. Abs error = 0.5 < 1.0.
   // Loss = 0.5 * 0.5^2 = 0.125
-  EvaluationConfig c2{0.0, 0.0, 1.0, 0.0, false, 0.0, 1e-12};
+  EvaluationConfig c2{0.0, 0.0, 1.0, 0.0, false, 0.0, 1e-12, 0.0};
   double h2 = ErrorCalculation::calculate_huber_loss_error(gt, pr, c2);
   EXPECT_NEAR(h2, 0.125, tolerance);
   
@@ -610,18 +610,18 @@ TEST_F(ErrorCalculationTest, EvaluationConfigSensitivity) {
   
   // Huber Direction Loss = Huber + lambda * direction_loss
   // If lambda is 0, should be same as huber
-  EvaluationConfig c3{0.0, 0.0, 1.0, 0.0, true, 0.0, 1e-12};
+  EvaluationConfig c3{0.0, 0.0, 1.0, 0.0, true, 0.0, 1e-12, 0.0};
   double hd1 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c3);
   // error = 1.0 - (-0.5) = 1.5. delta = 1.0. 
   // huber = 1.0 * (1.5 - 0.5 * 1.0) = 1.0.
   EXPECT_NEAR(hd1, 1.0, tolerance);
 
-  EvaluationConfig c4{0.0, 0.0, 1.0, 1.0, true, 0.0, 1e-12};
+  EvaluationConfig c4{0.0, 0.0, 1.0, 1.0, true, 0.0, 1e-12, 0.0};
   double hd2 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c4);
   EXPECT_GT(hd2, hd1); // Should be higher due to direction penalty
 
   // Verify that use_direction_penalty flag is respected
-  EvaluationConfig c5{0.0, 0.0, 1.0, 1.0, false, 0.0, 1e-12};
+  EvaluationConfig c5{0.0, 0.0, 1.0, 1.0, false, 0.0, 1e-12, 0.0};
   double hd3 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c5);
   EXPECT_DOUBLE_EQ(hd3, hd1); // Should ignore lambda because flag is false
 }
@@ -715,7 +715,7 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   // Total = (0.125 + 1.5) / 2 = 0.8125
   std::vector<std::vector<double>> gt_huber = { { 0.0 }, { 0.0 } };
   std::vector<std::vector<double>> pred_huber = { { 0.5 }, { 2.0 } };
-  EvaluationConfig huber_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
+  EvaluationConfig huber_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0);
   EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_huber_loss_error(gt_huber, pred_huber, huber_cfg), 0.8125);
 
   // 4. WAPE
@@ -743,7 +743,7 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   // Avg = -ln(0.8)
   std::vector<std::vector<double>> gt_bce = { { 1.0 }, { 0.0 } };
   std::vector<std::vector<double>> pred_bce = { { 0.8 }, { 0.2 } };
-  EvaluationConfig bce_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12);
+  EvaluationConfig bce_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0);
   const double expected_bce = -std::log(0.8);
   EXPECT_NEAR(ErrorCalculation::calculate_bce_loss(gt_bce, pred_bce, bce_cfg), expected_bce, 1e-12);
 
@@ -835,5 +835,86 @@ TEST_F(ErrorCalculationTest, CalculateErrorEnumDispatch)
   EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::rmse, gt, pred, config, activation::method::sigmoid), 0.0);
   EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::bce_loss, gt, pred, config, activation::method::sigmoid), 0.0);
   EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::cross_entropy, gt, pred, config, activation::method::softmax), 0.0);
+}
+
+TEST_F(ErrorCalculationTest, LabelSmoothingHelperFunctions)
+{
+  std::vector<double> targets = { 1.0, 0.0, 0.0, 0.0 }; // 4 classes, epsilon = 0.1
+  // y_smooth[0] = 1.0 * (1 - 0.1) + 0.1 / 4 = 0.9 + 0.025 = 0.925
+  // y_smooth[1..3] = 0.0 * (1 - 0.1) + 0.1 / 4 = 0.025
+  auto smoothed = ErrorCalculation::smooth_labels(targets, 0.1);
+  ASSERT_EQ(smoothed.size(), 4);
+  EXPECT_DOUBLE_EQ(smoothed[0], 0.925);
+  EXPECT_DOUBLE_EQ(smoothed[1], 0.025);
+  EXPECT_DOUBLE_EQ(smoothed[2], 0.025);
+  EXPECT_DOUBLE_EQ(smoothed[3], 0.025);
+
+  // Sum of smoothed probabilities remains 1.0
+  double sum = smoothed[0] + smoothed[1] + smoothed[2] + smoothed[3];
+  EXPECT_NEAR(sum, 1.0, 1e-12);
+
+  // In-place span overload
+  std::vector<double> dest(4, 0.0);
+  ErrorCalculation::smooth_labels(targets, std::span<double>(dest), 0.1);
+  EXPECT_DOUBLE_EQ(dest[0], 0.925);
+  EXPECT_DOUBLE_EQ(dest[1], 0.025);
+
+  // Zero smoothing returns exact targets
+  auto zero_smoothed = ErrorCalculation::smooth_labels(targets, 0.0);
+  EXPECT_DOUBLE_EQ(zero_smoothed[0], 1.0);
+  EXPECT_DOUBLE_EQ(zero_smoothed[1], 0.0);
+}
+
+TEST_F(ErrorCalculationTest, CrossEntropyWithLabelSmoothing)
+{
+  // 3 classes, epsilon = 0.1
+  // Target: [1.0, 0.0, 0.0]
+  // Smoothed: [1.0 * 0.9 + 0.1/3, 0.0 * 0.9 + 0.1/3, 0.0 * 0.9 + 0.1/3] = [0.9333333333333333, 0.03333333333333333, 0.03333333333333333]
+  // Pred: [0.7, 0.2, 0.1]
+  // Loss = - (0.9333333333333333 * ln(0.7) + 0.03333333333333333 * ln(0.2) + 0.03333333333333333 * ln(0.1))
+  std::vector<std::vector<double>> gt = { { 1.0, 0.0, 0.0 } };
+  std::vector<std::vector<double>> pred = { { 0.7, 0.2, 0.1 } };
+
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1);
+  double loss = ErrorCalculation::calculate_cross_entropy(gt, pred, config_smooth);
+
+  const double expected_y0 = 1.0 * 0.9 + 0.1 / 3.0;
+  const double expected_y1 = 0.1 / 3.0;
+  const double expected_y2 = 0.1 / 3.0;
+  const double expected_loss = -(expected_y0 * std::log(0.7) + expected_y1 * std::log(0.2) + expected_y2 * std::log(0.1));
+
+  EXPECT_NEAR(loss, expected_loss, 1e-12);
+}
+
+TEST_F(ErrorCalculationTest, BCEWithLabelSmoothing)
+{
+  // Binary classification, epsilon = 0.1
+  // GT: [1.0], [0.0]
+  // Smoothed GT: 1.0 * (1 - 0.1) + 0.5 * 0.1 = 0.95 and 0.0 * (1 - 0.1) + 0.5 * 0.1 = 0.05
+  // Pred: [0.8], [0.2]
+  // Elem 0: -(0.95 * ln(0.8) + 0.05 * ln(0.2))
+  // Elem 1: -(0.05 * ln(0.2) + 0.95 * ln(0.8))
+  std::vector<std::vector<double>> gt = { { 1.0 }, { 0.0 } };
+  std::vector<std::vector<double>> pred = { { 0.8 }, { 0.2 } };
+
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1);
+  double loss = ErrorCalculation::calculate_bce_loss(gt, pred, config_smooth);
+
+  const double y_pos = 0.95;
+  const double expected_elem0 = -(y_pos * std::log(0.8) + (1.0 - y_pos) * std::log(0.2));
+  const double y_neg = 0.05;
+  const double expected_elem1 = -(y_neg * std::log(0.2) + (1.0 - y_neg) * std::log(0.8));
+  const double expected_avg = (expected_elem0 + expected_elem1) / 2.0;
+
+  EXPECT_NEAR(loss, expected_avg, 1e-12);
+}
+
+TEST_F(ErrorCalculationTest, LabelSmoothingValidation)
+{
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, -0.1), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.5), std::runtime_error);
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.999));
 }
 

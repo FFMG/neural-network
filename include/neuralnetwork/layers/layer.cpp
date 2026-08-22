@@ -478,6 +478,7 @@ void Layer::calculate_cross_entropy_error_deltas(
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double label_smoothing = evaluation_config.label_smoothing();
 
   // --- Optional directional boost ---
   int pred_dir = 0;
@@ -504,6 +505,8 @@ void Layer::calculate_cross_entropy_error_deltas(
 
   const unsigned start_idx = neurons.front().get_index();
   const size_t count = neurons.size();
+  const double smooth_prior = (count > 0 && label_smoothing > 0.0) ? (label_smoothing / static_cast<double>(count)) : 0.0;
+  const double one_minus_smoothing = 1.0 - label_smoothing;
 
   if (activation_method == activation::method::softmax)
   {
@@ -518,20 +521,50 @@ void Layer::calculate_cross_entropy_error_deltas(
     size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
     __m256d vec_mult = _mm256_set1_pd(multiplier);
-    for (; i + 3 < count; i += 4)
+    if (label_smoothing > 0.0)
     {
-      const size_t idx = static_cast<size_t>(start_idx) + i;
-      __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
-      __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
-      __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
-      __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
-      _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      __m256d vec_one_minus_smoothing = _mm256_set1_pd(one_minus_smoothing);
+      __m256d vec_smooth_prior = _mm256_set1_pd(smooth_prior);
+      for (; i + 3 < count; i += 4)
+      {
+        const size_t idx = static_cast<size_t>(start_idx) + i;
+        __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+        __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+        __m256d vec_y_smooth = _mm256_fmadd_pd(vec_target, vec_one_minus_smoothing, vec_smooth_prior);
+        __m256d vec_diff = _mm256_sub_pd(vec_given, vec_y_smooth);
+        __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+        _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      }
+    }
+    else
+    {
+      for (; i + 3 < count; i += 4)
+      {
+        const size_t idx = static_cast<size_t>(start_idx) + i;
+        __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+        __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+        __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+        __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+        _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      }
     }
 #endif
-    for (; i < count; ++i)
+    if (label_smoothing > 0.0)
     {
-      const size_t idx = start_idx + i;
-      deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
+      for (; i < count; ++i)
+      {
+        const size_t idx = start_idx + i;
+        const double y_smooth = target_outputs[idx] * one_minus_smoothing + smooth_prior;
+        deltas[idx] = (given_outputs[idx] - y_smooth) * multiplier;
+      }
+    }
+    else
+    {
+      for (; i < count; ++i)
+      {
+        const size_t idx = start_idx + i;
+        deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
+      }
     }
   }
   else
@@ -541,10 +574,11 @@ void Layer::calculate_cross_entropy_error_deltas(
     {
       const size_t idx = start_idx + i;
       const double target = target_outputs[idx];
+      const double y_smooth = (label_smoothing > 0.0) ? (target * one_minus_smoothing + smooth_prior) : target;
       const double output = given_outputs[idx];
       const double eps = 1e-12;
       const double clamped_output = std::max(eps, std::min(1.0 - eps, output));
-      double grad = -target / clamped_output;
+      double grad = -y_smooth / clamped_output;
 
       grad *= ce_lambda;
 
@@ -576,6 +610,9 @@ void Layer::calculate_bce_error_deltas(
   const double dir_lambda = evaluation_config.direction_lambda();
   const bool   use_dir = evaluation_config.use_direction_penalty();
   const double ce_lambda = evaluation_config.cross_entropy_lambda();
+  const double label_smoothing = evaluation_config.label_smoothing();
+  const double one_minus_smoothing = 1.0 - label_smoothing;
+  const double half_smoothing = 0.5 * label_smoothing;
   const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
 
   // --- Optional directional boost ---
@@ -611,20 +648,50 @@ void Layer::calculate_bce_error_deltas(
     size_t i = 0;
 #ifdef SIMD_AVX2_ENABLED
     __m256d vec_mult = _mm256_set1_pd(multiplier);
-    for (; i + 3 < count; i += 4)
+    if (label_smoothing > 0.0)
     {
-      const size_t idx = start_idx + i;
-      __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
-      __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
-      __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
-      __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
-      _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      __m256d vec_one_minus_smoothing = _mm256_set1_pd(one_minus_smoothing);
+      __m256d vec_half_smoothing = _mm256_set1_pd(half_smoothing);
+      for (; i + 3 < count; i += 4)
+      {
+        const size_t idx = start_idx + i;
+        __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+        __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+        __m256d vec_y_smooth = _mm256_fmadd_pd(vec_target, vec_one_minus_smoothing, vec_half_smoothing);
+        __m256d vec_diff = _mm256_sub_pd(vec_given, vec_y_smooth);
+        __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+        _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      }
+    }
+    else
+    {
+      for (; i + 3 < count; i += 4)
+      {
+        const size_t idx = start_idx + i;
+        __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+        __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+        __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+        __m256d vec_res = _mm256_mul_pd(vec_diff, vec_mult);
+        _mm256_storeu_pd(deltas.data() + idx, vec_res);
+      }
     }
 #endif
-    for (; i < count; ++i)
+    if (label_smoothing > 0.0)
     {
-      const size_t idx = start_idx + i;
-      deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
+      for (; i < count; ++i)
+      {
+        const size_t idx = start_idx + i;
+        const double y_smooth = target_outputs[idx] * one_minus_smoothing + half_smoothing;
+        deltas[idx] = (given_outputs[idx] - y_smooth) * multiplier;
+      }
+    }
+    else
+    {
+      for (; i < count; ++i)
+      {
+        const size_t idx = start_idx + i;
+        deltas[idx] = (given_outputs[idx] - target_outputs[idx]) * multiplier;
+      }
     }
   }
   else
@@ -633,19 +700,20 @@ void Layer::calculate_bce_error_deltas(
     {
       const size_t idx = start_idx + i;
       const double target = target_outputs[idx];
+      const double y_smooth = (label_smoothing > 0.0) ? (target * one_minus_smoothing + half_smoothing) : target;
       const double output = given_outputs[idx];
 
       // --- BCE gradient ---
       double grad;
       if (activation_method == activation::method::sigmoid)
       {
-        grad = (output - target);
+        grad = (output - y_smooth);
       }
       else
       {
         const double eps = 1e-12;
         const double clamped_output = std::max(eps, std::min(1.0 - eps, output));
-        grad = (clamped_output - target) / (clamped_output * (1.0 - clamped_output));
+        grad = (clamped_output - y_smooth) / (clamped_output * (1.0 - clamped_output));
       }
 
       // --- Optional directional boost ---
