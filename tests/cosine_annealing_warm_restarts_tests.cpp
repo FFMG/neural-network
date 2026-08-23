@@ -259,3 +259,20 @@ TEST(CosineAnnealingWarmRestartsTest, ValidationRejectsInvalidRestartDecay)
     std::runtime_error
   );
 }
+
+TEST(CosineAnnealingWarmRestartsTest, WarningWhenBothAdaptiveAndCosineAnnealingEnabled)
+{
+  EXPECT_NO_THROW(
+    {
+      auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+        .with_adaptive_learning_rates(true)
+        .with_cosine_annealing_warm_restarts(true, 10, 1.0, 0.0, 1.0)
+        .build();
+
+      EXPECT_TRUE(options.adaptive_learning_rate());
+      EXPECT_TRUE(options.adaptive_learning_rates());
+      EXPECT_TRUE(options.cosine_annealing_warm_restarts().enabled());
+    }
+  );
+}
+

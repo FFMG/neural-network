@@ -663,6 +663,10 @@ public:
       {
         Logger::panic("Cosine annealing restart decay factor must be in (0.0, 1.0]!");
       }
+      if (adaptive_learning_rate())
+      {
+        Logger::warning("Both adaptive learning rates and cosine annealing with warm restarts are enabled. These schedules may conflict with each other.");
+      }
     }
     return *this;
   }
@@ -732,6 +736,7 @@ public:
   [[nodiscard]] inline int number_of_threads() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_threads; }
   [[nodiscard]] inline double learning_rate_decay_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_decay_rate; }
   [[nodiscard]] inline bool adaptive_learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
+  [[nodiscard]] inline bool adaptive_learning_rates() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
   [[nodiscard]] inline double learning_rate_restart_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_rate; }
   [[nodiscard]] inline double learning_rate_restart_boost() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_restart_boost; }
   [[nodiscard]] inline int residual_layer_jump() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _residual_layer_jump; }

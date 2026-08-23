@@ -226,10 +226,19 @@ The library supports various strategies to manage learning rate dynamics:
 *   **Adaptive Learning Rate:** Dynamically adjusts the learning rate based on recent error trends. It detects states like `Plateauing`, `Improving`, or `Exploding` and adjusts the rate accordingly.
 
 ```cpp
-    auto options = NeuralNetworkOptions::create(topology)
+    // Example 1: Warmup with Cosine Annealing and Warm Restarts (SGDR)
+    auto options_sgdr = NeuralNetworkOptions::create(topology)
       .with_learning_rate(0.001)
       .with_learning_rate_warmup(0.0001, 0.05) // Start at 0.0001, reach target at 5% of training
       .with_cosine_annealing_warm_restarts(true, 20, 2.0, 0.00001, 0.9) // T_0=20, T_mult=2.0, eta_min=1e-5, gamma=0.9
+      .build();
+
+    // Example 2: Warmup with Exponential Decay, Boosts, and Error-Adaptive Rates
+    auto options_adaptive = NeuralNetworkOptions::create(topology)
+      .with_learning_rate(0.001)
+      .with_learning_rate_warmup(0.0001, 0.05) // Start at 0.0001, reach target at 5% of training
+      .with_learning_rate_decay_rate(0.985)    // Decay factor applied per epoch
+      .with_learning_rate_boost_rate(0.2, 0.1) // Boost by 10% every 20% of training epochs
       .with_adaptive_learning_rates(true)      // Enable dynamic error-based adjustment
       .build();
 ```
