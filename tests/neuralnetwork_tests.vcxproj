@@ -90,6 +90,7 @@
     <ClCompile Include="adaptive_learning_rate_scheduler_tests.cpp" />
     <ClCompile Include="aligned_allocator_tests.cpp" />
     <ClCompile Include="attentionpoollayer_tests.cpp" />
+    <ClCompile Include="cosine_annealing_warm_restarts_tests.cpp" />
     <ClCompile Include="embeddinglayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_tests.cpp" />
     <ClCompile Include="elmanrnnlayer_mt_tests.cpp" />

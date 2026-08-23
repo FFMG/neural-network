@@ -3103,3 +3103,80 @@ TEST(NetworkIntegrationTest, RAdamTrainingAndSerializationRoundtrip)
 
   std::remove(test_path.c_str());
 }
+
+TEST(NetworkIntegrationTest, CosineAnnealingWarmRestartsTraining)
+{
+  std::map<int, double> captured_rates;
+  std::mutex mutex;
+
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_learning_rate(0.1)
+    .with_number_of_epoch(30)
+    .with_cosine_annealing_warm_restarts(true, 10, 1.0, 0.01, 1.0)
+    .with_progress_callback([&](NeuralNetworkHelper& helper)
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      captured_rates[static_cast<int>(helper.epoch())] = helper.learning_rate();
+      return true;
+    })
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {1.0, 1.0} };
+  std::vector<std::vector<double>> outputs = { {0.0}, {1.0}, {1.0}, {0.0} };
+
+  nn.train(inputs, outputs);
+
+  ASSERT_FALSE(captured_rates.empty());
+  for (const auto& [epoch, rate] : captured_rates)
+  {
+    if (epoch < 30)
+    {
+      double expected = options.cosine_annealing_warm_restarts().calculate_learning_rate(epoch, 0.1);
+      EXPECT_NEAR(rate, expected, 1e-4) << "Mismatch at epoch " << epoch;
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, CosineAnnealingWarmRestartsSerializerSaveLoad)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_learning_rate(0.08)
+    .with_number_of_epoch(20)
+    .with_cosine_annealing_warm_restarts(true, 12, 1.5, 0.002, 0.85)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { {0.2, 0.3}, {0.5, 0.6}, {0.8, 0.1} };
+  std::vector<std::vector<double>> outputs = { {0.1}, {0.7}, {0.4} };
+
+  nn.train(inputs, outputs);
+
+  auto preds_before = nn.think(inputs);
+
+  std::string test_path = "test_cosine_annealing_serializer.json";
+  std::remove(test_path.c_str());
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+
+  const auto& loaded_ca = loaded_nn->options().cosine_annealing_warm_restarts();
+  EXPECT_TRUE(loaded_ca.enabled());
+  EXPECT_EQ(loaded_ca.first_cycle_epochs(), 12);
+  EXPECT_DOUBLE_EQ(loaded_ca.cycle_multiplier(), 1.5);
+  EXPECT_DOUBLE_EQ(loaded_ca.minimum_learning_rate(), 0.002);
+  EXPECT_DOUBLE_EQ(loaded_ca.restart_decay(), 0.85);
+
+  auto preds_after = loaded_nn->think(inputs);
+  ASSERT_EQ(preds_after.size(), preds_before.size());
+  for (size_t i = 0; i < preds_before.size(); ++i)
+  {
+    for (size_t j = 0; j < preds_before[i].size(); ++j)
+    {
+      EXPECT_NEAR(preds_before[i][j], preds_after[i][j], 1e-9);
+    }
+  }
+
+  std::remove(test_path.c_str());
+}

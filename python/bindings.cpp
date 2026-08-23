@@ -218,6 +218,21 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("update_percent", &StochasticWeightAveragingDetails::update_percent)
         .def_property_readonly("swa_update_percent", &StochasticWeightAveragingDetails::swa_update_percent);
 
+    py::class_<CosineAnnealingWarmRestartsDetails>(m, "CosineAnnealingWarmRestartsDetails")
+        .def(py::init<bool, int, double, double, double>(),
+             py::arg("enabled"),
+             py::arg("first_cycle_epochs"),
+             py::arg("cycle_multiplier"),
+             py::arg("minimum_learning_rate"),
+             py::arg("restart_decay"))
+        .def_property_readonly("enabled", &CosineAnnealingWarmRestartsDetails::enabled)
+        .def_property_readonly("first_cycle_epochs", &CosineAnnealingWarmRestartsDetails::first_cycle_epochs)
+        .def_property_readonly("cycle_multiplier", &CosineAnnealingWarmRestartsDetails::cycle_multiplier)
+        .def_property_readonly("minimum_learning_rate", &CosineAnnealingWarmRestartsDetails::minimum_learning_rate)
+        .def_property_readonly("restart_decay", &CosineAnnealingWarmRestartsDetails::restart_decay)
+        .def("calculate_learning_rate", &CosineAnnealingWarmRestartsDetails::calculate_learning_rate,
+             py::arg("relative_epoch"), py::arg("base_learning_rate"));
+
     py::class_<NeuralNetworkHelperMetrics>(m, "NeuralNetworkHelperMetrics")
         .def(py::init<>())
         .def(py::init<double, ErrorCalculation::type>())
@@ -267,6 +282,10 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_stochastic_weight_averaging", py::overload_cast<bool, double, double>(&NeuralNetworkOptions::with_stochastic_weight_averaging),
              py::arg("swa_enabled"), py::arg("swa_start_percent"), py::arg("swa_update_percent"))
         .def("stochastic_weight_averaging", &NeuralNetworkOptions::stochastic_weight_averaging)
+        .def("with_cosine_annealing_warm_restarts", py::overload_cast<const CosineAnnealingWarmRestartsDetails&>(&NeuralNetworkOptions::with_cosine_annealing_warm_restarts))
+        .def("with_cosine_annealing_warm_restarts", py::overload_cast<bool, int, double, double, double>(&NeuralNetworkOptions::with_cosine_annealing_warm_restarts),
+             py::arg("enabled"), py::arg("first_cycle_epochs"), py::arg("cycle_multiplier"), py::arg("minimum_learning_rate"), py::arg("restart_decay"))
+        .def("cosine_annealing_warm_restarts", &NeuralNetworkOptions::cosine_annealing_warm_restarts)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
         .def("with_seed", &NeuralNetworkOptions::with_seed)

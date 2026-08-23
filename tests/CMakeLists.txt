@@ -58,6 +58,7 @@ add_executable(neuralnetwork_tests
     adaptive_learning_rate_scheduler_tests.cpp
     aligned_allocator_tests.cpp
     attentionpoollayer_tests.cpp
+    cosine_annealing_warm_restarts_tests.cpp
     elmanrnnlayer_mt_tests.cpp
     elmanrnnlayer_tests.cpp
     embeddinglayer_tests.cpp

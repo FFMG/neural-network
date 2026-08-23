@@ -1561,6 +1561,12 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto swa_start_percent = options_object->get_or<double>("swa-start-percent", 0.75);
   const auto swa_update_percent = options_object->get_or<double>("swa-update-percent", 0.02);
 
+  const auto cosine_annealing_warm_restarts_enabled = options_object->get_or<bool>("cosine-annealing-warm-restarts-enabled", false);
+  const auto cosine_annealing_warm_restarts_first_cycle_epochs = static_cast<int>(options_object->get_or<long long>("cosine-annealing-warm-restarts-first-cycle-epochs", 10));
+  const auto cosine_annealing_warm_restarts_cycle_multiplier = options_object->get_or<double>("cosine-annealing-warm-restarts-cycle-multiplier", 1.0);
+  const auto cosine_annealing_warm_restarts_minimum_learning_rate = options_object->get_or<double>("cosine-annealing-warm-restarts-minimum-learning-rate", 0.0);
+  const auto cosine_annealing_warm_restarts_restart_decay = options_object->get_or<double>("cosine-annealing-warm-restarts-restart-decay", 1.0);
+
   const auto seed_enabled = options_object->get_or<bool>("seed-enabled", false);
   const std::optional<uint32_t> seed = seed_enabled ? std::optional<uint32_t>(static_cast<uint32_t>(options_object->get_or<long long>("seed", 0))) : std::nullopt;
 
@@ -1602,6 +1608,12 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_has_bias(has_bias)
     .with_log_training_info(log_training_info)
     .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent))
+    .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(
+      cosine_annealing_warm_restarts_enabled,
+      cosine_annealing_warm_restarts_first_cycle_epochs,
+      cosine_annealing_warm_restarts_cycle_multiplier,
+      cosine_annealing_warm_restarts_minimum_learning_rate,
+      cosine_annealing_warm_restarts_restart_decay))
     .with_seed(seed);
 
   if (multi_output_layer_details.size())
@@ -1933,6 +1945,11 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("swa-enabled", options.stochastic_weight_averaging().enabled());
   set_float(options_object, "swa-start-percent", options.stochastic_weight_averaging().start_percent());
   set_float(options_object, "swa-update-percent", options.stochastic_weight_averaging().update_percent());
+  options_object->set_boolean("cosine-annealing-warm-restarts-enabled", options.cosine_annealing_warm_restarts().enabled());
+  options_object->set_number("cosine-annealing-warm-restarts-first-cycle-epochs", options.cosine_annealing_warm_restarts().first_cycle_epochs());
+  set_float(options_object, "cosine-annealing-warm-restarts-cycle-multiplier", options.cosine_annealing_warm_restarts().cycle_multiplier());
+  set_float(options_object, "cosine-annealing-warm-restarts-minimum-learning-rate", options.cosine_annealing_warm_restarts().minimum_learning_rate());
+  set_float(options_object, "cosine-annealing-warm-restarts-restart-decay", options.cosine_annealing_warm_restarts().restart_decay());
   options_object->set_boolean("seed-enabled", options.seed().has_value());
   options_object->set_number("seed", options.seed().has_value() ? static_cast<long long>(options.seed().value()) : 0LL);
 

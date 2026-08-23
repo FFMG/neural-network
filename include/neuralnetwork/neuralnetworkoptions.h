@@ -6,6 +6,7 @@
 #include "libraries/instrumentor.h"
 
 #include "common/activation.h"
+#include "common/cosineannealingwarmrestartsdetails.h"
 #include "common/logger.h"
 #include "common/optimiser.h"
 #include "common/stochasticweightaveragingdetails.h"
@@ -50,6 +51,7 @@ private:
     _has_bias(true),
     _log_training_info(true),
     _swa(false, 0.75, 0.02),
+    _cosine_annealing(false, 10, 1.0, 0.0, 1.0),
     _seed(std::nullopt)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -118,6 +120,7 @@ public:
     _has_bias(nno._has_bias),
     _log_training_info(nno._log_training_info),
     _swa(nno._swa),
+    _cosine_annealing(nno._cosine_annealing),
     _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -153,6 +156,7 @@ public:
     _has_bias(nno._has_bias),
     _log_training_info(nno._log_training_info),
     _swa(std::move(nno._swa)),
+    _cosine_annealing(std::move(nno._cosine_annealing)),
     _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -167,6 +171,7 @@ public:
     nno._learning_rate_warmup_start = 0.0;
     nno._learning_rate_warmup_target = 0.0;
     nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
+    nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
     nno._seed = std::nullopt;
   }
 
@@ -204,6 +209,7 @@ public:
       _multi_output_layer_details = nno._multi_output_layer_details;
       _log_training_info = nno._log_training_info;
       _swa = nno._swa;
+      _cosine_annealing = nno._cosine_annealing;
       _seed = nno._seed;
     }
     return *this;
@@ -243,6 +249,7 @@ public:
       _multi_output_layer_details = std::move(nno._multi_output_layer_details);
       _log_training_info = nno._log_training_info;
       _swa = std::move(nno._swa);
+      _cosine_annealing = std::move(nno._cosine_annealing);
       _seed = nno._seed;
 
       nno._progress_callback = nullptr;
@@ -269,6 +276,7 @@ public:
       nno._learning_rate_restart_boost = 0;
       nno._number_of_threads = 0;
       nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
+      nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
       nno._seed = std::nullopt;
     }
     return *this;
@@ -460,6 +468,29 @@ public:
     _swa = StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent);
     return *this;
   }
+  NeuralNetworkOptions& with_cosine_annealing_warm_restarts(const CosineAnnealingWarmRestartsDetails& cosine_annealing) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _cosine_annealing = cosine_annealing;
+    return *this;
+  }
+  NeuralNetworkOptions& with_cosine_annealing_warm_restarts(
+    bool enabled,
+    int first_cycle_epochs,
+    double cycle_multiplier,
+    double minimum_learning_rate,
+    double restart_decay)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _cosine_annealing = CosineAnnealingWarmRestartsDetails(
+      enabled,
+      first_cycle_epochs,
+      cycle_multiplier,
+      minimum_learning_rate,
+      restart_decay
+    );
+    return *this;
+  }
   NeuralNetworkOptions& with_seed(std::optional<uint32_t> seed) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -614,6 +645,25 @@ public:
         Logger::panic("The SWA update percent must be greater than 0.0 and at most 1.0!");
       }
     }
+    if (cosine_annealing_warm_restarts().enabled())
+    {
+      if (cosine_annealing_warm_restarts().first_cycle_epochs() <= 0)
+      {
+        Logger::panic("Cosine annealing first cycle epochs must be greater than zero!");
+      }
+      if (cosine_annealing_warm_restarts().cycle_multiplier() < 1.0)
+      {
+        Logger::panic("Cosine annealing cycle multiplier must be at least 1.0!");
+      }
+      if (cosine_annealing_warm_restarts().minimum_learning_rate() < 0.0)
+      {
+        Logger::panic("Cosine annealing minimum learning rate cannot be negative!");
+      }
+      if (cosine_annealing_warm_restarts().restart_decay() <= 0.0 || cosine_annealing_warm_restarts().restart_decay() > 1.0)
+      {
+        Logger::panic("Cosine annealing restart decay factor must be in (0.0, 1.0]!");
+      }
+    }
     return *this;
   }
 
@@ -666,6 +716,7 @@ public:
       .with_update_training_monitor_percent(0.0)
       .with_log_training_info(true)
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(false, 0.75, 0.02))
+      .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0))
       .with_seed(std::nullopt);
   }
 
@@ -699,6 +750,7 @@ public:
   [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
   [[nodiscard]] inline const StochasticWeightAveragingDetails& stochastic_weight_averaging() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa; }
+  [[nodiscard]] inline const CosineAnnealingWarmRestartsDetails& cosine_annealing_warm_restarts() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _cosine_annealing; }
   [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
   inline void set_output_layer_inference_temperature(unsigned head_idx, double t) noexcept
   {
@@ -739,6 +791,7 @@ private:
   bool _has_bias;
   bool _log_training_info;
   StochasticWeightAveragingDetails _swa;
+  CosineAnnealingWarmRestartsDetails _cosine_annealing;
   std::optional<uint32_t> _seed;
 };
 } // namespace myoddweb::nn

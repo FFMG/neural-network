@@ -2,6 +2,17 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.37] - 2026-08-23
+
+### Added
+- Implemented Cosine Annealing with Warm Restarts (SGDR) learning rate scheduler (`CosineAnnealingWarmRestartsDetails`):
+  - Supports cyclic cosine learning rate decay with periodic restarts: $\eta_t = \eta_{\min} + \frac{1}{2}(\eta_{\max, i} - \eta_{\min})\left(1 + \cos\left(\frac{T_{\text{cur}}}{T_i}\pi\right)\right)$.
+  - Configurable initial cycle period ($T_0 \ge 1$), cycle period multiplier ($T_{\text{mult}} \ge 1.0$), minimum learning rate floor ($\eta_{\min} \ge 0.0$), and peak restart amplitude decay ($\gamma \in (0.0, 1.0]$).
+  - Integrated into `NeuralNetworkOptions` with fluent builder overloads `with_cosine_annealing_warm_restarts()`, strict validation in `build()`, and harmonious coexistence with initial warmup schedules.
+  - JSON model serialization and deserialization support in `NeuralNetworkSerializer` with full backwards compatibility for legacy model files.
+  - Added Python bindings in `python/bindings.cpp` for `CosineAnnealingWarmRestartsDetails` and `NeuralNetworkOptions`.
+  - Comprehensive unit and integration test suite in `tests/cosine_annealing_warm_restarts_tests.cpp` and `tests/network_integration_tests.cpp`.
+
 ## [1.1.36] - 2026-08-22
 
 ### Added
