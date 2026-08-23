@@ -2243,6 +2243,36 @@ void GRURNNLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t exis
   }
 }
 
+void GRURNNLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  auto& other = static_cast<GRURNNLayer&>(fast_layer);
+  simd::lookahead_step(_w_values.data(), other._w_values.data(), alpha, _w_values.size());
+  simd::lookahead_step(_rw_values.data(), other._rw_values.data(), alpha, _rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_b_values.data(), other._b_values.data(), alpha, _b_values.size());
+  }
+  simd::lookahead_step(_z_w_values.data(), other._z_w_values.data(), alpha, _z_w_values.size());
+  simd::lookahead_step(_z_rw_values.data(), other._z_rw_values.data(), alpha, _z_rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_z_b_values.data(), other._z_b_values.data(), alpha, _z_b_values.size());
+  }
+  simd::lookahead_step(_r_w_values.data(), other._r_w_values.data(), alpha, _r_w_values.size());
+  simd::lookahead_step(_r_rw_values.data(), other._r_rw_values.data(), alpha, _r_rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_r_b_values.data(), other._r_b_values.data(), alpha, _r_b_values.size());
+  }
+  if (_use_layer_normalisation)
+  {
+    simd::lookahead_step(_ln_h_gain_values.data(), other._ln_h_gain_values.data(), alpha, _ln_h_gain_values.size());
+    simd::lookahead_step(_ln_h_bias_values.data(), other._ln_h_bias_values.data(), alpha, _ln_h_bias_values.size());
+  }
+  other.cache_recurrent_weights();
+}
+
 void GRURNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");

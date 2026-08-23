@@ -76,6 +76,7 @@ add_executable(neuralnetwork_tests
     layer_tests.cpp
     layers_and_neurons_container_tests.cpp
     learning_rate_tests.cpp
+    lookahead_tests.cpp
     lstmlayer_mt_tests.cpp
     lstmlayer_tests.cpp
     multioutputlayer_tests.cpp

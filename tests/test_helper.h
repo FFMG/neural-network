@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -48,6 +48,7 @@ namespace test_helper {
     void calculate_and_store_gradients(const std::vector<GradientsAndOutputs>&, const std::vector<HiddenStates>&, const Layer&, size_t, int) override {}
     double get_gradient_norm_sq() const override { return 0.0; }
     void accumulate_swa_average_impl(const Layer&, size_t) override {}
+    void update_lookahead_slow_weights_impl(Layer&, double) override {}
     void apply_stored_gradients(double, double) override {}
 
     static std::vector<Neuron> create_neurons_exposed(double dropout_rate, unsigned number_output_neurons, std::optional<uint32_t> seed) {

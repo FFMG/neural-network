@@ -2788,6 +2788,53 @@ public:
     scalar_lion_step(values, grads, m1, b1, b2, lr, n, decays, j, clipping_scale);
   }
 
+  // Scalar fallback for lookahead_step
+  inline static void scalar_lookahead_step(
+    double* slow_weights,
+    double* fast_weights,
+    double alpha,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    for (size_t i = start; i < n; ++i)
+    {
+      double slow_val = slow_weights[i];
+      double fast_val = fast_weights[i];
+      double updated_slow = slow_val + alpha * (fast_val - slow_val);
+      slow_weights[i] = updated_slow;
+      fast_weights[i] = updated_slow;
+    }
+  }
+
+  // Vectorised Lookahead step: phi <- phi + alpha * (theta - phi), theta <- phi
+  inline static void lookahead_step(
+    double* slow_weights,
+    double* fast_weights,
+    double alpha,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_alpha = _mm256_set1_pd(alpha);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_slow = _mm256_loadu_pd(&slow_weights[j]);
+      __m256d vec_fast = _mm256_loadu_pd(&fast_weights[j]);
+      __m256d diff = _mm256_sub_pd(vec_fast, vec_slow);
+#ifdef SIMD_FMA_ENABLED
+      __m256d updated_slow = _mm256_fmadd_pd(vec_alpha, diff, vec_slow);
+#else
+      __m256d updated_slow = _mm256_add_pd(vec_slow, _mm256_mul_pd(vec_alpha, diff));
+#endif
+      _mm256_storeu_pd(&slow_weights[j], updated_slow);
+      _mm256_storeu_pd(&fast_weights[j], updated_slow);
+    }
+#endif
+    scalar_lookahead_step(slow_weights, fast_weights, alpha, n, j);
+  }
+
   // Scalar fallback for gru_bptt_gate_step
   inline static void scalar_gru_bptt_gate_step(
     size_t n,

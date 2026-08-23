@@ -711,6 +711,13 @@ void EmbeddingLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t e
   swa_average_into(_w_values, other._w_values, existing_swa_count);
 }
 
+void EmbeddingLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
+  auto& other = static_cast<EmbeddingLayer&>(fast_layer);
+  simd::lookahead_step(_w_values.data(), other._w_values.data(), alpha, _w_values.size());
+}
+
 void EmbeddingLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");

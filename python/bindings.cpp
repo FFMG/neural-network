@@ -7,6 +7,7 @@
 #include "common/activation.h"
 #include "common/optimiser.h"
 #include "common/stochasticweightaveragingdetails.h"
+#include "common/lookaheaddetails.h"
 #include "layers/layer.h"
 #include "layers/layerdetails.h"
 #include "layers/outputlayerdetails.h"
@@ -233,6 +234,17 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("calculate_learning_rate", &CosineAnnealingWarmRestartsDetails::calculate_learning_rate,
              py::arg("relative_epoch"), py::arg("base_learning_rate"));
 
+    py::class_<LookaheadDetails>(m, "LookaheadDetails")
+        .def(py::init<bool, int, double>(),
+             py::arg("enabled"),
+             py::arg("synchronisation_period"),
+             py::arg("slow_weights_step_size"))
+        .def_property_readonly("enabled", &LookaheadDetails::enabled)
+        .def_property_readonly("lookahead_enabled", &LookaheadDetails::lookahead_enabled)
+        .def_property_readonly("synchronisation_period", &LookaheadDetails::synchronisation_period)
+        .def_property_readonly("slow_weights_step_size", &LookaheadDetails::slow_weights_step_size)
+        .def_property_readonly("slow_step_size", &LookaheadDetails::slow_step_size);
+
     py::class_<NeuralNetworkHelperMetrics>(m, "NeuralNetworkHelperMetrics")
         .def(py::init<>())
         .def(py::init<double, ErrorCalculation::type>())
@@ -286,6 +298,10 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_cosine_annealing_warm_restarts", py::overload_cast<bool, int, double, double, double>(&NeuralNetworkOptions::with_cosine_annealing_warm_restarts),
              py::arg("enabled"), py::arg("first_cycle_epochs"), py::arg("cycle_multiplier"), py::arg("minimum_learning_rate"), py::arg("restart_decay"))
         .def("cosine_annealing_warm_restarts", &NeuralNetworkOptions::cosine_annealing_warm_restarts)
+        .def("with_lookahead", py::overload_cast<const LookaheadDetails&>(&NeuralNetworkOptions::with_lookahead))
+        .def("with_lookahead", py::overload_cast<bool, int, double>(&NeuralNetworkOptions::with_lookahead),
+             py::arg("enabled"), py::arg("synchronisation_period"), py::arg("slow_weights_step_size"))
+        .def("lookahead", &NeuralNetworkOptions::lookahead)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
         .def("with_seed", &NeuralNetworkOptions::with_seed)

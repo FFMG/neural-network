@@ -1,4 +1,4 @@
-﻿#include "../libraries/instrumentor.h"
+#include "../libraries/instrumentor.h"
 #include "selfattentionlayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
@@ -1097,6 +1097,18 @@ void SelfAttentionLayer::accumulate_swa_average_impl(const Layer& snapshot, size
   for (size_t i = 0; i < mine.size(); ++i)
   {
     swa_average_into(mine[i].family->values, theirs[i]->values, existing_swa_count);
+  }
+}
+
+void SelfAttentionLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  auto& other = static_cast<SelfAttentionLayer&>(fast_layer);
+  auto mine = all_families();
+  auto theirs = other.all_families();
+  for (size_t i = 0; i < mine.size(); ++i)
+  {
+    simd::lookahead_step(mine[i].family->values.data(), theirs[i].family->values.data(), alpha, mine[i].family->values.size());
   }
 }
 

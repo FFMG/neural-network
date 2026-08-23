@@ -1567,6 +1567,10 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto cosine_annealing_warm_restarts_minimum_learning_rate = options_object->get_or<double>("cosine-annealing-warm-restarts-minimum-learning-rate", 0.0);
   const auto cosine_annealing_warm_restarts_restart_decay = options_object->get_or<double>("cosine-annealing-warm-restarts-restart-decay", 1.0);
 
+  const auto lookahead_enabled = options_object->get_or<bool>("lookahead-enabled", false);
+  const auto lookahead_synchronisation_period = static_cast<int>(options_object->get_or<long long>("lookahead-synchronisation-period", 5));
+  const auto lookahead_slow_weights_step_size = options_object->get_or<double>("lookahead-slow-weights-step-size", 0.5);
+
   const auto seed_enabled = options_object->get_or<bool>("seed-enabled", false);
   const std::optional<uint32_t> seed = seed_enabled ? std::optional<uint32_t>(static_cast<uint32_t>(options_object->get_or<long long>("seed", 0))) : std::nullopt;
 
@@ -1614,6 +1618,10 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
       cosine_annealing_warm_restarts_cycle_multiplier,
       cosine_annealing_warm_restarts_minimum_learning_rate,
       cosine_annealing_warm_restarts_restart_decay))
+    .with_lookahead(LookaheadDetails(
+      lookahead_enabled,
+      lookahead_synchronisation_period,
+      lookahead_slow_weights_step_size))
     .with_seed(seed);
 
   if (multi_output_layer_details.size())
@@ -1950,6 +1958,9 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   set_float(options_object, "cosine-annealing-warm-restarts-cycle-multiplier", options.cosine_annealing_warm_restarts().cycle_multiplier());
   set_float(options_object, "cosine-annealing-warm-restarts-minimum-learning-rate", options.cosine_annealing_warm_restarts().minimum_learning_rate());
   set_float(options_object, "cosine-annealing-warm-restarts-restart-decay", options.cosine_annealing_warm_restarts().restart_decay());
+  options_object->set_boolean("lookahead-enabled", options.lookahead().enabled());
+  options_object->set_number("lookahead-synchronisation-period", options.lookahead().synchronisation_period());
+  set_float(options_object, "lookahead-slow-weights-step-size", options.lookahead().slow_weights_step_size());
   options_object->set_boolean("seed-enabled", options.seed().has_value());
   options_object->set_number("seed", options.seed().has_value() ? static_cast<long long>(options.seed().value()) : 0LL);
 

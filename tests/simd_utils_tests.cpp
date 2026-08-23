@@ -1869,12 +1869,12 @@ TEST(SimdUtilsTest, FmaEquivalenceVerify)
 
     double radam_b1 = 0.9;
     double radam_b2 = 0.999;
-    double p1 = 0.65;
-    double p2 = 0.01;
+    double radam_p1 = 0.65;
+    double radam_p2 = 0.01;
     double rect_factor = 0.85;
 
-    simd::radam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), radam_b1, radam_b2, p1, p2, rect_factor, lr, eps, n, decays.data());
-    simd::scalar_radam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), radam_b1, radam_b2, p1, p2, rect_factor, lr, eps, n, decays.data());
+    simd::radam_step(val_simd.data(), grads.data(), m1_simd.data(), m2_simd.data(), radam_b1, radam_b2, radam_p1, radam_p2, rect_factor, lr, eps, n, decays.data());
+    simd::scalar_radam_step(val_scalar.data(), grads.data(), m1_scalar.data(), m2_scalar.data(), radam_b1, radam_b2, radam_p1, radam_p2, rect_factor, lr, eps, n, decays.data());
 
     expect_vec_near(m1_simd, m1_scalar);
     expect_vec_near(m2_simd, m2_scalar);
@@ -3426,6 +3426,38 @@ TEST(SimdUtilsTest, QuickGeluActivateAndDerivativeVsScalar)
         deriv_scalar[i] = sig + coeff * x_vals[i] * sig * (1.0 - sig);
         EXPECT_NEAR(deriv_simd[i], deriv_scalar[i], 1e-6) << "Derivative mismatch at size " << n << ", idx " << i;
       }
+    }
+  }
+}
+
+TEST(SimdUtilsTest, LookaheadStep)
+{
+  const std::vector<size_t> sizes = { 0, 1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 31, 32, 63, 64, 127, 128 };
+  const double alpha = 0.5;
+
+  for (size_t n : sizes)
+  {
+    std::vector<double> slow_scalar(n);
+    std::vector<double> fast_scalar(n);
+    std::vector<double> slow_simd(n);
+    std::vector<double> fast_simd(n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      slow_scalar[i] = 1.0 + static_cast<double>(i) * 0.1;
+      fast_scalar[i] = 2.0 - static_cast<double>(i) * 0.05;
+      slow_simd[i] = slow_scalar[i];
+      fast_simd[i] = fast_scalar[i];
+    }
+
+    simd::scalar_lookahead_step(slow_scalar.data(), fast_scalar.data(), alpha, n);
+    simd::lookahead_step(slow_simd.data(), fast_simd.data(), alpha, n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      EXPECT_NEAR(slow_simd[i], slow_scalar[i], 1e-12) << "Slow mismatch at index " << i << " size " << n;
+      EXPECT_NEAR(fast_simd[i], fast_scalar[i], 1e-12) << "Fast mismatch at index " << i << " size " << n;
+      EXPECT_NEAR(slow_simd[i], fast_simd[i], 1e-12) << "Fast != Slow at index " << i << " size " << n;
     }
   }
 }

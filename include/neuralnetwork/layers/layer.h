@@ -728,6 +728,20 @@ public:
 
   virtual void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) = 0;
 
+  // Performs Lookahead slow weight interpolation:
+  // phi <- phi + alpha * (theta - phi), theta <- phi
+  void update_lookahead_slow_weights(Layer& fast_layer, double alpha)
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    update_lookahead_slow_weights_impl(fast_layer, alpha);
+    if (_residual_projector != nullptr && fast_layer._residual_projector != nullptr)
+    {
+      _residual_projector->update_lookahead_slow_weights(*fast_layer._residual_projector, alpha);
+    }
+  }
+
+  virtual void update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha) = 0;
+
   virtual void zero_gradients()
   { 
     MYODDWEB_PROFILE_FUNCTION("Layer"); 

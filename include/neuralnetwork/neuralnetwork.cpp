@@ -841,6 +841,18 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   _swa_layers.reset();
   _swa_snapshot_count = 0;
 
+  // Lookahead Optimiser Wrapper: maintain slow weights initialized to initial weights
+  std::unique_ptr<Layers> lookahead_slow_layers;
+  size_t lookahead_step_count = 0;
+  if (_options.lookahead().enabled())
+  {
+    if (_options.lookahead().synchronisation_period() <= 0)
+    {
+      Logger::panic("Lookahead synchronisation period must be greater than zero!");
+    }
+    lookahead_slow_layers = std::make_unique<Layers>(_layers);
+  }
+
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
@@ -866,6 +878,15 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
         std::vector<std::vector<double>>::const_iterator inputs_it = bptt_in.cbegin() + i;
         std::vector<std::vector<double>>::const_iterator outputs_it = bptt_out.cbegin() + i;
         _layers.train(_options, _learning_rate, inputs_it, outputs_it, current_batch_size);
+
+        if (_options.lookahead().enabled() && lookahead_slow_layers)
+        {
+          ++lookahead_step_count;
+          if (lookahead_step_count % static_cast<size_t>(_options.lookahead().synchronisation_period()) == 0)
+          {
+            lookahead_slow_layers->update_lookahead_slow_weights(_layers, _options.lookahead().slow_weights_step_size());
+          }
+        }
       }
 
       // Stochastic Weight Averaging: fold in a snapshot of the current
@@ -916,6 +937,21 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
 
     MYODDWEB_PROFILE_MARK();
+  }
+
+  // Lookahead Optimiser Wrapper: finalize any leftover fast weight steps so
+  // downstream evaluation and inference operate on the slow weights. Note
+  // that if SWA is also enabled, the SWA average computed below replaces
+  // these finalized weights (see warning in NeuralNetworkOptions::validate).
+  if (_options.lookahead().enabled() && lookahead_slow_layers)
+  {
+    std::unique_lock<std::shared_mutex> lock(_mutex);
+    if (lookahead_step_count % static_cast<size_t>(_options.lookahead().synchronisation_period()) != 0)
+    {
+      lookahead_slow_layers->update_lookahead_slow_weights(_layers, _options.lookahead().slow_weights_step_size());
+    }
+    _layers.cache_recurrent_weights();
+    lookahead_slow_layers.reset();
   }
 
   // Stochastic Weight Averaging: replace the trained weights with the

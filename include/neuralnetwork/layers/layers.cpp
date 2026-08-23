@@ -588,6 +588,15 @@ void Layers::accumulate_swa_average(const Layers& snapshot, size_t existing_swa_
   }
 }
 
+void Layers::update_lookahead_slow_weights(Layers& fast_layers, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  for (unsigned i = 1; i < size(); ++i)
+  {
+    _layers[i]->update_lookahead_slow_weights(*fast_layers._layers[i], alpha);
+  }
+}
+
 void Layers::update_weights(
   const NeuralNetworkOptions& options,
   const std::vector<GradientsAndOutputs>& batch_gradients,

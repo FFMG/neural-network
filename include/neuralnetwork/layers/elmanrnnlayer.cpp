@@ -919,6 +919,19 @@ void ElmanRNNLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t ex
   swa_average_into(_b_values, other._b_values, existing_swa_count);
 }
 
+void ElmanRNNLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  auto& other = static_cast<ElmanRNNLayer&>(fast_layer);
+  simd::lookahead_step(_w_values.data(), other._w_values.data(), alpha, _w_values.size());
+  simd::lookahead_step(_rw_values.data(), other._rw_values.data(), alpha, _rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_b_values.data(), other._b_values.data(), alpha, _b_values.size());
+  }
+  other.cache_recurrent_weights();
+}
+
 namespace
 {
 struct ElmanGradCalcTask

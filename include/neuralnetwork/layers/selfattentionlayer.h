@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "layer.h"
 
 #include <array>
@@ -817,6 +817,7 @@ public:
   double get_gradient_norm_sq() const override;
 
   void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) override;
+  void update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha) override;
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 

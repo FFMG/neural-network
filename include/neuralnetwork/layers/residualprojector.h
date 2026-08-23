@@ -274,6 +274,14 @@ public:
     _weights_cache_dirty = true;
   }
 
+  void update_lookahead_slow_weights(ResidualProjector& fast_projector, double alpha)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    simd::lookahead_step(_w_values.data(), fast_projector._w_values.data(), alpha, _w_values.size());
+    _weights_cache_dirty = true;
+    fast_projector._weights_cache_dirty = true;
+  }
+
   inline void update_weight(size_t out, size_t in, double delta)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");

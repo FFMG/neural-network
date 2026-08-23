@@ -743,6 +743,18 @@ void AttentionPoolLayer::accumulate_swa_average_impl(const Layer& snapshot, size
   swa_average_into(_v_values, other._v_values, existing_swa_count);
 }
 
+void AttentionPoolLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("AttentionPoolLayer");
+  auto& other = static_cast<AttentionPoolLayer&>(fast_layer);
+  simd::lookahead_step(_wa_values.data(), other._wa_values.data(), alpha, _wa_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_ba_values.data(), other._ba_values.data(), alpha, _ba_values.size());
+  }
+  simd::lookahead_step(_v_values.data(), other._v_values.data(), alpha, _v_values.size());
+}
+
 void AttentionPoolLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("AttentionPoolLayer");

@@ -152,6 +152,7 @@ public:
   virtual double get_gradient_norm_sq() const override;
 
   virtual void accumulate_swa_average_impl(const Layer& snapshot, size_t existing_swa_count) override;
+  virtual void update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha) override;
 
   virtual void zero_gradients() override;
 

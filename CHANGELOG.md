@@ -2,6 +2,20 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.38] - 2026-08-23
+
+### Added
+- Implemented Lookahead Optimiser Wrapper (`LookaheadDetails`):
+  - Wraps any base optimiser (AdamW, SGD, RAdam, Lion, NadamW, etc.) by maintaining slow weights $\phi$ and fast weights $\theta$.
+  - Periodically interpolates slow weights towards fast weights every $k$ steps (`synchronisation_period` $\ge 1$) with slow weights step size $\alpha \in (0.0, 1.0]$: $\phi \leftarrow \phi + \alpha (\theta - \phi)$, then synchronizes fast weights $\theta \leftarrow \phi$.
+  - Vectorised AVX2/FMA linear interpolation SIMD kernel `simd::lookahead_step` with fallback `simd::scalar_lookahead_step`.
+  - Implemented `update_lookahead_slow_weights` and `update_lookahead_slow_weights_impl` across all layer architectures (`FFLayer`, `ElmanRNNLayer`, `GRURNNLayer`, `LSTMLayer`, `AttentionPoolLayer`, `TcnLayer`, `SelfAttentionLayer`, `EmbeddingLayer`, `ResidualProjector`, `MultiOutputLayer`, and `Layers`).
+  - Integrated into `NeuralNetwork::train` with final synchronization of leftover steps before downstream evaluation.
+  - Fluent builder methods `with_lookahead()` and validation in `NeuralNetworkOptions`.
+  - JSON serialization and deserialization support in `NeuralNetworkSerializer` with full backwards compatibility.
+  - Python bindings in `python/bindings.cpp` for `LookaheadDetails` and `NeuralNetworkOptions`.
+  - Comprehensive unit, SIMD equivalence, layer interpolation, serializer round-trip, and end-to-end training tests in `tests/lookahead_tests.cpp` and `tests/simd_utils_tests.cpp`.
+
 ## [1.1.37] - 2026-08-23
 
 ### Added

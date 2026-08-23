@@ -1560,6 +1560,42 @@ void LSTMLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existi
   }
 }
 
+void LSTMLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  auto& other = static_cast<LSTMLayer&>(fast_layer);
+  simd::lookahead_step(_w_values.data(), other._w_values.data(), alpha, _w_values.size());
+  simd::lookahead_step(_rw_values.data(), other._rw_values.data(), alpha, _rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_b_values.data(), other._b_values.data(), alpha, _b_values.size());
+  }
+  simd::lookahead_step(_f_w_values.data(), other._f_w_values.data(), alpha, _f_w_values.size());
+  simd::lookahead_step(_f_rw_values.data(), other._f_rw_values.data(), alpha, _f_rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_f_b_values.data(), other._f_b_values.data(), alpha, _f_b_values.size());
+  }
+  simd::lookahead_step(_i_w_values.data(), other._i_w_values.data(), alpha, _i_w_values.size());
+  simd::lookahead_step(_i_rw_values.data(), other._i_rw_values.data(), alpha, _i_rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_i_b_values.data(), other._i_b_values.data(), alpha, _i_b_values.size());
+  }
+  simd::lookahead_step(_o_w_values.data(), other._o_w_values.data(), alpha, _o_w_values.size());
+  simd::lookahead_step(_o_rw_values.data(), other._o_rw_values.data(), alpha, _o_rw_values.size());
+  if (has_bias())
+  {
+    simd::lookahead_step(_o_b_values.data(), other._o_b_values.data(), alpha, _o_b_values.size());
+  }
+  if (_use_layer_normalisation)
+  {
+    simd::lookahead_step(_ln_c_gain_values.data(), other._ln_c_gain_values.data(), alpha, _ln_c_gain_values.size());
+    simd::lookahead_step(_ln_c_bias_values.data(), other._ln_c_bias_values.data(), alpha, _ln_c_bias_values.size());
+  }
+  other.cache_recurrent_weights();
+}
+
 void LSTMLayer::zero_gradients()
 {
   std::fill(_w_grads.begin(), _w_grads.end(), 0.0); std::fill(_b_grads.begin(), _b_grads.end(), 0.0); std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);

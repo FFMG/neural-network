@@ -8,6 +8,7 @@
 #include "common/activation.h"
 #include "common/cosineannealingwarmrestartsdetails.h"
 #include "common/logger.h"
+#include "common/lookaheaddetails.h"
 #include "common/optimiser.h"
 #include "common/stochasticweightaveragingdetails.h"
 #include "helpers/errorcalculation.h"
@@ -52,6 +53,7 @@ private:
     _log_training_info(true),
     _swa(false, 0.75, 0.02),
     _cosine_annealing(false, 10, 1.0, 0.0, 1.0),
+    _lookahead(false, 5, 0.5),
     _seed(std::nullopt)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -121,6 +123,7 @@ public:
     _log_training_info(nno._log_training_info),
     _swa(nno._swa),
     _cosine_annealing(nno._cosine_annealing),
+    _lookahead(nno._lookahead),
     _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -157,6 +160,7 @@ public:
     _log_training_info(nno._log_training_info),
     _swa(std::move(nno._swa)),
     _cosine_annealing(std::move(nno._cosine_annealing)),
+    _lookahead(std::move(nno._lookahead)),
     _seed(nno._seed)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -172,6 +176,7 @@ public:
     nno._learning_rate_warmup_target = 0.0;
     nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
     nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
+    nno._lookahead = LookaheadDetails(false, 5, 0.5);
     nno._seed = std::nullopt;
   }
 
@@ -210,6 +215,7 @@ public:
       _log_training_info = nno._log_training_info;
       _swa = nno._swa;
       _cosine_annealing = nno._cosine_annealing;
+      _lookahead = nno._lookahead;
       _seed = nno._seed;
     }
     return *this;
@@ -250,6 +256,7 @@ public:
       _log_training_info = nno._log_training_info;
       _swa = std::move(nno._swa);
       _cosine_annealing = std::move(nno._cosine_annealing);
+      _lookahead = std::move(nno._lookahead);
       _seed = nno._seed;
 
       nno._progress_callback = nullptr;
@@ -277,6 +284,7 @@ public:
       nno._number_of_threads = 0;
       nno._swa = StochasticWeightAveragingDetails(false, 0.75, 0.02);
       nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
+      nno._lookahead = LookaheadDetails(false, 5, 0.5);
       nno._seed = std::nullopt;
     }
     return *this;
@@ -491,6 +499,25 @@ public:
     );
     return *this;
   }
+  NeuralNetworkOptions& with_lookahead(const LookaheadDetails& lookahead) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _lookahead = lookahead;
+    return *this;
+  }
+  NeuralNetworkOptions& with_lookahead(
+    bool enabled,
+    int synchronisation_period,
+    double slow_weights_step_size)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _lookahead = LookaheadDetails(
+      enabled,
+      synchronisation_period,
+      slow_weights_step_size
+    );
+    return *this;
+  }
   NeuralNetworkOptions& with_seed(std::optional<uint32_t> seed) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -668,6 +695,21 @@ public:
         Logger::warning("Both adaptive learning rates and cosine annealing with warm restarts are enabled. These schedules may conflict with each other.");
       }
     }
+    if (lookahead().enabled())
+    {
+      if (lookahead().synchronisation_period() <= 0)
+      {
+        Logger::panic("Lookahead synchronisation period must be greater than zero!");
+      }
+      if (lookahead().slow_weights_step_size() <= 0.0 || lookahead().slow_weights_step_size() > 1.0)
+      {
+        Logger::panic("Lookahead slow weights step size must be in (0.0, 1.0]!");
+      }
+      if (stochastic_weight_averaging().enabled())
+      {
+        Logger::warning("Both Lookahead and Stochastic Weight Averaging are enabled. SWA snapshots are taken on an epoch cadence that is not aligned with Lookahead's batch-count synchronisation, so SWA will typically average in Lookahead's fast (not yet synchronised) weights, and the final SWA average replaces the finalized Lookahead slow weights.");
+      }
+    }
     return *this;
   }
 
@@ -721,6 +763,7 @@ public:
       .with_log_training_info(true)
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(false, 0.75, 0.02))
       .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0))
+      .with_lookahead(LookaheadDetails(false, 5, 0.5))
       .with_seed(std::nullopt);
   }
 
@@ -756,6 +799,7 @@ public:
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
   [[nodiscard]] inline const StochasticWeightAveragingDetails& stochastic_weight_averaging() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa; }
   [[nodiscard]] inline const CosineAnnealingWarmRestartsDetails& cosine_annealing_warm_restarts() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _cosine_annealing; }
+  [[nodiscard]] inline const LookaheadDetails& lookahead() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _lookahead; }
   [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
   inline void set_output_layer_inference_temperature(unsigned head_idx, double t) noexcept
   {
@@ -797,6 +841,7 @@ private:
   bool _log_training_info;
   StochasticWeightAveragingDetails _swa;
   CosineAnnealingWarmRestartsDetails _cosine_annealing;
+  LookaheadDetails _lookahead;
   std::optional<uint32_t> _seed;
 };
 } // namespace myoddweb::nn

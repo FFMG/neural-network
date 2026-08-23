@@ -399,6 +399,25 @@ Once training reaches `swa_start_percent` of `number_of_epoch`, a snapshot of th
 
 These fields are encapsulated in `StochasticWeightAveragingDetails` and persisted by `NeuralNetworkSerializer::save`/`load`.
 
+### Lookahead Optimizer Wrapper
+
+The Lookahead optimizer wrapper (Zhang et al., 2019) wraps any inner base optimizer (AdamW, SGD, RAdam, Lion, NadamW, etc.) by maintaining two sets of weights: **fast weights** and **slow weights**.
+
+The fast weights are updated iteratively by the base optimizer for $k$ batches (`synchronisation_period`). Every $k$ steps, the slow weights interpolate toward the fast weights with step size $\alpha$ (`slow_weights_step_size`), and the fast weights are synchronized back to the updated slow weights:
+$$\phi \leftarrow \phi + \alpha (\theta - \phi), \quad \theta \leftarrow \phi$$
+
+This stabilizes training, reduces variance across noisy minibatches, and improves convergence across diverse loss surfaces.
+
+```cpp
+    auto options = NeuralNetworkOptions::create(topology)
+      .with_lookahead(LookaheadDetails(true, 5, 0.5)) // enabled, sync every 5 steps, slow step size 0.5
+      // or using the helper overload:
+      // .with_lookahead(true, 5, 0.5)
+      .build();
+```
+
+Lookahead is fully orthogonal to other training strategies and can seamlessly co-exist with Stochastic Weight Averaging (SWA), Cosine Annealing with Warm Restarts, and residual connections. The configuration is encapsulated in `LookaheadDetails` and persisted by `NeuralNetworkSerializer::save`/`load`.
+
 ### General Training Options
 
 These options control the overall execution of the training process:

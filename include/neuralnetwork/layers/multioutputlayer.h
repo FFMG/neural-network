@@ -140,6 +140,10 @@ public:
     MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
     // Purely a buffer source for branch inputs, no trainable weights.
   }
+  void update_lookahead_slow_weights_impl(Layer&, double) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiInputProxyLayer");
+  }
 };
 
 class MultiOutputLayer final : public Layer, public OutputLayer
@@ -756,6 +760,21 @@ public:
       for (size_t l = 0; l < branch.layers.size(); ++l)
       {
         branch.layers[l]->accumulate_swa_average(*other_branch.layers[l], existing_swa_count);
+      }
+    }
+  }
+
+  void update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha) override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    auto& other = static_cast<MultiOutputLayer&>(fast_layer);
+    for (size_t b = 0; b < _branches.size(); ++b)
+    {
+      auto& branch = _branches[b];
+      auto& other_branch = other._branches[b];
+      for (size_t l = 0; l < branch.layers.size(); ++l)
+      {
+        branch.layers[l]->update_lookahead_slow_weights(*other_branch.layers[l], alpha);
       }
     }
   }
