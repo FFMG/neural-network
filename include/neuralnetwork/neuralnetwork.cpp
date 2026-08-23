@@ -1502,7 +1502,15 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "  Warmup target            : ", std::fixed, std::setprecision(4), _options.learning_rate_warmup_target()*100, "%");
   Logger::info(tab, "  Restart rate             : ", _options.learning_rate_restart_rate());
   Logger::info(tab, "  Restart boost            : ", _options.learning_rate_restart_boost());
-  Logger::info(tab, "  Adaptive Learning Rate   : ", _options.adaptive_learning_rate() ? "true" : "false");
+  Logger::info(tab, "  Adaptive learning rate   : ", _options.adaptive_learning_rate() ? "true" : "false");
+  Logger::info(tab, "  Cos. Ann. Warm Restarts  : ", _options.cosine_annealing_warm_restarts().enabled() ? "true" : "false");
+  if (_options.cosine_annealing_warm_restarts().enabled())
+  {
+    Logger::info(tab, "    First cycle epochs     : ", _options.cosine_annealing_warm_restarts().first_cycle_epochs());
+    Logger::info(tab, "    Cycle multiplier       : ", _options.cosine_annealing_warm_restarts().cycle_multiplier());
+    Logger::info(tab, "    Minimum learning rate  : ", _options.cosine_annealing_warm_restarts().minimum_learning_rate());
+    Logger::info(tab, "    Restart decay          : ", _options.cosine_annealing_warm_restarts().restart_decay());
+  }
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
 
   // Hidden

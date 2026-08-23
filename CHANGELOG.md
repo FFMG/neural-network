@@ -2,6 +2,13 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.39] - 2026-08-24
+
+### Added
+- Extended `NeuralNetwork::log_training_info` to log Cosine Annealing with Warm Restarts configuration (enabled status, initial cycle period, cycle multiplier, minimum learning rate floor, and restart decay).
+- Added schedule conflict detection warning in `NeuralNetworkOptions::build` when both adaptive learning rates and Cosine Annealing with Warm Restarts are simultaneously enabled.
+- Added `NeuralNetworkOptions::adaptive_learning_rates()` accessor alias.
+
 ## [1.1.38] - 2026-08-23
 
 ### Added
