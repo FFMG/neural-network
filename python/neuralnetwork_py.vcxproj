@@ -101,6 +101,7 @@
     <ClCompile Include="..\include\neuralnetwork\layers\ffoutputlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\grurnnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\embeddinglayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\layer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\layers.cpp" />
     <ClCompile Include="..\include\neuralnetwork\libraries\TinyJSON.cpp" />
