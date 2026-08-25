@@ -209,6 +209,73 @@ void FFOutputLayer::calculate_hidden_gradients(
   Logger::panic("The output layer cannot do hidden layer calculations!");
 }
 
+std::vector<double> FFOutputLayer::calculate_risk_normalisers(
+  std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size) const
+{
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  const auto& details = output_layer_details();
+  std::vector<double> risk_normalisers(details.size(), 1.0);
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return risk_normalisers;
+  }
+
+  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const size_t num_neurons = get_number_neurons();
+
+  for (unsigned h = 0; h < static_cast<unsigned>(details.size()); ++h)
+  {
+    const auto& detail = details[h];
+    const auto error_type = detail.get_output_error_calculation_type();
+    if (error_type != ErrorCalculation::type::sharpe_ratio_loss && error_type != ErrorCalculation::type::sortino_ratio_loss)
+    {
+      continue;
+    }
+
+    const auto& head_bounds = layer_bounds(h);
+    const size_t head_width = head_bounds.end - head_bounds.start + 1;
+
+    std::vector<std::vector<double>> gts;
+    std::vector<std::vector<double>> preds;
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& target_outputs = *(target_outputs_begin + b);
+      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* tgt_base = nullptr;
+        if (target_outputs.size() == num_time_steps * num_neurons)
+        {
+          tgt_base = target_outputs.data() + t * num_neurons;
+        }
+        else if (t == num_time_steps - 1)
+        {
+          tgt_base = target_outputs.data();
+        }
+        else
+        {
+          continue;
+        }
+
+        const auto& given_outputs = layer_states[t].get_hidden_state_values();
+        gts.emplace_back(tgt_base + head_bounds.start, tgt_base + head_bounds.start + head_width);
+        preds.emplace_back(given_outputs.data() + head_bounds.start, given_outputs.data() + head_bounds.start + head_width);
+      }
+    }
+
+    const auto& config = detail.get_error_evaluation_config();
+    risk_normalisers[h] = (error_type == ErrorCalculation::type::sharpe_ratio_loss)
+      ? ErrorCalculation::calculate_sharpe_ratio_std_dev(gts, preds, config)
+      : ErrorCalculation::calculate_sortino_ratio_downside_std_dev(gts, preds, config);
+  }
+
+  return risk_normalisers;
+}
+
 void FFOutputLayer::calculate_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
@@ -222,15 +289,17 @@ void FFOutputLayer::calculate_output_gradients(
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
+  const auto risk_normalisers = calculate_risk_normalisers(target_outputs_begin, batch_hidden_states, batch_size);
   if (!use_multithreading)
   {
     run_output_gradients(
-      0, 
-      batch_size, 
-      batch_gradients_and_outputs, 
-      target_outputs_begin, 
+      0,
+      batch_size,
+      batch_gradients_and_outputs,
+      target_outputs_begin,
       batch_hidden_states,
-      N_total);
+      N_total,
+      risk_normalisers);
   }
   else
   {
@@ -241,15 +310,16 @@ void FFOutputLayer::calculate_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, this]()
+        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, &risk_normalisers, this]()
           {
             run_output_gradients(
-              start, 
-              end, 
-              batch_gradients_and_outputs, 
-              target_outputs_begin, 
+              start,
+              end,
+              batch_gradients_and_outputs,
+              target_outputs_begin,
               batch_hidden_states,
-              N_total);
+              N_total,
+              risk_normalisers);
           });
       }
       start = end;
@@ -264,7 +334,8 @@ void FFOutputLayer::run_output_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
-  size_t num_neurons) const
+  size_t num_neurons,
+  const std::vector<double>& risk_normalisers) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const auto& details = output_layer_details();
@@ -307,7 +378,7 @@ void FFOutputLayer::run_output_gradients(
       }
 
       std::fill(deltas.vec().begin(), deltas.vec().end(), 0.0);
-      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec());
+      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), risk_normalisers);
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
@@ -548,7 +619,8 @@ double FFOutputLayer::get_momentum(unsigned neuron_number) const noexcept
 void FFOutputLayer::calculate_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs) const
+  const std::vector<double>& given_outputs,
+  const std::vector<double>& risk_normalisers) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   unsigned layer_number = 0;
@@ -558,7 +630,7 @@ void FFOutputLayer::calculate_error_deltas(
     const auto activation_method = output_layer_detail.get_activation().get_method();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
     const auto& bounds = layer_bounds(layer_number);
-    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end);
+    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end, risk_normalisers[layer_number]);
     ++layer_number;
   }
 }

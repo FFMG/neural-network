@@ -153,7 +153,7 @@ Multi Output Layers allow the network to split from a central trunk into multipl
     MultiOutputLayerDetails b1
     (
       { LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::tanh, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0) },
-      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }), 0.0, OptimiserType::NadamW, 0.95)
+      OutputLayerDetails(2, activation(activation::method::tanh, 0.01), ErrorCalculation::type::mse, EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b1);
 
@@ -164,7 +164,7 @@ Multi Output Layers allow the network to split from a central trunk into multipl
         LayerDetails(Layer::Architecture::FF, 16, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
         LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.01), 0.0, 0.01, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0)
       },
-      OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }), 0.0, OptimiserType::NadamW, 0.95)
+      OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0), 0.0, OptimiserType::NadamW, 0.95)
     );
     multi_output_layer_details.push_back(b2);
 

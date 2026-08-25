@@ -260,7 +260,7 @@ TEST(LayerTest, CalculateErrorDeltasSharpeRatioLoss) {
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
-    // Cost c = 0.01, 2 neurons -> 1/2 multiplier
+    // Cost c = 0.01, 2 neurons -> 1/2 multiplier. Default risk_normaliser = 1.0 (unscaled).
     // Neuron 0: target = 0.05, pos = 0.8 > 0 (sgn = 1) -> grad = -(0.05 - 0.01 * 1) = -0.04 -> delta = -0.02
     // Neuron 1: target = -0.03, pos = -0.6 < 0 (sgn = -1) -> grad = -(-0.03 - 0.01 * -1) = -(-0.02) = 0.02 -> delta = 0.01
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.01, 0.0);
@@ -269,18 +269,45 @@ TEST(LayerTest, CalculateErrorDeltasSharpeRatioLoss) {
     EXPECT_NEAR(deltas[1], 0.01, 1e-9);
 }
 
+TEST(LayerTest, CalculateErrorDeltasSharpeRatioLossScaledByRiskNormaliser) {
+    // Same inputs as CalculateErrorDeltasSharpeRatioLoss, but with an explicit
+    // risk_normaliser (the batch std-dev of returns) dividing the raw return gradient,
+    // so higher batch volatility produces a smaller weight update.
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 0.05, -0.03 };
+    std::vector<double> given = { 0.8, -0.6 };
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.01, 0.0);
+    const double risk_normaliser = 4.0;
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1, risk_normaliser);
+    EXPECT_NEAR(deltas[0], -0.02 / risk_normaliser, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.01 / risk_normaliser, 1e-9);
+}
+
 TEST(LayerTest, CalculateErrorDeltasSortinoRatioLoss) {
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
-    // tau = 0.01, c = 0.005, 2 neurons
+    // tau = 0.01, c = 0.005, 2 neurons. Default risk_normaliser = 1.0 (unscaled).
     // Neuron 0: target - tau = 0.04. pos = 0.8 (sgn = 1). grad = -(0.04 - 0.005*1) = -0.035 -> delta = -0.0175
     // Neuron 1: target - tau = -0.04. pos = -0.6 (sgn = -1). grad = -(-0.04 - 0.005*-1) = -(-0.035) = 0.035 -> delta = 0.0175
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, 0.01);
     layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1);
     EXPECT_NEAR(deltas[0], -0.0175, 1e-9);
     EXPECT_NEAR(deltas[1], 0.0175, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSortinoRatioLossScaledByRiskNormaliser) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 0.05, -0.03 };
+    std::vector<double> given = { 0.8, -0.6 };
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, 0.01);
+    const double risk_normaliser = 2.5;
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1, risk_normaliser);
+    EXPECT_NEAR(deltas[0], -0.0175 / risk_normaliser, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.0175 / risk_normaliser, 1e-9);
 }
 
 TEST(LayerTest, CalculateErrorDeltasRobustness) {

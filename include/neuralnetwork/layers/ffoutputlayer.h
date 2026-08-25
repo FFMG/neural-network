@@ -107,17 +107,24 @@ protected:
     const std::vector<OutputLayerDetails>& output_layer_details);
 
 private:
+  [[nodiscard]] std::vector<double> calculate_risk_normalisers(
+    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t batch_size) const;
+
   void run_output_gradients(
     const size_t start,
     const size_t end,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,
-    size_t num_neurons) const;
+    size_t num_neurons,
+    const std::vector<double>& risk_normalisers) const;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs) const;
+    const std::vector<double>& given_outputs,
+    const std::vector<double>& risk_normalisers) const;
 };
 } // namespace myoddweb::nn

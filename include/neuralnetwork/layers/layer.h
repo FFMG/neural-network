@@ -652,7 +652,8 @@ public:
     const EvaluationConfig& evaluation_config,
     const activation::method activation_method,
     unsigned start_neuron,
-    unsigned end_neuron) const;
+    unsigned end_neuron,
+    double risk_normaliser = 1.0) const;
 
   [[nodiscard]] inline const activation& get_activation() const noexcept
   {
@@ -1457,7 +1458,8 @@ private:
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
     const activation::method activation_method,
-    std::span<Neuron> neurons) const;
+    std::span<Neuron> neurons,
+    double risk_normaliser) const;
 
   void calculate_sortino_ratio_loss_error_deltas(
     std::vector<double>& deltas,
@@ -1465,7 +1467,8 @@ private:
     const std::vector<double>& given_outputs,
     const EvaluationConfig& evaluation_config,
     const activation::method activation_method,
-    std::span<Neuron> neurons) const;
+    std::span<Neuron> neurons,
+    double risk_normaliser) const;
 
 protected:
   unsigned _layer_index;

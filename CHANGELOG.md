@@ -17,6 +17,13 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.SharpeRatioLoss`, `ErrorCalculationType.SortinoRatioLoss`, and properties in `EvaluationConfig` and `NeuralNetworkOptions`.
   - Comprehensive unit, multi-asset, numerical validation, gradient deltas, serializer round-trip, and end-to-end training convergence tests in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
+### Fixed
+- Fixed `sharpe_ratio_loss`/`sortino_ratio_loss` backward deltas ignoring the risk (volatility) term entirely, so training only maximised mean return instead of the risk-adjusted ratio:
+  - `Layer::calculate_sharpe_ratio_loss_error_deltas` and `Layer::calculate_sortino_ratio_loss_error_deltas` now accept a `risk_normaliser` (the batch's return std-dev, or downside std-dev for Sortino) and divide the raw per-sample return gradient by it, so gradient magnitude correctly shrinks as batch volatility rises.
+  - Added `ErrorCalculation::calculate_sharpe_ratio_std_dev` and `ErrorCalculation::calculate_sortino_ratio_downside_std_dev`, computed once per training batch in `FFOutputLayer::calculate_risk_normalisers` and threaded through `calculate_output_gradients` / `run_output_gradients` / `calculate_error_deltas`.
+  - `Layer::calculate_error_deltas` gained a `risk_normaliser` parameter defaulted to `1.0` (a no-op) so every other loss type is unaffected.
+  - Note: this is a scaling correction, not the exact analytic gradient of the batch Sharpe/Sortino ratio — it still omits the `mean · ∂σ/∂ŷ` term and the transaction-cost cross-term between adjacent time steps.
+
 ## [1.1.40] - 2026-08-25
 
 ### Added

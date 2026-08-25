@@ -267,7 +267,8 @@ void Layer::calculate_error_deltas(
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   unsigned start_neuron,
-  unsigned end_neuron) const
+  unsigned end_neuron,
+  double risk_normaliser) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
@@ -309,9 +310,9 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::quantile_loss:
     return calculate_quantile_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::sharpe_ratio_loss:
-    return calculate_sharpe_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+    return calculate_sharpe_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, risk_normaliser);
   case ErrorCalculation::type::sortino_ratio_loss:
-    return calculate_sortino_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
+    return calculate_sortino_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, risk_normaliser);
   case ErrorCalculation::type::mae:
   case ErrorCalculation::type::nrmse:
   case ErrorCalculation::type::mape:
@@ -919,7 +920,8 @@ void Layer::calculate_sharpe_ratio_loss_error_deltas(
   const std::vector<double>& given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
-  std::span<Neuron> neurons) const
+  std::span<Neuron> neurons,
+  double risk_normaliser) const
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -939,7 +941,7 @@ void Layer::calculate_sharpe_ratio_loss_error_deltas(
     const double target_return = target_outputs[idx];
     const double pos = given_outputs[idx];
     const double pos_sign = (pos > 0.0) ? 1.0 : ((pos < 0.0) ? -1.0 : 0.0);
-    const double grad = -(target_return - c * pos_sign);
+    const double grad = -(target_return - c * pos_sign) / risk_normaliser;
     deltas[idx] = grad * inv_num_neurons;
   }
 }
@@ -950,7 +952,8 @@ void Layer::calculate_sortino_ratio_loss_error_deltas(
   const std::vector<double>& given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
-  std::span<Neuron> neurons) const
+  std::span<Neuron> neurons,
+  double risk_normaliser) const
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -971,7 +974,7 @@ void Layer::calculate_sortino_ratio_loss_error_deltas(
     const double target_return = target_outputs[idx];
     const double pos = given_outputs[idx];
     const double pos_sign = (pos > 0.0) ? 1.0 : ((pos < 0.0) ? -1.0 : 0.0);
-    const double grad = -((target_return - tau) - c * pos_sign);
+    const double grad = -((target_return - tau) - c * pos_sign) / risk_normaliser;
     deltas[idx] = grad * inv_num_neurons;
   }
 }

@@ -1581,7 +1581,7 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, tab, "lambda\n",
         tab, tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
         tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
-        tab, tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty(), "\n",
+        tab, tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false", "\n",
         tab, tab, tab, tab, tab, "epsilon              : ", details.get_error_evaluation_config().epsilon(), "\n",
         tab, tab, tab, tab, tab, "label-smoothing      : ", details.get_error_evaluation_config().label_smoothing(), "\n",
         tab, tab, tab, tab, tab, "quantiles            : ", details.get_error_evaluation_config().quantiles(), "\n",

@@ -230,7 +230,7 @@ Demonstrates a network with multiple output layers trained concurrently for diff
 import neuralnetwork as nn
 
 # Define parallel output layers: Classification (Sigmoid) + Regression (Tanh)
-eval_cfg = nn.EvaluationConfig(0.0, 0.0, 1.0, 0.0, False, 1.0, 1e-12, 0.0, [0.5])
+eval_cfg = nn.EvaluationConfig(0.0, 0.0, 1.0, 0.0, False, 1.0, 1e-12, 0.0, [0.5], 0.0, 0.0)
 output_layers = [
     nn.OutputLayerDetails(1, nn.Activation(nn.ActivationMethod.Sigmoid, 1.0), nn.ErrorCalculationType.MSE, eval_cfg, 0.001, nn.OptimiserType.NadamW, 0.99),
     nn.OutputLayerDetails(1, nn.Activation(nn.ActivationMethod.Tanh, 1.0), nn.ErrorCalculationType.MSE, eval_cfg, 0.001, nn.OptimiserType.NadamW, 0.9)

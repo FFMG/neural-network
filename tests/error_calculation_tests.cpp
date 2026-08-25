@@ -1060,6 +1060,11 @@ TEST_F(ErrorCalculationTest, SharpeRatioLossHandCalculated)
   EXPECT_NEAR(sharpe, expected_sharpe, 1e-9);
   EXPECT_NEAR(sharpe_loss, -expected_sharpe, 1e-9);
   EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sharpe_ratio_loss, gt, pred, config_sharpe, activation::method::tanh), -expected_sharpe, 1e-9);
+
+  // The batch std-dev exposed separately so the backward pass can use it to
+  // risk-scale the per-sample gradient (see Layer::calculate_sharpe_ratio_loss_error_deltas).
+  const double std_dev = ErrorCalculation::calculate_sharpe_ratio_std_dev(gt, pred, config_sharpe);
+  EXPECT_NEAR(std_dev, expected_std, 1e-9);
 }
 
 TEST_F(ErrorCalculationTest, SortinoRatioLossHandCalculated)
@@ -1091,6 +1096,11 @@ TEST_F(ErrorCalculationTest, SortinoRatioLossHandCalculated)
   EXPECT_NEAR(sortino, expected_sortino, 1e-7);
   EXPECT_NEAR(sortino_loss, -expected_sortino, 1e-7);
   EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sortino_ratio_loss, gt, pred, config_sortino, activation::method::tanh), -expected_sortino, 1e-7);
+
+  // The downside std-dev exposed separately so the backward pass can use it to
+  // risk-scale the per-sample gradient (see Layer::calculate_sortino_ratio_loss_error_deltas).
+  const double downside_std_dev = ErrorCalculation::calculate_sortino_ratio_downside_std_dev(gt, pred, config_sortino);
+  EXPECT_NEAR(downside_std_dev, expected_downside_dev, 1e-9);
 }
 
 TEST_F(ErrorCalculationTest, SharpeAndSortinoMultiAsset)

@@ -54,6 +54,33 @@ private:
     }
     return str[i] == '\0' && lit[i] == '\0';
   }
+  [[nodiscard]] inline static std::vector<double> calculate_portfolio_returns(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double transaction_cost_penalty)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    const size_t num_samples = ground_truths.size();
+    std::vector<double> returns(num_samples, 0.0);
+    for (size_t t = 0; t < num_samples; ++t)
+    {
+      const auto& gt = ground_truths[t];
+      const auto& pred = predictions[t];
+      const size_t num_assets = std::min(gt.size(), pred.size());
+      if (num_assets == 0)
+      {
+        continue;
+      }
+
+      double step_return = 0.0;
+      for (size_t j = 0; j < num_assets; ++j)
+      {
+        const double pos = pred[j];
+        const double prev_pos = (t > 0 && j < predictions[t - 1].size()) ? predictions[t - 1][j] : 0.0;
+        const double cost = (t > 0) ? (transaction_cost_penalty * std::abs(pos - prev_pos)) : 0.0;
+        step_return += (pos * gt[j] - cost);
+      }
+      returns[t] = step_return / static_cast<double>(num_assets);
+    }
+    return returns;
+  }
 public:
   [[nodiscard]] inline static std::string type_to_string(const ErrorCalculation::type& type)
   {
@@ -302,6 +329,36 @@ public:
     return (count > 0) ? (total_loss / static_cast<double>(count)) : 0.0;
   }
 
+  static double calculate_sharpe_ratio_std_dev(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    const double eps = evaluation_config.epsilon();
+    if (ground_truths.empty() || predictions.empty() || ground_truths.size() != predictions.size())
+    {
+      return std::sqrt(eps);
+    }
+
+    const auto returns = calculate_portfolio_returns(ground_truths, predictions, evaluation_config.transaction_cost_penalty());
+    const size_t num_samples = returns.size();
+
+    double sum_returns = 0.0;
+    for (const auto r : returns)
+    {
+      sum_returns += r;
+    }
+    const double mean_return = sum_returns / static_cast<double>(num_samples);
+
+    double sum_sq_diff = 0.0;
+    for (const auto r : returns)
+    {
+      const double diff = r - mean_return;
+      sum_sq_diff += diff * diff;
+    }
+
+    const double variance = sum_sq_diff / static_cast<double>(num_samples);
+    return std::sqrt(variance + eps);
+  }
+
   static double calculate_sharpe_ratio(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -310,47 +367,16 @@ public:
       return 0.0;
     }
 
-    const double c = evaluation_config.transaction_cost_penalty();
-    const double eps = evaluation_config.epsilon();
-    const size_t num_samples = ground_truths.size();
+    const auto returns = calculate_portfolio_returns(ground_truths, predictions, evaluation_config.transaction_cost_penalty());
+    const size_t num_samples = returns.size();
 
     double sum_returns = 0.0;
-    std::vector<double> returns(num_samples, 0.0);
-
-    for (size_t t = 0; t < num_samples; ++t)
+    for (const auto r : returns)
     {
-      const auto& gt = ground_truths[t];
-      const auto& pred = predictions[t];
-      const size_t num_assets = std::min(gt.size(), pred.size());
-      if (num_assets == 0)
-      {
-        continue;
-      }
-
-      double step_return = 0.0;
-      for (size_t j = 0; j < num_assets; ++j)
-      {
-        const double pos = pred[j];
-        const double prev_pos = (t > 0 && j < predictions[t - 1].size()) ? predictions[t - 1][j] : 0.0;
-        const double cost = (t > 0) ? (c * std::abs(pos - prev_pos)) : 0.0;
-        step_return += (pos * gt[j] - cost);
-      }
-      step_return /= static_cast<double>(num_assets);
-      returns[t] = step_return;
-      sum_returns += step_return;
+      sum_returns += r;
     }
-
     const double mean_return = sum_returns / static_cast<double>(num_samples);
-
-    double sum_sq_diff = 0.0;
-    for (size_t t = 0; t < num_samples; ++t)
-    {
-      const double diff = returns[t] - mean_return;
-      sum_sq_diff += diff * diff;
-    }
-
-    const double variance = sum_sq_diff / static_cast<double>(num_samples);
-    const double std_dev = std::sqrt(variance + eps);
+    const double std_dev = calculate_sharpe_ratio_std_dev(ground_truths, predictions, evaluation_config);
 
     return mean_return / std_dev;
   }
@@ -361,6 +387,30 @@ public:
     return -calculate_sharpe_ratio(ground_truths, predictions, evaluation_config);
   }
 
+  static double calculate_sortino_ratio_downside_std_dev(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    const double eps = evaluation_config.epsilon();
+    if (ground_truths.empty() || predictions.empty() || ground_truths.size() != predictions.size())
+    {
+      return std::sqrt(eps);
+    }
+
+    const auto returns = calculate_portfolio_returns(ground_truths, predictions, evaluation_config.transaction_cost_penalty());
+    const size_t num_samples = returns.size();
+    const double tau = evaluation_config.sortino_target_return();
+
+    double sum_downside_sq = 0.0;
+    for (const auto r : returns)
+    {
+      const double downside = std::min(0.0, r - tau);
+      sum_downside_sq += downside * downside;
+    }
+
+    const double downside_variance = sum_downside_sq / static_cast<double>(num_samples);
+    return std::sqrt(downside_variance + eps);
+  }
+
   static double calculate_sortino_ratio(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -369,48 +419,17 @@ public:
       return 0.0;
     }
 
-    const double c = evaluation_config.transaction_cost_penalty();
+    const auto returns = calculate_portfolio_returns(ground_truths, predictions, evaluation_config.transaction_cost_penalty());
+    const size_t num_samples = returns.size();
     const double tau = evaluation_config.sortino_target_return();
-    const double eps = evaluation_config.epsilon();
-    const size_t num_samples = ground_truths.size();
 
     double sum_returns = 0.0;
-    std::vector<double> returns(num_samples, 0.0);
-
-    for (size_t t = 0; t < num_samples; ++t)
+    for (const auto r : returns)
     {
-      const auto& gt = ground_truths[t];
-      const auto& pred = predictions[t];
-      const size_t num_assets = std::min(gt.size(), pred.size());
-      if (num_assets == 0)
-      {
-        continue;
-      }
-
-      double step_return = 0.0;
-      for (size_t j = 0; j < num_assets; ++j)
-      {
-        const double pos = pred[j];
-        const double prev_pos = (t > 0 && j < predictions[t - 1].size()) ? predictions[t - 1][j] : 0.0;
-        const double cost = (t > 0) ? (c * std::abs(pos - prev_pos)) : 0.0;
-        step_return += (pos * gt[j] - cost);
-      }
-      step_return /= static_cast<double>(num_assets);
-      returns[t] = step_return;
-      sum_returns += step_return;
+      sum_returns += r;
     }
-
     const double mean_return = sum_returns / static_cast<double>(num_samples);
-
-    double sum_downside_sq = 0.0;
-    for (size_t t = 0; t < num_samples; ++t)
-    {
-      const double downside = std::min(0.0, returns[t] - tau);
-      sum_downside_sq += downside * downside;
-    }
-
-    const double downside_variance = sum_downside_sq / static_cast<double>(num_samples);
-    const double downside_std_dev = std::sqrt(downside_variance + eps);
+    const double downside_std_dev = calculate_sortino_ratio_downside_std_dev(ground_truths, predictions, evaluation_config);
 
     return (mean_return - tau) / downside_std_dev;
   }
