@@ -85,7 +85,7 @@ private:
         topology.back(), 
         activation(activation::method::sigmoid, 0.01), 
         ErrorCalculation::type::mse, 
-        { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 
+        { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 
         0.05,
         OptimiserType::SGD, 
         0.99));
@@ -328,7 +328,12 @@ public:
   NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, OptimiserType optimiser_type, double momentum)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
-    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, optimiser_type, momentum));
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, optimiser_type, momentum));
+  }
+  NeuralNetworkOptions& with_output_layer_details(unsigned layer_size, const activation& activation, const ErrorCalculation::type& output_error_calculation_type, const std::vector<double>& quantiles, OptimiserType optimiser_type, double momentum)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    return with_output_layer_details(OutputLayerDetails(layer_size, activation, output_error_calculation_type, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, quantiles }, 0.05, optimiser_type, momentum));
   }
 
   NeuralNetworkOptions& with_number_of_epoch(int number_of_epoch)
@@ -744,7 +749,7 @@ public:
     return NeuralNetworkOptions(topology)
       .with_learning_rate(0.1)
       .with_learning_rate_warmup(0.0, 0.0)
-      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
       .with_number_of_epoch(1000)
       .with_batch_size(1)
       .with_data_is_unique(true)

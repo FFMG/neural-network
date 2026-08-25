@@ -67,7 +67,7 @@ TEST(SwaTests, LayersAccumulateSwaAveragePropagatesAcrossLayers)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers running(options);

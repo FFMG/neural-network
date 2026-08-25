@@ -191,7 +191,7 @@ TEST(LookaheadLayerInterpolationTest, FFLayerInterpolation)
     .with_hidden_layers({
       LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -227,7 +227,7 @@ TEST(LookaheadLayerInterpolationTest, FFLayerRefreshesTransposeCacheOnFastLayer)
     .with_hidden_layers({
       LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -267,7 +267,7 @@ TEST(LookaheadLayerInterpolationTest, ElmanRNNLayerInterpolation)
     .with_hidden_layers({
       LayerDetails(Layer::Architecture::Elman, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -292,7 +292,7 @@ TEST(LookaheadLayerInterpolationTest, GRURNNLayerInterpolation)
     .with_hidden_layers({
       LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -316,7 +316,7 @@ TEST(LookaheadLayerInterpolationTest, LSTMLayerInterpolation)
     .with_hidden_layers({
       LayerDetails(Layer::Architecture::Lstm, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::None, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -350,7 +350,7 @@ TEST(LookaheadLayerInterpolationTest, EmbeddingLayerInterpolation)
         4   // embedding_dimension
       )
     })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.0, OptimiserType::None, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::None, 0.0))
     .build();
 
   Layers slow_layers(opt);
@@ -428,7 +428,7 @@ TEST(LookaheadTrainingTest, XorConvergenceWithAdamW)
       1,
       activation(activation::method::sigmoid, 1.0),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } },
       0.0,
       OptimiserType::AdamW,
       0.0
@@ -486,7 +486,7 @@ TEST(LookaheadTrainingTest, XorConvergenceWithRAdam)
       1,
       activation(activation::method::sigmoid, 1.0),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } },
       0.0,
       OptimiserType::RAdam,
       0.0
@@ -544,7 +544,7 @@ TEST(LookaheadTrainingTest, CoexistenceWithStochasticWeightAveraging)
       1,
       activation(activation::method::sigmoid, 1.0),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } },
       0.0,
       OptimiserType::AdamW,
       0.0

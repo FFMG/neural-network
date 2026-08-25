@@ -78,7 +78,7 @@ TEST_F(MultiOutputLayerTest, ForwardFeedMathematicalVerification) {
 }
 
 TEST_F(MultiOutputLayerTest, OutputGradientsMathematicalVerification) {
-    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0);
+    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
 
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0) };
     OutputLayerDetails oA(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, clean_config, 0.0, OptimiserType::SGD, 0.0);
@@ -271,7 +271,7 @@ TEST_F(MultiOutputLayerTest, MultiInputProxyLayerTest) {
 }
 
 TEST_F(MultiOutputLayerTest, ComplexArchitectureVerification) {
-    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0);
+    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
 
     std::vector<LayerDetails> hA = { LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0) };
     OutputLayerDetails oA(1, activation(activation::method::sigmoid, 1.0, 1.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);

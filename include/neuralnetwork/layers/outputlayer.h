@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../libraries/instrumentor.h"
 
@@ -91,7 +91,7 @@ protected:
 
   [[nodiscard]] static inline bool is_not_using_activation_derivative(const activation::method method, const ErrorCalculation::type& error_calculation_type) noexcept
   {
-    MYODDWEB_PROFILE_FUNCTION("Layer");
+    MYODDWEB_PROFILE_FUNCTION("OutputLayer");
     switch (error_calculation_type)
     {
     case ErrorCalculation::type::bce_loss: return method == activation::method::sigmoid;
@@ -100,6 +100,7 @@ protected:
     case ErrorCalculation::type::rmse:
     case ErrorCalculation::type::huber_loss:
     case ErrorCalculation::type::log_cosh:
+    case ErrorCalculation::type::quantile_loss:
     case ErrorCalculation::type::none:
     case ErrorCalculation::type::huber_direction_loss:
     case ErrorCalculation::type::mae:

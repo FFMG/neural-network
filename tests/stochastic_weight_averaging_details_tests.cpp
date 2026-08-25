@@ -85,7 +85,7 @@ TEST(StochasticWeightAveragingDetailsTest, OptionsWithSwaObject)
 {
   MYODDWEB_PROFILE_FUNCTION("StochasticWeightAveragingDetailsTest");
   auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
     .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.6, 0.05))
     .build();
 
@@ -98,7 +98,7 @@ TEST(StochasticWeightAveragingDetailsTest, OptionsWithSwaHelperFunction)
 {
   MYODDWEB_PROFILE_FUNCTION("StochasticWeightAveragingDetailsTest");
   auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
     .with_stochastic_weight_averaging(true, 0.7, 0.02)
     .build();
 
@@ -113,7 +113,7 @@ TEST(StochasticWeightAveragingDetailsTest, ValidationRejectsInvalidStartPercent)
   // start_percent < 0.0
   EXPECT_ANY_THROW(
     NeuralNetworkOptions::create({ 2, 2, 1 })
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, -0.1, 0.05))
       .build()
   );
@@ -121,7 +121,7 @@ TEST(StochasticWeightAveragingDetailsTest, ValidationRejectsInvalidStartPercent)
   // start_percent >= 1.0
   EXPECT_ANY_THROW(
     NeuralNetworkOptions::create({ 2, 2, 1 })
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 1.0, 0.05))
       .build()
   );
@@ -133,7 +133,7 @@ TEST(StochasticWeightAveragingDetailsTest, ValidationRejectsInvalidUpdatePercent
   // update_percent <= 0.0
   EXPECT_ANY_THROW(
     NeuralNetworkOptions::create({ 2, 2, 1 })
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.5, 0.0))
       .build()
   );
@@ -141,7 +141,7 @@ TEST(StochasticWeightAveragingDetailsTest, ValidationRejectsInvalidUpdatePercent
   // update_percent > 1.0
   EXPECT_ANY_THROW(
     NeuralNetworkOptions::create({ 2, 2, 1 })
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(true, 0.5, 1.5))
       .build()
   );

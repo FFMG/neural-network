@@ -1443,6 +1443,14 @@ private:
     const activation::method activation_method,
     std::span<Neuron> neurons) const;
 
+  void calculate_quantile_loss_error_deltas(
+    std::vector<double>& deltas,
+    const std::vector<double>& target_outputs,
+    const std::vector<double>& given_outputs,
+    const EvaluationConfig& evaluation_config,
+    const activation::method activation_method,
+    std::span<Neuron> neurons) const;
+
 protected:
   unsigned _layer_index;
   Role _layer_role;

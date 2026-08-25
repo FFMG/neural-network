@@ -306,6 +306,8 @@ void Layer::calculate_error_deltas(
     return calculate_cross_entropy_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::log_cosh:
     return calculate_log_cosh_error_deltas(deltas, target_outputs, given_outputs, activation_method, neurons_span);
+  case ErrorCalculation::type::quantile_loss:
+    return calculate_quantile_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::mae:
   case ErrorCalculation::type::nrmse:
   case ErrorCalculation::type::mape:
@@ -874,6 +876,36 @@ void Layer::calculate_log_cosh_error_deltas(
     const size_t idx = start_idx + i;
     const double x = given_outputs[idx] - target_outputs[idx];
     deltas[idx] = std::tanh(x) * inv_num_neurons;
+  }
+}
+
+void Layer::calculate_quantile_loss_error_deltas(
+  std::vector<double>& deltas,
+  const std::vector<double>& target_outputs,
+  const std::vector<double>& given_outputs,
+  const EvaluationConfig& evaluation_config,
+  const activation::method activation_method,
+  std::span<Neuron> neurons) const
+{
+  (void)activation_method;
+  MYODDWEB_PROFILE_FUNCTION("Layer");
+  if (neurons.empty())
+  {
+    return;
+  }
+
+  const auto& quantiles = evaluation_config.quantiles();
+  const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
+  const unsigned start_idx = neurons.front().get_index();
+  const size_t count = neurons.size();
+
+  for (size_t i = 0; i < count; ++i)
+  {
+    const size_t idx = start_idx + i;
+    const double q = (i < quantiles.size()) ? quantiles[i] : (quantiles.empty() ? 0.5 : quantiles.back());
+    const double error = target_outputs[idx] - given_outputs[idx];
+    const double grad = (error >= 0.0) ? -q : (1.0 - q);
+    deltas[idx] = grad * inv_num_neurons;
   }
 }
 

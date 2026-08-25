@@ -74,6 +74,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("LogCosh", ErrorCalculation::type::log_cosh)
         .value("DirectionalConfidenceScore", ErrorCalculation::type::directional_confidence_score)
         .value("PredictionCoverage", ErrorCalculation::type::prediction_coverage)
+        .value("QuantileLoss", ErrorCalculation::type::quantile_loss)
+        .value("PinballLoss", ErrorCalculation::type::quantile_loss)
         .export_values();
 
     py::enum_<Layer::Architecture>(m, "LayerArchitecture")
@@ -153,7 +155,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
 
     py::class_<EvaluationConfig>(m, "EvaluationConfig")
         .def(py::init<>())
-        .def(py::init<double, double, double, double, bool, double, double, double>(),
+        .def(py::init<double, double, double, double, bool, double, double, double, const std::vector<double>&>(),
              py::arg("neutral_tolerance"),
              py::arg("confidence_threshold"),
              py::arg("huber_delta"),
@@ -161,7 +163,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
              py::arg("use_direction_penalty"),
              py::arg("cross_entropy_lambda"),
              py::arg("epsilon"),
-             py::arg("label_smoothing"))
+             py::arg("label_smoothing"),
+             py::arg("quantiles"))
         .def_property_readonly("neutral_tolerance", &EvaluationConfig::neutral_tolerance)
         .def_property_readonly("confidence_threshold", &EvaluationConfig::confidence_threshold)
         .def_property_readonly("huber_delta", &EvaluationConfig::huber_delta)
@@ -169,7 +172,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("use_direction_penalty", &EvaluationConfig::use_direction_penalty)
         .def_property_readonly("cross_entropy_lambda", &EvaluationConfig::cross_entropy_lambda)
         .def_property_readonly("epsilon", &EvaluationConfig::epsilon)
-        .def_property_readonly("label_smoothing", &EvaluationConfig::label_smoothing);
+        .def_property_readonly("label_smoothing", &EvaluationConfig::label_smoothing)
+        .def_property_readonly("quantiles", &EvaluationConfig::quantiles);
 
     py::class_<LayerDetails>(m, "LayerDetails")
         .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned>(),
@@ -268,6 +272,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_output_layer_details", py::overload_cast<const OutputLayerDetails&>(&NeuralNetworkOptions::with_output_layer_details))
         .def("with_output_layer_details", py::overload_cast<const std::vector<OutputLayerDetails>&>(&NeuralNetworkOptions::with_output_layer_details))
         .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details))
+        .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, const std::vector<double>&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
+             py::arg("layer_size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("quantiles"), py::arg("optimiser_type"), py::arg("momentum"))
         .def("with_number_of_epoch", &NeuralNetworkOptions::with_number_of_epoch)
         .def("with_batch_size", &NeuralNetworkOptions::with_batch_size)
         .def("with_data_is_unique", &NeuralNetworkOptions::with_data_is_unique)

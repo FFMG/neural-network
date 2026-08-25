@@ -1371,6 +1371,22 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
     ? error_evaluation_config_object->get<double>("label-smoothing")
     : 0.0;
 
+  std::vector<double> quantiles;
+  if (const auto* quantiles_array = dynamic_cast<const TinyJSON::TJValueArray*>(error_evaluation_config_object->try_get_value("quantiles")))
+  {
+    for (size_t i = 0; i < quantiles_array->get_number_of_items(); ++i)
+    {
+      if (const auto* item = dynamic_cast<const TinyJSON::TJValueNumber*>(quantiles_array->at(static_cast<unsigned>(i))))
+      {
+        quantiles.push_back(static_cast<double>(item->get_float()));
+      }
+    }
+  }
+  if (quantiles.empty())
+  {
+    quantiles = { 0.5 };
+  }
+
   return EvaluationConfig(
     error_evaluation_config_object->get<double>("neutral-tolerance"),
     error_evaluation_config_object->get<double>("confidence-threshold"),
@@ -1379,7 +1395,8 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
     error_evaluation_config_object->get_boolean("use-direction-penalty"),
     error_evaluation_config_object->get<double>("cross-entropy-lambda"),
     epsilon,
-    label_smoothing
+    label_smoothing,
+    quantiles
   );
 }
 
@@ -2779,6 +2796,7 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
   set_float(error_evaluation_config_object, "cross-entropy-lambda", config.cross_entropy_lambda());
   set_float(error_evaluation_config_object, "epsilon", config.epsilon());
   set_float(error_evaluation_config_object, "label-smoothing", config.label_smoothing());
+  set_floats(error_evaluation_config_object, "quantiles", config.quantiles());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;

@@ -34,7 +34,8 @@ public:
     cross_entropy,
     log_cosh,
     directional_confidence_score,
-    prediction_coverage
+    prediction_coverage,
+    quantile_loss
   };
 private:
   [[nodiscard]] inline static bool iequals(const std::string& str, const char* lit)
@@ -89,6 +90,8 @@ public:
       return "directional-confidence-score";
     case type::prediction_coverage:
       return "prediction-coverage";
+    case type::quantile_loss:
+      return "quantile-loss";
     }
     Logger::panic("Unknown ErrorCalculation type!");
   }
@@ -159,6 +162,10 @@ public:
     if (iequals(str, "log-cosh"))
     {
       return type::log_cosh;
+    }
+    if (iequals(str, "quantile-loss") || iequals(str, "pinball-loss") || iequals(str, "quantile"))
+    {
+      return type::quantile_loss;
     }
     Logger::panic("Unknown error type: ", str);
 
@@ -234,9 +241,45 @@ public:
         return calculate_softmax_prediction_coverage(predictions, evaluation_config);
       }
       return calculate_prediction_coverage(predictions, evaluation_config, activation_method);
+
+    case type::quantile_loss:
+      return calculate_quantile_loss(ground_truths, predictions, evaluation_config);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
+  }
+
+  static double calculate_quantile_loss(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    const auto& quantiles = evaluation_config.quantiles();
+    double total_loss = 0.0;
+    size_t count = 0;
+
+    for (size_t i = 0; i < ground_truths.size(); ++i)
+    {
+      const auto& gt_vec = ground_truths[i];
+      const auto& pred_vec = predictions[i];
+
+      if (gt_vec.size() != pred_vec.size())
+      {
+        Logger::panic("Mismatched vector sizes at index ", i);
+      }
+
+      const double* gt_ptr = gt_vec.data();
+      const double* pred_ptr = pred_vec.data();
+      const size_t vec_len = gt_vec.size();
+
+      for (size_t j = 0; j < vec_len; ++j)
+      {
+        const double q = (j < quantiles.size()) ? quantiles[j] : (quantiles.empty() ? 0.5 : quantiles.back());
+        const double error = gt_ptr[j] - pred_ptr[j];
+        const double loss = (error >= 0.0) ? (q * error) : ((q - 1.0) * error);
+        total_loss += loss;
+        ++count;
+      }
+    }
+    return (count > 0) ? (total_loss / static_cast<double>(count)) : 0.0;
   }
 
   static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)

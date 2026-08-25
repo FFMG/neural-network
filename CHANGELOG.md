@@ -2,6 +2,19 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.40] - 2026-08-25
+
+### Added
+- Implemented Quantile / Pinball Loss for Single and Multi-Quantile Regression (`ErrorCalculation::type::quantile_loss`):
+  - Supports asymmetric pinball loss $L_q(y, \hat{y}) = \max(q(y - \hat{y}), (1 - q)(\hat{y} - y))$ for arbitrary target quantiles $q \in (0.0, 1.0)$.
+  - Multi-quantile regression allows predicting prediction intervals and uncertainty bounds simultaneously (e.g. 10th percentile, median, 90th percentile: $q \in \{ 0.1, 0.5, 0.9 \}$).
+  - Extended `EvaluationConfig` with `_quantiles` (`std::vector<double>`), 9-parameter constructor without default parameters, validation that every quantile satisfies $0.0 < q < 1.0$, and const accessor `quantiles()`.
+  - Implemented `ErrorCalculation::calculate_quantile_loss` and backward gradient delta calculations in `Layer::calculate_quantile_loss_error_deltas`.
+  - Added JSON serialization and deserialization support for `"quantiles"` in `NeuralNetworkSerializer` with backwards compatibility for legacy models (defaulting to median `[0.5]`).
+  - Added fluent builder overloads in `NeuralNetworkOptions` (`with_output_layer_details` taking `quantiles` vector).
+  - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.QuantileLoss`, `ErrorCalculationType.PinballLoss`, and `quantiles` in `EvaluationConfig` and `NeuralNetworkOptions`.
+  - Comprehensive unit, multi-quantile vector loss, asymmetric penalties, gradient deltas, serializer round-trip, and end-to-end training integration test suite in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
+
 ## [1.1.39] - 2026-08-24
 
 ### Added

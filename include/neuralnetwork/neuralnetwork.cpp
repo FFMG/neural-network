@@ -36,7 +36,7 @@ NeuralNetwork::NeuralNetwork(
       topology.back(), 
       activation(output_layer_activation, 0.01), 
       ErrorCalculation::type::mse, 
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
   (void)hidden_layer_activation;

@@ -2,6 +2,8 @@
 
 #include "../libraries/instrumentor.h"
 #include "logger.h"
+#include <cmath>
+#include <vector>
 
 
 namespace myoddweb::nn
@@ -10,7 +12,7 @@ class EvaluationConfig final
 {
 public:
   EvaluationConfig() noexcept :
-    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0)
+    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 })
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -23,7 +25,8 @@ public:
     bool   use_direction_penalty,
     double cross_entropy_lambda,
     double epsilon,
-    double label_smoothing) :
+    double label_smoothing,
+    const std::vector<double>& quantiles) :
     _neutral_tolerance(neutral_tolerance),
     _confidence_threshold(confidence_threshold),
     _huber_delta(huber_delta),
@@ -31,12 +34,24 @@ public:
     _use_direction_penalty(use_direction_penalty),
     _cross_entropy_lambda(cross_entropy_lambda),
     _epsilon(epsilon),
-    _label_smoothing(label_smoothing)
+    _label_smoothing(label_smoothing),
+    _quantiles(quantiles)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     if (_label_smoothing < 0.0 || _label_smoothing >= 1.0)
     {
       Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
+    }
+    if (_quantiles.empty())
+    {
+      _quantiles.push_back(0.5);
+    }
+    for (const auto q : _quantiles)
+    {
+      if (q <= 0.0 || q >= 1.0 || !std::isfinite(q))
+      {
+        Logger::panic("The quantile must be in the range (0.0, 1.0)!");
+      }
     }
   }
 
@@ -48,7 +63,22 @@ public:
     _use_direction_penalty(src._use_direction_penalty),
     _cross_entropy_lambda(src._cross_entropy_lambda),
     _epsilon(src._epsilon),
-    _label_smoothing(src._label_smoothing)
+    _label_smoothing(src._label_smoothing),
+    _quantiles(src._quantiles)
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+  }
+
+  EvaluationConfig(EvaluationConfig&& src) noexcept :
+    _neutral_tolerance(src._neutral_tolerance),
+    _confidence_threshold(src._confidence_threshold),
+    _huber_delta(src._huber_delta),
+    _direction_lambda(src._direction_lambda),
+    _use_direction_penalty(src._use_direction_penalty),
+    _cross_entropy_lambda(src._cross_entropy_lambda),
+    _epsilon(src._epsilon),
+    _label_smoothing(src._label_smoothing),
+    _quantiles(std::move(src._quantiles))
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -66,6 +96,25 @@ public:
       _cross_entropy_lambda = src._cross_entropy_lambda;
       _epsilon = src._epsilon;
       _label_smoothing = src._label_smoothing;
+      _quantiles = src._quantiles;
+    }
+    return *this;
+  }
+
+  EvaluationConfig& operator=(EvaluationConfig&& src) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    if (this != &src)
+    {
+      _neutral_tolerance = src._neutral_tolerance;
+      _confidence_threshold = src._confidence_threshold;
+      _huber_delta = src._huber_delta;
+      _direction_lambda = src._direction_lambda;
+      _use_direction_penalty = src._use_direction_penalty;
+      _cross_entropy_lambda = src._cross_entropy_lambda;
+      _epsilon = src._epsilon;
+      _label_smoothing = src._label_smoothing;
+      _quantiles = std::move(src._quantiles);
     }
     return *this;
   }
@@ -110,6 +159,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     return _label_smoothing;
   }
+  [[nodiscard]] inline const std::vector<double>& quantiles() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    return _quantiles;
+  }
 private:
   double _neutral_tolerance;
   double _confidence_threshold;
@@ -119,6 +173,8 @@ private:
   double _cross_entropy_lambda;
   double _epsilon;
   double _label_smoothing;
+  std::vector<double> _quantiles;
 };
 
 } // namespace myoddweb::nn
+

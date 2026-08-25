@@ -21,7 +21,7 @@ private:
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)
       .with_output_layer_details(
-        OutputLayerDetails(5, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, { 0.001, 0.001, 1.0, 0.1, true, 1.0, 1e-12, 0.0 }, 0.001, OptimiserType::NadamW, 0.99))
+        OutputLayerDetails(5, activation(activation::method::softmax, 0.0), ErrorCalculation::type::cross_entropy, { 0.001, 0.001, 1.0, 0.1, true, 1.0, 1e-12, 0.0, { 0.5 } }, 0.001, OptimiserType::NadamW, 0.99))
       .with_log_level(log_level)
       .with_learning_rate(0.001)
       .with_number_of_epoch(epoch)

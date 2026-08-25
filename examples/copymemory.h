@@ -34,7 +34,7 @@ public:
       LayerDetails(Layer::Architecture::Elman, 64, activation(activation::method::tanh, 0.01), 0.0, 0.5, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.5, OptimiserType::NadamW, 0.9);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.5, OptimiserType::NadamW, 0.9);
 
     const int number_of_epoch = 2000;
     const double learning_rate = 0.01;

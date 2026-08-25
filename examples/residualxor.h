@@ -41,7 +41,7 @@ public:
       LayerDetails(Layer::Architecture::Elman, 8, activation(activation::method::relu, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.95, false, 0, 0, 0, 0, 0, 0, 0),
     };
 
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0 }, 0.05, OptimiserType::NadamW, 0.99);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::NadamW, 0.99);
     
     // std::vector<unsigned> topology = {2, 3, 1};
     // std::vector<double> dropout = { 0.0 };
