@@ -101,6 +101,8 @@ protected:
     case ErrorCalculation::type::huber_loss:
     case ErrorCalculation::type::log_cosh:
     case ErrorCalculation::type::quantile_loss:
+    case ErrorCalculation::type::sharpe_ratio_loss:
+    case ErrorCalculation::type::sortino_ratio_loss:
     case ErrorCalculation::type::none:
     case ErrorCalculation::type::huber_direction_loss:
     case ErrorCalculation::type::mae:

@@ -77,7 +77,7 @@ private:
       LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
       LayerDetails(Layer::Architecture::FF, 32, activation(activation::method::tanh, 0.01), 0.0, 0.05, OptimiserType::NadamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
     };
-    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::NadamW, 0.99);
+    auto output_layer = OutputLayerDetails(topology.back(), activation(activation::method::sigmoid, 0.01), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.05, OptimiserType::NadamW, 0.99);
 
     auto options = NeuralNetworkOptions::create(topology)
       .with_batch_size(batch_size)

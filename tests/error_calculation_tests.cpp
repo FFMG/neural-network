@@ -326,7 +326,7 @@ protected:
     {-0.9, -0.7, 0.1, 0.4, 0.8}
   };
 
-  EvaluationConfig config{0.05, 0.5, 1.0, 0.1, true, 1.0, 1e-7, 0.0, { 0.5 }};
+  EvaluationConfig config{0.05, 0.5, 1.0, 0.1, true, 1.0, 1e-7, 0.0, { 0.5 }, 0.0, 0.0};
   double tolerance = 1e-9;
 
   void SetUp() override {}
@@ -462,7 +462,7 @@ TEST_F(ErrorCalculationTest, PredictionCoverageSigmoidUsesNeutralBaseline) {
   // Sigmoid's neutral point is 0.5, not 0.0: a value near 0.0 is a *confident* "down" call,
   // not an unconfident one. calculate_prediction_coverage must measure distance from 0.5,
   // exactly like calculate_directional_confidence_score already does for sigmoid.
-  EvaluationConfig sigmoid_config{ 0.05, 0.3, 1.0, 0.1, true, 1.0, 1e-7, 0.0, { 0.5 } };
+  EvaluationConfig sigmoid_config{ 0.05, 0.3, 1.0, 0.1, true, 1.0, 1e-7, 0.0, { 0.5 }, 0.0, 0.0 };
   std::vector<std::vector<double>> sigmoid_predictions = {
     { 0.05 },  // |0.05 - 0.5| = 0.45 > 0.3 -> confident (strongly "down")
     { 0.95 },  // |0.95 - 0.5| = 0.45 > 0.3 -> confident (strongly "up")
@@ -594,13 +594,13 @@ TEST_F(ErrorCalculationTest, EvaluationConfigSensitivity) {
 
   // Huber delta = 0.1. Error = 0.5. Abs error = 0.5 > 0.1.
   // Loss = 0.1 * (0.5 - 0.5 * 0.1) = 0.1 * 0.45 = 0.045
-  EvaluationConfig c1{0.0, 0.0, 0.1, 0.0, false, 0.0, 1e-12, 0.0, { 0.5 }};
+  EvaluationConfig c1{0.0, 0.0, 0.1, 0.0, false, 0.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0};
   double h1 = ErrorCalculation::calculate_huber_loss_error(gt, pr, c1);
   EXPECT_NEAR(h1, 0.045, tolerance);
 
   // Huber delta = 1.0. Error = 0.5. Abs error = 0.5 < 1.0.
   // Loss = 0.5 * 0.5^2 = 0.125
-  EvaluationConfig c2{0.0, 0.0, 1.0, 0.0, false, 0.0, 1e-12, 0.0, { 0.5 }};
+  EvaluationConfig c2{0.0, 0.0, 1.0, 0.0, false, 0.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0};
   double h2 = ErrorCalculation::calculate_huber_loss_error(gt, pr, c2);
   EXPECT_NEAR(h2, 0.125, tolerance);
   
@@ -610,18 +610,18 @@ TEST_F(ErrorCalculationTest, EvaluationConfigSensitivity) {
   
   // Huber Direction Loss = Huber + lambda * direction_loss
   // If lambda is 0, should be same as huber
-  EvaluationConfig c3{0.0, 0.0, 1.0, 0.0, true, 0.0, 1e-12, 0.0, { 0.5 }};
+  EvaluationConfig c3{0.0, 0.0, 1.0, 0.0, true, 0.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0};
   double hd1 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c3);
   // error = 1.0 - (-0.5) = 1.5. delta = 1.0. 
   // huber = 1.0 * (1.5 - 0.5 * 1.0) = 1.0.
   EXPECT_NEAR(hd1, 1.0, tolerance);
 
-  EvaluationConfig c4{0.0, 0.0, 1.0, 1.0, true, 0.0, 1e-12, 0.0, { 0.5 }};
+  EvaluationConfig c4{0.0, 0.0, 1.0, 1.0, true, 0.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0};
   double hd2 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c4);
   EXPECT_GT(hd2, hd1); // Should be higher due to direction penalty
 
   // Verify that use_direction_penalty flag is respected
-  EvaluationConfig c5{0.0, 0.0, 1.0, 1.0, false, 0.0, 1e-12, 0.0, { 0.5 }};
+  EvaluationConfig c5{0.0, 0.0, 1.0, 1.0, false, 0.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0};
   double hd3 = ErrorCalculation::calculate_huber_direction_loss(gt, pr_mismatch, c5);
   EXPECT_DOUBLE_EQ(hd3, hd1); // Should ignore lambda because flag is false
 }
@@ -715,7 +715,7 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   // Total = (0.125 + 1.5) / 2 = 0.8125
   std::vector<std::vector<double>> gt_huber = { { 0.0 }, { 0.0 } };
   std::vector<std::vector<double>> pred_huber = { { 0.5 }, { 2.0 } };
-  EvaluationConfig huber_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig huber_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
   EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_huber_loss_error(gt_huber, pred_huber, huber_cfg), 0.8125);
 
   // 4. WAPE
@@ -743,7 +743,7 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   // Avg = -ln(0.8)
   std::vector<std::vector<double>> gt_bce = { { 1.0 }, { 0.0 } };
   std::vector<std::vector<double>> pred_bce = { { 0.8 }, { 0.2 } };
-  EvaluationConfig bce_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig bce_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
   const double expected_bce = -std::log(0.8);
   EXPECT_NEAR(ErrorCalculation::calculate_bce_loss(gt_bce, pred_bce, bce_cfg), expected_bce, 1e-12);
 
@@ -875,7 +875,7 @@ TEST_F(ErrorCalculationTest, CrossEntropyWithLabelSmoothing)
   std::vector<std::vector<double>> gt = { { 1.0, 0.0, 0.0 } };
   std::vector<std::vector<double>> pred = { { 0.7, 0.2, 0.1 } };
 
-  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
   double loss = ErrorCalculation::calculate_cross_entropy(gt, pred, config_smooth);
 
   const double expected_y0 = 1.0 * 0.9 + 0.1 / 3.0;
@@ -897,7 +897,7 @@ TEST_F(ErrorCalculationTest, BCEWithLabelSmoothing)
   std::vector<std::vector<double>> gt = { { 1.0 }, { 0.0 } };
   std::vector<std::vector<double>> pred = { { 0.8 }, { 0.2 } };
 
-  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
   double loss = ErrorCalculation::calculate_bce_loss(gt, pred, config_smooth);
 
   const double y_pos = 0.95;
@@ -911,33 +911,33 @@ TEST_F(ErrorCalculationTest, BCEWithLabelSmoothing)
 
 TEST_F(ErrorCalculationTest, LabelSmoothingValidation)
 {
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, -0.1, { 0.5 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.0, { 0.5 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.5, { 0.5 }), std::runtime_error);
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }));
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.999, { 0.5 }));
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, -0.1, { 0.5 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.0, { 0.5 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 1.5, { 0.5 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.999, { 0.5 }, 0.0, 0.0));
 }
 
 TEST_F(ErrorCalculationTest, QuantileValidation)
 {
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.0 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 1.0 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { -0.1 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 1.1 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, -0.5, 0.9 }), std::runtime_error);
-  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 1.0, 0.9 }), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.0 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 1.0 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { -0.1 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 1.1 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, -0.5, 0.9 }, 0.0, 0.0), std::runtime_error);
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 1.0, 0.9 }, 0.0, 0.0), std::runtime_error);
 
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.001 }));
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }));
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.999 }));
-  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 }));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.001 }, 0.0, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.999 }, 0.0, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 }, 0.0, 0.0));
 
   // Empty quantiles vector should default to 0.5
   EvaluationConfig default_cfg;
   ASSERT_EQ(default_cfg.quantiles().size(), 1u);
   EXPECT_DOUBLE_EQ(default_cfg.quantiles()[0], 0.5);
 
-  EvaluationConfig empty_vec_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, {});
+  EvaluationConfig empty_vec_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, {}, 0.0, 0.0);
   ASSERT_EQ(empty_vec_cfg.quantiles().size(), 1u);
   EXPECT_DOUBLE_EQ(empty_vec_cfg.quantiles()[0], 0.5);
 }
@@ -948,7 +948,7 @@ TEST_F(ErrorCalculationTest, QuantileLossMedianMatchesHalfMAE)
   std::vector<std::vector<double>> gt = { { 10.0 }, { 5.0 }, { 2.0 } };
   std::vector<std::vector<double>> pred = { { 8.0 }, { 7.0 }, { 2.0 } };
 
-  EvaluationConfig q_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig q_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
   const double q_loss = ErrorCalculation::calculate_quantile_loss(gt, pred, q_config);
   const double mae_loss = ErrorCalculation::calculate_mae_error(gt, pred);
 
@@ -971,7 +971,7 @@ TEST_F(ErrorCalculationTest, QuantileLossAsymmetricPenalties)
   std::vector<std::vector<double>> gt_over = { { 5.0 } };
   std::vector<std::vector<double>> pred_over = { { 10.0 } };
 
-  EvaluationConfig config_q10(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1 });
+  EvaluationConfig config_q10(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1 }, 0.0, 0.0);
   const double loss_under_q10 = ErrorCalculation::calculate_quantile_loss(gt_under, pred_under, config_q10);
   const double loss_over_q10 = ErrorCalculation::calculate_quantile_loss(gt_over, pred_over, config_q10);
 
@@ -981,7 +981,7 @@ TEST_F(ErrorCalculationTest, QuantileLossAsymmetricPenalties)
   // Test upper quantile q = 0.9 (Upside target)
   // Underestimation (y > y_hat): target 10, pred 5 => loss = 0.9 * 5 = 4.5
   // Overestimation (y < y_hat): target 5, pred 10 => loss = 0.1 * 5 = 0.5
-  EvaluationConfig config_q90(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.9 });
+  EvaluationConfig config_q90(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.9 }, 0.0, 0.0);
   const double loss_under_q90 = ErrorCalculation::calculate_quantile_loss(gt_under, pred_under, config_q90);
   const double loss_over_q90 = ErrorCalculation::calculate_quantile_loss(gt_over, pred_over, config_q90);
 
@@ -1001,7 +1001,7 @@ TEST_F(ErrorCalculationTest, MultiQuantileVectorLoss)
   std::vector<std::vector<double>> gt = { { 10.0, 10.0, 10.0 } };
   std::vector<std::vector<double>> pred = { { 8.0, 10.0, 12.0 } };
 
-  EvaluationConfig config_multi(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 });
+  EvaluationConfig config_multi(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 }, 0.0, 0.0);
   const double loss = ErrorCalculation::calculate_quantile_loss(gt, pred, config_multi);
 
   EXPECT_NEAR(loss, 0.4 / 3.0, 1e-12);
@@ -1015,5 +1015,117 @@ TEST_F(ErrorCalculationTest, QuantileLossStringConversions)
   EXPECT_EQ(ErrorCalculation::string_to_type("QUANTILE-LOSS"), ErrorCalculation::type::quantile_loss);
   EXPECT_EQ(ErrorCalculation::string_to_type("PINBALL-LOSS"), ErrorCalculation::type::quantile_loss);
   EXPECT_EQ(ErrorCalculation::string_to_type("quantile"), ErrorCalculation::type::quantile_loss);
+}
+
+TEST_F(ErrorCalculationTest, SharpeAndSortinoValidation)
+{
+  // Transaction cost penalty must be non-negative
+  EXPECT_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, -0.01, 0.0), std::runtime_error);
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0));
+  EXPECT_NO_THROW((void)EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, -0.02));
+}
+
+TEST_F(ErrorCalculationTest, SharpeRatioLossHandCalculated)
+{
+  // 4 time steps: asset returns gt = [0.02, -0.01, 0.03, 0.01]
+  // Network positions pred = [1.0, -1.0, 1.0, 1.0]
+  // Transaction cost c = 0.001
+  // Step 0: R_0 = 1.0 * 0.02 = 0.02 (no delta cost at t=0)
+  // Step 1: delta = |-1 - 1| = 2. Cost = 2 * 0.001 = 0.002. R_1 = (-1.0 * -0.01) - 0.002 = 0.01 - 0.002 = 0.008
+  // Step 2: delta = |1 - (-1)| = 2. Cost = 0.002. R_2 = (1.0 * 0.03) - 0.002 = 0.03 - 0.002 = 0.028
+  // Step 3: delta = |1 - 1| = 0. Cost = 0. R_3 = 1.0 * 0.01 = 0.01
+  // Returns: [0.02, 0.008, 0.028, 0.01]
+  // Mean R: (0.02 + 0.008 + 0.028 + 0.01) / 4 = 0.066 / 4 = 0.0165
+  // Devs: (0.02 - 0.0165) = 0.0035, sq = 1.225e-5
+  //       (0.008 - 0.0165) = -0.0085, sq = 7.225e-5
+  //       (0.028 - 0.0165) = 0.0115, sq = 1.3225e-4
+  //       (0.01 - 0.0165) = -0.0065, sq = 4.225e-5
+  // Sum sq: (1.225 + 7.225 + 13.225 + 4.225) * 1e-5 = 25.9e-5 = 0.000259
+  // Variance: 0.000259 / 4 = 0.00006475
+  // Std dev: sqrt(0.00006475 + 1e-12) ~ 0.0080467384697
+  // Sharpe: 0.0165 / 0.0080467384697 ~ 2.050520235
+  std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 }, { 0.03 }, { 0.01 } };
+  std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 }, { 1.0 }, { 1.0 } };
+
+  EvaluationConfig config_sharpe(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.001, 0.0);
+
+  const double sharpe = ErrorCalculation::calculate_sharpe_ratio(gt, pred, config_sharpe);
+  const double sharpe_loss = ErrorCalculation::calculate_sharpe_ratio_loss(gt, pred, config_sharpe);
+
+  const double expected_mean = 0.0165;
+  const double expected_variance = 0.00006475;
+  const double expected_std = std::sqrt(expected_variance + 1e-12);
+  const double expected_sharpe = expected_mean / expected_std;
+
+  EXPECT_NEAR(sharpe, expected_sharpe, 1e-9);
+  EXPECT_NEAR(sharpe_loss, -expected_sharpe, 1e-9);
+  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sharpe_ratio_loss, gt, pred, config_sharpe, activation::method::tanh), -expected_sharpe, 1e-9);
+}
+
+TEST_F(ErrorCalculationTest, SortinoRatioLossHandCalculated)
+{
+  // Same sequence as above: returns = [0.02, 0.008, 0.028, 0.01]
+  // Target return tau = 0.01
+  // Excess returns relative to tau:
+  // t=0: 0.02 - 0.01 = +0.01 >= 0 -> Downside = 0.0
+  // t=1: 0.008 - 0.01 = -0.002 < 0 -> Downside = -0.002, sq = 4e-6
+  // t=2: 0.028 - 0.01 = +0.018 >= 0 -> Downside = 0.0
+  // t=3: 0.01 - 0.01 = 0.0 >= 0 -> Downside = 0.0
+  // Mean R: 0.0165
+  // Mean R - tau: 0.0165 - 0.01 = 0.0065
+  // Downside variance: 4e-6 / 4 = 1e-6
+  // Downside deviation: sqrt(1e-6 + 1e-12) ~ 0.001
+  // Sortino: 0.0065 / 0.001 = 6.5
+  std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 }, { 0.03 }, { 0.01 } };
+  std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 }, { 1.0 }, { 1.0 } };
+
+  EvaluationConfig config_sortino(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.001, 0.01);
+
+  const double sortino = ErrorCalculation::calculate_sortino_ratio(gt, pred, config_sortino);
+  const double sortino_loss = ErrorCalculation::calculate_sortino_ratio_loss(gt, pred, config_sortino);
+
+  const double expected_downside_var = 1e-6;
+  const double expected_downside_dev = std::sqrt(expected_downside_var + 1e-12);
+  const double expected_sortino = (0.0165 - 0.01) / expected_downside_dev;
+
+  EXPECT_NEAR(sortino, expected_sortino, 1e-7);
+  EXPECT_NEAR(sortino_loss, -expected_sortino, 1e-7);
+  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sortino_ratio_loss, gt, pred, config_sortino, activation::method::tanh), -expected_sortino, 1e-7);
+}
+
+TEST_F(ErrorCalculationTest, SharpeAndSortinoMultiAsset)
+{
+  // 2 assets (neurons) across 2 time steps
+  // Step 0: gt = [0.04, 0.02], pred = [1.0, 0.5]
+  // R_0 = (1.0*0.04 + 0.5*0.02)/2 = (0.04 + 0.01)/2 = 0.025
+  // Step 1: gt = [0.02, -0.02], pred = [1.0, -0.5], c = 0.0
+  // R_1 = (1.0*0.02 + -0.5*-0.02)/2 = (0.02 + 0.01)/2 = 0.015
+  // Mean R = (0.025 + 0.015)/2 = 0.02
+  // Devs: (0.025 - 0.02) = 0.005, sq = 2.5e-5
+  //       (0.015 - 0.02) = -0.005, sq = 2.5e-5
+  // Variance = 2.5e-5
+  // Std dev = sqrt(2.5e-5 + 1e-12) = 0.005
+  // Sharpe = 0.02 / 0.005 = 4.0
+  std::vector<std::vector<double>> gt = { { 0.04, 0.02 }, { 0.02, -0.02 } };
+  std::vector<std::vector<double>> pred = { { 1.0, 0.5 }, { 1.0, -0.5 } };
+
+  EvaluationConfig config_sharpe(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  const double sharpe = ErrorCalculation::calculate_sharpe_ratio(gt, pred, config_sharpe);
+  EXPECT_NEAR(sharpe, 4.0, 1e-6);
+}
+
+TEST_F(ErrorCalculationTest, SharpeAndSortinoStringConversions)
+{
+  EXPECT_EQ(ErrorCalculation::type_to_string(ErrorCalculation::type::sharpe_ratio_loss), "sharpe-ratio-loss");
+  EXPECT_EQ(ErrorCalculation::string_to_type("sharpe-ratio-loss"), ErrorCalculation::type::sharpe_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("sharpe-loss"), ErrorCalculation::type::sharpe_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("sharpe"), ErrorCalculation::type::sharpe_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("SHARPE-RATIO-LOSS"), ErrorCalculation::type::sharpe_ratio_loss);
+
+  EXPECT_EQ(ErrorCalculation::type_to_string(ErrorCalculation::type::sortino_ratio_loss), "sortino-ratio-loss");
+  EXPECT_EQ(ErrorCalculation::string_to_type("sortino-ratio-loss"), ErrorCalculation::type::sortino_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("sortino-loss"), ErrorCalculation::type::sortino_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("sortino"), ErrorCalculation::type::sortino_ratio_loss);
+  EXPECT_EQ(ErrorCalculation::string_to_type("SORTINO-RATIO-LOSS"), ErrorCalculation::type::sortino_ratio_loss);
 }
 

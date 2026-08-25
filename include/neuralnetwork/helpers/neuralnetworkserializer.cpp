@@ -1382,10 +1382,13 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
       }
     }
   }
-  if (quantiles.empty())
-  {
-    quantiles = { 0.5 };
-  }
+  const double transaction_cost_penalty = error_evaluation_config_object->try_get_value("transaction-cost-penalty") != nullptr
+    ? error_evaluation_config_object->get<double>("transaction-cost-penalty")
+    : 0.0;
+
+  const double sortino_target_return = error_evaluation_config_object->try_get_value("sortino-target-return") != nullptr
+    ? error_evaluation_config_object->get<double>("sortino-target-return")
+    : 0.0;
 
   return EvaluationConfig(
     error_evaluation_config_object->get<double>("neutral-tolerance"),
@@ -1396,7 +1399,9 @@ EvaluationConfig NeuralNetworkSerializer::get_error_evaluation_config(const Tiny
     error_evaluation_config_object->get<double>("cross-entropy-lambda"),
     epsilon,
     label_smoothing,
-    quantiles
+    quantiles,
+    transaction_cost_penalty,
+    sortino_target_return
   );
 }
 
@@ -2797,6 +2802,8 @@ void NeuralNetworkSerializer::add_error_evaluation_config(TinyJSON::TJValueObjec
   set_float(error_evaluation_config_object, "epsilon", config.epsilon());
   set_float(error_evaluation_config_object, "label-smoothing", config.label_smoothing());
   set_floats(error_evaluation_config_object, "quantiles", config.quantiles());
+  set_float(error_evaluation_config_object, "transaction-cost-penalty", config.transaction_cost_penalty());
+  set_float(error_evaluation_config_object, "sortino-target-return", config.sortino_target_return());
 
   parent->set("error-evaluation-config", error_evaluation_config_object);
   delete error_evaluation_config_object;

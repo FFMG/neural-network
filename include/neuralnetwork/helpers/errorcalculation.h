@@ -35,7 +35,9 @@ public:
     log_cosh,
     directional_confidence_score,
     prediction_coverage,
-    quantile_loss
+    quantile_loss,
+    sharpe_ratio_loss,
+    sortino_ratio_loss
   };
 private:
   [[nodiscard]] inline static bool iequals(const std::string& str, const char* lit)
@@ -92,6 +94,10 @@ public:
       return "prediction-coverage";
     case type::quantile_loss:
       return "quantile-loss";
+    case type::sharpe_ratio_loss:
+      return "sharpe-ratio-loss";
+    case type::sortino_ratio_loss:
+      return "sortino-ratio-loss";
     }
     Logger::panic("Unknown ErrorCalculation type!");
   }
@@ -166,6 +172,14 @@ public:
     if (iequals(str, "quantile-loss") || iequals(str, "pinball-loss") || iequals(str, "quantile"))
     {
       return type::quantile_loss;
+    }
+    if (iequals(str, "sharpe-ratio-loss") || iequals(str, "sharpe-loss") || iequals(str, "sharpe"))
+    {
+      return type::sharpe_ratio_loss;
+    }
+    if (iequals(str, "sortino-ratio-loss") || iequals(str, "sortino-loss") || iequals(str, "sortino"))
+    {
+      return type::sortino_ratio_loss;
     }
     Logger::panic("Unknown error type: ", str);
 
@@ -244,6 +258,12 @@ public:
 
     case type::quantile_loss:
       return calculate_quantile_loss(ground_truths, predictions, evaluation_config);
+
+    case type::sharpe_ratio_loss:
+      return calculate_sharpe_ratio_loss(ground_truths, predictions, evaluation_config);
+
+    case type::sortino_ratio_loss:
+      return calculate_sortino_ratio_loss(ground_truths, predictions, evaluation_config);
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -280,6 +300,125 @@ public:
       }
     }
     return (count > 0) ? (total_loss / static_cast<double>(count)) : 0.0;
+  }
+
+  static double calculate_sharpe_ratio(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (ground_truths.empty() || predictions.empty() || ground_truths.size() != predictions.size())
+    {
+      return 0.0;
+    }
+
+    const double c = evaluation_config.transaction_cost_penalty();
+    const double eps = evaluation_config.epsilon();
+    const size_t num_samples = ground_truths.size();
+
+    double sum_returns = 0.0;
+    std::vector<double> returns(num_samples, 0.0);
+
+    for (size_t t = 0; t < num_samples; ++t)
+    {
+      const auto& gt = ground_truths[t];
+      const auto& pred = predictions[t];
+      const size_t num_assets = std::min(gt.size(), pred.size());
+      if (num_assets == 0)
+      {
+        continue;
+      }
+
+      double step_return = 0.0;
+      for (size_t j = 0; j < num_assets; ++j)
+      {
+        const double pos = pred[j];
+        const double prev_pos = (t > 0 && j < predictions[t - 1].size()) ? predictions[t - 1][j] : 0.0;
+        const double cost = (t > 0) ? (c * std::abs(pos - prev_pos)) : 0.0;
+        step_return += (pos * gt[j] - cost);
+      }
+      step_return /= static_cast<double>(num_assets);
+      returns[t] = step_return;
+      sum_returns += step_return;
+    }
+
+    const double mean_return = sum_returns / static_cast<double>(num_samples);
+
+    double sum_sq_diff = 0.0;
+    for (size_t t = 0; t < num_samples; ++t)
+    {
+      const double diff = returns[t] - mean_return;
+      sum_sq_diff += diff * diff;
+    }
+
+    const double variance = sum_sq_diff / static_cast<double>(num_samples);
+    const double std_dev = std::sqrt(variance + eps);
+
+    return mean_return / std_dev;
+  }
+
+  static double calculate_sharpe_ratio_loss(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    return -calculate_sharpe_ratio(ground_truths, predictions, evaluation_config);
+  }
+
+  static double calculate_sortino_ratio(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (ground_truths.empty() || predictions.empty() || ground_truths.size() != predictions.size())
+    {
+      return 0.0;
+    }
+
+    const double c = evaluation_config.transaction_cost_penalty();
+    const double tau = evaluation_config.sortino_target_return();
+    const double eps = evaluation_config.epsilon();
+    const size_t num_samples = ground_truths.size();
+
+    double sum_returns = 0.0;
+    std::vector<double> returns(num_samples, 0.0);
+
+    for (size_t t = 0; t < num_samples; ++t)
+    {
+      const auto& gt = ground_truths[t];
+      const auto& pred = predictions[t];
+      const size_t num_assets = std::min(gt.size(), pred.size());
+      if (num_assets == 0)
+      {
+        continue;
+      }
+
+      double step_return = 0.0;
+      for (size_t j = 0; j < num_assets; ++j)
+      {
+        const double pos = pred[j];
+        const double prev_pos = (t > 0 && j < predictions[t - 1].size()) ? predictions[t - 1][j] : 0.0;
+        const double cost = (t > 0) ? (c * std::abs(pos - prev_pos)) : 0.0;
+        step_return += (pos * gt[j] - cost);
+      }
+      step_return /= static_cast<double>(num_assets);
+      returns[t] = step_return;
+      sum_returns += step_return;
+    }
+
+    const double mean_return = sum_returns / static_cast<double>(num_samples);
+
+    double sum_downside_sq = 0.0;
+    for (size_t t = 0; t < num_samples; ++t)
+    {
+      const double downside = std::min(0.0, returns[t] - tau);
+      sum_downside_sq += downside * downside;
+    }
+
+    const double downside_variance = sum_downside_sq / static_cast<double>(num_samples);
+    const double downside_std_dev = std::sqrt(downside_variance + eps);
+
+    return (mean_return - tau) / downside_std_dev;
+  }
+
+  static double calculate_sortino_ratio_loss(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    return -calculate_sortino_ratio(ground_truths, predictions, evaluation_config);
   }
 
   static double calculate_huber_loss_error(std::span<const std::vector<double>> ground_truth, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)

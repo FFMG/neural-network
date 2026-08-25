@@ -76,6 +76,12 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .value("PredictionCoverage", ErrorCalculation::type::prediction_coverage)
         .value("QuantileLoss", ErrorCalculation::type::quantile_loss)
         .value("PinballLoss", ErrorCalculation::type::quantile_loss)
+        .value("SharpeRatioLoss", ErrorCalculation::type::sharpe_ratio_loss)
+        .value("SharpeLoss", ErrorCalculation::type::sharpe_ratio_loss)
+        .value("Sharpe", ErrorCalculation::type::sharpe_ratio_loss)
+        .value("SortinoRatioLoss", ErrorCalculation::type::sortino_ratio_loss)
+        .value("SortinoLoss", ErrorCalculation::type::sortino_ratio_loss)
+        .value("Sortino", ErrorCalculation::type::sortino_ratio_loss)
         .export_values();
 
     py::enum_<Layer::Architecture>(m, "LayerArchitecture")
@@ -155,7 +161,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
 
     py::class_<EvaluationConfig>(m, "EvaluationConfig")
         .def(py::init<>())
-        .def(py::init<double, double, double, double, bool, double, double, double, const std::vector<double>&>(),
+        .def(py::init<double, double, double, double, bool, double, double, double, const std::vector<double>&, double, double>(),
              py::arg("neutral_tolerance"),
              py::arg("confidence_threshold"),
              py::arg("huber_delta"),
@@ -164,7 +170,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
              py::arg("cross_entropy_lambda"),
              py::arg("epsilon"),
              py::arg("label_smoothing"),
-             py::arg("quantiles"))
+             py::arg("quantiles"),
+             py::arg("transaction_cost_penalty"),
+             py::arg("sortino_target_return"))
         .def_property_readonly("neutral_tolerance", &EvaluationConfig::neutral_tolerance)
         .def_property_readonly("confidence_threshold", &EvaluationConfig::confidence_threshold)
         .def_property_readonly("huber_delta", &EvaluationConfig::huber_delta)
@@ -173,7 +181,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("cross_entropy_lambda", &EvaluationConfig::cross_entropy_lambda)
         .def_property_readonly("epsilon", &EvaluationConfig::epsilon)
         .def_property_readonly("label_smoothing", &EvaluationConfig::label_smoothing)
-        .def_property_readonly("quantiles", &EvaluationConfig::quantiles);
+        .def_property_readonly("quantiles", &EvaluationConfig::quantiles)
+        .def_property_readonly("transaction_cost_penalty", &EvaluationConfig::transaction_cost_penalty)
+        .def_property_readonly("sortino_target_return", &EvaluationConfig::sortino_target_return);
 
     py::class_<LayerDetails>(m, "LayerDetails")
         .def(py::init<Layer::Architecture, unsigned, const activation&, double, double, OptimiserType, double, bool, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned>(),
@@ -274,6 +284,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details))
         .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, const std::vector<double>&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
              py::arg("layer_size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("quantiles"), py::arg("optimiser_type"), py::arg("momentum"))
+        .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, double, double, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
+             py::arg("layer_size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("transaction_cost_penalty"), py::arg("sortino_target_return"), py::arg("optimiser_type"), py::arg("momentum"))
         .def("with_number_of_epoch", &NeuralNetworkOptions::with_number_of_epoch)
         .def("with_batch_size", &NeuralNetworkOptions::with_batch_size)
         .def("with_data_is_unique", &NeuralNetworkOptions::with_data_is_unique)

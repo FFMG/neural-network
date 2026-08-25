@@ -36,7 +36,7 @@ NeuralNetwork::NeuralNetwork(
       topology.back(), 
       activation(output_layer_activation, 0.01), 
       ErrorCalculation::type::mse, 
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.05, OptimiserType::SGD, 0.99))
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.05, OptimiserType::SGD, 0.99))
     .build())
 {
   (void)hidden_layer_activation;
@@ -1584,8 +1584,9 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty(), "\n",
         tab, tab, tab, tab, tab, "epsilon              : ", details.get_error_evaluation_config().epsilon(), "\n",
         tab, tab, tab, tab, tab, "label-smoothing      : ", details.get_error_evaluation_config().label_smoothing(), "\n",
-        tab, tab, tab, tab, tab, "quantiles            : ", details.get_error_evaluation_config().quantiles());
-
+        tab, tab, tab, tab, tab, "quantiles            : ", details.get_error_evaluation_config().quantiles(), "\n",
+        tab, tab, tab, tab, tab, "tran. cost penalty   : ", details.get_error_evaluation_config().transaction_cost_penalty(), "\n",
+        tab, tab, tab, tab, tab, "sortino target return: ", details.get_error_evaluation_config().sortino_target_return());
 
       if (output_layer_head_index < static_cast<int>(heads.size()))
       {

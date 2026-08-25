@@ -30,7 +30,7 @@ TEST(NetworkIntegrationTest, CrossLayerGradientPropagation) {
     FFLayer layer1(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
     GRURNNLayer layer2(2, num_neurons, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
 
-    OutputLayerDetails out_details(num_neurons, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 0.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::SGD, 0.0);
+    OutputLayerDetails out_details(num_neurons, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 0.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::SGD, 0.0);
     FFOutputLayer layer3(3, { out_details }, num_neurons, num_neurons, 1, true, std::nullopt);
 
     // Set weights to identity for all layers
@@ -95,7 +95,7 @@ TEST(NetworkIntegrationTest, LinearRegressionNoBiasConvergence)
     .with_number_of_epoch(100)
     .with_shuffle_training_data(true)
     .with_has_bias(false)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .build();
 
   NeuralNetwork nn(options);
@@ -134,7 +134,7 @@ TEST(NetworkIntegrationTest, LinearRegressionWithBiasConvergence)
     .with_number_of_epoch(100)
     .with_shuffle_training_data(true)
     .with_has_bias(true)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .build();
 
   NeuralNetwork nn(options);
@@ -173,7 +173,7 @@ TEST(NetworkIntegrationTest, XorFFConvergence)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .with_learning_rate(0.1)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(true)
@@ -221,7 +221,7 @@ TEST(NetworkIntegrationTest, XorFFConvergenceLion)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Lion, 0.9))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Lion, 0.9))
     .with_learning_rate(0.1)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(true)
@@ -269,7 +269,7 @@ TEST(NetworkIntegrationTest, ElmanRNNSequenceConvergence)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .with_learning_rate(0.05)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(false)
@@ -319,7 +319,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergence)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::SGD, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::SGD, 0.0))
     .with_learning_rate(0.05)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(false)
@@ -404,7 +404,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceLayerNorm)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -459,7 +459,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceLayerNorm)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -526,7 +526,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceAttentionPool)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -586,7 +586,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceAttentionPool)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -639,7 +639,7 @@ TEST(NetworkIntegrationTest, AttentionPoolSerializerSaveLoad)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3, 3 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
     .with_shuffle_training_data(false)
@@ -722,7 +722,7 @@ TEST(NetworkIntegrationTest, TCNSequenceConvergence)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -784,7 +784,7 @@ TEST(NetworkIntegrationTest, TCNSerializerSaveLoad)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
     .with_shuffle_training_data(false)
@@ -894,7 +894,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSequenceConvergence)
   // means its size (4) must match the input topology width (4), not 1.
   auto options = NeuralNetworkOptions::create({ 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -961,7 +961,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializerSaveLoad)
   // means its size (4) must match the input topology width (4), not 2.
   auto options = NeuralNetworkOptions::create({ 4, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
     .with_shuffle_training_data(false)
@@ -1086,7 +1086,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergence)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::SGD, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::SGD, 0.0))
     .with_learning_rate(0.05)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(false)
@@ -1156,7 +1156,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceBpttSuperviseLastStepOnly)
   };
   auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::SGD, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::SGD, 0.0))
     .with_learning_rate(0.05)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(false)
@@ -1227,7 +1227,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceMultiOutputBpttSuperviseLastS
     LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
 
-  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
   OutputLayerDetails branch_a_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
   OutputLayerDetails branch_b_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
   std::vector<MultiOutputLayerDetails> multi_output_layer_details = {
@@ -1393,7 +1393,7 @@ TEST(NetworkIntegrationTest, LayerNormGainBiasSerializerSaveLoad)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
     .with_shuffle_training_data(false)
@@ -1453,7 +1453,7 @@ TEST(NetworkIntegrationTest, LSTMLayerNormGainBiasSerializerSaveLoad)
   };
   auto options = NeuralNetworkOptions::create({ 2, 3, 3 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(3)
     .with_shuffle_training_data(false)
@@ -1573,7 +1573,7 @@ static NeuralNetworkOptions create_swa_baseline_comparison_options(bool swa_enab
   };
   auto builder = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .with_learning_rate(0.1)
     .with_number_of_epoch(40)
     .with_shuffle_training_data(false)
@@ -1643,7 +1643,7 @@ TEST(NetworkIntegrationTest, GRUSequenceConvergenceSwa)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 4 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(4, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -1694,7 +1694,7 @@ TEST(NetworkIntegrationTest, LSTMSequenceConvergenceSwa)
   };
   auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(false)
@@ -1745,7 +1745,7 @@ TEST(NetworkIntegrationTest, SwaWithMultiOutputBranches)
   std::vector<LayerDetails> hidden_layers = {
     LayerDetails(Layer::Architecture::Gru, 2, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
   };
-  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
   OutputLayerDetails branch_a_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
   OutputLayerDetails branch_b_output(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);
   std::vector<MultiOutputLayerDetails> multi_output_layer_details = {
@@ -1882,7 +1882,7 @@ TEST(NetworkIntegrationTest, UpdateWeightsTouchesEveryLayerAcrossThreadCounts)
 
     auto options = NeuralNetworkOptions::create({ 2, 6, 6, 6, 1 })
       .with_hidden_layers(hidden_layers)
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
       .with_learning_rate(0.1)
       .with_number_of_epoch(1)
       .with_batch_size(4)
@@ -1928,7 +1928,7 @@ TEST(NetworkIntegrationTest, DeepNetworkConvergesWithExplicitThreadCount)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.0))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.0))
     .with_learning_rate(0.1)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(true)
@@ -2585,7 +2585,7 @@ namespace {
     };
     return NeuralNetworkOptions::create({ 2, 4, 1 })
       .with_hidden_layers(hidden_layers)
-      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+      .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
       .with_learning_rate(0.05)
       .with_number_of_epoch(5)
       .with_shuffle_training_data(true)
@@ -2707,7 +2707,7 @@ TEST(NetworkIntegrationTest, FloatingPointWeightsSerializationPrecision)
   };
   auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::Adam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
     .with_learning_rate(0.02)
     .with_number_of_epoch(1)
     .build();
@@ -2769,7 +2769,7 @@ TEST(NetworkIntegrationTest, SelfAttentionSerializationRoundTripWithResidualAndM
 
   auto options = NeuralNetworkOptions::create({ 4, 4, 2 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.01, OptimiserType::AdamW, 0.88))
+    .with_output_layer_details(OutputLayerDetails(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.01, OptimiserType::AdamW, 0.88))
     .with_residual_layer_jump(1)
     .with_enable_bptt(true)
     .with_bptt_max_ticks(8)
@@ -2828,7 +2828,7 @@ TEST(NetworkIntegrationTest, QuickGeluSerializerSaveLoad)
       2,
       activation(activation::method::quickGelu, 1.5),
       ErrorCalculation::type::mse,
-      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } },
+      { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 },
       0.0,
       OptimiserType::Adam,
       0.9))
@@ -2876,7 +2876,7 @@ TEST(NetworkIntegrationTest, QuickGeluSerializerSaveLoad)
 TEST(NetworkIntegrationTest, LabelSmoothingCrossEntropyTrainingAndSerializationRoundtrip)
 {
   MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
-  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
   EXPECT_DOUBLE_EQ(eval_cfg.label_smoothing(), 0.1);
 
   auto options = NeuralNetworkOptions::create({ 4, 8, 3 })
@@ -2973,7 +2973,7 @@ TEST(NetworkIntegrationTest, LabelSmoothingCrossEntropyTrainingAndSerializationR
 TEST(NetworkIntegrationTest, LabelSmoothingBCETraining)
 {
   MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
-  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
 
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers({
@@ -3009,7 +3009,7 @@ TEST(NetworkIntegrationTest, XorFFConvergenceRAdam)
   };
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::RAdam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::RAdam, 0.9))
     .with_learning_rate(0.1)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(true)
@@ -3058,7 +3058,7 @@ TEST(NetworkIntegrationTest, RAdamTrainingAndSerializationRoundtrip)
   };
   auto options = NeuralNetworkOptions::create({ 4, 8, 3 })
     .with_hidden_layers(hidden_layers)
-    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } }, 0.01, OptimiserType::RAdam, 0.9))
+    .with_output_layer_details(OutputLayerDetails(3, activation(activation::method::softmax, 1.0), ErrorCalculation::type::cross_entropy, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.01, OptimiserType::RAdam, 0.9))
     .with_learning_rate(0.01)
     .with_number_of_epoch(50)
     .with_shuffle_training_data(true)
@@ -3185,7 +3185,7 @@ TEST(NetworkIntegrationTest, MultiQuantileRegressionTrainingAndSerializationRoun
 {
   MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
   const std::vector<double> quantiles = { 0.1, 0.5, 0.9 };
-  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, quantiles);
+  EvaluationConfig eval_cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, quantiles, 0.0, 0.0);
   EXPECT_EQ(eval_cfg.quantiles().size(), 3u);
   EXPECT_DOUBLE_EQ(eval_cfg.quantiles()[0], 0.1);
   EXPECT_DOUBLE_EQ(eval_cfg.quantiles()[1], 0.5);
@@ -3291,4 +3291,122 @@ TEST(NetworkIntegrationTest, SingleQuantileMedianTrainingConvergence)
   const double loss_after = ErrorCalculation::calculate_quantile_loss(targets, trained_preds, options.output_layer_details()[0].get_error_evaluation_config());
 
   EXPECT_LT(loss_after, loss_before);
+}
+
+TEST(NetworkIntegrationTest, SharpeRatioLossTrainingConvergence)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  // Train network to predict trading positions from features using Sharpe ratio loss
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers({
+      LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+    })
+    .with_output_layer_details(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::sharpe_ratio_loss, 0.001, 0.0, OptimiserType::Adam, 0.9)
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(100)
+    .with_batch_size(4)
+    .with_shuffle_training_data(false)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> returns;
+  for (int i = 0; i < 24; ++i)
+  {
+    const double x = (i % 2 == 0) ? 1.0 : -1.0;
+    inputs.push_back({ x });
+    returns.push_back({ (x > 0.0) ? 0.05 : -0.05 });
+  }
+
+  const auto initial_preds = nn.think(inputs);
+  const double loss_before = ErrorCalculation::calculate_sharpe_ratio_loss(returns, initial_preds, options.output_layer_details()[0].get_error_evaluation_config());
+  nn.train(inputs, returns);
+  const auto trained_preds = nn.think(inputs);
+  const double loss_after = ErrorCalculation::calculate_sharpe_ratio_loss(returns, trained_preds, options.output_layer_details()[0].get_error_evaluation_config());
+
+  EXPECT_LT(loss_after, loss_before);
+}
+
+TEST(NetworkIntegrationTest, SortinoRatioLossTrainingConvergence)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers({
+      LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+    })
+    .with_output_layer_details(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::sortino_ratio_loss, 0.001, 0.01, OptimiserType::Adam, 0.9)
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(100)
+    .with_batch_size(4)
+    .with_shuffle_training_data(false)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> returns;
+  for (int i = 0; i < 24; ++i)
+  {
+    const double x = (i % 2 == 0) ? 1.0 : -1.0;
+    inputs.push_back({ x });
+    returns.push_back({ (x > 0.0) ? 0.04 : -0.04 });
+  }
+
+  const auto initial_preds = nn.think(inputs);
+  const double loss_before = ErrorCalculation::calculate_sortino_ratio_loss(returns, initial_preds, options.output_layer_details()[0].get_error_evaluation_config());
+  nn.train(inputs, returns);
+  const auto trained_preds = nn.think(inputs);
+  const double loss_after = ErrorCalculation::calculate_sortino_ratio_loss(returns, trained_preds, options.output_layer_details()[0].get_error_evaluation_config());
+
+  EXPECT_LT(loss_after, loss_before);
+}
+
+TEST(NetworkIntegrationTest, SharpeAndSortinoSerializationRoundTrip)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers({
+      LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+    })
+    .with_output_layer_details(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::sortino_ratio_loss, 0.002, 0.015, OptimiserType::Adam, 0.9)
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(1)
+    .with_seed(123)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> sample_inputs = { { 0.5, -0.5 }, { -0.2, 0.8 } };
+  std::vector<std::vector<double>> sample_targets = { { 0.05 }, { -0.03 } };
+  nn.train(sample_inputs, sample_targets);
+
+  const std::string test_path = "test_sharpe_sortino_roundtrip.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto restored_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  std::remove(test_path.c_str());
+  ASSERT_NE(restored_nn, nullptr);
+
+  const auto& restored_opts = restored_nn->options();
+  ASSERT_EQ(restored_opts.output_layer_details().size(), 1u);
+  const auto& out_cfg = restored_opts.output_layer_details()[0].get_error_evaluation_config();
+
+  EXPECT_EQ(restored_opts.output_layer_details()[0].get_output_error_calculation_type(), ErrorCalculation::type::sortino_ratio_loss);
+  EXPECT_DOUBLE_EQ(out_cfg.transaction_cost_penalty(), 0.002);
+  EXPECT_DOUBLE_EQ(out_cfg.sortino_target_return(), 0.015);
+
+  auto orig_preds = nn.think(sample_inputs);
+  auto rest_preds = restored_nn->think(sample_inputs);
+
+  ASSERT_EQ(orig_preds.size(), rest_preds.size());
+  for (size_t i = 0; i < orig_preds.size(); ++i)
+  {
+    ASSERT_EQ(orig_preds[i].size(), rest_preds[i].size());
+    for (size_t j = 0; j < orig_preds[i].size(); ++j)
+    {
+      EXPECT_NEAR(orig_preds[i][j], rest_preds[i][j], 1e-12);
+    }
+  }
 }

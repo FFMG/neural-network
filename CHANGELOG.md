@@ -2,6 +2,21 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.41] - 2026-08-25
+
+### Added
+- Implemented Differentiable Sharpe and Sortino Ratio Losses (`ErrorCalculation::type::sharpe_ratio_loss` and `ErrorCalculation::type::sortino_ratio_loss`):
+  - Direct maximization of risk-adjusted returns (Sharpe ratio $S = \frac{\bar{R}}{\sigma}$ and Sortino ratio $S_{\text{Sortino}} = \frac{\bar{R} - \tau}{\sigma_d}$) as loss functions $L = -S$.
+  - Supports transaction cost penalties ($c \ge 0.0$) proportional to position changes $|\Delta \hat{y}_{t}|$: $R_t = \hat{y}_t r_t - c |\Delta \hat{y}_t|$.
+  - Supports configurable target return benchmark $\tau$ (`sortino_target_return`) for downside deviation $\sigma_d = \sqrt{\frac{1}{N}\sum \min(0, R_t - \tau)^2 + \epsilon}$.
+  - Supports multi-asset portfolio outputs where portfolio return is averaged across asset positions.
+  - Extended `EvaluationConfig` with `_transaction_cost_penalty` ($c \ge 0.0$) and `_sortino_target_return` ($\tau$), with non-defaulted constructor parameters, validation, and const getters `transaction_cost_penalty()` and `sortino_target_return()`.
+  - Implemented `ErrorCalculation::calculate_sharpe_ratio`, `ErrorCalculation::calculate_sharpe_ratio_loss`, `ErrorCalculation::calculate_sortino_ratio`, `ErrorCalculation::calculate_sortino_ratio_loss`, and backward delta calculations in `Layer::calculate_sharpe_ratio_loss_error_deltas` and `Layer::calculate_sortino_ratio_loss_error_deltas`.
+  - Added JSON serialization and deserialization support for `"transaction-cost-penalty"` and `"sortino-target-return"` in `NeuralNetworkSerializer` with backwards compatibility for legacy model files (defaulting to 0.0).
+  - Added fluent builder overloads in `NeuralNetworkOptions` (`with_output_layer_details` accepting `transaction_cost_penalty` and `sortino_target_return`).
+  - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.SharpeRatioLoss`, `ErrorCalculationType.SortinoRatioLoss`, and properties in `EvaluationConfig` and `NeuralNetworkOptions`.
+  - Comprehensive unit, multi-asset, numerical validation, gradient deltas, serializer round-trip, and end-to-end training convergence tests in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
+
 ## [1.1.40] - 2026-08-25
 
 ### Added

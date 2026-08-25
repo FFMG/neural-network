@@ -195,8 +195,8 @@ TEST(LayerTest, CalculateErrorDeltasHuberDirectionPenalty)
   MockLayer layer(0, 1);
   std::vector<double> deltas(1, 0.0);
 
-  EvaluationConfig config_penalty(0.01, 0.15, 1.0, 0.5, true, 1.0, 1e-12, 0.0, { 0.5 });
-  EvaluationConfig config_no_penalty(0.01, 0.15, 1.0, 0.5, false, 1.0, 1e-12, 0.0, { 0.5 });
+  EvaluationConfig config_penalty(0.01, 0.15, 1.0, 0.5, true, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  EvaluationConfig config_no_penalty(0.01, 0.15, 1.0, 0.5, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
 
   // Case 1: Sign mismatch, target is -1.0, output is 0.5
   // use_direction_penalty is true
@@ -248,11 +248,39 @@ TEST(LayerTest, CalculateErrorDeltasQuantileLoss) {
     std::vector<double> deltas(3, 0.0);
     std::vector<double> targets = { 10.0, 10.0, 10.0 };
     std::vector<double> given = { 8.0, 10.0, 12.0 };
-    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 });
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.1, 0.5, 0.9 }, 0.0, 0.0);
     layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::quantile_loss, config, activation::method::linear, 0, 2);
     EXPECT_NEAR(deltas[0], -0.1 / 3.0, 1e-9);
     EXPECT_NEAR(deltas[1], -0.5 / 3.0, 1e-9);
     EXPECT_NEAR(deltas[2], 0.1 / 3.0, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSharpeRatioLoss) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 0.05, -0.03 };
+    std::vector<double> given = { 0.8, -0.6 };
+    // Cost c = 0.01, 2 neurons -> 1/2 multiplier
+    // Neuron 0: target = 0.05, pos = 0.8 > 0 (sgn = 1) -> grad = -(0.05 - 0.01 * 1) = -0.04 -> delta = -0.02
+    // Neuron 1: target = -0.03, pos = -0.6 < 0 (sgn = -1) -> grad = -(-0.03 - 0.01 * -1) = -(-0.02) = 0.02 -> delta = 0.01
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.01, 0.0);
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1);
+    EXPECT_NEAR(deltas[0], -0.02, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.01, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSortinoRatioLoss) {
+    MockLayer layer(0, 2);
+    std::vector<double> deltas(2, 0.0);
+    std::vector<double> targets = { 0.05, -0.03 };
+    std::vector<double> given = { 0.8, -0.6 };
+    // tau = 0.01, c = 0.005, 2 neurons
+    // Neuron 0: target - tau = 0.04. pos = 0.8 (sgn = 1). grad = -(0.04 - 0.005*1) = -0.035 -> delta = -0.0175
+    // Neuron 1: target - tau = -0.04. pos = -0.6 (sgn = -1). grad = -(-0.04 - 0.005*-1) = -(-0.035) = 0.035 -> delta = 0.0175
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, 0.01);
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1);
+    EXPECT_NEAR(deltas[0], -0.0175, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.0175, 1e-9);
 }
 
 TEST(LayerTest, CalculateErrorDeltasRobustness) {
@@ -1085,7 +1113,7 @@ TEST(LayerTest, LayersForwardFeedResidualLeakDoesNotContaminateNonResidualLayer)
     width,
     activation(activation::method::linear, 0.0),
     ErrorCalculation::type::mse,
-    { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 } },
+    { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 },
     0.0,
     OptimiserType::None,
     0.0);
@@ -1133,7 +1161,7 @@ TEST(LayerTest, CalculateErrorDeltasSoftmaxWithLabelSmoothing)
   std::vector<double> targets = { 1.0, 0.0, 0.0 };
   std::vector<double> given = { 0.7, 0.2, 0.1 };
 
-  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
   layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::cross_entropy, config_smooth, activation::method::softmax, 0, num_classes - 1);
 
   const double y_smooth_0 = 1.0 * 0.9 + 0.1 / 3.0;
@@ -1159,7 +1187,7 @@ TEST(LayerTest, CalculateErrorDeltasBCEWithLabelSmoothing)
   std::vector<double> targets = { 1.0, 0.0 };
   std::vector<double> given = { 0.8, 0.4 };
 
-  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 });
+  EvaluationConfig config_smooth(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.1, { 0.5 }, 0.0, 0.0);
   layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::bce_loss, config_smooth, activation::method::sigmoid, 0, 1);
 
   EXPECT_NEAR(deltas[0], -0.075, 1e-9);

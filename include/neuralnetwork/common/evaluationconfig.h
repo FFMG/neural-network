@@ -12,7 +12,7 @@ class EvaluationConfig final
 {
 public:
   EvaluationConfig() noexcept :
-    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 })
+    EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -26,7 +26,9 @@ public:
     double cross_entropy_lambda,
     double epsilon,
     double label_smoothing,
-    const std::vector<double>& quantiles) :
+    const std::vector<double>& quantiles,
+    double transaction_cost_penalty,
+    double sortino_target_return) :
     _neutral_tolerance(neutral_tolerance),
     _confidence_threshold(confidence_threshold),
     _huber_delta(huber_delta),
@@ -35,12 +37,22 @@ public:
     _cross_entropy_lambda(cross_entropy_lambda),
     _epsilon(epsilon),
     _label_smoothing(label_smoothing),
-    _quantiles(quantiles)
+    _quantiles(quantiles),
+    _transaction_cost_penalty(transaction_cost_penalty),
+    _sortino_target_return(sortino_target_return)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     if (_label_smoothing < 0.0 || _label_smoothing >= 1.0)
     {
       Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
+    }
+    if (_transaction_cost_penalty < 0.0 || !std::isfinite(_transaction_cost_penalty))
+    {
+      Logger::panic("The transaction cost penalty must be non-negative!");
+    }
+    if (!std::isfinite(_sortino_target_return))
+    {
+      Logger::panic("The sortino target return must be a finite number!");
     }
     if (_quantiles.empty())
     {
@@ -64,7 +76,9 @@ public:
     _cross_entropy_lambda(src._cross_entropy_lambda),
     _epsilon(src._epsilon),
     _label_smoothing(src._label_smoothing),
-    _quantiles(src._quantiles)
+    _quantiles(src._quantiles),
+    _transaction_cost_penalty(src._transaction_cost_penalty),
+    _sortino_target_return(src._sortino_target_return)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -78,7 +92,9 @@ public:
     _cross_entropy_lambda(src._cross_entropy_lambda),
     _epsilon(src._epsilon),
     _label_smoothing(src._label_smoothing),
-    _quantiles(std::move(src._quantiles))
+    _quantiles(std::move(src._quantiles)),
+    _transaction_cost_penalty(src._transaction_cost_penalty),
+    _sortino_target_return(src._sortino_target_return)
   {
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
   }
@@ -97,6 +113,8 @@ public:
       _epsilon = src._epsilon;
       _label_smoothing = src._label_smoothing;
       _quantiles = src._quantiles;
+      _transaction_cost_penalty = src._transaction_cost_penalty;
+      _sortino_target_return = src._sortino_target_return;
     }
     return *this;
   }
@@ -115,6 +133,8 @@ public:
       _epsilon = src._epsilon;
       _label_smoothing = src._label_smoothing;
       _quantiles = std::move(src._quantiles);
+      _transaction_cost_penalty = src._transaction_cost_penalty;
+      _sortino_target_return = src._sortino_target_return;
     }
     return *this;
   }
@@ -164,6 +184,16 @@ public:
     MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
     return _quantiles;
   }
+  [[nodiscard]] inline double transaction_cost_penalty() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    return _transaction_cost_penalty;
+  }
+  [[nodiscard]] inline double sortino_target_return() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("EvaluationConfig");
+    return _sortino_target_return;
+  }
 private:
   double _neutral_tolerance;
   double _confidence_threshold;
@@ -174,6 +204,8 @@ private:
   double _epsilon;
   double _label_smoothing;
   std::vector<double> _quantiles;
+  double _transaction_cost_penalty;
+  double _sortino_target_return;
 };
 
 } // namespace myoddweb::nn

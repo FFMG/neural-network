@@ -240,7 +240,7 @@ TEST_F(LayerDetailsTest, LayerDetailsVocabularySizeAndEmbeddingDimensionFields) 
 TEST_F(LayerDetailsTest, OutputLayerDetailsMethods) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::softmax, 0.0, 1.2);
-    EvaluationConfig config(0.1, 0.2, 1.0, 0.0, true, 0.5, 1e-10, 0.0, { 0.5 });
+    EvaluationConfig config(0.1, 0.2, 1.0, 0.0, true, 0.5, 1e-10, 0.0, { 0.5 }, 0.0, 0.0);
     OutputLayerDetails details(5, act, ErrorCalculation::type::cross_entropy, config, 0.01, OptimiserType::Nadam, 0.8);
 
     EXPECT_EQ(details.get_size(), 5);
@@ -316,7 +316,7 @@ TEST_F(LayerDetailsTest, ComplexArchitectureVerification) {
     // Branch B: FF(ELU) -> Output(Linear, MSE)
     // Branch C: Output(Softmax, CE)
     
-    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
 
     LayerDetails hA1(Layer::Architecture::FF, 2, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     LayerDetails hA2(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
@@ -386,7 +386,7 @@ TEST_F(LayerDetailsTest, RecurrentArchitectureVerification) {
     // Branch A: RNN(Tanh) -> Output(Linear, MSE)
     // Branch B: GRU(Sigmoid) -> Output(Linear, MSE)
     
-    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 });
+    EvaluationConfig clean_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
 
     LayerDetails hA(Layer::Architecture::Elman, 1, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     OutputLayerDetails oA(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, clean_config, 0.0, OptimiserType::SGD, 0.0);

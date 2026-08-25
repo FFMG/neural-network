@@ -23,8 +23,8 @@ private:
       .with_batch_size(batch_size)
       .with_output_layer_details(
         {
-          OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.01, 0.1, 0.1, 1.0, true, 1.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::NadamW, 0.9),
-          OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 5.0, 1e-12, 0.0, { 0.5 } }, 0.0, OptimiserType::NadamW, 0.9)
+          OutputLayerDetails(1, activation(activation::method::tanh, 0.01), ErrorCalculation::type::huber_direction_loss, { 0.01, 0.1, 0.1, 1.0, true, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::NadamW, 0.9),
+          OutputLayerDetails(5, activation(activation::method::softmax, 0.01), ErrorCalculation::type::cross_entropy, { 0.0, 0.5, 1.0, 1.0, true, 5.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::NadamW, 0.9)
         }
       )
       .with_log_level(log_level)

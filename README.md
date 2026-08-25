@@ -483,6 +483,8 @@ For classification tasks using Softmax, the network automatically optimizes the 
 * `directional_confidence_score`
 * `prediction_coverage`
 * `quantile_loss` (Pinball loss for single or multi-quantile regression)
+* `sharpe_ratio_loss` (Negative Sharpe ratio loss for trading return optimization)
+* `sortino_ratio_loss` (Negative Sortino ratio loss penalizing downside volatility)
 
 ### Calculating Metrics
 
