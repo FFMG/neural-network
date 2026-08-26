@@ -268,7 +268,7 @@ void Layer::calculate_error_deltas(
   const activation::method activation_method,
   unsigned start_neuron,
   unsigned end_neuron,
-  double risk_normaliser) const
+  const StepGradientContext* step_context) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
@@ -310,9 +310,9 @@ void Layer::calculate_error_deltas(
   case ErrorCalculation::type::quantile_loss:
     return calculate_quantile_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span);
   case ErrorCalculation::type::sharpe_ratio_loss:
-    return calculate_sharpe_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, risk_normaliser);
+    return calculate_sharpe_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, step_context);
   case ErrorCalculation::type::sortino_ratio_loss:
-    return calculate_sortino_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, risk_normaliser);
+    return calculate_sortino_ratio_loss_error_deltas(deltas, target_outputs, given_outputs, evaluation_config, activation_method, neurons_span, step_context);
   case ErrorCalculation::type::mae:
   case ErrorCalculation::type::nrmse:
   case ErrorCalculation::type::mape:
@@ -921,7 +921,7 @@ void Layer::calculate_sharpe_ratio_loss_error_deltas(
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons,
-  double risk_normaliser) const
+  const StepGradientContext* step_context) const
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -929,19 +929,41 @@ void Layer::calculate_sharpe_ratio_loss_error_deltas(
   {
     return;
   }
+  if (step_context == nullptr)
+  {
+    Logger::panic("Sharpe ratio loss requires a valid StepGradientContext!");
+  }
 
   const double c = evaluation_config.transaction_cost_penalty();
   const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
   const unsigned start_idx = neurons.front().get_index();
   const size_t count = neurons.size();
+  const auto& prev_pos = step_context->prev_pos;
+  const auto& next_pos = step_context->next_pos;
 
   for (size_t i = 0; i < count; ++i)
   {
     const size_t idx = start_idx + i;
-    const double target_return = target_outputs[idx];
+    const double gt = target_outputs[idx];
     const double pos = given_outputs[idx];
-    const double pos_sign = (pos > 0.0) ? 1.0 : ((pos < 0.0) ? -1.0 : 0.0);
-    const double grad = -(target_return - c * pos_sign) / risk_normaliser;
+
+    double dR_local = gt;
+    if (i < prev_pos.size())
+    {
+      const double prev = prev_pos[i];
+      const double local_sign = (pos > prev) ? 1.0 : ((pos < prev) ? -1.0 : 0.0);
+      dR_local -= c * local_sign;
+    }
+
+    double dR_cross = 0.0;
+    if (i < next_pos.size())
+    {
+      const double next = next_pos[i];
+      const double cross_sign = (next > pos) ? 1.0 : ((next < pos) ? -1.0 : 0.0);
+      dR_cross = c * cross_sign;
+    }
+
+    const double grad = step_context->w_current * dR_local + step_context->w_next * dR_cross;
     deltas[idx] = grad * inv_num_neurons;
   }
 }
@@ -953,7 +975,7 @@ void Layer::calculate_sortino_ratio_loss_error_deltas(
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons,
-  double risk_normaliser) const
+  const StepGradientContext* step_context) const
 {
   (void)activation_method;
   MYODDWEB_PROFILE_FUNCTION("Layer");
@@ -961,20 +983,41 @@ void Layer::calculate_sortino_ratio_loss_error_deltas(
   {
     return;
   }
+  if (step_context == nullptr)
+  {
+    Logger::panic("Sortino ratio loss requires a valid StepGradientContext!");
+  }
 
   const double c = evaluation_config.transaction_cost_penalty();
-  const double tau = evaluation_config.sortino_target_return();
   const double inv_num_neurons = 1.0 / static_cast<double>(neurons.size());
   const unsigned start_idx = neurons.front().get_index();
   const size_t count = neurons.size();
+  const auto& prev_pos = step_context->prev_pos;
+  const auto& next_pos = step_context->next_pos;
 
   for (size_t i = 0; i < count; ++i)
   {
     const size_t idx = start_idx + i;
-    const double target_return = target_outputs[idx];
+    const double gt = target_outputs[idx];
     const double pos = given_outputs[idx];
-    const double pos_sign = (pos > 0.0) ? 1.0 : ((pos < 0.0) ? -1.0 : 0.0);
-    const double grad = -((target_return - tau) - c * pos_sign) / risk_normaliser;
+
+    double dR_local = gt;
+    if (i < prev_pos.size())
+    {
+      const double prev = prev_pos[i];
+      const double local_sign = (pos > prev) ? 1.0 : ((pos < prev) ? -1.0 : 0.0);
+      dR_local -= c * local_sign;
+    }
+
+    double dR_cross = 0.0;
+    if (i < next_pos.size())
+    {
+      const double next = next_pos[i];
+      const double cross_sign = (next > pos) ? 1.0 : ((next < pos) ? -1.0 : 0.0);
+      dR_cross = c * cross_sign;
+    }
+
+    const double grad = step_context->w_current * dR_local + step_context->w_next * dR_cross;
     deltas[idx] = grad * inv_num_neurons;
   }
 }

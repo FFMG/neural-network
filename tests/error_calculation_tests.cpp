@@ -1103,6 +1103,84 @@ TEST_F(ErrorCalculationTest, SortinoRatioLossHandCalculated)
   EXPECT_NEAR(downside_std_dev, expected_downside_dev, 1e-9);
 }
 
+TEST_F(ErrorCalculationTest, SharpeRatioBatchStatsAndStepWeight)
+{
+  // Same return sequence as SharpeRatioLossHandCalculated: [0.02, 0.008, 0.028, 0.01]
+  std::vector<double> returns = { 0.02, 0.008, 0.028, 0.01 };
+  const double epsilon = 1e-12;
+
+  const auto stats = ErrorCalculation::calculate_sharpe_batch_stats(returns, epsilon);
+  const double expected_mean = 0.0165;
+  const double expected_std = std::sqrt(0.00006475 + epsilon);
+  EXPECT_NEAR(stats.mean, expected_mean, 1e-9);
+  EXPECT_NEAR(stats.sigma, expected_std, 1e-9);
+
+  // w(R) = -1/(N*sigma) + mean*(R-mean)/(N*sigma^3), verified against a hand-derived value for R=0.02.
+  const double weight = ErrorCalculation::calculate_sharpe_ratio_step_weight(0.02, stats, returns.size());
+  EXPECT_NEAR(weight, -3.358755893911578, 1e-6);
+}
+
+TEST_F(ErrorCalculationTest, SortinoRatioBatchStatsAndStepWeight)
+{
+  std::vector<double> returns = { 0.02, 0.008, 0.028, 0.01 };
+  const double tau = 0.01;
+  const double epsilon = 1e-12;
+
+  const auto stats = ErrorCalculation::calculate_sortino_batch_stats(returns, tau, epsilon);
+  const double expected_mean = 0.0165;
+  const double expected_downside_std = std::sqrt(1e-6 + epsilon);
+  EXPECT_NEAR(stats.mean, expected_mean, 1e-9);
+  EXPECT_NEAR(stats.sigma, expected_downside_std, 1e-9);
+  EXPECT_DOUBLE_EQ(stats.target_return, tau);
+
+  // A downside return (R < tau) picks up the downside(R) term in the weight...
+  const double downside_weight = ErrorCalculation::calculate_sortino_ratio_step_weight(0.008, stats, returns.size());
+  EXPECT_NEAR(downside_weight, -3499.9950000061867, 1e-3);
+
+  // ...while a non-downside return (R >= tau) only carries the -1/(N*sigma) term.
+  const double non_downside_weight = ErrorCalculation::calculate_sortino_ratio_step_weight(0.02, stats, returns.size());
+  EXPECT_NEAR(non_downside_weight, -249.99987500009374, 1e-3);
+}
+
+TEST_F(ErrorCalculationTest, BatchStatsAndStepWeightsEmptyAndEdgeCases)
+{
+  const double epsilon = 1e-12;
+  const double tau = 0.01;
+
+  // Empty returns
+  const auto empty_sharpe = ErrorCalculation::calculate_sharpe_batch_stats({}, epsilon);
+  EXPECT_DOUBLE_EQ(empty_sharpe.mean, 0.0);
+  EXPECT_NEAR(empty_sharpe.sigma, std::sqrt(epsilon), 1e-12);
+
+  const auto empty_sortino = ErrorCalculation::calculate_sortino_batch_stats({}, tau, epsilon);
+  EXPECT_DOUBLE_EQ(empty_sortino.mean, 0.0);
+  EXPECT_NEAR(empty_sortino.sigma, std::sqrt(epsilon), 1e-12);
+  EXPECT_DOUBLE_EQ(empty_sortino.target_return, tau);
+
+  // Zero num_returns in step weight helpers
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_sharpe_ratio_step_weight(0.05, empty_sharpe, 0), 0.0);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_sortino_ratio_step_weight(0.05, empty_sortino, 0), 0.0);
+
+  // calculate_portfolio_returns with empty inputs
+  EXPECT_TRUE(ErrorCalculation::calculate_portfolio_returns({}, {}, 0.01).empty());
+}
+
+TEST_F(ErrorCalculationTest, CalculatePortfolioReturnsResetsCostPerCall)
+{
+  // FFOutputLayer::calculate_sharpe_sortino_context relies on calculate_portfolio_returns
+  // resetting the "previous position" at index 0 of whatever it's given, so calling it once per
+  // training example (rather than on a batch-flattened sequence) never couples transaction cost
+  // across unrelated examples.
+  std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 } };
+  std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 } };
+  const double c = 0.001;
+
+  const auto returns = ErrorCalculation::calculate_portfolio_returns(gt, pred, c);
+  ASSERT_EQ(returns.size(), 2u);
+  EXPECT_NEAR(returns[0], 0.02, 1e-12);   // no cost at index 0
+  EXPECT_NEAR(returns[1], 0.008, 1e-12);  // (-1.0*-0.01) - 0.001*|(-1)-1| = 0.01 - 0.002
+}
+
 TEST_F(ErrorCalculationTest, SharpeAndSortinoMultiAsset)
 {
   // 2 assets (neurons) across 2 time steps

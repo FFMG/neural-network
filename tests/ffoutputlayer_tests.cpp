@@ -111,6 +111,60 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsCE) {
     EXPECT_NEAR(grads[1], 0.5, 1e-9);
 }
 
+TEST_F(FFOutputLayerTest, SharpeRatioLossDoesNotCoupleTransactionCostAcrossExamples) {
+    // Regression test for the batch-statistics builder coupling transaction cost across unrelated
+    // training examples: example 0 has a large position swing between its two time steps
+    // (1.0 -> -1.0), example 1's position never moves (1.0 -> 1.0, so its own cost is always 0).
+    // With the fix, example 1's first step return is 1.0*0.03 = 0.03 exactly; the old flattened
+    // computation would have wrongly charged it a transaction cost against example 0's last
+    // position, giving 0.028 instead and a different (wrong) gradient everywhere.
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 1;
+    const double c = 0.001;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::sharpe_ratio_loss,
+          EvaluationConfig(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, c, 0.0), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+    auto batch_hs = create_batch_hidden_states(topology, 2, 2);
+
+    // Example 0: positions 1.0 -> -1.0 (large swing, incurs its own transaction cost at t=1).
+    batch_hs[0].at(1, 0).set_hidden_state_values({ 1.0 });
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ 1.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0 });
+    batch_hs[0].at(1, 1).set_hidden_state_values({ -1.0 });
+    batch_hs[0].at(1, 1).set_pre_activation_sums({ -1.0 });
+    batch_hs[0].at(1, 1).set_cell_state_values({ 1.0 });
+
+    // Example 1: positions 1.0 -> 1.0 (no swing at all, own transaction cost is always 0).
+    batch_hs[1].at(1, 0).set_hidden_state_values({ 1.0 });
+    batch_hs[1].at(1, 0).set_pre_activation_sums({ 1.0 });
+    batch_hs[1].at(1, 0).set_cell_state_values({ 1.0 });
+    batch_hs[1].at(1, 1).set_hidden_state_values({ 1.0 });
+    batch_hs[1].at(1, 1).set_pre_activation_sums({ 1.0 });
+    batch_hs[1].at(1, 1).set_cell_state_values({ 1.0 });
+
+    std::vector<std::vector<double>> targets = { { 0.02, -0.01 }, { 0.03, 0.01 } };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 2);
+
+    const auto& grads_0 = batch_go[0].get_rnn_gradients(1);
+    const auto& grads_1 = batch_go[1].get_rnn_gradients(1);
+    ASSERT_EQ(grads_0.size(), 2u);
+    ASSERT_EQ(grads_1.size(), 2u);
+
+    // Hand-derived from the correct per-example return sequences [0.02, 0.008] and [0.03, 0.01]
+    // (batch mean 0.017, sigma over the pooled 4 returns): see the finite-difference-verified
+    // formula in Layer::calculate_sharpe_ratio_loss_error_deltas.
+    EXPECT_NEAR(grads_0[0], -0.10730054771020339, 1e-6);
+    EXPECT_NEAR(grads_0[1], 0.7659038626677686, 1e-6);
+    EXPECT_NEAR(grads_1[0], 1.598408043170035, 1e-6);
+    EXPECT_NEAR(grads_1[1], -0.7252036579521893, 1e-6);
+}
+
 TEST_F(FFOutputLayerTest, DropoutStatisticalVerification) {
     unsigned num_inputs = 1;
     unsigned num_outputs = 5000;

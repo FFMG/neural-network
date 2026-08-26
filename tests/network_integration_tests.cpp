@@ -3364,6 +3364,89 @@ TEST(NetworkIntegrationTest, SortinoRatioLossTrainingConvergence)
   EXPECT_LT(loss_after, loss_before);
 }
 
+TEST(NetworkIntegrationTest, SharpeRatioLossBpttTrainingConvergence)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  // Same idea as SharpeRatioLossTrainingConvergence, but with a GRU hidden layer and BPTT enabled
+  // so each training example spans multiple recurrent time steps with dense per-step targets --
+  // exercising the transaction-cost cross-term path (Layer::calculate_sharpe_ratio_loss_error_deltas's
+  // w_next/next_pos, only reachable within one example's own time-step sequence) during actual
+  // training, not just at the unit level.
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::sharpe_ratio_loss, 0.001, 0.0, OptimiserType::Adam, 0.9)
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(100)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> returns;
+  for (int i = 0; i < 24; ++i)
+  {
+    const double x = (i % 2 == 0) ? 1.0 : -1.0;
+    inputs.push_back({ x });
+    returns.push_back({ (x > 0.0) ? 0.05 : -0.05 });
+  }
+
+  const auto initial_preds = nn.think(inputs);
+  const double loss_before = ErrorCalculation::calculate_sharpe_ratio_loss(returns, initial_preds, options.output_layer_details()[0].get_error_evaluation_config());
+  nn.train(inputs, returns);
+  const auto trained_preds = nn.think(inputs);
+  const double loss_after = ErrorCalculation::calculate_sharpe_ratio_loss(returns, trained_preds, options.output_layer_details()[0].get_error_evaluation_config());
+
+  EXPECT_LT(loss_after, loss_before);
+}
+
+TEST(NetworkIntegrationTest, SortinoRatioLossBpttTrainingConvergence)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::sortino_ratio_loss, 0.001, 0.01, OptimiserType::Adam, 0.9)
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(100)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> returns;
+  for (int i = 0; i < 24; ++i)
+  {
+    const double x = (i % 2 == 0) ? 1.0 : -1.0;
+    inputs.push_back({ x });
+    returns.push_back({ (x > 0.0) ? 0.05 : -0.05 });
+  }
+
+  const auto initial_preds = nn.think(inputs);
+  const double loss_before = ErrorCalculation::calculate_sortino_ratio_loss(returns, initial_preds, options.output_layer_details()[0].get_error_evaluation_config());
+  nn.train(inputs, returns);
+  const auto trained_preds = nn.think(inputs);
+  const double loss_after = ErrorCalculation::calculate_sortino_ratio_loss(returns, trained_preds, options.output_layer_details()[0].get_error_evaluation_config());
+
+  EXPECT_LT(loss_after, loss_before);
+}
+
 TEST(NetworkIntegrationTest, SharpeAndSortinoSerializationRoundTrip)
 {
   MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");

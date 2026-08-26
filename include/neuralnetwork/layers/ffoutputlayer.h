@@ -107,7 +107,10 @@ protected:
     const std::vector<OutputLayerDetails>& output_layer_details);
 
 private:
-  [[nodiscard]] std::vector<double> calculate_risk_normalisers(
+  // Builds, for every sharpe_ratio_loss/sortino_ratio_loss output head, the exact per gated
+  // time-step gradient context (batch mean/sigma weight plus this example's own previous/next
+  // position, never pooled across different training examples). Indexed [head][b][gated step].
+  [[nodiscard]] PerHeadStepContexts calculate_sharpe_sortino_context(
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const;
@@ -119,12 +122,14 @@ private:
     std::vector<std::vector<double>>::const_iterator target_outputs_begin,
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t num_neurons,
-    const std::vector<double>& risk_normalisers) const;
+    const PerHeadStepContexts& per_head_step_context) const;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,
     const std::vector<double>& target_outputs,
     const std::vector<double>& given_outputs,
-    const std::vector<double>& risk_normalisers) const;
+    const PerHeadStepContexts& per_head_step_context,
+    size_t b,
+    size_t gated_step_index) const;
 };
 } // namespace myoddweb::nn

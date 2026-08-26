@@ -209,17 +209,17 @@ void FFOutputLayer::calculate_hidden_gradients(
   Logger::panic("The output layer cannot do hidden layer calculations!");
 }
 
-std::vector<double> FFOutputLayer::calculate_risk_normalisers(
+PerHeadStepContexts FFOutputLayer::calculate_sharpe_sortino_context(
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
   size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const auto& details = output_layer_details();
-  std::vector<double> risk_normalisers(details.size(), 1.0);
+  PerHeadStepContexts per_head_step_context(details.size());
   if (batch_size == 0 || batch_hidden_states.empty())
   {
-    return risk_normalisers;
+    return per_head_step_context;
   }
 
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
@@ -236,14 +236,22 @@ std::vector<double> FFOutputLayer::calculate_risk_normalisers(
 
     const auto& head_bounds = layer_bounds(h);
     const size_t head_width = head_bounds.end - head_bounds.start + 1;
+    const auto& config = detail.get_error_evaluation_config();
+    const double c = config.transaction_cost_penalty();
 
-    std::vector<std::vector<double>> gts;
-    std::vector<std::vector<double>> preds;
+    // Pass 1: gather this head's gated (gt, pos) sequence per example `b`, never flattened across
+    // `b`, so the transaction-cost "previous position" never leaks between unrelated examples.
+    std::vector<std::vector<std::vector<double>>> preds_by_b(batch_size);
+    std::vector<std::vector<double>> returns_by_b(batch_size);
+    std::vector<double> all_returns;
 
     for (size_t b = 0; b < batch_size; ++b)
     {
       const auto& target_outputs = *(target_outputs_begin + b);
       const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+
+      std::vector<std::vector<double>> gt_seq;
+      std::vector<std::vector<double>> pos_seq;
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
@@ -262,18 +270,62 @@ std::vector<double> FFOutputLayer::calculate_risk_normalisers(
         }
 
         const auto& given_outputs = layer_states[t].get_hidden_state_values();
-        gts.emplace_back(tgt_base + head_bounds.start, tgt_base + head_bounds.start + head_width);
-        preds.emplace_back(given_outputs.data() + head_bounds.start, given_outputs.data() + head_bounds.start + head_width);
+        gt_seq.emplace_back(tgt_base + head_bounds.start, tgt_base + head_bounds.start + head_width);
+        pos_seq.emplace_back(given_outputs.data() + head_bounds.start, given_outputs.data() + head_bounds.start + head_width);
       }
+
+      auto returns_b = ErrorCalculation::calculate_portfolio_returns(gt_seq, pos_seq, c);
+      all_returns.insert(all_returns.end(), returns_b.begin(), returns_b.end());
+
+      preds_by_b[b] = std::move(pos_seq);
+      returns_by_b[b] = std::move(returns_b);
     }
 
-    const auto& config = detail.get_error_evaluation_config();
-    risk_normalisers[h] = (error_type == ErrorCalculation::type::sharpe_ratio_loss)
-      ? ErrorCalculation::calculate_sharpe_ratio_std_dev(gts, preds, config)
-      : ErrorCalculation::calculate_sortino_ratio_downside_std_dev(gts, preds, config);
+    const double eps = config.epsilon();
+    const bool is_sharpe = (error_type == ErrorCalculation::type::sharpe_ratio_loss);
+    const auto stats = is_sharpe
+      ? ErrorCalculation::calculate_sharpe_batch_stats(all_returns, eps)
+      : ErrorCalculation::calculate_sortino_batch_stats(all_returns, config.sortino_target_return(), eps);
+    const size_t total_n = all_returns.size();
+
+    // Pass 2: turn each example's own gated return sequence into per-step gradient context,
+    // pulling in the next gated step's return/position (if any) for the transaction-cost cross-term.
+    auto& head_context = per_head_step_context[h];
+    head_context.resize(batch_size);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& returns_b = returns_by_b[b];
+      const auto& preds_b = preds_by_b[b];
+      const size_t m = returns_b.size();
+      auto& b_context = head_context[b];
+      b_context.resize(m);
+
+      for (size_t k = 0; k < m; ++k)
+      {
+        StepGradientContext ctx;
+        ctx.w_current = is_sharpe
+          ? ErrorCalculation::calculate_sharpe_ratio_step_weight(returns_b[k], stats, total_n)
+          : ErrorCalculation::calculate_sortino_ratio_step_weight(returns_b[k], stats, total_n);
+
+        if (k + 1 < m)
+        {
+          ctx.w_next = is_sharpe
+            ? ErrorCalculation::calculate_sharpe_ratio_step_weight(returns_b[k + 1], stats, total_n)
+            : ErrorCalculation::calculate_sortino_ratio_step_weight(returns_b[k + 1], stats, total_n);
+          ctx.next_pos = preds_b[k + 1];
+        }
+        if (k > 0)
+        {
+          ctx.prev_pos = preds_b[k - 1];
+        }
+
+        b_context[k] = std::move(ctx);
+      }
+    }
   }
 
-  return risk_normalisers;
+  return per_head_step_context;
 }
 
 void FFOutputLayer::calculate_output_gradients(
@@ -289,7 +341,7 @@ void FFOutputLayer::calculate_output_gradients(
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
-  const auto risk_normalisers = calculate_risk_normalisers(target_outputs_begin, batch_hidden_states, batch_size);
+  const auto per_head_step_context = calculate_sharpe_sortino_context(target_outputs_begin, batch_hidden_states, batch_size);
   if (!use_multithreading)
   {
     run_output_gradients(
@@ -299,7 +351,7 @@ void FFOutputLayer::calculate_output_gradients(
       target_outputs_begin,
       batch_hidden_states,
       N_total,
-      risk_normalisers);
+      per_head_step_context);
   }
   else
   {
@@ -310,7 +362,7 @@ void FFOutputLayer::calculate_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, &risk_normalisers, this]()
+        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, &per_head_step_context, this]()
           {
             run_output_gradients(
               start,
@@ -319,7 +371,7 @@ void FFOutputLayer::calculate_output_gradients(
               target_outputs_begin,
               batch_hidden_states,
               N_total,
-              risk_normalisers);
+              per_head_step_context);
           });
       }
       start = end;
@@ -335,7 +387,7 @@ void FFOutputLayer::run_output_gradients(
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
   size_t num_neurons,
-  const std::vector<double>& risk_normalisers) const
+  const PerHeadStepContexts& per_head_step_context) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   const auto& details = output_layer_details();
@@ -353,6 +405,7 @@ void FFOutputLayer::run_output_gradients(
     const auto& target_outputs = *(target_outputs_begin + b);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
     std::fill(rnn_grads_row.vec().begin(), rnn_grads_row.vec().end(), 0.0);
+    size_t gated_step_index = 0;
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -378,7 +431,8 @@ void FFOutputLayer::run_output_gradients(
       }
 
       std::fill(deltas.vec().begin(), deltas.vec().end(), 0.0);
-      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), risk_normalisers);
+      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), per_head_step_context, b, gated_step_index);
+      ++gated_step_index;
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
@@ -620,7 +674,9 @@ void FFOutputLayer::calculate_error_deltas(
   std::vector<double>& deltas,
   const std::vector<double>& target_outputs,
   const std::vector<double>& given_outputs,
-  const std::vector<double>& risk_normalisers) const
+  const PerHeadStepContexts& per_head_step_context,
+  size_t b,
+  size_t gated_step_index) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
   unsigned layer_number = 0;
@@ -630,7 +686,11 @@ void FFOutputLayer::calculate_error_deltas(
     const auto activation_method = output_layer_detail.get_activation().get_method();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
     const auto& bounds = layer_bounds(layer_number);
-    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end, risk_normalisers[layer_number]);
+    const auto& head_context = per_head_step_context[layer_number];
+    const StepGradientContext* step_context = (b < head_context.size() && gated_step_index < head_context[b].size())
+      ? &head_context[b][gated_step_index]
+      : nullptr;
+    Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end, step_context);
     ++layer_number;
   }
 }

@@ -256,58 +256,191 @@ TEST(LayerTest, CalculateErrorDeltasQuantileLoss) {
 }
 
 TEST(LayerTest, CalculateErrorDeltasSharpeRatioLoss) {
+    // Single gated step (no previous/next step in this example): prev_pos/next_pos stay empty, so
+    // there is no transaction-cost term at all (matches the forward calculate_portfolio_returns,
+    // which never charges a cost at an example's first/only gated step) and the cross-term is 0.
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
-    // Cost c = 0.01, 2 neurons -> 1/2 multiplier. Default risk_normaliser = 1.0 (unscaled).
-    // Neuron 0: target = 0.05, pos = 0.8 > 0 (sgn = 1) -> grad = -(0.05 - 0.01 * 1) = -0.04 -> delta = -0.02
-    // Neuron 1: target = -0.03, pos = -0.6 < 0 (sgn = -1) -> grad = -(-0.03 - 0.01 * -1) = -(-0.02) = 0.02 -> delta = 0.01
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.01, 0.0);
-    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1);
-    EXPECT_NEAR(deltas[0], -0.02, 1e-9);
-    EXPECT_NEAR(deltas[1], 0.01, 1e-9);
+    StepGradientContext step_context;
+    step_context.w_current = -1.0;
+    // Neuron 0: dR_local = 0.05 (no cost term) -> grad = -0.05 -> delta = -0.025
+    // Neuron 1: dR_local = -0.03 (no cost term) -> grad = 0.03 -> delta = 0.015
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1, &step_context);
+    EXPECT_NEAR(deltas[0], -0.025, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.015, 1e-9);
 }
 
-TEST(LayerTest, CalculateErrorDeltasSharpeRatioLossScaledByRiskNormaliser) {
-    // Same inputs as CalculateErrorDeltasSharpeRatioLoss, but with an explicit
-    // risk_normaliser (the batch std-dev of returns) dividing the raw return gradient,
-    // so higher batch volatility produces a smaller weight update.
+TEST(LayerTest, CalculateErrorDeltasSharpeRatioLossWithCrossTerm) {
+    // Exercises the full exact-gradient formula: prev_pos changes the local transaction-cost sign,
+    // and next_pos/w_next bring in the cross-term contribution from this step's effect on the next
+    // step's transaction cost.
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.01, 0.0);
-    const double risk_normaliser = 4.0;
-    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1, risk_normaliser);
-    EXPECT_NEAR(deltas[0], -0.02 / risk_normaliser, 1e-9);
-    EXPECT_NEAR(deltas[1], 0.01 / risk_normaliser, 1e-9);
+    StepGradientContext step_context;
+    step_context.w_current = 2.0;
+    step_context.w_next = -3.0;
+    step_context.prev_pos = { 0.5, -0.2 };
+    step_context.next_pos = { 1.0, -0.9 };
+    // Neuron 0: local_sign = sign(0.8-0.5) = 1 -> dR_local = 0.05-0.01 = 0.04
+    //           cross_sign = sign(1.0-0.8) = 1 -> dR_cross = 0.01
+    //           grad = 2.0*0.04 + -3.0*0.01 = 0.05 -> delta = 0.025
+    // Neuron 1: local_sign = sign(-0.6+0.2) = -1 -> dR_local = -0.03+0.01 = -0.02
+    //           cross_sign = sign(-0.9+0.6) = -1 -> dR_cross = -0.01
+    //           grad = 2.0*-0.02 + -3.0*-0.01 = -0.01 -> delta = -0.005
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 1, &step_context);
+    EXPECT_NEAR(deltas[0], 0.025, 1e-9);
+    EXPECT_NEAR(deltas[1], -0.005, 1e-9);
 }
 
 TEST(LayerTest, CalculateErrorDeltasSortinoRatioLoss) {
+    // Sortino's Layer-level formula has the same shape as Sharpe's: w_current/w_next already
+    // encode the target-return/downside logic. No previous step here either, so (as above) there
+    // is no transaction-cost term regardless of the configured cost penalty.
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
-    // tau = 0.01, c = 0.005, 2 neurons. Default risk_normaliser = 1.0 (unscaled).
-    // Neuron 0: target - tau = 0.04. pos = 0.8 (sgn = 1). grad = -(0.04 - 0.005*1) = -0.035 -> delta = -0.0175
-    // Neuron 1: target - tau = -0.04. pos = -0.6 (sgn = -1). grad = -(-0.04 - 0.005*-1) = -(-0.035) = 0.035 -> delta = 0.0175
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, 0.01);
-    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1);
-    EXPECT_NEAR(deltas[0], -0.0175, 1e-9);
-    EXPECT_NEAR(deltas[1], 0.0175, 1e-9);
+    StepGradientContext step_context;
+    step_context.w_current = -1.0;
+    // Neuron 0: dR_local = 0.05 (no cost term) -> grad = -0.05 -> delta = -0.025
+    // Neuron 1: dR_local = -0.03 (no cost term) -> grad = 0.03 -> delta = 0.015
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1, &step_context);
+    EXPECT_NEAR(deltas[0], -0.025, 1e-9);
+    EXPECT_NEAR(deltas[1], 0.015, 1e-9);
 }
 
-TEST(LayerTest, CalculateErrorDeltasSortinoRatioLossScaledByRiskNormaliser) {
+TEST(LayerTest, CalculateErrorDeltasSortinoRatioLossWithCrossTerm) {
     MockLayer layer(0, 2);
     std::vector<double> deltas(2, 0.0);
     std::vector<double> targets = { 0.05, -0.03 };
     std::vector<double> given = { 0.8, -0.6 };
     EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.005, 0.01);
-    const double risk_normaliser = 2.5;
-    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1, risk_normaliser);
-    EXPECT_NEAR(deltas[0], -0.0175 / risk_normaliser, 1e-9);
-    EXPECT_NEAR(deltas[1], 0.0175 / risk_normaliser, 1e-9);
+    StepGradientContext step_context;
+    step_context.w_current = 1.5;
+    step_context.w_next = -2.0;
+    step_context.prev_pos = { 0.5, -0.2 };
+    step_context.next_pos = { 1.0, -0.9 };
+    // Neuron 0: dR_local = 0.05-0.005 = 0.045, dR_cross = 0.005 -> grad = 1.5*0.045 + -2.0*0.005 = 0.0575 -> delta = 0.02875
+    // Neuron 1: dR_local = -0.03+0.005 = -0.025, dR_cross = -0.005 -> grad = 1.5*-0.025 + -2.0*-0.005 = -0.0275 -> delta = -0.01375
+    layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 1, &step_context);
+    EXPECT_NEAR(deltas[0], 0.02875, 1e-9);
+    EXPECT_NEAR(deltas[1], -0.01375, 1e-9);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSharpeRatioLossMatchesFiniteDifference) {
+    // End-to-end check: build the StepGradientContext exactly the way
+    // FFOutputLayer::calculate_sharpe_sortino_context would (via the public ErrorCalculation batch
+    // stats/step-weight helpers), then verify Layer::calculate_error_deltas's analytic gradient at an
+    // interior gated step matches a finite-difference perturbation of the real forward Sharpe loss.
+    std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 }, { 0.03 }, { 0.01 } };
+    std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 }, { 1.0 }, { 1.0 } };
+    const double c = 0.001;
+    const double epsilon = 1e-12;
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, epsilon, 0.0, { 0.5 }, c, 0.0);
+
+    const auto returns = ErrorCalculation::calculate_portfolio_returns(gt, pred, c);
+    const auto stats = ErrorCalculation::calculate_sharpe_batch_stats(returns, epsilon);
+    const size_t k = 1;  // interior gated step: has both a previous and a next step
+
+    StepGradientContext step_context;
+    step_context.w_current = ErrorCalculation::calculate_sharpe_ratio_step_weight(returns[k], stats, returns.size());
+    step_context.w_next = ErrorCalculation::calculate_sharpe_ratio_step_weight(returns[k + 1], stats, returns.size());
+    step_context.prev_pos = pred[k - 1];
+    step_context.next_pos = pred[k + 1];
+
+    MockLayer layer(0, 1);
+    std::vector<double> deltas(1, 0.0);
+    layer.calculate_error_deltas(deltas, gt[k], pred[k], ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 0, &step_context);
+
+    const double h = 1e-6;
+    auto pred_plus = pred;
+    pred_plus[k][0] += h;
+    auto pred_minus = pred;
+    pred_minus[k][0] -= h;
+    const double loss_plus = ErrorCalculation::calculate_sharpe_ratio_loss(gt, pred_plus, config);
+    const double loss_minus = ErrorCalculation::calculate_sharpe_ratio_loss(gt, pred_minus, config);
+    const double finite_difference = (loss_plus - loss_minus) / (2.0 * h);
+
+    EXPECT_NEAR(deltas[0], finite_difference, 1e-6);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSharpeRatioLossFirstStepHasNoCostTerm) {
+    // Regression test: at an example's first gated step there is no previous position, so
+    // calculate_portfolio_returns never charges a transaction cost there (cost is unconditionally
+    // 0 at index 0). The backward dR_local must match that exactly (no term at all, not a
+    // "previous position was 0" cost term) -- this only differs from the interior-step test above
+    // by using k=0, which has a next step (cross-term applies) but no previous one.
+    std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 }, { 0.03 }, { 0.01 } };
+    std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 }, { 1.0 }, { 1.0 } };
+    const double c = 0.001;
+    const double epsilon = 1e-12;
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, epsilon, 0.0, { 0.5 }, c, 0.0);
+
+    const auto returns = ErrorCalculation::calculate_portfolio_returns(gt, pred, c);
+    const auto stats = ErrorCalculation::calculate_sharpe_batch_stats(returns, epsilon);
+    const size_t k = 0;
+
+    StepGradientContext step_context;
+    step_context.w_current = ErrorCalculation::calculate_sharpe_ratio_step_weight(returns[k], stats, returns.size());
+    step_context.w_next = ErrorCalculation::calculate_sharpe_ratio_step_weight(returns[k + 1], stats, returns.size());
+    step_context.next_pos = pred[k + 1];
+    // step_context.prev_pos left empty: no previous gated step exists for k=0.
+
+    MockLayer layer(0, 1);
+    std::vector<double> deltas(1, 0.0);
+    layer.calculate_error_deltas(deltas, gt[k], pred[k], ErrorCalculation::type::sharpe_ratio_loss, config, activation::method::linear, 0, 0, &step_context);
+
+    const double h = 1e-6;
+    auto pred_plus = pred;
+    pred_plus[k][0] += h;
+    auto pred_minus = pred;
+    pred_minus[k][0] -= h;
+    const double loss_plus = ErrorCalculation::calculate_sharpe_ratio_loss(gt, pred_plus, config);
+    const double loss_minus = ErrorCalculation::calculate_sharpe_ratio_loss(gt, pred_minus, config);
+    const double finite_difference = (loss_plus - loss_minus) / (2.0 * h);
+
+    EXPECT_NEAR(deltas[0], finite_difference, 1e-6);
+}
+
+TEST(LayerTest, CalculateErrorDeltasSortinoRatioLossMatchesFiniteDifference) {
+    std::vector<std::vector<double>> gt = { { 0.02 }, { -0.01 }, { 0.03 }, { 0.01 } };
+    std::vector<std::vector<double>> pred = { { 1.0 }, { -1.0 }, { 1.0 }, { 1.0 } };
+    const double c = 0.001;
+    const double tau = 0.01;
+    const double epsilon = 1e-12;
+    EvaluationConfig config(0.0, 0.0, 1.0, 0.0, false, 1.0, epsilon, 0.0, { 0.5 }, c, tau);
+
+    const auto returns = ErrorCalculation::calculate_portfolio_returns(gt, pred, c);
+    const auto stats = ErrorCalculation::calculate_sortino_batch_stats(returns, tau, epsilon);
+    const size_t k = 1;
+
+    StepGradientContext step_context;
+    step_context.w_current = ErrorCalculation::calculate_sortino_ratio_step_weight(returns[k], stats, returns.size());
+    step_context.w_next = ErrorCalculation::calculate_sortino_ratio_step_weight(returns[k + 1], stats, returns.size());
+    step_context.prev_pos = pred[k - 1];
+    step_context.next_pos = pred[k + 1];
+
+    MockLayer layer(0, 1);
+    std::vector<double> deltas(1, 0.0);
+    layer.calculate_error_deltas(deltas, gt[k], pred[k], ErrorCalculation::type::sortino_ratio_loss, config, activation::method::linear, 0, 0, &step_context);
+
+    const double h = 1e-6;
+    auto pred_plus = pred;
+    pred_plus[k][0] += h;
+    auto pred_minus = pred;
+    pred_minus[k][0] -= h;
+    const double loss_plus = ErrorCalculation::calculate_sortino_ratio_loss(gt, pred_plus, config);
+    const double loss_minus = ErrorCalculation::calculate_sortino_ratio_loss(gt, pred_minus, config);
+    const double finite_difference = (loss_plus - loss_minus) / (2.0 * h);
+
+    EXPECT_NEAR(deltas[0], finite_difference, 1e-5);
 }
 
 TEST(LayerTest, CalculateErrorDeltasRobustness) {
@@ -322,6 +455,8 @@ TEST(LayerTest, CalculateErrorDeltasRobustness) {
     EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 1, 0));
     EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::mse, EvaluationConfig(), activation::method::linear, 0, 2));
 #endif
+    EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sharpe_ratio_loss, EvaluationConfig(), activation::method::linear, 0, 1, nullptr));
+    EXPECT_ANY_THROW(layer.calculate_error_deltas(deltas, targets, given, ErrorCalculation::type::sortino_ratio_loss, EvaluationConfig(), activation::method::linear, 0, 1, nullptr));
 }
 
 TEST(LayerTest, DropoutConsistency) {

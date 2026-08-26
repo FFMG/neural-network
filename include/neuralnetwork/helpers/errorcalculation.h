@@ -14,6 +14,29 @@
 
 namespace myoddweb::nn
 {
+struct PortfolioBatchStats
+{
+  double mean = 0.0;
+  double sigma = 0.0;          // Sharpe: return std-dev. Sortino: downside std-dev.
+  double target_return = 0.0;  // Sortino's target return (tau); unused for Sharpe.
+};
+
+// Per gated time-step gradient context for sharpe_ratio_loss/sortino_ratio_loss, built once per
+// training batch (see FFOutputLayer::calculate_sharpe_sortino_context) and consumed by
+// Layer::calculate_sharpe_ratio_loss_error_deltas / calculate_sortino_ratio_loss_error_deltas.
+// prev_pos/next_pos are empty when there is no previous/next gated step within the same training
+// example (never populated across different examples in a batch).
+struct StepGradientContext
+{
+  double w_current = 0.0;
+  double w_next = 0.0;
+  std::vector<double> prev_pos;
+  std::vector<double> next_pos;
+};
+
+using HeadStepContexts = std::vector<std::vector<StepGradientContext>>;   // [b][gated step index]
+using PerHeadStepContexts = std::vector<HeadStepContexts>;                // [output head][b][gated step index]
+
 class ErrorCalculation
 {
 public:
@@ -54,6 +77,7 @@ private:
     }
     return str[i] == '\0' && lit[i] == '\0';
   }
+public:
   [[nodiscard]] inline static std::vector<double> calculate_portfolio_returns(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, double transaction_cost_penalty)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
@@ -81,7 +105,95 @@ private:
     }
     return returns;
   }
-public:
+
+  // Pools already-computed returns (e.g. concatenated across the per-example sequences returned by
+  // calculate_portfolio_returns) into batch-level mean/std-dev statistics, without re-deriving cost
+  // coupling across example boundaries.
+  [[nodiscard]] inline static PortfolioBatchStats calculate_sharpe_batch_stats(std::span<const double> returns, double epsilon)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (returns.empty())
+    {
+      return PortfolioBatchStats{ 0.0, std::sqrt(epsilon), 0.0 };
+    }
+
+    const size_t n = returns.size();
+    double sum = 0.0;
+    for (const auto r : returns)
+    {
+      sum += r;
+    }
+    const double mean = sum / static_cast<double>(n);
+
+    double sum_sq_diff = 0.0;
+    for (const auto r : returns)
+    {
+      const double diff = r - mean;
+      sum_sq_diff += diff * diff;
+    }
+    const double variance = sum_sq_diff / static_cast<double>(n);
+
+    return PortfolioBatchStats{ mean, std::sqrt(variance + epsilon), 0.0 };
+  }
+
+  [[nodiscard]] inline static PortfolioBatchStats calculate_sortino_batch_stats(std::span<const double> returns, double target_return, double epsilon)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (returns.empty())
+    {
+      return PortfolioBatchStats{ 0.0, std::sqrt(epsilon), target_return };
+    }
+
+    const size_t n = returns.size();
+    double sum = 0.0;
+    for (const auto r : returns)
+    {
+      sum += r;
+    }
+    const double mean = sum / static_cast<double>(n);
+
+    double sum_downside_sq = 0.0;
+    for (const auto r : returns)
+    {
+      const double downside = std::min(0.0, r - target_return);
+      sum_downside_sq += downside * downside;
+    }
+    const double downside_variance = sum_downside_sq / static_cast<double>(n);
+
+    return PortfolioBatchStats{ mean, std::sqrt(downside_variance + epsilon), target_return };
+  }
+
+  // w(R) = -1/(N*sigma) + mean*(R-mean)/(N*sigma^3): the scalar that dL/dR collapses to for a single
+  // gated return R once mean/sigma are held fixed (L = -mean/sigma). Multiplying w(R) by dR/dpos gives
+  // the exact chain-rule contribution of that return to the gradient.
+  [[nodiscard]] inline static double calculate_sharpe_ratio_step_weight(double step_return, const PortfolioBatchStats& stats, size_t num_returns)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (num_returns == 0)
+    {
+      return 0.0;
+    }
+    const double n = static_cast<double>(num_returns);
+    const double sigma3 = stats.sigma * stats.sigma * stats.sigma;
+    return (-1.0 / (n * stats.sigma)) + (stats.mean * (step_return - stats.mean)) / (n * sigma3);
+  }
+
+  // w(R) for Sortino: L = -(mean-tau)/sigma_d, differentiated the same way but through the downside
+  // variance instead of the full variance.
+  [[nodiscard]] inline static double calculate_sortino_ratio_step_weight(double step_return, const PortfolioBatchStats& stats, size_t num_returns)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
+    if (num_returns == 0)
+    {
+      return 0.0;
+    }
+    const double n = static_cast<double>(num_returns);
+    const double sigma3 = stats.sigma * stats.sigma * stats.sigma;
+    const double downside = std::min(0.0, step_return - stats.target_return);
+    const double excess_mean = stats.mean - stats.target_return;
+    return (-1.0 / (n * stats.sigma)) + (excess_mean * downside) / (n * sigma3);
+  }
+
   [[nodiscard]] inline static std::string type_to_string(const ErrorCalculation::type& type)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");

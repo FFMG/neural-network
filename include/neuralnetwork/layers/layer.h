@@ -653,7 +653,7 @@ public:
     const activation::method activation_method,
     unsigned start_neuron,
     unsigned end_neuron,
-    double risk_normaliser = 1.0) const;
+    const StepGradientContext* step_context = nullptr) const;
 
   [[nodiscard]] inline const activation& get_activation() const noexcept
   {
@@ -1459,7 +1459,7 @@ private:
     const EvaluationConfig& evaluation_config,
     const activation::method activation_method,
     std::span<Neuron> neurons,
-    double risk_normaliser) const;
+    const StepGradientContext* step_context) const;
 
   void calculate_sortino_ratio_loss_error_deltas(
     std::vector<double>& deltas,
@@ -1468,7 +1468,7 @@ private:
     const EvaluationConfig& evaluation_config,
     const activation::method activation_method,
     std::span<Neuron> neurons,
-    double risk_normaliser) const;
+    const StepGradientContext* step_context) const;
 
 protected:
   unsigned _layer_index;

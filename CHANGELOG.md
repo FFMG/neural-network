@@ -7,22 +7,16 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Added
 - Implemented Differentiable Sharpe and Sortino Ratio Losses (`ErrorCalculation::type::sharpe_ratio_loss` and `ErrorCalculation::type::sortino_ratio_loss`):
   - Direct maximization of risk-adjusted returns (Sharpe ratio $S = \frac{\bar{R}}{\sigma}$ and Sortino ratio $S_{\text{Sortino}} = \frac{\bar{R} - \tau}{\sigma_d}$) as loss functions $L = -S$.
-  - Supports transaction cost penalties ($c \ge 0.0$) proportional to position changes $|\Delta \hat{y}_{t}|$: $R_t = \hat{y}_t r_t - c |\Delta \hat{y}_t|$.
-  - Supports configurable target return benchmark $\tau$ (`sortino_target_return`) for downside deviation $\sigma_d = \sqrt{\frac{1}{N}\sum \min(0, R_t - \tau)^2 + \epsilon}$.
+  - Exact analytic chain-rule batch gradient optimization $\frac{\partial L}{\partial \hat{y}_t} = w(R_t) \frac{\partial R_t}{\partial \hat{y}_t} + w(R_{t+1}) \frac{\partial R_{t+1}}{\partial \hat{y}_t}$ accounting for mean return and volatility / downside semi-variance.
+  - Supports configurable transaction cost penalties ($c \ge 0.0$) with position delta derivatives $\text{sgn}(\hat{y}_t - \hat{y}_{t-1})$ and adjacent timestep cross-terms without inter-example coupling.
+  - Supports configurable target return benchmark $\tau$ (`sortino_target_return`) for Sortino downside semi-variance.
   - Supports multi-asset portfolio outputs where portfolio return is averaged across asset positions.
-  - Extended `EvaluationConfig` with `_transaction_cost_penalty` ($c \ge 0.0$) and `_sortino_target_return` ($\tau$), with non-defaulted constructor parameters, validation, and const getters `transaction_cost_penalty()` and `sortino_target_return()`.
-  - Implemented `ErrorCalculation::calculate_sharpe_ratio`, `ErrorCalculation::calculate_sharpe_ratio_loss`, `ErrorCalculation::calculate_sortino_ratio`, `ErrorCalculation::calculate_sortino_ratio_loss`, and backward delta calculations in `Layer::calculate_sharpe_ratio_loss_error_deltas` and `Layer::calculate_sortino_ratio_loss_error_deltas`.
+  - Added helper types `PortfolioBatchStats`, `StepGradientContext` and calculation methods `calculate_sharpe_batch_stats`, `calculate_sortino_batch_stats`, `calculate_sharpe_ratio_step_weight`, `calculate_sortino_ratio_step_weight`.
+  - Extended `EvaluationConfig` with `_transaction_cost_penalty` ($c \ge 0.0$) and `_sortino_target_return` ($\tau$), with non-defaulted constructor parameters, validation, and const getters.
   - Added JSON serialization and deserialization support for `"transaction-cost-penalty"` and `"sortino-target-return"` in `NeuralNetworkSerializer` with backwards compatibility for legacy model files (defaulting to 0.0).
   - Added fluent builder overloads in `NeuralNetworkOptions` (`with_output_layer_details` accepting `transaction_cost_penalty` and `sortino_target_return`).
   - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.SharpeRatioLoss`, `ErrorCalculationType.SortinoRatioLoss`, and properties in `EvaluationConfig` and `NeuralNetworkOptions`.
-  - Comprehensive unit, multi-asset, numerical validation, gradient deltas, serializer round-trip, and end-to-end training convergence tests in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
-
-### Fixed
-- Fixed `sharpe_ratio_loss`/`sortino_ratio_loss` backward deltas ignoring the risk (volatility) term entirely, so training only maximised mean return instead of the risk-adjusted ratio:
-  - `Layer::calculate_sharpe_ratio_loss_error_deltas` and `Layer::calculate_sortino_ratio_loss_error_deltas` now accept a `risk_normaliser` (the batch's return std-dev, or downside std-dev for Sortino) and divide the raw per-sample return gradient by it, so gradient magnitude correctly shrinks as batch volatility rises.
-  - Added `ErrorCalculation::calculate_sharpe_ratio_std_dev` and `ErrorCalculation::calculate_sortino_ratio_downside_std_dev`, computed once per training batch in `FFOutputLayer::calculate_risk_normalisers` and threaded through `calculate_output_gradients` / `run_output_gradients` / `calculate_error_deltas`.
-  - `Layer::calculate_error_deltas` gained a `risk_normaliser` parameter defaulted to `1.0` (a no-op) so every other loss type is unaffected.
-  - Note: this is a scaling correction, not the exact analytic gradient of the batch Sharpe/Sortino ratio — it still omits the `mean · ∂σ/∂ŷ` term and the transaction-cost cross-term between adjacent time steps.
+  - Comprehensive unit, finite-difference gradient verification, multi-asset, serializer round-trip, and end-to-end feedforward and recurrent BPTT training convergence tests.
 
 ## [1.1.40] - 2026-08-25
 
