@@ -37,7 +37,7 @@ public:
     _cross_entropy_lambda(cross_entropy_lambda),
     _epsilon(epsilon),
     _label_smoothing(label_smoothing),
-    _quantiles(quantiles),
+    _quantiles(quantiles.empty() ? std::vector<double>{ 0.5 } : quantiles),
     _transaction_cost_penalty(transaction_cost_penalty),
     _sortino_target_return(sortino_target_return)
   {
@@ -53,10 +53,6 @@ public:
     if (!std::isfinite(_sortino_target_return))
     {
       Logger::panic("The sortino target return must be a finite number!");
-    }
-    if (_quantiles.empty())
-    {
-      _quantiles.push_back(0.5);
     }
     for (const auto q : _quantiles)
     {
