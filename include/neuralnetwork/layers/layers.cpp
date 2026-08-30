@@ -550,8 +550,7 @@ void Layers::calculate_back_propagation_hidden_layers(
     else
     {
        static const std::vector<std::vector<double>> empty_matrix;
-       const unsigned next_layer_idx = static_cast<unsigned>(layer_number + 1);
-       const bool next_is_recurrent = (batch_size > 0) && gradients[0].has_rnn_gradients(next_layer_idx);
+       const bool next_is_recurrent = (batch_size > 0) && hidden_1.is_recurrent();
        if (next_is_recurrent)
        {
          hidden_0.calculate_hidden_gradients_from_output_gradients(gradients, empty_matrix, hidden_states, batch_size, options.bptt_max_ticks());

@@ -558,6 +558,27 @@ public:
     return false;
   }
 
+  [[nodiscard]] virtual bool is_recurrent() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    switch (get_layer_architecture())
+    {
+    case Architecture::Elman:
+    case Architecture::Gru:
+    case Architecture::Lstm:
+    case Architecture::AttentionPool:
+    case Architecture::Tcn:
+    case Architecture::SelfAttention:
+      return true;
+    case Architecture::None:
+    case Architecture::FF:
+    case Architecture::MultiOutput:
+    case Architecture::Embedding:
+    default:
+      return false;
+    }
+  }
+
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");

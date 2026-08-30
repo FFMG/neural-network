@@ -919,6 +919,9 @@ TEST(LayerTest, LayerTypeIdentificationVirtuals) {
   EXPECT_TRUE(ff_layers[2].is_ff_layer());
   EXPECT_FALSE(elman_layers[1].is_ff_layer());
   EXPECT_FALSE(ff_layers[1].is_multi_output());
+  EXPECT_FALSE(ff_layers[1].is_recurrent());
+  EXPECT_FALSE(ff_layers[2].is_recurrent());
+  EXPECT_TRUE(elman_layers[1].is_recurrent());
 }
 
 
@@ -1140,47 +1143,56 @@ TEST(LayerTest, LayersTrainPerformanceFixCoverage)
 TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerTest");
-  // Build a multi-layer network with a recurrent layer preceding an output layer
-  LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
-  LayerDetails elman_detail(Layer::Architecture::Elman, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
-
-  auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
-    .with_hidden_layers({ ff_detail, elman_detail })
-    .with_enable_bptt(true)
-    .with_bptt_max_ticks(2)
-    .with_learning_rate(0.05);
-
-  Layers layers(options);
-
-  const auto w1_before = layers[1].get_w_values();
-
-  std::vector<std::vector<double>> inputs = {
-    { 0.1, 0.2, 0.3, 0.4 },
-    { 0.5, 0.6, 0.7, 0.8 }
-  };
-  std::vector<std::vector<double>> outputs = {
-    { 1.0, 0.0 },
-    { 0.0, 1.0 }
+  const std::vector<Layer::Architecture> architectures = {
+    Layer::Architecture::Elman,
+    Layer::Architecture::Gru,
+    Layer::Architecture::Lstm
   };
 
-  auto in_it = inputs.cbegin();
-  auto out_it = outputs.cbegin();
-  layers.train(options, 0.05, in_it, out_it, 2);
-
-  // Check mathematical soundness: weights of preceding layer (Layer 1) must be updated by backprop
-  const auto w1_after = layers[1].get_w_values();
-  ASSERT_EQ(w1_before.size(), w1_after.size());
-
-  bool weights_changed = false;
-  for (size_t i = 0; i < w1_before.size(); ++i)
+  for (auto arch : architectures)
   {
-    EXPECT_TRUE(std::isfinite(w1_after[i]));
-    if (std::abs(w1_after[i] - w1_before[i]) > 1e-12)
+    // Build a multi-layer network with a recurrent layer preceding an output layer
+    LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails rec_detail(arch, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+
+    auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
+      .with_hidden_layers({ ff_detail, rec_detail })
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(2)
+      .with_learning_rate(0.05);
+
+    Layers layers(options);
+
+    const auto w1_before = layers[1].get_w_values();
+
+    std::vector<std::vector<double>> inputs = {
+      { 0.1, 0.2, 0.3, 0.4 },
+      { 0.5, 0.6, 0.7, 0.8 }
+    };
+    std::vector<std::vector<double>> outputs = {
+      { 1.0, 0.0 },
+      { 0.0, 1.0 }
+    };
+
+    auto in_it = inputs.cbegin();
+    auto out_it = outputs.cbegin();
+    layers.train(options, 0.05, in_it, out_it, 2);
+
+    // Check mathematical soundness: weights of preceding layer (Layer 1) must be updated by backprop
+    const auto w1_after = layers[1].get_w_values();
+    ASSERT_EQ(w1_before.size(), w1_after.size());
+
+    bool weights_changed = false;
+    for (size_t i = 0; i < w1_before.size(); ++i)
     {
-      weights_changed = true;
+      EXPECT_TRUE(std::isfinite(w1_after[i]));
+      if (std::abs(w1_after[i] - w1_before[i]) > 1e-12)
+      {
+        weights_changed = true;
+      }
     }
+    EXPECT_TRUE(weights_changed);
   }
-  EXPECT_TRUE(weights_changed);
 }
 
 

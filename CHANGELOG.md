@@ -2,6 +2,14 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.42] - 2026-08-30
+
+### Fixed
+- Fixed gradient backpropagation flow in multi-layer topologies where a recurrent/sequence layer precedes a feedforward or output layer:
+  - Added `[[nodiscard]] virtual bool is_recurrent() const noexcept` to the `Layer` base class returning `true` for recurrent and sequence architectures (`Architecture::Elman`, `Architecture::Gru`, `Architecture::Lstm`, `Architecture::AttentionPool`, `Architecture::Tcn`, and `Architecture::SelfAttention`).
+  - Corrected `Layers::calculate_back_propagation_hidden_layers` to inspect `hidden_1.is_recurrent()` rather than `has_rnn_gradients(next_layer_idx)`. This resolves an issue where standard feedforward/output layers that populated sequence gradients caused upstream layers to incorrectly bypass dense weight matrix backpropagation in favour of direct output gradient injection through an identity proxy.
+  - Expanded `LayerTest.LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow` to verify gradient flow across Elman, GRU, and LSTM layers.
+
 ## [1.1.41] - 2026-08-25
 
 ### Added
