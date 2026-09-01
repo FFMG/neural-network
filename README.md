@@ -358,6 +358,8 @@ Unlike `AttentionPool`, a `SelfAttention` layer has no previous-architecture res
 
 The layer's own trained weights (Q/K/V/output projections, the feed-forward sub-block's two dense layers, and - when enabled - both LayerNorms' gain/bias) are persisted by `NeuralNetworkSerializer::save`/`load`, along with the `number_of_heads`/`feed_forward_hidden_size` configuration.
 
+`SelfAttentionLayer` and `LayerDetails` report `is_recurrent() == true` to ensure correct gradient propagation in recurrent pipelines. Multi-threaded execution is handled through encapsulated worker tasks (`self_attention_forward_task`, `self_attention_finish_hidden_gradients_task`, `self_attention_grad_calc_task`) and thread-local gradient accumulators, maintaining exact determinism across any thread count.
+
 **Known limitation:** unlike every other layer in this library, `SelfAttention`'s per-batch-item scratch (the per-head attention-score matrix) scales `O(T^2)` in the window length `T`, not linearly - budget `bptt_max_ticks` accordingly for this layer type.
 
 ### Embedding Layer (Categorical Entity Embeddings)

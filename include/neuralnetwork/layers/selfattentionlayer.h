@@ -778,6 +778,12 @@ public:
     _ln2_bias.values = v;
   }
 
+    [[nodiscard]] inline const std::vector<double>& get_pe_inv_denom() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _pe_inv_denom;
+  }
+
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& previous_layer,
@@ -826,6 +832,105 @@ public:
   Layer* clone() const override;
 
 private:
+  static void add_positional_encoding(
+    double* xp,
+    const double* x,
+    size_t T,
+    size_t d,
+    const double* inv_denom);
+
+  void process_forward_range(
+    size_t b_start,
+    size_t b_end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training) const;
+
+  void finish_hidden_gradients_range(
+    size_t b_start,
+    size_t b_end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const double* raw_delta_all) const;
+
+  struct grad_accumulators
+  {
+    double* wq = nullptr; double* bq = nullptr;
+    double* wk = nullptr; double* bk = nullptr;
+    double* wv = nullptr; double* bv = nullptr;
+    double* wo = nullptr; double* bo = nullptr;
+    double* ff1_w = nullptr; double* ff1_b = nullptr;
+    double* ff2_w = nullptr; double* ff2_b = nullptr;
+    double* ln1_gain = nullptr; double* ln1_bias = nullptr;
+    double* ln2_gain = nullptr; double* ln2_bias = nullptr;
+  };
+
+  void accumulate_gradients_range(
+    size_t b_start,
+    size_t b_end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    unsigned this_layer_index,
+    size_t d,
+    const grad_accumulators& accum,
+    size_t& local_contributing) const;
+
+  struct thread_grad_accumulators
+  {
+    std::vector<double> wq, bq;
+    std::vector<double> wk, bk;
+    std::vector<double> wv, bv;
+    std::vector<double> wo, bo;
+    std::vector<double> ff1_w, ff1_b;
+    std::vector<double> ff2_w, ff2_b;
+    std::vector<double> ln1_gain, ln1_bias;
+    std::vector<double> ln2_gain, ln2_bias;
+    size_t contributing = 0;
+  };
+
+  struct self_attention_forward_task
+  {
+    const SelfAttentionLayer* layer;
+    size_t start;
+    size_t end;
+    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    unsigned prev_layer_index;
+    const std::vector<std::vector<double>>* batch_residual_output_values;
+    std::vector<HiddenStates>* batch_hidden_states;
+    bool is_training;
+
+    void operator()() const;
+  };
+
+  struct self_attention_finish_hidden_gradients_task
+  {
+    const SelfAttentionLayer* layer;
+    size_t start;
+    size_t end;
+    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    const std::vector<HiddenStates>* batch_hidden_states;
+    const double* raw_delta_all;
+
+    void operator()() const;
+  };
+
+  struct self_attention_grad_calc_task
+  {
+    const SelfAttentionLayer* layer;
+    size_t start;
+    size_t end;
+    const std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    unsigned prev_layer_index;
+    unsigned this_layer_index;
+    size_t d;
+    grad_accumulators accum;
+    size_t* local_contributing;
+
+    void operator()() const;
+  };
+
   struct WeightFamily
   {
     std::vector<double> values, grads, velocities, m1, m2;
@@ -855,26 +960,7 @@ private:
 
   static void init_bias_family(WeightFamily& family, size_t n, double fill_value);
 
-  // Nullable output pointers for every weight family's gradient accumulator,
-  // passed by value into the const self_attention_backward_one below -
-  // mirrors AttentionPoolLayer's attention_backward_one nullable-accumulator
-  // parameters (scaled from individual params to a struct given the family
-  // count), which is how a const method can still accumulate into mutable
-  // member storage: the caller (non-const calculate_and_store_gradients)
-  // passes plain `double*` values obtained from its own mutable members;
-  // calculate_hidden_gradients/_from_output_gradients (which only need
-  // `out_dx`) pass a default-constructed (all-nullptr) instance instead.
-  struct GradAccumulators
-  {
-    double* wq = nullptr; double* bq = nullptr;
-    double* wk = nullptr; double* bk = nullptr;
-    double* wv = nullptr; double* bv = nullptr;
-    double* wo = nullptr; double* bo = nullptr;
-    double* ff1_w = nullptr; double* ff1_b = nullptr;
-    double* ff2_w = nullptr; double* ff2_b = nullptr;
-    double* ln1_gain = nullptr; double* ln1_bias = nullptr;
-    double* ln2_gain = nullptr; double* ln2_bias = nullptr;
-  };
+  void init_pe_inv_denom();
 
   // Recomputes the full forward pass (positional encoding, Q/K/V, per-head
   // causal attention, output projection, residual+optional-LayerNorm,
@@ -890,7 +976,7 @@ private:
     size_t T,
     const double* delta,
     double* out_dx,
-    const GradAccumulators& accum) const;
+    const grad_accumulators& accum) const;
 
   // Shared tail of both calculate_hidden_gradients entry points.
   void finish_hidden_gradients(
@@ -902,6 +988,7 @@ private:
   unsigned _number_of_heads;
   unsigned _feed_forward_hidden_size;
   bool _use_layer_normalisation;
+  std::vector<double> _pe_inv_denom;
 
   WeightFamily _wq, _bq, _wk, _bk, _wv, _bv, _wo, _bo;
   WeightFamily _ff1_w, _ff1_b, _ff2_w, _ff2_b;

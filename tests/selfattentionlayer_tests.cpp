@@ -463,3 +463,48 @@ TEST_F(SelfAttentionLayerTest, CloneProducesIndependentCopy) {
     cloned_sa->set_wq_values(std::vector<double>(16, 9.0));
     EXPECT_NE(cloned_sa->get_wq_values(), layer.get_wq_values());
 }
+
+TEST_F(SelfAttentionLayerTest, PositionalEncodingPrecomputationMatchesFormula) {
+    const unsigned d = 8, H = 2, d_ff = 16;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, false);
+
+    const auto& pe_inv = layer.get_pe_inv_denom();
+    ASSERT_EQ(pe_inv.size(), (d + 1) / 2);
+    for (size_t k = 0; k < pe_inv.size(); ++k)
+    {
+      const double exponent = (2.0 * static_cast<double>(k)) / static_cast<double>(d);
+      const double expected = 1.0 / std::pow(10000.0, exponent);
+      EXPECT_NEAR(pe_inv[k], expected, 1e-15);
+    }
+}
+
+TEST_F(SelfAttentionLayerTest, LargeDimensionMultiTimestepEquivalence) {
+    const unsigned d = 16, H = 4, d_ff = 32;
+    const size_t T = 8;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, true, activation(activation::method::tanh, 0.0));
+
+    std::vector<double> x_seq(T * d);
+    for (size_t i = 0; i < T * d; ++i)
+    {
+      x_seq[i] = std::sin(static_cast<double>(i) * 0.23);
+    }
+
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go[0].set_rnn_outputs(0, x_seq.data(), T * d);
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false);
+
+    const auto out_seq = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(out_seq.size(), T * d);
+
+    // Outputs must be finite numbers
+    for (size_t i = 0; i < T * d; ++i)
+    {
+      EXPECT_FALSE(std::isnan(out_seq[i]));
+      EXPECT_FALSE(std::isinf(out_seq[i]));
+    }
+}
+

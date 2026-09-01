@@ -2,6 +2,22 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.43] - 2026-09-01
+
+### Refactored
+- Encapsulated `SelfAttentionLayer` internal multi-threading task structures and positional encoding:
+  - Moved `add_positional_encoding` into `SelfAttentionLayer` as a `private static` member function with dedicated Tracy profiling instrumentation (`MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer")`).
+  - Nested worker task functors (`self_attention_forward_task`, `self_attention_finish_hidden_gradients_task`, `self_attention_grad_calc_task`) and thread accumulators (`thread_grad_accumulators`, `grad_accumulators`) as `private` structs inside `SelfAttentionLayer`.
+  - Moved multi-threading range processing methods (`process_forward_range`, `finish_hidden_gradients_range`, and `accumulate_gradients_range`) from `public:` to `private:`, purifying the public API surface of `SelfAttentionLayer`.
+  - Added const accessor `get_pe_inv_denom()` on `SelfAttentionLayer` for inspecting precomputed positional encoding inverse frequency denominators.
+  - Added `[[nodiscard]] inline bool is_recurrent() const noexcept` to `LayerDetails`.
+
+### Added
+- Extended Python bindings and API ergonomics:
+  - Exposed `is_recurrent` read-only property on `LayerDetails` in Python bindings.
+  - Added static convenience factory methods to `LayerDetails`: `create_ff`, `create_elman`, `create_gru`, `create_lstm`, `create_tcn`, `create_self_attention`, `create_attention_pool`, and `create_embedding` for simplified layer definition.
+  - Added comprehensive multi-threading invariance tests (`OddBatchSizeAllGradsThreadCountInvariance`), positional encoding precomputation tests (`PositionalEncodingPrecomputationMatchesFormula`), and multi-timestep stability tests (`LargeDimensionMultiTimestepEquivalence`).
+
 ## [1.1.42] - 2026-08-30
 
 ### Fixed

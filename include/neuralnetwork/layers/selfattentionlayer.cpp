@@ -1,95 +1,73 @@
+#include "../common/logger.h"
+#include "../common/simd_utils.h"
 #include "../libraries/instrumentor.h"
 #include "selfattentionlayer.h"
-#include "../common/simd_utils.h"
-#include "../common/logger.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
 namespace myoddweb::nn
 {
-namespace
+void SelfAttentionLayer::add_positional_encoding(double* xp, const double* x, size_t T, size_t d, const double* inv_denom)
 {
-// y[o] = (has_bias ? b[o] : 0) + sum_i x[i] * W[i*n_out+o]
-void linear_forward(const double* x, const double* W, const double* b, double* y, size_t n_in, size_t n_out, bool has_bias)
-{
-  for (size_t o = 0; o < n_out; ++o)
-  {
-    y[o] = has_bias ? b[o] : 0.0;
-  }
-  for (size_t i = 0; i < n_in; ++i)
-  {
-    const double xi = x[i];
-    const double* w_row = W + i * n_out;
-    for (size_t o = 0; o < n_out; ++o)
-    {
-      y[o] += xi * w_row[o];
-    }
-  }
-}
-
-// dx[i] = sum_o dy[o] * W[i*n_out+o]
-void linear_backward_input(const double* dy, const double* W, double* dx, size_t n_in, size_t n_out)
-{
-  for (size_t i = 0; i < n_in; ++i)
-  {
-    double sum = 0.0;
-    const double* w_row = W + i * n_out;
-    for (size_t o = 0; o < n_out; ++o)
-    {
-      sum += dy[o] * w_row[o];
-    }
-    dx[i] = sum;
-  }
-}
-
-// dW[i*n_out+o] += x[i]*dy[o]; db[o] += dy[o] (only into non-null accumulators)
-void linear_backward_weights(const double* x, const double* dy, double* dW, double* db, size_t n_in, size_t n_out)
-{
-  if (dW != nullptr)
-  {
-    for (size_t i = 0; i < n_in; ++i)
-    {
-      const double xi = x[i];
-      double* w_row = dW + i * n_out;
-      for (size_t o = 0; o < n_out; ++o)
-      {
-        w_row[o] += xi * dy[o];
-      }
-    }
-  }
-  if (db != nullptr)
-  {
-    for (size_t o = 0; o < n_out; ++o)
-    {
-      db[o] += dy[o];
-    }
-  }
-}
-
-// Fixed (non-learned) sinusoidal positional encoding, added in place:
-// xp[t][2k] = x[t][2k] + sin(t / 10000^(2k/d)), xp[t][2k+1] = x[t][2k+1] + cos(t / 10000^(2k/d)).
-void add_positional_encoding(double* xp, const double* x, size_t T, size_t d)
-{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
   std::copy(x, x + T * d, xp);
   if (d == 0)
   {
     return;
   }
+  const size_t num_pairs = d / 2;
   for (size_t t = 0; t < T; ++t)
   {
     double* row = xp + t * d;
-    for (size_t i = 0; i < d; ++i)
+    for (size_t k = 0; k < num_pairs; ++k)
     {
-      const size_t k = i / 2;
-      const double exponent = (2.0 * static_cast<double>(k)) / static_cast<double>(d);
-      const double denom = std::pow(10000.0, exponent);
-      const double angle = static_cast<double>(t) / denom;
-      row[i] += (i % 2 == 0) ? std::sin(angle) : std::cos(angle);
+      const double angle = static_cast<double>(t) * inv_denom[k];
+      row[2 * k] += std::sin(angle);
+      row[2 * k + 1] += std::cos(angle);
+    }
+    if (d % 2 != 0)
+    {
+      const double angle = static_cast<double>(t) * inv_denom[num_pairs];
+      row[2 * num_pairs] += std::sin(angle);
     }
   }
 }
-} // namespace
+
+void SelfAttentionLayer::self_attention_forward_task::operator()() const
+{
+  layer->process_forward_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    prev_layer_index,
+    *batch_residual_output_values,
+    *batch_hidden_states,
+    is_training);
+}
+
+void SelfAttentionLayer::self_attention_finish_hidden_gradients_task::operator()() const
+{
+  layer->finish_hidden_gradients_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    *batch_hidden_states,
+    raw_delta_all);
+}
+
+void SelfAttentionLayer::self_attention_grad_calc_task::operator()() const
+{
+  layer->accumulate_gradients_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    prev_layer_index,
+    this_layer_index,
+    d,
+    accum,
+    *local_contributing);
+}
 
 SelfAttentionLayer::SelfAttentionLayer(
   unsigned layer_index,
@@ -132,6 +110,8 @@ SelfAttentionLayer::SelfAttentionLayer(
   const size_t d = layer_size;
   const size_t d_ff = feed_forward_hidden_size;
   const activation linear_init(activation::method::linear, 0.0);
+
+  init_pe_inv_denom();
 
   init_family(_wq, d, d, weight_decay, linear_init, 0, seed);
   init_family(_wk, d, d, weight_decay, linear_init, 1, seed);
@@ -237,6 +217,7 @@ SelfAttentionLayer::SelfAttentionLayer(
   _ln2_bias{ ln2_bias_values, ln2_bias_grads, ln2_bias_velocities, ln2_bias_m1, ln2_bias_m2, ln2_bias_timesteps, ln2_bias_decays }
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  init_pe_inv_denom();
 }
 
 SelfAttentionLayer::SelfAttentionLayer(const SelfAttentionLayer& src) noexcept :
@@ -244,6 +225,7 @@ SelfAttentionLayer::SelfAttentionLayer(const SelfAttentionLayer& src) noexcept :
   _number_of_heads(src._number_of_heads),
   _feed_forward_hidden_size(src._feed_forward_hidden_size),
   _use_layer_normalisation(src._use_layer_normalisation),
+  _pe_inv_denom(src._pe_inv_denom),
   _wq(src._wq), _bq(src._bq), _wk(src._wk), _bk(src._bk),
   _wv(src._wv), _bv(src._bv), _wo(src._wo), _bo(src._bo),
   _ff1_w(src._ff1_w), _ff1_b(src._ff1_b), _ff2_w(src._ff2_w), _ff2_b(src._ff2_b),
@@ -257,6 +239,7 @@ SelfAttentionLayer::SelfAttentionLayer(SelfAttentionLayer&& src) noexcept :
   _number_of_heads(src._number_of_heads),
   _feed_forward_hidden_size(src._feed_forward_hidden_size),
   _use_layer_normalisation(src._use_layer_normalisation),
+  _pe_inv_denom(std::move(src._pe_inv_denom)),
   _wq(std::move(src._wq)), _bq(std::move(src._bq)), _wk(std::move(src._wk)), _bk(std::move(src._bk)),
   _wv(std::move(src._wv)), _bv(std::move(src._bv)), _wo(std::move(src._wo)), _bo(std::move(src._bo)),
   _ff1_w(std::move(src._ff1_w)), _ff1_b(std::move(src._ff1_b)), _ff2_w(std::move(src._ff2_w)), _ff2_b(std::move(src._ff2_b)),
@@ -277,6 +260,7 @@ SelfAttentionLayer& SelfAttentionLayer::operator=(const SelfAttentionLayer& src)
     _number_of_heads = src._number_of_heads;
     _feed_forward_hidden_size = src._feed_forward_hidden_size;
     _use_layer_normalisation = src._use_layer_normalisation;
+    _pe_inv_denom = src._pe_inv_denom;
     _wq = src._wq; _bq = src._bq; _wk = src._wk; _bk = src._bk;
     _wv = src._wv; _bv = src._bv; _wo = src._wo; _bo = src._bo;
     _ff1_w = src._ff1_w; _ff1_b = src._ff1_b; _ff2_w = src._ff2_w; _ff2_b = src._ff2_b;
@@ -294,6 +278,7 @@ SelfAttentionLayer& SelfAttentionLayer::operator=(SelfAttentionLayer&& src) noex
     _number_of_heads = src._number_of_heads;
     _feed_forward_hidden_size = src._feed_forward_hidden_size;
     _use_layer_normalisation = src._use_layer_normalisation;
+    _pe_inv_denom = std::move(src._pe_inv_denom);
     _wq = std::move(src._wq); _bq = std::move(src._bq); _wk = std::move(src._wk); _bk = std::move(src._bk);
     _wv = std::move(src._wv); _bv = std::move(src._bv); _wo = std::move(src._wo); _bo = std::move(src._bo);
     _ff1_w = std::move(src._ff1_w); _ff1_b = std::move(src._ff1_b); _ff2_w = std::move(src._ff2_w); _ff2_b = std::move(src._ff2_b);
@@ -358,6 +343,24 @@ void SelfAttentionLayer::init_bias_family(WeightFamily& family, size_t n, double
   family.decays.assign(n, 0.0);
 }
 
+void SelfAttentionLayer::init_pe_inv_denom()
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  const size_t d = get_number_neurons();
+  if (d == 0)
+  {
+    _pe_inv_denom.clear();
+    return;
+  }
+  const size_t num_pairs = (d + 1) / 2;
+  _pe_inv_denom.resize(num_pairs);
+  for (size_t k = 0; k < num_pairs; ++k)
+  {
+    const double exponent = (2.0 * static_cast<double>(k)) / static_cast<double>(d);
+    _pe_inv_denom[k] = 1.0 / std::pow(10000.0, exponent);
+  }
+}
+
 std::array<SelfAttentionLayer::FamilyRef, 16> SelfAttentionLayer::all_families() noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
@@ -397,21 +400,16 @@ void SelfAttentionLayer::calculate_output_gradients(
   Logger::panic("SelfAttentionLayer: trying to calculate output gradients on a non-output layer!");
 }
 
-void SelfAttentionLayer::calculate_forward_feed(
+void SelfAttentionLayer::process_forward_range(
+  size_t b_start,
+  size_t b_end,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const Layer& previous_layer,
+  unsigned prev_layer_index,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
-  size_t batch_size,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
-  if (batch_size == 0)
-  {
-    return;
-  }
-
-  const unsigned prev_layer_index = previous_layer.get_layer_index();
   const size_t d = get_number_neurons();
   const size_t H = _number_of_heads;
   const size_t head_size = (H > 0) ? d / H : 0;
@@ -423,8 +421,22 @@ void SelfAttentionLayer::calculate_forward_feed(
 
   std::vector<double> mask(d);
   std::vector<double> scores;
+  std::vector<double> xp;
+  std::vector<double> Q, K, V;
+  std::vector<double> ctx;
+  std::vector<double> ao;
+  std::vector<double> y1;
+  std::vector<double> y1n;
+  std::vector<double> inv_std1;
+  std::vector<double> ffh_pre;
+  std::vector<double> ffh;
+  std::vector<double> ffo;
+  std::vector<double> y2;
+  std::vector<double> y2n;
+  std::vector<double> inv_std2;
+  std::vector<double> out_seq;
 
-  for (size_t b = 0; b < batch_size; ++b)
+  for (size_t b = b_start; b < b_end; ++b)
   {
     const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const size_t T = (d > 0 && !seq.empty()) ? seq.size() / d : 0;
@@ -441,34 +453,49 @@ void SelfAttentionLayer::calculate_forward_feed(
       continue;
     }
 
-    std::vector<double> xp(T * d);
-    add_positional_encoding(xp.data(), seq.data(), T, d);
+    xp.resize(T * d);
+    add_positional_encoding(xp.data(), seq.data(), T, d, _pe_inv_denom.data());
 
-    std::vector<double> Q(T * d), K(T * d), V(T * d);
+    Q.resize(T * d);
+    K.resize(T * d);
+    V.resize(T * d);
     for (size_t t = 0; t < T; ++t)
     {
-      linear_forward(xp.data() + t * d, _wq.values.data(), _bq.values.data(), Q.data() + t * d, d, d, use_bias);
-      linear_forward(xp.data() + t * d, _wk.values.data(), _bk.values.data(), K.data() + t * d, d, d, use_bias);
-      linear_forward(xp.data() + t * d, _wv.values.data(), _bv.values.data(), V.data() + t * d, d, d, use_bias);
+      double* q_row = Q.data() + t * d;
+      double* k_row = K.data() + t * d;
+      double* v_row = V.data() + t * d;
+      if (use_bias)
+      {
+        std::copy(_bq.values.begin(), _bq.values.end(), q_row);
+        std::copy(_bk.values.begin(), _bk.values.end(), k_row);
+        std::copy(_bv.values.begin(), _bv.values.end(), v_row);
+      }
+      else
+      {
+        std::fill(q_row, q_row + d, 0.0);
+        std::fill(k_row, k_row + d, 0.0);
+        std::fill(v_row, v_row + d, 0.0);
+      }
+      const double* x_row = xp.data() + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        const double xi = x_row[i];
+        simd::mul_add_three(xi, _wq.values.data() + i * d, _wk.values.data() + i * d, _wv.values.data() + i * d, q_row, k_row, v_row, d);
+      }
     }
 
-    std::vector<double> ctx(T * d, 0.0);
+    ctx.assign(T * d, 0.0);
     for (size_t m = 0; m < H; ++m)
     {
       const size_t off = m * head_size;
       for (size_t t = 0; t < T; ++t)
       {
-        scores.assign(t + 1, 0.0);
+        scores.resize(t + 1);
         const double* q_row = Q.data() + t * d + off;
         for (size_t t2 = 0; t2 <= t; ++t2)
         {
           const double* k_row = K.data() + t2 * d + off;
-          double s = 0.0;
-          for (size_t a = 0; a < head_size; ++a)
-          {
-            s += q_row[a] * k_row[a];
-          }
-          scores[t2] = s * scale;
+          scores[t2] = simd::dot_product(q_row, k_row, head_size) * scale;
         }
         simd::softmax_forward(scores.data(), t + 1);
         double* ctx_row = ctx.data() + t * d + off;
@@ -476,28 +503,36 @@ void SelfAttentionLayer::calculate_forward_feed(
         {
           const double a_t2 = scores[t2];
           const double* v_row = V.data() + t2 * d + off;
-          for (size_t a = 0; a < head_size; ++a)
-          {
-            ctx_row[a] += a_t2 * v_row[a];
-          }
+          simd::mul_add(a_t2, v_row, ctx_row, head_size);
         }
       }
     }
 
-    std::vector<double> ao(T * d);
+    ao.resize(T * d);
     for (size_t t = 0; t < T; ++t)
     {
-      linear_forward(ctx.data() + t * d, _wo.values.data(), _bo.values.data(), ao.data() + t * d, d, d, use_bias);
+      double* ao_row = ao.data() + t * d;
+      if (use_bias)
+      {
+        std::copy(_bo.values.begin(), _bo.values.end(), ao_row);
+      }
+      else
+      {
+        std::fill(ao_row, ao_row + d, 0.0);
+      }
+      const double* ctx_row = ctx.data() + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(ctx_row[i], _wo.values.data() + i * d, ao_row, d);
+      }
     }
 
-    std::vector<double> y1(T * d);
-    for (size_t k = 0; k < T * d; ++k)
-    {
-      y1[k] = xp[k] + ao[k];
-    }
+    y1.resize(T * d);
+    std::copy(xp.begin(), xp.begin() + T * d, y1.begin());
+    simd::add_vectors(ao.data(), y1.data(), T * d);
 
-    std::vector<double> y1n(T * d);
-    std::vector<double> inv_std1(T, 0.0);
+    y1n.resize(T * d);
+    inv_std1.assign(T, 0.0);
     if (_use_layer_normalisation)
     {
       for (size_t t = 0; t < T; ++t)
@@ -507,36 +542,62 @@ void SelfAttentionLayer::calculate_forward_feed(
     }
     else
     {
-      y1n = y1;
+      std::copy(y1.begin(), y1.begin() + T * d, y1n.begin());
     }
 
-    std::vector<double> ffh_pre(T * d_ff);
+    ffh_pre.resize(T * d_ff);
     for (size_t t = 0; t < T; ++t)
     {
-      linear_forward(y1n.data() + t * d, _ff1_w.values.data(), _ff1_b.values.data(), ffh_pre.data() + t * d_ff, d, d_ff, use_bias);
+      double* ffh_row = ffh_pre.data() + t * d_ff;
+      if (use_bias)
+      {
+        std::copy(_ff1_b.values.begin(), _ff1_b.values.end(), ffh_row);
+      }
+      else
+      {
+        std::fill(ffh_row, ffh_row + d_ff, 0.0);
+      }
+      const double* y1n_row = y1n.data() + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(y1n_row[i], _ff1_w.values.data() + i * d_ff, ffh_row, d_ff);
+      }
     }
-    std::vector<double> ffh(ffh_pre);
+
+    ffh.resize(T * d_ff);
+    std::copy(ffh_pre.begin(), ffh_pre.begin() + T * d_ff, ffh.begin());
     ffn_activation.activate(ffh.data(), ffh.data() + T * d_ff, is_training);
 
-    std::vector<double> ffo(T * d);
+    ffo.resize(T * d);
     for (size_t t = 0; t < T; ++t)
     {
-      linear_forward(ffh.data() + t * d_ff, _ff2_w.values.data(), _ff2_b.values.data(), ffo.data() + t * d, d_ff, d, use_bias);
+      double* ffo_row = ffo.data() + t * d;
+      if (use_bias)
+      {
+        std::copy(_ff2_b.values.begin(), _ff2_b.values.end(), ffo_row);
+      }
+      else
+      {
+        std::fill(ffo_row, ffo_row + d, 0.0);
+      }
+      const double* ffh_row = ffh.data() + t * d_ff;
+      for (size_t i = 0; i < d_ff; ++i)
+      {
+        simd::mul_add(ffh_row[i], _ff2_w.values.data() + i * d, ffo_row, d);
+      }
     }
 
-    std::vector<double> y2(T * d);
-    for (size_t k = 0; k < T * d; ++k)
-    {
-      y2[k] = y1n[k] + ffo[k];
-    }
+    y2.resize(T * d);
+    std::copy(y1n.begin(), y1n.begin() + T * d, y2.begin());
+    simd::add_vectors(ffo.data(), y2.data(), T * d);
 
     if (!batch_residual_output_values.empty() && b < batch_residual_output_values.size() && batch_residual_output_values[b].size() == d)
     {
       simd::add_vectors(batch_residual_output_values[b].data(), y2.data() + (T - 1) * d, d);
     }
 
-    std::vector<double> y2n(T * d);
-    std::vector<double> inv_std2(T, 0.0);
+    y2n.resize(T * d);
+    inv_std2.assign(T, 0.0);
     if (_use_layer_normalisation)
     {
       for (size_t t = 0; t < T; ++t)
@@ -546,10 +607,10 @@ void SelfAttentionLayer::calculate_forward_feed(
     }
     else
     {
-      y2n = y2;
+      std::copy(y2.begin(), y2.begin() + T * d, y2n.begin());
     }
 
-    std::vector<double> out_seq(T * d);
+    out_seq.resize(T * d);
     for (size_t t = 0; t < T; ++t)
     {
       std::fill(mask.begin(), mask.end(), 1.0);
@@ -591,12 +652,60 @@ void SelfAttentionLayer::calculate_forward_feed(
   }
 }
 
+void SelfAttentionLayer::calculate_forward_feed(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const Layer& previous_layer,
+  const std::vector<std::vector<double>>& batch_residual_output_values,
+  std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  bool is_training) const
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  if (batch_size == 0)
+  {
+    return;
+  }
+
+  const unsigned prev_layer_index = previous_layer.get_layer_index();
+  const auto num_threads = get_number_of_threads();
+  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
+
+  if (active_threads <= 1)
+  {
+    process_forward_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, batch_residual_output_values, batch_hidden_states, is_training);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue(self_attention_forward_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          prev_layer_index,
+          &batch_residual_output_values,
+          &batch_hidden_states,
+          is_training
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+  }
+}
+
 void SelfAttentionLayer::self_attention_backward_one(
   const double* x_seq,
   size_t T,
   const double* delta,
   double* out_dx,
-  const GradAccumulators& accum) const
+  const grad_accumulators& accum) const
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
   const size_t d = get_number_neurons();
@@ -612,12 +721,6 @@ void SelfAttentionLayer::self_attention_backward_one(
     return;
   }
 
-  // simd::layer_norm_backward always writes through dgain_accum/dbias_accum
-  // (no null-check, unlike this method's own nullable GradAccumulators
-  // convention) - when the caller passed nullptr (calculate_hidden_gradients
-  // / calculate_hidden_gradients_from_output_gradients only need out_dx, not
-  // weight gradients), fall back to scratch buffers so the call is always
-  // given valid storage to write into, and simply discard the result.
   std::vector<double> ln1_gain_scratch, ln1_bias_scratch, ln2_gain_scratch, ln2_bias_scratch;
   double* ln1_gain_accum = accum.ln1_gain;
   double* ln1_bias_accum = accum.ln1_bias;
@@ -625,25 +728,58 @@ void SelfAttentionLayer::self_attention_backward_one(
   double* ln2_bias_accum = accum.ln2_bias;
   if (_use_layer_normalisation)
   {
-    if (ln1_gain_accum == nullptr) { ln1_gain_scratch.assign(d, 0.0); ln1_gain_accum = ln1_gain_scratch.data(); }
-    if (ln1_bias_accum == nullptr) { ln1_bias_scratch.assign(d, 0.0); ln1_bias_accum = ln1_bias_scratch.data(); }
-    if (ln2_gain_accum == nullptr) { ln2_gain_scratch.assign(d, 0.0); ln2_gain_accum = ln2_gain_scratch.data(); }
-    if (ln2_bias_accum == nullptr) { ln2_bias_scratch.assign(d, 0.0); ln2_bias_accum = ln2_bias_scratch.data(); }
+    if (ln1_gain_accum == nullptr)
+    {
+      ln1_gain_scratch.assign(d, 0.0);
+      ln1_gain_accum = ln1_gain_scratch.data();
+    }
+    if (ln1_bias_accum == nullptr)
+    {
+      ln1_bias_scratch.assign(d, 0.0);
+      ln1_bias_accum = ln1_bias_scratch.data();
+    }
+    if (ln2_gain_accum == nullptr)
+    {
+      ln2_gain_scratch.assign(d, 0.0);
+      ln2_gain_accum = ln2_gain_scratch.data();
+    }
+    if (ln2_bias_accum == nullptr)
+    {
+      ln2_bias_scratch.assign(d, 0.0);
+      ln2_bias_accum = ln2_bias_scratch.data();
+    }
   }
 
-  // --- Recompute forward, caching every intermediate needed for backward ---
+  // --- Recompute forward, caching intermediates ---
   std::vector<double> xp(T * d);
-  add_positional_encoding(xp.data(), x_seq, T, d);
+  add_positional_encoding(xp.data(), x_seq, T, d, _pe_inv_denom.data());
 
   std::vector<double> Q(T * d), K(T * d), V(T * d);
   for (size_t t = 0; t < T; ++t)
   {
-    linear_forward(xp.data() + t * d, _wq.values.data(), _bq.values.data(), Q.data() + t * d, d, d, use_bias);
-    linear_forward(xp.data() + t * d, _wk.values.data(), _bk.values.data(), K.data() + t * d, d, d, use_bias);
-    linear_forward(xp.data() + t * d, _wv.values.data(), _bv.values.data(), V.data() + t * d, d, d, use_bias);
+    double* q_row = Q.data() + t * d;
+    double* k_row = K.data() + t * d;
+    double* v_row = V.data() + t * d;
+    if (use_bias)
+    {
+      std::copy(_bq.values.begin(), _bq.values.end(), q_row);
+      std::copy(_bk.values.begin(), _bk.values.end(), k_row);
+      std::copy(_bv.values.begin(), _bv.values.end(), v_row);
+    }
+    else
+    {
+      std::fill(q_row, q_row + d, 0.0);
+      std::fill(k_row, k_row + d, 0.0);
+      std::fill(v_row, v_row + d, 0.0);
+    }
+    const double* x_row = xp.data() + t * d;
+    for (size_t i = 0; i < d; ++i)
+    {
+      const double xi = x_row[i];
+      simd::mul_add_three(xi, _wq.values.data() + i * d, _wk.values.data() + i * d, _wv.values.data() + i * d, q_row, k_row, v_row, d);
+    }
   }
 
-  // alpha[m][t*T+t2] for t2<=t, 0 elsewhere.
   std::vector<double> alpha(H * T * T, 0.0);
   std::vector<double> ctx(T * d, 0.0);
   std::vector<double> scores;
@@ -653,17 +789,12 @@ void SelfAttentionLayer::self_attention_backward_one(
     double* alpha_head = alpha.data() + m * T * T;
     for (size_t t = 0; t < T; ++t)
     {
-      scores.assign(t + 1, 0.0);
+      scores.resize(t + 1);
       const double* q_row = Q.data() + t * d + off;
       for (size_t t2 = 0; t2 <= t; ++t2)
       {
         const double* k_row = K.data() + t2 * d + off;
-        double s = 0.0;
-        for (size_t a = 0; a < head_size; ++a)
-        {
-          s += q_row[a] * k_row[a];
-        }
-        scores[t2] = s * scale;
+        scores[t2] = simd::dot_product(q_row, k_row, head_size) * scale;
       }
       simd::softmax_forward(scores.data(), t + 1);
       std::copy(scores.begin(), scores.end(), alpha_head + t * T);
@@ -672,10 +803,7 @@ void SelfAttentionLayer::self_attention_backward_one(
       {
         const double a_t2 = scores[t2];
         const double* v_row = V.data() + t2 * d + off;
-        for (size_t a = 0; a < head_size; ++a)
-        {
-          ctx_row[a] += a_t2 * v_row[a];
-        }
+        simd::mul_add(a_t2, v_row, ctx_row, head_size);
       }
     }
   }
@@ -683,14 +811,25 @@ void SelfAttentionLayer::self_attention_backward_one(
   std::vector<double> ao(T * d);
   for (size_t t = 0; t < T; ++t)
   {
-    linear_forward(ctx.data() + t * d, _wo.values.data(), _bo.values.data(), ao.data() + t * d, d, d, use_bias);
+    double* ao_row = ao.data() + t * d;
+    if (use_bias)
+    {
+      std::copy(_bo.values.begin(), _bo.values.end(), ao_row);
+    }
+    else
+    {
+      std::fill(ao_row, ao_row + d, 0.0);
+    }
+    const double* ctx_row = ctx.data() + t * d;
+    for (size_t i = 0; i < d; ++i)
+    {
+      simd::mul_add(ctx_row[i], _wo.values.data() + i * d, ao_row, d);
+    }
   }
 
   std::vector<double> y1(T * d);
-  for (size_t k = 0; k < T * d; ++k)
-  {
-    y1[k] = xp[k] + ao[k];
-  }
+  std::copy(xp.begin(), xp.begin() + T * d, y1.begin());
+  simd::add_vectors(ao.data(), y1.data(), T * d);
 
   std::vector<double> y1n(T * d);
   std::vector<double> inv_std1(T, 0.0);
@@ -703,16 +842,67 @@ void SelfAttentionLayer::self_attention_backward_one(
   }
   else
   {
-    y1n = y1;
+    std::copy(y1.begin(), y1.begin() + T * d, y1n.begin());
   }
 
   std::vector<double> ffh_pre(T * d_ff);
   for (size_t t = 0; t < T; ++t)
   {
-    linear_forward(y1n.data() + t * d, _ff1_w.values.data(), _ff1_b.values.data(), ffh_pre.data() + t * d_ff, d, d_ff, use_bias);
+    double* ffh_row = ffh_pre.data() + t * d_ff;
+    if (use_bias)
+    {
+      std::copy(_ff1_b.values.begin(), _ff1_b.values.end(), ffh_row);
+    }
+    else
+    {
+      std::fill(ffh_row, ffh_row + d_ff, 0.0);
+    }
+    const double* y1n_row = y1n.data() + t * d;
+    for (size_t i = 0; i < d; ++i)
+    {
+      simd::mul_add(y1n_row[i], _ff1_w.values.data() + i * d_ff, ffh_row, d_ff);
+    }
   }
+
   std::vector<double> ffh(ffh_pre);
   ffn_activation.activate(ffh.data(), ffh.data() + T * d_ff, false);
+
+  std::vector<double> ffo(T * d);
+  for (size_t t = 0; t < T; ++t)
+  {
+    double* ffo_row = ffo.data() + t * d;
+    if (use_bias)
+    {
+      std::copy(_ff2_b.values.begin(), _ff2_b.values.end(), ffo_row);
+    }
+    else
+    {
+      std::fill(ffo_row, ffo_row + d, 0.0);
+    }
+    const double* ffh_row = ffh.data() + t * d_ff;
+    for (size_t i = 0; i < d_ff; ++i)
+    {
+      simd::mul_add(ffh_row[i], _ff2_w.values.data() + i * d, ffo_row, d);
+    }
+  }
+
+  std::vector<double> y2(T * d);
+  std::copy(y1n.begin(), y1n.begin() + T * d, y2.begin());
+  simd::add_vectors(ffo.data(), y2.data(), T * d);
+
+  std::vector<double> y2n(T * d);
+  std::vector<double> inv_std2(T, 0.0);
+  if (_use_layer_normalisation)
+  {
+    for (size_t t = 0; t < T; ++t)
+    {
+      simd::layer_norm_forward(y2.data() + t * d, _ln2_gain.values.data(), _ln2_bias.values.data(), y2n.data() + t * d, d, LayerNormEpsilon, inv_std2[t]);
+    }
+  }
+  else
+  {
+    std::copy(y2.begin(), y2.begin() + T * d, y2n.begin());
+  }
 
   // --- Backward ---
   std::vector<double> dy2(T * d);
@@ -720,18 +910,7 @@ void SelfAttentionLayer::self_attention_backward_one(
   {
     for (size_t t = 0; t < T; ++t)
     {
-      // Recompute y2n[t] (needed by layer_norm_backward to recover a_hat) from y1n[t]+ffo[t].
-      std::vector<double> ffo_t(d);
-      linear_forward(ffh.data() + t * d_ff, _ff2_w.values.data(), _ff2_b.values.data(), ffo_t.data(), d_ff, d, use_bias);
-      std::vector<double> y2_t(d);
-      for (size_t o = 0; o < d; ++o)
-      {
-        y2_t[o] = y1n[t * d + o] + ffo_t[o];
-      }
-      double inv_std2_t;
-      std::vector<double> y2n_t(d);
-      simd::layer_norm_forward(y2_t.data(), _ln2_gain.values.data(), _ln2_bias.values.data(), y2n_t.data(), d, LayerNormEpsilon, inv_std2_t);
-      simd::layer_norm_backward(delta + t * d, y2n_t.data(), _ln2_gain.values.data(), _ln2_bias.values.data(), inv_std2_t, d, dy2.data() + t * d, ln2_gain_accum, ln2_bias_accum);
+      simd::layer_norm_backward(delta + t * d, y2n.data() + t * d, _ln2_gain.values.data(), _ln2_bias.values.data(), inv_std2[t], d, dy2.data() + t * d, ln2_gain_accum, ln2_bias_accum);
     }
   }
   else
@@ -739,31 +918,54 @@ void SelfAttentionLayer::self_attention_backward_one(
     std::copy(delta, delta + T * d, dy2.begin());
   }
 
-  // y2 = y1n + ffo: both branches receive the full dy2.
-  std::vector<double> d_ffo(dy2);
+  // Dense 2 & FFN Activation Backward & Dense 1 Backward
+  std::vector<double> d_ffh(d_ff);
+  std::vector<double> deriv(d_ff);
+  std::vector<double> d_ffh_pre(d_ff);
+  std::vector<double> d_y1n(T * d);
 
-  std::vector<double> d_y1n(T * d, 0.0);
   for (size_t t = 0; t < T; ++t)
   {
-    std::vector<double> d_ffh(d_ff);
-    linear_backward_input(d_ffo.data() + t * d, _ff2_w.values.data(), d_ffh.data(), d_ff, d);
-    linear_backward_weights(ffh.data() + t * d_ff, d_ffo.data() + t * d, accum.ff2_w, accum.ff2_b, d_ff, d);
-
-    std::vector<double> deriv(d_ff);
-    ffn_activation.activate_derivative(ffh_pre.data() + t * d_ff, ffh_pre.data() + t * d_ff + d_ff, ffh.data() + t * d_ff, deriv.data());
-    std::vector<double> d_ffh_pre(d_ff);
-    for (size_t k = 0; k < d_ff; ++k)
+    const double* dy2_row = dy2.data() + t * d;
+    for (size_t i = 0; i < d_ff; ++i)
     {
-      d_ffh_pre[k] = d_ffh[k] * deriv[k];
+      d_ffh[i] = simd::dot_product(dy2_row, _ff2_w.values.data() + i * d, d);
     }
 
-    std::vector<double> d_y1n_from_ffn(d);
-    linear_backward_input(d_ffh_pre.data(), _ff1_w.values.data(), d_y1n_from_ffn.data(), d, d_ff);
-    linear_backward_weights(y1n.data() + t * d, d_ffh_pre.data(), accum.ff1_w, accum.ff1_b, d, d_ff);
-
-    for (size_t o = 0; o < d; ++o)
+    if (accum.ff2_w != nullptr)
     {
-      d_y1n[t * d + o] = dy2[t * d + o] + d_y1n_from_ffn[o];
+      const double* ffh_row = ffh.data() + t * d_ff;
+      for (size_t i = 0; i < d_ff; ++i)
+      {
+        simd::mul_add(ffh_row[i], dy2_row, accum.ff2_w + i * d, d);
+      }
+    }
+    if (accum.ff2_b != nullptr)
+    {
+      simd::add_vectors(dy2_row, accum.ff2_b, d);
+    }
+
+    ffn_activation.activate_derivative(ffh_pre.data() + t * d_ff, ffh_pre.data() + t * d_ff + d_ff, ffh.data() + t * d_ff, deriv.data());
+    simd::mul_vectors(d_ffh.data(), deriv.data(), d_ffh_pre.data(), d_ff);
+
+    double* d_y1n_row = d_y1n.data() + t * d;
+    std::copy(dy2_row, dy2_row + d, d_y1n_row);
+    for (size_t i = 0; i < d; ++i)
+    {
+      d_y1n_row[i] += simd::dot_product(d_ffh_pre.data(), _ff1_w.values.data() + i * d_ff, d_ff);
+    }
+
+    if (accum.ff1_w != nullptr)
+    {
+      const double* y1n_row = y1n.data() + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(y1n_row[i], d_ffh_pre.data(), accum.ff1_w + i * d_ff, d_ff);
+      }
+    }
+    if (accum.ff1_b != nullptr)
+    {
+      simd::add_vectors(d_ffh_pre.data(), accum.ff1_b, d_ff);
     }
   }
 
@@ -772,32 +974,39 @@ void SelfAttentionLayer::self_attention_backward_one(
   {
     for (size_t t = 0; t < T; ++t)
     {
-      double dummy_inv_std;
-      std::vector<double> y1n_t(d);
-      simd::layer_norm_forward(y1.data() + t * d, _ln1_gain.values.data(), _ln1_bias.values.data(), y1n_t.data(), d, LayerNormEpsilon, dummy_inv_std);
-      simd::layer_norm_backward(d_y1n.data() + t * d, y1n_t.data(), _ln1_gain.values.data(), _ln1_bias.values.data(), dummy_inv_std, d, dy1.data() + t * d, ln1_gain_accum, ln1_bias_accum);
+      simd::layer_norm_backward(d_y1n.data() + t * d, y1n.data() + t * d, _ln1_gain.values.data(), _ln1_bias.values.data(), inv_std1[t], d, dy1.data() + t * d, ln1_gain_accum, ln1_bias_accum);
     }
   }
   else
   {
-    dy1 = d_y1n;
+    std::copy(d_y1n.begin(), d_y1n.begin() + T * d, dy1.begin());
   }
 
-  // y1 = xp + ao: both branches receive the full dy1.
-  std::vector<double> d_ao(dy1);
-  std::vector<double> d_xp(T * d, 0.0);
-  for (size_t k = 0; k < T * d; ++k)
-  {
-    d_xp[k] = dy1[k];
-  }
-
+  // Output Projection Backward: d_ctx from d_ao (which equals dy1)
   std::vector<double> d_ctx(T * d);
   for (size_t t = 0; t < T; ++t)
   {
-    linear_backward_input(d_ao.data() + t * d, _wo.values.data(), d_ctx.data() + t * d, d, d);
-    linear_backward_weights(ctx.data() + t * d, d_ao.data() + t * d, accum.wo, accum.bo, d, d);
+    const double* dy1_row = dy1.data() + t * d;
+    double* d_ctx_row = d_ctx.data() + t * d;
+    for (size_t i = 0; i < d; ++i)
+    {
+      d_ctx_row[i] = simd::dot_product(dy1_row, _wo.values.data() + i * d, d);
+    }
+    if (accum.wo != nullptr)
+    {
+      const double* ctx_row = ctx.data() + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(ctx_row[i], dy1_row, accum.wo + i * d, d);
+      }
+    }
+    if (accum.bo != nullptr)
+    {
+      simd::add_vectors(dy1_row, accum.bo, d);
+    }
   }
 
+  // Attention Backward
   std::vector<double> d_Q(T * d, 0.0), d_K(T * d, 0.0), d_V(T * d, 0.0);
   std::vector<double> d_alpha, d_scores;
   for (size_t m = 0; m < H; ++m)
@@ -807,57 +1016,87 @@ void SelfAttentionLayer::self_attention_backward_one(
     for (size_t t = 0; t < T; ++t)
     {
       const double* d_ctx_row = d_ctx.data() + t * d + off;
-      d_alpha.assign(t + 1, 0.0);
+      d_alpha.resize(t + 1);
       for (size_t t2 = 0; t2 <= t; ++t2)
       {
-        double* v_row = V.data() + t2 * d + off;
-        double dot = 0.0;
-        for (size_t a = 0; a < head_size; ++a)
-        {
-          d_V[t2 * d + off + a] += alpha_head[t * T + t2] * d_ctx_row[a];
-          dot += d_ctx_row[a] * v_row[a];
-        }
-        d_alpha[t2] = dot;
+        const double* v_row = V.data() + t2 * d + off;
+        simd::mul_add(alpha_head[t * T + t2], d_ctx_row, d_V.data() + t2 * d + off, head_size);
+        d_alpha[t2] = simd::dot_product(d_ctx_row, v_row, head_size);
       }
-      d_scores.assign(t + 1, 0.0);
+      d_scores.resize(t + 1);
       simd::softmax_backward(alpha_head + t * T, d_alpha.data(), d_scores.data(), t + 1);
 
-      double* q_row = Q.data() + t * d + off;
+      const double* q_row = Q.data() + t * d + off;
       for (size_t t2 = 0; t2 <= t; ++t2)
       {
         const double ds = d_scores[t2] * scale;
-        double* k_row = K.data() + t2 * d + off;
-        for (size_t a = 0; a < head_size; ++a)
-        {
-          d_Q[t * d + off + a] += ds * k_row[a];
-          d_K[t2 * d + off + a] += ds * q_row[a];
-        }
+        const double* k_row = K.data() + t2 * d + off;
+        simd::mul_add(ds, k_row, d_Q.data() + t * d + off, head_size);
+        simd::mul_add(ds, q_row, d_K.data() + t2 * d + off, head_size);
       }
     }
   }
 
+  // Q, K, V Backward Input & Weights
   for (size_t t = 0; t < T; ++t)
   {
-    std::vector<double> d_xp_q(d), d_xp_k(d), d_xp_v(d);
-    linear_backward_input(d_Q.data() + t * d, _wq.values.data(), d_xp_q.data(), d, d);
-    linear_backward_weights(xp.data() + t * d, d_Q.data() + t * d, accum.wq, accum.bq, d, d);
-    linear_backward_input(d_K.data() + t * d, _wk.values.data(), d_xp_k.data(), d, d);
-    linear_backward_weights(xp.data() + t * d, d_K.data() + t * d, accum.wk, accum.bk, d, d);
-    linear_backward_input(d_V.data() + t * d, _wv.values.data(), d_xp_v.data(), d, d);
-    linear_backward_weights(xp.data() + t * d, d_V.data() + t * d, accum.wv, accum.bv, d, d);
+    const double* dq_row = d_Q.data() + t * d;
+    const double* dk_row = d_K.data() + t * d;
+    const double* dv_row = d_V.data() + t * d;
+    const double* xp_row = xp.data() + t * d;
+    double* out_dx_row = out_dx + t * d;
 
-    for (size_t o = 0; o < d; ++o)
+    for (size_t i = 0; i < d; ++i)
     {
-      // Positional encoding is a constant offset added to x, so d(x)=d(xp).
-      out_dx[t * d + o] = d_xp[t * d + o] + d_xp_q[o] + d_xp_k[o] + d_xp_v[o];
+      const double sum_q = simd::dot_product(dq_row, _wq.values.data() + i * d, d);
+      const double sum_k = simd::dot_product(dk_row, _wk.values.data() + i * d, d);
+      const double sum_v = simd::dot_product(dv_row, _wv.values.data() + i * d, d);
+      out_dx_row[i] = dy1[t * d + i] + sum_q + sum_k + sum_v;
+    }
+
+    if (accum.wq != nullptr)
+    {
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(xp_row[i], dq_row, accum.wq + i * d, d);
+      }
+    }
+    if (accum.bq != nullptr)
+    {
+      simd::add_vectors(dq_row, accum.bq, d);
+    }
+
+    if (accum.wk != nullptr)
+    {
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(xp_row[i], dk_row, accum.wk + i * d, d);
+      }
+    }
+    if (accum.bk != nullptr)
+    {
+      simd::add_vectors(dk_row, accum.bk, d);
+    }
+
+    if (accum.wv != nullptr)
+    {
+      for (size_t i = 0; i < d; ++i)
+      {
+        simd::mul_add(xp_row[i], dv_row, accum.wv + i * d, d);
+      }
+    }
+    if (accum.bv != nullptr)
+    {
+      simd::add_vectors(dv_row, accum.bv, d);
     }
   }
 }
 
-void SelfAttentionLayer::finish_hidden_gradients(
+void SelfAttentionLayer::finish_hidden_gradients_range(
+  size_t b_start,
+  size_t b_end,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& batch_hidden_states,
-  size_t batch_size,
   const double* raw_delta_all) const
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
@@ -865,7 +1104,10 @@ void SelfAttentionLayer::finish_hidden_gradients(
   const unsigned prev_layer_index = this_layer_index - 1;
   const size_t d = get_number_neurons();
 
-  for (size_t b = 0; b < batch_size; ++b)
+  std::vector<double> delta;
+  std::vector<double> out_dx;
+
+  for (size_t b = b_start; b < b_end; ++b)
   {
     const auto& hs_row = batch_hidden_states[b].at(this_layer_index);
     const size_t T = hs_row.size();
@@ -874,15 +1116,12 @@ void SelfAttentionLayer::finish_hidden_gradients(
       continue;
     }
 
-    std::vector<double> delta(T * d);
+    delta.resize(T * d);
     for (size_t t = 0; t < T; ++t)
     {
       const double* raw = raw_delta_all + (b * T + t) * d;
       const double* mask_vals = hs_row[t].get_cell_state_values().data();
-      for (size_t o = 0; o < d; ++o)
-      {
-        delta[t * d + o] = raw[o] * mask_vals[o];
-      }
+      simd::mul_vectors(raw, mask_vals, delta.data() + t * d, d);
     }
 
     batch_gradients_and_outputs[b].set_gradients(this_layer_index, delta.data() + (T - 1) * d, d);
@@ -894,9 +1133,47 @@ void SelfAttentionLayer::finish_hidden_gradients(
       continue;
     }
 
-    std::vector<double> out_dx(T * d, 0.0);
-    self_attention_backward_one(seq.data(), T, delta.data(), out_dx.data(), GradAccumulators{});
+    out_dx.assign(T * d, 0.0);
+    self_attention_backward_one(seq.data(), T, delta.data(), out_dx.data(), grad_accumulators{});
     batch_gradients_and_outputs[b].set_rnn_gradients(this_layer_index, out_dx.data(), out_dx.size());
+  }
+}
+
+void SelfAttentionLayer::finish_hidden_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  const double* raw_delta_all) const
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  const auto num_threads = get_number_of_threads();
+  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
+
+  if (active_threads <= 1)
+  {
+    finish_hidden_gradients_range(0, batch_size, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue(self_attention_finish_hidden_gradients_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          &batch_hidden_states,
+          raw_delta_all
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
   }
 }
 
@@ -1018,6 +1295,35 @@ void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
   finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
 }
 
+void SelfAttentionLayer::accumulate_gradients_range(
+  size_t b_start,
+  size_t b_end,
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  unsigned prev_layer_index,
+  unsigned this_layer_index,
+  size_t d,
+  const grad_accumulators& accum,
+  size_t& local_contributing) const
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  local_contributing = 0;
+  std::vector<double> out_dx_scratch;
+  for (size_t b = b_start; b < b_end; ++b)
+  {
+    const auto& own_delta = batch_gradients_and_outputs[b].get_rnn_gate_gradients(this_layer_index);
+    const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const size_t T = (d > 0 && !own_delta.empty()) ? own_delta.size() / d : 0;
+    if (T == 0 || seq.size() != T * d)
+    {
+      continue;
+    }
+
+    out_dx_scratch.assign(T * d, 0.0);
+    self_attention_backward_one(seq.data(), T, own_delta.data(), out_dx_scratch.data(), accum);
+    ++local_contributing;
+  }
+}
+
 void SelfAttentionLayer::calculate_and_store_gradients(
   const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& hidden_states,
@@ -1036,43 +1342,124 @@ void SelfAttentionLayer::calculate_and_store_gradients(
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const unsigned this_layer_index = get_layer_index();
   const size_t d = get_number_neurons();
+  const size_t d_ff = _feed_forward_hidden_size;
 
-  GradAccumulators accum;
-  accum.wq = _wq.grads.data(); accum.bq = _bq.grads.data();
-  accum.wk = _wk.grads.data(); accum.bk = _bk.grads.data();
-  accum.wv = _wv.grads.data(); accum.bv = _bv.grads.data();
-  accum.wo = _wo.grads.data(); accum.bo = _bo.grads.data();
-  accum.ff1_w = _ff1_w.grads.data(); accum.ff1_b = _ff1_b.grads.data();
-  accum.ff2_w = _ff2_w.grads.data(); accum.ff2_b = _ff2_b.grads.data();
-  if (_use_layer_normalisation)
-  {
-    accum.ln1_gain = _ln1_gain.grads.data(); accum.ln1_bias = _ln1_bias.grads.data();
-    accum.ln2_gain = _ln2_gain.grads.data(); accum.ln2_bias = _ln2_bias.grads.data();
-  }
+  const auto num_threads = get_number_of_threads();
+  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
-  size_t contributing = 0;
-  std::vector<double> out_dx_scratch;
-  for (size_t b = 0; b < batch_size; ++b)
+  if (active_threads <= 1)
   {
-    const auto& own_delta = batch_gradients_and_outputs[b].get_rnn_gate_gradients(this_layer_index);
-    const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    const size_t T = (d > 0 && !own_delta.empty()) ? own_delta.size() / d : 0;
-    if (T == 0 || seq.size() != T * d)
+    grad_accumulators accum;
+    accum.wq = _wq.grads.data(); accum.bq = _bq.grads.data();
+    accum.wk = _wk.grads.data(); accum.bk = _bk.grads.data();
+    accum.wv = _wv.grads.data(); accum.bv = _bv.grads.data();
+    accum.wo = _wo.grads.data(); accum.bo = _bo.grads.data();
+    accum.ff1_w = _ff1_w.grads.data(); accum.ff1_b = _ff1_b.grads.data();
+    accum.ff2_w = _ff2_w.grads.data(); accum.ff2_b = _ff2_b.grads.data();
+    if (_use_layer_normalisation)
     {
-      continue;
+      accum.ln1_gain = _ln1_gain.grads.data(); accum.ln1_bias = _ln1_bias.grads.data();
+      accum.ln2_gain = _ln2_gain.grads.data(); accum.ln2_bias = _ln2_bias.grads.data();
     }
 
-    out_dx_scratch.assign(T * d, 0.0);
-    self_attention_backward_one(seq.data(), T, own_delta.data(), out_dx_scratch.data(), accum);
-    ++contributing;
-  }
+    size_t contributing = 0;
+    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, d, accum, contributing);
 
-  if (contributing > 0)
-  {
-    const double inv = 1.0 / static_cast<double>(contributing);
-    for (auto& fr : all_families())
+    if (contributing > 0)
     {
-      simd::scale_vector(fr.family->grads.data(), inv, fr.family->grads.size());
+      const double inv = 1.0 / static_cast<double>(contributing);
+      for (auto& fr : all_families())
+      {
+        simd::scale_vector(fr.family->grads.data(), inv, fr.family->grads.size());
+      }
+    }
+  }
+  else
+  {
+    std::vector<thread_grad_accumulators> thread_grads(active_threads);
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      thread_grads[t].wq.assign(d * d, 0.0); thread_grads[t].bq.assign(d, 0.0);
+      thread_grads[t].wk.assign(d * d, 0.0); thread_grads[t].bk.assign(d, 0.0);
+      thread_grads[t].wv.assign(d * d, 0.0); thread_grads[t].bv.assign(d, 0.0);
+      thread_grads[t].wo.assign(d * d, 0.0); thread_grads[t].bo.assign(d, 0.0);
+      thread_grads[t].ff1_w.assign(d * d_ff, 0.0); thread_grads[t].ff1_b.assign(d_ff, 0.0);
+      thread_grads[t].ff2_w.assign(d_ff * d, 0.0); thread_grads[t].ff2_b.assign(d, 0.0);
+      if (_use_layer_normalisation)
+      {
+        thread_grads[t].ln1_gain.assign(d, 0.0); thread_grads[t].ln1_bias.assign(d, 0.0);
+        thread_grads[t].ln2_gain.assign(d, 0.0); thread_grads[t].ln2_bias.assign(d, 0.0);
+      }
+    }
+
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        grad_accumulators accum;
+        accum.wq = thread_grads[t].wq.data(); accum.bq = thread_grads[t].bq.data();
+        accum.wk = thread_grads[t].wk.data(); accum.bk = thread_grads[t].bk.data();
+        accum.wv = thread_grads[t].wv.data(); accum.bv = thread_grads[t].bv.data();
+        accum.wo = thread_grads[t].wo.data(); accum.bo = thread_grads[t].bo.data();
+        accum.ff1_w = thread_grads[t].ff1_w.data(); accum.ff1_b = thread_grads[t].ff1_b.data();
+        accum.ff2_w = thread_grads[t].ff2_w.data(); accum.ff2_b = thread_grads[t].ff2_b.data();
+        if (_use_layer_normalisation)
+        {
+          accum.ln1_gain = thread_grads[t].ln1_gain.data(); accum.ln1_bias = thread_grads[t].ln1_bias.data();
+          accum.ln2_gain = thread_grads[t].ln2_gain.data(); accum.ln2_bias = thread_grads[t].ln2_bias.data();
+        }
+
+        _task_queue_pool->enqueue(self_attention_grad_calc_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          prev_layer_index,
+          this_layer_index,
+          d,
+          accum,
+          &thread_grads[t].contributing
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+
+    size_t total_contributing = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      simd::add_vectors(thread_grads[t].wq.data(), _wq.grads.data(), _wq.grads.size());
+      simd::add_vectors(thread_grads[t].bq.data(), _bq.grads.data(), _bq.grads.size());
+      simd::add_vectors(thread_grads[t].wk.data(), _wk.grads.data(), _wk.grads.size());
+      simd::add_vectors(thread_grads[t].bk.data(), _bk.grads.data(), _bk.grads.size());
+      simd::add_vectors(thread_grads[t].wv.data(), _wv.grads.data(), _wv.grads.size());
+      simd::add_vectors(thread_grads[t].bv.data(), _bv.grads.data(), _bv.grads.size());
+      simd::add_vectors(thread_grads[t].wo.data(), _wo.grads.data(), _wo.grads.size());
+      simd::add_vectors(thread_grads[t].bo.data(), _bo.grads.data(), _bo.grads.size());
+      simd::add_vectors(thread_grads[t].ff1_w.data(), _ff1_w.grads.data(), _ff1_w.grads.size());
+      simd::add_vectors(thread_grads[t].ff1_b.data(), _ff1_b.grads.data(), _ff1_b.grads.size());
+      simd::add_vectors(thread_grads[t].ff2_w.data(), _ff2_w.grads.data(), _ff2_w.grads.size());
+      simd::add_vectors(thread_grads[t].ff2_b.data(), _ff2_b.grads.data(), _ff2_b.grads.size());
+      if (_use_layer_normalisation)
+      {
+        simd::add_vectors(thread_grads[t].ln1_gain.data(), _ln1_gain.grads.data(), _ln1_gain.grads.size());
+        simd::add_vectors(thread_grads[t].ln1_bias.data(), _ln1_bias.grads.data(), _ln1_bias.grads.size());
+        simd::add_vectors(thread_grads[t].ln2_gain.data(), _ln2_gain.grads.data(), _ln2_gain.grads.size());
+        simd::add_vectors(thread_grads[t].ln2_bias.data(), _ln2_bias.grads.data(), _ln2_bias.grads.size());
+      }
+      total_contributing += thread_grads[t].contributing;
+    }
+
+    if (total_contributing > 0)
+    {
+      const double inv = 1.0 / static_cast<double>(total_contributing);
+      for (auto& fr : all_families())
+      {
+        simd::scale_vector(fr.family->grads.data(), inv, fr.family->grads.size());
+      }
     }
   }
 }

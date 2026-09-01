@@ -243,6 +243,26 @@ public:
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
     return _embedding_dimension;
   }
+  [[nodiscard]] inline bool is_recurrent() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    switch (_layer_architecture)
+    {
+    case Layer::Architecture::Elman:
+    case Layer::Architecture::Gru:
+    case Layer::Architecture::Lstm:
+    case Layer::Architecture::AttentionPool:
+    case Layer::Architecture::Tcn:
+    case Layer::Architecture::SelfAttention:
+      return true;
+    case Layer::Architecture::None:
+    case Layer::Architecture::FF:
+    case Layer::Architecture::MultiOutput:
+    case Layer::Architecture::Embedding:
+    default:
+      return false;
+    }
+  }
 private:
   Layer::Architecture _layer_architecture;
   unsigned _layer_size;
