@@ -784,6 +784,12 @@ public:
     return _pe_inv_denom;
   }
 
+    [[nodiscard]] inline const std::vector<double>& get_pe_cache() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+    return _pe_cache;
+  }
+
   void calculate_forward_feed(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const Layer& previous_layer,
@@ -837,7 +843,29 @@ private:
     const double* x,
     size_t T,
     size_t d,
-    const double* inv_denom);
+    const double* inv_denom,
+    const double* pe_cache,
+    size_t pe_cache_size);
+
+  struct forward_scratch
+  {
+    std::vector<double> mask;
+    std::vector<double> scores;
+    std::vector<double> xp;
+    std::vector<double> Q, K, V;
+    std::vector<double> ctx;
+    std::vector<double> ao;
+    std::vector<double> y1;
+    std::vector<double> y1n;
+    std::vector<double> inv_std1;
+    std::vector<double> ffh_pre;
+    std::vector<double> ffh;
+    std::vector<double> ffo;
+    std::vector<double> y2;
+    std::vector<double> y2n;
+    std::vector<double> inv_std2;
+    std::vector<double> out_seq;
+  };
 
   void process_forward_range(
     size_t b_start,
@@ -846,14 +874,8 @@ private:
     unsigned prev_layer_index,
     const std::vector<std::vector<double>>& batch_residual_output_values,
     std::vector<HiddenStates>& batch_hidden_states,
-    bool is_training) const;
-
-  void finish_hidden_gradients_range(
-    size_t b_start,
-    size_t b_end,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    const double* raw_delta_all) const;
+    bool is_training,
+    forward_scratch& scratch) const;
 
   struct grad_accumulators
   {
@@ -867,6 +889,46 @@ private:
     double* ln2_gain = nullptr; double* ln2_bias = nullptr;
   };
 
+  struct backward_scratch
+  {
+    std::vector<double> xp;
+    std::vector<double> Q, K, V;
+    std::vector<double> alpha;
+    std::vector<double> ctx;
+    std::vector<double> scores;
+    std::vector<double> ao;
+    std::vector<double> y1;
+    std::vector<double> y1n;
+    std::vector<double> inv_std1;
+    std::vector<double> ffh_pre;
+    std::vector<double> ffh;
+    std::vector<double> ffo;
+    std::vector<double> y2;
+    std::vector<double> y2n;
+    std::vector<double> inv_std2;
+    std::vector<double> dy2;
+    std::vector<double> d_ffh;
+    std::vector<double> deriv;
+    std::vector<double> d_ffh_pre;
+    std::vector<double> d_y1n;
+    std::vector<double> dy1;
+    std::vector<double> d_ctx;
+    std::vector<double> d_Q, d_K, d_V;
+    std::vector<double> d_alpha, d_scores;
+    std::vector<double> out_dx_scratch;
+    std::vector<double> delta;
+    std::vector<double> ln1_gain_scratch, ln1_bias_scratch;
+    std::vector<double> ln2_gain_scratch, ln2_bias_scratch;
+  };
+
+  void finish_hidden_gradients_range(
+    size_t b_start,
+    size_t b_end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const double* raw_delta_all,
+    backward_scratch& scratch) const;
+
   void accumulate_gradients_range(
     size_t b_start,
     size_t b_end,
@@ -875,7 +937,8 @@ private:
     unsigned this_layer_index,
     size_t d,
     const grad_accumulators& accum,
-    size_t& local_contributing) const;
+    size_t& local_contributing,
+    backward_scratch& scratch) const;
 
   struct thread_grad_accumulators
   {
@@ -900,6 +963,7 @@ private:
     const std::vector<std::vector<double>>* batch_residual_output_values;
     std::vector<HiddenStates>* batch_hidden_states;
     bool is_training;
+    forward_scratch* scratch;
 
     void operator()() const;
   };
@@ -912,6 +976,7 @@ private:
     std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
     const std::vector<HiddenStates>* batch_hidden_states;
     const double* raw_delta_all;
+    backward_scratch* scratch;
 
     void operator()() const;
   };
@@ -927,6 +992,7 @@ private:
     size_t d;
     grad_accumulators accum;
     size_t* local_contributing;
+    backward_scratch* scratch;
 
     void operator()() const;
   };
@@ -976,7 +1042,8 @@ private:
     size_t T,
     const double* delta,
     double* out_dx,
-    const grad_accumulators& accum) const;
+    const grad_accumulators& accum,
+    backward_scratch& scratch) const;
 
   // Shared tail of both calculate_hidden_gradients entry points.
   void finish_hidden_gradients(
@@ -989,6 +1056,7 @@ private:
   unsigned _feed_forward_hidden_size;
   bool _use_layer_normalisation;
   std::vector<double> _pe_inv_denom;
+  std::vector<double> _pe_cache;
 
   WeightFamily _wq, _bq, _wk, _bk, _wv, _bv, _wo, _bo;
   WeightFamily _ff1_w, _ff1_b, _ff2_w, _ff2_b;

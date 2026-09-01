@@ -478,6 +478,77 @@ TEST_F(SelfAttentionLayerTest, PositionalEncodingPrecomputationMatchesFormula) {
     }
 }
 
+TEST_F(SelfAttentionLayerTest, PositionalEncodingCacheMatchesAnalyticalTrig) {
+    const unsigned d = 8, H = 2, d_ff = 16;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, false);
+
+    const auto& pe_cache = layer.get_pe_cache();
+    ASSERT_FALSE(pe_cache.empty());
+    const size_t max_t = pe_cache.size() / d;
+    EXPECT_GE(max_t, 512u);
+
+    const auto& inv_denom = layer.get_pe_inv_denom();
+    const size_t num_pairs = d / 2;
+
+    for (size_t t = 0; t < std::min(max_t, size_t{64}); ++t)
+    {
+      const double* row = pe_cache.data() + t * d;
+      for (size_t k = 0; k < num_pairs; ++k)
+      {
+        const double angle = static_cast<double>(t) * inv_denom[k];
+        EXPECT_NEAR(row[2 * k], std::sin(angle), 1e-12);
+        EXPECT_NEAR(row[2 * k + 1], std::cos(angle), 1e-12);
+      }
+    }
+}
+
+TEST_F(SelfAttentionLayerTest, MultithreadedForwardMatchesSingleThread) {
+    const unsigned d = 8, H = 2, d_ff = 16;
+    const size_t T = 6;
+    const size_t batch_size = 4;
+
+    SelfAttentionLayer layer_st(
+      1, d, d, H, d_ff,
+      0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD,
+      -1, 0.0, nullptr, 1, true, true, 0.0, 42);
+
+    SelfAttentionLayer layer_mt(layer_st);
+
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+
+    auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, 1, 1);
+
+    auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, 1, 1);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      std::vector<double> x_seq(T * d);
+      for (size_t i = 0; i < T * d; ++i)
+      {
+        x_seq[i] = std::sin(static_cast<double>(b * T * d + i) * 0.17);
+      }
+      batch_go_st[b].set_rnn_outputs(0, x_seq.data(), T * d);
+      batch_go_mt[b].set_rnn_outputs(0, x_seq.data(), T * d);
+    }
+
+    layer_st.calculate_forward_feed(batch_go_st, previous_layer, {}, batch_hs_st, batch_size, false);
+    layer_mt.calculate_forward_feed(batch_go_mt, previous_layer, {}, batch_hs_mt, batch_size, false);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& out_st = batch_go_st[b].get_rnn_outputs(1);
+      const auto& out_mt = batch_go_mt[b].get_rnn_outputs(1);
+      ASSERT_EQ(out_st.size(), out_mt.size());
+      for (size_t i = 0; i < out_st.size(); ++i)
+      {
+        EXPECT_NEAR(out_st[i], out_mt[i], 1e-12);
+      }
+    }
+}
+
 TEST_F(SelfAttentionLayerTest, LargeDimensionMultiTimestepEquivalence) {
     const unsigned d = 16, H = 4, d_ff = 32;
     const size_t T = 8;
@@ -507,4 +578,5 @@ TEST_F(SelfAttentionLayerTest, LargeDimensionMultiTimestepEquivalence) {
       EXPECT_FALSE(std::isinf(out_seq[i]));
     }
 }
+
 
