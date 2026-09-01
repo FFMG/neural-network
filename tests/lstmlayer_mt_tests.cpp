@@ -520,3 +520,111 @@ TEST_F(LSTMLayerMTTest, InferenceForwardFeedMTConsistency)
         }
     }
 }
+
+TEST_F(LSTMLayerMTTest, SingleStepInferenceAndTrainingThreadCountInvariance)
+{
+    const unsigned num_inputs = 8;
+    const unsigned num_neurons = 16;
+    const unsigned batch_size = 47;
+    const unsigned num_timesteps = 1;
+
+    std::vector<unsigned> thread_counts = { 1, 2, 4, 8 };
+    std::vector<LSTMLayer> layers;
+    for (unsigned tc : thread_counts)
+    {
+        layers.emplace_back(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, tc, true, 0.0, false, std::nullopt);
+        init_layer_weights(layers.back());
+        layers.back().cache_recurrent_weights();
+    }
+
+    MockLayer prev_layer(0, num_inputs);
+    MockLayer next_layer(2, num_neurons);
+    next_layer.set_w_values(std::vector<double>(num_neurons * num_neurons, 0.1));
+
+    std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons };
+
+    std::vector<std::vector<GradientsAndOutputs>> all_batch_go;
+    std::vector<std::vector<HiddenStates>> all_batch_hs;
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+        auto batch_hs = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
+
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            std::vector<double> inputs(num_inputs * num_timesteps);
+            for (size_t k = 0; k < inputs.size(); ++k)
+            {
+                inputs[k] = std::sin(static_cast<double>((b + 3) * (k + 1)));
+            }
+            batch_go[b].set_rnn_outputs(0, inputs);
+        }
+
+        all_batch_go.push_back(std::move(batch_go));
+        all_batch_hs.push_back(std::move(batch_hs));
+    }
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        layers[i].calculate_forward_feed(all_batch_go[i], prev_layer, {}, all_batch_hs[i], batch_size, true);
+    }
+
+    for (size_t i = 1; i < thread_counts.size(); ++i)
+    {
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            const auto& ref_out = all_batch_go[0][b].get_rnn_outputs(1);
+            const auto& cur_out = all_batch_go[i][b].get_rnn_outputs(1);
+            ASSERT_EQ(ref_out.size(), cur_out.size());
+            for (size_t k = 0; k < ref_out.size(); ++k)
+            {
+                EXPECT_NEAR(ref_out[k], cur_out[k], 1e-12) << "Single-step forward mismatch at batch " << b << " index " << k;
+            }
+        }
+    }
+
+    std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_neurons * num_timesteps));
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        for (size_t k = 0; k < batch_next_grads[b].size(); ++k)
+        {
+            batch_next_grads[b][k] = std::cos(static_cast<double>(b * 2 + k));
+        }
+    }
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        layers[i].calculate_hidden_gradients(all_batch_go[i], next_layer, batch_next_grads, all_batch_hs[i], batch_size, 0);
+        layers[i].calculate_and_store_gradients(all_batch_go[i], all_batch_hs[i], prev_layer, batch_size, 0);
+    }
+
+    const auto& ref_w = layers[0].get_w_grads();
+    const auto& ref_rw = layers[0].get_rw_grads();
+    const auto& ref_b = layers[0].get_b_grads();
+
+    for (size_t i = 1; i < thread_counts.size(); ++i)
+    {
+        const auto& cur_w = layers[i].get_w_grads();
+        const auto& cur_rw = layers[i].get_rw_grads();
+        const auto& cur_b = layers[i].get_b_grads();
+
+        ASSERT_EQ(ref_w.size(), cur_w.size());
+        for (size_t k = 0; k < ref_w.size(); ++k)
+        {
+            EXPECT_NEAR(ref_w[k], cur_w[k], 1e-12) << "Single-step w_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+
+        ASSERT_EQ(ref_rw.size(), cur_rw.size());
+        for (size_t k = 0; k < ref_rw.size(); ++k)
+        {
+            EXPECT_NEAR(ref_rw[k], cur_rw[k], 1e-12) << "Single-step rw_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+
+        ASSERT_EQ(ref_b.size(), cur_b.size());
+        for (size_t k = 0; k < ref_b.size(); ++k)
+        {
+            EXPECT_NEAR(ref_b[k], cur_b[k], 1e-12) << "Single-step b_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+    }
+}

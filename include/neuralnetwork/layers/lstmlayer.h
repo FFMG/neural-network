@@ -262,18 +262,18 @@ public:
     size_t num_time_steps,
     int t_start,
     int t_end,
-    std::vector<double>& local_w_grads,
-    std::vector<double>& local_rw_grads,
-    std::vector<double>& local_f_w_grads,
-    std::vector<double>& local_f_rw_grads,
-    std::vector<double>& local_i_w_grads,
-    std::vector<double>& local_i_rw_grads,
-    std::vector<double>& local_o_w_grads,
-    std::vector<double>& local_o_rw_grads,
-    std::vector<double>& local_b_grads,
-    std::vector<double>& local_f_b_grads,
-    std::vector<double>& local_i_b_grads,
-    std::vector<double>& local_o_b_grads) const;
+    std::span<double> local_w_grads,
+    std::span<double> local_rw_grads,
+    std::span<double> local_f_w_grads,
+    std::span<double> local_f_rw_grads,
+    std::span<double> local_i_w_grads,
+    std::span<double> local_i_rw_grads,
+    std::span<double> local_o_w_grads,
+    std::span<double> local_o_rw_grads,
+    std::span<double> local_b_grads,
+    std::span<double> local_f_b_grads,
+    std::span<double> local_i_b_grads,
+    std::span<double> local_o_b_grads) const;
 
   [[nodiscard]] double get_gradient_norm_sq() const override;
 
@@ -1141,35 +1141,35 @@ private:
 
   struct thread_grad_accumulators
   {
-    std::vector<double> w_grads;
-    std::vector<double> rw_grads;
-    std::vector<double> b_grads;
-    std::vector<double> f_w_grads;
-    std::vector<double> f_rw_grads;
-    std::vector<double> f_b_grads;
-    std::vector<double> i_w_grads;
-    std::vector<double> i_rw_grads;
-    std::vector<double> i_b_grads;
-    std::vector<double> o_w_grads;
-    std::vector<double> o_rw_grads;
-    std::vector<double> o_b_grads;
+    AlignedVector<double, 32> w_grads;
+    AlignedVector<double, 32> rw_grads;
+    AlignedVector<double, 32> b_grads;
+    AlignedVector<double, 32> f_w_grads;
+    AlignedVector<double, 32> f_rw_grads;
+    AlignedVector<double, 32> f_b_grads;
+    AlignedVector<double, 32> i_w_grads;
+    AlignedVector<double, 32> i_rw_grads;
+    AlignedVector<double, 32> i_b_grads;
+    AlignedVector<double, 32> o_w_grads;
+    AlignedVector<double, 32> o_rw_grads;
+    AlignedVector<double, 32> o_b_grads;
 
     void resize(size_t num_w, size_t num_rw, size_t num_b)
     {
-      w_grads.assign(num_w, 0.0);
-      f_w_grads.assign(num_w, 0.0);
-      i_w_grads.assign(num_w, 0.0);
-      o_w_grads.assign(num_w, 0.0);
+      w_grads.resize_and_zero(num_w);
+      f_w_grads.resize_and_zero(num_w);
+      i_w_grads.resize_and_zero(num_w);
+      o_w_grads.resize_and_zero(num_w);
 
-      rw_grads.assign(num_rw, 0.0);
-      f_rw_grads.assign(num_rw, 0.0);
-      i_rw_grads.assign(num_rw, 0.0);
-      o_rw_grads.assign(num_rw, 0.0);
+      rw_grads.resize_and_zero(num_rw);
+      f_rw_grads.resize_and_zero(num_rw);
+      i_rw_grads.resize_and_zero(num_rw);
+      o_rw_grads.resize_and_zero(num_rw);
 
-      b_grads.assign(num_b, 0.0);
-      f_b_grads.assign(num_b, 0.0);
-      i_b_grads.assign(num_b, 0.0);
-      o_b_grads.assign(num_b, 0.0);
+      b_grads.resize_and_zero(num_b);
+      f_b_grads.resize_and_zero(num_b);
+      i_b_grads.resize_and_zero(num_b);
+      o_b_grads.resize_and_zero(num_b);
     }
   };
 
@@ -1181,7 +1181,9 @@ private:
     size_t num_time_steps;
     size_t n_this;
     size_t n_prev;
-    const double* flattened_inputs;
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
+    unsigned prev_layer_index;
+    double* flattened_inputs;
     double* batch_pre_act;
 
     void operator()() const;
@@ -1199,6 +1201,7 @@ private:
     const std::vector<std::vector<double>>& batch_residual_output_values;
     double* batch_output_sequences;
     std::vector<HiddenStates>& batch_hidden_states;
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
     bool is_training;
 
     void operator()() const;
@@ -1247,7 +1250,9 @@ private:
     size_t num_time_steps,
     size_t N_this,
     size_t N_prev,
-    const double* flattened_inputs,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    double* flattened_inputs,
     double* batch_pre_act) const;
 
   void run_forward_pass(
@@ -1260,6 +1265,7 @@ private:
     const std::vector<std::vector<double>>& batch_residual_output_values,
     double* batch_output_sequences,
     std::vector<HiddenStates>& batch_hidden_states,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     bool is_training) const;
 
   void calculate_bptt_batch_chunk(

@@ -8,7 +8,9 @@ All notable changes to the `neural-network` library will be documented in this f
 - Optimised `LSTMLayer` forward feed, backpropagation, and multi-threaded scaling:
   - Eliminated heap memory reallocations during forward feed by embedding `forward_workspace` with reusable `AlignedVector` buffers inside `BPTTWorkspace` and reusing pre-allocated batch scratch buffers (`_forward_flattened_inputs`, `_forward_batch_pre_act`, `_forward_batch_output_sequences`).
   - Enabled multi-threading during evaluation/inference (`is_training = false`) in `calculate_forward_feed`, removing an artificial single-thread restriction for evaluation and prediction workloads.
-  - Replaced 12 separate thread gradient vector arrays with a single contiguous `thread_grad_accumulators` structure per thread in `LSTMLayer`.
+  - Bypassed recurrent GEMM matrix multiplications on initial timestep ($t=0$) in `run_forward_pass` since the initial hidden state $h_{-1}$ is zero.
+  - Parallelised input flattening and output sequence writeback directly within worker task slices (`pre_calculate_gates` and `run_forward_pass`), eliminating serial main-thread overhead and ensuring hot L1/L2 cache locality for subsequent GEMMs.
+  - Replaced `std::vector<double>` in `thread_grad_accumulators` with 32-byte `AlignedVector<double, 32>` and updated `calculate_and_store_gradients_chunk` with C++20 `std::span<double>`, guaranteeing AVX2 alignment and zero-reallocation gradient accumulation.
   - Reused `deltas_buf` from workspace in `calculate_output_gradients`, avoiding intermediate heap vector allocations per batch element.
   - Streamlined `calculate_bptt_batch_chunk` and `calculate_and_store_gradients_chunk` by hoisting input shape checks and eliminating redundant buffer fills and conditional branches within inner timestep loops.
   - Converted lambda closures in `calculate_forward_feed`, `calculate_hidden_gradients`, `calculate_and_store_gradients`, and `apply_stored_gradients` to named private methods (`pre_calculate_gates`, `run_forward_pass`, `apply_gradient_update`) and functor task structs (`lstm_forward_precalc_task`, `lstm_forward_recurrent_task`, `lstm_bptt_chunk_task`, `lstm_grad_calc_task`).
@@ -17,6 +19,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added multi-threading invariance unit tests in `tests/lstmlayer_mt_tests.cpp`:
   - `OddBatchSizeAllGradsThreadCountInvariance`: Verifies that forward feed, hidden gradients, and all gate/recurrent weight and bias gradients are strictly invariant across thread counts (1, 2, 4, 8) with odd batch sizes.
   - `InferenceForwardFeedMTConsistency`: Verifies multi-threaded inference consistency with `is_training = false`.
+  - `SingleStepInferenceAndTrainingThreadCountInvariance`: Verifies forward feed and gradient calculation across all thread counts for single-step ($T=1$) sequences.
 
 ## [1.1.43] - 2026-09-01
 
