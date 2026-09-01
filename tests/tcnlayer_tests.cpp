@@ -414,3 +414,103 @@ TEST_F(TcnLayerTest, CloneProducesIndependentCopy) {
     cloned_tcn->set_w_values({ 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0 });
     EXPECT_NE(cloned_tcn->get_w_values(), layer.get_w_values());
 }
+
+TEST_F(TcnLayerTest, DilationLongerThanSequencePaddingBehavior) {
+    // K=3, D=4, receptive field = 1 + 2*4 = 9. T = 3 (shorter than receptive field).
+    // All timesteps must execute without bounds violations and correctly zero-pad missing taps.
+    const unsigned N_in = 2, N_out = 2, K = 3, D = 4;
+    const size_t T = 3;
+    TcnLayer layer = make_layer(N_in, N_out, K, D, true);
+
+    std::vector<double> w(static_cast<size_t>(K) * N_in * N_out, 0.5);
+    std::vector<double> b(N_out, 0.1);
+    layer.set_w_values(w);
+    layer.set_b_values(b);
+
+    std::vector<double> x_seq = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<unsigned> topology = { N_in, N_out };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    MockLayer previous_layer(0, N_in);
+
+    batch_go[0].set_rnn_outputs(0, x_seq.data(), x_seq.size());
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false);
+
+    const auto out_seq = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(out_seq.size(), T * N_out);
+
+    // For T=3 and D=4:
+    // At t=0: tap 0 (s=0) is valid, taps 1,2 are zero-padded.
+    // At t=1: tap 0 (s=1) is valid, taps 1,2 are zero-padded.
+    // At t=2: tap 0 (s=2) is valid, taps 1,2 are zero-padded.
+    for (size_t t = 0; t < T; ++t)
+    {
+      for (size_t o = 0; o < N_out; ++o)
+      {
+        EXPECT_FALSE(std::isnan(out_seq[t * N_out + o]));
+        EXPECT_FALSE(std::isinf(out_seq[t * N_out + o]));
+      }
+    }
+}
+
+TEST_F(TcnLayerTest, MultiBatchForwardAndBackwardNumericalSoundness) {
+    const unsigned N_in = 2, N_out = 3, K = 2, D = 1;
+    const size_t T = 3;
+    const size_t batch_size = 4;
+    TcnLayer layer = make_layer(N_in, N_out, K, D, true, activation(activation::method::tanh, 0.0));
+
+    std::vector<double> w_values(static_cast<size_t>(K) * N_in * N_out);
+    for (size_t i = 0; i < w_values.size(); ++i)
+    {
+      w_values[i] = std::sin(static_cast<double>(i + 1) * 0.3) * 0.4;
+    }
+    std::vector<double> b_values(N_out);
+    for (size_t i = 0; i < b_values.size(); ++i)
+    {
+      b_values[i] = std::cos(static_cast<double>(i + 1) * 0.2) * 0.1;
+    }
+    layer.set_w_values(w_values);
+    layer.set_b_values(b_values);
+
+    std::vector<unsigned> topology = { N_in, N_out };
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, 1, 1);
+    MockLayer previous_layer(0, N_in);
+
+    std::vector<std::vector<double>> deltas(batch_size);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      std::vector<double> x(T * N_in);
+      for (size_t i = 0; i < x.size(); ++i)
+      {
+        x[i] = std::sin(static_cast<double>(b * 5 + i) * 0.4);
+      }
+      batch_go[b].set_rnn_outputs(0, x.data(), x.size());
+
+      deltas[b].resize(T * N_out);
+      for (size_t i = 0; i < deltas[b].size(); ++i)
+      {
+        deltas[b][i] = std::cos(static_cast<double>(b * 3 + i) * 0.5) * 0.25;
+      }
+    }
+
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, batch_size, false);
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, batch_size, 0);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, previous_layer, batch_size, 0);
+
+    const auto w_grads = layer.get_w_grads();
+    const auto b_grads = layer.get_b_grads();
+    ASSERT_EQ(w_grads.size(), w_values.size());
+    ASSERT_EQ(b_grads.size(), b_values.size());
+
+    for (size_t i = 0; i < w_grads.size(); ++i)
+    {
+      EXPECT_FALSE(std::isnan(w_grads[i]));
+      EXPECT_FALSE(std::isinf(w_grads[i]));
+    }
+    for (size_t i = 0; i < b_grads.size(); ++i)
+    {
+      EXPECT_FALSE(std::isnan(b_grads[i]));
+      EXPECT_FALSE(std::isinf(b_grads[i]));
+    }
+}

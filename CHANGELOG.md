@@ -12,6 +12,15 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added const accessor `get_pe_inv_denom()` on `SelfAttentionLayer` for inspecting precomputed positional encoding inverse frequency denominators.
   - Added `[[nodiscard]] inline bool is_recurrent() const noexcept` to `LayerDetails`.
 
+### Optimized
+- Optimized `TcnLayer` forward feed, backpropagation, and multi-threaded scaling:
+  - Vectorised `process_forward_range` with `simd::mul_add` streaming contiguously across weight rows, eliminating strided cache misses and removing per-timestep `gathered` buffer zero-filling and memory copies.
+  - Vectorised `finish_hidden_gradients_range` with `simd::dot_product`, skipping padded taps and eliminating intermediate `d_gathered` scratch vectors.
+  - Vectorised `accumulate_gradients_range`, eliminating per-timestep zeroing and buffer allocations.
+  - Implemented multi-threaded gradient accumulation in `calculate_and_store_gradients` using thread-local accumulators (`thread_tcn_grad_accumulators`) and parallel reduction via `simd::add_vectors`, resolving a major single-threaded performance bottleneck during batch training.
+  - Replaced task queue lambda closures with private nested functor structs (`tcn_forward_task`, `tcn_finish_hidden_gradients_task`, `tcn_grad_calc_task`).
+  - Added unit tests for dilation zero-padding on short sequences (`DilationLongerThanSequencePaddingBehavior`), multi-batch numerical soundness (`MultiBatchForwardAndBackwardNumericalSoundness`), and odd batch size thread-count invariance (`OddBatchSizeAllGradsThreadCountInvariance`).
+
 ### Added
 - Extended Python bindings and API ergonomics:
   - Exposed `is_recurrent` read-only property on `LayerDetails` in Python bindings.

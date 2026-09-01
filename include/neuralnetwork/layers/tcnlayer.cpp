@@ -7,6 +7,40 @@
 
 namespace myoddweb::nn
 {
+void TcnLayer::tcn_forward_task::operator()() const
+{
+  layer->process_forward_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    prev_layer_index,
+    *batch_residual_output_values,
+    *batch_hidden_states,
+    is_training);
+}
+
+void TcnLayer::tcn_finish_hidden_gradients_task::operator()() const
+{
+  layer->finish_hidden_gradients_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    *batch_hidden_states,
+    *raw_delta_all);
+}
+
+void TcnLayer::tcn_grad_calc_task::operator()() const
+{
+  layer->accumulate_gradients_range(
+    start,
+    end,
+    *batch_gradients_and_outputs,
+    prev_layer_index,
+    *local_w_grads,
+    *local_b_grads,
+    *local_contributing);
+}
+
 TcnLayer::TcnLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer,
@@ -190,7 +224,6 @@ void TcnLayer::process_forward_range(
   const bool use_bias = has_bias();
   const bool have_hs = !batch_hidden_states.empty();
 
-  std::vector<double> gathered(N_gathered);
   std::vector<double> pre_act(N_out);
   std::vector<double> output(N_out);
   std::vector<double> mask(N_out);
@@ -209,25 +242,32 @@ void TcnLayer::process_forward_range(
 
     for (size_t t = 0; t < T; ++t)
     {
-      std::fill(gathered.begin(), gathered.end(), 0.0);
+      if (use_bias)
+      {
+        std::copy(_b_values.begin(), _b_values.end(), pre_act.begin());
+      }
+      else
+      {
+        std::fill(pre_act.begin(), pre_act.end(), 0.0);
+      }
+
       for (size_t j = 0; j < K; ++j)
       {
         if (t >= j * D)
         {
           const size_t s = t - j * D;
           const double* x_s = seq.data() + s * N_in;
-          std::copy(x_s, x_s + N_in, gathered.begin() + j * N_in);
+          const size_t tap_offset = j * N_in;
+          for (size_t i = 0; i < N_in; ++i)
+          {
+            const double x = x_s[i];
+            if (x != 0.0)
+            {
+              const double* w_row = _w_values.data() + (tap_offset + i) * N_out;
+              simd::mul_add(x, w_row, pre_act.data(), N_out);
+            }
+          }
         }
-      }
-
-      for (size_t o = 0; o < N_out; ++o)
-      {
-        double sum = use_bias ? _b_values[o] : 0.0;
-        for (size_t g = 0; g < N_gathered; ++g)
-        {
-          sum += gathered[g] * _w_values[g * N_out + o];
-        }
-        pre_act[o] = sum;
       }
 
       if (!batch_residual_output_values.empty() && b < batch_residual_output_values.size() &&
@@ -325,9 +365,15 @@ void TcnLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, prev_layer_index, &batch_residual_output_values, &batch_hidden_states, is_training, this]()
-        {
-          process_forward_range(start, end, batch_gradients_and_outputs, prev_layer_index, batch_residual_output_values, batch_hidden_states, is_training);
+        _task_queue_pool->enqueue(tcn_forward_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          prev_layer_index,
+          &batch_residual_output_values,
+          &batch_hidden_states,
+          is_training
         });
       }
       start = end;
@@ -352,7 +398,6 @@ void TcnLayer::finish_hidden_gradients_range(
   const size_t N_in = K > 0 ? N_gathered / K : 0;
 
   std::vector<double> deriv(N_out);
-  std::vector<double> d_gathered(N_gathered);
 
   for (size_t b = b_start; b < b_end; ++b)
   {
@@ -388,22 +433,18 @@ void TcnLayer::finish_hidden_gradients_range(
     for (size_t t = 0; t < T; ++t)
     {
       const double* delta_t = d_pre_act.data() + t * N_out;
-      for (size_t g = 0; g < N_gathered; ++g)
-      {
-        double sum = 0.0;
-        const double* w_row = _w_values.data() + g * N_out;
-        for (size_t o = 0; o < N_out; ++o)
-        {
-          sum += delta_t[o] * w_row[o];
-        }
-        d_gathered[g] = sum;
-      }
       for (size_t j = 0; j < K; ++j)
       {
         if (t >= j * D)
         {
           const size_t s = t - j * D;
-          simd::add_vectors(d_gathered.data() + j * N_in, d_prev.data() + s * N_in, N_in);
+          double* d_prev_s = d_prev.data() + s * N_in;
+          const size_t tap_offset = j * N_in;
+          for (size_t i = 0; i < N_in; ++i)
+          {
+            const double* w_row = _w_values.data() + (tap_offset + i) * N_out;
+            d_prev_s[i] += simd::dot_product(delta_t, w_row, N_out);
+          }
         }
       }
     }
@@ -480,9 +521,13 @@ void TcnLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, &batch_hidden_states, &raw_delta_all, this]()
-        {
-          finish_hidden_gradients_range(start, end, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all);
+        _task_queue_pool->enqueue(tcn_finish_hidden_gradients_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          &batch_hidden_states,
+          &raw_delta_all
         });
       }
       start = end;
@@ -563,9 +608,13 @@ void TcnLayer::calculate_hidden_gradients_from_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, &batch_hidden_states, &raw_delta_all, this]()
-        {
-          finish_hidden_gradients_range(start, end, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all);
+        _task_queue_pool->enqueue(tcn_finish_hidden_gradients_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          &batch_hidden_states,
+          &raw_delta_all
         });
       }
       start = end;
@@ -592,7 +641,6 @@ void TcnLayer::accumulate_gradients_range(
   const size_t N_in = K > 0 ? N_gathered / K : 0;
   const bool use_bias = has_bias();
 
-  std::vector<double> gathered(N_gathered);
   local_contributing = 0;
 
   for (size_t b = b_start; b < b_end; ++b)
@@ -607,22 +655,24 @@ void TcnLayer::accumulate_gradients_range(
 
     for (size_t t = 0; t < T; ++t)
     {
-      std::fill(gathered.begin(), gathered.end(), 0.0);
+      const double* delta_t = own_delta.data() + t * N_out;
       for (size_t j = 0; j < K; ++j)
       {
         if (t >= j * D)
         {
           const size_t s = t - j * D;
           const double* x_s = seq.data() + s * N_in;
-          std::copy(x_s, x_s + N_in, gathered.begin() + j * N_in);
+          const size_t tap_offset = j * N_in;
+          for (size_t i = 0; i < N_in; ++i)
+          {
+            const double x = x_s[i];
+            if (x != 0.0)
+            {
+              double* w_row = local_w_grads.data() + (tap_offset + i) * N_out;
+              simd::mul_add(x, delta_t, w_row, N_out);
+            }
+          }
         }
-      }
-
-      const double* delta_t = own_delta.data() + t * N_out;
-      for (size_t g = 0; g < N_gathered; ++g)
-      {
-        double* w_row = &local_w_grads[g * N_out];
-        simd::mul_add(gathered[g], delta_t, w_row, N_out);
       }
       if (use_bias)
       {
@@ -650,17 +700,77 @@ void TcnLayer::calculate_and_store_gradients(
 
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const bool use_bias = has_bias();
+  const auto num_threads = get_number_of_threads();
+  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
-  size_t contributing = 0;
-  accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, _w_grads, _b_grads, contributing);
-
-  if (contributing > 0)
+  if (active_threads <= 1)
   {
-    const double inv = 1.0 / static_cast<double>(contributing);
-    simd::scale_vector(_w_grads.data(), inv, _w_grads.size());
-    if (use_bias)
+    size_t contributing = 0;
+    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, _w_grads, _b_grads, contributing);
+
+    if (contributing > 0)
     {
-      simd::scale_vector(_b_grads.data(), inv, _b_grads.size());
+      const double inv = 1.0 / static_cast<double>(contributing);
+      simd::scale_vector(_w_grads.data(), inv, _w_grads.size());
+      if (use_bias)
+      {
+        simd::scale_vector(_b_grads.data(), inv, _b_grads.size());
+      }
+    }
+  }
+  else
+  {
+    std::vector<thread_tcn_grad_accumulators> thread_grads(active_threads);
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      thread_grads[t].w_grads.assign(_w_grads.size(), 0.0);
+      if (use_bias)
+      {
+        thread_grads[t].b_grads.assign(_b_grads.size(), 0.0);
+      }
+    }
+
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      size_t size = (batch_size / active_threads) + (t < (batch_size % active_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
+      {
+        _task_queue_pool->enqueue(tcn_grad_calc_task{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          prev_layer_index,
+          &thread_grads[t].w_grads,
+          &thread_grads[t].b_grads,
+          &thread_grads[t].contributing
+        });
+      }
+      start = end;
+    }
+    _task_queue_pool->get();
+
+    size_t total_contributing = 0;
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      simd::add_vectors(thread_grads[t].w_grads.data(), _w_grads.data(), _w_grads.size());
+      if (use_bias)
+      {
+        simd::add_vectors(thread_grads[t].b_grads.data(), _b_grads.data(), _b_grads.size());
+      }
+      total_contributing += thread_grads[t].contributing;
+    }
+
+    if (total_contributing > 0)
+    {
+      const double inv = 1.0 / static_cast<double>(total_contributing);
+      simd::scale_vector(_w_grads.data(), inv, _w_grads.size());
+      if (use_bias)
+      {
+        simd::scale_vector(_b_grads.data(), inv, _b_grads.size());
+      }
     }
   }
 }

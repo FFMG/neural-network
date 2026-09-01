@@ -173,6 +173,53 @@ private:
     std::vector<double>& local_b_grads,
     size_t& local_contributing) const;
 
+  struct thread_tcn_grad_accumulators
+  {
+    std::vector<double> w_grads;
+    std::vector<double> b_grads;
+    size_t contributing = 0;
+  };
+
+  struct tcn_forward_task
+  {
+    const TcnLayer* layer;
+    size_t start;
+    size_t end;
+    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    unsigned prev_layer_index;
+    const std::vector<std::vector<double>>* batch_residual_output_values;
+    std::vector<HiddenStates>* batch_hidden_states;
+    bool is_training;
+
+    void operator()() const;
+  };
+
+  struct tcn_finish_hidden_gradients_task
+  {
+    const TcnLayer* layer;
+    size_t start;
+    size_t end;
+    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    const std::vector<HiddenStates>* batch_hidden_states;
+    const std::vector<std::vector<double>>* raw_delta_all;
+
+    void operator()() const;
+  };
+
+  struct tcn_grad_calc_task
+  {
+    const TcnLayer* layer;
+    size_t start;
+    size_t end;
+    const std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    unsigned prev_layer_index;
+    std::vector<double>* local_w_grads;
+    std::vector<double>* local_b_grads;
+    size_t* local_contributing;
+
+    void operator()() const;
+  };
+
   unsigned _kernel_size;
   unsigned _dilation;
 };
