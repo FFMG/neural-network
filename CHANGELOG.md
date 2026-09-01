@@ -10,7 +10,8 @@ All notable changes to the `neural-network` library will be documented in this f
   - Enabled multi-threading during evaluation/inference (`is_training = false`) in `calculate_forward_feed`, removing an artificial single-thread restriction for evaluation and prediction workloads.
   - Replaced 12 separate thread gradient vector arrays with a single contiguous `thread_grad_accumulators` structure per thread in `LSTMLayer`.
   - Reused `deltas_buf` from workspace in `calculate_output_gradients`, avoiding intermediate heap vector allocations per batch element.
-  - Converted lambda closures in `calculate_forward_feed`, `calculate_hidden_gradients`, and `calculate_and_store_gradients` to named private methods (`pre_calculate_gates`, `run_forward_pass`) and functor task structs (`lstm_forward_precalc_task`, `lstm_forward_recurrent_task`, `lstm_bptt_chunk_task`, `lstm_grad_calc_task`).
+  - Streamlined `calculate_bptt_batch_chunk` and `calculate_and_store_gradients_chunk` by hoisting input shape checks and eliminating redundant buffer fills and conditional branches within inner timestep loops.
+  - Converted lambda closures in `calculate_forward_feed`, `calculate_hidden_gradients`, `calculate_and_store_gradients`, and `apply_stored_gradients` to named private methods (`pre_calculate_gates`, `run_forward_pass`, `apply_gradient_update`) and functor task structs (`lstm_forward_precalc_task`, `lstm_forward_recurrent_task`, `lstm_bptt_chunk_task`, `lstm_grad_calc_task`).
 
 ### Added
 - Added multi-threading invariance unit tests in `tests/lstmlayer_mt_tests.cpp`:

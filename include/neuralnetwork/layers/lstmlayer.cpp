@@ -1290,6 +1290,9 @@ void LSTMLayer::calculate_and_store_gradients_chunk(
     const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
     const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
     const auto& layer_states = hidden_states[b].at(get_layer_index());
+    const bool is_static_input = (prev_outputs.size() == num_inputs);
+    const bool has_time_input = (prev_outputs.size() >= static_cast<size_t>(num_time_steps) * num_inputs);
+    const double* const prev_outputs_base = prev_outputs.data();
 
     for (int t = t_start; t >= t_end; --t)
     {
@@ -1305,13 +1308,13 @@ void LSTMLayer::calculate_and_store_gradients_chunk(
       }
 
       const double* prev_input_ptr = nullptr;
-      if (prev_outputs.size() == num_inputs)
+      if (is_static_input)
       {
-        prev_input_ptr = prev_outputs.data();
+        prev_input_ptr = prev_outputs_base;
       }
-      else if (prev_outputs.size() >= static_cast<size_t>(t + 1) * num_inputs)
+      else if (has_time_input)
       {
-        prev_input_ptr = &prev_outputs[t * num_inputs];
+        prev_input_ptr = prev_outputs_base + t * num_inputs;
       }
 
       if (prev_input_ptr != nullptr)
@@ -1497,32 +1500,40 @@ void LSTMLayer::calculate_and_store_gradients(
   }
 
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  auto norm = [inv_batch](std::vector<double>& v)
+  if (!_w_grads.empty())
   {
-    simd::scale_vector(v.data(), inv_batch, v.size());
-  };
-  norm(_w_grads);
-  norm(_rw_grads);
-  norm(_f_w_grads);
-  norm(_f_rw_grads);
-  norm(_i_w_grads);
-  norm(_i_rw_grads);
-  norm(_o_w_grads);
-  norm(_o_rw_grads);
-  if (has_bias())
+    simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
+    simd::scale_vector(_f_w_grads.data(), inv_batch, _f_w_grads.size());
+    simd::scale_vector(_i_w_grads.data(), inv_batch, _i_w_grads.size());
+    simd::scale_vector(_o_w_grads.data(), inv_batch, _o_w_grads.size());
+  }
+  if (!_rw_grads.empty())
   {
-    norm(_b_grads);
-    norm(_f_b_grads);
-    norm(_i_b_grads);
-    norm(_o_b_grads);
+    simd::scale_vector(_rw_grads.data(), inv_batch, _rw_grads.size());
+    simd::scale_vector(_f_rw_grads.data(), inv_batch, _f_rw_grads.size());
+    simd::scale_vector(_i_rw_grads.data(), inv_batch, _i_rw_grads.size());
+    simd::scale_vector(_o_rw_grads.data(), inv_batch, _o_rw_grads.size());
+  }
+  if (has_bias() && !_b_grads.empty())
+  {
+    simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
+    simd::scale_vector(_f_b_grads.data(), inv_batch, _f_b_grads.size());
+    simd::scale_vector(_i_b_grads.data(), inv_batch, _i_b_grads.size());
+    simd::scale_vector(_o_b_grads.data(), inv_batch, _o_b_grads.size());
   }
   if (_use_layer_normalisation)
   {
     // Already fully accumulated by calculate_hidden_gradients() (Phase A);
     // this call only needs to apply the same batch-average scaling as
     // every other gradient here.
-    norm(_ln_c_gain_grads);
-    norm(_ln_c_bias_grads);
+    if (!_ln_c_gain_grads.empty())
+    {
+      simd::scale_vector(_ln_c_gain_grads.data(), inv_batch, _ln_c_gain_grads.size());
+    }
+    if (!_ln_c_bias_grads.empty())
+    {
+      simd::scale_vector(_ln_c_bias_grads.data(), inv_batch, _ln_c_bias_grads.size());
+    }
   }
 }
 
@@ -1625,31 +1636,44 @@ void LSTMLayer::zero_gradients()
   // first.
 }
 
+void LSTMLayer::apply_gradient_update(
+  std::vector<double>& v,
+  std::vector<double>& g,
+  std::vector<double>& vel,
+  std::vector<double>& m1,
+  std::vector<double>& m2,
+  std::vector<long long>& ts,
+  const std::vector<double>& dec,
+  double learning_rate,
+  double clipping_scale,
+  bool is_bias)
+{
+  MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
+}
+
 void LSTMLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  auto app = [&](std::vector<double>& v, std::vector<double>& g, std::vector<double>& vel, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& ts, const std::vector<double>& dec, bool is_bias) {
-    apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
-  };
-  app(_f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_timesteps, _f_w_decays, false);
-  app(_f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_timesteps, _f_b_decays, true);
-  app(_f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_timesteps, _f_rw_decays, false);
-  app(_i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_timesteps, _i_w_decays, false);
-  app(_i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_timesteps, _i_b_decays, true);
-  app(_i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_timesteps, _i_rw_decays, false);
-  app(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, false);
-  app(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, true);
-  app(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, false);
-  app(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, false);
-  app(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays, true);
-  app(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, false);
+  apply_gradient_update(_f_w_values, _f_w_grads, _f_w_velocities, _f_w_m1, _f_w_m2, _f_w_timesteps, _f_w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_f_b_values, _f_b_grads, _f_b_velocities, _f_b_m1, _f_b_m2, _f_b_timesteps, _f_b_decays, learning_rate, clipping_scale, true);
+  apply_gradient_update(_f_rw_values, _f_rw_grads, _f_rw_velocities, _f_rw_m1, _f_rw_m2, _f_rw_timesteps, _f_rw_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_i_w_values, _i_w_grads, _i_w_velocities, _i_w_m1, _i_w_m2, _i_w_timesteps, _i_w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_i_b_values, _i_b_grads, _i_b_velocities, _i_b_m1, _i_b_m2, _i_b_timesteps, _i_b_decays, learning_rate, clipping_scale, true);
+  apply_gradient_update(_i_rw_values, _i_rw_grads, _i_rw_velocities, _i_rw_m1, _i_rw_m2, _i_rw_timesteps, _i_rw_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true);
+  apply_gradient_update(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_o_w_values, _o_w_grads, _o_w_velocities, _o_w_m1, _o_w_m2, _o_w_timesteps, _o_w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_o_b_values, _o_b_grads, _o_b_velocities, _o_b_m1, _o_b_m2, _o_b_timesteps, _o_b_decays, learning_rate, clipping_scale, true);
+  apply_gradient_update(_o_rw_values, _o_rw_grads, _o_rw_velocities, _o_rw_m1, _o_rw_m2, _o_rw_timesteps, _o_rw_decays, learning_rate, clipping_scale, false);
 
   // Recurrent-state LayerNorm gain/bias (no weight decay on either,
   // matching how biases already skip decay via is_bias=true).
   if (_use_layer_normalisation)
   {
-    app(_ln_c_gain_values, _ln_c_gain_grads, _ln_c_gain_velocities, _ln_c_gain_m1, _ln_c_gain_m2, _ln_c_gain_timesteps, _ln_c_gain_decays, true);
-    app(_ln_c_bias_values, _ln_c_bias_grads, _ln_c_bias_velocities, _ln_c_bias_m1, _ln_c_bias_m2, _ln_c_bias_timesteps, _ln_c_bias_decays, true);
+    apply_gradient_update(_ln_c_gain_values, _ln_c_gain_grads, _ln_c_gain_velocities, _ln_c_gain_m1, _ln_c_gain_m2, _ln_c_gain_timesteps, _ln_c_gain_decays, learning_rate, clipping_scale, true);
+    apply_gradient_update(_ln_c_bias_values, _ln_c_bias_grads, _ln_c_bias_velocities, _ln_c_bias_m1, _ln_c_bias_m2, _ln_c_bias_timesteps, _ln_c_bias_decays, learning_rate, clipping_scale, true);
   }
 
   cache_recurrent_weights();
@@ -1893,11 +1917,6 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
       double* dh_next = &workspace.d_next_h[b_idx * N_this];
       double* dc_next = &workspace.d_next_c[b_idx * N_this];
-      if (t == t_start)
-      {
-        std::fill(dh_next, dh_next + N_this, 0.0);
-        std::fill(dc_next, dc_next + N_this, 0.0);
-      }
       const double* upstream_grads = &workspace.grad_from_next_all_t[(b_idx * num_time_steps + t) * N_this];
       double* dh_curr = &workspace.dh_curr[b_idx * N_this];
 
@@ -2061,8 +2080,6 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
         double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
         std::fill(dx_t, dx_t + N_prev, 0.0);
       }
-
-      std::fill(dh_next, dh_next + N_this, 0.0);
 
       double* grad_out_t = &workspace.rnn_grad_matrix[(b_idx * num_time_steps + t) * GateCount * N_this];
       std::copy(df_chunk, df_chunk + N_this, grad_out_t);

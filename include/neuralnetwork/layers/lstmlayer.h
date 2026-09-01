@@ -1319,6 +1319,18 @@ private:
     std::vector<double>& m2, std::vector<long long>& timesteps,
     std::vector<double>& decays) const;
 
+  void apply_gradient_update(
+    std::vector<double>& v,
+    std::vector<double>& g,
+    std::vector<double>& vel,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    std::vector<long long>& ts,
+    const std::vector<double>& dec,
+    double learning_rate,
+    double clipping_scale,
+    bool is_bias);
+
   [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_rw_values_T() const noexcept
   {
     return _rw_values_T;
