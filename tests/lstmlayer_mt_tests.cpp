@@ -349,3 +349,174 @@ TEST_F(LSTMLayerMTTest, SmallBatchSizeThresholdFallback)
         }
     }
 }
+
+TEST_F(LSTMLayerMTTest, OddBatchSizeAllGradsThreadCountInvariance)
+{
+    const unsigned num_inputs = 8;
+    const unsigned num_neurons = 16;
+    const unsigned batch_size = 33;
+    const unsigned num_timesteps = 7;
+
+    std::vector<unsigned> thread_counts = { 1, 2, 4, 8 };
+    std::vector<LSTMLayer> layers;
+    for (unsigned tc : thread_counts)
+    {
+        layers.emplace_back(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, tc, true, 0.0, false, std::nullopt);
+        init_layer_weights(layers.back());
+        layers.back().cache_recurrent_weights();
+    }
+
+    MockLayer prev_layer(0, num_inputs);
+    MockLayer next_layer(2, num_neurons);
+    next_layer.set_w_values(std::vector<double>(num_neurons * num_neurons, 0.1));
+
+    std::vector<unsigned> topology = { num_inputs, num_neurons, num_neurons };
+
+    std::vector<std::vector<GradientsAndOutputs>> all_batch_go;
+    std::vector<std::vector<HiddenStates>> all_batch_hs;
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+        auto batch_hs = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
+
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+            std::vector<double> inputs(num_inputs * num_timesteps);
+            for (size_t k = 0; k < inputs.size(); ++k)
+            {
+                inputs[k] = std::sin(static_cast<double>((b + 1) * (k + 1)));
+            }
+            batch_go[b].set_rnn_outputs(0, inputs);
+        }
+
+        all_batch_go.push_back(std::move(batch_go));
+        all_batch_hs.push_back(std::move(batch_hs));
+    }
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        layers[i].calculate_forward_feed(all_batch_go[i], prev_layer, {}, all_batch_hs[i], batch_size, true);
+    }
+
+    std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_neurons * num_timesteps));
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        for (size_t k = 0; k < batch_next_grads[b].size(); ++k)
+        {
+            batch_next_grads[b][k] = std::cos(static_cast<double>(b * k + 1));
+        }
+    }
+
+    for (size_t i = 0; i < thread_counts.size(); ++i)
+    {
+        layers[i].calculate_hidden_gradients(all_batch_go[i], next_layer, batch_next_grads, all_batch_hs[i], batch_size, 0);
+        layers[i].calculate_and_store_gradients(all_batch_go[i], all_batch_hs[i], prev_layer, batch_size, 0);
+    }
+
+    const auto& ref_w = layers[0].get_w_grads();
+    const auto& ref_rw = layers[0].get_rw_grads();
+    const auto& ref_b = layers[0].get_b_grads();
+    const auto& ref_f_w = layers[0].get_f_w_grads();
+    const auto& ref_f_rw = layers[0].get_f_rw_grads();
+    const auto& ref_f_b = layers[0].get_f_b_grads();
+    const auto& ref_i_w = layers[0].get_i_w_grads();
+    const auto& ref_i_rw = layers[0].get_i_rw_grads();
+    const auto& ref_i_b = layers[0].get_i_b_grads();
+    const auto& ref_o_w = layers[0].get_o_w_grads();
+    const auto& ref_o_rw = layers[0].get_o_rw_grads();
+    const auto& ref_o_b = layers[0].get_o_b_grads();
+
+    for (size_t i = 1; i < thread_counts.size(); ++i)
+    {
+        const auto& cur_w = layers[i].get_w_grads();
+        const auto& cur_rw = layers[i].get_rw_grads();
+        const auto& cur_b = layers[i].get_b_grads();
+        const auto& cur_f_w = layers[i].get_f_w_grads();
+        const auto& cur_f_rw = layers[i].get_f_rw_grads();
+        const auto& cur_f_b = layers[i].get_f_b_grads();
+        const auto& cur_i_w = layers[i].get_i_w_grads();
+        const auto& cur_i_rw = layers[i].get_i_rw_grads();
+        const auto& cur_i_b = layers[i].get_i_b_grads();
+        const auto& cur_o_w = layers[i].get_o_w_grads();
+        const auto& cur_o_rw = layers[i].get_o_rw_grads();
+        const auto& cur_o_b = layers[i].get_o_b_grads();
+
+        ASSERT_EQ(ref_w.size(), cur_w.size());
+        for (size_t k = 0; k < ref_w.size(); ++k)
+        {
+            EXPECT_NEAR(ref_w[k], cur_w[k], 1e-12) << "w_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_f_w[k], cur_f_w[k], 1e-12) << "f_w_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_i_w[k], cur_i_w[k], 1e-12) << "i_w_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_o_w[k], cur_o_w[k], 1e-12) << "o_w_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+
+        ASSERT_EQ(ref_rw.size(), cur_rw.size());
+        for (size_t k = 0; k < ref_rw.size(); ++k)
+        {
+            EXPECT_NEAR(ref_rw[k], cur_rw[k], 1e-12) << "rw_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_f_rw[k], cur_f_rw[k], 1e-12) << "f_rw_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_i_rw[k], cur_i_rw[k], 1e-12) << "i_rw_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_o_rw[k], cur_o_rw[k], 1e-12) << "o_rw_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+
+        ASSERT_EQ(ref_b.size(), cur_b.size());
+        for (size_t k = 0; k < ref_b.size(); ++k)
+        {
+            EXPECT_NEAR(ref_b[k], cur_b[k], 1e-12) << "b_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_f_b[k], cur_f_b[k], 1e-12) << "f_b_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_i_b[k], cur_i_b[k], 1e-12) << "i_b_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+            EXPECT_NEAR(ref_o_b[k], cur_o_b[k], 1e-12) << "o_b_grad mismatch at index " << k << " with thread count " << thread_counts[i];
+        }
+    }
+}
+
+TEST_F(LSTMLayerMTTest, InferenceForwardFeedMTConsistency)
+{
+    const unsigned num_inputs = 8;
+    const unsigned num_neurons = 16;
+    const unsigned batch_size = 128;
+    const unsigned num_threads = get_test_threads();
+    const unsigned num_timesteps = 10;
+
+    LSTMLayer layer_st(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+    LSTMLayer layer_mt(1, num_inputs, num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, num_threads, true, 0.0, false, std::nullopt);
+
+    init_layer_weights(layer_st);
+    init_layer_weights(layer_mt);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_neurons };
+
+    auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
+    
+    auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_timesteps, LSTMLayer::Multiplier);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        std::vector<double> inputs(num_inputs * num_timesteps);
+        for (size_t i = 0; i < inputs.size(); ++i)
+        {
+            inputs[i] = std::sin(static_cast<double>(b * (i + 1)));
+        }
+        batch_go_st[b].set_rnn_outputs(0, inputs);
+        batch_go_mt[b].set_rnn_outputs(0, inputs);
+    }
+
+    // is_training = false
+    layer_st.calculate_forward_feed(batch_go_st, prev_layer, {}, batch_hs_st, batch_size, false);
+    layer_mt.calculate_forward_feed(batch_go_mt, prev_layer, {}, batch_hs_mt, batch_size, false);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        const auto& out_st = batch_go_st[b].get_rnn_outputs(1);
+        const auto& out_mt = batch_go_mt[b].get_rnn_outputs(1);
+        ASSERT_EQ(out_st.size(), out_mt.size());
+        for (size_t i = 0; i < out_st.size(); ++i)
+        {
+            EXPECT_NEAR(out_st[i], out_mt[i], 1e-12) << "Inference mismatch at batch " << b << " index " << i;
+        }
+    }
+}
