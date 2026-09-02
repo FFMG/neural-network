@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "../libraries/instrumentor.h"
 #include "errorcalculation.h"
 
@@ -21,6 +23,18 @@ public:
     return _error_type;
   }
 
+  [[nodiscard]] inline std::optional<size_t> numerator() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    return _numerator;
+  }
+
+  [[nodiscard]] inline std::optional<size_t> denominator() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+    return _denominator;
+  }
+
   NeuralNetworkHelperMetrics() noexcept :
     _error(0.0),
     _error_type(ErrorCalculation::type::none)
@@ -30,7 +44,9 @@ public:
 
   NeuralNetworkHelperMetrics(const NeuralNetworkHelperMetrics& src) noexcept :
     _error(src._error),
-    _error_type(src._error_type)
+    _error_type(src._error_type),
+    _numerator(src._numerator),
+    _denominator(src._denominator)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
   }
@@ -41,17 +57,23 @@ public:
     {
       _error = src._error;
       _error_type = src._error_type;
+      _numerator = src._numerator;
+      _denominator = src._denominator;
     }
     return *this;
   }
 
   NeuralNetworkHelperMetrics(NeuralNetworkHelperMetrics&& src) noexcept :
     _error(src._error),
-    _error_type(src._error_type)
+    _error_type(src._error_type),
+    _numerator(src._numerator),
+    _denominator(src._denominator)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
     src._error = 0.0;
     src._error_type = ErrorCalculation::type::none;
+    src._numerator = std::nullopt;
+    src._denominator = std::nullopt;
   }
 
   NeuralNetworkHelperMetrics& operator=(NeuralNetworkHelperMetrics&& src) noexcept
@@ -61,8 +83,12 @@ public:
     {
       _error = src._error;
       _error_type = src._error_type;
+      _numerator = src._numerator;
+      _denominator = src._denominator;
       src._error = 0.0;
       src._error_type = ErrorCalculation::type::none;
+      src._numerator = std::nullopt;
+      src._denominator = std::nullopt;
     }
     return *this;
   }
@@ -74,9 +100,20 @@ public:
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
   }
 
-protected:
+  NeuralNetworkHelperMetrics(double error, ErrorCalculation::type error_type, std::optional<size_t> numerator, std::optional<size_t> denominator) noexcept :
+    _error(error),
+    _error_type(error_type),
+    _numerator(numerator),
+    _denominator(denominator)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelperMetrics");
+  }
+
+private:
   double _error;
   ErrorCalculation::type _error_type;
+  std::optional<size_t> _numerator;
+  std::optional<size_t> _denominator;
 };
 
 } // namespace myoddweb::nn

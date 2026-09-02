@@ -764,9 +764,8 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
 
     for (const auto& error_type : error_types)
     {
-      layer_errors.emplace_back(
-        ErrorCalculation::calculate_error(error_type, unrolled_checking_outputs, unrolled_predictions, configs, activation_method),
-        error_type);
+      const auto result = ErrorCalculation::calculate_error(error_type, unrolled_checking_outputs, unrolled_predictions, configs, activation_method);
+      layer_errors.emplace_back(result.ratio, error_type, result.numerator, result.denominator);
     }
     errors.emplace_back(std::move(layer_errors));
   }

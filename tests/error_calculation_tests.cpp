@@ -410,13 +410,13 @@ TEST_F(ErrorCalculationTest, CrossEntropy) {
 
 TEST_F(ErrorCalculationTest, DirectionalAccuracyLinear) {
   double expected = math_expect::directional_accuracy(ground_truth, predictions, 0.0, config.neutral_tolerance());
-  double actual = ErrorCalculation::calculate_directional_accuracy(ground_truth, predictions, config, activation::method::linear);
+  double actual = ErrorCalculation::calculate_directional_accuracy(ground_truth, predictions, config, activation::method::linear).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
 TEST_F(ErrorCalculationTest, DirectionalAccuracySigmoid) {
   double expected = math_expect::directional_accuracy(ground_truth, predictions, 0.5, config.neutral_tolerance());
-  double actual = ErrorCalculation::calculate_directional_accuracy(ground_truth, predictions, config, activation::method::sigmoid);
+  double actual = ErrorCalculation::calculate_directional_accuracy(ground_truth, predictions, config, activation::method::sigmoid).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
@@ -425,13 +425,13 @@ TEST_F(ErrorCalculationTest, SoftmaxDirectionalAccuracy) {
   std::vector<std::vector<double>> gt_sm = {{1.0, 0.0, 0.0}, {0.0, 0.0, 1.0}, {0.0, 1.0, 0.0}}; // DOWN, UP, NEUTRAL
   std::vector<std::vector<double>> pr_sm = {{0.8, 0.1, 0.1}, {0.1, 0.1, 0.8}, {0.3, 0.4, 0.3}}; // Match, Match, Neutral Match
   double expected = math_expect::softmax_directional_accuracy(gt_sm, pr_sm);
-  double actual = ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm, pr_sm);
+  double actual = ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm, pr_sm).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
 TEST_F(ErrorCalculationTest, DirectionalConfidenceScoreTanh) {
   double expected = math_expect::directional_confidence_score(ground_truth, predictions, 0.0, config.neutral_tolerance(), config.confidence_threshold());
-  double actual = ErrorCalculation::calculate_directional_confidence_score(ground_truth, predictions, config, activation::method::tanh);
+  double actual = ErrorCalculation::calculate_directional_confidence_score(ground_truth, predictions, config, activation::method::tanh).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
@@ -442,19 +442,19 @@ TEST_F(ErrorCalculationTest, SoftmaxDirectionalConfidenceScore) {
   // Seq 2: UP vs DOWN, Conf 0.4 <= 0.5 -> Ignore
   // Seq 3: NEUTRAL -> Ignore
   double expected = math_expect::softmax_directional_confidence_score(gt_sm, pr_sm, config.confidence_threshold());
-  double actual = ErrorCalculation::calculate_softmax_directional_confidence_score(gt_sm, pr_sm, config);
+  double actual = ErrorCalculation::calculate_softmax_directional_confidence_score(gt_sm, pr_sm, config).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
 TEST_F(ErrorCalculationTest, PredictionCoverageRelu) {
   double expected = math_expect::prediction_coverage(predictions, config.confidence_threshold());
-  double actual = ErrorCalculation::calculate_prediction_coverage(predictions, config, activation::method::relu);
+  double actual = ErrorCalculation::calculate_prediction_coverage(predictions, config, activation::method::relu).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
 TEST_F(ErrorCalculationTest, SoftmaxPredictionCoverage) {
   double expected = math_expect::softmax_prediction_coverage(predictions, config.confidence_threshold());
-  double actual = ErrorCalculation::calculate_softmax_prediction_coverage(predictions, config);
+  double actual = ErrorCalculation::calculate_softmax_prediction_coverage(predictions, config).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
 }
 
@@ -471,7 +471,7 @@ TEST_F(ErrorCalculationTest, PredictionCoverageSigmoidUsesNeutralBaseline) {
   };
 
   double expected = math_expect::prediction_coverage(sigmoid_predictions, sigmoid_config.confidence_threshold(), 0.5);
-  double actual = ErrorCalculation::calculate_prediction_coverage(sigmoid_predictions, sigmoid_config, activation::method::sigmoid);
+  double actual = ErrorCalculation::calculate_prediction_coverage(sigmoid_predictions, sigmoid_config, activation::method::sigmoid).ratio;
   EXPECT_DOUBLE_EQ(expected, actual);
   EXPECT_DOUBLE_EQ(actual, 0.5); // 2 out of 4 sequences (0.05 and 0.95) are confident
 
@@ -516,12 +516,12 @@ TEST_F(ErrorCalculationTest, ComplexArchitectureIntegration) {
   std::vector<std::vector<double>> unrolled_gt = targets;
 
   double actual_mse = ErrorCalculation::calculate_error(
-    ErrorCalculation::type::mse, 
-    unrolled_gt, 
-    unrolled_pred, 
-    config, 
+    ErrorCalculation::type::mse,
+    unrolled_gt,
+    unrolled_pred,
+    config,
     activation::method::sigmoid
-  );
+  ).ratio;
 
   // 3. Calculate expected error mathematically
   double expected_mse = math_expect::mse(targets, prediction);
@@ -561,12 +561,12 @@ TEST_F(ErrorCalculationTest, MultiOutputArchitectureIntegration) {
 
   for(const auto& type : types) {
     double actual = ErrorCalculation::calculate_error(
-      type, 
-      targets, 
-      prediction, 
-      config, 
+      type,
+      targets,
+      prediction,
+      config,
       activation::method::linear
-    );
+    ).ratio;
 
     double expected = 0.0;
     switch(type) {
@@ -829,12 +829,12 @@ TEST_F(ErrorCalculationTest, CalculateErrorEnumDispatch)
   std::vector<std::vector<double>> gt = { { 1.0, 0.0 }, { 0.0, 1.0 } };
   std::vector<std::vector<double>> pred = { { 0.8, 0.2 }, { 0.3, 0.7 } };
 
-  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_error(ErrorCalculation::type::none, gt, pred, config, activation::method::sigmoid), 0.0);
-  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mae, gt, pred, config, activation::method::sigmoid), 0.0);
-  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mse, gt, pred, config, activation::method::sigmoid), 0.0);
-  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::rmse, gt, pred, config, activation::method::sigmoid), 0.0);
-  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::bce_loss, gt, pred, config, activation::method::sigmoid), 0.0);
-  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::cross_entropy, gt, pred, config, activation::method::softmax), 0.0);
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_error(ErrorCalculation::type::none, gt, pred, config, activation::method::sigmoid).ratio, 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mae, gt, pred, config, activation::method::sigmoid).ratio, 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::mse, gt, pred, config, activation::method::sigmoid).ratio, 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::rmse, gt, pred, config, activation::method::sigmoid).ratio, 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::bce_loss, gt, pred, config, activation::method::sigmoid).ratio, 0.0);
+  EXPECT_GT(ErrorCalculation::calculate_error(ErrorCalculation::type::cross_entropy, gt, pred, config, activation::method::softmax).ratio, 0.0);
 }
 
 TEST_F(ErrorCalculationTest, LabelSmoothingHelperFunctions)
@@ -958,7 +958,7 @@ TEST_F(ErrorCalculationTest, QuantileLossMedianMatchesHalfMAE)
   // Total = 2.0 / 3 = 0.6666666666666666
   EXPECT_NEAR(q_loss, 2.0 / 3.0, 1e-12);
   EXPECT_NEAR(q_loss, 0.5 * mae_loss, 1e-12);
-  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::quantile_loss, gt, pred, q_config, activation::method::linear), q_loss, 1e-12);
+  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::quantile_loss, gt, pred, q_config, activation::method::linear).ratio, q_loss, 1e-12);
 }
 
 TEST_F(ErrorCalculationTest, QuantileLossAsymmetricPenalties)
@@ -1059,7 +1059,7 @@ TEST_F(ErrorCalculationTest, SharpeRatioLossHandCalculated)
 
   EXPECT_NEAR(sharpe, expected_sharpe, 1e-9);
   EXPECT_NEAR(sharpe_loss, -expected_sharpe, 1e-9);
-  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sharpe_ratio_loss, gt, pred, config_sharpe, activation::method::tanh), -expected_sharpe, 1e-9);
+  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sharpe_ratio_loss, gt, pred, config_sharpe, activation::method::tanh).ratio, -expected_sharpe, 1e-9);
 
   // The batch std-dev exposed separately so the backward pass can use it to
   // risk-scale the per-sample gradient (see Layer::calculate_sharpe_ratio_loss_error_deltas).
@@ -1095,7 +1095,7 @@ TEST_F(ErrorCalculationTest, SortinoRatioLossHandCalculated)
 
   EXPECT_NEAR(sortino, expected_sortino, 1e-7);
   EXPECT_NEAR(sortino_loss, -expected_sortino, 1e-7);
-  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sortino_ratio_loss, gt, pred, config_sortino, activation::method::tanh), -expected_sortino, 1e-7);
+  EXPECT_NEAR(ErrorCalculation::calculate_error(ErrorCalculation::type::sortino_ratio_loss, gt, pred, config_sortino, activation::method::tanh).ratio, -expected_sortino, 1e-7);
 
   // The downside std-dev exposed separately so the backward pass can use it to
   // risk-scale the per-sample gradient (see Layer::calculate_sortino_ratio_loss_error_deltas).
@@ -1215,5 +1215,167 @@ TEST_F(ErrorCalculationTest, SharpeAndSortinoStringConversions)
   EXPECT_EQ(ErrorCalculation::string_to_type("sortino-loss"), ErrorCalculation::type::sortino_ratio_loss);
   EXPECT_EQ(ErrorCalculation::string_to_type("sortino"), ErrorCalculation::type::sortino_ratio_loss);
   EXPECT_EQ(ErrorCalculation::string_to_type("SORTINO-RATIO-LOSS"), ErrorCalculation::type::sortino_ratio_loss);
+}
+
+TEST_F(ErrorCalculationTest, ErrorResultCountsForRatioMetrics)
+{
+  // 1. Directional Accuracy (linear)
+  std::vector<std::vector<double>> gt_dir = { { 1.0, -1.0 }, { 0.5, -0.5 } };
+  std::vector<std::vector<double>> pred_dir = { { 0.8, -0.2 }, { -0.1, -0.9 } };
+  EvaluationConfig eval_cfg(0.01, 0.5, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  const auto da_res = ErrorCalculation::calculate_directional_accuracy(gt_dir, pred_dir, eval_cfg, activation::method::linear);
+  EXPECT_DOUBLE_EQ(da_res.ratio, 3.0 / 4.0);
+  ASSERT_TRUE(da_res.numerator.has_value());
+  ASSERT_TRUE(da_res.denominator.has_value());
+  EXPECT_EQ(*da_res.numerator, 3);
+  EXPECT_EQ(*da_res.denominator, 4);
+
+  // 2. Softmax Directional Accuracy
+  std::vector<std::vector<double>> gt_sm = { { 1.0, 0.0, 0.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 1.0, 0.0 } };
+  std::vector<std::vector<double>> pred_sm = { { 0.8, 0.1, 0.1 }, { 0.1, 0.1, 0.8 }, { 0.3, 0.4, 0.3 } };
+  const auto sm_da_res = ErrorCalculation::calculate_softmax_directional_accuracy(gt_sm, pred_sm);
+  EXPECT_DOUBLE_EQ(sm_da_res.ratio, 1.0);
+  ASSERT_TRUE(sm_da_res.numerator.has_value());
+  ASSERT_TRUE(sm_da_res.denominator.has_value());
+  EXPECT_EQ(*sm_da_res.numerator, 2);
+  EXPECT_EQ(*sm_da_res.denominator, 2);
+
+  // 3. Directional Confidence Score (tanh)
+  std::vector<std::vector<double>> gt_conf = { { 1.0, -1.0 }, { 0.5, 0.5 } };
+  std::vector<std::vector<double>> pred_conf = { { 0.8, -0.2 }, { 0.6, -0.7 } };
+  const auto dcs_res = ErrorCalculation::calculate_directional_confidence_score(gt_conf, pred_conf, eval_cfg, activation::method::tanh);
+  EXPECT_DOUBLE_EQ(dcs_res.ratio, 2.0 / 3.0);
+  ASSERT_TRUE(dcs_res.numerator.has_value());
+  ASSERT_TRUE(dcs_res.denominator.has_value());
+  EXPECT_EQ(*dcs_res.numerator, 2);
+  EXPECT_EQ(*dcs_res.denominator, 3);
+
+  // 4. Softmax Directional Confidence Score
+  std::vector<std::vector<double>> pred_sm_conf = { { 0.8, 0.1, 0.1 }, { 0.1, 0.4, 0.5 }, { 0.2, 0.6, 0.2 } };
+  EvaluationConfig eval_cfg_sm(0.0, 0.7, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  const auto sm_dcs_res = ErrorCalculation::calculate_softmax_directional_confidence_score(gt_sm, pred_sm_conf, eval_cfg_sm);
+  EXPECT_DOUBLE_EQ(sm_dcs_res.ratio, 1.0);
+  ASSERT_TRUE(sm_dcs_res.numerator.has_value());
+  ASSERT_TRUE(sm_dcs_res.denominator.has_value());
+  EXPECT_EQ(*sm_dcs_res.numerator, 1);
+  EXPECT_EQ(*sm_dcs_res.denominator, 1);
+
+  // 5. Prediction Coverage (linear)
+  std::vector<std::vector<double>> pred_cov = { { 0.2, 0.8 }, { 0.1, -0.2 }, { 0.7, 0.1 } };
+  const auto cov_res = ErrorCalculation::calculate_prediction_coverage(pred_cov, eval_cfg, activation::method::linear);
+  EXPECT_DOUBLE_EQ(cov_res.ratio, 2.0 / 3.0);
+  ASSERT_TRUE(cov_res.numerator.has_value());
+  ASSERT_TRUE(cov_res.denominator.has_value());
+  EXPECT_EQ(*cov_res.numerator, 2);
+  EXPECT_EQ(*cov_res.denominator, 3);
+
+  // 6. Softmax Prediction Coverage
+  std::vector<std::vector<double>> pred_sm_cov = { { 0.7, 0.2, 0.1 }, { 0.4, 0.3, 0.3 }, { 0.1, 0.8, 0.1 } };
+  EvaluationConfig eval_cfg_sm_cov(0.0, 0.6, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  const auto sm_cov_res = ErrorCalculation::calculate_softmax_prediction_coverage(pred_sm_cov, eval_cfg_sm_cov);
+  EXPECT_DOUBLE_EQ(sm_cov_res.ratio, 2.0 / 3.0);
+  ASSERT_TRUE(sm_cov_res.numerator.has_value());
+  ASSERT_TRUE(sm_cov_res.denominator.has_value());
+  EXPECT_EQ(*sm_cov_res.numerator, 2);
+  EXPECT_EQ(*sm_cov_res.denominator, 3);
+}
+
+TEST_F(ErrorCalculationTest, ErrorResultNulloptForNonRatioMetrics)
+{
+  std::vector<std::vector<double>> gt = { { 1.0, 0.0 }, { 0.0, 1.0 } };
+  std::vector<std::vector<double>> pred = { { 0.8, 0.2 }, { 0.3, 0.7 } };
+  EvaluationConfig cfg;
+
+  std::vector<ErrorCalculation::type> non_ratio_types = {
+    ErrorCalculation::type::none,
+    ErrorCalculation::type::mae,
+    ErrorCalculation::type::mse,
+    ErrorCalculation::type::rmse,
+    ErrorCalculation::type::nrmse,
+    ErrorCalculation::type::mape,
+    ErrorCalculation::type::wape,
+    ErrorCalculation::type::smape,
+    ErrorCalculation::type::bce_loss,
+    ErrorCalculation::type::cross_entropy,
+    ErrorCalculation::type::log_cosh,
+    ErrorCalculation::type::quantile_loss,
+    ErrorCalculation::type::sharpe_ratio_loss,
+    ErrorCalculation::type::sortino_ratio_loss
+  };
+
+  for (const auto& error_type : non_ratio_types)
+  {
+    const auto res = ErrorCalculation::calculate_error(error_type, gt, pred, cfg, activation::method::linear);
+    EXPECT_FALSE(res.numerator.has_value());
+    EXPECT_FALSE(res.denominator.has_value());
+  }
+}
+
+TEST_F(ErrorCalculationTest, NeuralNetworkHelperMetricsNumeratorDenominatorLifecycle)
+{
+  // Default constructor
+  NeuralNetworkHelperMetrics default_metric;
+  EXPECT_DOUBLE_EQ(default_metric.error(), 0.0);
+  EXPECT_EQ(default_metric.error_type(), ErrorCalculation::type::none);
+  EXPECT_FALSE(default_metric.numerator().has_value());
+  EXPECT_FALSE(default_metric.denominator().has_value());
+
+  // 2-argument constructor
+  NeuralNetworkHelperMetrics ratio_only(0.42, ErrorCalculation::type::mse);
+  EXPECT_DOUBLE_EQ(ratio_only.error(), 0.42);
+  EXPECT_EQ(ratio_only.error_type(), ErrorCalculation::type::mse);
+  EXPECT_FALSE(ratio_only.numerator().has_value());
+  EXPECT_FALSE(ratio_only.denominator().has_value());
+
+  // 4-argument constructor
+  NeuralNetworkHelperMetrics counted(0.75, ErrorCalculation::type::directional_accuracy, 15, 20);
+  EXPECT_DOUBLE_EQ(counted.error(), 0.75);
+  EXPECT_EQ(counted.error_type(), ErrorCalculation::type::directional_accuracy);
+  ASSERT_TRUE(counted.numerator().has_value());
+  ASSERT_TRUE(counted.denominator().has_value());
+  EXPECT_EQ(*counted.numerator(), 15);
+  EXPECT_EQ(*counted.denominator(), 20);
+
+  // Copy constructor
+  NeuralNetworkHelperMetrics copied(counted);
+  EXPECT_DOUBLE_EQ(copied.error(), 0.75);
+  EXPECT_EQ(copied.error_type(), ErrorCalculation::type::directional_accuracy);
+  ASSERT_TRUE(copied.numerator().has_value());
+  ASSERT_TRUE(copied.denominator().has_value());
+  EXPECT_EQ(*copied.numerator(), 15);
+  EXPECT_EQ(*copied.denominator(), 20);
+
+  // Copy assignment
+  NeuralNetworkHelperMetrics assigned;
+  assigned = counted;
+  EXPECT_DOUBLE_EQ(assigned.error(), 0.75);
+  EXPECT_EQ(assigned.error_type(), ErrorCalculation::type::directional_accuracy);
+  ASSERT_TRUE(assigned.numerator().has_value());
+  ASSERT_TRUE(assigned.denominator().has_value());
+  EXPECT_EQ(*assigned.numerator(), 15);
+  EXPECT_EQ(*assigned.denominator(), 20);
+
+  // Move constructor
+  NeuralNetworkHelperMetrics moved(std::move(counted));
+  EXPECT_DOUBLE_EQ(moved.error(), 0.75);
+  EXPECT_EQ(moved.error_type(), ErrorCalculation::type::directional_accuracy);
+  ASSERT_TRUE(moved.numerator().has_value());
+  ASSERT_TRUE(moved.denominator().has_value());
+  EXPECT_EQ(*moved.numerator(), 15);
+  EXPECT_EQ(*moved.denominator(), 20);
+  EXPECT_FALSE(counted.numerator().has_value());
+  EXPECT_FALSE(counted.denominator().has_value());
+
+  // Move assignment
+  NeuralNetworkHelperMetrics move_assigned;
+  move_assigned = std::move(moved);
+  EXPECT_DOUBLE_EQ(move_assigned.error(), 0.75);
+  EXPECT_EQ(move_assigned.error_type(), ErrorCalculation::type::directional_accuracy);
+  ASSERT_TRUE(move_assigned.numerator().has_value());
+  ASSERT_TRUE(move_assigned.denominator().has_value());
+  EXPECT_EQ(*move_assigned.numerator(), 15);
+  EXPECT_EQ(*move_assigned.denominator(), 20);
+  EXPECT_FALSE(moved.numerator().has_value());
+  EXPECT_FALSE(moved.denominator().has_value());
 }
 

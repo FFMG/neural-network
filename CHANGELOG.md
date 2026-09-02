@@ -2,6 +2,26 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.45] - 2026-09-02
+
+### Added
+- Added `ErrorResult` structure returning metric `ratio` along with optional sample counts (`numerator` and `denominator`) across ratio-based error and metric functions:
+  - `calculate_directional_accuracy`, `calculate_softmax_directional_accuracy`: reports matching direction count and total non-neutral sample count.
+  - `calculate_directional_confidence_score`, `calculate_softmax_directional_confidence_score`: reports confident matching direction count and total confident sample count.
+  - `calculate_prediction_coverage`, `calculate_softmax_prediction_coverage`: reports confident sequence count and total sequence count.
+  - Non-ratio continuous loss functions (MSE, MAE, RMSE, NRMSE, Huber, Log-Cosh, BCE, Cross-Entropy, Quantile, Sharpe, Sortino) return `std::nullopt` for `numerator` and `denominator`.
+- Extended `NeuralNetworkHelperMetrics` with `numerator()` and `denominator()` accessors, copy and move constructors/operators, and a 4-argument constructor accepting sample counts.
+- Added `force_checking_indexes` parameter to `NeuralNetwork::calculate_forecast_metrics_all_layers` and `NeuralNetworkHelper::calculate_forecast_metrics`:
+  - When `true` with `in_sample = false`, forces evaluation against `checking_indexes()` even when `epoch >= number_of_epoch`, allowing consistent side-by-side metric comparison against validation batches without switching to the smaller `final_check_indexes()`.
+- Added unit tests in `tests/error_calculation_tests.cpp` and `tests/neuralnetworkhelper_tests.cpp`:
+  - `ErrorResultCountsForRatioMetrics`: Verifies accurate count derivation for directional accuracy, confidence score, and coverage metrics across linear, tanh, and softmax heads.
+  - `ErrorResultNulloptForNonRatioMetrics`: Verifies `std::nullopt` counts across all continuous loss types.
+  - `NeuralNetworkHelperMetricsNumeratorDenominatorLifecycle`: Verifies default, 2-argument, 4-argument construction, copy, and move semantics.
+  - `ForceCheckingIndexesSelectsValidationSetAtFinalEpoch`: Verifies index set selection between `checking_indexes()` and `final_check_indexes()` via captured helper and `NeuralNetwork`.
+- Updated Python bindings in `python/bindings.cpp` and documentation in `python/README.md` and `README.md`:
+  - Exposed `numerator` and `denominator` read-only properties on `nn.NeuralNetworkHelperMetrics`.
+  - Exposed `force_checking_indexes` parameter in `calculate_forecast_metrics` and `calculate_forecast_metrics_all_layers`.
+
 ## [1.1.44] - 2026-09-01
 
 ### Optimised

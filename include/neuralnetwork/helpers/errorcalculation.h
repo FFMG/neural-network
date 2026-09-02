@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -36,6 +37,13 @@ struct StepGradientContext
 
 using HeadStepContexts = std::vector<std::vector<StepGradientContext>>;   // [b][gated step index]
 using PerHeadStepContexts = std::vector<HeadStepContexts>;                // [output head][b][gated step index]
+
+struct ErrorResult
+{
+  double ratio = 0.0;
+  std::optional<size_t> numerator;
+  std::optional<size_t> denominator;
+};
 
 class ErrorCalculation
 {
@@ -324,7 +332,7 @@ public:
 
   }
 
-  [[nodiscard]] static double calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method& activation_method )
+  [[nodiscard]] static ErrorResult calculate_error(type error_type, std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method& activation_method )
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
 #if VALIDATE_DATA == 1
@@ -336,34 +344,34 @@ public:
     switch (error_type)
     {
     case type::none:
-      return 0.0;
+      return ErrorResult{0.0, std::nullopt, std::nullopt};
 
     case type::huber_loss:
-      return calculate_huber_loss_error(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_huber_loss_error(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::huber_direction_loss:
-      return calculate_huber_direction_loss(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_huber_direction_loss(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::mae:
-      return calculate_mae_error(ground_truths, predictions);
+      return ErrorResult{calculate_mae_error(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::mse:
-      return calculate_mse_error(ground_truths, predictions);
+      return ErrorResult{calculate_mse_error(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::rmse:
-      return calculate_rmse_error(ground_truths, predictions);
+      return ErrorResult{calculate_rmse_error(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::nrmse:
-      return calculate_nrmse_error(ground_truths, predictions);
+      return ErrorResult{calculate_nrmse_error(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::mape:
-      return calculate_forecast_mape(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_forecast_mape(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::wape:
-      return calculate_forecast_wape(ground_truths, predictions);
+      return ErrorResult{calculate_forecast_wape(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::smape:
-      return calculate_forecast_smape(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_forecast_smape(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::directional_accuracy:
       if (activation_method == activation::method::softmax)
@@ -380,13 +388,13 @@ public:
       return calculate_directional_confidence_score(ground_truths, predictions, evaluation_config, activation_method);
 
     case type::bce_loss:
-      return calculate_bce_loss(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_bce_loss(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::cross_entropy:
-      return calculate_cross_entropy(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_cross_entropy(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::log_cosh:
-      return calculate_log_cosh(ground_truths, predictions);
+      return ErrorResult{calculate_log_cosh(ground_truths, predictions), std::nullopt, std::nullopt};
 
     case type::prediction_coverage:
       if (activation_method == activation::method::softmax)
@@ -396,13 +404,13 @@ public:
       return calculate_prediction_coverage(predictions, evaluation_config, activation_method);
 
     case type::quantile_loss:
-      return calculate_quantile_loss(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_quantile_loss(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::sharpe_ratio_loss:
-      return calculate_sharpe_ratio_loss(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_sharpe_ratio_loss(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
 
     case type::sortino_ratio_loss:
-      return calculate_sortino_ratio_loss(ground_truths, predictions, evaluation_config);
+      return ErrorResult{calculate_sortino_ratio_loss(ground_truths, predictions, evaluation_config), std::nullopt, std::nullopt};
     }
 
     Logger::panic("Unknown ErrorCalculation type!");
@@ -963,7 +971,7 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_smape / static_cast<double>(sequence_count));
   }
 
-  static double calculate_softmax_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static ErrorResult calculate_softmax_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t confident = 0;
@@ -985,10 +993,11 @@ public:
 
       ++total;
     }
-    return (total == 0) ? 0.0 : static_cast<double>(confident) / static_cast<double>(total);
+    const double ratio = (total == 0) ? 0.0 : static_cast<double>(confident) / static_cast<double>(total);
+    return ErrorResult{ratio, confident, total};
   }
 
-  static double calculate_softmax_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
+  static ErrorResult calculate_softmax_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;
@@ -1044,15 +1053,16 @@ public:
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    const double ratio = (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    return ErrorResult{ratio, correct, total};
   }
 
-  static double calculate_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
+  static ErrorResult calculate_directional_confidence_score(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     if (predictions.empty())
     {
-      return 0.0;
+      return ErrorResult{0.0, size_t{0}, size_t{0}};
     }
 
     size_t confident = 0;
@@ -1115,10 +1125,11 @@ public:
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(confident) / static_cast<double>(total));
+    const double ratio = (total == 0) ? 0.0 : (static_cast<double>(confident) / static_cast<double>(total));
+    return ErrorResult{ratio, confident, total};
   }
 
-  static double calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
+  static ErrorResult calculate_softmax_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;
@@ -1168,10 +1179,11 @@ public:
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    const double ratio = (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    return ErrorResult{ratio, correct, total};
   }
 
-  static double calculate_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
+  static ErrorResult calculate_directional_accuracy(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     size_t correct = 0;
@@ -1223,7 +1235,8 @@ public:
       }
     }
 
-    return (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    const double ratio = (total == 0) ? 0.0 : (static_cast<double>(correct) / static_cast<double>(total));
+    return ErrorResult{ratio, correct, total};
   }
 
   [[nodiscard]] static std::vector<double> smooth_labels(std::span<const double> targets, double label_smoothing)
@@ -1386,12 +1399,12 @@ public:
     return (sequence_count == 0) ? 0.0 : (total_loss / static_cast<double>(sequence_count)) * cross_entropy_lambda;
   }
 
-  static double calculate_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
+  static ErrorResult calculate_prediction_coverage(std::span<const std::vector<double>> predictions, const EvaluationConfig& evaluation_config, const activation::method activation_method)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
     if (predictions.empty())
     {
-      return 0.0;
+      return ErrorResult{0.0, size_t{0}, size_t{0}};
     }
 
     size_t predicted = 0;
@@ -1440,7 +1453,8 @@ public:
       }
       ++total;
     }
-    return (total == 0) ? 0.0 : static_cast<double>(predicted) / static_cast<double>(total);
+    const double ratio = (total == 0) ? 0.0 : static_cast<double>(predicted) / static_cast<double>(total);
+    return ErrorResult{ratio, predicted, total};
   }
 };
 } // namespace myoddweb::nn

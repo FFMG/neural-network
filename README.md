@@ -496,6 +496,21 @@ You can calculate error metrics for the network's predictions using the `calcula
   // Calculate forecast metrics for the default output layer.
   // The 'in_sample' parameter defaults to true (evaluating on training data). Pass false to evaluate on validation/testing data.
   std::vector<NeuralNetworkHelperMetrics> metrics = nn.calculate_forecast_metrics({ ErrorCalculation::type::rmse }, /*in_sample=*/true);
+
+  // Each NeuralNetworkHelperMetrics provides:
+  // - error(): the metric ratio or loss value (double)
+  // - error_type(): the evaluated ErrorCalculation::type
+  // - numerator(): optional count of matching/confident occurrences (std::optional<size_t>) for ratio-based metrics
+  // - denominator(): optional total count of evaluated samples (std::optional<size_t>) for ratio-based metrics
+  // For continuous loss metrics (e.g., MSE, MAE, Huber), numerator() and denominator() return std::nullopt.
+
+  // When evaluating all output layers, 'force_checking_indexes' defaults to false.
+  // When set to true with in_sample = false, it continues evaluating against checking_indexes() even after training completes.
+  auto all_metrics = nn.calculate_forecast_metrics_all_layers(
+    { ErrorCalculation::type::directional_accuracy, ErrorCalculation::type::prediction_coverage },
+    /*in_sample=*/false,
+    /*force_checking_indexes=*/true
+  );
 ```
 
 ## Performance Optimization (SIMD)

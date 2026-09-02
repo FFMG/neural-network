@@ -122,12 +122,14 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 *   `nn.LookaheadDetails`: Specifications for configuring the Lookahead optimizer wrapper.
     *   `LookaheadDetails(enabled, synchronisation_period, slow_weights_step_size)`: Constructor.
     *   Properties: `enabled` / `lookahead_enabled`, `synchronisation_period`, `slow_weights_step_size` / `slow_step_size` (all read-only).
-*   `nn.NeuralNetworkHelperMetrics`: Pair of metric values and their evaluation types.
-    *   Properties: `error` (float), `error_type` (nn.ErrorCalculationType).
+*   `nn.NeuralNetworkHelperMetrics`: Metric result containing the calculated ratio/error, evaluation type, and optional sample counts.
+    *   `NeuralNetworkHelperMetrics()`: Default constructor.
+    *   `NeuralNetworkHelperMetrics(error, error_type, numerator=None, denominator=None)`: Initialises metric with value, error type, and optional counts.
+    *   Properties: `error` (float), `error_type` (nn.ErrorCalculationType), `numerator` (Optional[int]), `denominator` (Optional[int]).
 *   `nn.NeuralNetworkHelper`: Tracking helper passed to the progress callback.
     *   Properties: `learning_rate`, `number_of_epoch`, `epoch`, `percent_complete`, `sample_size`.
     *   `calculate_forecast_metric(error_type)`: Calculates forecast metric for the default output layer.
-    *   `calculate_forecast_metrics(error_types, in_sample=True)`: Calculates list of forecast metrics for the default output layer.
+    *   `calculate_forecast_metrics(error_types, in_sample=True, force_checking_indexes=False)`: Calculates list of forecast metrics for the default output layer across all output heads.
 *   `nn.NeuralNetworkOptions`: Builder for model options.
     *   `NeuralNetworkOptions.create(topology)`: Static builder factory. Returns an options builder instance.
     *   Builder Methods: `with_has_bias`, `with_output_layer_details`, `with_number_of_epoch`, `with_batch_size`, `with_data_is_unique`, `with_progress_callback`, `with_number_of_threads`, `with_learning_rate`, `with_learning_rate_decay_rate`, `with_learning_rate_warmup`, `with_learning_rate_boost_rate`, `with_adaptive_learning_rates`, `with_hidden_layers`, `with_residual_layer_jump`, `with_clip_threshold`, `with_shuffle_training_data`, `with_shuffle_bptt_batches`, `with_bptt_supervise_last_step_only`, `with_enable_bptt`, `with_bptt_max_ticks`, `with_update_training_monitor_percent`, `with_stochastic_weight_averaging(swa_details)` / `with_stochastic_weight_averaging(swa_enabled, swa_start_percent, swa_update_percent)`, `with_cosine_annealing_warm_restarts(cosine_annealing_details)` / `with_cosine_annealing_warm_restarts(enabled, first_cycle_epochs, cycle_multiplier, minimum_learning_rate, restart_decay)`, `with_lookahead(lookahead_details)` / `with_lookahead(enabled, synchronisation_period, slow_weights_step_size)`, `with_final_error_calculation_types`, `with_log_level`, `with_seed(seed)`.
@@ -138,7 +140,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `train(inputs, outputs)`: Runs training on the provided datasets.
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `get_topology()`: Returns the list of layer sizes.
-    *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`: Computes model forecast error metrics.
+    *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`, `calculate_forecast_metrics_all_layers(error_types, in_sample=True, force_checking_indexes=False)`: Computes model forecast error metrics.
     *   `get_learning_rate()`, `get_temperature()`, `get_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.

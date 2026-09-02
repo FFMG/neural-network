@@ -443,10 +443,10 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return calculate_forecast_metrics_impl(error_types, in_sample, nullptr);
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, bool force_checking_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr);
+  return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr, force_checking_indexes);
 }
 
 std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const
@@ -460,7 +460,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return {};
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, bool force_checking_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -501,9 +501,9 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   const auto& training_inputs = helper->training_inputs();
   const auto& training_outputs = helper->training_outputs();
 
-  const std::vector<size_t>* checks_indexes = in_sample ? 
-    &helper->training_indexes() : 
-    ((helper->epoch() >= helper->number_of_epoch() && helper->number_of_epoch() > 0) ? &helper->final_check_indexes() : &helper->checking_indexes());
+  const std::vector<size_t>* checks_indexes = in_sample ?
+    &helper->training_indexes() :
+    ((!force_checking_indexes && helper->epoch() >= helper->number_of_epoch() && helper->number_of_epoch() > 0) ? &helper->final_check_indexes() : &helper->checking_indexes());
   size_t prediction_size = checks_indexes->size();
 
   if (prediction_size == 0)

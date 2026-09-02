@@ -355,4 +355,71 @@ TEST_F(NeuralNetworkHelperTest, TrainingMonitorsMultiOutputSharedCopies)
   EXPECT_NO_THROW((void)helper2.training_monitor(1));
 }
 
+struct FinalHelperCapturer
+{
+  std::optional<NeuralNetworkHelper> captured_final_helper;
+  size_t check_size = 0;
+  size_t final_size = 0;
 
+  bool operator()(NeuralNetworkHelper& helper)
+  {
+    if (helper.epoch() >= helper.number_of_epoch())
+    {
+      captured_final_helper.emplace(helper);
+      check_size = helper.checking_indexes().size();
+      final_size = helper.final_check_indexes().size();
+    }
+    return true;
+  }
+};
+
+TEST_F(NeuralNetworkHelperTest, ForceCheckingIndexesSelectsValidationSetAtFinalEpoch)
+{
+  FinalHelperCapturer capturer;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_data_is_unique(false)
+    .with_shuffle_training_data(true)
+    .with_progress_callback(std::ref(capturer))
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs(100, { 1.0, 2.0 });
+  std::vector<std::vector<double>> outputs(100, { 0.5 });
+
+  nn.train(inputs, outputs);
+
+  ASSERT_TRUE(capturer.captured_final_helper.has_value());
+  EXPECT_EQ(capturer.check_size, 15);
+  EXPECT_EQ(capturer.final_size, 5);
+  EXPECT_NE(capturer.check_size, capturer.final_size);
+
+  // 1. Via captured helper
+  auto helper_default = capturer.captured_final_helper->calculate_forecast_metrics({ ErrorCalculation::type::prediction_coverage }, false, false);
+  auto helper_forced = capturer.captured_final_helper->calculate_forecast_metrics({ ErrorCalculation::type::prediction_coverage }, false, true);
+
+  ASSERT_FALSE(helper_default.empty());
+  ASSERT_FALSE(helper_default[0].empty());
+  ASSERT_TRUE(helper_default[0][0].denominator().has_value());
+  EXPECT_EQ(helper_default[0][0].denominator().value(), capturer.final_size);
+
+  ASSERT_FALSE(helper_forced.empty());
+  ASSERT_FALSE(helper_forced[0].empty());
+  ASSERT_TRUE(helper_forced[0][0].denominator().has_value());
+  EXPECT_EQ(helper_forced[0][0].denominator().value(), capturer.check_size);
+
+  // 2. Via NeuralNetwork post-training queries
+  auto nn_default = nn.calculate_forecast_metrics_all_layers({ ErrorCalculation::type::prediction_coverage }, false, false);
+  auto nn_forced = nn.calculate_forecast_metrics_all_layers({ ErrorCalculation::type::prediction_coverage }, false, true);
+
+  ASSERT_FALSE(nn_default.empty());
+  ASSERT_FALSE(nn_default[0].empty());
+  ASSERT_TRUE(nn_default[0][0].denominator().has_value());
+  EXPECT_EQ(nn_default[0][0].denominator().value(), capturer.final_size);
+
+  ASSERT_FALSE(nn_forced.empty());
+  ASSERT_FALSE(nn_forced[0].empty());
+  ASSERT_TRUE(nn_forced[0][0].denominator().has_value());
+  EXPECT_EQ(nn_forced[0][0].denominator().value(), capturer.check_size);
+}

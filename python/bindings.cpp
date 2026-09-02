@@ -287,8 +287,12 @@ PYBIND11_MODULE(neuralnetwork, m) {
     py::class_<NeuralNetworkHelperMetrics>(m, "NeuralNetworkHelperMetrics")
         .def(py::init<>())
         .def(py::init<double, ErrorCalculation::type>())
+        .def(py::init<double, ErrorCalculation::type, std::optional<size_t>, std::optional<size_t>>(),
+             py::arg("error"), py::arg("error_type"), py::arg("numerator") = std::nullopt, py::arg("denominator") = std::nullopt)
         .def_property_readonly("error", &NeuralNetworkHelperMetrics::error)
-        .def_property_readonly("error_type", &NeuralNetworkHelperMetrics::error_type);
+        .def_property_readonly("error_type", &NeuralNetworkHelperMetrics::error_type)
+        .def_property_readonly("numerator", &NeuralNetworkHelperMetrics::numerator)
+        .def_property_readonly("denominator", &NeuralNetworkHelperMetrics::denominator);
 
     py::class_<NeuralNetworkHelper, std::shared_ptr<NeuralNetworkHelper>>(m, "NeuralNetworkHelper")
         .def_property_readonly("learning_rate", &NeuralNetworkHelper::learning_rate)
@@ -297,7 +301,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("percent_complete", &NeuralNetworkHelper::percent_complete)
         .def_property_readonly("sample_size", &NeuralNetworkHelper::sample_size)
         .def("calculate_forecast_metric", &NeuralNetworkHelper::calculate_forecast_metric)
-        .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics, py::arg("error_types"), py::arg("in_sample") = true);
+        .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics,
+             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = false);
 
     // 3. NeuralNetworkOptions
     py::class_<NeuralNetworkOptions>(m, "NeuralNetworkOptions")
@@ -362,7 +367,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("calculate_forecast_metric", &NeuralNetwork::calculate_forecast_metric)
         .def("calculate_forecast_metrics", &NeuralNetwork::calculate_forecast_metrics, py::arg("error_types"), py::arg("in_sample") = true)
         .def("calculate_forecast_metric_all_layers", &NeuralNetwork::calculate_forecast_metric_all_layers)
-        .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers, py::arg("error_types"), py::arg("in_sample") = true)
+        .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers,
+             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = false)
         .def("get_learning_rate", &NeuralNetwork::get_learning_rate)
         .def("get_temperature", py::overload_cast<>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_temperature, py::const_))
