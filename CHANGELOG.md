@@ -5,6 +5,13 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.44] - 2026-09-01
 
 ### Optimised
+- Optimised `TcnLayer` forward feed, backpropagation, and multi-threaded scaling:
+  - Vectorised forward convolution taps using AVX2 GEMM kernels (`simd::gemm_four_matrices_one_batch`, `simd::gemm_two_matrices_one_batch`, `simd::gemm_one_matrix_one_batch`), processing up to 4 convolution taps in a single fused pass with column-wise AVX2 registers.
+  - Eliminated per-batch heap memory allocations in forward feed and backward feed by introducing `tcn_workspace` with reusable `AlignedVector<double, 32>` buffers (`pre_act`, `output`, `mask`, `out_seq`, `deriv`, `d_pre_act`, `d_prev`, `raw_delta`).
+  - Parallelised upstream raw delta computation directly within worker thread ranges, eliminating serial main-thread overhead and intermediate vector-of-vectors allocations.
+  - Replaced inner loop backward dot products with vectorised `simd::gemv_add` across all dilated convolution taps.
+  - Optimised weight gradient accumulation in `accumulate_gradients_range` with 4-way and 2-way unrolled rank-1 updates (`simd::mul_add_four_scalars`, `simd::mul_add_two_scalars`), reusing delta vectors across 4 channels in AVX registers and cutting delta memory loads by 75%.
+  - Reused 32-byte `AlignedVector<double, 32>` thread accumulators and C++20 `std::span<double>` parameter passing for multi-threaded gradient accumulation.
 - Optimised `LSTMLayer` forward feed, backpropagation, and multi-threaded scaling:
   - Eliminated heap memory reallocations during forward feed by embedding `forward_workspace` with reusable `AlignedVector` buffers inside `BPTTWorkspace` and reusing pre-allocated batch scratch buffers (`_forward_flattened_inputs`, `_forward_batch_pre_act`, `_forward_batch_output_sequences`).
   - Enabled multi-threading during evaluation/inference (`is_training = false`) in `calculate_forward_feed`, removing an artificial single-thread restriction for evaluation and prediction workloads.
@@ -16,6 +23,10 @@ All notable changes to the `neural-network` library will be documented in this f
   - Converted lambda closures in `calculate_forward_feed`, `calculate_hidden_gradients`, `calculate_and_store_gradients`, and `apply_stored_gradients` to named private methods (`pre_calculate_gates`, `run_forward_pass`, `apply_gradient_update`) and functor task structs (`lstm_forward_precalc_task`, `lstm_forward_recurrent_task`, `lstm_bptt_chunk_task`, `lstm_grad_calc_task`).
 
 ### Added
+- Added multi-threading invariance unit tests in `tests/tcnlayer_mt_tests.cpp`:
+  - `InferenceForwardFeedMTConsistency`: Verifies multi-threaded inference consistency with `is_training = false` across odd batch sizes.
+  - `SingleStepInferenceAndTrainingThreadCountInvariance`: Verifies forward feed, backward feed, and gradient calculation for single-step ($T=1$) sequences across 1, 2, 4, 8 threads.
+  - `LargeKernelAndDilationThreadCountInvariance`: Verifies gradient invariance across thread counts for large kernel ($K=7$) and dilation ($D=4$) configurations.
 - Added multi-threading invariance unit tests in `tests/lstmlayer_mt_tests.cpp`:
   - `OddBatchSizeAllGradsThreadCountInvariance`: Verifies that forward feed, hidden gradients, and all gate/recurrent weight and bias gradients are strictly invariant across thread counts (1, 2, 4, 8) with odd batch sizes.
   - `InferenceForwardFeedMTConsistency`: Verifies multi-threaded inference consistency with `is_training = false`.

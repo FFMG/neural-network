@@ -1,7 +1,9 @@
 #pragma once
 #include "layer.h"
+#include "../common/aligned_allocator.h"
 
 #include <vector>
+#include <span>
 
 
 namespace myoddweb::nn
@@ -136,92 +138,127 @@ public:
   Layer* clone() const override;
 
 private:
-  void process_forward_range(
-    size_t b_start,
-    size_t b_end,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    unsigned prev_layer_index,
-    const std::vector<std::vector<double>>& batch_residual_output_values,
-    std::vector<HiddenStates>& batch_hidden_states,
-    bool is_training) const;
+  struct tcn_workspace
+  {
+    AlignedVector<double, 32> pre_act;
+    AlignedVector<double, 32> output;
+    AlignedVector<double, 32> mask;
+    AlignedVector<double, 32> out_seq;
+    AlignedVector<double, 32> deriv;
+    AlignedVector<double, 32> d_pre_act;
+    AlignedVector<double, 32> d_prev;
+    AlignedVector<double, 32> raw_delta;
 
-  // Shared tail of both calculate_hidden_gradients entry points: given
-  // `raw_delta_all[b]` (T*N_out per batch item, gradient w.r.t. this layer's
-  // own ACTIVATED output, before undoing this layer's own activation
-  // derivative/dropout), undoes them to get this layer's own per-timestep
-  // pre-activation delta (deposited via set_gradients [last timestep only]
-  // and set_rnn_gate_gradients [full T*N_out sequence] for this layer's own
-  // later calculate_and_store_gradients call), then backprops that delta
-  // through this layer's own weight matrix and scatter-adds the result across
-  // the kernel_size dilated source timesteps to produce the T*in_channels
-  // gradient the preceding layer consumes directly (deposited via
-  // set_rnn_gradients - the "direct gradient injection" mechanism also used
-  // by AttentionPoolLayer).
-  void finish_hidden_gradients_range(
-    size_t b_start,
-    size_t b_end,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    const std::vector<std::vector<double>>& raw_delta_all) const;
+    void resize_forward(size_t n_out, size_t t)
+    {
+      pre_act.resize_and_zero(n_out);
+      output.resize_and_zero(n_out);
+      mask.resize_and_zero(n_out);
+      out_seq.resize_and_zero(t * n_out);
+    }
 
-  void accumulate_gradients_range(
-    size_t b_start,
-    size_t b_end,
-    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    unsigned prev_layer_index,
-    std::vector<double>& local_w_grads,
-    std::vector<double>& local_b_grads,
-    size_t& local_contributing) const;
+    void resize_backward(size_t n_out, size_t n_in, size_t t)
+    {
+      deriv.resize_and_zero(n_out);
+      d_pre_act.resize_and_zero(t * n_out);
+      d_prev.resize_and_zero(t * n_in);
+      raw_delta.resize_and_zero(t * n_out);
+    }
+  };
 
   struct thread_tcn_grad_accumulators
   {
-    std::vector<double> w_grads;
-    std::vector<double> b_grads;
+    AlignedVector<double, 32> w_grads;
+    AlignedVector<double, 32> b_grads;
     size_t contributing = 0;
+
+    void resize(size_t num_w, size_t num_b)
+    {
+      w_grads.resize_and_zero(num_w);
+      b_grads.resize_and_zero(num_b);
+      contributing = 0;
+    }
   };
 
   struct tcn_forward_task
   {
-    const TcnLayer* layer;
+    const TcnLayer& layer;
     size_t start;
     size_t end;
-    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    size_t thread_idx;
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
     unsigned prev_layer_index;
-    const std::vector<std::vector<double>>* batch_residual_output_values;
-    std::vector<HiddenStates>* batch_hidden_states;
+    const std::vector<std::vector<double>>& batch_residual_output_values;
+    std::vector<HiddenStates>& batch_hidden_states;
     bool is_training;
 
     void operator()() const;
   };
 
-  struct tcn_finish_hidden_gradients_task
+  struct tcn_hidden_gradients_task
   {
-    const TcnLayer* layer;
+    const TcnLayer& layer;
     size_t start;
     size_t end;
-    std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
-    const std::vector<HiddenStates>* batch_hidden_states;
-    const std::vector<std::vector<double>>* raw_delta_all;
+    size_t thread_idx;
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
+    const std::vector<HiddenStates>& batch_hidden_states;
+    const Layer* next_layer;
+    const std::vector<std::vector<double>>& batch_next_grad_matrix;
 
     void operator()() const;
   };
 
   struct tcn_grad_calc_task
   {
-    const TcnLayer* layer;
+    const TcnLayer& layer;
     size_t start;
     size_t end;
-    const std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
     unsigned prev_layer_index;
-    std::vector<double>* local_w_grads;
-    std::vector<double>* local_b_grads;
-    size_t* local_contributing;
+    std::span<double> local_w_grads;
+    std::span<double> local_b_grads;
+    size_t& local_contributing;
 
     void operator()() const;
   };
 
+  tcn_workspace& get_workspace(size_t thread_idx) const;
+  void allocate_workspace();
+  void allocate_workspace(unsigned int num_threads);
+
+  void process_forward_range(
+    size_t b_start,
+    size_t b_end,
+    size_t thread_idx,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training) const;
+
+  void process_hidden_gradients_range(
+    size_t b_start,
+    size_t b_end,
+    size_t thread_idx,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const Layer* next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix) const;
+
+  void accumulate_gradients_range(
+    size_t b_start,
+    size_t b_end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    std::span<double> local_w_grads,
+    std::span<double> local_b_grads,
+    size_t& local_contributing) const;
+
   unsigned _kernel_size;
   unsigned _dilation;
+  mutable std::vector<tcn_workspace> _workspaces;
+  mutable std::vector<thread_tcn_grad_accumulators> _thread_grad_accumulators;
 };
 
 } // namespace myoddweb::nn

@@ -1215,6 +1215,166 @@ public:
     }
   }
 
+  // Vectorized fused GEMM for one input-weight pair across one batch:
+  // y += x * W
+  inline static void gemm_one_matrix_one_batch(
+    const double* x, const double* W,
+    double* y,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_w0 = _mm256_loadu_pd(W + row_offset);
+        __m256d vec_w1 = _mm256_loadu_pd(W + row_offset + 4);
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0, vec_x, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w1, vec_x, vec_y1);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0, vec_x));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w1, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y0);
+      _mm256_storeu_pd(&y[j + 4], vec_y1);
+    }
+
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_w0 = _mm256_loadu_pd(W + row_offset);
+        __m256d vec_x = _mm256_set1_pd(x[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0, vec_x, vec_y0);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0, vec_x));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y0);
+    }
+#endif
+    if (j < N_this)
+    {
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w0_row = W + i * N_this;
+        const double x_val = x[i];
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y[col] += x_val * w0_row[col];
+        }
+      }
+    }
+  }
+
+  // Vectorized fused GEMM for two input-weight pairs across one batch:
+  // y += x0 * W0 + x1 * W1
+  inline static void gemm_two_matrices_one_batch(
+    const double* x0, const double* W0,
+    const double* x1, const double* W1,
+    double* y,
+    size_t N_prev, size_t N_this) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < N_this; j += 8)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y[j]);
+      __m256d vec_y1 = _mm256_loadu_pd(&y[j + 4]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_w0_0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w0_1 = _mm256_loadu_pd(W0 + row_offset + 4);
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+
+        __m256d vec_w1_0 = _mm256_loadu_pd(W1 + row_offset);
+        __m256d vec_w1_1 = _mm256_loadu_pd(W1 + row_offset + 4);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0_0, vec_x0, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w0_1, vec_x0, vec_y1);
+
+        vec_y0 = _mm256_fmadd_pd(vec_w1_0, vec_x1, vec_y0);
+        vec_y1 = _mm256_fmadd_pd(vec_w1_1, vec_x1, vec_y1);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0_0, vec_x0));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w0_1, vec_x0));
+
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w1_0, vec_x1));
+        vec_y1 = _mm256_add_pd(vec_y1, _mm256_mul_pd(vec_w1_1, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y0);
+      _mm256_storeu_pd(&y[j + 4], vec_y1);
+    }
+
+    for (; j + 3 < N_this; j += 4)
+    {
+      __m256d vec_y0 = _mm256_loadu_pd(&y[j]);
+
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const size_t row_offset = i * N_this + j;
+
+        __m256d vec_w0 = _mm256_loadu_pd(W0 + row_offset);
+        __m256d vec_w1 = _mm256_loadu_pd(W1 + row_offset);
+
+        __m256d vec_x0 = _mm256_set1_pd(x0[i]);
+        __m256d vec_x1 = _mm256_set1_pd(x1[i]);
+
+#ifdef SIMD_FMA_ENABLED
+        vec_y0 = _mm256_fmadd_pd(vec_w0, vec_x0, vec_y0);
+        vec_y0 = _mm256_fmadd_pd(vec_w1, vec_x1, vec_y0);
+#else
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w0, vec_x0));
+        vec_y0 = _mm256_add_pd(vec_y0, _mm256_mul_pd(vec_w1, vec_x1));
+#endif
+      }
+
+      _mm256_storeu_pd(&y[j], vec_y0);
+    }
+#endif
+    if (j < N_this)
+    {
+      for (size_t i = 0; i < N_prev; ++i)
+      {
+        const double* w0_row = W0 + i * N_this;
+        const double* w1_row = W1 + i * N_this;
+        const double x0_val = x0[i];
+        const double x1_val = x1[i];
+        for (size_t col = j; col < N_this; ++col)
+        {
+          y[col] += x0_val * w0_row[col] + x1_val * w1_row[col];
+        }
+      }
+    }
+  }
+
   // Vectorized fused GEMM for four input-weight pairs across one batch:
   // y += x0 * W0 + x1 * W1 + x2 * W2 + x3 * W3
   inline static void gemm_four_matrices_one_batch(
