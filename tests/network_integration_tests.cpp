@@ -1349,6 +1349,33 @@ TEST(NetworkIntegrationTest, LogTrainingInfoOptionAndSerialization)
   std::remove(test_path.c_str());
 }
 
+TEST(NetworkIntegrationTest, ForceCheckingIndexesOptionAndSerialization)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_learning_rate(0.05)
+    .with_number_of_epoch(1)
+    .with_force_checking_indexes(true)
+    .build();
+
+  EXPECT_TRUE(options.force_checking_indexes());
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { {0.5} };
+  std::vector<std::vector<double>> outputs = { {1.0} };
+
+  nn.train(inputs, outputs);
+
+  std::string test_path = "test_nn_force_checking_indexes_option.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_TRUE(loaded_nn->options().force_checking_indexes());
+
+  std::remove(test_path.c_str());
+}
+
 TEST(NetworkIntegrationTest, BpttSuperviseLastStepOnlySerializerSaveLoad)
 {
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })

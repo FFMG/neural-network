@@ -302,16 +302,19 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("sample_size", &NeuralNetworkHelper::sample_size)
         .def("calculate_forecast_metric", &NeuralNetworkHelper::calculate_forecast_metric)
         .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics,
-             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = false);
+             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt);
 
     // 3. NeuralNetworkOptions
     py::class_<NeuralNetworkOptions>(m, "NeuralNetworkOptions")
         .def_static("create", py::overload_cast<const std::vector<unsigned>&>(&NeuralNetworkOptions::create))
         .def("with_has_bias", &NeuralNetworkOptions::with_has_bias)
+        .def("with_force_checking_indexes", &NeuralNetworkOptions::with_force_checking_indexes)
+        .def("force_checking_indexes", &NeuralNetworkOptions::force_checking_indexes)
         .def("with_output_layer_details", py::overload_cast<const std::vector<MultiOutputLayerDetails>&>(&NeuralNetworkOptions::with_output_layer_details))
         .def("with_output_layer_details", py::overload_cast<const OutputLayerDetails&>(&NeuralNetworkOptions::with_output_layer_details))
         .def("with_output_layer_details", py::overload_cast<const std::vector<OutputLayerDetails>&>(&NeuralNetworkOptions::with_output_layer_details))
-        .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details))
+        .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
+             py::arg("layer_size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("optimiser_type"), py::arg("momentum"))
         .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, const std::vector<double>&, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
              py::arg("layer_size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("quantiles"), py::arg("optimiser_type"), py::arg("momentum"))
         .def("with_output_layer_details", py::overload_cast<unsigned, const activation&, const ErrorCalculation::type&, double, double, OptimiserType, double>(&NeuralNetworkOptions::with_output_layer_details),
@@ -368,7 +371,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("calculate_forecast_metrics", &NeuralNetwork::calculate_forecast_metrics, py::arg("error_types"), py::arg("in_sample") = true)
         .def("calculate_forecast_metric_all_layers", &NeuralNetwork::calculate_forecast_metric_all_layers)
         .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers,
-             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = false)
+             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt)
         .def("get_learning_rate", &NeuralNetwork::get_learning_rate)
         .def("get_temperature", py::overload_cast<>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_temperature, py::const_))

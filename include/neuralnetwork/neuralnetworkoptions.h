@@ -54,7 +54,8 @@ private:
     _swa(false, 0.75, 0.02),
     _cosine_annealing(false, 10, 1.0, 0.0, 1.0),
     _lookahead(false, 5, 0.5),
-    _seed(std::nullopt)
+    _seed(std::nullopt),
+    _force_checking_indexes(false)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -124,7 +125,8 @@ public:
     _swa(nno._swa),
     _cosine_annealing(nno._cosine_annealing),
     _lookahead(nno._lookahead),
-    _seed(nno._seed)
+    _seed(nno._seed),
+    _force_checking_indexes(nno._force_checking_indexes)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
   }
@@ -161,7 +163,8 @@ public:
     _swa(std::move(nno._swa)),
     _cosine_annealing(std::move(nno._cosine_annealing)),
     _lookahead(std::move(nno._lookahead)),
-    _seed(nno._seed)
+    _seed(nno._seed),
+    _force_checking_indexes(nno._force_checking_indexes)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     nno._progress_callback = nullptr;
@@ -217,6 +220,7 @@ public:
       _cosine_annealing = nno._cosine_annealing;
       _lookahead = nno._lookahead;
       _seed = nno._seed;
+      _force_checking_indexes = nno._force_checking_indexes;
     }
     return *this;
   }
@@ -258,6 +262,7 @@ public:
       _cosine_annealing = std::move(nno._cosine_annealing);
       _lookahead = std::move(nno._lookahead);
       _seed = nno._seed;
+      _force_checking_indexes = nno._force_checking_indexes;
 
       nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
@@ -286,6 +291,7 @@ public:
       nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
       nno._lookahead = LookaheadDetails(false, 5, 0.5);
       nno._seed = std::nullopt;
+      nno._force_checking_indexes = false;
     }
     return *this;
   }
@@ -299,6 +305,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _log_training_info = log_training_info;
+    return *this;
+  }
+  NeuralNetworkOptions& with_force_checking_indexes(bool force_checking_indexes)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _force_checking_indexes = force_checking_indexes;
     return *this;
   }
   NeuralNetworkOptions& with_output_layer_details(const std::vector<MultiOutputLayerDetails>& multi_output_layer_details)
@@ -774,7 +786,8 @@ public:
       .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(false, 0.75, 0.02))
       .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0))
       .with_lookahead(LookaheadDetails(false, 5, 0.5))
-      .with_seed(std::nullopt);
+      .with_seed(std::nullopt)
+      .with_force_checking_indexes(false);
   }
 
   [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -805,6 +818,7 @@ public:
   [[nodiscard]] inline double update_training_monitor_percent() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _update_training_monitor_percent; }
   [[nodiscard]] inline bool has_bias() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _has_bias; }
   [[nodiscard]] inline bool log_training_info() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_training_info; }
+  [[nodiscard]] inline bool force_checking_indexes() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _force_checking_indexes; }
   [[nodiscard]] inline const std::vector<MultiOutputLayerDetails>& multi_output_layer_details() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _multi_output_layer_details; }
   [[nodiscard]] inline bool has_multi_output() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_multi_output_layer_details.empty(); }
   [[nodiscard]] inline const StochasticWeightAveragingDetails& stochastic_weight_averaging() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _swa; }
@@ -853,5 +867,6 @@ private:
   CosineAnnealingWarmRestartsDetails _cosine_annealing;
   LookaheadDetails _lookahead;
   std::optional<uint32_t> _seed;
+  bool _force_checking_indexes;
 };
 } // namespace myoddweb::nn

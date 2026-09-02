@@ -504,8 +504,9 @@ You can calculate error metrics for the network's predictions using the `calcula
   // - denominator(): optional total count of evaluated samples (std::optional<size_t>) for ratio-based metrics
   // For continuous loss metrics (e.g., MSE, MAE, Huber), numerator() and denominator() return std::nullopt.
 
-  // When evaluating all output layers, 'force_checking_indexes' defaults to false.
-  // When set to true with in_sample = false, it continues evaluating against checking_indexes() even after training completes.
+  // 'force_checking_indexes' can be configured model-wide via NeuralNetworkOptions::with_force_checking_indexes(true/false)
+  // (default: false) or overridden per-call via std::optional<bool> force_checking_indexes (default: std::nullopt).
+  // When resolved to true with in_sample = false, it evaluates against checking_indexes() (validation set) even after training completes.
   auto all_metrics = nn.calculate_forecast_metrics_all_layers(
     { ErrorCalculation::type::directional_accuracy, ErrorCalculation::type::prediction_coverage },
     /*in_sample=*/false,

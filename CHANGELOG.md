@@ -11,16 +11,35 @@ All notable changes to the `neural-network` library will be documented in this f
   - `calculate_prediction_coverage`, `calculate_softmax_prediction_coverage`: reports confident sequence count and total sequence count.
   - Non-ratio continuous loss functions (MSE, MAE, RMSE, NRMSE, Huber, Log-Cosh, BCE, Cross-Entropy, Quantile, Sharpe, Sortino) return `std::nullopt` for `numerator` and `denominator`.
 - Extended `NeuralNetworkHelperMetrics` with `numerator()` and `denominator()` accessors, copy and move constructors/operators, and a 4-argument constructor accepting sample counts.
-- Added `force_checking_indexes` parameter to `NeuralNetwork::calculate_forecast_metrics_all_layers` and `NeuralNetworkHelper::calculate_forecast_metrics`:
-  - When `true` with `in_sample = false`, forces evaluation against `checking_indexes()` even when `epoch >= number_of_epoch`, allowing consistent side-by-side metric comparison against validation batches without switching to the smaller `final_check_indexes()`.
-- Added unit tests in `tests/error_calculation_tests.cpp` and `tests/neuralnetworkhelper_tests.cpp`:
+- Added `force_checking_indexes` configuration to `NeuralNetworkOptions`:
+  - Added builder method `with_force_checking_indexes(bool)` and accessor `force_checking_indexes() const noexcept`.
+  - Initialised in constructor, copy constructor, move constructor, and copy/move assignment operators.
+  - Defaulted to `false` in `NeuralNetworkOptions::create(...)`.
+- Added serialisation and deserialisation support for `"force-checking-indexes"` in `NeuralNetworkSerializer`.
+- Updated `NeuralNetwork::calculate_forecast_metrics_all_layers` and `NeuralNetworkHelper::calculate_forecast_metrics`:
+  - Updated `force_checking_indexes` parameter to `std::optional<bool> force_checking_indexes = std::nullopt`.
+  - When omitted (`std::nullopt`), dynamically resolves to `options.force_checking_indexes()`.
+  - When resolved to `true` with `in_sample = false`, forces evaluation against `checking_indexes()` even when `epoch >= number_of_epoch`, allowing consistent side-by-side metric comparison against validation batches without switching to the smaller `final_check_indexes()`.
+- Fixed and enriched training logging:
+  - In `NeuralNetwork::log_training_info`:
+    - Added logging for `Force checking indexes`.
+    - Added parity to single-output layer configuration logging to match multi-output layers (`epsilon`, `label-smoothing`, `quantiles`, `tran. cost penalty`, and `sortino target return`).
+    - Added logging for `Lookahead` optimizer configuration (synchronisation period and slow weights step size).
+    - Added logging for `Stochastic Weight Averaging` (start percent and update percent).
+    - Added logging for random `Seed` when configured.
+  - In `NeuralNetwork::train`:
+    - Enriched post-training final error logs to print sample count ratios `(numerator/denominator)` whenever count details are available on ratio-based metrics.
+- Added unit tests in `tests/error_calculation_tests.cpp`, `tests/neuralnetworkhelper_tests.cpp`, and `tests/network_integration_tests.cpp`:
   - `ErrorResultCountsForRatioMetrics`: Verifies accurate count derivation for directional accuracy, confidence score, and coverage metrics across linear, tanh, and softmax heads.
   - `ErrorResultNulloptForNonRatioMetrics`: Verifies `std::nullopt` counts across all continuous loss types.
   - `NeuralNetworkHelperMetricsNumeratorDenominatorLifecycle`: Verifies default, 2-argument, 4-argument construction, copy, and move semantics.
   - `ForceCheckingIndexesSelectsValidationSetAtFinalEpoch`: Verifies index set selection between `checking_indexes()` and `final_check_indexes()` via captured helper and `NeuralNetwork`.
+  - `OptionsForceCheckingIndexesConfiguredTrueDefaultsToValidationSet`: Verifies that configuring `with_force_checking_indexes(true)` on options defaults post-training evaluation to `checking_indexes()`, and can be overridden with explicit `false`.
+  - `ForceCheckingIndexesOptionAndSerialization`: Verifies model options configuration and JSON round-trip serialisation/deserialisation of `force_checking_indexes`.
 - Updated Python bindings in `python/bindings.cpp` and documentation in `python/README.md` and `README.md`:
   - Exposed `numerator` and `denominator` read-only properties on `nn.NeuralNetworkHelperMetrics`.
-  - Exposed `force_checking_indexes` parameter in `calculate_forecast_metrics` and `calculate_forecast_metrics_all_layers`.
+  - Exposed `with_force_checking_indexes` and `force_checking_indexes` on `nn.NeuralNetworkOptions`.
+  - Exposed `force_checking_indexes = None` default parameter in `calculate_forecast_metrics` and `calculate_forecast_metrics_all_layers`.
 
 ## [1.1.44] - 2026-09-01
 

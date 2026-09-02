@@ -423,3 +423,40 @@ TEST_F(NeuralNetworkHelperTest, ForceCheckingIndexesSelectsValidationSetAtFinalE
   ASSERT_TRUE(nn_forced[0][0].denominator().has_value());
   EXPECT_EQ(nn_forced[0][0].denominator().value(), capturer.check_size);
 }
+
+TEST_F(NeuralNetworkHelperTest, OptionsForceCheckingIndexesConfiguredTrueDefaultsToValidationSet)
+{
+  FinalHelperCapturer capturer;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(1)
+    .with_data_is_unique(false)
+    .with_shuffle_training_data(true)
+    .with_force_checking_indexes(true)
+    .with_progress_callback(std::ref(capturer))
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs(100, { 1.0, 2.0 });
+  std::vector<std::vector<double>> outputs(100, { 0.5 });
+
+  nn.train(inputs, outputs);
+
+  ASSERT_TRUE(capturer.captured_final_helper.has_value());
+  EXPECT_EQ(capturer.check_size, 15);
+  EXPECT_EQ(capturer.final_size, 5);
+
+  // Calling without 3rd parameter should default to options.force_checking_indexes() (true -> check_size)
+  auto metrics_default = nn.calculate_forecast_metrics_all_layers({ ErrorCalculation::type::prediction_coverage }, false);
+  ASSERT_FALSE(metrics_default.empty());
+  ASSERT_FALSE(metrics_default[0].empty());
+  ASSERT_TRUE(metrics_default[0][0].denominator().has_value());
+  EXPECT_EQ(metrics_default[0][0].denominator().value(), capturer.check_size);
+
+  // Calling with explicit false should override options to use final_size
+  auto metrics_override = nn.calculate_forecast_metrics_all_layers({ ErrorCalculation::type::prediction_coverage }, false, false);
+  ASSERT_FALSE(metrics_override.empty());
+  ASSERT_FALSE(metrics_override[0].empty());
+  ASSERT_TRUE(metrics_override[0][0].denominator().has_value());
+  EXPECT_EQ(metrics_override[0][0].denominator().value(), capturer.final_size);
+}

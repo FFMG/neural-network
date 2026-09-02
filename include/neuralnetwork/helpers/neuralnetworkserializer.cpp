@@ -1576,6 +1576,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto bptt_supervise_last_step_only = options_object->get_or<bool>("bptt-supervise-last-step-only", false);
   const auto has_bias = options_object->get_or<bool>("has-bias", true);
   const auto log_training_info = options_object->get_or<bool>("log-training-info", true);
+  const auto force_checking_indexes = options_object->get_or<bool>("force-checking-indexes", false);
 
   const auto update_training_monitor_percent = options_object->get_or<double>("update-training-monitor-percent", 0.0);
 
@@ -1633,6 +1634,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_update_training_monitor_percent(update_training_monitor_percent)
     .with_has_bias(has_bias)
     .with_log_training_info(log_training_info)
+    .with_force_checking_indexes(force_checking_indexes)
     .with_stochastic_weight_averaging(StochasticWeightAveragingDetails(swa_enabled, swa_start_percent, swa_update_percent))
     .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(
       cosine_annealing_warm_restarts_enabled,
@@ -1972,6 +1974,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   set_float(options_object, "update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());
   options_object->set_boolean("log-training-info", options.log_training_info());
+  options_object->set_boolean("force-checking-indexes", options.force_checking_indexes());
   options_object->set_boolean("swa-enabled", options.stochastic_weight_averaging().enabled());
   set_float(options_object, "swa-start-percent", options.stochastic_weight_averaging().start_percent());
   set_float(options_object, "swa-update-percent", options.stochastic_weight_averaging().update_percent());

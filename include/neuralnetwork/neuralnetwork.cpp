@@ -443,7 +443,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return calculate_forecast_metrics_impl(error_types, in_sample, nullptr);
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, bool force_checking_indexes) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, std::optional<bool> force_checking_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr, force_checking_indexes);
@@ -460,7 +460,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return {};
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, bool force_checking_indexes) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, std::optional<bool> force_checking_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
@@ -501,9 +501,10 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   const auto& training_inputs = helper->training_inputs();
   const auto& training_outputs = helper->training_outputs();
 
+  const bool force_checks = force_checking_indexes.value_or(_options.force_checking_indexes());
   const std::vector<size_t>* checks_indexes = in_sample ?
     &helper->training_indexes() :
-    ((!force_checking_indexes && helper->epoch() >= helper->number_of_epoch() && helper->number_of_epoch() > 0) ? &helper->final_check_indexes() : &helper->checking_indexes());
+    ((!force_checks && helper->epoch() >= helper->number_of_epoch() && helper->number_of_epoch() > 0) ? &helper->final_check_indexes() : &helper->checking_indexes());
   size_t prediction_size = checks_indexes->size();
 
   if (prediction_size == 0)
@@ -982,6 +983,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
           message += "\n";
         }
         message += Logger::factory("Final: Layer = ", output_layer_number, ", ", ErrorCalculation::type_to_string(metric_error.error_type()), " error: ", std::fixed, std::setprecision(15), metric_error.error());
+        if (metric_error.numerator().has_value() && metric_error.denominator().has_value())
+        {
+          message += Logger::factory(" (", *metric_error.numerator(), "/", *metric_error.denominator(), ")");
+        }
       }
       ++output_layer_number;
     }
@@ -1496,6 +1501,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "SIMD support               : none (scalar fallback)");
 #endif
   Logger::info(tab, "Data is shuffled           : ", options().shuffle_training_data() ? "true" : "false");
+  Logger::info(tab, "Force checking indexes     : ", options().force_checking_indexes() ? "true" : "false");
   Logger::info(tab, "Learning rate              : ", std::fixed, std::setprecision(15), _options.learning_rate());
   Logger::info(tab, "  Decay rate               : ", std::fixed, std::setprecision(15), _options.learning_rate_decay_rate());
   Logger::info(tab, "  Warmup start             : ", std::fixed, std::setprecision(15), _options.learning_rate_warmup_start());
@@ -1510,6 +1516,18 @@ void NeuralNetwork::log_training_info(
     Logger::info(tab, "    Cycle multiplier       : ", _options.cosine_annealing_warm_restarts().cycle_multiplier());
     Logger::info(tab, "    Minimum learning rate  : ", _options.cosine_annealing_warm_restarts().minimum_learning_rate());
     Logger::info(tab, "    Restart decay          : ", _options.cosine_annealing_warm_restarts().restart_decay());
+  }
+  Logger::info(tab, "  Lookahead                : ", _options.lookahead().enabled() ? "true" : "false");
+  if (_options.lookahead().enabled())
+  {
+    Logger::info(tab, "    Sync period            : ", _options.lookahead().synchronisation_period());
+    Logger::info(tab, "    Slow weights step size : ", std::fixed, std::setprecision(5), _options.lookahead().slow_weights_step_size());
+  }
+  Logger::info(tab, "  Stochastic Weight Averaging: ", _options.stochastic_weight_averaging().enabled() ? "true" : "false");
+  if (_options.stochastic_weight_averaging().enabled())
+  {
+    Logger::info(tab, "    Start percent          : ", std::fixed, std::setprecision(4), _options.stochastic_weight_averaging().start_percent() * 100, "%");
+    Logger::info(tab, "    Update percent         : ", std::fixed, std::setprecision(4), _options.stochastic_weight_averaging().update_percent() * 100, "%");
   }
   Logger::info(tab, "Gradient clip threshold    : ", std::fixed, std::setprecision(4), _options.clip_threshold());
 
@@ -1619,7 +1637,12 @@ void NeuralNetwork::log_training_info(
         tab, tab, tab, tab, "lambda\n",
         tab, tab, tab, tab, tab, tab, "direction          : ", details.get_error_evaluation_config().direction_lambda(), "\n",
         tab, tab, tab, tab, tab, tab, "cross-entropy      : ", details.get_error_evaluation_config().cross_entropy_lambda(), "\n",
-        tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false");
+        tab, tab, tab, tab, "use direction penalty: ", details.get_error_evaluation_config().use_direction_penalty() ? "true" : "false", "\n",
+        tab, tab, tab, tab, "epsilon              : ", details.get_error_evaluation_config().epsilon(), "\n",
+        tab, tab, tab, tab, "label-smoothing      : ", details.get_error_evaluation_config().label_smoothing(), "\n",
+        tab, tab, tab, tab, "quantiles            : ", details.get_error_evaluation_config().quantiles(), "\n",
+        tab, tab, tab, tab, "tran. cost penalty   : ", details.get_error_evaluation_config().transaction_cost_penalty(), "\n",
+        tab, tab, tab, tab, "sortino target return: ", details.get_error_evaluation_config().sortino_target_return());
       if (output_layer_index < static_cast<int>(output_layer_details.size()))
       {
         output_layer_details_string += "\n";
@@ -1636,6 +1659,10 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
   Logger::info(tab, "BPTT Supervise Last Step Only: ", _options.bptt_supervise_last_step_only() ? "true" : "false");
+  if (_options.seed().has_value())
+  {
+    Logger::info(tab, "Seed                       : ", _options.seed().value());
+  }
 
   Logger::info(tab, "Batch size                 : ", _options.batch_size());
   if (_options.final_error_calculation_types().size() == 0)
