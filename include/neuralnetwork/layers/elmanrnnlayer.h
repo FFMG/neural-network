@@ -5,6 +5,7 @@
 #include "layer.h"
 
 #include <vector>
+#include <span>
 
 
 namespace myoddweb::nn
@@ -16,6 +17,7 @@ protected:
   friend class Layers;
 
 public:
+  using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
   ElmanRNNLayer(unsigned layer_index,
     unsigned num_neurons_in_previous_layer,
     unsigned num_neurons_in_this_layer,
@@ -173,6 +175,19 @@ public:
     std::vector<double>& local_rw_grads,
     std::vector<double>& local_b_grads) const;
 
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& hidden_states,
+    unsigned prev_layer_index,
+    size_t N_prev,
+    size_t N_this,
+    size_t T,
+    std::span<double> local_w_grads,
+    std::span<double> local_rw_grads,
+    std::span<double> local_b_grads) const;
+
   inline const std::vector<double>& get_rw_values() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
@@ -211,6 +226,16 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
     return _rw_decays;
+  }
+  inline const AlignedVector& get_rw_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _rw_values_T;
+  }
+  inline const AlignedVector& get_w_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+    return _w_values_T;
   }
 
   void set_rw_values(const std::vector<double>& v) override
@@ -255,7 +280,6 @@ public:
 private:
   struct BPTTWorkspace 
   {
-    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
     AlignedVector grad_from_next_all_t;
     AlignedVector d_next_h;
     AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x N]
@@ -268,11 +292,11 @@ private:
     {
       grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
       d_next_h.resize_and_zero(batch_chunk_size * n);
-      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
+      rnn_grad_matrix.resize(batch_chunk_size * num_time_steps * GateCount * n);
       dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
-      deriv_buf.resize_and_zero(batch_chunk_size * n);
-      pre_act_buf.resize_and_zero(batch_chunk_size * n);
-      hidden_val_buf.resize_and_zero(batch_chunk_size * n);
+      deriv_buf.resize(batch_chunk_size * n);
+      pre_act_buf.resize(batch_chunk_size * n);
+      hidden_val_buf.resize(batch_chunk_size * n);
     }
   };
 
@@ -289,7 +313,17 @@ private:
     const std::vector<HiddenStates>& batch_hidden_states,
     int bptt_max_ticks,
     BPTTWorkspace& workspace,
-    const BPTTWorkspace::AlignedVector& rw_values_T) const;
+    const AlignedVector& rw_values_T) const;
+
+  void pre_calculate_gates(
+    size_t b_start, 
+    size_t b_end,
+    size_t N_this,
+    size_t N_prev,
+    size_t num_time_steps,
+    const double* flattened_batch_inputs,
+    double* batch_pre_act
+  ) const;
 
   void pre_calculate_gates(
     const size_t& b_start, 
@@ -299,10 +333,17 @@ private:
     const size_t num_time_steps,
     const std::vector<double>& flattened_batch_inputs,
     std::vector<double>& batch_pre_act
-    ) const;
+  ) const;
 
   void initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed);
   
+  struct thread_elman_grad_accumulators
+  {
+    AlignedVector w_grads;
+    AlignedVector rw_grads;
+    AlignedVector b_grads;
+  };
+
   // SoA for recurrent weights
   std::vector<double> _rw_values;
   std::vector<double> _rw_grads;
@@ -313,15 +354,13 @@ private:
   std::vector<double> _rw_decays;
 
   // Cached transposed recurrent weights and input weights
-  BPTTWorkspace::AlignedVector _rw_values_T;
-  BPTTWorkspace::AlignedVector _w_values_T;
+  AlignedVector _rw_values_T;
+  AlignedVector _w_values_T;
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;
 
-  std::vector<std::vector<double>> _thread_w_grads;
-  std::vector<std::vector<double>> _thread_rw_grads;
-  std::vector<std::vector<double>> _thread_b_grads;
+  mutable std::vector<thread_elman_grad_accumulators> _thread_grad_accumulators;
 
   mutable FFLayer* _identity_proxy = nullptr;
 };

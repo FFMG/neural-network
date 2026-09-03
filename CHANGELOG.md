@@ -2,6 +2,32 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.48] - 2026-09-03
+
+### Optimised
+- Optimised `ElmanRNNLayer` memory allocations, cache locality, and compute efficiency:
+  - Eliminated continuous per-iteration dynamic heap allocations via `TempBuffer` across forward feed and output gradient calculation by utilising aligned, thread-isolated scratch buffers (`static thread_local AlignedVector`).
+  - Added single-sample zero-copy input sequence bypass in `calculate_forward_feed` when `batch_size == 1` and inputs are already contiguous.
+  - Enabled multi-threaded execution during evaluation and inference in `calculate_forward_feed`.
+  - Unrolled recurrent pass GEMM across batches 4-wide (`simd::gemm_four_batches`), 2-wide, and 1-wide using `_rw_values.data()`, while skipping $t = 0$ recurrent GEMM because $h_{-1} = \mathbf{0}$.
+  - Added dropout bypass fast path in `calculate_forward_feed` when dropout is disabled (`!(is_training && get_dropout() > 0.0)`).
+  - Optimised weight gradient accumulation in `calculate_and_store_gradients_chunk` with 4-wide unrolling via `simd::mul_add_four_scalars` (and 2-wide via `simd::mul_add_two_scalars`) for both input weights and recurrent weights, broadcasting gradient vector $g_t$ across 4 rows and reducing memory read traffic by 75%.
+  - Added `std::span<double>` overload for `calculate_and_store_gradients_chunk` and replaced per-thread gradient vectors with `AlignedVector` accumulators in `_thread_grad_accumulators`.
+  - Eliminated redundant buffer memset-zeroing in `BPTTWorkspace::resize` for buffers overwritten every tick (`rnn_grad_matrix`, `deriv_buf`, `pre_act_buf`, `hidden_val_buf`).
+  - Vectorised `calculate_output_gradients` deltas subtraction using `simd::sub_vectors`.
+  - Replaced scalar transpose loops with cache-blocked SIMD transpose (`simd::transpose`) in `cache_recurrent_weights()`.
+  - Bypassed GEMM in `calculate_bptt_batch_chunk` when `next_layer` is `_identity_proxy` by directly copying gradients via `std::copy_n`.
+
+### Added
+- Added unit tests in `tests/elmanrnnlayer_tests.cpp`:
+  - `ElmanRNNLayerTest.CalculateOutputGradientsFullSequenceEquivalence`: Verifies sequence output gradient deltas and last-tick gradient projection.
+  - `ElmanRNNLayerTest.BatchedForwardFeedUnrollingEquivalence`: Verifies that 4-wide, 2-wide, and 1-wide unrolled batched forward pass matches single-sample execution.
+  - `ElmanRNNLayerTest.ResidualConnectionsForward`: Verifies that residual connections are correctly accumulated into pre-activation sums before activation.
+  - `ElmanRNNLayerTest.BPTTMaxTicksTruncation`: Verifies BPTT gradient propagation truncation when `bptt_max_ticks` is set.
+  - `ElmanRNNLayerTest.RecurrentWeightsTransposedCacheAndAccessors`: Verifies SIMD transposed weight caching and recurrent weight accessors.
+  - `ElmanRNNLayerTest.AdamOptimiserAndSettersCoverage`: Verifies Adam optimiser state updates, setters, getters, and cloning for recurrent weights.
+  - `ElmanRNNLayerTest.SpanAndVectorOverloadEquivalence`: Verifies that `std::span` and `std::vector` overloads for gradient calculation produce identical results.
+
 ## [1.1.47] - 2026-09-03
 
 ### Optimised

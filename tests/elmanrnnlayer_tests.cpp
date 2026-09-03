@@ -691,6 +691,339 @@ TEST_F(ElmanRNNLayerTest, ElmanRNNLayerCalculateAndStoreGradientsMathematicalSou
   }
 }
 
+TEST_F(ElmanRNNLayerTest, CalculateOutputGradientsFullSequenceEquivalence)
+{
+  ElmanRNNLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
 
+  std::vector<unsigned> topology = { 2, 3 };
+  const size_t batch_size = 2;
+  const size_t num_time_steps = 3;
+  const size_t num_outputs = 3;
 
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
 
+  std::vector<std::vector<double>> targets(batch_size);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    targets[b].resize(num_time_steps * num_outputs);
+    auto& states = batch_hs[b].at(1);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      std::vector<double> h_vals(num_outputs);
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        h_vals[j] = static_cast<double>(b * 10 + t * 3 + j + 1) * 0.5;
+        targets[b][t * num_outputs + j] = static_cast<double>(b * 10 + t * 3 + j + 1) * 0.2;
+      }
+      states[t].set_hidden_state_values(h_vals.data(), num_outputs);
+    }
+  }
+
+  layer.calculate_output_gradients(batch_go, targets.cbegin(), batch_hs, batch_size);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto rnn_grads = batch_go[b].get_rnn_gradients(1);
+    ASSERT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        const size_t idx = t * num_outputs + j;
+        const double expected_delta = (static_cast<double>(b * 10 + t * 3 + j + 1) * 0.5) - targets[b][idx];
+        EXPECT_NEAR(rnn_grads[idx], expected_delta, 1e-12);
+      }
+    }
+
+    const auto last_tick_grads = batch_go[b].get_gradients(1);
+    ASSERT_EQ(last_tick_grads.size(), num_outputs);
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+      const size_t idx = (num_time_steps - 1) * num_outputs + j;
+      EXPECT_NEAR(last_tick_grads[j], rnn_grads[idx], 1e-12);
+    }
+  }
+}
+
+TEST_F(ElmanRNNLayerTest, BatchedForwardFeedUnrollingEquivalence)
+{
+  const size_t num_inputs = 3;
+  const size_t num_outputs = 4;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 7;
+
+  ElmanRNNLayer layer_batched(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, 42);
+  ElmanRNNLayer layer_single(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, 42);
+
+  std::vector<double> w(num_inputs * num_outputs);
+  for (size_t i = 0; i < w.size(); ++i)
+  {
+    w[i] = static_cast<double>(i + 1) * 0.05 - 0.2;
+  }
+  std::vector<double> rw(num_outputs * num_outputs);
+  for (size_t i = 0; i < rw.size(); ++i)
+  {
+    rw[i] = static_cast<double>(i + 1) * 0.04 - 0.15;
+  }
+  std::vector<double> b_vals(num_outputs);
+  for (size_t i = 0; i < b_vals.size(); ++i)
+  {
+    b_vals[i] = static_cast<double>(i + 1) * 0.02;
+  }
+
+  layer_batched.set_w_values(w);
+  layer_batched.set_rw_values(rw);
+  layer_batched.set_b_values(b_vals);
+
+  layer_single.set_w_values(w);
+  layer_single.set_rw_values(rw);
+  layer_single.set_b_values(b_vals);
+
+  std::vector<unsigned> topology = { static_cast<unsigned>(num_inputs), static_cast<unsigned>(num_outputs) };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  MockLayer prev_layer(0, num_inputs);
+
+  std::vector<std::vector<double>> inputs_per_batch(batch_size);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    inputs_per_batch[b].resize(num_time_steps * num_inputs);
+    for (size_t i = 0; i < inputs_per_batch[b].size(); ++i)
+    {
+      inputs_per_batch[b][i] = std::sin(static_cast<double>(b * 10 + i + 1));
+    }
+    batch_go[b].set_rnn_outputs(0, inputs_per_batch[b]);
+  }
+
+  layer_batched.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, false);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    auto single_go = create_batch_gradients_and_outputs(topology, 1);
+    auto single_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+    single_go[0].set_rnn_outputs(0, inputs_per_batch[b]);
+
+    layer_single.calculate_forward_feed(single_go, prev_layer, {}, single_hs, 1, false);
+
+    const auto batched_rnn_out = batch_go[b].get_rnn_outputs(1);
+    const auto single_rnn_out = single_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(batched_rnn_out.size(), single_rnn_out.size());
+    for (size_t i = 0; i < batched_rnn_out.size(); ++i)
+    {
+      EXPECT_NEAR(batched_rnn_out[i], single_rnn_out[i], 1e-13);
+    }
+  }
+}
+
+TEST_F(ElmanRNNLayerTest, ResidualConnectionsForward)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 2;
+  const size_t num_time_steps = 2;
+
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_rw_values({ 0.0, 0.0, 0.0, 0.0 });
+
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+  batch_go[0].set_rnn_outputs(0, { 1.0, 2.0, 3.0, 4.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<std::vector<double>> residual = { { 10.0, 20.0 } };
+
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, 1, true);
+
+  const auto rnn_out = batch_go[0].get_rnn_outputs(1);
+  EXPECT_NEAR(rnn_out[0], 11.0, 1e-9);
+  EXPECT_NEAR(rnn_out[1], 22.0, 1e-9);
+  EXPECT_NEAR(rnn_out[2], 13.0, 1e-9);
+  EXPECT_NEAR(rnn_out[3], 24.0, 1e-9);
+}
+
+TEST_F(ElmanRNNLayerTest, BPTTMaxTicksTruncation)
+{
+  const size_t num_inputs = 1;
+  const size_t num_outputs = 1;
+  const size_t num_time_steps = 4;
+
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0 });
+  layer.set_rw_values({ 0.5 });
+
+  MockLayer prev_layer(0, 1);
+  std::vector<unsigned> topology = { 1, 1 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0, 1.0, 1.0 });
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  MockLayer next_layer(2, 1);
+  next_layer.set_w_values({ 1.0 });
+  std::vector<std::vector<double>> batch_next_grads = { { 1.0, 1.0, 1.0, 1.0 } };
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 2);
+
+  const auto rnn_gate_grads = batch_go[0].get_rnn_gate_gradients(1);
+  ASSERT_EQ(rnn_gate_grads.size(), num_time_steps);
+  EXPECT_NEAR(rnn_gate_grads[0], 0.0, 1e-9);
+  EXPECT_NEAR(rnn_gate_grads[1], 0.0, 1e-9);
+  EXPECT_GT(std::abs(rnn_gate_grads[2]), 0.0);
+  EXPECT_GT(std::abs(rnn_gate_grads[3]), 0.0);
+}
+
+TEST_F(ElmanRNNLayerTest, RecurrentWeightsTransposedCacheAndAccessors)
+{
+  const size_t num_inputs = 3;
+  const size_t num_outputs = 2;
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  std::vector<double> w = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+  std::vector<double> rw = { 10.0, 20.0, 30.0, 40.0 };
+
+  layer.set_w_values(w);
+  layer.set_rw_values(rw);
+
+  EXPECT_EQ(layer.get_recurrent_weight_value(0, 0), 10.0);
+  EXPECT_EQ(layer.get_recurrent_weight_value(0, 1), 20.0);
+  EXPECT_EQ(layer.get_recurrent_weight_value(1, 0), 30.0);
+  EXPECT_EQ(layer.get_recurrent_weight_value(1, 1), 40.0);
+
+  const auto& rw_T = layer.get_rw_values_T();
+  ASSERT_EQ(rw_T.size(), 4);
+  EXPECT_EQ(rw_T[0], 10.0);
+  EXPECT_EQ(rw_T[1], 30.0);
+  EXPECT_EQ(rw_T[2], 20.0);
+  EXPECT_EQ(rw_T[3], 40.0);
+
+  const auto& w_T = layer.get_w_values_T();
+  ASSERT_EQ(w_T.size(), 6);
+  EXPECT_EQ(w_T[0], 1.0);
+  EXPECT_EQ(w_T[1], 3.0);
+  EXPECT_EQ(w_T[2], 5.0);
+  EXPECT_EQ(w_T[3], 2.0);
+  EXPECT_EQ(w_T[4], 4.0);
+  EXPECT_EQ(w_T[5], 6.0);
+}
+
+TEST_F(ElmanRNNLayerTest, AdamOptimiserAndSettersCoverage)
+{
+  ElmanRNNLayer layer(1, 2, 2, 0.01, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::Adam, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  EXPECT_EQ(layer.get_rw_values().size(), 4);
+  EXPECT_EQ(layer.get_rw_grads().size(), 4);
+  EXPECT_EQ(layer.get_rw_velocities().size(), 4);
+  EXPECT_EQ(layer.get_rw_m1().size(), 4);
+  EXPECT_EQ(layer.get_rw_m2().size(), 4);
+  EXPECT_EQ(layer.get_rw_timesteps().size(), 4);
+  EXPECT_EQ(layer.get_rw_decays().size(), 4);
+
+  layer.set_rw_grads({ 0.1, 0.2, 0.3, 0.4 });
+  EXPECT_NEAR(layer.get_rw_grads()[0], 0.1, 1e-9);
+
+  layer.set_rw_velocities({ 0.01, 0.02, 0.03, 0.04 });
+  EXPECT_NEAR(layer.get_rw_velocities()[1], 0.02, 1e-9);
+
+  layer.set_rw_m1({ 0.001, 0.002, 0.003, 0.004 });
+  EXPECT_NEAR(layer.get_rw_m1()[2], 0.003, 1e-9);
+
+  layer.set_rw_m2({ 0.0001, 0.0002, 0.0003, 0.0004 });
+  EXPECT_NEAR(layer.get_rw_m2()[3], 0.0004, 1e-9);
+
+  layer.set_rw_timesteps({ 5, 5, 5, 5 });
+  EXPECT_EQ(layer.get_rw_timesteps()[0], 5);
+
+  layer.set_rw_decays({ 0.05, 0.05, 0.05, 0.05 });
+  EXPECT_NEAR(layer.get_rw_decays()[0], 0.05, 1e-9);
+
+  layer.apply_stored_gradients(0.001, 1.0);
+  EXPECT_EQ(layer.get_rw_timesteps()[0], 6);
+
+  std::unique_ptr<Layer> cloned(layer.clone());
+  ASSERT_NE(cloned, nullptr);
+  auto* cloned_elman = dynamic_cast<ElmanRNNLayer*>(cloned.get());
+  ASSERT_NE(cloned_elman, nullptr);
+  EXPECT_EQ(cloned_elman->get_rw_values(), layer.get_rw_values());
+}
+
+TEST_F(ElmanRNNLayerTest, SpanAndVectorOverloadEquivalence)
+{
+  const size_t num_inputs = 7;
+  const size_t num_outputs = 6;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 2;
+
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  std::vector<unsigned> topology = { static_cast<unsigned>(num_inputs), static_cast<unsigned>(num_outputs) };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> rnn_inputs(num_time_steps * num_inputs);
+    std::vector<double> gate_grads(num_time_steps * num_outputs);
+    for (size_t i = 0; i < rnn_inputs.size(); ++i)
+    {
+      rnn_inputs[i] = static_cast<double>(b * 100 + i + 1) * 0.03;
+    }
+    for (size_t i = 0; i < gate_grads.size(); ++i)
+    {
+      gate_grads[i] = static_cast<double>(b * 50 + i + 1) * 0.02;
+    }
+    batch_go[b].set_rnn_outputs(0, rnn_inputs);
+    batch_go[b].set_rnn_gate_gradients(1, gate_grads);
+
+    auto& states = batch_hs[b].at(1);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      std::vector<double> h_vals(num_outputs);
+      for (size_t j = 0; j < num_outputs; ++j)
+      {
+        h_vals[j] = static_cast<double>(b * 20 + t * 6 + j + 1) * 0.05;
+      }
+      states[t].set_hidden_state_values(h_vals.data(), num_outputs);
+    }
+  }
+
+  std::vector<double> vec_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> vec_rw_grads(num_outputs * num_outputs, 0.0);
+  std::vector<double> vec_b_grads(num_outputs, 0.0);
+
+  std::vector<double> span_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> span_rw_grads(num_outputs * num_outputs, 0.0);
+  std::vector<double> span_b_grads(num_outputs, 0.0);
+
+  layer.calculate_and_store_gradients_chunk(
+    0, batch_size,
+    batch_go, batch_hs,
+    0, num_inputs, num_outputs, num_time_steps,
+    vec_w_grads, vec_rw_grads, vec_b_grads
+  );
+
+  layer.calculate_and_store_gradients_chunk(
+    0, batch_size,
+    batch_go, batch_hs,
+    0, num_inputs, num_outputs, num_time_steps,
+    std::span<double>(span_w_grads),
+    std::span<double>(span_rw_grads),
+    std::span<double>(span_b_grads)
+  );
+
+  for (size_t i = 0; i < vec_w_grads.size(); ++i)
+  {
+    EXPECT_NEAR(vec_w_grads[i], span_w_grads[i], 1e-14);
+  }
+  for (size_t i = 0; i < vec_rw_grads.size(); ++i)
+  {
+    EXPECT_NEAR(vec_rw_grads[i], span_rw_grads[i], 1e-14);
+  }
+  for (size_t i = 0; i < vec_b_grads.size(); ++i)
+  {
+    EXPECT_NEAR(vec_b_grads[i], span_b_grads[i], 1e-14);
+  }
+}

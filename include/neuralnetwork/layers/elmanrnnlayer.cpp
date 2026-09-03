@@ -3,7 +3,6 @@
 #include "fflayer.h"
 #include "../common/logger.h"
 #include "../common/simd_utils.h"
-#include "../common/tempbuffer.h"
 #include <algorithm>
 #include <cmath>
 
@@ -113,7 +112,8 @@ ElmanRNNLayer::ElmanRNNLayer(ElmanRNNLayer&& src) noexcept :
   _rw_decays(std::move(src._rw_decays)),
   _rw_values_T(std::move(src._rw_values_T)),
   _w_values_T(std::move(src._w_values_T)),
-  _thread_workspaces(std::move(src._thread_workspaces))
+  _thread_workspaces(std::move(src._thread_workspaces)),
+  _thread_grad_accumulators(std::move(src._thread_grad_accumulators))
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   _identity_proxy = src._identity_proxy;
@@ -205,6 +205,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(const ElmanRNNLayer& src) noexcept
     _rw_m2 = src._rw_m2;
     _rw_timesteps = src._rw_timesteps;
     _rw_decays = src._rw_decays;
+    _thread_grad_accumulators.clear();
     allocate_workspace();
     cache_recurrent_weights();
   }
@@ -230,6 +231,7 @@ ElmanRNNLayer& ElmanRNNLayer::operator=(ElmanRNNLayer&& src) noexcept
     _rw_values_T = std::move(src._rw_values_T);
     _w_values_T = std::move(src._w_values_T);
     _thread_workspaces = std::move(src._thread_workspaces);
+    _thread_grad_accumulators = std::move(src._thread_grad_accumulators);
   }
   return *this;
 }
@@ -305,37 +307,55 @@ void ElmanRNNLayer::calculate_forward_feed(
     return;
   }
 
-  TempBuffer<double, 10> flattened_batch_inputs(batch_size * num_time_steps * N_prev);
-  for (size_t b = 0; b < batch_size; ++b)
+  static thread_local AlignedVector tl_flattened_inputs;
+  static thread_local AlignedVector tl_batch_pre_act;
+  static thread_local AlignedVector tl_batch_output_seq;
+
+  const double* flattened_inputs_ptr = nullptr;
+  if (batch_size == 1)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    if (!rnn_in.empty())
+    const auto& rnn_in = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
+    if (rnn_in.size() == num_time_steps * N_prev)
     {
-      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.vec().begin() + b * num_time_steps * N_prev);
-    }
-    else
-    {
-      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.vec().begin() + (b * num_time_steps + t) * N_prev);
-      }
+      flattened_inputs_ptr = rnn_in.data();
     }
   }
 
+  if (flattened_inputs_ptr == nullptr)
+  {
+    tl_flattened_inputs.resize(batch_size * num_time_steps * N_prev);
+    double* dst = tl_flattened_inputs.data();
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      if (!rnn_in.empty())
+      {
+        std::copy_n(rnn_in.begin(), num_time_steps * N_prev, dst + b * num_time_steps * N_prev);
+      }
+      else
+      {
+        const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+          std::copy_n(std_in.begin(), N_prev, dst + (b * num_time_steps + t) * N_prev);
+        }
+      }
+    }
+    flattened_inputs_ptr = tl_flattened_inputs.data();
+  }
+
   // 2. Pre-calculate Input-to-Hidden (W * x_t) for all ticks
-  TempBuffer<double, 11> batch_pre_act(batch_size * num_time_steps * N_this);
+  tl_batch_pre_act.resize(batch_size * num_time_steps * N_this);
+  double* batch_pre_act_ptr = tl_batch_pre_act.data();
 
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_prev * N_this) / 100000))) : 1;
-  const bool use_multithreading = is_training && (active_threads > 1);
-  auto& flattened_batch_inputs_ref = flattened_batch_inputs.vec();
-  auto& batch_pre_act_ref = batch_pre_act.vec();
+  const bool use_multithreading = (active_threads > 1);
 
   if (!use_multithreading)
   {
-    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_batch_inputs.vec(), batch_pre_act.vec());
+    pre_calculate_gates(0, batch_size, N_this, N_prev, num_time_steps, flattened_inputs_ptr, batch_pre_act_ptr);
   }
   else
   {
@@ -346,10 +366,10 @@ void ElmanRNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs_ref, &batch_pre_act_ref, this]()
-          {
-            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs_ref, batch_pre_act_ref);
-          });
+        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, flattened_inputs_ptr, batch_pre_act_ptr, this]()
+        {
+          pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_inputs_ptr, batch_pre_act_ptr);
+        });
       }
       start = end;
     }
@@ -357,21 +377,78 @@ void ElmanRNNLayer::calculate_forward_feed(
   }
 
   // 3. Sequential Recurrent Pass and Activations
-  TempBuffer<double, 12> batch_output_sequences(batch_size * num_time_steps * N_this);
+  tl_batch_output_seq.resize(batch_size * num_time_steps * N_this);
+  double* batch_output_seq_ptr = tl_batch_output_seq.data();
 
-  auto recurrent_pass = [&](size_t b_start, size_t b_end)
+  auto recurrent_pass = [this, N_this, num_time_steps, is_training, batch_pre_act_ptr, batch_output_seq_ptr,
+    &batch_residual_output_values, &batch_hidden_states](size_t b_start, size_t b_end)
   {
-    TempBuffer<double, 13> current_h(N_this, true);
-    TempBuffer<double, 14> mask(N_this);
-    for (size_t b = b_start; b < b_end; ++b)
-    {
-      std::fill(current_h.vec().begin(), current_h.vec().begin() + N_this, 0.0);
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        double* pre_t = &batch_pre_act_ref[(b * num_time_steps + t) * N_this];
+    const size_t chunk_size = b_end - b_start;
+    static thread_local AlignedVector tl_current_h;
+    static thread_local AlignedVector tl_mask;
+    tl_current_h.resize(chunk_size * N_this);
+    std::fill_n(tl_current_h.data(), chunk_size * N_this, 0.0);
 
-        // Recurrent-to-Hidden (U * h_{t-1})
-        simd::gemv_add(_rw_values_T.data(), current_h.data(), pre_t, N_this, N_this);
+    const bool has_dropout = (is_training && get_dropout() > 0.0);
+    if (has_dropout || !batch_hidden_states.empty())
+    {
+      tl_mask.resize(chunk_size * N_this);
+      if (!has_dropout)
+      {
+        std::fill_n(tl_mask.data(), chunk_size * N_this, 1.0);
+      }
+    }
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      // 1. Recurrent GEMM across batches (only for t > 0 because at t = 0, h_{-1} = 0)
+      if (t > 0)
+      {
+        size_t b_idx = 0;
+        for (; b_idx + 3 < chunk_size; b_idx += 4)
+        {
+          simd::gemm_four_batches(
+            &tl_current_h[b_idx * N_this],
+            &tl_current_h[(b_idx + 1) * N_this],
+            &tl_current_h[(b_idx + 2) * N_this],
+            &tl_current_h[(b_idx + 3) * N_this],
+            _rw_values.data(),
+            &batch_pre_act_ptr[((b_start + b_idx) * num_time_steps + t) * N_this],
+            &batch_pre_act_ptr[((b_start + b_idx + 1) * num_time_steps + t) * N_this],
+            &batch_pre_act_ptr[((b_start + b_idx + 2) * num_time_steps + t) * N_this],
+            &batch_pre_act_ptr[((b_start + b_idx + 3) * num_time_steps + t) * N_this],
+            N_this, N_this
+          );
+        }
+        for (; b_idx + 1 < chunk_size; b_idx += 2)
+        {
+          simd::gemm_two_batches(
+            &tl_current_h[b_idx * N_this],
+            &tl_current_h[(b_idx + 1) * N_this],
+            _rw_values.data(),
+            &batch_pre_act_ptr[((b_start + b_idx) * num_time_steps + t) * N_this],
+            &batch_pre_act_ptr[((b_start + b_idx + 1) * num_time_steps + t) * N_this],
+            N_this, N_this
+          );
+        }
+        for (; b_idx < chunk_size; ++b_idx)
+        {
+          simd::gemm_one_batch(
+            &tl_current_h[b_idx * N_this],
+            _rw_values.data(),
+            &batch_pre_act_ptr[((b_start + b_idx) * num_time_steps + t) * N_this],
+            N_this, N_this
+          );
+        }
+      }
+
+      // 2. Residuals, activation, dropout, and recording
+      for (size_t b_idx = 0; b_idx < chunk_size; ++b_idx)
+      {
+        const size_t b = b_start + b_idx;
+        double* pre_t = &batch_pre_act_ptr[(b * num_time_steps + t) * N_this];
+        double* h_out = &tl_current_h[b_idx * N_this];
+        double* seq_dest = &batch_output_seq_ptr[(b * num_time_steps + t) * N_this];
 
         if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
         {
@@ -386,9 +463,10 @@ void ElmanRNNLayer::calculate_forward_feed(
 
         get_activation().activate(pre_t, pre_t + N_this, is_training);
 
-        std::fill(mask.vec().begin(), mask.vec().begin() + N_this, 1.0);
-        if (is_training && get_dropout() > 0.0)
+        if (has_dropout)
         {
+          double* mask_ptr = &tl_mask[b_idx * N_this];
+          std::fill_n(mask_ptr, N_this, 1.0);
           const auto& neurons = get_neurons();
           for (size_t j = 0; j < N_this; ++j)
           {
@@ -399,29 +477,35 @@ void ElmanRNNLayer::calculate_forward_feed(
               if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 out = 0.0;
-                mask.data()[j] = 0.0;
+                mask_ptr[j] = 0.0;
               }
               else
               {
                 const double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
                 out *= scale;
-                mask.data()[j] = scale;
+                mask_ptr[j] = scale;
               }
             }
-            current_h.data()[j] = out;
-            batch_output_sequences.data()[(b * num_time_steps + t) * N_this + j] = out;
+            h_out[j] = out;
+            seq_dest[j] = out;
+          }
+          if (!batch_hidden_states.empty())
+          {
+            auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+            state.set_cell_state_values(mask_ptr, N_this);
+            state.set_hidden_state_values(h_out, N_this);
           }
         }
         else
         {
-          std::copy(pre_t, pre_t + N_this, current_h.data());
-          std::copy(pre_t, pre_t + N_this, &batch_output_sequences.data()[(b * num_time_steps + t) * N_this]);
-        }
-        if (!batch_hidden_states.empty())
-        {
-          auto& state = batch_hidden_states[b].at(get_layer_index())[t];
-          state.set_cell_state_values(mask.data(), N_this);
-          state.set_hidden_state_values(current_h.data(), N_this);
+          std::copy_n(pre_t, N_this, h_out);
+          std::copy_n(pre_t, N_this, seq_dest);
+          if (!batch_hidden_states.empty())
+          {
+            auto& state = batch_hidden_states[b].at(get_layer_index())[t];
+            state.set_cell_state_values(&tl_mask[b_idx * N_this], N_this);
+            state.set_hidden_state_values(h_out, N_this);
+          }
         }
       }
     }
@@ -452,22 +536,22 @@ void ElmanRNNLayer::calculate_forward_feed(
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const double* seq_ptr = &batch_output_sequences.data()[b * num_time_steps * N_this];
+    const double* seq_ptr = &batch_output_seq_ptr[b * num_time_steps * N_this];
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
     const double* last_ptr = seq_ptr + (num_time_steps - 1) * N_this;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy(last_ptr, last_ptr + N_this, dest_ptr);
+    std::copy_n(last_ptr, N_this, dest_ptr);
   }
 }
 
 void ElmanRNNLayer::pre_calculate_gates(
-  const size_t& b_start, 
-  const size_t& b_end,
-  const size_t N_this,
-  const size_t N_prev,
-  const size_t num_time_steps,
-  const std::vector<double>& flattened_batch_inputs,
-  std::vector<double>& batch_pre_act
+  size_t b_start, 
+  size_t b_end,
+  size_t N_this,
+  size_t N_prev,
+  size_t num_time_steps,
+  const double* flattened_batch_inputs,
+  double* batch_pre_act
 ) const
 {
   const double* W = get_w_values().data();
@@ -481,16 +565,16 @@ void ElmanRNNLayer::pre_calculate_gates(
     for (size_t step = step_start; step < step_end; ++step)
     {
       double* dest = &batch_pre_act[step * N_this];
-      std::copy(biases.begin(), biases.begin() + copy_size, dest);
+      std::copy_n(biases.begin(), copy_size, dest);
       if (copy_size < N_this)
       {
-        std::fill(dest + copy_size, dest + N_this, 0.0);
+        std::fill_n(dest + copy_size, N_this - copy_size, 0.0);
       }
     }
   }
   else
   {
-    std::fill(batch_pre_act.begin() + step_start * N_this, batch_pre_act.begin() + step_end * N_this, 0.0);
+    std::fill_n(&batch_pre_act[step_start * N_this], (step_end - step_start) * N_this, 0.0);
   }
 
   size_t step = step_start;
@@ -544,36 +628,61 @@ void ElmanRNNLayer::pre_calculate_gates(
   }
 }
 
+void ElmanRNNLayer::pre_calculate_gates(
+  const size_t& b_start, 
+  const size_t& b_end,
+  const size_t N_this,
+  const size_t N_prev,
+  const size_t num_time_steps,
+  const std::vector<double>& flattened_batch_inputs,
+  std::vector<double>& batch_pre_act
+) const
+{
+  pre_calculate_gates(b_start, b_end, N_this, N_prev, num_time_steps, flattened_batch_inputs.data(), batch_pre_act.data());
+}
+
 void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, std::vector<std::vector<double>>::const_iterator target_outputs_begin, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t N_this = get_number_neurons();
-  TempBuffer<double, 15> deltas(0);
+  static thread_local AlignedVector tl_deltas;
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& states = batch_hidden_states[b].at(get_layer_index());
     const size_t T = states.size();
-    deltas.assign(T * N_this, 0.0);
+    tl_deltas.resize(T * N_this);
+    double* deltas = tl_deltas.data();
     const std::vector<double>& targets = *(target_outputs_begin + b);
-    for (size_t t = 0; t < T; ++t)
+    if (targets.size() == T * N_this)
     {
-      const auto& given = states[t].get_hidden_state_values();
-      for (size_t j = 0; j < N_this; ++j)
+      for (size_t t = 0; t < T; ++t)
       {
-        size_t idx = t * N_this + j;
-        if (idx < targets.size())
+        const auto& given = states[t].get_hidden_state_values();
+        simd::sub_vectors(given.data(), &targets[t * N_this], deltas + t * N_this, N_this);
+      }
+    }
+    else
+    {
+      for (size_t t = 0; t < T; ++t)
+      {
+        const auto& given = states[t].get_hidden_state_values();
+        for (size_t j = 0; j < N_this; ++j)
         {
-          deltas.data()[idx] = given[j] - targets[idx];
-        }
-        else
-        {
-          deltas.data()[idx] = 0.0;
+          size_t idx = t * N_this + j;
+          if (idx < targets.size())
+          {
+            deltas[idx] = given[j] - targets[idx];
+          }
+          else
+          {
+            deltas[idx] = 0.0;
+          }
         }
       }
     }
     double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::copy(deltas.data() + deltas.size() - N_this, deltas.data() + deltas.size(), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas.data(), deltas.size());
+    std::copy_n(deltas + (T - 1) * N_this, N_this, dest_ptr);
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas, T * N_this);
   }
 }
 
@@ -671,7 +780,7 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
   const std::vector<HiddenStates>& batch_hidden_states,
   int bptt_max_ticks,
   BPTTWorkspace& workspace,
-  const BPTTWorkspace::AlignedVector& /*rw_values_T*/) const
+  const AlignedVector& /*rw_values_T*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   const size_t N_this = get_number_neurons();
@@ -684,7 +793,8 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
   const size_t N_next = next_layer.get_number_neurons();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
-  const unsigned target_layer_idx = (use_direct_gradients && _identity_proxy != nullptr && &next_layer == _identity_proxy) ? (get_layer_index() + 1) : next_layer.get_layer_index();
+  const bool is_identity = (_identity_proxy != nullptr && &next_layer == _identity_proxy);
+  const unsigned target_layer_idx = (use_direct_gradients && is_identity) ? (get_layer_index() + 1) : next_layer.get_layer_index();
 
   bool next_is_seq = false;
   if (use_direct_gradients)
@@ -746,46 +856,60 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
 
     if (next_is_seq)
     {
-      int t = t_start;
-      for (; t - 3 >= t_end; t -= 4)
+      if (is_identity)
       {
-        const double* g0 = &next_grads_base[t * N_next];
-        const double* g1 = &next_grads_base[(t - 1) * N_next];
-        const double* g2 = &next_grads_base[(t - 2) * N_next];
-        const double* g3 = &next_grads_base[(t - 3) * N_next];
-
-        double* d0 = &dest_base[t * N_this];
-        double* d1 = &dest_base[(t - 1) * N_this];
-        double* d2 = &dest_base[(t - 2) * N_this];
-        double* d3 = &dest_base[(t - 3) * N_this];
-
-        simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+        std::copy_n(next_grads_base, num_time_steps * N_this, dest_base);
       }
-      for (; t - 1 >= t_end; t -= 2)
+      else
       {
-        const double* g0 = &next_grads_base[t * N_next];
-        const double* g1 = &next_grads_base[(t - 1) * N_next];
+        int t = t_start;
+        for (; t - 3 >= t_end; t -= 4)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          const double* g1 = &next_grads_base[(t - 1) * N_next];
+          const double* g2 = &next_grads_base[(t - 2) * N_next];
+          const double* g3 = &next_grads_base[(t - 3) * N_next];
 
-        double* d0 = &dest_base[t * N_this];
-        double* d1 = &dest_base[(t - 1) * N_this];
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+          double* d2 = &dest_base[(t - 2) * N_this];
+          double* d3 = &dest_base[(t - 3) * N_this];
 
-        simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
-      }
-      for (; t >= t_end; --t)
-      {
-        const double* g0 = &next_grads_base[t * N_next];
-        double* d0 = &dest_base[t * N_this];
+          simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+        }
+        for (; t - 1 >= t_end; t -= 2)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          const double* g1 = &next_grads_base[(t - 1) * N_next];
 
-        simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+
+          simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
+        }
+        for (; t >= t_end; --t)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          double* d0 = &dest_base[t * N_this];
+
+          simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+        }
       }
     }
     else
     {
       if (t_start >= t_end)
       {
-        const double* g_next_t = next_grads_base;
-        double* dest_t = &dest_base[t_start * N_this];
-        simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+        if (is_identity)
+        {
+          std::copy_n(next_grads_base, N_this, &dest_base[t_start * N_this]);
+        }
+        else
+        {
+          const double* g_next_t = next_grads_base;
+          double* dest_t = &dest_base[t_start * N_this];
+          simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+        }
       }
     }
   }
@@ -945,9 +1069,9 @@ struct ElmanGradCalcTask
   size_t N_prev;
   size_t N_this;
   size_t T;
-  std::vector<double>& local_w_grads;
-  std::vector<double>& local_rw_grads;
-  std::vector<double>& local_b_grads;
+  std::span<double> local_w_grads;
+  std::span<double> local_rw_grads;
+  std::span<double> local_b_grads;
 
   void operator()() const
   {
@@ -982,13 +1106,36 @@ void ElmanRNNLayer::calculate_and_store_gradients_chunk(
   std::vector<double>& local_rw_grads,
   std::vector<double>& local_b_grads) const
 {
+  calculate_and_store_gradients_chunk(
+    start, end,
+    batch_gradients_and_outputs, hidden_states,
+    prev_layer_index, N_prev, N_this, T,
+    std::span<double>(local_w_grads),
+    std::span<double>(local_rw_grads),
+    std::span<double>(local_b_grads)
+  );
+}
+
+void ElmanRNNLayer::calculate_and_store_gradients_chunk(
+  size_t start,
+  size_t end,
+  const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<HiddenStates>& hidden_states,
+  unsigned prev_layer_index,
+  size_t N_prev,
+  size_t N_this,
+  size_t T,
+  std::span<double> local_w_grads,
+  std::span<double> local_rw_grads,
+  std::span<double> local_b_grads) const
+{
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
   if (start >= end)
   {
     return;
   }
 
-  if (has_bias())
+  if (has_bias() && !local_b_grads.empty())
   {
     for (size_t b = start; b < end; ++b)
     {
@@ -1005,9 +1152,15 @@ void ElmanRNNLayer::calculate_and_store_gradients_chunk(
     }
   }
 
-  for (size_t k = 0; k < N_prev; ++k)
+  // 1. Input weight gradients: 4-wide and 2-wide unrolled outer product
+  size_t k = 0;
+  for (; k + 3 < N_prev; k += 4)
   {
-    double* w_grad_row = &local_w_grads[k * N_this];
+    double* row0 = &local_w_grads[k * N_this];
+    double* row1 = &local_w_grads[(k + 1) * N_this];
+    double* row2 = &local_w_grads[(k + 2) * N_this];
+    double* row3 = &local_w_grads[(k + 3) * N_this];
+
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -1024,15 +1177,68 @@ void ElmanRNNLayer::calculate_and_store_gradients_chunk(
       {
         const double* g_t = &packed_grads[t * N_this];
         const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
-        const double x_val = x_t[k];
-        simd::mul_add(x_val, g_t, w_grad_row, N_this);
+        simd::mul_add_four_scalars(x_t[k], x_t[k + 1], x_t[k + 2], x_t[k + 3], g_t, row0, row1, row2, row3, N_this);
+      }
+    }
+  }
+  for (; k + 1 < N_prev; k += 2)
+  {
+    double* row0 = &local_w_grads[k * N_this];
+    double* row1 = &local_w_grads[(k + 1) * N_this];
+
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
+
+      for (size_t t = 0; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
+        simd::mul_add_two_scalars(x_t[k], x_t[k + 1], g_t, row0, row1, N_this);
+      }
+    }
+  }
+  for (; k < N_prev; ++k)
+  {
+    double* row0 = &local_w_grads[k * N_this];
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = !rnn_in.empty() ? rnn_in.data() : std_in.data();
+      const size_t x_seq_len = !rnn_in.empty() ? rnn_in.size() / N_prev : 1;
+
+      for (size_t t = 0; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* x_t = (x_seq_len == T) ? &x_base[t * N_prev] : x_base;
+        simd::mul_add(x_t[k], g_t, row0, N_this);
       }
     }
   }
 
-  for (size_t rk = 0; rk < N_this; ++rk)
+  // 2. Recurrent weight gradients: 4-wide and 2-wide unrolled outer product
+  size_t rk = 0;
+  for (; rk + 3 < N_this; rk += 4)
   {
-    double* rw_grad_row = &local_rw_grads[rk * N_this];
+    double* row0 = &local_rw_grads[rk * N_this];
+    double* row1 = &local_rw_grads[(rk + 1) * N_this];
+    double* row2 = &local_rw_grads[(rk + 2) * N_this];
+    double* row3 = &local_rw_grads[(rk + 3) * N_this];
+
     for (size_t b = start; b < end; ++b)
     {
       const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -1045,8 +1251,47 @@ void ElmanRNNLayer::calculate_and_store_gradients_chunk(
       {
         const double* g_t = &packed_grads[t * N_this];
         const double* h_prev = layer_states[t - 1].get_hidden_state_values().data();
-        const double h_val = h_prev[rk];
-        simd::mul_add(h_val, g_t, rw_grad_row, N_this);
+        simd::mul_add_four_scalars(h_prev[rk], h_prev[rk + 1], h_prev[rk + 2], h_prev[rk + 3], g_t, row0, row1, row2, row3, N_this);
+      }
+    }
+  }
+  for (; rk + 1 < N_this; rk += 2)
+  {
+    double* row0 = &local_rw_grads[rk * N_this];
+    double* row1 = &local_rw_grads[(rk + 1) * N_this];
+
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& layer_states = hidden_states[b].at(get_layer_index());
+      for (size_t t = 1; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* h_prev = layer_states[t - 1].get_hidden_state_values().data();
+        simd::mul_add_two_scalars(h_prev[rk], h_prev[rk + 1], g_t, row0, row1, N_this);
+      }
+    }
+  }
+  for (; rk < N_this; ++rk)
+  {
+    double* row0 = &local_rw_grads[rk * N_this];
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& packed_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
+      if (packed_grads.empty())
+      {
+        continue;
+      }
+      const auto& layer_states = hidden_states[b].at(get_layer_index());
+      for (size_t t = 1; t < T; ++t)
+      {
+        const double* g_t = &packed_grads[t * N_this];
+        const double* h_prev = layer_states[t - 1].get_hidden_state_values().data();
+        simd::mul_add(h_prev[rk], g_t, row0, N_this);
       }
     }
   }
@@ -1077,27 +1322,19 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
   }
   else
   {
-    if (_thread_w_grads.size() < active_threads)
+    if (_thread_grad_accumulators.size() < active_threads)
     {
-      _thread_w_grads.resize(active_threads);
-    }
-    if (_thread_rw_grads.size() < active_threads)
-    {
-      _thread_rw_grads.resize(active_threads);
-    }
-    if (_thread_b_grads.size() < active_threads)
-    {
-      _thread_b_grads.resize(active_threads);
+      _thread_grad_accumulators.resize(active_threads);
     }
 
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      _thread_w_grads[t].resize(_w_grads.size());
-      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-      _thread_rw_grads[t].resize(_rw_grads.size());
-      std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
-      _thread_b_grads[t].resize(has_bias() ? N_this : 0);
-      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+      _thread_grad_accumulators[t].w_grads.resize(_w_grads.size());
+      std::fill_n(_thread_grad_accumulators[t].w_grads.data(), _w_grads.size(), 0.0);
+      _thread_grad_accumulators[t].rw_grads.resize(_rw_grads.size());
+      std::fill_n(_thread_grad_accumulators[t].rw_grads.data(), _rw_grads.size(), 0.0);
+      _thread_grad_accumulators[t].b_grads.resize(has_bias() ? N_this : 0);
+      std::fill_n(_thread_grad_accumulators[t].b_grads.data(), has_bias() ? N_this : 0, 0.0);
     }
 
     size_t start = 0;
@@ -1117,9 +1354,9 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
           N_prev,
           N_this,
           T,
-          _thread_w_grads[t],
-          _thread_rw_grads[t],
-          _thread_b_grads[t]
+          _thread_grad_accumulators[t].w_grads,
+          _thread_grad_accumulators[t].rw_grads,
+          _thread_grad_accumulators[t].b_grads
         });
       }
       start = end;
@@ -1130,11 +1367,11 @@ void ElmanRNNLayer::calculate_and_store_gradients(const std::vector<GradientsAnd
     zero_gradients();
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
-      simd::add_vectors(_thread_rw_grads[t].data(), _rw_grads.data(), _rw_grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].w_grads.data(), _w_grads.data(), _w_grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].rw_grads.data(), _rw_grads.data(), _rw_grads.size());
       if (has_bias())
       {
-        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].b_grads.data(), _b_grads.data(), _b_grads.size());
       }
     }
   }
@@ -1236,25 +1473,13 @@ void ElmanRNNLayer::cache_recurrent_weights()
     return;
   }
   _rw_values_T.resize(n * n);
-  for (size_t i = 0; i < n; ++i)
-  {
-    for (size_t j = 0; j < n; ++j)
-    {
-      _rw_values_T[j * n + i] = _rw_values[i * n + j];
-    }
-  }
+  simd::transpose(_rw_values.data(), _rw_values_T.data(), n, n);
 
   if (n_prev > 0)
   {
     _w_values_T.resize(n * n_prev);
     const auto& w_vals = get_w_values();
-    for (size_t i = 0; i < n_prev; ++i)
-    {
-      for (size_t j = 0; j < n; ++j)
-      {
-        _w_values_T[j * n_prev + i] = w_vals[i * n + j];
-      }
-    }
+    simd::transpose(w_vals.data(), _w_values_T.data(), n_prev, n);
   }
 }
 
