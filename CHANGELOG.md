@@ -2,6 +2,24 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.46] - 2026-09-03
+
+### Optimised
+- Optimised `LSTMLayer` memory bandwidth and buffer allocations during backpropagation:
+  - Eliminated redundant memset-zeroing in `bptt_workspace::resize` for intermediate output buffers (`rnn_grad_matrix`, `dx_matrix`, `chunk_df`, `chunk_di`, `chunk_do`, `chunk_dg`, `dh_curr`, `dc_act_deriv`, `dg_act_deriv`), calling `.resize(...)` directly and saving megabytes of cache-polluting writes per BPTT batch chunk.
+  - Avoided zeroing layer normalisation buffers (`ln_dy_buf`, `ln_dx_buf`, `ln_dc_next_substitute_buf`, `ln_c_gain_grad_accum`, `ln_c_bias_grad_accum`) when `_use_layer_normalisation` is disabled.
+  - Bypassed redundant input sequence copying and memory allocation in `calculate_forward_feed` and `pre_calculate_gates` when `batch_size == 1` and input is already a contiguous RNN sequence.
+  - Eliminated redundant buffer memset zeroing in `calculate_output_gradients` by using `.resize(...)` on `workspace.deltas_buf` instead of `.resize_and_zero(...)`.
+  - Added AVX2-vectorised `simd::scale_four_vectors` kernel to scale 4 gate matrices simultaneously (`_w_grads`, `_rw_grads`, `_b_grads`) in `calculate_and_store_gradients`, reducing loop passes and function call overhead by 75%.
+
+### Fixed
+- Fixed recurrent gradient accumulation across timesteps in `LSTMLayer::run_recurrent_gemm_backward`:
+  - Zeroed `dh_next_batch` prior to `gemm_four_matrices_*` accumulation, preventing recurrent gradients from leaking and accumulating across sequence steps ($T > 2$).
+
+### Added
+- Added unit test `SimdUtilsTest.ScaleFourVectorsEquivalence` verifying AVX2-fused 4-vector scaling against scalar implementation across various vector lengths.
+- Added unit test `LSTMLayerTest.RecurrentWeightsFiniteDifferenceNumericalEquivalence` confirming multi-step analytical recurrent gradients match numerical finite differences across all 4 gates.
+
 ## [1.1.45] - 2026-09-02
 
 ### Added

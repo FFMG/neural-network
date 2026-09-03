@@ -1115,25 +1115,34 @@ private:
       }
     } forward_ws;
 
-    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
+    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps, bool next_is_seq, bool use_layer_norm)
     {
+      (void)next_is_seq;
       grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
       d_next_h.resize_and_zero(batch_chunk_size * n);
       d_next_c.resize_and_zero(batch_chunk_size * n);
-      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
-      dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
-      chunk_df.resize_and_zero(batch_chunk_size * n);
-      chunk_di.resize_and_zero(batch_chunk_size * n);
-      chunk_do.resize_and_zero(batch_chunk_size * n);
-      chunk_dg.resize_and_zero(batch_chunk_size * n);
-      dh_curr.resize_and_zero(batch_chunk_size * n);
-      dc_act_deriv.resize_and_zero(batch_chunk_size * n);
-      dg_act_deriv.resize_and_zero(batch_chunk_size * n);
-      ln_dy_buf.resize_and_zero(n);
-      ln_dx_buf.resize_and_zero(n);
-      ln_dc_next_substitute_buf.resize_and_zero(n);
-      ln_c_gain_grad_accum.resize_and_zero(n);
-      ln_c_bias_grad_accum.resize_and_zero(n);
+      rnn_grad_matrix.resize(batch_chunk_size * num_time_steps * GateCount * n);
+      dx_matrix.resize(batch_chunk_size * num_time_steps * n_prev);
+      chunk_df.resize(batch_chunk_size * n);
+      chunk_di.resize(batch_chunk_size * n);
+      chunk_do.resize(batch_chunk_size * n);
+      chunk_dg.resize(batch_chunk_size * n);
+      dh_curr.resize(batch_chunk_size * n);
+      dc_act_deriv.resize(batch_chunk_size * n);
+      dg_act_deriv.resize(batch_chunk_size * n);
+      if (use_layer_norm)
+      {
+        ln_dy_buf.resize(n);
+        ln_dx_buf.resize(n);
+        ln_dc_next_substitute_buf.resize(n);
+        ln_c_gain_grad_accum.resize_and_zero(n);
+        ln_c_bias_grad_accum.resize_and_zero(n);
+      }
+    }
+
+    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
+    {
+      resize(n, n_prev, batch_chunk_size, num_time_steps, false, true);
     }
   };
 

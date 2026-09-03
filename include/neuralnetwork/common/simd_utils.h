@@ -5116,6 +5116,82 @@ public:
     scalar_scale_vector(y, scale, n, j);
   }
 
+  // Scalar fallback for scale_four_vectors
+  inline static void scalar_scale_four_vectors(
+    double* y0, double* y1, double* y2, double* y3,
+    const double scale,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    for (size_t j = start; j < n; ++j)
+    {
+      y0[j] *= scale;
+      y1[j] *= scale;
+      y2[j] *= scale;
+      y3[j] *= scale;
+    }
+  }
+
+  // Four-vector scaling (y0 *= scale, y1 *= scale, y2 *= scale, y3 *= scale)
+  inline static void scale_four_vectors(
+    double* y0, double* y1, double* y2, double* y3,
+    const double scale,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    const __m256d vec_scale = _mm256_set1_pd(scale);
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vy0_0 = _mm256_loadu_pd(y0 + j);
+      __m256d vy0_1 = _mm256_loadu_pd(y0 + j + 4);
+      __m256d vy1_0 = _mm256_loadu_pd(y1 + j);
+      __m256d vy1_1 = _mm256_loadu_pd(y1 + j + 4);
+      __m256d vy2_0 = _mm256_loadu_pd(y2 + j);
+      __m256d vy2_1 = _mm256_loadu_pd(y2 + j + 4);
+      __m256d vy3_0 = _mm256_loadu_pd(y3 + j);
+      __m256d vy3_1 = _mm256_loadu_pd(y3 + j + 4);
+
+      vy0_0 = _mm256_mul_pd(vy0_0, vec_scale);
+      vy0_1 = _mm256_mul_pd(vy0_1, vec_scale);
+      vy1_0 = _mm256_mul_pd(vy1_0, vec_scale);
+      vy1_1 = _mm256_mul_pd(vy1_1, vec_scale);
+      vy2_0 = _mm256_mul_pd(vy2_0, vec_scale);
+      vy2_1 = _mm256_mul_pd(vy2_1, vec_scale);
+      vy3_0 = _mm256_mul_pd(vy3_0, vec_scale);
+      vy3_1 = _mm256_mul_pd(vy3_1, vec_scale);
+
+      _mm256_storeu_pd(y0 + j, vy0_0);
+      _mm256_storeu_pd(y0 + j + 4, vy0_1);
+      _mm256_storeu_pd(y1 + j, vy1_0);
+      _mm256_storeu_pd(y1 + j + 4, vy1_1);
+      _mm256_storeu_pd(y2 + j, vy2_0);
+      _mm256_storeu_pd(y2 + j + 4, vy2_1);
+      _mm256_storeu_pd(y3 + j, vy3_0);
+      _mm256_storeu_pd(y3 + j + 4, vy3_1);
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vy0 = _mm256_loadu_pd(y0 + j);
+      __m256d vy1 = _mm256_loadu_pd(y1 + j);
+      __m256d vy2 = _mm256_loadu_pd(y2 + j);
+      __m256d vy3 = _mm256_loadu_pd(y3 + j);
+
+      vy0 = _mm256_mul_pd(vy0, vec_scale);
+      vy1 = _mm256_mul_pd(vy1, vec_scale);
+      vy2 = _mm256_mul_pd(vy2, vec_scale);
+      vy3 = _mm256_mul_pd(vy3, vec_scale);
+
+      _mm256_storeu_pd(y0 + j, vy0);
+      _mm256_storeu_pd(y1 + j, vy1);
+      _mm256_storeu_pd(y2 + j, vy2);
+      _mm256_storeu_pd(y3 + j, vy3);
+    }
+#endif
+    scalar_scale_four_vectors(y0, y1, y2, y3, scale, n, j);
+  }
+
   // Scalar fallback for mul_vectors
   inline static void scalar_mul_vectors(const double* x, const double* y, double* z, size_t n, size_t start = 0) noexcept
   {

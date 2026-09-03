@@ -1905,3 +1905,192 @@ TEST_F(LSTMLayerTest, GeluBpttNumericalGradientEquivalence)
     EXPECT_TRUE(std::isfinite(g_rw_grads[i]));
   }
 }
+
+namespace
+{
+  struct LstmFiniteDiffHelper
+  {
+    static double compute_loss(
+      LSTMLayer& layer,
+      const MockLayer& prev_layer,
+      const std::vector<unsigned>& topology,
+      const std::vector<double>& inputs,
+      const std::vector<double>& targets,
+      size_t num_time_steps,
+      unsigned num_outputs)
+    {
+      auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+      auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+      batch_go[0].set_rnn_outputs(0, inputs);
+
+      layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+      const auto& outputs = batch_go[0].get_rnn_outputs(1);
+      double loss = 0.0;
+      for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+      {
+        const double diff = outputs[i] - targets[i];
+        loss += 0.5 * diff * diff;
+      }
+      return loss;
+    }
+  };
+}
+
+TEST_F(LSTMLayerTest, RecurrentWeightsFiniteDifferenceNumericalEquivalence)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 4;
+  const size_t batch_size = 1;
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  std::vector<double> fw = { 0.2, -0.3, 0.1, 0.4 };
+  std::vector<double> iw = { -0.1, 0.2, 0.3, -0.2 };
+  std::vector<double> ow = { 0.3, -0.1, -0.2, 0.2 };
+  std::vector<double> gw = { -0.2, 0.1, 0.4, -0.3 };
+
+  std::vector<double> frw = { 0.15, -0.1, 0.05, 0.2 };
+  std::vector<double> irw = { -0.1, 0.15, -0.2, 0.1 };
+  std::vector<double> orw = { 0.2, -0.05, 0.1, -0.15 };
+  std::vector<double> grw = { -0.05, 0.2, -0.1, 0.25 };
+
+  std::vector<double> fb = { 0.05, -0.02 };
+  std::vector<double> ib = { -0.03, 0.04 };
+  std::vector<double> ob = { 0.02, -0.01 };
+  std::vector<double> gb = { 0.01, 0.03 };
+
+  layer.set_f_w_values(fw);
+  layer.set_i_w_values(iw);
+  layer.set_o_w_values(ow);
+  layer.set_w_values(gw);
+
+  layer.set_f_rw_values(frw);
+  layer.set_i_rw_values(irw);
+  layer.set_o_rw_values(orw);
+  layer.set_rw_values(grw);
+
+  layer.set_f_b_values(fb);
+  layer.set_i_b_values(ib);
+  layer.set_o_b_values(ob);
+  layer.set_b_values(gb);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  {
+    std::vector<double> identity(num_outputs * num_outputs, 0.0);
+    for (unsigned j = 0; j < num_outputs; ++j)
+    {
+      identity[j * num_outputs + j] = 1.0;
+    }
+    next_layer.set_w_values(identity);
+  }
+
+  std::vector<double> inputs(num_time_steps * num_inputs);
+  for (size_t i = 0; i < inputs.size(); ++i)
+  {
+    inputs[i] = 0.2 * std::sin(static_cast<double>(i + 1));
+  }
+
+  std::vector<double> targets(num_time_steps * num_outputs);
+  for (size_t i = 0; i < targets.size(); ++i)
+  {
+    targets[i] = 0.15 * std::cos(static_cast<double>(i + 1));
+  }
+
+  // Analytical gradient computation
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, LSTMLayer::Multiplier);
+  batch_go[0].set_rnn_outputs(0, inputs);
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  const auto& outputs = batch_go[0].get_rnn_outputs(1);
+  std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+  {
+    batch_next_grads[0][i] = outputs[i] - targets[i];
+  }
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, 0);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  const auto analytical_rw_grads = layer.get_rw_grads();
+  const auto analytical_f_rw_grads = layer.get_f_rw_grads();
+  const auto analytical_i_rw_grads = layer.get_i_rw_grads();
+  const auto analytical_o_rw_grads = layer.get_o_rw_grads();
+
+  const double eps = 1e-6;
+
+  // Verify recurrent candidate weights (grw)
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto grw_pert = grw;
+    grw_pert[k] = grw[k] + eps;
+    layer.set_rw_values(grw_pert);
+    const double loss_plus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    grw_pert[k] = grw[k] - eps;
+    layer.set_rw_values(grw_pert);
+    const double loss_minus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    layer.set_rw_values(grw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_rw_grads[k], num_grad, 1e-5);
+  }
+
+  // Verify recurrent forget gate weights (frw)
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto frw_pert = frw;
+    frw_pert[k] = frw[k] + eps;
+    layer.set_f_rw_values(frw_pert);
+    const double loss_plus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    frw_pert[k] = frw[k] - eps;
+    layer.set_f_rw_values(frw_pert);
+    const double loss_minus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    layer.set_f_rw_values(frw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_f_rw_grads[k], num_grad, 1e-5);
+  }
+
+  // Verify recurrent input gate weights (irw)
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto irw_pert = irw;
+    irw_pert[k] = irw[k] + eps;
+    layer.set_i_rw_values(irw_pert);
+    const double loss_plus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    irw_pert[k] = irw[k] - eps;
+    layer.set_i_rw_values(irw_pert);
+    const double loss_minus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    layer.set_i_rw_values(irw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_i_rw_grads[k], num_grad, 1e-5);
+  }
+
+  // Verify recurrent output gate weights (orw)
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto orw_pert = orw;
+    orw_pert[k] = orw[k] + eps;
+    layer.set_o_rw_values(orw_pert);
+    const double loss_plus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    orw_pert[k] = orw[k] - eps;
+    layer.set_o_rw_values(orw_pert);
+    const double loss_minus = LstmFiniteDiffHelper::compute_loss(layer, prev_layer, topology, inputs, targets, num_time_steps, num_outputs);
+
+    layer.set_o_rw_values(orw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_o_rw_grads[k], num_grad, 1e-5);
+  }
+}
+

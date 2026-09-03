@@ -572,8 +572,18 @@ void LSTMLayer::calculate_forward_feed(
     return;
   }
 
-  _forward_flattened_inputs.resize(batch_size * num_time_steps * N_prev);
-  double* flattened_inputs_ptr = _forward_flattened_inputs.data();
+  const auto& rnn_in_0 = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
+  const bool direct_rnn_in = (batch_size == 1 && !rnn_in_0.empty() && rnn_in_0.size() == num_time_steps * N_prev);
+  double* flattened_inputs_ptr = nullptr;
+  if (direct_rnn_in)
+  {
+    flattened_inputs_ptr = const_cast<double*>(rnn_in_0.data());
+  }
+  else
+  {
+    _forward_flattened_inputs.resize(batch_size * num_time_steps * N_prev);
+    flattened_inputs_ptr = _forward_flattened_inputs.data();
+  }
 
   // 2. Pre-calculate Input-to-Gates (all 4 gates) for all ticks
   _forward_batch_pre_act.resize(batch_size * num_time_steps * GateCount * N_this);
@@ -669,19 +679,24 @@ void LSTMLayer::pre_calculate_gates(
 ) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  for (size_t b = b_start; b < b_end; ++b)
+  const auto& first_rnn_in = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
+  const bool direct_rnn_in = (batch_gradients_and_outputs.size() == 1 && !first_rnn_in.empty() && flattened_inputs == first_rnn_in.data());
+  if (!direct_rnn_in)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    if (!rnn_in.empty())
+    for (size_t b = b_start; b < b_end; ++b)
     {
-      std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs + b * num_time_steps * N_prev);
-    }
-    else
-    {
-      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      for (size_t t = 0; t < num_time_steps; ++t)
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      if (!rnn_in.empty())
       {
-        std::copy(std_in.begin(), std_in.end(), flattened_inputs + (b * num_time_steps + t) * N_prev);
+        std::copy(rnn_in.begin(), rnn_in.end(), flattened_inputs + b * num_time_steps * N_prev);
+      }
+      else
+      {
+        const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+          std::copy(std_in.begin(), std_in.end(), flattened_inputs + (b * num_time_steps + t) * N_prev);
+        }
       }
     }
   }
@@ -1125,7 +1140,7 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
   {
     const auto& states = batch_hidden_states[b].at(get_layer_index());
     const size_t T = states.size();
-    workspace.deltas_buf.resize_and_zero(T * N_this);
+    workspace.deltas_buf.resize(T * N_this);
     double* deltas = workspace.deltas_buf.data();
     const std::vector<double>& targets = *(target_outputs_begin + b);
     if (targets.size() == T * N_this)
@@ -1519,24 +1534,15 @@ void LSTMLayer::calculate_and_store_gradients(
   const double inv_batch = 1.0 / static_cast<double>(batch_size);
   if (!_w_grads.empty())
   {
-    simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
-    simd::scale_vector(_f_w_grads.data(), inv_batch, _f_w_grads.size());
-    simd::scale_vector(_i_w_grads.data(), inv_batch, _i_w_grads.size());
-    simd::scale_vector(_o_w_grads.data(), inv_batch, _o_w_grads.size());
+    simd::scale_four_vectors(_w_grads.data(), _f_w_grads.data(), _i_w_grads.data(), _o_w_grads.data(), inv_batch, _w_grads.size());
   }
   if (!_rw_grads.empty())
   {
-    simd::scale_vector(_rw_grads.data(), inv_batch, _rw_grads.size());
-    simd::scale_vector(_f_rw_grads.data(), inv_batch, _f_rw_grads.size());
-    simd::scale_vector(_i_rw_grads.data(), inv_batch, _i_rw_grads.size());
-    simd::scale_vector(_o_rw_grads.data(), inv_batch, _o_rw_grads.size());
+    simd::scale_four_vectors(_rw_grads.data(), _f_rw_grads.data(), _i_rw_grads.data(), _o_rw_grads.data(), inv_batch, _rw_grads.size());
   }
   if (has_bias() && !_b_grads.empty())
   {
-    simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
-    simd::scale_vector(_f_b_grads.data(), inv_batch, _f_b_grads.size());
-    simd::scale_vector(_i_b_grads.data(), inv_batch, _i_b_grads.size());
-    simd::scale_vector(_o_b_grads.data(), inv_batch, _o_b_grads.size());
+    simd::scale_four_vectors(_b_grads.data(), _f_b_grads.data(), _i_b_grads.data(), _o_b_grads.data(), inv_batch, _b_grads.size());
   }
   if (_use_layer_normalisation)
   {
@@ -1807,8 +1813,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
   const size_t N_prev = get_number_input_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
-  workspace.resize(N_this, N_prev, end - start, num_time_steps);
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const size_t N_next = next_layer.get_number_neurons();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
   const unsigned target_layer_idx = (use_direct_gradients && _identity_proxy != nullptr && &next_layer == _identity_proxy) ? (get_layer_index() + 1) : next_layer.get_layer_index();
@@ -1837,6 +1842,7 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
       next_is_seq = (batch_next_grad_matrix[0].size() == num_time_steps * N_next);
     }
   }
+  workspace.resize(N_this, N_prev, end - start, num_time_steps, next_is_seq, _use_layer_normalisation);
 
   const double* next_w_data = next_layer.get_w_values().data();
   for (size_t b = start; b < end; ++b)
@@ -2609,6 +2615,7 @@ void LSTMLayer::run_recurrent_gemm_backward(
   double* dh_next_batch) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  std::fill_n(dh_next_batch + b_start * N_this, (b_end - b_start) * N_this, 0.0);
   size_t b = b_start;
   for (; b + 3 < b_end; b += 4)
   {

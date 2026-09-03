@@ -3462,8 +3462,33 @@ TEST(SimdUtilsTest, LookaheadStep)
   }
 }
 
+TEST(SimdUtilsTest, ScaleFourVectorsEquivalence)
+{
+  const std::vector<size_t> sizes = { 0, 1, 2, 3, 4, 5, 7, 8, 11, 15, 16, 23, 31, 32, 47, 64, 100, 128, 255, 256 };
+  const double scale = 0.375;
 
+  for (size_t n : sizes)
+  {
+    std::vector<double> y0_simd(n), y1_simd(n), y2_simd(n), y3_simd(n);
+    std::vector<double> y0_scalar(n), y1_scalar(n), y2_scalar(n), y3_scalar(n);
 
+    for (size_t i = 0; i < n; ++i)
+    {
+      y0_simd[i] = y0_scalar[i] = 1.0 + static_cast<double>(i) * 0.1;
+      y1_simd[i] = y1_scalar[i] = -2.5 + static_cast<double>(i) * 0.2;
+      y2_simd[i] = y2_scalar[i] = 0.5 - static_cast<double>(i) * 0.05;
+      y3_simd[i] = y3_scalar[i] = 3.14 + static_cast<double>(i) * 0.3;
+    }
 
+    simd::scale_four_vectors(y0_simd.data(), y1_simd.data(), y2_simd.data(), y3_simd.data(), scale, n);
+    simd::scalar_scale_four_vectors(y0_scalar.data(), y1_scalar.data(), y2_scalar.data(), y3_scalar.data(), scale, n);
 
-
+    for (size_t i = 0; i < n; ++i)
+    {
+      EXPECT_NEAR(y0_simd[i], y0_scalar[i], 1e-12) << "y0 mismatch at index " << i << " for size " << n;
+      EXPECT_NEAR(y1_simd[i], y1_scalar[i], 1e-12) << "y1 mismatch at index " << i << " for size " << n;
+      EXPECT_NEAR(y2_simd[i], y2_scalar[i], 1e-12) << "y2 mismatch at index " << i << " for size " << n;
+      EXPECT_NEAR(y3_simd[i], y3_scalar[i], 1e-12) << "y3 mismatch at index " << i << " for size " << n;
+    }
+  }
+}
