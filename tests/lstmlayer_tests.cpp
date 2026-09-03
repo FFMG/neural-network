@@ -1604,7 +1604,7 @@ TEST_F(LSTMLayerTest, OutputGradientsFusedEquivalence)
   std::vector<unsigned int> topology = { num_inputs, num_outputs };
 
   LSTMLayer layer(
-    0,
+    1,
     num_inputs,
     num_outputs,
     0.0,
@@ -1633,7 +1633,7 @@ TEST_F(LSTMLayerTest, OutputGradientsFusedEquivalence)
       {
         h[j] = 0.1 * static_cast<double>(b * 10 + t * 4 + j);
       }
-      batch_hs[b].at(0)[t].set_hidden_state_values(h.data(), num_outputs);
+      batch_hs[b].at(1)[t].set_hidden_state_values(h.data(), num_outputs);
     }
   }
 
@@ -1650,11 +1650,11 @@ TEST_F(LSTMLayerTest, OutputGradientsFusedEquivalence)
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& rnn_grads = batch_go[b].get_rnn_gradients(0);
+    const auto& rnn_grads = batch_go[b].get_rnn_gradients(1);
     EXPECT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      const auto& h = batch_hs[b].at(0)[t].get_hidden_state_values();
+      const auto& h = batch_hs[b].at(1)[t].get_hidden_state_values();
       for (size_t j = 0; j < num_outputs; ++j)
       {
         double expected = h[j] - targets[b][t * num_outputs + j];
