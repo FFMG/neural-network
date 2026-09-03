@@ -2,6 +2,24 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.47] - 2026-09-03
+
+### Optimised
+- Optimised `FFLayer` buffer allocations and memory bandwidth across forward and backward passes:
+  - Replaced per-call dynamic heap allocations with aligned thread-isolated scratch buffers (`thread_local AlignedVector`), eliminating continuous heap allocations and deallocations during training and evaluation iterations while preserving full thread safety for concurrent multi-threaded inference.
+  - Added zero-copy contiguous sequence bypass in `calculate_forward_feed` when `batch_size == 1` and inputs are already contiguous in memory.
+  - Added zero-copy contiguous gradient bypass in `calculate_hidden_gradients` and `calculate_hidden_gradients_from_output_gradients` when `batch_size == 1`.
+  - Optimised weight gradient accumulation in `calculate_and_store_gradients_chunk` with 4-wide unrolling via `simd::mul_add_four_scalars` (and 2-wide via `simd::mul_add_two_scalars`), broadcasting gradient vector $g_t$ across 4 rows and reducing memory read traffic by 75%.
+  - Added fast-path activation and direct output copying in `run_post_gemm` when dropout is disabled (`!(is_training && get_dropout() > 0.0)`), bypassing intermediate sequence buffer copies.
+  - Added fast-path derivative multiplication in `run_post_gemm_backward` using `simd::mul_vectors` when `get_dropout() == 0.0`, eliminating mask loads and a redundant vector multiplication per neuron.
+  - Enabled multi-threaded execution during evaluation and inference in `calculate_forward_feed` for large batch sizes.
+
+### Added
+- Added unit tests in `tests/fflayer_tests.cpp`:
+  - `FFLayerTest.GradientAccumulationFourWideEquivalence`: Verifies 4-wide, 2-wide, and scalar unrolled gradient accumulation against ground-truth scalar computation across varying input and output dimensions.
+  - `FFLayerTest.InferenceMultiThreadingConsistency`: Verifies that multi-threaded evaluation during inference produces identical results to single-threaded execution across multi-step sequences.
+  - `FFLayerTest.SingleSampleContiguousBypassVerification`: Verifies consecutive zero-copy bypass execution across multiple sequence iterations with `batch_size == 1`.
+
 ## [1.1.46] - 2026-09-03
 
 ### Optimised

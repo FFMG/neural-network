@@ -1,9 +1,11 @@
 #pragma once
 #include "../helpers/errorcalculation.h"
 #include "../common/hiddenstate.h"
+#include "../common/aligned_allocator.h"
 #include "layer.h"
 
 #include <vector>
+#include <span>
 
 
 namespace myoddweb::nn
@@ -82,6 +84,8 @@ public:
   }
 
 public:
+  using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
+
   // Multiplier = 1: Standard pre-activation sum (z)
   static constexpr unsigned Multiplier = 1;
   static constexpr unsigned GateCount = 1;
@@ -146,7 +150,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] inline const std::vector<double>& get_w_values_T() const noexcept
+  [[nodiscard]] inline const AlignedVector& get_w_values_T() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
     return _w_values_T;
@@ -178,8 +182,31 @@ protected:
     size_t b_end,
     size_t N_prev,
     size_t N_this,
+    const double* batch_inputs,
+    double* batch_pre_activation_sums) const;
+
+  inline void run_gemm(
+    size_t b_start,
+    size_t b_end,
+    size_t N_prev,
+    size_t N_this,
     const std::vector<double>& batch_inputs_buffer,
-    std::vector<double>& batch_pre_activation_sums_buffer) const;
+    std::vector<double>& batch_pre_activation_sums_buffer) const
+  {
+    run_gemm(b_start, b_end, N_prev, N_this, batch_inputs_buffer.data(), batch_pre_activation_sums_buffer.data());
+  }
+
+  virtual void run_post_gemm(
+    size_t start,
+    size_t end,
+    size_t num_time_steps,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    const double* batch_inputs,
+    double* batch_pre_activation_sums,
+    bool is_training) const;
 
   virtual void run_post_gemm(
     size_t start,
@@ -191,7 +218,10 @@ protected:
     std::vector<HiddenStates>& batch_hidden_states,
     const std::vector<double>& batch_inputs_buffer,
     std::vector<double>& batch_pre_activation_sums_buffer,
-    bool is_training) const;
+    bool is_training) const
+  {
+    run_post_gemm(start, end, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer.data(), batch_pre_activation_sums_buffer.data(), is_training);
+  }
 
 private:
   void run_gemm_backward(
@@ -200,8 +230,8 @@ private:
     size_t N_next,
     size_t N_this,
     const double* W_next,
-    const std::vector<double>& flattened_next_grads_buffer,
-    std::vector<double>& flattened_this_grads_buffer) const;
+    const double* flattened_next_grads,
+    double* flattened_this_grads) const;
 
   void run_gemm_backward_fast(
     size_t b_start,
@@ -209,8 +239,8 @@ private:
     size_t N_next,
     size_t N_this,
     const double* W_next_T,
-    const std::vector<double>& flattened_next_grads_buffer,
-    std::vector<double>& flattened_this_grads_buffer) const;
+    const double* flattened_next_grads,
+    double* flattened_this_grads) const;
 
   void run_post_gemm_backward(
     size_t start,
@@ -218,7 +248,7 @@ private:
     size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& batch_hidden_states,
-    const std::vector<double>& flattened_this_grads_buffer) const;
+    const double* flattened_this_grads) const;
 
   void calculate_and_store_gradients_chunk(
     size_t start,
@@ -229,11 +259,16 @@ private:
     unsigned num_inputs,
     unsigned num_outputs,
     size_t num_time_steps,
-    std::vector<double>& local_w_grads,
-    std::vector<double>& local_b_grads) const;
+    std::span<double> local_w_grads,
+    std::span<double> local_b_grads) const;
 
-  std::vector<std::vector<double>> _thread_w_grads;
-  std::vector<std::vector<double>> _thread_b_grads;
-  std::vector<double> _w_values_T;
+  struct thread_ff_grad_accumulators
+  {
+    AlignedVector w_grads;
+    AlignedVector b_grads;
+  };
+
+  mutable std::vector<thread_ff_grad_accumulators> _thread_grad_accumulators;
+  AlignedVector _w_values_T;
 };
 } // namespace myoddweb::nn

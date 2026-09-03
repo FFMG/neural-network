@@ -2,7 +2,6 @@
 #include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
-#include "../common/tempbuffer.h"
 #include <cstring>
 #include <numeric>
 
@@ -222,7 +221,10 @@ void FFLayer::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   const auto N_prev = get_number_input_neurons();
   const auto N_this = get_number_neurons();
@@ -232,46 +234,62 @@ void FFLayer::calculate_forward_feed(
   size_t num_time_steps = 1;
   for (size_t b = 0; b < batch_size; ++b)
   {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      if (!rnn_in.empty())
-      {
-          num_time_steps = rnn_in.size() / N_prev;
-          break;
-      }
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    if (!rnn_in.empty())
+    {
+      num_time_steps = rnn_in.size() / N_prev;
+      break;
+    }
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  TempBuffer<double, 0> batch_inputs_buffer(effective_batch_size * N_prev);
-  
-  double* in_buf_ptr = batch_inputs_buffer.data();
-  for (size_t b = 0; b < batch_size; ++b)
+  const double* in_buf_ptr = nullptr;
+
+  const bool can_bypass_input = (batch_size == 1) &&
+    (!batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).empty()) &&
+    (batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).size() == num_time_steps * N_prev);
+
+  if (can_bypass_input)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    double* dest_base = in_buf_ptr + b * num_time_steps * N_prev;
-    if (!rnn_in.empty())
+    in_buf_ptr = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).data();
+  }
+  else
+  {
+    static thread_local AlignedVector tl_forward_flattened_inputs;
+    tl_forward_flattened_inputs.resize(effective_batch_size * N_prev);
+    double* dest_ptr = tl_forward_flattened_inputs.data();
+    for (size_t b = 0; b < batch_size; ++b)
     {
-      const size_t copy_size = std::min(rnn_in.size(), num_time_steps * N_prev);
-      std::copy(rnn_in.data(), rnn_in.data() + copy_size, dest_base);
-    }
-    else
-    {
-      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const size_t copy_size = std::min<size_t>(std_in.size(), N_prev);
-      if (num_time_steps == 1)
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      double* dest_base = dest_ptr + b * num_time_steps * N_prev;
+      if (!rnn_in.empty())
       {
-        std::copy(std_in.data(), std_in.data() + copy_size, dest_base);
+        const size_t copy_size = std::min(rnn_in.size(), num_time_steps * N_prev);
+        std::copy_n(rnn_in.data(), copy_size, dest_base);
       }
       else
       {
-        for (size_t t = 0; t < num_time_steps; ++t)
+        const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+        const size_t copy_size = std::min<size_t>(std_in.size(), N_prev);
+        if (num_time_steps == 1)
         {
-          std::copy(std_in.data(), std_in.data() + copy_size, dest_base + t * N_prev);
+          std::copy_n(std_in.data(), copy_size, dest_base);
+        }
+        else
+        {
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            std::copy_n(std_in.data(), copy_size, dest_base + t * N_prev);
+          }
         }
       }
     }
+    in_buf_ptr = tl_forward_flattened_inputs.data();
   }
 
-  TempBuffer<double, 1> batch_pre_activation_sums_buffer(effective_batch_size * N_this, true);
+  static thread_local AlignedVector tl_forward_batch_pre_act;
+  tl_forward_batch_pre_act.resize(effective_batch_size * N_this);
+  double* pre_act_ptr = tl_forward_batch_pre_act.data();
 
   // 2. Initialize with bias values
   if (has_bias())
@@ -279,26 +297,29 @@ void FFLayer::calculate_forward_feed(
     const auto& biases = get_b_values();
     const size_t copy_size = std::min<size_t>(biases.size(), N_this);
     const double* b_ptr = biases.data();
-    double* dest_base = batch_pre_activation_sums_buffer.data();
     for (size_t eb = 0; eb < effective_batch_size; ++eb)
     {
-      double* dest = dest_base + eb * N_this;
-      std::copy(b_ptr, b_ptr + copy_size, dest);
+      double* dest = pre_act_ptr + eb * N_this;
+      std::copy_n(b_ptr, copy_size, dest);
       if (copy_size < N_this)
       {
-        std::fill(dest + copy_size, dest + N_this, 0.0);
+        std::fill_n(dest + copy_size, N_this - copy_size, 0.0);
       }
     }
+  }
+  else
+  {
+    std::fill_n(pre_act_ptr, effective_batch_size * N_this, 0.0);
   }
 
   // 3. Batched Matrix-Matrix multiplication (GEMM)
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_gemm_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((effective_batch_size * N_prev * N_this) / 100000))) : 1;
-  const bool use_gemm_mt = is_training && (active_gemm_threads > 1);
+  const bool use_gemm_mt = (active_gemm_threads > 1);
   if (!use_gemm_mt)
   {
-    run_gemm(0, effective_batch_size, N_prev, N_this, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec());
+    run_gemm(0, effective_batch_size, N_prev, N_this, in_buf_ptr, pre_act_ptr);
   }
   else
   {
@@ -309,9 +330,9 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_prev, N_this, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, this]()
+        _task_queue_pool->enqueue([this, start, end, N_prev, N_this, in_buf_ptr, pre_act_ptr]()
         {
-          run_gemm(start, end, N_prev, N_this, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec());
+          run_gemm(start, end, N_prev, N_this, in_buf_ptr, pre_act_ptr);
         });
       }
       start = end;
@@ -321,10 +342,11 @@ void FFLayer::calculate_forward_feed(
 
   // 4. Residuals, Activation and Dropout
   const unsigned int active_post_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 50000))) : 1;
-  const bool use_post_mt = is_training && (active_post_threads > 1);
+  const bool use_post_mt = (active_post_threads > 1);
+
   if (!use_post_mt)
   {
-    run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec(), is_training);
+    run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, in_buf_ptr, pre_act_ptr, is_training);
   }
   else
   {
@@ -335,9 +357,9 @@ void FFLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, num_time_steps, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, &batch_inputs_buffer, &batch_pre_activation_sums_buffer, is_training, this]()
+        _task_queue_pool->enqueue([this, start, end, num_time_steps, N_this, &batch_gradients_and_outputs, &batch_residual_output_values, &batch_hidden_states, in_buf_ptr, pre_act_ptr, is_training]()
         {
-          run_post_gemm(start, end, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec(), is_training);
+          run_post_gemm(start, end, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, in_buf_ptr, pre_act_ptr, is_training);
         });
       }
       start = end;
@@ -351,23 +373,23 @@ void FFLayer::run_gemm(
   size_t b_end,
   size_t N_prev,
   size_t N_this,
-  const std::vector<double>& batch_inputs_buffer,
-  std::vector<double>& batch_pre_activation_sums_buffer) const
+  const double* batch_inputs,
+  double* batch_pre_activation_sums) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const double* W = get_w_values().data();
   size_t b = b_start;
   for (; b + 3 < b_end; b += 4)
   {
-    const double* x0 = &batch_inputs_buffer[b * N_prev];
-    const double* x1 = &batch_inputs_buffer[(b + 1) * N_prev];
-    const double* x2 = &batch_inputs_buffer[(b + 2) * N_prev];
-    const double* x3 = &batch_inputs_buffer[(b + 3) * N_prev];
+    const double* x0 = &batch_inputs[b * N_prev];
+    const double* x1 = &batch_inputs[(b + 1) * N_prev];
+    const double* x2 = &batch_inputs[(b + 2) * N_prev];
+    const double* x3 = &batch_inputs[(b + 3) * N_prev];
 
-    double* y0 = &batch_pre_activation_sums_buffer[b * N_this];
-    double* y1 = &batch_pre_activation_sums_buffer[(b + 1) * N_this];
-    double* y2 = &batch_pre_activation_sums_buffer[(b + 2) * N_this];
-    double* y3 = &batch_pre_activation_sums_buffer[(b + 3) * N_this];
+    double* y0 = &batch_pre_activation_sums[b * N_this];
+    double* y1 = &batch_pre_activation_sums[(b + 1) * N_this];
+    double* y2 = &batch_pre_activation_sums[(b + 2) * N_this];
+    double* y3 = &batch_pre_activation_sums[(b + 3) * N_this];
 
     simd::gemm_four_batches(
       x0, x1, x2, x3,
@@ -380,11 +402,11 @@ void FFLayer::run_gemm(
   // Cleanup loops
   for (; b + 1 < b_end; b += 2)
   {
-    const double* x0 = &batch_inputs_buffer[b * N_prev];
-    const double* x1 = &batch_inputs_buffer[(b + 1) * N_prev];
+    const double* x0 = &batch_inputs[b * N_prev];
+    const double* x1 = &batch_inputs[(b + 1) * N_prev];
 
-    double* y0 = &batch_pre_activation_sums_buffer[b * N_this];
-    double* y1 = &batch_pre_activation_sums_buffer[(b + 1) * N_this];
+    double* y0 = &batch_pre_activation_sums[b * N_this];
+    double* y1 = &batch_pre_activation_sums[(b + 1) * N_this];
 
     simd::gemm_two_batches(
       x0, x1,
@@ -396,8 +418,8 @@ void FFLayer::run_gemm(
 
   for (; b < b_end; ++b)
   {
-    const double* x_row = &batch_inputs_buffer[b * N_prev];
-    double* y_row = &batch_pre_activation_sums_buffer[b * N_this];
+    const double* x_row = &batch_inputs[b * N_prev];
+    double* y_row = &batch_pre_activation_sums[b * N_this];
 
     simd::gemm_one_batch(
       x_row,
@@ -416,18 +438,22 @@ void FFLayer::run_post_gemm(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<std::vector<double>>& batch_residual_output_values,
   std::vector<HiddenStates>& batch_hidden_states,
-  const std::vector<double>& /*batch_inputs_buffer*/,
-  std::vector<double>& batch_pre_activation_sums_buffer,
+  const double* /*batch_inputs*/,
+  double* batch_pre_activation_sums,
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  // Reuse thread-local buffers via TempBuffer to avoid repeated heap allocations.
-  TempBuffer<double, 7> mask_buf(N_this);
-  TempBuffer<double, 8> output_row_seq_buf(num_time_steps * N_this);
+  const bool has_dropout = (is_training && get_dropout() > 0.0);
+  static thread_local AlignedVector tl_mask_buf;
+  static thread_local AlignedVector tl_output_row_seq_buf;
+  if (has_dropout)
+  {
+    tl_mask_buf.resize(N_this);
+    tl_output_row_seq_buf.resize(num_time_steps * N_this);
+  }
 
   for (size_t b = start; b < end; b++)
   {
-    std::fill(mask_buf.vec().begin(), mask_buf.vec().begin() + N_this, 1.0);
     if (!batch_hidden_states.empty())
     {
       if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
@@ -436,10 +462,16 @@ void FFLayer::run_post_gemm(
       }
     }
 
+    if (has_dropout)
+    {
+      std::fill_n(tl_mask_buf.data(), N_this, 1.0);
+    }
+
+    double* b_pre_act_base = &batch_pre_activation_sums[b * num_time_steps * N_this];
+
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
-      double* current_output_row = output_row_seq_buf.data() + t * N_this;
+      double* current_pre_act = b_pre_act_base + t * N_this;
 
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
       {
@@ -458,8 +490,9 @@ void FFLayer::run_post_gemm(
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-        if (is_training && get_dropout() > 0.0)
+        if (has_dropout)
         {
+          double* current_output_row = tl_output_row_seq_buf.data() + t * N_this;
           const auto& neurons = get_neurons();
           for (size_t j = r.start; j < r.end; j++)
           {
@@ -470,34 +503,39 @@ void FFLayer::run_post_gemm(
               if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 output = 0.0;
-                mask_buf.data()[j] = 0.0;
+                tl_mask_buf.data()[j] = 0.0;
               }
               else
               {
                 double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
                 output *= scale;
-                mask_buf.data()[j] = scale;
+                tl_mask_buf.data()[j] = scale;
               }
             }
             current_output_row[j] = output;
           }
         }
-        else
-        {
-          std::copy(current_pre_act + r.start, current_pre_act + r.end, current_output_row + r.start);
-        }
       }
+
       if (!batch_hidden_states.empty())
       {
         auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
-        layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
-        layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
+        if (has_dropout)
+        {
+          layer_states_ref[t].set_cell_state_values(tl_mask_buf.data(), N_this);
+          layer_states_ref[t].set_hidden_state_values(tl_output_row_seq_buf.data() + t * N_this, N_this);
+        }
+        else
+        {
+          layer_states_ref[t].set_hidden_state_values(current_pre_act, N_this);
+        }
       }
     }
 
+    const double* seq_ptr = has_dropout ? tl_output_row_seq_buf.data() : b_pre_act_base;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy(output_row_seq_buf.data() + (num_time_steps * N_this) - N_this, output_row_seq_buf.data() + (num_time_steps * N_this), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq_buf.data(), output_row_seq_buf.size());
+    std::copy_n(seq_ptr + (num_time_steps - 1) * N_this, N_this, dest_ptr);
+    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
   }
 }
 
@@ -522,55 +560,87 @@ void FFLayer::calculate_hidden_gradients(
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0) return;
-
-  TempBuffer<double, 2> flattened_next_grads_buffer(batch_size * num_time_steps * N_next, true);
-  const bool use_direct_gradients = batch_next_grad_matrix.empty();
-  for (size_t b = 0; b < batch_size; ++b)
+  if (num_time_steps == 0)
   {
-    std::span<const double> next_grads;
-    if (use_direct_gradients)
-    {
-      next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
-    }
-    else
-    {
-      if (b < batch_next_grad_matrix.size())
-      {
-        next_grads = batch_next_grad_matrix[b];
-      }
-    }
-    if (next_grads.empty())
-    {
-      continue;
-    }
+    return;
+  }
 
-    double* dest_base = flattened_next_grads_buffer.data() + b * num_time_steps * N_next;
-    const double* src_ptr = next_grads.data();
-    if (next_grads.size() == N_next)
+  const bool use_direct_gradients = batch_next_grad_matrix.empty();
+  const double* next_grads_ptr = nullptr;
+
+  const bool can_bypass_next_grads = (batch_size == 1) &&
+    ((use_direct_gradients && batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).size() == num_time_steps * N_next) ||
+     (!use_direct_gradients && !batch_next_grad_matrix.empty() && batch_next_grad_matrix[0].size() == num_time_steps * N_next));
+
+  if (can_bypass_next_grads)
+  {
+    next_grads_ptr = use_direct_gradients
+      ? batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).data()
+      : batch_next_grad_matrix[0].data();
+  }
+  else
+  {
+    static thread_local AlignedVector tl_backward_flattened_next_grads;
+    tl_backward_flattened_next_grads.resize(batch_size * num_time_steps * N_next);
+    double* dest_ptr = tl_backward_flattened_next_grads.data();
+    for (size_t b = 0; b < batch_size; ++b)
     {
-      // Broadcast single gradient to all time steps
-      for (size_t t = 0; t < num_time_steps; ++t)
+      std::span<const double> next_grads;
+      if (use_direct_gradients)
       {
-        std::copy(src_ptr, src_ptr + N_next, dest_base + t * N_next);
+        next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+      }
+      else
+      {
+        if (b < batch_next_grad_matrix.size())
+        {
+          next_grads = batch_next_grad_matrix[b];
+        }
+      }
+      if (next_grads.empty())
+      {
+        std::fill_n(dest_ptr + b * num_time_steps * N_next, num_time_steps * N_next, 0.0);
+        continue;
+      }
+
+      double* dest_base = dest_ptr + b * num_time_steps * N_next;
+      const double* src_ptr = next_grads.data();
+      if (next_grads.size() == N_next)
+      {
+        // Broadcast single gradient to all time steps
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+          std::copy_n(src_ptr, N_next, dest_base + t * N_next);
+        }
+      }
+      else if (next_grads.size() == num_time_steps * N_next)
+      {
+        std::copy_n(src_ptr, num_time_steps * N_next, dest_base);
+      }
+      else
+      {
+        const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_next);
+        std::copy_n(src_ptr, copy_size, dest_base);
+        if (copy_size < num_time_steps * N_next)
+        {
+          std::fill_n(dest_base + copy_size, num_time_steps * N_next - copy_size, 0.0);
+        }
       }
     }
-    else if (next_grads.size() == num_time_steps * N_next)
-    {
-      std::copy(src_ptr, src_ptr + num_time_steps * N_next, dest_base);
-    }
-    else
-    {
-      const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_next);
-      std::copy(src_ptr, src_ptr + copy_size, dest_base);
-    }
+    next_grads_ptr = tl_backward_flattened_next_grads.data();
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  TempBuffer<double, 3> flattened_this_grads_buffer(effective_batch_size * N_this, true);
+  static thread_local AlignedVector tl_backward_flattened_this_grads;
+  tl_backward_flattened_this_grads.resize(effective_batch_size * N_this);
+  double* this_grads_ptr = tl_backward_flattened_this_grads.data();
+  std::fill_n(this_grads_ptr, effective_batch_size * N_this, 0.0);
 
   const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
   const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
@@ -583,143 +653,185 @@ void FFLayer::calculate_hidden_gradients(
   const unsigned int active_post_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 50000))) : 1;
   const bool use_post_mt = (active_post_threads > 1);
 
-  if (!use_gemm_mt && !use_post_mt)
+  if (!use_gemm_mt)
   {
     if (W_next_T != nullptr)
     {
-      run_gemm_backward_fast(0, effective_batch_size, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+      run_gemm_backward_fast(0, effective_batch_size, N_next, N_this, W_next_T, next_grads_ptr, this_grads_ptr);
     }
     else
     {
-      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
+      run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, next_grads_ptr, this_grads_ptr);
     }
-    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec());
   }
   else
   {
-    if (!use_gemm_mt)
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_gemm_threads; ++t)
     {
-      if (W_next_T != nullptr)
+      size_t size = (effective_batch_size / active_gemm_threads) + (t < (effective_batch_size % active_gemm_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
       {
-        run_gemm_backward_fast(0, effective_batch_size, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
-      }
-      else
-      {
-        run_gemm_backward(0, effective_batch_size, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
-      }
-    }
-    else
-    {
-      size_t start = 0;
-      for (unsigned int t = 0; t < active_gemm_threads; ++t)
-      {
-        size_t size = (effective_batch_size / active_gemm_threads) + (t < (effective_batch_size % active_gemm_threads) ? 1 : 0);
-        size_t end = start + size;
-        if (start < end)
+        if (W_next_T != nullptr)
         {
-          if (W_next_T != nullptr)
+          _task_queue_pool->enqueue([this, start, end, N_next, N_this, W_next_T, next_grads_ptr, this_grads_ptr]()
           {
-            _task_queue_pool->enqueue([start, end, N_next, N_this, W_next_T, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]()
-            {
-              run_gemm_backward_fast(start, end, N_next, N_this, W_next_T, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
-            });
-          }
-          else
-          {
-            _task_queue_pool->enqueue([start, end, N_next, N_this, W_next, &flattened_next_grads_buffer, &flattened_this_grads_buffer, this]()
-            {
-              run_gemm_backward(start, end, N_next, N_this, W_next, flattened_next_grads_buffer.vec(), flattened_this_grads_buffer.vec());
-            });
-          }
+            run_gemm_backward_fast(start, end, N_next, N_this, W_next_T, next_grads_ptr, this_grads_ptr);
+          });
         }
-        start = end;
+        else
+        {
+          _task_queue_pool->enqueue([this, start, end, N_next, N_this, W_next, next_grads_ptr, this_grads_ptr]()
+          {
+            run_gemm_backward(start, end, N_next, N_this, W_next, next_grads_ptr, this_grads_ptr);
+          });
+        }
       }
-      _task_queue_pool->get();
+      start = end;
     }
+    _task_queue_pool->get();
+  }
 
-    if (!use_post_mt)
+  if (!use_post_mt)
+  {
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr);
+  }
+  else
+  {
+    size_t start = 0;
+    for (unsigned int t = 0; t < active_post_threads; ++t)
     {
-      run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec());
-    }
-    else
-    {
-      size_t start = 0;
-      for (unsigned int t = 0; t < active_post_threads; ++t)
+      size_t size = (batch_size / active_post_threads) + (t < (batch_size % active_post_threads) ? 1 : 0);
+      size_t end = start + size;
+      if (start < end)
       {
-        size_t size = (batch_size / active_post_threads) + (t < (batch_size % active_post_threads) ? 1 : 0);
-        size_t end = start + size;
-        if (start < end) _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() { run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec()); });
-        start = end;
+        _task_queue_pool->enqueue([this, start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, this_grads_ptr]()
+        {
+          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr);
+        });
       }
-      _task_queue_pool->get();
+      start = end;
     }
+    _task_queue_pool->get();
   }
 }
 
-void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<std::vector<double>>& batch_output_gradients, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size, int /*bptt_max_ticks*/) const
+void FFLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const auto N_this = get_number_neurons();
-  if (batch_size == 0) return;
+  if (batch_size == 0)
+  {
+    return;
+  }
 
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
-  if (num_time_steps == 0) return;
+  if (num_time_steps == 0)
+  {
+    return;
+  }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  TempBuffer<double, 4> flattened_this_grads_buffer(effective_batch_size * N_this, true);
   const bool use_direct_gradients = batch_output_gradients.empty();
-  for (size_t b = 0; b < batch_size; ++b)
+  const double* this_grads_ptr = nullptr;
+
+  const bool can_bypass = (batch_size == 1) &&
+    ((use_direct_gradients && (batch_gradients_and_outputs[0].has_rnn_gradients(get_layer_index() + 1)
+        ? batch_gradients_and_outputs[0].get_rnn_gradients(get_layer_index() + 1).size() == num_time_steps * N_this
+        : batch_gradients_and_outputs[0].get_gradients(get_layer_index() + 1).size() == num_time_steps * N_this)) ||
+     (!use_direct_gradients && !batch_output_gradients.empty() && batch_output_gradients[0].size() == num_time_steps * N_this));
+
+  if (can_bypass)
   {
-    std::span<const double> next_grads;
     if (use_direct_gradients)
     {
-      const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index() + 1);
+      const auto& rnn_g = batch_gradients_and_outputs[0].get_rnn_gradients(get_layer_index() + 1);
       if (!rnn_g.empty())
       {
-        next_grads = rnn_g;
+        this_grads_ptr = rnn_g.data();
       }
       else
       {
-        next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
+        this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index() + 1).data();
       }
     }
     else
     {
-      if (b < batch_output_gradients.size())
-      {
-        next_grads = batch_output_gradients[b];
-      }
+      this_grads_ptr = batch_output_gradients[0].data();
     }
-    if (next_grads.empty())
+  }
+  else
+  {
+    static thread_local AlignedVector tl_output_this_grads;
+    tl_output_this_grads.resize(effective_batch_size * N_this);
+    double* dest_ptr = tl_output_this_grads.data();
+    for (size_t b = 0; b < batch_size; ++b)
     {
-      continue;
-    }
+      std::span<const double> next_grads;
+      if (use_direct_gradients)
+      {
+        const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index() + 1);
+        if (!rnn_g.empty())
+        {
+          next_grads = rnn_g;
+        }
+        else
+        {
+          next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
+        }
+      }
+      else
+      {
+        if (b < batch_output_gradients.size())
+        {
+          next_grads = batch_output_gradients[b];
+        }
+      }
+      if (next_grads.empty())
+      {
+        std::fill_n(dest_ptr + b * num_time_steps * N_this, num_time_steps * N_this, 0.0);
+        continue;
+      }
 
-    if (next_grads.size() == N_this)
-    {
-      for (size_t t = 0; t < num_time_steps; ++t)
+      double* dest_base = dest_ptr + b * num_time_steps * N_this;
+      if (next_grads.size() == N_this)
       {
-        std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.vec().begin() + (b * num_time_steps + t) * N_this);
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+          std::copy_n(next_grads.data(), N_this, dest_base + t * N_this);
+        }
+      }
+      else if (next_grads.size() == num_time_steps * N_this)
+      {
+        std::copy_n(next_grads.data(), num_time_steps * N_this, dest_base);
+      }
+      else
+      {
+        const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
+        std::copy_n(next_grads.data(), copy_size, dest_base);
+        if (copy_size < num_time_steps * N_this)
+        {
+          std::fill_n(dest_base + copy_size, num_time_steps * N_this - copy_size, 0.0);
+        }
       }
     }
-    else if (next_grads.size() == num_time_steps * N_this)
-    {
-      std::copy(next_grads.begin(), next_grads.end(), flattened_this_grads_buffer.vec().begin() + b * num_time_steps * N_this);
-    }
-    else
-    {
-      const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
-      std::copy(next_grads.begin(), next_grads.begin() + copy_size, flattened_this_grads_buffer.vec().begin() + b * num_time_steps * N_this);
-    }
+    this_grads_ptr = tl_output_this_grads.data();
   }
 
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
+
   if (!use_multithreading)
   {
-    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec());
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr);
   }
   else
   {
@@ -730,10 +842,10 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(std::vector<Gradi
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, &flattened_this_grads_buffer, this]() 
-          { 
-            run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, flattened_this_grads_buffer.vec()); 
-          });
+        _task_queue_pool->enqueue([this, start, end, N_this, &batch_gradients_and_outputs, &batch_hidden_states, this_grads_ptr]() 
+        { 
+          run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr); 
+        });
       }
       start = end;
     }
@@ -776,21 +888,18 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   }
   else
   {
-    if (_thread_w_grads.size() < active_threads)
+    if (_thread_grad_accumulators.size() < active_threads)
     {
-      _thread_w_grads.resize(active_threads);
-    }
-    if (_thread_b_grads.size() < active_threads)
-    {
-      _thread_b_grads.resize(active_threads);
+      _thread_grad_accumulators.resize(active_threads);
     }
 
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      _thread_w_grads[t].resize(_w_grads.size());
-      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
-      _thread_b_grads[t].resize(has_bias() ? num_outputs : 0);
-      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
+      _thread_grad_accumulators[t].w_grads.resize_and_zero(_w_grads.size());
+      if (has_bias())
+      {
+        _thread_grad_accumulators[t].b_grads.resize_and_zero(num_outputs);
+      }
     }
 
     size_t start = 0;
@@ -800,8 +909,7 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
       size_t end = start + size;
       if (start < end)
       {
-        auto& thread_w_grads_t = _thread_w_grads[t];
-        auto& thread_b_grads_t = _thread_b_grads[t];
+        auto& acc = _thread_grad_accumulators[t];
         _task_queue_pool->enqueue(
           [
             this,
@@ -813,11 +921,10 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
             num_inputs,
             num_outputs,
             num_time_steps,
-            &thread_w_grads_t,
-            &thread_b_grads_t
+            &acc
           ]()
         {
-          calculate_and_store_gradients_chunk(start, end, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, thread_w_grads_t, thread_b_grads_t);
+          calculate_and_store_gradients_chunk(start, end, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, acc.w_grads, acc.b_grads);
         });
       }
       start = end;
@@ -833,10 +940,10 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
 
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(_thread_w_grads[t].data(), _w_grads.data(), _w_grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].w_grads.data(), _w_grads.data(), _w_grads.size());
       if (has_bias())
       {
-        simd::add_vectors(_thread_b_grads[t].data(), _b_grads.data(), _b_grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].b_grads.data(), _b_grads.data(), _b_grads.size());
       }
     }
   }
@@ -896,22 +1003,22 @@ void FFLayer::run_gemm_backward(
   size_t N_next,
   size_t N_this,
   const double* W_next,
-  const std::vector<double>& flattened_next_grads_buffer,
-  std::vector<double>& flattened_this_grads_buffer) const
+  const double* flattened_next_grads,
+  double* flattened_this_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   size_t b = b_start;
   for (; b + 3 < b_end; b += 4)
   {
-    const double* x0 = &flattened_next_grads_buffer[b * N_next];
-    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
-    const double* x2 = &flattened_next_grads_buffer[(b + 2) * N_next];
-    const double* x3 = &flattened_next_grads_buffer[(b + 3) * N_next];
+    const double* x0 = &flattened_next_grads[b * N_next];
+    const double* x1 = &flattened_next_grads[(b + 1) * N_next];
+    const double* x2 = &flattened_next_grads[(b + 2) * N_next];
+    const double* x3 = &flattened_next_grads[(b + 3) * N_next];
 
-    double* y0 = &flattened_this_grads_buffer[b * N_this];
-    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
-    double* y2 = &flattened_this_grads_buffer[(b + 2) * N_this];
-    double* y3 = &flattened_this_grads_buffer[(b + 3) * N_this];
+    double* y0 = &flattened_this_grads[b * N_this];
+    double* y1 = &flattened_this_grads[(b + 1) * N_this];
+    double* y2 = &flattened_this_grads[(b + 2) * N_this];
+    double* y3 = &flattened_this_grads[(b + 3) * N_this];
 
     simd::gemm_transposed_four_batches(
       x0, x1, x2, x3,
@@ -923,11 +1030,11 @@ void FFLayer::run_gemm_backward(
 
   for (; b + 1 < b_end; b += 2)
   {
-    const double* x0 = &flattened_next_grads_buffer[b * N_next];
-    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+    const double* x0 = &flattened_next_grads[b * N_next];
+    const double* x1 = &flattened_next_grads[(b + 1) * N_next];
 
-    double* y0 = &flattened_this_grads_buffer[b * N_this];
-    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+    double* y0 = &flattened_this_grads[b * N_this];
+    double* y1 = &flattened_this_grads[(b + 1) * N_this];
 
     simd::gemm_transposed_two_batches(
       x0, x1,
@@ -940,9 +1047,9 @@ void FFLayer::run_gemm_backward(
   for (; b < b_end; ++b)
   {
     simd::gemm_transposed_one_batch(
-      &flattened_next_grads_buffer[b * N_next],
+      &flattened_next_grads[b * N_next],
       W_next,
-      &flattened_this_grads_buffer[b * N_this],
+      &flattened_this_grads[b * N_this],
       N_this, N_next
     );
   }
@@ -954,12 +1061,16 @@ void FFLayer::run_post_gemm_backward(
   size_t N_this,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& batch_hidden_states,
-  const std::vector<double>& flattened_this_grads_buffer) const
+  const double* flattened_this_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
-  TempBuffer<double, 5> deriv_buf(N_this);
-  TempBuffer<double, 6> rnn_grads_row(0);
+  static thread_local AlignedVector tl_deriv_buf;
+  static thread_local AlignedVector tl_rnn_grads_row;
+  tl_deriv_buf.resize(N_this);
+
+  const bool has_dropout = (get_dropout() > 0.0);
+
   for (size_t b = start; b < end; b++)
   {
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
@@ -969,14 +1080,14 @@ void FFLayer::run_post_gemm_backward(
       continue;
     }
 
-    rnn_grads_row.assign(num_time_steps * N_this, 0.0);
+    tl_rnn_grads_row.resize(num_time_steps * N_this);
+    double* rnn_grads_ptr = tl_rnn_grads_row.data();
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
-      const double* g_this_row = &flattened_this_grads_buffer[(b * num_time_steps + t) * N_this];
+      const double* g_this_row = &flattened_this_grads[(b * num_time_steps + t) * N_this];
       const auto& current_hidden_state = layer_states[t];
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
-      const double* mask_vals = current_hidden_state.get_cell_state_values().data();
       const double* y_vals = current_hidden_state.get_hidden_state_values().data();
 
       for (const auto& r : _layer_activation_helper.ranges())
@@ -985,23 +1096,34 @@ void FFLayer::run_post_gemm_backward(
           pre_act + r.start,
           pre_act + r.end,
           y_vals + r.start,
-          deriv_buf.data() + r.start
+          tl_deriv_buf.data() + r.start
         );
-        simd::mul_three_vectors(
-          g_this_row + r.start,
-          deriv_buf.data() + r.start,
-          mask_vals + r.start,
-          rnn_grads_row.data() + t * N_this + r.start,
-          r.end - r.start
-        );
+
+        if (has_dropout)
+        {
+          const double* mask_vals = current_hidden_state.get_cell_state_values().data();
+          simd::mul_three_vectors(
+            g_this_row + r.start,
+            tl_deriv_buf.data() + r.start,
+            mask_vals + r.start,
+            rnn_grads_ptr + t * N_this + r.start,
+            r.end - r.start
+          );
+        }
+        else
+        {
+          simd::mul_vectors(
+            g_this_row + r.start,
+            tl_deriv_buf.data() + r.start,
+            rnn_grads_ptr + t * N_this + r.start,
+            r.end - r.start
+          );
+        }
       }
     }
 
-    if (!rnn_grads_row.empty())
-    {
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - N_this, N_this);
-    }
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
+    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_ptr + (num_time_steps - 1) * N_this, N_this);
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_ptr, num_time_steps * N_this);
   }
 }
 
@@ -1014,8 +1136,8 @@ void FFLayer::calculate_and_store_gradients_chunk(
   unsigned num_inputs,
   unsigned num_outputs,
   size_t num_time_steps,
-  std::vector<double>& local_w_grads,
-  std::vector<double>& local_b_grads) const
+  std::span<double> local_w_grads,
+  std::span<double> local_b_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   if (start >= end)
@@ -1026,7 +1148,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
   const bool is_rnn_in = !batch_gradients_and_outputs[start].get_rnn_outputs(prev_layer_index).empty();
   const bool is_rnn_grad = batch_gradients_and_outputs[start].has_rnn_gradients(this_layer_index);
 
-  if (has_bias())
+  if (has_bias() && !local_b_grads.empty())
   {
     for (size_t b = start; b < end; ++b)
     {
@@ -1041,8 +1163,65 @@ void FFLayer::calculate_and_store_gradients_chunk(
     }
   }
 
-  // Weight gradients (outer loop over input neuron i to eliminate L1 cache thrashing)
-  for (size_t i = 0; i < num_inputs; ++i)
+  // Weight gradients (outer loop unrolled by 4 to minimize L1 memory traffic)
+  size_t i = 0;
+  for (; i + 3 < num_inputs; i += 4)
+  {
+    double* w0 = &local_w_grads[i * num_outputs];
+    double* w1 = &local_w_grads[(i + 1) * num_outputs];
+    double* w2 = &local_w_grads[(i + 2) * num_outputs];
+    double* w3 = &local_w_grads[(i + 3) * num_outputs];
+
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
+
+      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
+        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double x0 = x_t[i];
+        const double x1 = x_t[i + 1];
+        const double x2 = x_t[i + 2];
+        const double x3 = x_t[i + 3];
+        simd::mul_add_four_scalars(x0, x1, x2, x3, g_t, w0, w1, w2, w3, num_outputs);
+      }
+    }
+  }
+
+  for (; i + 1 < num_inputs; i += 2)
+  {
+    double* w0 = &local_w_grads[i * num_outputs];
+    double* w1 = &local_w_grads[(i + 1) * num_outputs];
+
+    for (size_t b = start; b < end; ++b)
+    {
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
+
+      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+
+      for (size_t t = 0; t < num_time_steps; ++t)
+      {
+        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
+        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double x0 = x_t[i];
+        const double x1 = x_t[i + 1];
+        simd::mul_add_two_scalars(x0, x1, g_t, w0, w1, num_outputs);
+      }
+    }
+  }
+
+  for (; i < num_inputs; ++i)
   {
     double* w_grad_row = &local_w_grads[i * num_outputs];
     for (size_t b = start; b < end; ++b)
@@ -1066,7 +1245,6 @@ void FFLayer::calculate_and_store_gradients_chunk(
   }
 }
 
-
 void FFLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
@@ -1087,22 +1265,22 @@ void FFLayer::run_gemm_backward_fast(
   size_t N_next,
   size_t N_this,
   const double* W_next_T,
-  const std::vector<double>& flattened_next_grads_buffer,
-  std::vector<double>& flattened_this_grads_buffer) const
+  const double* flattened_next_grads,
+  double* flattened_this_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   size_t b = b_start;
   for (; b + 3 < b_end; b += 4)
   {
-    const double* x0 = &flattened_next_grads_buffer[b * N_next];
-    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
-    const double* x2 = &flattened_next_grads_buffer[(b + 2) * N_next];
-    const double* x3 = &flattened_next_grads_buffer[(b + 3) * N_next];
+    const double* x0 = &flattened_next_grads[b * N_next];
+    const double* x1 = &flattened_next_grads[(b + 1) * N_next];
+    const double* x2 = &flattened_next_grads[(b + 2) * N_next];
+    const double* x3 = &flattened_next_grads[(b + 3) * N_next];
 
-    double* y0 = &flattened_this_grads_buffer[b * N_this];
-    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
-    double* y2 = &flattened_this_grads_buffer[(b + 2) * N_this];
-    double* y3 = &flattened_this_grads_buffer[(b + 3) * N_this];
+    double* y0 = &flattened_this_grads[b * N_this];
+    double* y1 = &flattened_this_grads[(b + 1) * N_this];
+    double* y2 = &flattened_this_grads[(b + 2) * N_this];
+    double* y3 = &flattened_this_grads[(b + 3) * N_this];
 
     simd::gemm_four_batches(
       x0, x1, x2, x3,
@@ -1114,11 +1292,11 @@ void FFLayer::run_gemm_backward_fast(
 
   for (; b + 1 < b_end; b += 2)
   {
-    const double* x0 = &flattened_next_grads_buffer[b * N_next];
-    const double* x1 = &flattened_next_grads_buffer[(b + 1) * N_next];
+    const double* x0 = &flattened_next_grads[b * N_next];
+    const double* x1 = &flattened_next_grads[(b + 1) * N_next];
 
-    double* y0 = &flattened_this_grads_buffer[b * N_this];
-    double* y1 = &flattened_this_grads_buffer[(b + 1) * N_this];
+    double* y0 = &flattened_this_grads[b * N_this];
+    double* y1 = &flattened_this_grads[(b + 1) * N_this];
 
     simd::gemm_two_batches(
       x0, x1,
@@ -1130,8 +1308,8 @@ void FFLayer::run_gemm_backward_fast(
 
   for (; b < b_end; ++b)
   {
-    const double* x_row = &flattened_next_grads_buffer[b * N_next];
-    double* y_row = &flattened_this_grads_buffer[b * N_this];
+    const double* x_row = &flattened_next_grads[b * N_next];
+    double* y_row = &flattened_this_grads[b * N_this];
 
     simd::gemm_one_batch(
       x_row,
