@@ -2,6 +2,14 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.49] - 2026-09-03
+
+### Fixed
+- Fixed segmentation fault in concurrent multi-threaded inference (`NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`):
+  - Removed fragile `static thread_local AlignedVector` buffers from `FFLayer` and `ElmanRNNLayer` forward pass, post-GEMM, and gradient calculation functions, replacing them with standard stack-scoped `TempBuffer` allocations. This prevents unsafe TLS destructors from executing during thread termination when ephemeral worker threads exit.
+  - Removed recursive profiling instrumentation (`MYODDWEB_PROFILE_FUNCTION`) from `AlignedAllocator` methods (`allocate`, `deallocate`, `construct`, `destroy`, `max_size`, and comparison operators), eliminating heap allocation via `std::stringstream` inside deallocator teardown paths and eliminating allocator lock contention.
+  - Guarded `AlignedAllocator::allocate` against `n == 0` and `deallocate` against null pointers to ensure well-defined cross-platform behavior on Linux POSIX and Windows.
+
 ## [1.1.48] - 2026-09-03
 
 ### Optimised

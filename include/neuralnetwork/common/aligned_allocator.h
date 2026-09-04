@@ -39,18 +39,19 @@ public:
 
   AlignedAllocator() noexcept 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   }
 
   template <typename U>
   AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   }
 
   pointer allocate(size_type n) 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
+    if (n == 0)
+    {
+      return nullptr;
+    }
     pointer p;
 #ifdef _WIN32
     p = static_cast<pointer>(_aligned_malloc(n * sizeof(T), Alignment));
@@ -69,7 +70,10 @@ public:
 
   void deallocate(pointer p, size_type) 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
+    if (!p)
+    {
+      return;
+    }
 #ifdef _WIN32
     _aligned_free(p);
 #else
@@ -79,19 +83,16 @@ public:
 
   size_type max_size() const noexcept 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
     return (size_type)(-1) / sizeof(T);
   }
 
   void construct(pointer p, const_reference val) 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
     new (p) T(val);
   }
 
   void destroy(pointer p) 
   {
-    MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
     p->~T();
   }
 };
@@ -99,14 +100,12 @@ public:
 template <typename T1, size_t A1, typename T2, size_t A2>
 bool operator==(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept 
 {
-  MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   return A1 == A2;
 }
 
 template <typename T1, size_t A1, typename T2, size_t A2>
 bool operator!=(const AlignedAllocator<T1, A1>&, const AlignedAllocator<T2, A2>&) noexcept 
 {
-  MYODDWEB_PROFILE_FUNCTION("AlignedAllocator");
   return A1 != A2;
 }
 

@@ -12,30 +12,6 @@
 
 namespace myoddweb::nn
 {
-namespace
-{
-std::vector<double> create_embedding_weights(
-  unsigned vocabulary_size,
-  unsigned embedding_dimension,
-  const activation& activation_method,
-  std::optional<uint32_t> seed)
-{
-  const size_t num_weights = static_cast<size_t>(vocabulary_size) * embedding_dimension;
-  std::vector<double> w_values(num_weights);
-  layer_activation_helper helper(activation_method, vocabulary_size, embedding_dimension);
-  for (size_t i = 0; i < vocabulary_size; ++i)
-  {
-    for (size_t j = 0; j < embedding_dimension; ++j)
-    {
-      const size_t flat_index = i * embedding_dimension + j;
-      const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), flat_index))) : std::nullopt;
-      w_values[flat_index] = helper.weight_initialization(static_cast<unsigned>(j), weight_seed);
-    }
-  }
-  return w_values;
-}
-} // namespace
-
 EmbeddingLayer::EmbeddingLayer(
   unsigned layer_index,
   unsigned num_neurons_in_previous_layer,
@@ -726,6 +702,28 @@ void EmbeddingLayer::apply_stored_gradients(double learning_rate, double clippin
   {
     std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
   }
+}
+
+std::vector<double> EmbeddingLayer::create_embedding_weights(
+  unsigned vocabulary_size,
+  unsigned embedding_dimension,
+  const activation& activation_method,
+  std::optional<uint32_t> seed)
+{
+  MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
+  const size_t num_weights = static_cast<size_t>(vocabulary_size) * embedding_dimension;
+  std::vector<double> w_values(num_weights);
+  layer_activation_helper helper(activation_method, vocabulary_size, embedding_dimension);
+  for (size_t i = 0; i < vocabulary_size; ++i)
+  {
+    for (size_t j = 0; j < embedding_dimension; ++j)
+    {
+      const size_t flat_index = i * embedding_dimension + j;
+      const auto weight_seed = seed.has_value() ? std::optional<uint32_t>(static_cast<uint32_t>(Rng::derive(seed.value(), flat_index))) : std::nullopt;
+      w_values[flat_index] = helper.weight_initialization(static_cast<unsigned>(j), weight_seed);
+    }
+  }
+  return w_values;
 }
 
 } // namespace myoddweb::nn

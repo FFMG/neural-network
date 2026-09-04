@@ -2,6 +2,7 @@
 #include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
+#include "../common/tempbuffer.h"
 #include <cstring>
 #include <numeric>
 
@@ -249,15 +250,15 @@ void FFLayer::calculate_forward_feed(
     (!batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).empty()) &&
     (batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).size() == num_time_steps * N_prev);
 
+  TempBuffer<double, 0> batch_inputs_buffer(can_bypass_input ? 0 : effective_batch_size * N_prev);
+
   if (can_bypass_input)
   {
     in_buf_ptr = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).data();
   }
   else
   {
-    static thread_local AlignedVector tl_forward_flattened_inputs;
-    tl_forward_flattened_inputs.resize(effective_batch_size * N_prev);
-    double* dest_ptr = tl_forward_flattened_inputs.data();
+    double* dest_ptr = batch_inputs_buffer.data();
     for (size_t b = 0; b < batch_size; ++b)
     {
       const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -284,12 +285,11 @@ void FFLayer::calculate_forward_feed(
         }
       }
     }
-    in_buf_ptr = tl_forward_flattened_inputs.data();
+    in_buf_ptr = batch_inputs_buffer.data();
   }
 
-  static thread_local AlignedVector tl_forward_batch_pre_act;
-  tl_forward_batch_pre_act.resize(effective_batch_size * N_this);
-  double* pre_act_ptr = tl_forward_batch_pre_act.data();
+  TempBuffer<double, 1> batch_pre_act_buffer(effective_batch_size * N_this);
+  double* pre_act_ptr = batch_pre_act_buffer.data();
 
   // 2. Initialize with bias values
   if (has_bias())
@@ -444,13 +444,8 @@ void FFLayer::run_post_gemm(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const bool has_dropout = (is_training && get_dropout() > 0.0);
-  static thread_local AlignedVector tl_mask_buf;
-  static thread_local AlignedVector tl_output_row_seq_buf;
-  if (has_dropout)
-  {
-    tl_mask_buf.resize(N_this);
-    tl_output_row_seq_buf.resize(num_time_steps * N_this);
-  }
+  TempBuffer<double, 2> mask_buf(has_dropout ? N_this : 0);
+  TempBuffer<double, 3> output_row_seq_buf(has_dropout ? num_time_steps * N_this : 0);
 
   for (size_t b = start; b < end; b++)
   {
@@ -464,7 +459,7 @@ void FFLayer::run_post_gemm(
 
     if (has_dropout)
     {
-      std::fill_n(tl_mask_buf.data(), N_this, 1.0);
+      std::fill_n(mask_buf.data(), N_this, 1.0);
     }
 
     double* b_pre_act_base = &batch_pre_activation_sums[b * num_time_steps * N_this];
@@ -492,7 +487,7 @@ void FFLayer::run_post_gemm(
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
         if (has_dropout)
         {
-          double* current_output_row = tl_output_row_seq_buf.data() + t * N_this;
+          double* current_output_row = output_row_seq_buf.data() + t * N_this;
           const auto& neurons = get_neurons();
           for (size_t j = r.start; j < r.end; j++)
           {
@@ -503,13 +498,13 @@ void FFLayer::run_post_gemm(
               if (neuron.must_randomly_drop(b * num_time_steps + t))
               {
                 output = 0.0;
-                tl_mask_buf.data()[j] = 0.0;
+                mask_buf.data()[j] = 0.0;
               }
               else
               {
                 double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
                 output *= scale;
-                tl_mask_buf.data()[j] = scale;
+                mask_buf.data()[j] = scale;
               }
             }
             current_output_row[j] = output;
@@ -522,8 +517,8 @@ void FFLayer::run_post_gemm(
         auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
         if (has_dropout)
         {
-          layer_states_ref[t].set_cell_state_values(tl_mask_buf.data(), N_this);
-          layer_states_ref[t].set_hidden_state_values(tl_output_row_seq_buf.data() + t * N_this, N_this);
+          layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
+          layer_states_ref[t].set_hidden_state_values(output_row_seq_buf.data() + t * N_this, N_this);
         }
         else
         {
@@ -532,7 +527,7 @@ void FFLayer::run_post_gemm(
       }
     }
 
-    const double* seq_ptr = has_dropout ? tl_output_row_seq_buf.data() : b_pre_act_base;
+    const double* seq_ptr = has_dropout ? output_row_seq_buf.data() : b_pre_act_base;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     std::copy_n(seq_ptr + (num_time_steps - 1) * N_this, N_this, dest_ptr);
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
@@ -578,6 +573,8 @@ void FFLayer::calculate_hidden_gradients(
     ((use_direct_gradients && batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).size() == num_time_steps * N_next) ||
      (!use_direct_gradients && !batch_next_grad_matrix.empty() && batch_next_grad_matrix[0].size() == num_time_steps * N_next));
 
+  TempBuffer<double, 4> flattened_next_grads_buffer(can_bypass_next_grads ? 0 : batch_size * num_time_steps * N_next);
+
   if (can_bypass_next_grads)
   {
     next_grads_ptr = use_direct_gradients
@@ -586,9 +583,7 @@ void FFLayer::calculate_hidden_gradients(
   }
   else
   {
-    static thread_local AlignedVector tl_backward_flattened_next_grads;
-    tl_backward_flattened_next_grads.resize(batch_size * num_time_steps * N_next);
-    double* dest_ptr = tl_backward_flattened_next_grads.data();
+    double* dest_ptr = flattened_next_grads_buffer.data();
     for (size_t b = 0; b < batch_size; ++b)
     {
       std::span<const double> next_grads;
@@ -633,14 +628,12 @@ void FFLayer::calculate_hidden_gradients(
         }
       }
     }
-    next_grads_ptr = tl_backward_flattened_next_grads.data();
+    next_grads_ptr = flattened_next_grads_buffer.data();
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  static thread_local AlignedVector tl_backward_flattened_this_grads;
-  tl_backward_flattened_this_grads.resize(effective_batch_size * N_this);
-  double* this_grads_ptr = tl_backward_flattened_this_grads.data();
-  std::fill_n(this_grads_ptr, effective_batch_size * N_this, 0.0);
+  TempBuffer<double, 5> flattened_this_grads_buffer(effective_batch_size * N_this, true);
+  double* this_grads_ptr = flattened_this_grads_buffer.data();
 
   const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
   const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
@@ -747,6 +740,8 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
         : batch_gradients_and_outputs[0].get_gradients(get_layer_index() + 1).size() == num_time_steps * N_this)) ||
      (!use_direct_gradients && !batch_output_gradients.empty() && batch_output_gradients[0].size() == num_time_steps * N_this));
 
+  TempBuffer<double, 8> output_this_grads_buffer(can_bypass ? 0 : effective_batch_size * N_this);
+
   if (can_bypass)
   {
     if (use_direct_gradients)
@@ -768,9 +763,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
   }
   else
   {
-    static thread_local AlignedVector tl_output_this_grads;
-    tl_output_this_grads.resize(effective_batch_size * N_this);
-    double* dest_ptr = tl_output_this_grads.data();
+    double* dest_ptr = output_this_grads_buffer.data();
     for (size_t b = 0; b < batch_size; ++b)
     {
       std::span<const double> next_grads;
@@ -821,7 +814,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
         }
       }
     }
-    this_grads_ptr = tl_output_this_grads.data();
+    this_grads_ptr = output_this_grads_buffer.data();
   }
 
   const auto num_threads = get_number_of_threads();
@@ -1065,9 +1058,8 @@ void FFLayer::run_post_gemm_backward(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
-  static thread_local AlignedVector tl_deriv_buf;
-  static thread_local AlignedVector tl_rnn_grads_row;
-  tl_deriv_buf.resize(N_this);
+  TempBuffer<double, 6> deriv_buf(N_this);
+  TempBuffer<double, 7> rnn_grads_row(0);
 
   const bool has_dropout = (get_dropout() > 0.0);
 
@@ -1080,8 +1072,11 @@ void FFLayer::run_post_gemm_backward(
       continue;
     }
 
-    tl_rnn_grads_row.resize(num_time_steps * N_this);
-    double* rnn_grads_ptr = tl_rnn_grads_row.data();
+    if (rnn_grads_row.size() < num_time_steps * N_this)
+    {
+      rnn_grads_row.assign(num_time_steps * N_this, 0.0);
+    }
+    double* rnn_grads_ptr = rnn_grads_row.data();
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -1096,7 +1091,7 @@ void FFLayer::run_post_gemm_backward(
           pre_act + r.start,
           pre_act + r.end,
           y_vals + r.start,
-          tl_deriv_buf.data() + r.start
+          deriv_buf.data() + r.start
         );
 
         if (has_dropout)
@@ -1104,7 +1099,7 @@ void FFLayer::run_post_gemm_backward(
           const double* mask_vals = current_hidden_state.get_cell_state_values().data();
           simd::mul_three_vectors(
             g_this_row + r.start,
-            tl_deriv_buf.data() + r.start,
+            deriv_buf.data() + r.start,
             mask_vals + r.start,
             rnn_grads_ptr + t * N_this + r.start,
             r.end - r.start
@@ -1114,7 +1109,7 @@ void FFLayer::run_post_gemm_backward(
         {
           simd::mul_vectors(
             g_this_row + r.start,
-            tl_deriv_buf.data() + r.start,
+            deriv_buf.data() + r.start,
             rnn_grads_ptr + t * N_this + r.start,
             r.end - r.start
           );

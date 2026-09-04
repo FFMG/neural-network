@@ -136,6 +136,12 @@ private:
     size_t num_time_steps,
     std::vector<double>& w_grads_out) const;
 
+  static std::vector<double> create_embedding_weights(
+    unsigned vocabulary_size,
+    unsigned embedding_dimension,
+    const activation& activation_method,
+    std::optional<uint32_t> seed);
+
   void run_post_gemm_backward(
     size_t start,
     size_t end,
