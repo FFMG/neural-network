@@ -10,6 +10,9 @@ All notable changes to the `neural-network` library will be documented in this f
   - Removed recursive profiling instrumentation (`MYODDWEB_PROFILE_FUNCTION`) from `AlignedAllocator` methods (`allocate`, `deallocate`, `construct`, `destroy`, `max_size`, and comparison operators), eliminating heap allocation via `std::stringstream` inside deallocator teardown paths and eliminating allocator lock contention.
   - Guarded `AlignedAllocator::allocate` against `n == 0` and `deallocate` against null pointers to ensure well-defined cross-platform behavior on Linux POSIX and Windows.
 
+### Added
+- Added comprehensive unit test suite in `tests/residualprojector_tests.cpp` covering all constructors, factory methods, single and batched vector projections, in-place projection buffer states, weight gradient application with decay and clipping, direct weight delta updates, lazy `WeightParam` caching and invalidation, running-mean SWA accumulation, and Lookahead slow weight updates.
+
 ## [1.1.48] - 2026-09-03
 
 ### Optimised

@@ -86,6 +86,7 @@ add_executable(neuralnetwork_tests
     trainingmonitor_tests.cpp
     neuron_tests.cpp
     output_layer_details_tests.cpp
+    residualprojector_tests.cpp
     simd_utils_tests.cpp
     simd_utils_mt_tests.cpp
     selfattentionlayer_mt_tests.cpp
