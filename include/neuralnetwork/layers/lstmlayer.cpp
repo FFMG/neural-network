@@ -1135,13 +1135,16 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const size_t N_this = get_number_neurons();
-  auto& workspace = get_workspace(0);
+  TempBuffer<double, 15> deltas_buf(0);
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& states = batch_hidden_states[b].at(get_layer_index());
     const size_t T = states.size();
-    workspace.deltas_buf.resize(T * N_this);
-    double* deltas = workspace.deltas_buf.data();
+    if (deltas_buf.size() < T * N_this)
+    {
+      deltas_buf.assign(T * N_this, 0.0);
+    }
+    double* deltas = deltas_buf.data();
     const std::vector<double>& targets = *(target_outputs_begin + b);
     if (targets.size() == T * N_this)
     {
@@ -1171,8 +1174,8 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
       }
     }
     double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::copy(deltas + workspace.deltas_buf.size() - N_this, deltas + workspace.deltas_buf.size(), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas, workspace.deltas_buf.size());
+    std::copy_n(deltas + (T - 1) * N_this, N_this, dest_ptr);
+    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas, T * N_this);
   }
 }
 
@@ -1723,16 +1726,10 @@ void LSTMLayer::cache_recurrent_weights()
   _f_rw_values_T.resize(n * n);
   _i_rw_values_T.resize(n * n);
   _o_rw_values_T.resize(n * n);
-  for (size_t i = 0; i < n; ++i)
-  {
-    for (size_t j = 0; j < n; ++j)
-    {
-      _rw_values_T[j * n + i] = _rw_values[i * n + j];
-      _f_rw_values_T[j * n + i] = _f_rw_values[i * n + j];
-      _i_rw_values_T[j * n + i] = _i_rw_values[i * n + j];
-      _o_rw_values_T[j * n + i] = _o_rw_values[i * n + j];
-    }
-  }
+  simd::transpose(_rw_values.data(), _rw_values_T.data(), n, n);
+  simd::transpose(_f_rw_values.data(), _f_rw_values_T.data(), n, n);
+  simd::transpose(_i_rw_values.data(), _i_rw_values_T.data(), n, n);
+  simd::transpose(_o_rw_values.data(), _o_rw_values_T.data(), n, n);
 
   if (n_prev > 0)
   {
@@ -1740,16 +1737,10 @@ void LSTMLayer::cache_recurrent_weights()
     _f_w_values_T.resize(n * n_prev);
     _i_w_values_T.resize(n * n_prev);
     _o_w_values_T.resize(n * n_prev);
-    for (size_t i = 0; i < n_prev; ++i)
-    {
-      for (size_t j = 0; j < n; ++j)
-      {
-        _w_values_T[j * n_prev + i] = get_w_values()[i * n + j];
-        _f_w_values_T[j * n_prev + i] = _f_w_values[i * n + j];
-        _i_w_values_T[j * n_prev + i] = _i_w_values[i * n + j];
-        _o_w_values_T[j * n_prev + i] = _o_w_values[i * n + j];
-      }
-    }
+    simd::transpose(get_w_values().data(), _w_values_T.data(), n_prev, n);
+    simd::transpose(_f_w_values.data(), _f_w_values_T.data(), n_prev, n);
+    simd::transpose(_i_w_values.data(), _i_w_values_T.data(), n_prev, n);
+    simd::transpose(_o_w_values.data(), _o_w_values_T.data(), n_prev, n);
   }
 
   if (has_bias() && !_f_b_values.empty() && !_i_b_values.empty() && !_o_b_values.empty() && !get_b_values().empty())
@@ -1816,7 +1807,8 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const size_t N_next = next_layer.get_number_neurons();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
-  const unsigned target_layer_idx = (use_direct_gradients && _identity_proxy != nullptr && &next_layer == _identity_proxy) ? (get_layer_index() + 1) : next_layer.get_layer_index();
+  const bool is_identity = (_identity_proxy != nullptr && &next_layer == _identity_proxy);
+  const unsigned target_layer_idx = (use_direct_gradients && is_identity) ? (get_layer_index() + 1) : next_layer.get_layer_index();
 
   bool next_is_seq = false;
   if (use_direct_gradients)
@@ -1879,52 +1871,78 @@ void LSTMLayer::calculate_bptt_batch_chunk(size_t start, size_t end, std::vector
 
     if (next_is_seq)
     {
-      int t = t_start;
-      for (; t - 3 >= t_end; t -= 4)
+      if (is_identity)
       {
-        const double* g0 = &next_grads_base[t * N_next];
-        const double* g1 = &next_grads_base[(t - 1) * N_next];
-        const double* g2 = &next_grads_base[(t - 2) * N_next];
-        const double* g3 = &next_grads_base[(t - 3) * N_next];
-
-        double* d0 = &dest_base[t * N_this];
-        double* d1 = &dest_base[(t - 1) * N_this];
-        double* d2 = &dest_base[(t - 2) * N_this];
-        double* d3 = &dest_base[(t - 3) * N_this];
-
-        simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+        std::copy_n(next_grads_base, num_time_steps * N_this, dest_base);
       }
-      for (; t - 1 >= t_end; t -= 2)
+      else
       {
-        const double* g0 = &next_grads_base[t * N_next];
-        const double* g1 = &next_grads_base[(t - 1) * N_next];
+        int t = t_start;
+        for (; t - 3 >= t_end; t -= 4)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          const double* g1 = &next_grads_base[(t - 1) * N_next];
+          const double* g2 = &next_grads_base[(t - 2) * N_next];
+          const double* g3 = &next_grads_base[(t - 3) * N_next];
 
-        double* d0 = &dest_base[t * N_this];
-        double* d1 = &dest_base[(t - 1) * N_this];
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+          double* d2 = &dest_base[(t - 2) * N_this];
+          double* d3 = &dest_base[(t - 3) * N_this];
 
-        simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
-      }
-      for (; t >= t_end; --t)
-      {
-        const double* g0 = &next_grads_base[t * N_next];
-        double* d0 = &dest_base[t * N_this];
+          simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+        }
+        for (; t - 1 >= t_end; t -= 2)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          const double* g1 = &next_grads_base[(t - 1) * N_next];
 
-        simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+
+          simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
+        }
+        for (; t >= t_end; --t)
+        {
+          const double* g0 = &next_grads_base[t * N_next];
+          double* d0 = &dest_base[t * N_this];
+
+          simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+        }
       }
     }
     else
     {
       if (t_start >= t_end)
       {
-        const double* g_next_t = next_grads_base;
-        double* dest_t = &dest_base[t_start * N_this];
-        simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+        if (is_identity)
+        {
+          std::copy_n(next_grads_base, N_this, &dest_base[t_start * N_this]);
+        }
+        else
+        {
+          const double* g_next_t = next_grads_base;
+          double* dest_t = &dest_base[t_start * N_this];
+          simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
+        }
       }
     }
   }
 
   const size_t batch_size_chunk = end - start;
   const auto& act = get_activation();
+
+  if (t_end > 0)
+  {
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      if (N_prev > 0)
+      {
+        std::fill_n(&workspace.dx_matrix[b_idx * num_time_steps * N_prev], t_end * N_prev, 0.0);
+      }
+      std::fill_n(&workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this], t_end * GateCount * N_this, 0.0);
+    }
+  }
 
   for (int t = t_start; t >= t_end; --t)
   {

@@ -2,6 +2,28 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.51] - 2026-09-05
+
+### Optimised
+- Optimised `LSTMLayer` recurrent weight caching and backpropagation compute efficiency:
+  - Replaced scalar nested transposition loops in `LSTMLayer::cache_recurrent_weights` with vectorised `simd::transpose` for all 4 recurrent weight matrices and 4 input weight matrices.
+  - Added identity proxy GEMM bypass in `LSTMLayer::calculate_bptt_batch_chunk`: when backpropagating through `_identity_proxy` (e.g. from `calculate_hidden_gradients_from_output_gradients`), replaces $O(T \cdot N^2)$ matrix-vector multiplications against identity weights with $O(T \cdot N)$ direct `std::copy_n`.
+  - Replaced shared thread-0 `workspace.deltas_buf` allocation in `LSTMLayer::calculate_output_gradients` with stack-scoped `TempBuffer<double, 15> deltas_buf(0)`, avoiding workspace pollution and improving cache locality.
+
+### Fixed
+- Fixed uninitialised / stale memory leak in `LSTMLayer::calculate_bptt_batch_chunk` under truncated BPTT (`bptt_max_ticks > 0`):
+  - When truncated BPTT is configured, the BPTT loop stops at `t_end > 0`, leaving timesteps $[0, t\_end - 1]$ in `workspace.dx_matrix` and `workspace.rnn_grad_matrix` unpopulated. Upstream layers copying sequence gradients then received uninitialised memory or stale gradients from prior iterations.
+  - Added explicit zeroing of `dx_matrix` and `rnn_grad_matrix` for the truncated range $[0, t\_end)$ whenever `t_end > 0`.
+- Verified mathematical validity of dropout in `LSTMLayer`:
+  - Output dropout is applied strictly to hidden output $h_t = m_t \odot (o_t \odot \tanh(c_t))$. Candidate and cell state activations are cached without dropout scaling, and incoming gradients are scaled by the dropout mask $m_t$ via `simd::lstm_bptt_upstream_step`, ensuring analytical derivatives and gate gradients are not corrupted by inverted dropout scales.
+
+### Added
+- Added unit tests in `tests/lstmlayer_tests.cpp`:
+  - `LSTMLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end - 1]$ are strictly zeroed when `bptt_max_ticks > 0`.
+  - `LSTMLayerTest.IdentityProxyBypassEquivalence`: Verifies that `calculate_hidden_gradients_from_output_gradients` via `_identity_proxy` bypass matches direct identity GEMM backpropagation.
+  - `LSTMLayerTest.DropoutWithTanhActivationDerivative`: Verifies that cached candidate and cell state activations remain strictly in $[-1, 1]$ under dropout without corruption from the inverted dropout mask.
+  - `LSTMLayerTest.RecurrentWeightsFiniteDifferenceWithDropout`: Verifies analytical vs finite-difference numerical gradients for recurrent weights under deterministic dropout.
+
 ## [1.1.50] - 2026-09-05
 
 ### Fixed
