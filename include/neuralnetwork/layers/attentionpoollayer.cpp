@@ -42,10 +42,6 @@ AttentionPoolLayer::AttentionPoolLayer(
   const size_t d_a = attention_hidden_size;
   const size_t num_wa = N * d_a;
 
-  // The internal scoring projection always uses tanh, independent of the
-  // caller-provided output activation, so its weight initialization uses a
-  // tanh-appropriate (Xavier-style) scheme regardless of what activation was
-  // requested for the pooled output.
   const activation scoring_activation(activation::method::tanh, 0.0);
 
   _wa_values.resize(num_wa);
@@ -565,12 +561,6 @@ void AttentionPoolLayer::finish_hidden_gradients(
 
     batch_gradients_and_outputs[b].set_gradients(this_layer_index, delta.data(), N);
 
-    // Fully chain-rule through this layer's own attention math and deposit
-    // the result keyed by this layer's own index (T*N wide, gradient w.r.t.
-    // the previous - recurrent - layer's output), so that layer's own
-    // calculate_hidden_gradients_from_output_gradients picks it up directly
-    // via the has_rnn_gradients "direct injection" mechanism instead of
-    // trying to backprop through a (nonexistent) simple weight matrix.
     const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const size_t T = (N > 0 && !seq.empty()) ? seq.size() / N : 0;
     if (T > 0)
@@ -655,11 +645,6 @@ void AttentionPoolLayer::calculate_hidden_gradients_from_output_gradients(
     std::span<const double> src;
     if (use_direct_gradients)
     {
-      // Mirrors FFLayer's convention: whoever sits directly above us, if it
-      // has no simple dense weight matrix connecting to us either, deposits
-      // its gradient for us directly at OUR index + 1 (this codebase's
-      // contiguous hidden-layer indexing), preferring the full rnn-gradient
-      // slot over the single-value one.
       const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index + 1);
       src = !rnn_g.empty() ? rnn_g : batch_gradients_and_outputs[b].get_gradients(this_layer_index + 1);
     }

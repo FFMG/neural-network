@@ -6,12 +6,6 @@
 
 namespace myoddweb::nn
 {
-// Additive (Bahdanau-style) attention pooling over the BPTT window of a
-// preceding Gru/Lstm hidden layer: consumes the full T-timestep hidden-state
-// sequence (via Layer::calculate_forward_feed's previous_layer.get_rnn_outputs)
-// and produces a single pooled context vector, letting the network learn
-// which past timesteps matter most instead of only ever seeing the last one.
-// Output size always equals input size (pooling never changes dimensionality).
 class AttentionPoolLayer final : public Layer
 {
 public:
@@ -350,14 +344,6 @@ public:
   Layer* clone() const override;
 
 private:
-  // Recomputes the additive-attention forward pass (score/softmax/context)
-  // for one batch item's T-timestep sequence from `h_seq` (T*N) and the
-  // layer's current wa/ba/v weights, then backpropagates the already-known
-  // local delta `delta` (dL/d(context), width N) through it: writes
-  // dL/dh_t for every t into `out_dh` (T*N, fresh write, not accumulated),
-  // and - when non-null - accumulates dL/dWa/dL/dba/dL/dv into the given
-  // buffers (added, not overwritten, matching this codebase's existing
-  // gate-weight-gradient accumulation convention).
   void attention_backward_one(
     const double* h_seq,
     size_t T,
@@ -367,13 +353,6 @@ private:
     double* ba_grad_accum,
     double* v_grad_accum) const;
 
-  // Shared tail end of both calculate_hidden_gradients entry points: given
-  // `raw_delta_all` (batch_size * N, gradient w.r.t. this layer's own pooled
-  // output, before undoing this layer's own activation/dropout), undoes
-  // them to get the true per-batch-item delta (stored via set_gradients for
-  // this layer's own later calculate_and_store_gradients call), then runs
-  // the attention backward math to produce and store (via set_rnn_gradients)
-  // the T*N-wide gradient the preceding recurrent layer consumes directly.
   void finish_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& batch_hidden_states,
