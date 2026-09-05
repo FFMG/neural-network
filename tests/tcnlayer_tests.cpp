@@ -514,3 +514,90 @@ TEST_F(TcnLayerTest, MultiBatchForwardAndBackwardNumericalSoundness) {
       EXPECT_FALSE(std::isinf(b_grads[i]));
     }
 }
+
+TEST_F(TcnLayerTest, DropoutNotInference) {
+    const unsigned N_in = 2;
+    const unsigned N_out = 50;
+    const unsigned K = 2;
+    const unsigned D = 1;
+    const double dropout_rate = 0.5;
+
+    TcnLayer layer(
+      1, N_in, N_out, K, D, 0.0,
+      Layer::Role::Hidden,
+      activation(activation::method::linear, 0.0),
+      OptimiserType::SGD, -1,
+      dropout_rate, nullptr, 1, false, 0.0, std::nullopt);
+
+    std::vector<double> w(K * N_in * N_out, 1.0);
+    layer.set_w_values(w);
+
+    MockLayer prev_layer(0, N_in);
+    std::vector<unsigned> topology = { N_in, N_out };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+    batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+    const auto& out = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(out.size(), N_out);
+    for (double val : out)
+    {
+      EXPECT_NEAR(val, 2.0, 1e-9);
+    }
+}
+
+TEST_F(TcnLayerTest, DropoutWithTanhActivationDerivative) {
+    const unsigned N_in = 1;
+    const unsigned N_out = 100;
+    const unsigned K = 1;
+    const unsigned D = 1;
+    const double dropout_rate = 0.5;
+
+    TcnLayer layer(
+      1, N_in, N_out, K, D, 0.0,
+      Layer::Role::Hidden,
+      activation(activation::method::tanh, 0.0),
+      OptimiserType::SGD, -1,
+      dropout_rate, nullptr, 1, false, 0.0, std::nullopt);
+
+    layer.set_w_values(std::vector<double>(N_out, 1.0));
+
+    MockLayer prev_layer(0, N_in);
+    std::vector<unsigned> topology = { N_in, N_out };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+    batch_go[0].set_rnn_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> deltas(1, std::vector<double>(N_out, 1.0));
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+    const auto& grads = batch_go[0].get_rnn_gate_gradients(1);
+    const double tanh_val = std::tanh(1.0);
+    const double expected_kept_grad = 1.0 * (1.0 - tanh_val * tanh_val) * (1.0 / (1.0 - dropout_rate));
+
+    int kept_count = 0;
+    int dropped_count = 0;
+    for (size_t j = 0; j < N_out; ++j)
+    {
+      if (grads[j] == 0.0)
+      {
+        dropped_count++;
+      }
+      else
+      {
+        kept_count++;
+        EXPECT_GT(grads[j], 0.0);
+        EXPECT_NEAR(grads[j], expected_kept_grad, 1e-9);
+      }
+    }
+
+    EXPECT_GT(kept_count, 0);
+    EXPECT_GT(dropped_count, 0);
+    EXPECT_EQ(kept_count + dropped_count, static_cast<int>(N_out));
+}

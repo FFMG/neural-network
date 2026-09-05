@@ -2,6 +2,35 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.50] - 2026-09-05
+
+### Fixed
+- Fixed mathematical bug in activation derivative calculation under dropout across `FFLayer`, `ElmanRNNLayer`, `TcnLayer`, `AttentionPoolLayer`, `EmbeddingLayer`, and `FFOutputLayer`:
+  - When dropout was active, `activate_derivative` was receiving dropout-scaled output values `y_vals` ($m \odot f(z)$), corrupting derivative evaluation for non-linear activations ($\tanh$, $\text{sigmoid}$, $\text{elu}$, $\text{selu}$) and producing incorrect or negative derivatives ($1 - m^2 \tanh^2(z) < 0$).
+  - Corrected backward pass across all affected layers by passing `nullptr` for `y_vals` when `has_dropout` is true, ensuring $f'(z)$ is evaluated mathematically accurately directly from pre-activation values $z$ before applying the dropout mask.
+
+### Added
+- Added unit tests in `tests/fflayer_tests.cpp`:
+  - `FFLayerTest.DropoutWithTanhActivationDerivative`: Verifies analytical derivative calculation with $\tanh$ activation under dropout, ensuring derivatives remain strictly positive and match $g \cdot f'(z) \cdot \text{scale}$.
+  - `FFLayerTest.DropoutWithSigmoidActivationDerivative`: Verifies analytical derivative calculation with sigmoid activation under dropout.
+  - `FFLayerTest.DropoutMultiTimestepSequenceForwardFeed`: Verifies multi-timestep sequence execution with dropout across all sequence steps.
+- Added unit tests in `tests/ffoutputlayer_tests.cpp`:
+  - `FFOutputLayerTest.DropoutWithTanhActivationDerivative`: Verifies output gradient calculation with $\tanh$ activation under dropout.
+- Added unit tests in `tests/elmanrnnlayer_tests.cpp`:
+  - `ElmanRNNLayerTest.DropoutWithTanhActivationDerivative`: Verifies BPTT gate gradients under $\tanh$ activation with dropout.
+- Added unit tests in `tests/tcnlayer_tests.cpp`:
+  - `TcnLayerTest.DropoutNotInference`: Verifies dropout is completely bypassed during inference mode.
+  - `TcnLayerTest.DropoutWithTanhActivationDerivative`: Verifies TCN gradient calculations under $\tanh$ activation with dropout.
+- Added unit tests in `tests/attentionpoollayer_tests.cpp`:
+  - `AttentionPoolLayerTest.DropoutNotInference`: Verifies pooling outputs remain unscaled and un-dropped during inference mode.
+  - `AttentionPoolLayerTest.DropoutWithTanhActivationDerivative`: Verifies pooling backward gradients under $\tanh$ activation with dropout.
+- Added unit tests in `tests/embeddinglayer_tests.cpp`:
+  - `EmbeddingLayerTest.DropoutNotInference`: Verifies categorical embedding outputs during inference mode.
+  - `EmbeddingLayerTest.DropoutWithTanhActivationDerivative`: Verifies embedding backward gradients under $\tanh$ activation with dropout.
+- Added unit tests in `tests/selfattentionlayer_tests.cpp`:
+  - `SelfAttentionLayerTest.DropoutNotInference`: Verifies that self-attention inference mode matches 0.0 dropout execution.
+  - `SelfAttentionLayerTest.DropoutConsistencyVerification`: Verifies 100% dropout forward zeroing and backward gradient zeroing in self-attention layers.
+
 ## [1.1.49] - 2026-09-03
 
 ### Fixed

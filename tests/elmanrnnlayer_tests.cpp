@@ -123,6 +123,53 @@ TEST_F(ElmanRNNLayerTest, DropoutConsistencyVerification) {
   EXPECT_NEAR(batch_go[0].get_rnn_gate_gradients(1)[0], 0.0, 1e-9);
 }
 
+TEST_F(ElmanRNNLayerTest, DropoutWithTanhActivationDerivative) {
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 200;
+  const double dropout_rate = 0.5;
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
+
+  layer.set_w_values(std::vector<double>(num_outputs, 1.0));
+  layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+  batch_go[0].set_rnn_outputs(0, { 1.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  std::vector<std::vector<double>> deltas(1, std::vector<double>(num_outputs, 1.0));
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+  const auto& grads = batch_go[0].get_rnn_gate_gradients(1);
+  const double tanh_val = std::tanh(1.0);
+  const double expected_kept_grad = 1.0 * (1.0 - tanh_val * tanh_val) * (1.0 / (1.0 - dropout_rate));
+
+  int kept_count = 0;
+  int dropped_count = 0;
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    if (grads[j] == 0.0)
+    {
+      dropped_count++;
+    }
+    else
+    {
+      kept_count++;
+      EXPECT_GT(grads[j], 0.0);
+      EXPECT_NEAR(grads[j], expected_kept_grad, 1e-9);
+    }
+  }
+
+  EXPECT_GT(kept_count, 0);
+  EXPECT_GT(dropped_count, 0);
+  EXPECT_EQ(kept_count + dropped_count, static_cast<int>(num_outputs));
+}
+
 TEST_F(ElmanRNNLayerTest, DropoutStatisticalVerification) {
   unsigned num_inputs = 1;
   unsigned num_outputs = 5000;

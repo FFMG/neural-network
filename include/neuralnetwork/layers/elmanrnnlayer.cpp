@@ -926,7 +926,9 @@ void ElmanRNNLayer::calculate_bptt_batch_chunk(
     }
 
     // 2. Contiguous activation derivative
-    get_activation().activate_derivative(workspace.pre_act_buf.data(), workspace.pre_act_buf.data() + total_elements, workspace.hidden_val_buf.data(), workspace.deriv_buf.data());
+    const bool has_dropout = (get_dropout() > 0.0);
+    const double* y_vals = has_dropout ? nullptr : workspace.hidden_val_buf.data();
+    get_activation().activate_derivative(workspace.pre_act_buf.data(), workspace.pre_act_buf.data() + total_elements, y_vals, workspace.deriv_buf.data());
 
     // 3. Batch loop for gate steps
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)

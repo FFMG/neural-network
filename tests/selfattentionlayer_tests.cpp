@@ -579,4 +579,92 @@ TEST_F(SelfAttentionLayerTest, LargeDimensionMultiTimestepEquivalence) {
     }
 }
 
+TEST_F(SelfAttentionLayerTest, DropoutNotInference) {
+    const unsigned d = 8, H = 2, d_ff = 16;
+    const size_t T = 2;
+    const double dropout_rate = 0.5;
+
+    SelfAttentionLayer layer(
+      1, d, d, H, d_ff,
+      0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD,
+      -1, dropout_rate, nullptr, 1, true, false, 0.0, std::nullopt);
+
+    SelfAttentionLayer no_drop_layer(
+      1, d, d, H, d_ff,
+      0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD,
+      -1, 0.0, nullptr, 1, true, false, 0.0, std::nullopt);
+
+    // Share identical weights
+    no_drop_layer.set_wq_values(layer.get_wq_values());
+    no_drop_layer.set_wk_values(layer.get_wk_values());
+    no_drop_layer.set_wv_values(layer.get_wv_values());
+    no_drop_layer.set_wo_values(layer.get_wo_values());
+    no_drop_layer.set_bq_values(layer.get_bq_values());
+    no_drop_layer.set_bk_values(layer.get_bk_values());
+    no_drop_layer.set_bv_values(layer.get_bv_values());
+    no_drop_layer.set_bo_values(layer.get_bo_values());
+    no_drop_layer.set_ff1_w_values(layer.get_ff1_w_values());
+    no_drop_layer.set_ff1_b_values(layer.get_ff1_b_values());
+    no_drop_layer.set_ff2_w_values(layer.get_ff2_w_values());
+    no_drop_layer.set_ff2_b_values(layer.get_ff2_b_values());
+
+    std::vector<double> x_seq(T * d, 1.0);
+    std::vector<unsigned> topology = { d, d };
+    MockLayer prev_layer(0, d);
+
+    auto batch_go1 = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs1 = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go1[0].set_rnn_outputs(0, x_seq.data(), T * d);
+    layer.calculate_forward_feed(batch_go1, prev_layer, {}, batch_hs1, 1, false);
+
+    auto batch_go2 = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs2 = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go2[0].set_rnn_outputs(0, x_seq.data(), T * d);
+    no_drop_layer.calculate_forward_feed(batch_go2, prev_layer, {}, batch_hs2, 1, false);
+
+    const auto out1 = batch_go1[0].get_rnn_outputs(1);
+    const auto out2 = batch_go2[0].get_rnn_outputs(1);
+    ASSERT_EQ(out1.size(), out2.size());
+    for (size_t i = 0; i < out1.size(); ++i)
+    {
+      EXPECT_NEAR(out1[i], out2[i], 1e-12);
+    }
+}
+
+TEST_F(SelfAttentionLayerTest, DropoutConsistencyVerification) {
+    const unsigned d = 4, H = 2, d_ff = 8;
+    const size_t T = 2;
+    const double dropout_rate = 1.0;
+
+    SelfAttentionLayer layer(
+      1, d, d, H, d_ff,
+      0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD,
+      -1, dropout_rate, nullptr, 1, true, false, 0.0, std::nullopt);
+
+    std::vector<double> x_seq(T * d, 1.0);
+    std::vector<unsigned> topology = { d, d };
+    MockLayer prev_layer(0, d);
+
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go[0].set_rnn_outputs(0, x_seq.data(), T * d);
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    const auto out = batch_go[0].get_rnn_outputs(1);
+    for (double val : out)
+    {
+      EXPECT_NEAR(val, 0.0, 1e-9);
+    }
+
+    std::vector<std::vector<double>> deltas(1, std::vector<double>(T * d, 10.0));
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+    const auto grads = batch_go[0].get_rnn_gate_gradients(1);
+    for (double g : grads)
+    {
+      EXPECT_NEAR(g, 0.0, 1e-9);
+    }
+}
+
 

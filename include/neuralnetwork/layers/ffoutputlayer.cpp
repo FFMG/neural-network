@@ -436,7 +436,8 @@ void FFOutputLayer::run_output_gradients(
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
-      const double* y_vals = current_hidden_state.get_hidden_state_values().data();
+      const bool has_dropout = (get_dropout() > 0.0);
+      const double* y_vals = has_dropout ? nullptr : current_hidden_state.get_hidden_state_values().data();
 
       for (size_t h = 0; h < ranges.size(); ++h)
       {
@@ -461,7 +462,7 @@ void FFOutputLayer::run_output_gradients(
           activation.activate_derivative(
             pre_act + r.start,
             pre_act + r.end,
-            y_vals + r.start,
+            y_vals ? (y_vals + r.start) : nullptr,
             deriv_buf.data() + r.start
           );
           simd::mul_three_vectors(

@@ -481,3 +481,89 @@ TEST(EmbeddingLayerTest, EndToEndTrainingConvergence)
       << "Convergence failed for category " << i;
   }
 }
+
+TEST(EmbeddingLayerTest, DropoutNotInference)
+{
+  MYODDWEB_PROFILE_FUNCTION("EmbeddingLayerTests");
+  const unsigned num_inputs = 2;
+  const unsigned vocab_size = 4;
+  const unsigned embed_dim = 25;
+  const double dropout_rate = 0.5;
+
+  EmbeddingLayer layer = make_embedding_layer(
+    num_inputs, vocab_size, embed_dim,
+    activation(activation::method::linear, 0.0),
+    dropout_rate);
+
+  std::vector<double> w(vocab_size * embed_dim, 1.0);
+  layer.set_w_values(w);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_inputs * embed_dim };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+  batch_go[0].set_outputs(0, { 0.0, 1.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+  const auto& out = batch_go[0].get_outputs(1);
+  ASSERT_EQ(out.size(), num_inputs * embed_dim);
+  for (double val : out)
+  {
+    EXPECT_NEAR(val, 1.0, 1e-9);
+  }
+}
+
+TEST(EmbeddingLayerTest, DropoutWithTanhActivationDerivative)
+{
+  MYODDWEB_PROFILE_FUNCTION("EmbeddingLayerTests");
+  const unsigned num_inputs = 1;
+  const unsigned vocab_size = 4;
+  const unsigned embed_dim = 100;
+  const double dropout_rate = 0.5;
+
+  EmbeddingLayer layer = make_embedding_layer(
+    num_inputs, vocab_size, embed_dim,
+    activation(activation::method::tanh, 0.0),
+    dropout_rate);
+
+  std::vector<double> w(vocab_size * embed_dim, 1.0);
+  layer.set_w_values(w);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, embed_dim };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+  batch_go[0].set_outputs(0, { 0.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  std::vector<std::vector<double>> deltas(1, std::vector<double>(embed_dim, 1.0));
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+  const auto& grads = batch_go[0].get_gradients(1);
+  const double tanh_val = std::tanh(1.0);
+  const double expected_kept_grad = 1.0 * (1.0 - tanh_val * tanh_val) * (1.0 / (1.0 - dropout_rate));
+
+  int kept_count = 0;
+  int dropped_count = 0;
+  for (size_t j = 0; j < embed_dim; ++j)
+  {
+    if (grads[j] == 0.0)
+    {
+      dropped_count++;
+    }
+    else
+    {
+      kept_count++;
+      EXPECT_GT(grads[j], 0.0);
+      EXPECT_NEAR(grads[j], expected_kept_grad, 1e-9);
+    }
+  }
+
+  EXPECT_GT(kept_count, 0);
+  EXPECT_GT(dropped_count, 0);
+  EXPECT_EQ(kept_count + dropped_count, static_cast<int>(embed_dim));
+}

@@ -1083,14 +1083,14 @@ void FFLayer::run_post_gemm_backward(
       const double* g_this_row = &flattened_this_grads[(b * num_time_steps + t) * N_this];
       const auto& current_hidden_state = layer_states[t];
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
-      const double* y_vals = current_hidden_state.get_hidden_state_values().data();
+      const double* y_vals = has_dropout ? nullptr : current_hidden_state.get_hidden_state_values().data();
 
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate_derivative(
           pre_act + r.start,
           pre_act + r.end,
-          y_vals + r.start,
+          y_vals ? (y_vals + r.start) : nullptr,
           deriv_buf.data() + r.start
         );
 

@@ -562,11 +562,12 @@ void TcnLayer::process_hidden_gradients_range(
       }
     }
 
+    const bool has_dropout = (get_dropout() > 0.0);
     for (size_t t = 0; t < T; ++t)
     {
       const double* raw = raw_delta + t * N_out;
       const double* pre_act = hs_row[t].get_pre_activation_sums().data();
-      const double* y_vals = hs_row[t].get_hidden_state_values().data();
+      const double* y_vals = has_dropout ? nullptr : hs_row[t].get_hidden_state_values().data();
       const double* mask_vals = hs_row[t].get_cell_state_values().data();
 
       get_activation().activate_derivative(pre_act, pre_act + N_out, y_vals, deriv);

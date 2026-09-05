@@ -548,11 +548,17 @@ void AttentionPoolLayer::finish_hidden_gradients(
     const auto& hs_row = batch_hidden_states[b].at(this_layer_index);
     const double* pre_act = hs_row[0].get_pre_activation_sums().data();
     const double* mask_vals = hs_row[0].get_cell_state_values().data();
-    const double* y_vals = hs_row[0].get_hidden_state_values().data();
+    const bool has_dropout = (get_dropout() > 0.0);
+    const double* y_vals = has_dropout ? nullptr : hs_row[0].get_hidden_state_values().data();
 
     for (const auto& r : get_activation_helper().ranges())
     {
-      r.activation_method.activate_derivative(pre_act + r.start, pre_act + r.end, y_vals + r.start, deriv.data() + r.start);
+      r.activation_method.activate_derivative(
+        pre_act + r.start,
+        pre_act + r.end,
+        y_vals ? (y_vals + r.start) : nullptr,
+        deriv.data() + r.start
+      );
     }
     for (size_t i = 0; i < N; ++i)
     {

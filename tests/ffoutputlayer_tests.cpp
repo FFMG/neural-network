@@ -290,6 +290,71 @@ TEST_F(FFOutputLayerTest, DropoutConsistencyVerification) {
     EXPECT_NEAR(batch_go[0].get_gradients(1)[0], 0.0, 1e-9);
 }
 
+TEST_F(FFOutputLayerTest, DropoutWithTanhActivationDerivative) {
+    unsigned num_inputs = 1;
+    unsigned num_outputs = 200;
+    double dropout_rate = 0.5;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    std::vector<Neuron> neurons;
+    for (unsigned i = 0; i < num_outputs; ++i) {
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate, std::nullopt);
+    }
+
+    FFOutputLayer layer(
+        1, details, num_inputs, num_outputs, neurons,
+        std::vector<double>(num_inputs * num_outputs, 1.0),
+        std::vector<double>(num_inputs * num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_inputs * num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_outputs, 0.0),
+        1
+    );
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> targets = { std::vector<double>(num_outputs, 0.0) };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+
+    const auto& grads = batch_go[0].get_gradients(1);
+    const double tanh_val = std::tanh(1.0);
+    const double scale = 1.0 / (1.0 - dropout_rate);
+    // dE/dy = (y - target) / N = (scale * tanh_val) / N for a kept neuron;
+    // dE/dz = dE/dy * dy/dz = dE/dy * (scale * tanh'(z)).
+    const double expected_kept_grad = (scale * tanh_val / static_cast<double>(num_outputs)) * (1.0 - tanh_val * tanh_val) * scale;
+
+    int kept_count = 0;
+    int dropped_count = 0;
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+        if (grads[j] == 0.0)
+        {
+            dropped_count++;
+        }
+        else
+        {
+            kept_count++;
+            EXPECT_GT(grads[j], 0.0);
+            EXPECT_NEAR(grads[j], expected_kept_grad, 1e-9);
+        }
+    }
+
+    EXPECT_GT(kept_count, 0);
+    EXPECT_GT(dropped_count, 0);
+    EXPECT_EQ(kept_count + dropped_count, static_cast<int>(num_outputs));
+}
+
 TEST_F(FFOutputLayerTest, MultiHeadOutput) {
     unsigned num_inputs = 2;
     std::vector<OutputLayerDetails> details = {

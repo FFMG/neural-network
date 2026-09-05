@@ -218,11 +218,8 @@ void EmbeddingLayer::calculate_forward_feed(
   TempBuffer<double, 0> mask_buf(N_this);
   TempBuffer<double, 1> pre_act_buf(N_this);
   TempBuffer<double, 2> output_row_seq_buf(num_time_steps * N_this);
-
   for (size_t b = 0; b < batch_size; ++b)
   {
-    std::fill(mask_buf.vec().begin(), mask_buf.vec().begin() + N_this, 1.0);
-
     if (!batch_hidden_states.empty())
     {
       if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
@@ -230,6 +227,8 @@ void EmbeddingLayer::calculate_forward_feed(
         batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
       }
     }
+
+    std::fill(mask_buf.vec().begin(), mask_buf.vec().begin() + N_this, 1.0);
 
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
@@ -528,14 +527,15 @@ void EmbeddingLayer::run_post_gemm_backward(
       const auto& current_hidden_state = layer_states[t];
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
       const double* mask_vals = current_hidden_state.get_cell_state_values().data();
-      const double* y_vals = current_hidden_state.get_hidden_state_values().data();
+      const bool has_dropout = (get_dropout() > 0.0);
+      const double* y_vals = has_dropout ? nullptr : current_hidden_state.get_hidden_state_values().data();
 
       for (const auto& r : _layer_activation_helper.ranges())
       {
         r.activation_method.activate_derivative(
           pre_act + r.start,
           pre_act + r.end,
-          y_vals + r.start,
+          y_vals ? (y_vals + r.start) : nullptr,
           deriv_buf.data() + r.start
         );
         simd::mul_three_vectors(

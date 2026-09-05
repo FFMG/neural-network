@@ -111,6 +111,147 @@ TEST_F(FFLayerTest, DropoutConsistencyVerification) {
     EXPECT_NEAR(batch_go[0].get_gradients(1)[0], 0.0, 1e-9);
 }
 
+TEST_F(FFLayerTest, DropoutWithTanhActivationDerivative) {
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 200;
+    const double dropout_rate = 0.5;
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
+
+    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> deltas(1, std::vector<double>(num_outputs, 1.0));
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+    const auto& grads = batch_go[0].get_gradients(1);
+    const double tanh_val = std::tanh(1.0);
+    const double expected_kept_grad = 1.0 * (1.0 - tanh_val * tanh_val) * (1.0 / (1.0 - dropout_rate));
+
+    int kept_count = 0;
+    int dropped_count = 0;
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+        if (grads[j] == 0.0)
+        {
+            dropped_count++;
+        }
+        else
+        {
+            kept_count++;
+            // Must be positive and strictly equal to f'(z) * scale, NOT corrupted by scaled y_vals
+            EXPECT_GT(grads[j], 0.0);
+            EXPECT_NEAR(grads[j], expected_kept_grad, 1e-9);
+        }
+    }
+
+    EXPECT_GT(kept_count, 0);
+    EXPECT_GT(dropped_count, 0);
+    EXPECT_EQ(kept_count + dropped_count, static_cast<int>(num_outputs));
+}
+
+TEST_F(FFLayerTest, DropoutWithSigmoidActivationDerivative) {
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 200;
+    const double dropout_rate = 0.5;
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::sigmoid, 1.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
+
+    layer.set_w_values(std::vector<double>(num_outputs, 1.0));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+    batch_go[0].set_outputs(0, { 1.0 });
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> deltas(1, std::vector<double>(num_outputs, 1.0));
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, deltas, batch_hs, 1, 0);
+
+    const auto& grads = batch_go[0].get_gradients(1);
+    const double sig_val = 1.0 / (1.0 + std::exp(-1.0));
+    const double expected_kept_grad = 1.0 * (sig_val * (1.0 - sig_val)) * (1.0 / (1.0 - dropout_rate));
+
+    int kept_count = 0;
+    int dropped_count = 0;
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+        if (grads[j] == 0.0)
+        {
+            dropped_count++;
+        }
+        else
+        {
+            kept_count++;
+            // Must be positive and strictly equal to f'(z) * scale, NOT negative
+            EXPECT_GT(grads[j], 0.0);
+            EXPECT_NEAR(grads[j], expected_kept_grad, 1e-6);
+        }
+    }
+
+    EXPECT_GT(kept_count, 0);
+    EXPECT_GT(dropped_count, 0);
+    EXPECT_EQ(kept_count + dropped_count, static_cast<int>(num_outputs));
+}
+
+TEST_F(FFLayerTest, DropoutMultiTimestepSequenceForwardFeed) {
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 100;
+    const size_t num_time_steps = 4;
+    const double dropout_rate = 0.5;
+
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, std::nullopt);
+
+    layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.5));
+    layer.set_b_values(std::vector<double>(num_outputs, 0.0));
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, num_time_steps);
+
+    std::vector<double> rnn_in(num_time_steps * num_inputs, 1.0);
+    batch_go[0].set_rnn_outputs(0, rnn_in.data(), rnn_in.size());
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    const auto& rnn_out = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(rnn_out.size(), num_time_steps * num_outputs);
+
+    // Each timestep should have both dropped and kept outputs
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+        int dropped = 0;
+        int kept = 0;
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+            double val = rnn_out[t * num_outputs + j];
+            if (val == 0.0)
+            {
+                dropped++;
+            }
+            else
+            {
+                kept++;
+                EXPECT_GT(val, 0.0);
+            }
+        }
+        EXPECT_GT(dropped, 0);
+        EXPECT_GT(kept, 0);
+    }
+}
+
 TEST_F(FFLayerTest, ForwardFeedReLU) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
