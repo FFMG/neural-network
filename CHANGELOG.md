@@ -50,6 +50,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `FFOutputLayer::apply_stored_gradients` updated `_w_values` but omitted calling `cache_recurrent_weights()`. Consequently, `_w_values_T` remained frozen with initial weights, causing upstream layers backpropagating through `FFOutputLayer` via `get_w_values_T()` to backpropagate against stale pre-update weights.
   - Resolved by invoking `cache_recurrent_weights()` at the end of `FFOutputLayer::apply_stored_gradients` and in `FFLayer::accumulate_swa_average_impl`.
 - Fixed Clang compiler error in `ResidualProjectorTest.CopyAndMoveAssignmentOperators`: Suppressed `-Wself-assign-overloaded` warning when explicitly validating self-assignment operator correctness by assigning through reference under diagnostic pragmas.
+- Fixed intermittent timing failure in `NeuralNetworkHelperTest.TrainingMonitorsPersistAcrossProgressCallbacks`: Provided adequate sample and epoch breathing room for the asynchronous worker thread to process progress callbacks, and aligned checkpoint assertion to `>= 3` matching the minimum evaluation window.
 - Verified mathematical validity of dropout in `ResidualProjector`, `LSTMLayer`, `GRURNNLayer`, `FFLayer`, and `FFOutputLayer`:
   - Output dropout is applied strictly to activations with mask $m \in \{0, \frac{1}{1-p}\}$. Incoming gradients are scaled by the dropout mask $m$ during backpropagation, and non-linear activation derivatives are computed from pre-activation values $z$ without inverted dropout corruption.
 

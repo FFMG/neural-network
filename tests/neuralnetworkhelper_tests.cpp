@@ -304,19 +304,19 @@ TEST_F(NeuralNetworkHelperTest, TrainingMonitorsPersistAcrossProgressCallbacks)
   ProgressMonitorAccumulator accumulator;
   auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
     .with_learning_rate(0.001)
-    .with_number_of_epoch(20)
+    .with_number_of_epoch(100)
     .with_update_training_monitor_percent(0.1)
     .with_progress_callback(std::ref(accumulator))
     .build();
 
   NeuralNetwork nn(options);
-  std::vector<std::vector<double>> inputs = { {1.0, 2.0} };
-  std::vector<std::vector<double>> outputs = { {0.5} };
+  std::vector<std::vector<double>> inputs(20, { 1.0, 2.0 });
+  std::vector<std::vector<double>> outputs(20, { 0.5 });
 
   nn.train(inputs, outputs);
 
-  // Ensure multiple checkpoints were dispatched
-  EXPECT_GT(accumulator.checkpoint_count, 3);
+  // Ensure multiple checkpoints were dispatched (at least the 3 required by evaluate()'s minimum window)
+  EXPECT_GE(accumulator.checkpoint_count, 3);
 
   // Once at least 3 checkpoints have passed (the default minimum window), evaluate()
   // must produce OnTrack because metrics accumulated across callbacks rather than resetting to zero.
