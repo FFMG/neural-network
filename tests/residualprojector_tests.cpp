@@ -642,7 +642,15 @@ TEST(ResidualProjectorTest, CopyAndMoveAssignmentOperators)
   EXPECT_NE(proj1.get_w_values()[0], proj2.get_w_values()[0]);
 
   // Self-assignment
-  proj2 = proj2;
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
+#endif
+  ResidualProjector& proj2_ref = proj2;
+  proj2 = proj2_ref;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
   EXPECT_EQ(proj2.get_input_size(), in_size1);
   EXPECT_EQ(proj2.get_output_size(), out_size1);
 
