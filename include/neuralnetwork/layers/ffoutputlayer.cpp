@@ -427,7 +427,7 @@ void FFOutputLayer::run_output_gradients(
   {
     const auto& target_outputs = *(target_outputs_begin + b);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-    std::fill(rnn_grads_row.vec().begin(), rnn_grads_row.vec().end(), 0.0);
+    std::memset(rnn_grads_row.data(), 0, rnn_grads_row.size() * sizeof(double));
     size_t gated_step_index = 0;
 
     for (size_t t = 0; t < num_time_steps; ++t)
@@ -453,7 +453,7 @@ void FFOutputLayer::run_output_gradients(
         continue;
       }
 
-      std::fill(deltas.vec().begin(), deltas.vec().end(), 0.0);
+      std::memset(deltas.data(), 0, deltas.size() * sizeof(double));
       calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), per_head_step_context, b, gated_step_index);
       ++gated_step_index;
 
@@ -487,7 +487,7 @@ void FFOutputLayer::run_output_gradients(
           }
           else
           {
-            std::copy_n(delta_ptr, range_size, out_grad_ptr);
+            std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
         }
         else if (activation.get_method() == activation::method::linear)
@@ -503,7 +503,7 @@ void FFOutputLayer::run_output_gradients(
           }
           else
           {
-            std::copy_n(delta_ptr, range_size, out_grad_ptr);
+            std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
         }
         else

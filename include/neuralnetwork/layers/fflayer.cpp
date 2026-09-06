@@ -3,6 +3,7 @@
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
 #include "../common/tempbuffer.h"
+#include <array>
 #include <cstring>
 #include <numeric>
 
@@ -459,15 +460,15 @@ void FFLayer::run_post_gemm(
       }
     }
 
-    if (has_dropout)
-    {
-      std::fill_n(mask_buf.data(), N_this, 1.0);
-    }
-
     double* b_pre_act_base = &batch_pre_activation_sums[b * num_time_steps * N_this];
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
+      if (has_dropout)
+      {
+        std::fill_n(mask_buf.data(), N_this, 1.0);
+      }
+
       double* current_pre_act = b_pre_act_base + t * N_this;
 
       if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
@@ -531,7 +532,7 @@ void FFLayer::run_post_gemm(
 
     const double* seq_ptr = has_dropout ? output_row_seq_buf.data() : b_pre_act_base;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy_n(seq_ptr + (num_time_steps - 1) * N_this, N_this, dest_ptr);
+    std::memcpy(dest_ptr, seq_ptr + (num_time_steps - 1) * N_this, N_this * sizeof(double));
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
   }
 }
@@ -620,7 +621,7 @@ void FFLayer::calculate_hidden_gradients(
       }
       if (next_grads.empty())
       {
-        std::fill_n(dest_ptr + b * num_time_steps * N_next, num_time_steps * N_next, 0.0);
+        std::memset(dest_ptr + b * num_time_steps * N_next, 0, num_time_steps * N_next * sizeof(double));
         continue;
       }
 
@@ -631,20 +632,20 @@ void FFLayer::calculate_hidden_gradients(
         // Broadcast single gradient to all time steps
         for (size_t t = 0; t < num_time_steps; ++t)
         {
-          std::copy_n(src_ptr, N_next, dest_base + t * N_next);
+          std::memcpy(dest_base + t * N_next, src_ptr, N_next * sizeof(double));
         }
       }
       else if (next_grads.size() == num_time_steps * N_next)
       {
-        std::copy_n(src_ptr, num_time_steps * N_next, dest_base);
+        std::memcpy(dest_base, src_ptr, num_time_steps * N_next * sizeof(double));
       }
       else
       {
         const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_next);
-        std::copy_n(src_ptr, copy_size, dest_base);
+        std::memcpy(dest_base, src_ptr, copy_size * sizeof(double));
         if (copy_size < num_time_steps * N_next)
         {
-          std::fill_n(dest_base + copy_size, num_time_steps * N_next - copy_size, 0.0);
+          std::memset(dest_base + copy_size, 0, (num_time_steps * N_next - copy_size) * sizeof(double));
         }
       }
     }
@@ -754,10 +755,14 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
   const bool use_direct_gradients = batch_output_gradients.empty();
   const double* this_grads_ptr = nullptr;
 
+  const unsigned next_layer_idx = get_layer_index() + 1;
+  const bool has_next_layer_0 = (batch_size > 0 && next_layer_idx < batch_gradients_and_outputs[0].number_layers());
   const bool can_bypass = (batch_size == 1) &&
-    ((use_direct_gradients && (batch_gradients_and_outputs[0].has_rnn_gradients(get_layer_index() + 1)
-        ? batch_gradients_and_outputs[0].get_rnn_gradients(get_layer_index() + 1).size() == num_time_steps * N_this
-        : batch_gradients_and_outputs[0].get_gradients(get_layer_index() + 1).size() == num_time_steps * N_this)) ||
+    ((use_direct_gradients && (batch_gradients_and_outputs[0].has_rnn_gradients(next_layer_idx)
+        ? batch_gradients_and_outputs[0].get_rnn_gradients(next_layer_idx).size() == num_time_steps * N_this
+        : ((has_next_layer_0 && !batch_gradients_and_outputs[0].get_gradients(next_layer_idx).empty())
+            ? batch_gradients_and_outputs[0].get_gradients(next_layer_idx).size() == num_time_steps * N_this
+            : batch_gradients_and_outputs[0].get_gradients(get_layer_index()).size() == num_time_steps * N_this))) ||
      (!use_direct_gradients && !batch_output_gradients.empty() && batch_output_gradients[0].size() == num_time_steps * N_this));
 
   TempBuffer<double, 8> output_this_grads_buffer(can_bypass ? 0 : effective_batch_size * N_this);
@@ -766,14 +771,29 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
   {
     if (use_direct_gradients)
     {
-      const auto& rnn_g = batch_gradients_and_outputs[0].get_rnn_gradients(get_layer_index() + 1);
+      const auto& rnn_g = batch_gradients_and_outputs[0].get_rnn_gradients(next_layer_idx);
       if (!rnn_g.empty())
       {
         this_grads_ptr = rnn_g.data();
       }
       else
       {
-        this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index() + 1).data();
+        if (has_next_layer_0)
+        {
+          const auto next_g = batch_gradients_and_outputs[0].get_gradients(next_layer_idx);
+          if (!next_g.empty())
+          {
+            this_grads_ptr = next_g.data();
+          }
+          else
+          {
+            this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index()).data();
+          }
+        }
+        else
+        {
+          this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index()).data();
+        }
       }
     }
     else
@@ -789,14 +809,26 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
       std::span<const double> next_grads;
       if (use_direct_gradients)
       {
-        const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(get_layer_index() + 1);
+        const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(next_layer_idx);
         if (!rnn_g.empty())
         {
           next_grads = rnn_g;
         }
         else
         {
-          next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index() + 1);
+          const bool has_next = (next_layer_idx < batch_gradients_and_outputs[b].number_layers());
+          if (has_next)
+          {
+            next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer_idx);
+            if (next_grads.empty())
+            {
+              next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+            }
+          }
+          else
+          {
+            next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
+          }
         }
       }
       else
@@ -808,7 +840,7 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
       }
       if (next_grads.empty())
       {
-        std::fill_n(dest_ptr + b * num_time_steps * N_this, num_time_steps * N_this, 0.0);
+        std::memset(dest_ptr + b * num_time_steps * N_this, 0, num_time_steps * N_this * sizeof(double));
         continue;
       }
 
@@ -817,20 +849,20 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
       {
         for (size_t t = 0; t < num_time_steps; ++t)
         {
-          std::copy_n(next_grads.data(), N_this, dest_base + t * N_this);
+          std::memcpy(dest_base + t * N_this, next_grads.data(), N_this * sizeof(double));
         }
       }
       else if (next_grads.size() == num_time_steps * N_this)
       {
-        std::copy_n(next_grads.data(), num_time_steps * N_this, dest_base);
+        std::memcpy(dest_base, next_grads.data(), num_time_steps * N_this * sizeof(double));
       }
       else
       {
         const size_t copy_size = std::min(next_grads.size(), num_time_steps * N_this);
-        std::copy_n(next_grads.data(), copy_size, dest_base);
+        std::memcpy(dest_base, next_grads.data(), copy_size * sizeof(double));
         if (copy_size < num_time_steps * N_this)
         {
-          std::fill_n(dest_base + copy_size, num_time_steps * N_this - copy_size, 0.0);
+          std::memset(dest_base + copy_size, 0, (num_time_steps * N_this - copy_size) * sizeof(double));
         }
       }
     }
@@ -892,10 +924,13 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
 
   if (active_threads == 1)
   {
-    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-    if (has_bias())
+    if (!_w_grads.empty())
     {
-      std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+      std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
+    }
+    if (has_bias() && !_b_grads.empty())
+    {
+      std::memset(_b_grads.data(), 0, _b_grads.size() * sizeof(double));
     }
     calculate_and_store_gradients_chunk(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, num_inputs, num_outputs, num_time_steps, _w_grads, _b_grads);
   }
@@ -945,10 +980,13 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     _task_queue_pool->get();
 
     // Merge results
-    std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-    if (has_bias())
+    if (!_w_grads.empty())
     {
-      std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+      std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
+    }
+    if (has_bias() && !_b_grads.empty())
+    {
+      std::memset(_b_grads.data(), 0, _b_grads.size() * sizeof(double));
     }
 
     for (unsigned int t = 0; t < active_threads; ++t)
@@ -1130,7 +1168,7 @@ void FFLayer::run_post_gemm_backward(
           }
           else
           {
-            std::copy_n(g_src, range_size, out_grad_dest);
+            std::memcpy(out_grad_dest, g_src, range_size * sizeof(double));
           }
         }
         else
@@ -1198,7 +1236,14 @@ void FFLayer::calculate_and_store_gradients_chunk(
   };
 
   const size_t chunk_size = end - start;
-  std::vector<batch_item_info> batch_items(chunk_size);
+  std::array<batch_item_info, 64> batch_items_stack;
+  std::vector<batch_item_info> batch_items_heap;
+  batch_item_info* batch_items_ptr = batch_items_stack.data();
+  if (chunk_size > 64)
+  {
+    batch_items_heap.resize(chunk_size);
+    batch_items_ptr = batch_items_heap.data();
+  }
   for (size_t b = start; b < end; ++b)
   {
     const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
@@ -1211,7 +1256,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
     const bool item_rnn_grad = batch_gradients_and_outputs[b].has_rnn_gradients(this_layer_index);
     const double* g_ptr = item_rnn_grad ? rnn_grad.data() : std_grad.data();
 
-    batch_items[b - start] = {
+    batch_items_ptr[b - start] = {
       x_ptr,
       g_ptr,
       item_rnn_in ? num_inputs : 0,
@@ -1219,7 +1264,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
     };
   }
 
-  const batch_item_info* const items_ptr = batch_items.data();
+  const batch_item_info* const items_ptr = batch_items_ptr;
 
   if (has_bias() && !local_b_grads.empty())
   {

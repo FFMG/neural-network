@@ -1174,3 +1174,133 @@ TEST_F(FFLayerTest, RecurrentSequenceGradientBPTT_GeneralLoopMultiBatch)
   }
 }
 
+TEST_F(FFLayerTest, DirectGradientsFallbackToLayerIndex)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+  batch_hs[0].at(1, 0).set_pre_activation_sum(0, 0.5);
+  batch_hs[0].at(1, 0).set_pre_activation_sum(1, 0.5);
+  batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+  // Store gradients directly at layer index 1 (no index 2 gradients)
+  batch_go[0].set_gradients(1, { 0.3, 0.7 });
+
+  std::vector<std::vector<double>> empty_output_grads = {};
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, empty_output_grads, batch_hs, 1, 0);
+
+  const auto grads = batch_go[0].get_gradients(1);
+  ASSERT_EQ(grads.size(), 2u);
+  EXPECT_NEAR(grads[0], 0.3, 1e-9);
+  EXPECT_NEAR(grads[1], 0.7, 1e-9);
+}
+
+TEST_F(FFLayerTest, DirectGradientsFallbackToLayerIndexMultiBatch)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs = create_batch_hidden_states(topology, 2, 1);
+
+  for (size_t b = 0; b < 2; ++b)
+  {
+    batch_hs[b].at(1, 0).set_pre_activation_sum(0, 0.5);
+    batch_hs[b].at(1, 0).set_pre_activation_sum(1, 0.5);
+    batch_hs[b].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+  }
+
+  batch_go[0].set_gradients(1, { 0.3, 0.7 });
+  batch_go[1].set_gradients(1, { 0.9, -0.4 });
+
+  std::vector<std::vector<double>> empty_output_grads = {};
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, empty_output_grads, batch_hs, 2, 0);
+
+  const auto grads0 = batch_go[0].get_gradients(1);
+  ASSERT_EQ(grads0.size(), 2u);
+  EXPECT_NEAR(grads0[0], 0.3, 1e-9);
+  EXPECT_NEAR(grads0[1], 0.7, 1e-9);
+
+  const auto grads1 = batch_go[1].get_gradients(1);
+  ASSERT_EQ(grads1.size(), 2u);
+  EXPECT_NEAR(grads1[0], 0.9, 1e-9);
+  EXPECT_NEAR(grads1[1], -0.4, 1e-9);
+}
+
+TEST_F(FFLayerTest, ForwardFeedEmptyHiddenStatesInference)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 2.0, 0.0, 0.0, 3.0 });
+  layer.set_b_values({ 0.5, -0.5 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  batch_go[0].set_outputs(0, { 1.0, 2.0 });
+
+  std::vector<HiddenStates> empty_hidden_states;
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, empty_hidden_states, 1, false);
+
+  const auto out = batch_go[0].get_outputs(1);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[0], 2.5, 1e-9);  // 1.0 * 2.0 + 0.5
+  EXPECT_NEAR(out[1], 5.5, 1e-9);  // 2.0 * 3.0 - 0.5
+}
+
+TEST_F(FFLayerTest, CalculateAndStoreGradientsLargeBatchHeapGrowth)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 70; // Exceeds stack buffer threshold of 64
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, 1);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go[b].set_outputs(0, { 1.0, 2.0 });
+    batch_go[b].set_gradients(1, { 0.1, 0.2 });
+    batch_hs[b].at(1, 0).set_pre_activation_sum(0, 1.0);
+    batch_hs[b].at(1, 0).set_pre_activation_sum(1, 2.0);
+    batch_hs[b].at(1, 0).set_hidden_state_values({ 1.0, 2.0 });
+  }
+
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  const auto& w_grads = layer.get_w_grads();
+  const auto& b_grads = layer.get_b_grads();
+  ASSERT_EQ(w_grads.size(), 4u);
+  ASSERT_EQ(b_grads.size(), 2u);
+
+  // w_grads = (1 / batch_size) * sum(x_i * g_j) = x_i * g_j since each item has identical x, g
+  EXPECT_NEAR(w_grads[0], 1.0 * 0.1, 1e-9);
+  EXPECT_NEAR(w_grads[1], 1.0 * 0.2, 1e-9);
+  EXPECT_NEAR(w_grads[2], 2.0 * 0.1, 1e-9);
+  EXPECT_NEAR(w_grads[3], 2.0 * 0.2, 1e-9);
+
+  EXPECT_NEAR(b_grads[0], 0.1, 1e-9);
+  EXPECT_NEAR(b_grads[1], 0.2, 1e-9);
+}
+

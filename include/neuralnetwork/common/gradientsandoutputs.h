@@ -189,6 +189,12 @@ public:
     return _outputs.get_span(static_cast<unsigned>(size - 1));
   }
 
+  [[nodiscard]] inline size_t number_layers() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    return _gradients.number_layers();
+  }
+
   inline void set_rnn_outputs(unsigned layer, const std::vector<double>& outputs)
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");

@@ -5,6 +5,24 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.51] - 2026-09-05
 
 ### Optimised
+- Optimised `LSTMLayer` cache locality and backpropagation compute efficiency:
+  - Cache-locality loop inversion in `LSTMLayer::calculate_and_store_gradients_chunk`: Inverted the accumulation loops so outer loops tile over input neurons $k$ and recurrent neurons $rk$ with 4-way unrolling, keeping weight gradient accumulator rows resident in L1 cache while accumulating across all batch samples and timesteps.
+  - Fast-path backpropagation from `FFLayer` into `LSTMLayer` in `LSTMLayer::calculate_bptt_batch_chunk`: When the downstream layer is an `FFLayer` with an active transposed weight cache (`_w_values_T`), backpropagation uses contiguous SIMD micro-kernels (`simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch`) instead of transposed dot products.
+  - Stack-allocated batch item hoisting in `LSTMLayer::calculate_and_store_gradients_chunk` and `calculate_bptt_batch_chunk`: Hoisted batch item extraction and hidden state pointers into stack buffers (`std::array<..., 64>`), eliminating heap allocations on chunk worker dispatches for standard batches.
+  - Replaced `std::copy`, `std::copy_n`, and `std::fill` with `std::memcpy` and `std::memset` across `zero_gradients`, `calculate_output_gradients`, `calculate_hidden_gradients`, and `finalize_forward_step`.
+  - Replaced scalar nested transposition loops in `LSTMLayer::cache_recurrent_weights` with vectorised `simd::transpose` for all 4 recurrent weight matrices and 4 input weight matrices.
+  - Added identity proxy GEMM bypass in `LSTMLayer::calculate_bptt_batch_chunk`: when backpropagating through `_identity_proxy` (e.g. from `calculate_hidden_gradients_from_output_gradients`), replaces $O(T \cdot N^2)$ matrix-vector multiplications against identity weights with $O(T \cdot N)$ direct `std::copy_n`.
+  - Replaced shared thread-0 `workspace.deltas_buf` allocation in `LSTMLayer::calculate_output_gradients` with stack-scoped `TempBuffer<double, 15> deltas_buf(0)`, avoiding workspace pollution and improving cache locality.
+- Optimised `FFLayer` and `FFOutputLayer` computational throughput and memory efficiency:
+  - Replaced heap-allocated `std::vector<batch_item_info>` in `FFLayer::calculate_and_store_gradients_chunk` with stack-allocated `std::array<batch_item_info, 64>` (falling back to heap only for chunk sizes exceeding 64), avoiding vector allocation churn on every training thread chunk.
+  - Extended single-batch input bypass in `FFLayer::calculate_forward_feed` to cover single-timestep batches (`num_time_steps == 1`), eliminating redundant input matrix allocations and copies when evaluating individual samples.
+  - Pre-allocated `rnn_grads_row` to sequence length in `FFLayer::run_post_gemm_backward` and added a fast-path for `linear` activations that replaces derivative evaluations and 3-vector multiplications with direct vector copies or single mask multiplications.
+  - Eliminated duplicate implementations of `calculate_forward_feed` and `run_post_gemm` in `FFOutputLayer`, allowing it to inherit `FFLayer`'s multi-threaded GEMM and post-GEMM dispatch, input buffer bypass, and zero-copy activation paths.
+  - Cached Sharpe and Sortino loss head presence via `_has_sharpe_sortino_heads` in `FFOutputLayer`, avoiding allocation of `PerHeadStepContexts` and execution of `calculate_sharpe_sortino_context` on every training batch for standard regression and classification heads.
+  - Optimised `FFOutputLayer::run_output_gradients` by hoisting dropout checks, bypassing `cell_state_values` reads and redundant 1.0 multiplications when dropout is inactive, and adding a direct copy fast-path for linear output activations.
+  - Accurately pre-reserved unrolled sequence metrics containers in `FFOutputLayer::calculate_output_metrics` based on total sample steps to avoid reallocations.
+  - Replaced `std::fill` and `std::copy_n` with `std::memset` and `std::memcpy` in `calculate_hidden_gradients`, `calculate_hidden_gradients_from_output_gradients`, `calculate_and_store_gradients`, `run_post_gemm`, and `run_post_gemm_backward`.
+  - Replaced `std::fill` on `rnn_grads_row` and `deltas` with `std::memset` in `FFOutputLayer::run_output_gradients`, and replaced `std::copy_n` with `std::memcpy` for output gradient assignments.
 - Optimised `ResidualProjector` batch projection and SWA updates:
   - Replaced scalar and element-wise projection loops across `project(const std::vector<double>&)`, `project(const double*, double*)`, `project_batch`, and `project_batch_into` with AVX2/FMA register-blocked SIMD micro-kernels (`simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch`). This processes 4 batch samples simultaneously in AVX2 registers, loading weights once per 4 samples and eliminating repeated memory writebacks.
   - Added overloaded `ResidualProjector::project_batch_into(const std::vector<std::vector<double>>&, std::vector<std::vector<double>>&)` and flat pointer `ResidualProjector::project_batch(const double*, double*, size_t)` to eliminate dynamic allocations of pointer vectors during batch projection.
@@ -14,20 +32,11 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added vectorised `simd::swa_step` and scalar fallback in `include/neuralnetwork/common/simd_utils.h`, and vectorised `Layer::swa_average_into` in `include/neuralnetwork/layers/layer.h` to accelerate SWA updates across all layers.
 - Implemented Rule-of-Five copy and move assignment operators for `ResidualProjector` (`operator=(const ResidualProjector&)` and `operator=(ResidualProjector&&)`) with deadlock-free `std::scoped_lock` on `_cache_mutex`.
 - Added `#if VALIDATE_DATA == 1` bounds checking in `ResidualProjector::apply_weight_gradient`.
-- Optimised `LSTMLayer` recurrent weight caching and backpropagation compute efficiency:
-  - Replaced scalar nested transposition loops in `LSTMLayer::cache_recurrent_weights` with vectorised `simd::transpose` for all 4 recurrent weight matrices and 4 input weight matrices.
-  - Added identity proxy GEMM bypass in `LSTMLayer::calculate_bptt_batch_chunk`: when backpropagating through `_identity_proxy` (e.g. from `calculate_hidden_gradients_from_output_gradients`), replaces $O(T \cdot N^2)$ matrix-vector multiplications against identity weights with $O(T \cdot N)$ direct `std::copy_n`.
-  - Replaced shared thread-0 `workspace.deltas_buf` allocation in `LSTMLayer::calculate_output_gradients` with stack-scoped `TempBuffer<double, 15> deltas_buf(0)`, avoiding workspace pollution and improving cache locality.
-- Optimised `FFLayer` and `FFOutputLayer` computational throughput and memory efficiency:
-  - Extended single-batch input bypass in `FFLayer::calculate_forward_feed` to cover single-timestep batches (`num_time_steps == 1`), eliminating redundant input matrix allocations and copies when evaluating individual samples.
-  - Pre-extracted batch pointers and strides into `TempBuffer<batch_item_info>` in `FFLayer::calculate_and_store_gradients_chunk`, eliminating repeated container lookups, profiling probes, and branch checks from the unrolled input gradient accumulation loop.
-  - Pre-allocated `rnn_grads_row` to sequence length in `FFLayer::run_post_gemm_backward` and added a fast-path for `linear` activations that replaces derivative evaluations and 3-vector multiplications with direct vector copies or single mask multiplications.
-  - Eliminated duplicate implementations of `calculate_forward_feed` and `run_post_gemm` in `FFOutputLayer`, allowing it to inherit `FFLayer`'s multi-threaded GEMM and post-GEMM dispatch, input buffer bypass, and zero-copy activation paths.
-  - Cached Sharpe and Sortino loss head presence via `_has_sharpe_sortino_heads` in `FFOutputLayer`, avoiding allocation of `PerHeadStepContexts` and execution of `calculate_sharpe_sortino_context` on every training batch for standard regression and classification heads.
-  - Optimised `FFOutputLayer::run_output_gradients` by hoisting dropout checks, bypassing `cell_state_values` reads and redundant 1.0 multiplications when dropout is inactive, and adding a direct copy fast-path for linear output activations.
-  - Accurately pre-reserved unrolled sequence metrics containers in `FFOutputLayer::calculate_output_metrics` based on total sample steps to avoid reallocations.
 
 ### Fixed
+- Fixed missing brace in `FFLayer::run_post_gemm` after `batch_hidden_states` check that erroneously nested forward pass execution inside `!batch_hidden_states.empty()`. Forward pass now properly computes outputs during inference when `batch_hidden_states` is empty.
+- Fixed gradient retrieval fallback in `FFLayer::calculate_hidden_gradients_from_output_gradients`: Added fallback to `get_gradients(get_layer_index())` when `get_gradients(get_layer_index() + 1)` is empty, ensuring correct direct gradient propagation.
+- Fixed cross-timestep dropout mask persistence in `FFLayer::run_post_gemm` by re-initialising `mask_buf` inside the timestep loop.
 - Fixed index selection in `NeuralNetwork::calculate_forecast_metrics_all_layers_impl` at final training checkpoint:
   - At the final training checkpoint, the helper passed to `progress_callback` was not yet pushed to `_neural_network_helpers`, causing `_neural_network_helpers.back()` to resolve to the penultimate epoch and evaluate against `checking_indexes()` instead of `final_check_indexes()`.
   - Resolved by passing the calling `NeuralNetworkHelper` directly via `NeuralNetwork::calculate_forecast_metrics_all_layers_for_helper`.
@@ -44,6 +53,35 @@ All notable changes to the `neural-network` library will be documented in this f
   - Output dropout is applied strictly to activations with mask $m \in \{0, \frac{1}{1-p}\}$. Incoming gradients are scaled by the dropout mask $m$ during backpropagation, and non-linear activation derivatives are computed from pre-activation values $z$ without inverted dropout corruption.
 
 ### Added
+- Added unit tests in `tests/lstmlayer_tests.cpp`:
+  - `LSTMLayerTest.BackpropFromFFLayerWithTransposedWeightsEquivalence`: Verifies numerical equivalence between `FFLayer` contiguous transposed GEMM and standard transposed GEMM backpropagation.
+  - `LSTMLayerTest.ThreadedGradientAccumulationEquivalence`: Verifies exact gradient accumulation equivalence between single-threaded and multi-threaded dispatch with the L1-cache tiled outer loop.
+  - `LSTMLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies multi-step candidate gate residual injection against analytical values.
+  - `LSTMLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies forward and backward stability under residual projection with dropout in training and inference modes.
+  - `LSTMLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end - 1]$ are strictly zeroed when `bptt_max_ticks > 0`.
+  - `LSTMLayerTest.IdentityProxyBypassEquivalence`: Verifies that `calculate_hidden_gradients_from_output_gradients` via `_identity_proxy` bypass matches direct identity GEMM backpropagation.
+  - `LSTMLayerTest.DropoutWithTanhActivationDerivative`: Verifies that cached candidate and cell state activations remain strictly in $[-1, 1]$ under dropout without corruption from the inverted dropout mask.
+  - `LSTMLayerTest.RecurrentWeightsFiniteDifferenceWithDropout`: Verifies analytical vs finite-difference numerical gradients for recurrent weights under deterministic dropout.
+  - `LSTMLayerTest.CalculateAndStoreGradientsChunkLargeBatchHeapGrowth`: Verifies dynamic heap expansion in `calculate_and_store_gradients_chunk` for batch sizes exceeding the 64-item stack buffer threshold ($B = 70$).
+  - `LSTMLayerTest.RecurrentAndInputWeightsFiniteDifferenceMultiBatchNumericalEquivalence`: Verifies analytical vs finite-difference numerical gradients for recurrent and candidate input weights across multiple batch sequences ($B = 2, T = 3$).
+  - `LSTMLayerTest.BatchItemWithoutPrevLayerInputStillAccumulatesBiasAndRecurrentGradients`: Verifies that batch samples lacking sequence inputs from the preceding layer still properly accumulate bias and recurrent weight gradients without corrupting or skipping the item.
+- Added unit tests in `tests/fflayer_tests.cpp`:
+  - `FFLayerTest.DirectGradientsFallbackToLayerIndex`: Verifies fallback gradient retrieval at `get_layer_index()` when `get_layer_index() + 1` is empty.
+  - `FFLayerTest.DirectGradientsFallbackToLayerIndexMultiBatch`: Verifies fallback gradient retrieval across multi-sample batches ($B > 1$) in `calculate_hidden_gradients_from_output_gradients`.
+  - `FFLayerTest.ForwardFeedEmptyHiddenStatesInference`: Verifies forward feed execution during inference with empty hidden states.
+  - `FFLayerTest.CalculateAndStoreGradientsLargeBatchHeapGrowth`: Verifies dynamic heap expansion in `calculate_and_store_gradients_chunk` for batches exceeding 64 items.
+  - `FFLayerTest.RecurrentSequenceGradientBPTT`: Verifies that multi-timestep sequence gradients from recurrent next layers propagate accurately through `FFLayer` without being overwritten by broadcast final-step gradients.
+  - `FFLayerTest.RecurrentSequenceGradientBPTT_GeneralLoopMultiBatch`: Verifies multi-timestep sequence gradient propagation across multiple batch items ($B > 1$) through the general processing loop.
+  - `FFLayerTest.WeightGradientsMultiTimestepAccumulation`: Verifies exact analytical $X^T G$ weight gradient and bias gradient accumulation across multi-timestep sequences.
+- Added unit tests in `tests/ffoutputlayer_tests.cpp`:
+  - `FFOutputLayerTest.SequenceMultiTimestepOutputGradients`: Verifies multi-timestep sequence output gradient computation across linear and sigmoid heads.
+  - `FFOutputLayerTest.OutputGradientsSingleTargetBroadcastToLastStep`: Verifies single-target broadcast behavior to final timestep with 0-gradient padding for prior steps.
+  - `FFOutputLayerTest.TransposedWeightsCacheUpdateOnApplyGradients`: Verifies that `_w_values_T` is accurately synchronised after gradient application in `FFOutputLayer`.
+  - `FFOutputLayerTest.DropoutMultiTimestepGradientFlow`: Verifies multi-timestep forward feed dropout masking and corresponding backward gradient scaling across timesteps.
+  - `FFOutputLayerTest.MultithreadedForwardWithResidualConsolidationEquivalence`: Verifies that multi-threaded chunked forward feed produces bit-identical outputs to single-threaded execution when residual connections are enabled on `FFOutputLayer`.
+- Added unit tests in `tests/grurnnlayer_tests.cpp`:
+  - `GRURNNLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies GRU candidate hidden state residual projection integration across timesteps.
+  - `GRURNNLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies GRU forward and backward gradient stability under residual projection with dropout.
 - Added comprehensive unit tests in `tests/residualprojector_tests.cpp`:
   - `ResidualProjectorTest.CopyAndMoveAssignmentOperators`: Verifies copy and move assignment semantics, deep copying, and self-assignment safety.
   - `ResidualProjectorTest.ProjectBatchMultiBatchSizesEquivalence`: Verifies numerical equivalence across batch sizes (1, 2, 3, 4, 7, 8, 15, 16, 33, 64) between single-sample projection, vector-of-vectors batch projection, raw pointer batch projection, and flat pointer buffer projection.
@@ -52,24 +90,6 @@ All notable changes to the `neural-network` library will be documented in this f
   - `ResidualProjectorTest.ZeroDimensionEdgeCases`: Verifies safe handling of 0 input size and 0 output size without errors or crashes.
 - Added unit tests in `tests/neuralnetworkhelper_tests.cpp`:
   - `NeuralNetworkHelperTest.InCallbackForecastMetricsAtFinalCheckpointUsesFinalCheckIndexes`: Verifies that evaluating forecast metrics directly inside `progress_callback` at the final epoch uses `final_check_indexes` rather than falling back to `checking_indexes`.
-- Added unit tests in `tests/lstmlayer_tests.cpp`:
-  - `LSTMLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies multi-step candidate gate residual injection against analytical values.
-  - `LSTMLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies forward and backward stability under residual projection with dropout in training and inference modes.
-  - `LSTMLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end - 1]$ are strictly zeroed when `bptt_max_ticks > 0`.
-  - `LSTMLayerTest.IdentityProxyBypassEquivalence`: Verifies that `calculate_hidden_gradients_from_output_gradients` via `_identity_proxy` bypass matches direct identity GEMM backpropagation.
-  - `LSTMLayerTest.DropoutWithTanhActivationDerivative`: Verifies that cached candidate and cell state activations remain strictly in $[-1, 1]$ under dropout without corruption from the inverted dropout mask.
-  - `LSTMLayerTest.RecurrentWeightsFiniteDifferenceWithDropout`: Verifies analytical vs finite-difference numerical gradients for recurrent weights under deterministic dropout.
-- Added unit tests in `tests/grurnnlayer_tests.cpp`:
-  - `GRURNNLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies GRU candidate hidden state residual projection integration across timesteps.
-  - `GRURNNLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies GRU forward and backward gradient stability under residual projection with dropout.
-- Added unit tests in `tests/fflayer_tests.cpp`:
-  - `FFLayerTest.RecurrentSequenceGradientBPTT`: Verifies that multi-timestep sequence gradients from recurrent next layers propagate accurately through `FFLayer` without being overwritten by broadcast final-step gradients.
-  - `FFLayerTest.RecurrentSequenceGradientBPTT_GeneralLoopMultiBatch`: Verifies multi-timestep sequence gradient propagation across multiple batch items ($B > 1$) through the general processing loop.
-  - `FFLayerTest.WeightGradientsMultiTimestepAccumulation`: Verifies exact analytical $X^T G$ weight gradient and bias gradient accumulation across multi-timestep sequences.
-- Added unit tests in `tests/ffoutputlayer_tests.cpp`:
-  - `FFOutputLayerTest.TransposedWeightsCacheUpdateOnApplyGradients`: Verifies that `_w_values_T` is accurately synchronised after gradient application in `FFOutputLayer`.
-  - `FFOutputLayerTest.DropoutMultiTimestepGradientFlow`: Verifies multi-timestep forward feed dropout masking and corresponding backward gradient scaling across timesteps.
-  - `FFOutputLayerTest.MultithreadedForwardWithResidualConsolidationEquivalence`: Verifies that multi-threaded chunked forward feed produces bit-identical outputs to single-threaded execution when residual connections are enabled on `FFOutputLayer`.
 - Added unit tests in `tests/swa_tests.cpp`:
   - `SwaTests.LayerRunningMeanRefreshesTransposedWeightsCache`: Verifies that `accumulate_swa_average` refreshes the cached transposed weight matrix `_w_values_T`.
 

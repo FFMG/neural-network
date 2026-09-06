@@ -858,3 +858,104 @@ TEST_F(FFOutputLayerTest, MultithreadedForwardWithResidualConsolidationEquivalen
         }
     }
 }
+
+TEST_F(FFOutputLayerTest, SequenceMultiTimestepOutputGradients)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    const size_t num_time_steps = 3;
+    const size_t batch_size = 2;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0),
+        OutputLayerDetails(1, activation(activation::method::sigmoid, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+    layer.set_b_values({ 0.0, 0.0 });
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+            batch_hs[b].at(1)[t].set_pre_activation_sums({ 0.5, 0.5 });
+            batch_hs[b].at(1)[t].set_hidden_state_values({ 0.5, 0.62245933120185456 }); // sig(0.5) ~ 0.622459
+        }
+    }
+
+    std::vector<std::vector<double>> targets(batch_size, std::vector<double>(num_time_steps * num_outputs, 1.0));
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, batch_size);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        const auto rnn_grads = batch_go[b].get_rnn_gradients(1);
+        ASSERT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
+
+        const auto std_grads = batch_go[b].get_gradients(1);
+        ASSERT_EQ(std_grads.size(), num_outputs);
+
+        // Standard grads must match the last timestep
+        EXPECT_NEAR(std_grads[0], rnn_grads[(num_time_steps - 1) * num_outputs], 1e-9);
+        EXPECT_NEAR(std_grads[1], rnn_grads[(num_time_steps - 1) * num_outputs + 1], 1e-9);
+
+        for (size_t t = 0; t < num_time_steps; ++t)
+        {
+            // Linear head MSE delta: given - target = 0.5 - 1.0 = -0.5
+            EXPECT_NEAR(rnn_grads[t * num_outputs], -0.5, 1e-6);
+            EXPECT_TRUE(std::isfinite(rnn_grads[t * num_outputs + 1]));
+        }
+    }
+}
+
+TEST_F(FFOutputLayerTest, OutputGradientsSingleTargetBroadcastToLastStep)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    const size_t num_time_steps = 3;
+    const size_t batch_size = 1;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+    layer.set_b_values({ 0.0, 0.0 });
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+        batch_hs[0].at(1)[t].set_pre_activation_sums({ 0.8, 0.4 });
+        batch_hs[0].at(1)[t].set_hidden_state_values({ 0.8, 0.4 });
+    }
+
+    // Only one target provided (size == num_outputs, not num_time_steps * num_outputs)
+    std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, batch_size);
+
+    const auto rnn_grads = batch_go[0].get_rnn_gradients(1);
+    ASSERT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
+
+    // Timestep 0 and 1 have no target provided, so deltas are 0
+    EXPECT_NEAR(rnn_grads[0], 0.0, 1e-9);
+    EXPECT_NEAR(rnn_grads[1], 0.0, 1e-9);
+    EXPECT_NEAR(rnn_grads[2], 0.0, 1e-9);
+    EXPECT_NEAR(rnn_grads[3], 0.0, 1e-9);
+
+    // Timestep 2 (last) has target [1.0, 0.0], so MSE delta = (given - target) / num_neurons = [0.8 - 1.0, 0.4 - 0.0] / 2 = [-0.1, 0.2]
+    EXPECT_NEAR(rnn_grads[4], -0.1, 1e-9);
+    EXPECT_NEAR(rnn_grads[5], 0.2, 1e-9);
+
+    const auto std_grads = batch_go[0].get_gradients(1);
+    ASSERT_EQ(std_grads.size(), num_outputs);
+    EXPECT_NEAR(std_grads[0], -0.1, 1e-9);
+    EXPECT_NEAR(std_grads[1], 0.2, 1e-9);
+}
