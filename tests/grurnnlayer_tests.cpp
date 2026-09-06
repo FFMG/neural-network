@@ -1635,6 +1635,89 @@ TEST_F(GRURNNLayerTest, CalculateAndStoreGradientsSingleStepEquivalence)
   EXPECT_GT(layer.get_gradient_norm_sq(), 0.0);
 }
 
+TEST_F(GRURNNLayerTest, ResidualCandidateGateInjectionAcrossTimesteps)
+{
+  const size_t num_inputs = 1;
+  const size_t num_outputs = 1;
+  const size_t num_time_steps = 2;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  layer.set_w_values({ 0.5 });
+  layer.set_rw_values({ 0.0 });
+  layer.set_z_w_values({ 0.2 });
+  layer.set_z_rw_values({ 0.0 });
+  layer.set_r_w_values({ 0.4 });
+  layer.set_r_rw_values({ 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { 1, 1 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, GRURNNLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  std::vector<std::vector<double>> residual = { { 0.3 } };
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, 1, false);
+
+  const auto rnn_out = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(rnn_out.size(), 2u);
+  EXPECT_TRUE(std::isfinite(rnn_out[0]));
+  EXPECT_TRUE(std::isfinite(rnn_out[1]));
+}
+
+TEST_F(GRURNNLayerTest, ResidualWithDropoutAndInferenceEquivalence)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 2;
+  const size_t num_time_steps = 2;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.5, nullptr, 1, true, 0.0, false, 77);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, GRURNNLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 0.8, -0.4, 0.2, -0.6 });
+
+  std::vector<std::vector<double>> residual = { { 0.2, -0.2 } };
+
+  // Inference mode: dropout bypassed deterministically
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, 1, false);
+  const auto out_inference = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(out_inference.size(), 4u);
+  for (double val : out_inference)
+  {
+    EXPECT_TRUE(std::isfinite(val));
+  }
+
+  // Training mode: forward and backward pass stability
+  auto batch_go_train = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs_train = create_batch_hidden_states(topology, 1, num_time_steps, GRURNNLayer::Multiplier);
+  batch_go_train[0].set_rnn_outputs(0, { 0.8, -0.4, 0.2, -0.6 });
+
+  layer.calculate_forward_feed(batch_go_train, prev_layer, residual, batch_hs_train, 1, true);
+
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<std::vector<double>> upstream_grads = { { 0.1, 0.2, 0.3, 0.4 } };
+  layer.calculate_hidden_gradients(batch_go_train, next_layer, upstream_grads, batch_hs_train, 1, num_time_steps);
+
+  const auto gate_grads = batch_go_train[0].get_rnn_gate_gradients(1);
+  for (double g : gate_grads)
+  {
+    EXPECT_TRUE(std::isfinite(g));
+  }
+}
+
+
 
 
 

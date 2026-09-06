@@ -2429,3 +2429,94 @@ TEST_F(LSTMLayerTest, RecurrentWeightsFiniteDifferenceWithDropout)
   }
 }
 
+TEST_F(LSTMLayerTest, ResidualCandidateGateInjectionAcrossTimesteps)
+{
+  const size_t num_inputs = 1;
+  const size_t num_outputs = 1;
+  const size_t num_time_steps = 2;
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  layer.set_w_values({ 0.5 });
+  layer.set_rw_values({ 0.0 });
+  layer.set_f_w_values({ 0.2 });
+  layer.set_f_rw_values({ 0.0 });
+  layer.set_i_w_values({ 0.4 });
+  layer.set_i_rw_values({ 0.0 });
+  layer.set_o_w_values({ 0.6 });
+  layer.set_o_rw_values({ 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { 1, 1 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  std::vector<std::vector<double>> residual = { { 0.5 } };
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, 1, false);
+
+  const auto rnn_out = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(rnn_out.size(), 2u);
+
+  // Timestep 0:
+  // f = sig(0.2), i = sig(0.4), o = sig(0.6)
+  // g = tanh(0.5 + 0.5) = tanh(1.0)
+  // c0 = i * g
+  // h0 = o * tanh(c0) = 0.27555536
+  EXPECT_NEAR(rnn_out[0], 0.27555536, 1e-6);
+  EXPECT_TRUE(std::isfinite(rnn_out[1]));
+}
+
+TEST_F(LSTMLayerTest, ResidualWithDropoutAndInferenceEquivalence)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 2;
+  const size_t num_time_steps = 2;
+
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.5, nullptr, 1, false, 0.0, false, 42);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 1.0, -0.5, 0.5, -1.0 });
+
+  std::vector<std::vector<double>> residual = { { 0.1, -0.1 } };
+
+  // Inference mode (is_training = false): dropout is bypassed deterministically
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, 1, false);
+  const auto out_inference = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(out_inference.size(), 4u);
+  for (double val : out_inference)
+  {
+    EXPECT_TRUE(std::isfinite(val));
+  }
+
+  // Training mode (is_training = true): ensure forward and backward compute finite gradients
+  auto batch_go_train = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs_train = create_batch_hidden_states(topology, 1, num_time_steps, LSTMLayer::Multiplier);
+  batch_go_train[0].set_rnn_outputs(0, { 1.0, -0.5, 0.5, -1.0 });
+
+  layer.calculate_forward_feed(batch_go_train, prev_layer, residual, batch_hs_train, 1, true);
+
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<std::vector<double>> upstream_grads = { { 0.1, 0.2, 0.3, 0.4 } };
+  layer.calculate_hidden_gradients(batch_go_train, next_layer, upstream_grads, batch_hs_train, 1, num_time_steps);
+
+  const auto gate_grads = batch_go_train[0].get_rnn_gate_gradients(1);
+  for (double g : gate_grads)
+  {
+    EXPECT_TRUE(std::isfinite(g));
+  }
+}
+
+

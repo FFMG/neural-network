@@ -5,6 +5,15 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.51] - 2026-09-05
 
 ### Optimised
+- Optimised `ResidualProjector` batch projection and SWA updates:
+  - Replaced scalar and element-wise projection loops across `project(const std::vector<double>&)`, `project(const double*, double*)`, `project_batch`, and `project_batch_into` with AVX2/FMA register-blocked SIMD micro-kernels (`simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch`). This processes 4 batch samples simultaneously in AVX2 registers, loading weights once per 4 samples and eliminating repeated memory writebacks.
+  - Added overloaded `ResidualProjector::project_batch_into(const std::vector<std::vector<double>>&, std::vector<std::vector<double>>&)` and flat pointer `ResidualProjector::project_batch(const double*, double*, size_t)` to eliminate dynamic allocations of pointer vectors during batch projection.
+  - Hoisted residual input and output buffers outside the forward feed layer loop in `NeuralNetwork::calculate_forward_feed`, reusing allocated memory with `project_batch_into` on every training batch.
+  - Vectorised `ResidualProjector::accumulate_swa_average` using `simd::swa_step` with precalculated `alpha = 1.0 / denom`, replacing the element-wise division loop.
+  - Reused pre-allocated `WeightParam` vector rows in `ResidualProjector::get_weight_params()` to eliminate allocation churn on dirty cache reads.
+- Added vectorised `simd::swa_step` and scalar fallback in `include/neuralnetwork/common/simd_utils.h`, and vectorised `Layer::swa_average_into` in `include/neuralnetwork/layers/layer.h` to accelerate SWA updates across all layers.
+- Implemented Rule-of-Five copy and move assignment operators for `ResidualProjector` (`operator=(const ResidualProjector&)` and `operator=(ResidualProjector&&)`) with deadlock-free `std::scoped_lock` on `_cache_mutex`.
+- Added `#if VALIDATE_DATA == 1` bounds checking in `ResidualProjector::apply_weight_gradient`.
 - Optimised `LSTMLayer` recurrent weight caching and backpropagation compute efficiency:
   - Replaced scalar nested transposition loops in `LSTMLayer::cache_recurrent_weights` with vectorised `simd::transpose` for all 4 recurrent weight matrices and 4 input weight matrices.
   - Added identity proxy GEMM bypass in `LSTMLayer::calculate_bptt_batch_chunk`: when backpropagating through `_identity_proxy` (e.g. from `calculate_hidden_gradients_from_output_gradients`), replaces $O(T \cdot N^2)$ matrix-vector multiplications against identity weights with $O(T \cdot N)$ direct `std::copy_n`.
@@ -31,17 +40,28 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed stale transposed weight cache in `FFOutputLayer`:
   - `FFOutputLayer::apply_stored_gradients` updated `_w_values` but omitted calling `cache_recurrent_weights()`. Consequently, `_w_values_T` remained frozen with initial weights, causing upstream layers backpropagating through `FFOutputLayer` via `get_w_values_T()` to backpropagate against stale pre-update weights.
   - Resolved by invoking `cache_recurrent_weights()` at the end of `FFOutputLayer::apply_stored_gradients` and in `FFLayer::accumulate_swa_average_impl`.
-- Verified mathematical validity of dropout in `LSTMLayer`, `FFLayer`, and `FFOutputLayer`:
+- Verified mathematical validity of dropout in `ResidualProjector`, `LSTMLayer`, `GRURNNLayer`, `FFLayer`, and `FFOutputLayer`:
   - Output dropout is applied strictly to activations with mask $m \in \{0, \frac{1}{1-p}\}$. Incoming gradients are scaled by the dropout mask $m$ during backpropagation, and non-linear activation derivatives are computed from pre-activation values $z$ without inverted dropout corruption.
 
 ### Added
+- Added comprehensive unit tests in `tests/residualprojector_tests.cpp`:
+  - `ResidualProjectorTest.CopyAndMoveAssignmentOperators`: Verifies copy and move assignment semantics, deep copying, and self-assignment safety.
+  - `ResidualProjectorTest.ProjectBatchMultiBatchSizesEquivalence`: Verifies numerical equivalence across batch sizes (1, 2, 3, 4, 7, 8, 15, 16, 33, 64) between single-sample projection, vector-of-vectors batch projection, raw pointer batch projection, and flat pointer buffer projection.
+  - `ResidualProjectorTest.ProjectRawPointersBufferInto`: Verifies raw pointer buffer projection into pre-allocated memory and nullptr safety.
+  - `ResidualProjectorTest.AccumulateSwaAverageVectorisedEquivalence`: Verifies vectorised SWA running mean against exact arithmetic mean across multiple snapshot projectors.
+  - `ResidualProjectorTest.ZeroDimensionEdgeCases`: Verifies safe handling of 0 input size and 0 output size without errors or crashes.
 - Added unit tests in `tests/neuralnetworkhelper_tests.cpp`:
   - `NeuralNetworkHelperTest.InCallbackForecastMetricsAtFinalCheckpointUsesFinalCheckIndexes`: Verifies that evaluating forecast metrics directly inside `progress_callback` at the final epoch uses `final_check_indexes` rather than falling back to `checking_indexes`.
 - Added unit tests in `tests/lstmlayer_tests.cpp`:
+  - `LSTMLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies multi-step candidate gate residual injection against analytical values.
+  - `LSTMLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies forward and backward stability under residual projection with dropout in training and inference modes.
   - `LSTMLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end - 1]$ are strictly zeroed when `bptt_max_ticks > 0`.
   - `LSTMLayerTest.IdentityProxyBypassEquivalence`: Verifies that `calculate_hidden_gradients_from_output_gradients` via `_identity_proxy` bypass matches direct identity GEMM backpropagation.
   - `LSTMLayerTest.DropoutWithTanhActivationDerivative`: Verifies that cached candidate and cell state activations remain strictly in $[-1, 1]$ under dropout without corruption from the inverted dropout mask.
   - `LSTMLayerTest.RecurrentWeightsFiniteDifferenceWithDropout`: Verifies analytical vs finite-difference numerical gradients for recurrent weights under deterministic dropout.
+- Added unit tests in `tests/grurnnlayer_tests.cpp`:
+  - `GRURNNLayerTest.ResidualCandidateGateInjectionAcrossTimesteps`: Verifies GRU candidate hidden state residual projection integration across timesteps.
+  - `GRURNNLayerTest.ResidualWithDropoutAndInferenceEquivalence`: Verifies GRU forward and backward gradient stability under residual projection with dropout.
 - Added unit tests in `tests/fflayer_tests.cpp`:
   - `FFLayerTest.RecurrentSequenceGradientBPTT`: Verifies that multi-timestep sequence gradients from recurrent next layers propagate accurately through `FFLayer` without being overwritten by broadcast final-step gradients.
   - `FFLayerTest.RecurrentSequenceGradientBPTT_GeneralLoopMultiBatch`: Verifies multi-timestep sequence gradient propagation across multiple batch items ($B > 1$) through the general processing loop.

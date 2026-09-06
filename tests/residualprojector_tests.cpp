@@ -616,3 +616,210 @@ TEST(ResidualProjectorTest, DimensionHandlingAndEdgeCases)
   auto expansion_out = expansion_proj.project(expansion_in);
   ASSERT_EQ(expansion_out.size(), 16u);
 }
+
+TEST(ResidualProjectorTest, CopyAndMoveAssignmentOperators)
+{
+  const unsigned in_size1 = 4;
+  const unsigned out_size1 = 3;
+  const activation act(activation::method::relu, 0.0);
+
+  ResidualProjector proj1(in_size1, out_size1, act, 0.02, 101);
+  proj1.apply_weight_gradient(0.5, 0.01, 1, 2, 1.0);
+  proj1.update_weight(0, 3, 2.5);
+
+  ResidualProjector proj2(2, 2, act, 0.0, 202);
+
+  // 1. Copy assignment
+  proj2 = proj1;
+  EXPECT_EQ(proj2.get_input_size(), in_size1);
+  EXPECT_EQ(proj2.get_output_size(), out_size1);
+  EXPECT_EQ(proj2.get_w_values(), proj1.get_w_values());
+  EXPECT_EQ(proj2.get_w_grads(), proj1.get_w_grads());
+  EXPECT_EQ(proj2.get_weight_params()[0][3].get_value(), proj1.get_weight_params()[0][3].get_value());
+
+  // Deep copy verification
+  proj1.update_weight(0, 0, 9.99);
+  EXPECT_NE(proj1.get_w_values()[0], proj2.get_w_values()[0]);
+
+  // Self-assignment
+  proj2 = proj2;
+  EXPECT_EQ(proj2.get_input_size(), in_size1);
+  EXPECT_EQ(proj2.get_output_size(), out_size1);
+
+  // 2. Move assignment
+  const auto values_before_move = proj2.get_w_values();
+  ResidualProjector proj3(1, 1, act, 0.0, 303);
+  proj3 = std::move(proj2);
+  EXPECT_EQ(proj3.get_input_size(), in_size1);
+  EXPECT_EQ(proj3.get_output_size(), out_size1);
+  EXPECT_EQ(proj3.get_w_values(), values_before_move);
+}
+
+TEST(ResidualProjectorTest, ProjectBatchMultiBatchSizesEquivalence)
+{
+  const unsigned in_size = 5;
+  const unsigned out_size = 7;
+  const activation act(activation::method::linear, 0.0);
+  ResidualProjector projector(in_size, out_size, act, 0.0, 777);
+
+  const std::vector<size_t> test_batch_sizes = { 1, 2, 3, 4, 7, 8, 15, 16, 33, 64 };
+
+  for (size_t batch_size : test_batch_sizes)
+  {
+    std::vector<std::vector<double>> batch_inputs(batch_size, std::vector<double>(in_size));
+    std::vector<const double*> raw_ptrs(batch_size);
+    std::vector<double> flat_inputs(batch_size * in_size);
+    std::vector<double> flat_outputs(batch_size * out_size, 0.0);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      for (size_t i = 0; i < in_size; ++i)
+      {
+        const double val = std::sin(static_cast<double>(b * in_size + i + 1));
+        batch_inputs[b][i] = val;
+        flat_inputs[b * in_size + i] = val;
+      }
+      raw_ptrs[b] = batch_inputs[b].data();
+    }
+
+    // Method 1: project single
+    std::vector<std::vector<double>> expected(batch_size);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      expected[b] = projector.project(batch_inputs[b]);
+    }
+
+    // Method 2: project_batch(vector of vectors)
+    const auto out_vec = projector.project_batch(batch_inputs);
+
+    // Method 3: project_batch_into(vector of vectors)
+    std::vector<std::vector<double>> out_vec_into;
+    projector.project_batch_into(batch_inputs, out_vec_into);
+
+    // Method 4: project_batch(vector of raw pointers)
+    const auto out_ptrs = projector.project_batch(raw_ptrs);
+
+    // Method 5: project_batch_into(vector of raw pointers)
+    std::vector<std::vector<double>> out_ptrs_into;
+    projector.project_batch_into(raw_ptrs, out_ptrs_into);
+
+    // Method 6: project_batch flat buffer
+    projector.project_batch(flat_inputs.data(), flat_outputs.data(), batch_size);
+
+    ASSERT_EQ(out_vec.size(), batch_size);
+    ASSERT_EQ(out_vec_into.size(), batch_size);
+    ASSERT_EQ(out_ptrs.size(), batch_size);
+    ASSERT_EQ(out_ptrs_into.size(), batch_size);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      for (size_t j = 0; j < out_size; ++j)
+      {
+        const double exp_val = expected[b][j];
+        EXPECT_NEAR(out_vec[b][j], exp_val, 1e-12);
+        EXPECT_NEAR(out_vec_into[b][j], exp_val, 1e-12);
+        EXPECT_NEAR(out_ptrs[b][j], exp_val, 1e-12);
+        EXPECT_NEAR(out_ptrs_into[b][j], exp_val, 1e-12);
+        EXPECT_NEAR(flat_outputs[b * out_size + j], exp_val, 1e-12);
+      }
+    }
+  }
+}
+
+TEST(ResidualProjectorTest, ProjectRawPointersBufferInto)
+{
+  const unsigned in_size = 4;
+  const unsigned out_size = 4;
+  const activation act(activation::method::relu, 0.0);
+  ResidualProjector projector(in_size, out_size, act, 0.0, 123);
+
+  const std::vector<double> single_in = { 1.0, 2.0, 3.0, 4.0 };
+  std::vector<double> single_out(out_size, 0.0);
+
+  projector.project(single_in.data(), single_out.data());
+
+  const auto expected = projector.project(single_in);
+  for (size_t j = 0; j < out_size; ++j)
+  {
+    EXPECT_NEAR(single_out[j], expected[j], 1e-12);
+  }
+
+  // Nullptr safety
+  projector.project(nullptr, single_out.data());
+  projector.project(single_in.data(), nullptr);
+  projector.project_batch(nullptr, single_out.data(), 1);
+  projector.project_batch(single_in.data(), nullptr, 1);
+}
+
+TEST(ResidualProjectorTest, AccumulateSwaAverageVectorisedEquivalence)
+{
+  const unsigned in_size = 8;
+  const unsigned out_size = 6;
+  const activation act(activation::method::relu, 0.0);
+
+  ResidualProjector swa_proj(in_size, out_size, act, 0.0, 1);
+  const size_t num_snapshots = 5;
+  std::vector<ResidualProjector> snapshots;
+  snapshots.reserve(num_snapshots);
+
+  for (size_t s = 0; s < num_snapshots; ++s)
+  {
+    snapshots.emplace_back(in_size, out_size, act, 0.0, static_cast<uint32_t>(100 + s * 17));
+  }
+
+  // Accumulate snapshots into swa_proj
+  for (size_t s = 0; s < num_snapshots; ++s)
+  {
+    swa_proj.accumulate_swa_average(snapshots[s], s);
+  }
+
+  // Compute exact arithmetic mean across all snapshots
+  const size_t total_weights = static_cast<size_t>(in_size) * out_size;
+  std::vector<double> expected_mean(total_weights, 0.0);
+  for (size_t s = 0; s < num_snapshots; ++s)
+  {
+    const auto& snap_w = snapshots[s].get_w_values();
+    for (size_t i = 0; i < total_weights; ++i)
+    {
+      expected_mean[i] += snap_w[i];
+    }
+  }
+  for (size_t i = 0; i < total_weights; ++i)
+  {
+    expected_mean[i] /= static_cast<double>(num_snapshots);
+  }
+
+  const auto& actual_swa_w = swa_proj.get_w_values();
+  for (size_t i = 0; i < total_weights; ++i)
+  {
+    EXPECT_NEAR(actual_swa_w[i], expected_mean[i], 1e-11);
+  }
+}
+
+TEST(ResidualProjectorTest, ZeroDimensionEdgeCases)
+{
+  const activation act(activation::method::relu, 0.0);
+
+  // 1. Zero output size
+  ResidualProjector zero_out(4, 0, act, 0.0, 10);
+  EXPECT_EQ(zero_out.get_input_size(), 4u);
+  EXPECT_EQ(zero_out.get_output_size(), 0u);
+  EXPECT_TRUE(zero_out.project({ 1.0, 2.0, 3.0, 4.0 }).empty());
+
+  std::vector<std::vector<double>> batch_in = { { 1.0, 2.0, 3.0, 4.0 } };
+  auto batch_out = zero_out.project_batch(batch_in);
+  ASSERT_EQ(batch_out.size(), 1u);
+  EXPECT_TRUE(batch_out[0].empty());
+
+  // 2. Zero input size
+  ResidualProjector zero_in(0, 4, act, 0.0, 10);
+  EXPECT_EQ(zero_in.get_input_size(), 0u);
+  EXPECT_EQ(zero_in.get_output_size(), 4u);
+  auto proj_zero_in = zero_in.project({});
+  ASSERT_EQ(proj_zero_in.size(), 4u);
+  for (double val : proj_zero_in)
+  {
+    EXPECT_DOUBLE_EQ(val, 0.0);
+  }
+}
+

@@ -1123,10 +1123,8 @@ protected:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     const double denom = static_cast<double>(existing_swa_count + 1);
-    for (size_t i = 0; i < running_avg.size(); ++i)
-    {
-      running_avg[i] += (snapshot[i] - running_avg[i]) / denom;
-    }
+    const double alpha = 1.0 / denom;
+    simd::swa_step(running_avg.data(), snapshot.data(), alpha, running_avg.size());
   }
 
   Layer(

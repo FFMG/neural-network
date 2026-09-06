@@ -2995,6 +2995,48 @@ public:
     scalar_lookahead_step(slow_weights, fast_weights, alpha, n, j);
   }
 
+  // Scalar fallback for swa_step: w <- w + alpha * (snapshot - w)
+  inline static void scalar_swa_step(
+    double* weights,
+    const double* snapshot,
+    double alpha,
+    size_t n,
+    size_t start = 0) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    for (size_t i = start; i < n; ++i)
+    {
+      weights[i] += alpha * (snapshot[i] - weights[i]);
+    }
+  }
+
+  // Vectorised SWA running mean step: w <- w + alpha * (snapshot - w)
+  inline static void swa_step(
+    double* weights,
+    const double* snapshot,
+    double alpha,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    __m256d vec_alpha = _mm256_set1_pd(alpha);
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vec_w = _mm256_loadu_pd(&weights[j]);
+      __m256d vec_s = _mm256_loadu_pd(&snapshot[j]);
+      __m256d diff = _mm256_sub_pd(vec_s, vec_w);
+#ifdef SIMD_FMA_ENABLED
+      __m256d updated = _mm256_fmadd_pd(vec_alpha, diff, vec_w);
+#else
+      __m256d updated = _mm256_add_pd(vec_w, _mm256_mul_pd(vec_alpha, diff));
+#endif
+      _mm256_storeu_pd(&weights[j], updated);
+    }
+#endif
+    scalar_swa_step(weights, snapshot, alpha, n, j);
+  }
+
   // Scalar fallback for gru_bptt_gate_step
   inline static void scalar_gru_bptt_gate_step(
     size_t n,

@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 #include <mutex>
+#include <cstring>
 
 #include "../libraries/instrumentor.h"
 
@@ -140,6 +141,46 @@ public:
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
   }
 
+  ResidualProjector& operator=(const ResidualProjector& rp)
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    if (this != &rp)
+    {
+      std::scoped_lock lock(_cache_mutex, rp._cache_mutex);
+      _input_size = rp._input_size;
+      _output_size = rp._output_size;
+      _w_values = rp._w_values;
+      _w_grads = rp._w_grads;
+      _w_velocities = rp._w_velocities;
+      _w_m1 = rp._w_m1;
+      _w_m2 = rp._w_m2;
+      _w_timesteps = rp._w_timesteps;
+      _w_decays = rp._w_decays;
+      _weights_cache_dirty = true;
+    }
+    return *this;
+  }
+
+  ResidualProjector& operator=(ResidualProjector&& rp) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    if (this != &rp)
+    {
+      std::scoped_lock lock(_cache_mutex, rp._cache_mutex);
+      _input_size = rp._input_size;
+      _output_size = rp._output_size;
+      _w_values = std::move(rp._w_values);
+      _w_grads = std::move(rp._w_grads);
+      _w_velocities = std::move(rp._w_velocities);
+      _w_m1 = std::move(rp._w_m1);
+      _w_m2 = std::move(rp._w_m2);
+      _w_timesteps = std::move(rp._w_timesteps);
+      _w_decays = std::move(rp._w_decays);
+      _weights_cache_dirty = true;
+    }
+    return *this;
+  }
+
   virtual ~ResidualProjector() = default;
 
   // Projects residual_layer_outputs (size = input_size) to a vector of size = output_size
@@ -153,49 +194,109 @@ public:
     }
 #endif
     std::vector<double> projected(_output_size, 0.0);
-    for (size_t in = 0; in < _input_size; ++in)
+    if (_output_size == 0 || _input_size == 0)
     {
-      simd::mul_add(residual_layer_outputs[in], &_w_values[in * _output_size], projected.data(), _output_size);
+      return projected;
     }
+    simd::gemm_one_batch(residual_layer_outputs.data(), _w_values.data(), projected.data(), _input_size, _output_size);
     return projected;
   }
 
-  std::vector<std::vector<double>> project_batch(const std::vector<std::vector<double>>& batch_residual_layer_outputs) const
+  void project(const double* residual_layer_outputs, double* out) const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    const size_t batch_size = batch_residual_layer_outputs.size();
-    std::vector<std::vector<double>> batch_projected(batch_size, std::vector<double>(_output_size, 0.0));
-    
-    for (size_t in = 0; in < _input_size; ++in)
+    if (_output_size == 0 || _input_size == 0 || residual_layer_outputs == nullptr || out == nullptr)
     {
-      for (size_t b = 0; b < batch_size; ++b)
-      {
-        simd::mul_add(batch_residual_layer_outputs[b][in], &_w_values[in * _output_size], batch_projected[b].data(), _output_size);
-      }
+      return;
     }
+    std::memset(out, 0, _output_size * sizeof(double));
+    simd::gemm_one_batch(residual_layer_outputs, _w_values.data(), out, _input_size, _output_size);
+  }
+
+  [[nodiscard]] std::vector<std::vector<double>> project_batch(const std::vector<std::vector<double>>& batch_residual_layer_outputs) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    std::vector<std::vector<double>> batch_projected;
+    project_batch_into(batch_residual_layer_outputs, batch_projected);
     return batch_projected;
   }
 
-  std::vector<std::vector<double>> project_batch(const std::vector<const double*>& batch_residual_layer_outputs) const
+  [[nodiscard]] std::vector<std::vector<double>> project_batch(const std::vector<const double*>& batch_residual_layer_outputs) const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
-    const size_t batch_size = batch_residual_layer_outputs.size();
-    std::vector<std::vector<double>> batch_projected(batch_size, std::vector<double>(_output_size, 0.0));
-    
-    for (size_t in = 0; in < _input_size; ++in)
-    {
-      for (size_t b = 0; b < batch_size; ++b)
-      {
-        simd::mul_add(batch_residual_layer_outputs[b][in], &_w_values[in * _output_size], batch_projected[b].data(), _output_size);
-      }
-    }
+    std::vector<std::vector<double>> batch_projected;
+    project_batch_into(batch_residual_layer_outputs, batch_projected);
     return batch_projected;
   }
 
-  void project_batch_into(const std::vector<const double*>& batch_residual_layer_outputs, std::vector<std::vector<double>>& out) const
+  void project_batch(const double* batch_inputs, double* batch_out, size_t batch_size) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    if (batch_size == 0 || _output_size == 0 || batch_inputs == nullptr || batch_out == nullptr)
+    {
+      return;
+    }
+    std::memset(batch_out, 0, batch_size * _output_size * sizeof(double));
+    if (_input_size == 0)
+    {
+      return;
+    }
+
+    size_t b = 0;
+    for (; b + 3 < batch_size; b += 4)
+    {
+      simd::gemm_four_batches(
+        batch_inputs + b * _input_size,
+        batch_inputs + (b + 1) * _input_size,
+        batch_inputs + (b + 2) * _input_size,
+        batch_inputs + (b + 3) * _input_size,
+        _w_values.data(),
+        batch_out + b * _output_size,
+        batch_out + (b + 1) * _output_size,
+        batch_out + (b + 2) * _output_size,
+        batch_out + (b + 3) * _output_size,
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b + 1 < batch_size; b += 2)
+    {
+      simd::gemm_two_batches(
+        batch_inputs + b * _input_size,
+        batch_inputs + (b + 1) * _input_size,
+        _w_values.data(),
+        batch_out + b * _output_size,
+        batch_out + (b + 1) * _output_size,
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b < batch_size; ++b)
+    {
+      simd::gemm_one_batch(
+        batch_inputs + b * _input_size,
+        _w_values.data(),
+        batch_out + b * _output_size,
+        _input_size,
+        _output_size
+      );
+    }
+  }
+
+  void project_batch_into(const std::vector<std::vector<double>>& batch_residual_layer_outputs, std::vector<std::vector<double>>& out) const
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     const size_t batch_size = batch_residual_layer_outputs.size();
+    if (batch_size == 0)
+    {
+      out.clear();
+      return;
+    }
+    if (_output_size == 0)
+    {
+      out.assign(batch_size, std::vector<double>());
+      return;
+    }
     if (out.size() != batch_size)
     {
       out.resize(batch_size, std::vector<double>(_output_size, 0.0));
@@ -208,22 +309,139 @@ public:
       }
       else
       {
-        std::fill(out[b].begin(), out[b].end(), 0.0);
+        std::memset(out[b].data(), 0, _output_size * sizeof(double));
       }
     }
-    
-    for (size_t in = 0; in < _input_size; ++in)
+    if (_input_size == 0)
     {
-      for (size_t b = 0; b < batch_size; ++b)
+      return;
+    }
+
+    size_t b = 0;
+    for (; b + 3 < batch_size; b += 4)
+    {
+      simd::gemm_four_batches(
+        batch_residual_layer_outputs[b].data(),
+        batch_residual_layer_outputs[b + 1].data(),
+        batch_residual_layer_outputs[b + 2].data(),
+        batch_residual_layer_outputs[b + 3].data(),
+        _w_values.data(),
+        out[b].data(),
+        out[b + 1].data(),
+        out[b + 2].data(),
+        out[b + 3].data(),
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b + 1 < batch_size; b += 2)
+    {
+      simd::gemm_two_batches(
+        batch_residual_layer_outputs[b].data(),
+        batch_residual_layer_outputs[b + 1].data(),
+        _w_values.data(),
+        out[b].data(),
+        out[b + 1].data(),
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b < batch_size; ++b)
+    {
+      simd::gemm_one_batch(
+        batch_residual_layer_outputs[b].data(),
+        _w_values.data(),
+        out[b].data(),
+        _input_size,
+        _output_size
+      );
+    }
+  }
+
+  void project_batch_into(const std::vector<const double*>& batch_residual_layer_outputs, std::vector<std::vector<double>>& out) const
+  {
+    MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+    const size_t batch_size = batch_residual_layer_outputs.size();
+    if (batch_size == 0)
+    {
+      out.clear();
+      return;
+    }
+    if (_output_size == 0)
+    {
+      out.assign(batch_size, std::vector<double>());
+      return;
+    }
+    if (out.size() != batch_size)
+    {
+      out.resize(batch_size, std::vector<double>(_output_size, 0.0));
+    }
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      if (out[b].size() != _output_size)
       {
-        simd::mul_add(batch_residual_layer_outputs[b][in], &_w_values[in * _output_size], out[b].data(), _output_size);
+        out[b].assign(_output_size, 0.0);
       }
+      else
+      {
+        std::memset(out[b].data(), 0, _output_size * sizeof(double));
+      }
+    }
+    if (_input_size == 0)
+    {
+      return;
+    }
+
+    size_t b = 0;
+    for (; b + 3 < batch_size; b += 4)
+    {
+      simd::gemm_four_batches(
+        batch_residual_layer_outputs[b],
+        batch_residual_layer_outputs[b + 1],
+        batch_residual_layer_outputs[b + 2],
+        batch_residual_layer_outputs[b + 3],
+        _w_values.data(),
+        out[b].data(),
+        out[b + 1].data(),
+        out[b + 2].data(),
+        out[b + 3].data(),
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b + 1 < batch_size; b += 2)
+    {
+      simd::gemm_two_batches(
+        batch_residual_layer_outputs[b],
+        batch_residual_layer_outputs[b + 1],
+        _w_values.data(),
+        out[b].data(),
+        out[b + 1].data(),
+        _input_size,
+        _output_size
+      );
+    }
+    for (; b < batch_size; ++b)
+    {
+      simd::gemm_one_batch(
+        batch_residual_layer_outputs[b],
+        _w_values.data(),
+        out[b].data(),
+        _input_size,
+        _output_size
+      );
     }
   }
 
   void apply_weight_gradient(double gradient, double learning_rate, unsigned in, unsigned out, double clipping_scale)
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
+#if VALIDATE_DATA == 1
+    if (in >= _input_size || out >= _output_size)
+    {
+      Logger::panic("Trying to apply a weight gradient outside of the bounds!");
+    }
+#endif
     const auto idx = in * _output_size + out;
     double final_gradient = gradient * clipping_scale;
 
@@ -243,9 +461,16 @@ public:
     std::lock_guard<std::mutex> lock(_cache_mutex);
     if (_weights_cache_dirty) 
     {
-      _cached_weights.assign(_output_size, std::vector<WeightParam>(_input_size, WeightParam(0,0,0,0)));
+      if (_cached_weights.size() != _output_size)
+      {
+        _cached_weights.resize(_output_size);
+      }
       for (unsigned j = 0; j < _output_size; ++j) 
       {
+        if (_cached_weights[j].size() != _input_size)
+        {
+          _cached_weights[j].resize(_input_size, WeightParam(0, 0, 0, 0));
+        }
         for (unsigned i = 0; i < _input_size; ++i) 
         {
           const auto idx = i * _output_size + j;
@@ -267,10 +492,8 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("ResidualProjector");
     const double denom = static_cast<double>(existing_swa_count + 1);
-    for (size_t i = 0; i < _w_values.size(); ++i)
-    {
-      _w_values[i] += (snapshot._w_values[i] - _w_values[i]) / denom;
-    }
+    const double alpha = 1.0 / denom;
+    simd::swa_step(_w_values.data(), snapshot._w_values.data(), alpha, _w_values.size());
     _weights_cache_dirty = true;
   }
 
