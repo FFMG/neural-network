@@ -29,9 +29,24 @@ FFOutputLayer::FFOutputLayer(
     has_bias,
     0.0,
     seed),
-  OutputLayer(output_layer_details)
+  OutputLayer(output_layer_details),
+  _has_sharpe_sortino_heads(check_has_sharpe_sortino_heads(output_layer_details))
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+}
+
+bool FFOutputLayer::check_has_sharpe_sortino_heads(
+  const std::vector<OutputLayerDetails>& output_layer_details) noexcept
+{
+  for (const auto& detail : output_layer_details)
+  {
+    const auto t = detail.get_output_error_calculation_type();
+    if (t == ErrorCalculation::type::sharpe_ratio_loss || t == ErrorCalculation::type::sortino_ratio_loss)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 layer_activation_helper FFOutputLayer::create_layer_activation_helper(unsigned num_inputs,
@@ -92,7 +107,8 @@ std::vector<double> FFOutputLayer::create_weight_decays(
 
 FFOutputLayer::FFOutputLayer(const FFOutputLayer& src) noexcept :
   FFLayer(src),
-  OutputLayer(src)
+  OutputLayer(src),
+  _has_sharpe_sortino_heads(src._has_sharpe_sortino_heads)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -146,14 +162,16 @@ FFLayer(
     create_layer_activation_helper(number_input_neurons, number_output_neurons, output_layer_details),
     0.0
     ),
-    OutputLayer(output_layer_details)
+    OutputLayer(output_layer_details),
+    _has_sharpe_sortino_heads(check_has_sharpe_sortino_heads(output_layer_details))
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
 
 FFOutputLayer::FFOutputLayer(FFOutputLayer&& src) noexcept :
   FFLayer(std::move(src)),
-  OutputLayer(std::move(src))
+  OutputLayer(std::move(src)),
+  _has_sharpe_sortino_heads(src._has_sharpe_sortino_heads)
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
 }
@@ -161,10 +179,11 @@ FFOutputLayer::FFOutputLayer(FFOutputLayer&& src) noexcept :
 FFOutputLayer& FFOutputLayer::operator=(const FFOutputLayer& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  if(this != &src)
+  if (this != &src)
   {
     FFLayer::operator=(src);
     OutputLayer::operator=(src);
+    _has_sharpe_sortino_heads = src._has_sharpe_sortino_heads;
   }
   return *this;
 }
@@ -172,10 +191,11 @@ FFOutputLayer& FFOutputLayer::operator=(const FFOutputLayer& src) noexcept
 FFOutputLayer& FFOutputLayer::operator=(FFOutputLayer&& src) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  if(this != &src)
+  if (this != &src)
   {
     FFLayer::operator=(std::move(src));
     OutputLayer::operator=(std::move(src));
+    _has_sharpe_sortino_heads = src._has_sharpe_sortino_heads;
   }
   return *this;
 }
@@ -341,7 +361,9 @@ void FFOutputLayer::calculate_output_gradients(
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
-  const auto per_head_step_context = calculate_sharpe_sortino_context(target_outputs_begin, batch_hidden_states, batch_size);
+  const auto per_head_step_context = _has_sharpe_sortino_heads
+    ? calculate_sharpe_sortino_context(target_outputs_begin, batch_hidden_states, batch_size)
+    : PerHeadStepContexts{};
   if (!use_multithreading)
   {
     run_output_gradients(
@@ -393,6 +415,7 @@ void FFOutputLayer::run_output_gradients(
   const auto& details = output_layer_details();
   const auto& ranges = _layer_activation_helper.ranges();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const bool has_dropout = (get_dropout() > 0.0);
 
   TempBuffer<double, 55> deriv_buf(num_neurons);
   TempBuffer<double, 56> rnn_grads_row(num_time_steps * num_neurons);
@@ -435,8 +458,7 @@ void FFOutputLayer::run_output_gradients(
       ++gated_step_index;
 
       const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
-      const double* mask_vals = current_hidden_state.get_cell_state_values().data();
-      const bool has_dropout = (get_dropout() > 0.0);
+      const double* mask_vals = has_dropout ? current_hidden_state.get_cell_state_values().data() : nullptr;
       const double* y_vals = has_dropout ? nullptr : current_hidden_state.get_hidden_state_values().data();
 
       for (size_t h = 0; h < ranges.size(); ++h)
@@ -448,14 +470,41 @@ void FFOutputLayer::run_output_gradients(
         const bool skip_derivative = (activation.get_method() == activation::method::softmax) ||
           is_not_using_activation_derivative(activation.get_method(), detail.get_output_error_calculation_type());
 
+        double* out_grad_ptr = rnn_grads_row.data() + t * num_neurons + r.start;
+        const double* delta_ptr = deltas.data() + r.start;
+        const size_t range_size = r.end - r.start;
+
         if (skip_derivative)
         {
-          simd::mul_vectors(
-            deltas.data() + r.start,
-            mask_vals + r.start,
-            rnn_grads_row.data() + t * num_neurons + r.start,
-            r.end - r.start
-          );
+          if (has_dropout)
+          {
+            simd::mul_vectors(
+              delta_ptr,
+              mask_vals + r.start,
+              out_grad_ptr,
+              range_size
+            );
+          }
+          else
+          {
+            std::copy_n(delta_ptr, range_size, out_grad_ptr);
+          }
+        }
+        else if (activation.get_method() == activation::method::linear)
+        {
+          if (has_dropout)
+          {
+            simd::mul_vectors(
+              delta_ptr,
+              mask_vals + r.start,
+              out_grad_ptr,
+              range_size
+            );
+          }
+          else
+          {
+            std::copy_n(delta_ptr, range_size, out_grad_ptr);
+          }
         }
         else
         {
@@ -465,13 +514,26 @@ void FFOutputLayer::run_output_gradients(
             y_vals ? (y_vals + r.start) : nullptr,
             deriv_buf.data() + r.start
           );
-          simd::mul_three_vectors(
-            deltas.data() + r.start,
-            deriv_buf.data() + r.start,
-            mask_vals + r.start,
-            rnn_grads_row.data() + t * num_neurons + r.start,
-            r.end - r.start
-          );
+
+          if (has_dropout)
+          {
+            simd::mul_three_vectors(
+              delta_ptr,
+              deriv_buf.data() + r.start,
+              mask_vals + r.start,
+              out_grad_ptr,
+              range_size
+            );
+          }
+          else
+          {
+            simd::mul_vectors(
+              delta_ptr,
+              deriv_buf.data() + r.start,
+              out_grad_ptr,
+              range_size
+            );
+          }
         }
       }
     }
@@ -481,172 +543,6 @@ void FFOutputLayer::run_output_gradients(
       batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - num_neurons, num_neurons);
     }
     batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
-  }
-}
-
-void FFOutputLayer::calculate_forward_feed(
-  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const Layer& previous_layer,
-  const std::vector<std::vector<double>>& batch_residual_output_values,
-  std::vector<HiddenStates>& batch_hidden_states,
-  size_t batch_size,
-  bool is_training) const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  if (batch_size == 0) return;
-
-  const auto N_prev = get_number_input_neurons();
-  const auto N_this = get_number_neurons();
-  const unsigned prev_layer_index = previous_layer.get_layer_index();
-
-  // 1. Determine sequence length and flatten inputs
-  size_t num_time_steps = 1;
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      if (!rnn_in.empty()) { num_time_steps = rnn_in.size() / N_prev; break; }
-  }
-
-  const size_t effective_batch_size = batch_size * num_time_steps;
-  TempBuffer<double, 40> batch_inputs_buffer(effective_batch_size * N_prev);
-  
-  double* in_buf_ptr = batch_inputs_buffer.data();
-  for (size_t b = 0; b < batch_size; ++b)
-  {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    if (!rnn_in.empty())
-    {
-      std::copy(rnn_in.begin(), rnn_in.end(), in_buf_ptr + b * num_time_steps * N_prev);
-    }
-    else
-    {
-      const auto std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      for (size_t t = 0; t < num_time_steps; ++t)
-      {
-        std::copy(std_in.begin(), std_in.end(), in_buf_ptr + (b * num_time_steps + t) * N_prev);
-      }
-    }
-  }
-
-  TempBuffer<double, 41> batch_pre_activation_sums_buffer(effective_batch_size * N_this, true);
-
-  // 2. Initialize with bias values
-  if (has_bias())
-  {
-    const auto& biases = get_b_values();
-    const size_t copy_size = std::min<size_t>(biases.size(), N_this);
-    const double* b_ptr = biases.data();
-    double* dest_base = batch_pre_activation_sums_buffer.data();
-    for (size_t eb = 0; eb < effective_batch_size; eb++)
-    {
-      double* dest = dest_base + eb * N_this;
-      std::copy(b_ptr, b_ptr + copy_size, dest);
-      if (copy_size < N_this)
-      {
-        std::fill(dest + copy_size, dest + N_this, 0.0);
-      }
-    }
-  }
-
-  // 3. Batched GEMM
-  run_gemm(0, effective_batch_size, N_prev, N_this, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec());
-
-  // 4. Activation
-  run_post_gemm(0, batch_size, num_time_steps, N_this, batch_gradients_and_outputs, batch_residual_output_values, batch_hidden_states, batch_inputs_buffer.vec(), batch_pre_activation_sums_buffer.vec(), is_training);
-}
-
-void FFOutputLayer::run_post_gemm(
-  size_t start,
-  size_t end,
-  size_t num_time_steps,
-  size_t N_this,
-  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const std::vector<std::vector<double>>& batch_residual_output_values,
-  std::vector<HiddenStates>& batch_hidden_states,
-  const std::vector<double>& /*batch_inputs_buffer*/,
-  std::vector<double>& batch_pre_activation_sums_buffer,
-  bool is_training) const
-{
-  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
-  
-  TempBuffer<double, 42> mask_buf(N_this);
-  TempBuffer<double, 43> output_row_seq_buf(num_time_steps * N_this);
-  double* mask_ptr = mask_buf.data();
-  double* output_row_seq_ptr = output_row_seq_buf.data();
-
-  for (size_t b = start; b < end; b++)
-  {
-    std::fill(mask_ptr, mask_ptr + N_this, 1.0);
-    if (!batch_hidden_states.empty())
-    {
-      if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
-      {
-        batch_hidden_states[b].assign(get_layer_index(), num_time_steps, {}, get_pre_activation_multiplier());
-      }
-    }
-
-    for (size_t t = 0; t < num_time_steps; ++t)
-    {
-      double* current_pre_act = &batch_pre_activation_sums_buffer[(b * num_time_steps + t) * N_this];
-      double* current_output_row = output_row_seq_ptr + t * N_this;
-
-      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
-      {
-        if (num_time_steps == 1 || t == num_time_steps - 1)
-        {
-          simd::add_vectors(batch_residual_output_values[b].data(), current_pre_act, N_this);
-        }
-      }
-
-      if (!batch_hidden_states.empty())
-      {
-        auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
-        layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
-      }
-
-      for (const auto& r : _layer_activation_helper.ranges())
-      {
-        r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
-        if (is_training && get_dropout() > 0.0)
-        {
-          const auto& neurons = get_neurons();
-          for (size_t j = r.start; j < r.end; j++)
-          {
-            const auto& neuron = neurons[j];
-            double output = current_pre_act[j];
-            if (neuron.is_dropout())
-            {
-              if (neuron.must_randomly_drop(b * num_time_steps + t))
-              {
-                output = 0.0;
-                mask_ptr[j] = 0.0;
-              }
-              else
-              {
-                double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
-                output *= scale;
-                mask_ptr[j] = scale;
-              }
-            }
-            current_output_row[j] = output;
-          }
-        }
-        else
-        {
-          std::copy(current_pre_act + r.start, current_pre_act + r.end, current_output_row + r.start);
-        }
-      }
-      if (!batch_hidden_states.empty())
-      {
-        auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
-        layer_states_ref[t].set_cell_state_values(mask_ptr, N_this);
-        layer_states_ref[t].set_hidden_state_values(current_output_row, N_this);
-      }
-    }
-
-    double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy(output_row_seq_ptr + (num_time_steps * N_this) - N_this, output_row_seq_ptr + (num_time_steps * N_this), dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), output_row_seq_ptr, output_row_seq_buf.size());
   }
 }
 
@@ -687,10 +583,15 @@ void FFOutputLayer::calculate_error_deltas(
     const auto activation_method = output_layer_detail.get_activation().get_method();
     const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
     const auto& bounds = layer_bounds(layer_number);
-    const auto& head_context = per_head_step_context[layer_number];
-    const StepGradientContext* step_context = (b < head_context.size() && gated_step_index < head_context[b].size())
-      ? &head_context[b][gated_step_index]
-      : nullptr;
+    const StepGradientContext* step_context = nullptr;
+    if (_has_sharpe_sortino_heads && layer_number < per_head_step_context.size())
+    {
+      const auto& head_context = per_head_step_context[layer_number];
+      if (b < head_context.size() && gated_step_index < head_context[b].size())
+      {
+        step_context = &head_context[b][gated_step_index];
+      }
+    }
     Layer::calculate_error_deltas(deltas, target_outputs, given_outputs, error_calculation_type, evaluation_config, activation_method, bounds.start, bounds.end, step_context);
     ++layer_number;
   }
@@ -730,38 +631,40 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
 
     // Unroll sequences: treat each time step of each batch item as an independent sample for metrics.
     // This ensures that ErrorCalculation (which works on samples) correctly handles Softmax max-indices, etc.
+    const size_t est_steps = (total_outputs > 0 && !predictions.empty()) ? (predictions[0].size() / total_outputs) : 1;
+    const size_t est_samples = batch_size * (est_steps > 0 ? est_steps : 1);
     std::vector<std::vector<double>> unrolled_predictions;
     std::vector<std::vector<double>> unrolled_checking_outputs;
-    unrolled_predictions.reserve(batch_size);
-    unrolled_checking_outputs.reserve(batch_size);
+    unrolled_predictions.reserve(est_samples);
+    unrolled_checking_outputs.reserve(est_samples);
 
-      for (size_t b = 0; b < batch_size; ++b)
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const size_t p_total = predictions[b].size();
+      const size_t c_total = checking_outputs[b].size();
+
+      if (total_outputs == 0)
       {
-        const size_t p_total = predictions[b].size();
-        const size_t c_total = checking_outputs[b].size();
-
-        if (total_outputs == 0)
-        {
-          continue;
-        }
-
-        const size_t p_steps = p_total / total_outputs;
-        const size_t c_steps = c_total / total_outputs;
-        const size_t num_steps = std::min(p_steps, c_steps);
-
-        // Align at the end. For example, if c_steps=1 and p_steps=10, we take the last prediction step.
-        const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
-        const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
-
-        for (size_t t = 0; t < num_steps; ++t)
-        {
-          const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
-          const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
-
-          unrolled_predictions.emplace_back(p_start, p_start + num_neurons);
-          unrolled_checking_outputs.emplace_back(c_start, c_start + num_neurons);
-        }
+        continue;
       }
+
+      const size_t p_steps = p_total / total_outputs;
+      const size_t c_steps = c_total / total_outputs;
+      const size_t num_steps = std::min(p_steps, c_steps);
+
+      // Align at the end. For example, if c_steps=1 and p_steps=10, we take the last prediction step.
+      const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+      const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
+
+      for (size_t t = 0; t < num_steps; ++t)
+      {
+        const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+        const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+
+        unrolled_predictions.emplace_back(p_start, p_start + num_neurons);
+        unrolled_checking_outputs.emplace_back(c_start, c_start + num_neurons);
+      }
+    }
 
     for (const auto& error_type : error_types)
     {
@@ -812,8 +715,16 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
   }
 
   // Clear gradients
-  std::fill(_w_grads.begin(), _w_grads.end(), 0.0);
-  std::fill(_b_grads.begin(), _b_grads.end(), 0.0);
+  if (!_w_grads.empty())
+  {
+    std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
+  }
+  if (has_bias() && !_b_grads.empty())
+  {
+    std::memset(_b_grads.data(), 0, _b_grads.size() * sizeof(double));
+  }
+
+  cache_recurrent_weights();
 }
 
 } // namespace myoddweb::nn

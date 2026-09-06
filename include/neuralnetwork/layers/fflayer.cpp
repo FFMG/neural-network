@@ -247,14 +247,16 @@ void FFLayer::calculate_forward_feed(
   const double* in_buf_ptr = nullptr;
 
   const bool can_bypass_input = (batch_size == 1) &&
-    (!batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).empty()) &&
-    (batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).size() == num_time_steps * N_prev);
+    ((!batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).empty() &&
+      batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).size() == num_time_steps * N_prev) ||
+     (num_time_steps == 1 && batch_gradients_and_outputs[0].get_outputs(prev_layer_index).size() == N_prev));
 
   TempBuffer<double, 0> batch_inputs_buffer(can_bypass_input ? 0 : effective_batch_size * N_prev);
 
   if (can_bypass_input)
   {
-    in_buf_ptr = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index).data();
+    const auto& rnn_in = batch_gradients_and_outputs[0].get_rnn_outputs(prev_layer_index);
+    in_buf_ptr = !rnn_in.empty() ? rnn_in.data() : batch_gradients_and_outputs[0].get_outputs(prev_layer_index).data();
   }
   else
   {
@@ -570,16 +572,26 @@ void FFLayer::calculate_hidden_gradients(
   const double* next_grads_ptr = nullptr;
 
   const bool can_bypass_next_grads = (batch_size == 1) &&
-    ((use_direct_gradients && batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).size() == num_time_steps * N_next) ||
+    ((use_direct_gradients && (batch_gradients_and_outputs[0].has_rnn_gradients(next_layer.get_layer_index())
+        ? batch_gradients_and_outputs[0].get_rnn_gradients(next_layer.get_layer_index()).size() == num_time_steps * N_next
+        : batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).size() == num_time_steps * N_next)) ||
      (!use_direct_gradients && !batch_next_grad_matrix.empty() && batch_next_grad_matrix[0].size() == num_time_steps * N_next));
 
   TempBuffer<double, 4> flattened_next_grads_buffer(can_bypass_next_grads ? 0 : batch_size * num_time_steps * N_next);
 
   if (can_bypass_next_grads)
   {
-    next_grads_ptr = use_direct_gradients
-      ? batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).data()
-      : batch_next_grad_matrix[0].data();
+    if (use_direct_gradients)
+    {
+      const auto& rnn_g = batch_gradients_and_outputs[0].get_rnn_gradients(next_layer.get_layer_index());
+      next_grads_ptr = !rnn_g.empty()
+        ? rnn_g.data()
+        : batch_gradients_and_outputs[0].get_gradients(next_layer.get_layer_index()).data();
+    }
+    else
+    {
+      next_grads_ptr = batch_next_grad_matrix[0].data();
+    }
   }
   else
   {
@@ -589,7 +601,15 @@ void FFLayer::calculate_hidden_gradients(
       std::span<const double> next_grads;
       if (use_direct_gradients)
       {
-        next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+        const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(next_layer.get_layer_index());
+        if (!rnn_g.empty())
+        {
+          next_grads = rnn_g;
+        }
+        else
+        {
+          next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer.get_layer_index());
+        }
       }
       else
       {
@@ -966,6 +986,7 @@ void FFLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing
   const auto& other = static_cast<const FFLayer&>(snapshot);
   swa_average_into(_w_values, other._w_values, existing_swa_count);
   swa_average_into(_b_values, other._b_values, existing_swa_count);
+  cache_recurrent_weights();
 }
 
 void FFLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
@@ -1058,8 +1079,12 @@ void FFLayer::run_post_gemm_backward(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
+  const size_t initial_time_steps = (start < batch_hidden_states.size() && !batch_hidden_states[start].at(get_layer_index()).empty())
+    ? batch_hidden_states[start].at(get_layer_index()).size()
+    : 1;
+
   TempBuffer<double, 6> deriv_buf(N_this);
-  TempBuffer<double, 7> rnn_grads_row(0);
+  TempBuffer<double, 7> rnn_grads_row(initial_time_steps * N_this);
 
   const bool has_dropout = (get_dropout() > 0.0);
 
@@ -1087,32 +1112,56 @@ void FFLayer::run_post_gemm_backward(
 
       for (const auto& r : _layer_activation_helper.ranges())
       {
-        r.activation_method.activate_derivative(
-          pre_act + r.start,
-          pre_act + r.end,
-          y_vals ? (y_vals + r.start) : nullptr,
-          deriv_buf.data() + r.start
-        );
+        const size_t range_size = r.end - r.start;
+        double* out_grad_dest = rnn_grads_ptr + t * N_this + r.start;
+        const double* g_src = g_this_row + r.start;
 
-        if (has_dropout)
+        if (r.activation_method.get_method() == activation::method::linear)
         {
-          const double* mask_vals = current_hidden_state.get_cell_state_values().data();
-          simd::mul_three_vectors(
-            g_this_row + r.start,
-            deriv_buf.data() + r.start,
-            mask_vals + r.start,
-            rnn_grads_ptr + t * N_this + r.start,
-            r.end - r.start
-          );
+          if (has_dropout)
+          {
+            const double* mask_vals = current_hidden_state.get_cell_state_values().data();
+            simd::mul_vectors(
+              g_src,
+              mask_vals + r.start,
+              out_grad_dest,
+              range_size
+            );
+          }
+          else
+          {
+            std::copy_n(g_src, range_size, out_grad_dest);
+          }
         }
         else
         {
-          simd::mul_vectors(
-            g_this_row + r.start,
-            deriv_buf.data() + r.start,
-            rnn_grads_ptr + t * N_this + r.start,
-            r.end - r.start
+          r.activation_method.activate_derivative(
+            pre_act + r.start,
+            pre_act + r.end,
+            y_vals ? (y_vals + r.start) : nullptr,
+            deriv_buf.data() + r.start
           );
+
+          if (has_dropout)
+          {
+            const double* mask_vals = current_hidden_state.get_cell_state_values().data();
+            simd::mul_three_vectors(
+              g_src,
+              deriv_buf.data() + r.start,
+              mask_vals + r.start,
+              out_grad_dest,
+              range_size
+            );
+          }
+          else
+          {
+            simd::mul_vectors(
+              g_src,
+              deriv_buf.data() + r.start,
+              out_grad_dest,
+              range_size
+            );
+          }
         }
       }
     }
@@ -1140,20 +1189,48 @@ void FFLayer::calculate_and_store_gradients_chunk(
     return;
   }
 
-  const bool is_rnn_in = !batch_gradients_and_outputs[start].get_rnn_outputs(prev_layer_index).empty();
-  const bool is_rnn_grad = batch_gradients_and_outputs[start].has_rnn_gradients(this_layer_index);
+  struct batch_item_info
+  {
+    const double* x_base;
+    const double* g_base;
+    size_t x_stride;
+    size_t g_stride;
+  };
+
+  const size_t chunk_size = end - start;
+  std::vector<batch_item_info> batch_items(chunk_size);
+  for (size_t b = start; b < end; ++b)
+  {
+    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+    const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
+    const bool item_rnn_in = !rnn_in.empty();
+    const double* x_ptr = item_rnn_in ? rnn_in.data() : std_in.data();
+
+    const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
+    const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
+    const bool item_rnn_grad = batch_gradients_and_outputs[b].has_rnn_gradients(this_layer_index);
+    const double* g_ptr = item_rnn_grad ? rnn_grad.data() : std_grad.data();
+
+    batch_items[b - start] = {
+      x_ptr,
+      g_ptr,
+      item_rnn_in ? num_inputs : 0,
+      item_rnn_grad ? num_outputs : 0
+    };
+  }
+
+  const batch_item_info* const items_ptr = batch_items.data();
 
   if (has_bias() && !local_b_grads.empty())
   {
-    for (size_t b = start; b < end; ++b)
+    double* b_grad_data = local_b_grads.data();
+    for (size_t k = 0; k < chunk_size; ++k)
     {
-      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+      const auto& item = items_ptr[k];
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
-        simd::add_vectors(g_t, local_b_grads.data(), num_outputs);
+        const double* g_t = item.g_base + t * item.g_stride;
+        simd::add_vectors(g_t, b_grad_data, num_outputs);
       }
     }
   }
@@ -1167,20 +1244,18 @@ void FFLayer::calculate_and_store_gradients_chunk(
     double* w2 = &local_w_grads[(i + 2) * num_outputs];
     double* w3 = &local_w_grads[(i + 3) * num_outputs];
 
-    for (size_t b = start; b < end; ++b)
+    for (size_t k = 0; k < chunk_size; ++k)
     {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
-
-      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+      const auto& item = items_ptr[k];
+      const double* x_ptr = item.x_base;
+      const double* g_ptr = item.g_base;
+      const size_t x_stride = item.x_stride;
+      const size_t g_stride = item.g_stride;
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
-        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double* x_t = x_ptr + t * x_stride;
+        const double* g_t = g_ptr + t * g_stride;
         const double x0 = x_t[i];
         const double x1 = x_t[i + 1];
         const double x2 = x_t[i + 2];
@@ -1195,20 +1270,18 @@ void FFLayer::calculate_and_store_gradients_chunk(
     double* w0 = &local_w_grads[i * num_outputs];
     double* w1 = &local_w_grads[(i + 1) * num_outputs];
 
-    for (size_t b = start; b < end; ++b)
+    for (size_t k = 0; k < chunk_size; ++k)
     {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
-
-      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+      const auto& item = items_ptr[k];
+      const double* x_ptr = item.x_base;
+      const double* g_ptr = item.g_base;
+      const size_t x_stride = item.x_stride;
+      const size_t g_stride = item.g_stride;
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
-        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double* x_t = x_ptr + t * x_stride;
+        const double* g_t = g_ptr + t * g_stride;
         const double x0 = x_t[i];
         const double x1 = x_t[i + 1];
         simd::mul_add_two_scalars(x0, x1, g_t, w0, w1, num_outputs);
@@ -1219,20 +1292,18 @@ void FFLayer::calculate_and_store_gradients_chunk(
   for (; i < num_inputs; ++i)
   {
     double* w_grad_row = &local_w_grads[i * num_outputs];
-    for (size_t b = start; b < end; ++b)
+    for (size_t k = 0; k < chunk_size; ++k)
     {
-      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-      const auto& std_in = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-      const double* x_base = is_rnn_in ? rnn_in.data() : std_in.data();
-
-      const auto& rnn_grad = batch_gradients_and_outputs[b].get_rnn_gradients(this_layer_index);
-      const auto& std_grad = batch_gradients_and_outputs[b].get_gradients(this_layer_index);
-      const double* g_base = is_rnn_grad ? rnn_grad.data() : std_grad.data();
+      const auto& item = items_ptr[k];
+      const double* x_ptr = item.x_base;
+      const double* g_ptr = item.g_base;
+      const size_t x_stride = item.x_stride;
+      const size_t g_stride = item.g_stride;
 
       for (size_t t = 0; t < num_time_steps; ++t)
       {
-        const double* x_t = is_rnn_in ? &x_base[t * num_inputs] : x_base;
-        const double* g_t = is_rnn_grad ? &g_base[t * num_outputs] : g_base;
+        const double* x_t = x_ptr + t * x_stride;
+        const double* g_t = g_ptr + t * g_stride;
         const double x_val = x_t[i];
         simd::mul_add(x_val, g_t, w_grad_row, num_outputs);
       }

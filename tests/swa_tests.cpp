@@ -47,6 +47,40 @@ TEST(SwaTests, LayerRunningMeanMatchesDirectArithmeticMean)
   }
 }
 
+TEST(SwaTests, LayerRunningMeanRefreshesTransposedWeightsCache)
+{
+  FFLayer running(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  FFLayer snapshot(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  running.set_w_values({ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 });
+  snapshot.set_w_values({ 7.0, 8.0, 9.0, 10.0, 11.0, 12.0 });
+
+  running.accumulate_swa_average(snapshot, 1);
+
+  // Averaged W = (running + snapshot) / 2, laid out [2 x 3]:
+  // row0: 4, 5, 6
+  // row1: 7, 8, 9
+  const auto& w = running.get_w_values();
+  const std::vector<double> expected_w = { 4.0, 5.0, 6.0, 7.0, 8.0, 9.0 };
+  ASSERT_EQ(w.size(), expected_w.size());
+  for (size_t i = 0; i < w.size(); ++i)
+  {
+    EXPECT_NEAR(w[i], expected_w[i], 1e-9);
+  }
+
+  // W_T must reflect the newly averaged weights, not the stale pre-average
+  // transpose cached before accumulate_swa_average was called. W_T is [3 x 2]:
+  // row0: 4, 7 ; row1: 5, 8 ; row2: 6, 9
+  const auto& w_t = running.get_w_values_T();
+  ASSERT_EQ(w_t.size(), expected_w.size());
+  EXPECT_NEAR(w_t[0], 4.0, 1e-9);
+  EXPECT_NEAR(w_t[1], 7.0, 1e-9);
+  EXPECT_NEAR(w_t[2], 5.0, 1e-9);
+  EXPECT_NEAR(w_t[3], 8.0, 1e-9);
+  EXPECT_NEAR(w_t[4], 6.0, 1e-9);
+  EXPECT_NEAR(w_t[5], 9.0, 1e-9);
+}
+
 TEST(SwaTests, MockLayerAccumulateSwaAverageIsNoOp)
 {
   // MockLayer (an Input-role layer with no trainable weights) must accept

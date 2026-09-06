@@ -1030,3 +1030,147 @@ TEST_F(FFLayerTest, SingleSampleContiguousBypassVerification)
   }
 }
 
+TEST_F(FFLayerTest, RecurrentSequenceGradientBPTT)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 3;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 }); // Identity weights
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  next_layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+
+  // Set distinct gradients for each of the 3 time steps
+  std::vector<double> rnn_grads_next = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+  batch_go[0].set_rnn_gradients(2, rnn_grads_next.data(), rnn_grads_next.size());
+  // The single-step gradient contains only the last time step
+  batch_go[0].set_gradients(2, { 5.0, 6.0 });
+
+  // Set identity pre-activation sums
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    batch_hs[0].at(1)[t].set_pre_activation_sums({ 0.0, 0.0 });
+    batch_hs[0].at(1)[t].set_hidden_state_values({ 0.0, 0.0 });
+  }
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, {}, batch_hs, 1, 0);
+
+  const auto& layer_rnn_grads = batch_go[0].get_rnn_gradients(1);
+  ASSERT_EQ(layer_rnn_grads.size(), num_time_steps * num_outputs);
+
+  // Each time step's gradient must match its respective next_layer rnn_gradient, NOT the broadcast last step
+  EXPECT_NEAR(layer_rnn_grads[0], 1.0, 1e-9);
+  EXPECT_NEAR(layer_rnn_grads[1], 2.0, 1e-9);
+  EXPECT_NEAR(layer_rnn_grads[2], 3.0, 1e-9);
+  EXPECT_NEAR(layer_rnn_grads[3], 4.0, 1e-9);
+  EXPECT_NEAR(layer_rnn_grads[4], 5.0, 1e-9);
+  EXPECT_NEAR(layer_rnn_grads[5], 6.0, 1e-9);
+}
+
+TEST_F(FFLayerTest, WeightGradientsMultiTimestepAccumulation)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 0.0, 0.0, 0.0, 0.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+
+  // Input sequence: t=0: [1.0, 2.0], t=1: [3.0, 4.0]
+  std::vector<double> rnn_inputs = { 1.0, 2.0, 3.0, 4.0 };
+  batch_go[0].set_rnn_outputs(0, rnn_inputs.data(), rnn_inputs.size());
+
+  // Gradient sequence: t=0: [0.1, 0.2], t=1: [0.3, 0.4]
+  std::vector<double> rnn_grads = { 0.1, 0.2, 0.3, 0.4 };
+  batch_go[0].set_rnn_gradients(1, rnn_grads.data(), rnn_grads.size());
+  batch_go[0].set_gradients(1, { 0.3, 0.4 });
+
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
+
+  // Expected weight grads = sum_t (x_t^T * g_t):
+  // t=0: [1*0.1, 1*0.2; 2*0.1, 2*0.2] = [0.1, 0.2; 0.2, 0.4]
+  // t=1: [3*0.3, 3*0.4; 4*0.3, 4*0.4] = [0.9, 1.2; 1.2, 1.6]
+  // sum: [1.0, 1.4; 1.4, 2.0]
+  // Inv batch = 1.0 / 1 = 1.0
+  const auto& w_grads = layer.get_w_grads();
+  EXPECT_NEAR(w_grads[0], 1.0, 1e-9);
+  EXPECT_NEAR(w_grads[1], 1.4, 1e-9);
+  EXPECT_NEAR(w_grads[2], 1.4, 1e-9);
+  EXPECT_NEAR(w_grads[3], 2.0, 1e-9);
+
+  // Expected bias grads = sum_t g_t:
+  // [0.1 + 0.3, 0.2 + 0.4] = [0.4, 0.6]
+  const auto& b_grads = layer.get_b_grads();
+  EXPECT_NEAR(b_grads[0], 0.4, 1e-9);
+  EXPECT_NEAR(b_grads[1], 0.6, 1e-9);
+}
+
+TEST_F(FFLayerTest, RecurrentSequenceGradientBPTT_GeneralLoopMultiBatch)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 }); // Identity weights
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  next_layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  // Distinct per-timestep gradients for each of the two batch items.
+  std::vector<double> rnn_grads_next_b0 = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+  std::vector<double> rnn_grads_next_b1 = { 10.0, 20.0, 30.0, 40.0, 50.0, 60.0 };
+  batch_go[0].set_rnn_gradients(2, rnn_grads_next_b0.data(), rnn_grads_next_b0.size());
+  batch_go[1].set_rnn_gradients(2, rnn_grads_next_b1.data(), rnn_grads_next_b1.size());
+  // The single-step gradient only carries the final time step, matching what
+  // production code stores alongside the rnn sequence.
+  batch_go[0].set_gradients(2, { 5.0, 6.0 });
+  batch_go[1].set_gradients(2, { 50.0, 60.0 });
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      batch_hs[b].at(1)[t].set_pre_activation_sums({ 0.0, 0.0 });
+      batch_hs[b].at(1)[t].set_hidden_state_values({ 0.0, 0.0 });
+    }
+  }
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, {}, batch_hs, batch_size, 0);
+
+  const auto& grads_b0 = batch_go[0].get_rnn_gradients(1);
+  const auto& grads_b1 = batch_go[1].get_rnn_gradients(1);
+  ASSERT_EQ(grads_b0.size(), num_time_steps * num_outputs);
+  ASSERT_EQ(grads_b1.size(), num_time_steps * num_outputs);
+
+  // Each batch item's own per-timestep gradient sequence must flow through
+  // untouched, not the broadcast final-step gradient and not the other
+  // batch item's sequence.
+  for (size_t k = 0; k < rnn_grads_next_b0.size(); ++k)
+  {
+    EXPECT_NEAR(grads_b0[k], rnn_grads_next_b0[k], 1e-9) << "batch 0 index " << k;
+    EXPECT_NEAR(grads_b1[k], rnn_grads_next_b1[k], 1e-9) << "batch 1 index " << k;
+  }
+}
+

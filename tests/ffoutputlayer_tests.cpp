@@ -643,3 +643,218 @@ TEST_F(FFOutputLayerTest, StateAndMemoryAllocationOptimizationVerification) {
     EXPECT_NEAR(outputs_0[4], 0.05, 1e-9); // relu(0.0 * 0.1 + 0.0 * 0.3 + 0.05) = 0.05
     EXPECT_NEAR(outputs_0[5], 0.15, 1e-9); // relu(0.0 * 0.2 + 0.0 * 0.4 + 0.15) = 0.15
 }
+
+TEST_F(FFOutputLayerTest, TransposedWeightsCacheUpdateOnApplyGradients)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 3;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, false, std::nullopt);
+    layer.set_w_values({ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 });
+
+    const auto& w_t_initial = layer.get_w_values_T();
+    ASSERT_EQ(w_t_initial.size(), 6);
+    // W is [2 x 3]:
+    // row 0: 1, 2, 3
+    // row 1: 4, 5, 6
+    // W_T is [3 x 2]:
+    // row 0: 1, 4
+    // row 1: 2, 5
+    // row 2: 3, 6
+    EXPECT_NEAR(w_t_initial[0], 1.0, 1e-9);
+    EXPECT_NEAR(w_t_initial[1], 4.0, 1e-9);
+    EXPECT_NEAR(w_t_initial[2], 2.0, 1e-9);
+    EXPECT_NEAR(w_t_initial[3], 5.0, 1e-9);
+    EXPECT_NEAR(w_t_initial[4], 3.0, 1e-9);
+    EXPECT_NEAR(w_t_initial[5], 6.0, 1e-9);
+
+    // Apply gradient update
+    layer.set_w_grads({ 0.5, 0.5, 0.5, 0.5, 0.5, 0.5 });
+    layer.apply_stored_gradients(1.0, 1.0);
+
+    const auto& w_updated = layer.get_w_values();
+    EXPECT_NEAR(w_updated[0], 0.5, 1e-9);
+    EXPECT_NEAR(w_updated[1], 1.5, 1e-9);
+    EXPECT_NEAR(w_updated[2], 2.5, 1e-9);
+    EXPECT_NEAR(w_updated[3], 3.5, 1e-9);
+    EXPECT_NEAR(w_updated[4], 4.5, 1e-9);
+    EXPECT_NEAR(w_updated[5], 5.5, 1e-9);
+
+    const auto& w_t_updated = layer.get_w_values_T();
+    EXPECT_NEAR(w_t_updated[0], 0.5, 1e-9);
+    EXPECT_NEAR(w_t_updated[1], 3.5, 1e-9);
+    EXPECT_NEAR(w_t_updated[2], 1.5, 1e-9);
+    EXPECT_NEAR(w_t_updated[3], 4.5, 1e-9);
+    EXPECT_NEAR(w_t_updated[4], 2.5, 1e-9);
+    EXPECT_NEAR(w_t_updated[5], 5.5, 1e-9);
+}
+
+TEST_F(FFOutputLayerTest, DropoutMultiTimestepGradientFlow)
+{
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 50;
+    const size_t num_time_steps = 3;
+    const double dropout_rate = 0.5;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    std::vector<Neuron> neurons;
+    for (unsigned i = 0; i < num_outputs; ++i)
+    {
+        neurons.emplace_back(i, Neuron::Type::Dropout, dropout_rate, std::nullopt);
+    }
+
+    FFOutputLayer layer(
+        1, details, num_inputs, num_outputs, neurons,
+        std::vector<double>(num_inputs * num_outputs, 1.0),
+        std::vector<double>(num_inputs * num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_inputs * num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        std::vector<double>(num_outputs, 0.0),
+        {}, {}, {}, {}, std::vector<double>(num_outputs, 0.0),
+        1
+    );
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps);
+
+    std::vector<double> rnn_inputs(num_time_steps * num_inputs, 1.0);
+    batch_go[0].set_rnn_outputs(0, rnn_inputs.data(), rnn_inputs.size());
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+    std::vector<std::vector<double>> targets = { std::vector<double>(num_time_steps * num_outputs, 0.0) };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+
+    const auto& rnn_grads = batch_go[0].get_rnn_gradients(1);
+    ASSERT_EQ(rnn_grads.size(), num_time_steps * num_outputs);
+
+    const double tanh_val = std::tanh(1.0);
+    const double scale = 1.0 / (1.0 - dropout_rate);
+    const double expected_kept_grad = (scale * tanh_val / static_cast<double>(num_outputs)) * (1.0 - tanh_val * tanh_val) * scale;
+
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+        int kept_count = 0;
+        int dropped_count = 0;
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+            const double grad = rnn_grads[t * num_outputs + j];
+            if (grad == 0.0)
+            {
+                dropped_count++;
+            }
+            else
+            {
+                kept_count++;
+                EXPECT_NEAR(grad, expected_kept_grad, 1e-9);
+            }
+        }
+        EXPECT_GT(kept_count, 0);
+        EXPECT_GT(dropped_count, 0);
+        EXPECT_EQ(kept_count + dropped_count, static_cast<int>(num_outputs));
+    }
+}
+
+TEST_F(FFOutputLayerTest, MultithreadedForwardWithResidualConsolidationEquivalence)
+{
+    const unsigned num_inputs = 16;
+    const unsigned num_outputs = 64;
+    const unsigned batch_size = 200;
+    const unsigned num_time_steps = 8;
+    const unsigned num_threads = 4;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0)
+    };
+
+    FFOutputLayer layer_st(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    FFOutputLayer layer_mt(1, details, num_inputs, num_outputs, num_threads, true, std::nullopt);
+
+    std::vector<double> w_vals(num_inputs * num_outputs);
+    for (size_t i = 0; i < w_vals.size(); ++i)
+    {
+        w_vals[i] = std::sin(static_cast<double>(i + 1)) * 0.1;
+    }
+    std::vector<double> b_vals(num_outputs);
+    for (size_t i = 0; i < b_vals.size(); ++i)
+    {
+        b_vals[i] = std::cos(static_cast<double>(i + 1)) * 0.1;
+    }
+    layer_st.set_w_values(w_vals);
+    layer_st.set_b_values(b_vals);
+    layer_mt.set_w_values(w_vals);
+    layer_mt.set_b_values(b_vals);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+
+    auto batch_go_baseline = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_baseline = create_batch_hidden_states(topology, batch_size, num_time_steps);
+    auto batch_go_residual_st = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_residual_st = create_batch_hidden_states(topology, batch_size, num_time_steps);
+    auto batch_go_residual_mt = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs_residual_mt = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+    std::vector<std::vector<double>> residual_values(batch_size, std::vector<double>(num_outputs));
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        std::vector<double> in_seq(num_time_steps * num_inputs);
+        for (size_t k = 0; k < in_seq.size(); ++k)
+        {
+            in_seq[k] = std::sin(static_cast<double>(b * num_time_steps + k)) * 0.1;
+        }
+        batch_go_baseline[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+        batch_go_residual_st[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+        batch_go_residual_mt[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+            residual_values[b][j] = std::cos(static_cast<double>(b + j + 1)) * 0.5;
+        }
+    }
+
+    // effective_batch_size * N_prev * N_this and batch_size * num_time_steps *
+    // N_this are both comfortably over the GEMM / post-GEMM multithreading
+    // thresholds here, so layer_mt genuinely exercises the chunked dispatch.
+    layer_st.calculate_forward_feed(batch_go_baseline, prev_layer, {}, batch_hs_baseline, batch_size, false);
+    layer_st.calculate_forward_feed(batch_go_residual_st, prev_layer, residual_values, batch_hs_residual_st, batch_size, false);
+    layer_mt.calculate_forward_feed(batch_go_residual_mt, prev_layer, residual_values, batch_hs_residual_mt, batch_size, false);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        const auto& out_baseline = batch_go_baseline[b].get_rnn_outputs(1);
+        const auto& out_res_st = batch_go_residual_st[b].get_rnn_outputs(1);
+        const auto& out_res_mt = batch_go_residual_mt[b].get_rnn_outputs(1);
+        ASSERT_EQ(out_baseline.size(), static_cast<size_t>(num_time_steps) * num_outputs);
+        ASSERT_EQ(out_res_st.size(), out_baseline.size());
+        ASSERT_EQ(out_res_mt.size(), out_baseline.size());
+
+        for (size_t k = 0; k < out_res_st.size(); ++k)
+        {
+            EXPECT_NEAR(out_res_st[k], out_res_mt[k], 1e-12) << "batch " << b << " index " << k;
+        }
+
+        for (size_t t = 0; t + 1 < num_time_steps; ++t)
+        {
+            for (size_t j = 0; j < num_outputs; ++j)
+            {
+                EXPECT_NEAR(out_res_st[t * num_outputs + j], out_baseline[t * num_outputs + j], 1e-12)
+                    << "batch " << b << " t " << t << " j " << j;
+            }
+        }
+        for (size_t j = 0; j < num_outputs; ++j)
+        {
+            const size_t last = (static_cast<size_t>(num_time_steps) - 1) * num_outputs + j;
+            EXPECT_NEAR(out_res_st[last], out_baseline[last] + residual_values[b][j], 1e-9)
+                << "batch " << b << " j " << j;
+        }
+    }
+}

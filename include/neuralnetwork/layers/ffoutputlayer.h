@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../helpers/errorcalculation.h"
 #include "fflayer.h"
 #include "outputlayer.h"
@@ -64,14 +64,6 @@ public:
     size_t batch_size,
     int bptt_max_ticks) const override;
 
-  void calculate_forward_feed(
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer& previous_layer,
-    const std::vector<std::vector<double>>& batch_residual_output_values,
-    std::vector<HiddenStates>& batch_hidden_states,
-    size_t batch_size,
-    bool is_training) const override;
-
   Layer* clone() const override;
 
   [[nodiscard]] std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_output_metrics(
@@ -84,19 +76,12 @@ public:
 
   [[nodiscard]] double get_momentum(unsigned neuron_number) const noexcept override;
 
-protected:
-  void run_post_gemm(
-    size_t start,
-    size_t end,
-    size_t num_time_steps,
-    size_t N_this,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<std::vector<double>>& batch_residual_output_values,
-    std::vector<HiddenStates>& batch_hidden_states,
-    const std::vector<double>& batch_inputs_buffer,
-    std::vector<double>& batch_pre_activation_sums_buffer,
-    bool is_training) const override;
+  [[nodiscard]] inline bool has_sharpe_sortino_heads() const noexcept
+  {
+    return _has_sharpe_sortino_heads;
+  }
 
+protected:
   [[nodiscard]] static std::vector<double> create_weight_decays(
     unsigned num_inputs,
     unsigned num_neurons_in_this_layer,
@@ -105,6 +90,9 @@ protected:
   [[nodiscard]] static layer_activation_helper create_layer_activation_helper(unsigned num_inputs,
     unsigned num_neurons_in_this_layer,
     const std::vector<OutputLayerDetails>& output_layer_details);
+
+  [[nodiscard]] static bool check_has_sharpe_sortino_heads(
+    const std::vector<OutputLayerDetails>& output_layer_details) noexcept;
 
 private:
   // Builds, for every sharpe_ratio_loss/sortino_ratio_loss output head, the exact per gated
@@ -131,5 +119,7 @@ private:
     const PerHeadStepContexts& per_head_step_context,
     size_t b,
     size_t gated_step_index) const;
+
+  bool _has_sharpe_sortino_heads = false;
 };
 } // namespace myoddweb::nn
