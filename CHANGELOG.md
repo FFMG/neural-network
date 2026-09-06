@@ -11,6 +11,9 @@ All notable changes to the `neural-network` library will be documented in this f
   - Replaced shared thread-0 `workspace.deltas_buf` allocation in `LSTMLayer::calculate_output_gradients` with stack-scoped `TempBuffer<double, 15> deltas_buf(0)`, avoiding workspace pollution and improving cache locality.
 
 ### Fixed
+- Fixed index selection in `NeuralNetwork::calculate_forecast_metrics_all_layers_impl` at final training checkpoint:
+  - At the final training checkpoint, the helper passed to `progress_callback` was not yet pushed to `_neural_network_helpers`, causing `_neural_network_helpers.back()` to resolve to the penultimate epoch and evaluate against `checking_indexes()` instead of `final_check_indexes()`.
+  - Resolved by passing the calling `NeuralNetworkHelper` directly via `NeuralNetwork::calculate_forecast_metrics_all_layers_for_helper`.
 - Fixed uninitialised / stale memory leak in `LSTMLayer::calculate_bptt_batch_chunk` under truncated BPTT (`bptt_max_ticks > 0`):
   - When truncated BPTT is configured, the BPTT loop stops at `t_end > 0`, leaving timesteps $[0, t\_end - 1]$ in `workspace.dx_matrix` and `workspace.rnn_grad_matrix` unpopulated. Upstream layers copying sequence gradients then received uninitialised memory or stale gradients from prior iterations.
   - Added explicit zeroing of `dx_matrix` and `rnn_grad_matrix` for the truncated range $[0, t\_end)$ whenever `t_end > 0`.
@@ -18,6 +21,8 @@ All notable changes to the `neural-network` library will be documented in this f
   - Output dropout is applied strictly to hidden output $h_t = m_t \odot (o_t \odot \tanh(c_t))$. Candidate and cell state activations are cached without dropout scaling, and incoming gradients are scaled by the dropout mask $m_t$ via `simd::lstm_bptt_upstream_step`, ensuring analytical derivatives and gate gradients are not corrupted by inverted dropout scales.
 
 ### Added
+- Added unit tests in `tests/neuralnetworkhelper_tests.cpp`:
+  - `NeuralNetworkHelperTest.InCallbackForecastMetricsAtFinalCheckpointUsesFinalCheckIndexes`: Verifies that evaluating forecast metrics directly inside `progress_callback` at the final epoch uses `final_check_indexes` rather than falling back to `checking_indexes`.
 - Added unit tests in `tests/lstmlayer_tests.cpp`:
   - `LSTMLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end - 1]$ are strictly zeroed when `bptt_max_ticks > 0`.
   - `LSTMLayerTest.IdentityProxyBypassEquivalence`: Verifies that `calculate_hidden_gradients_from_output_gradients` via `_identity_proxy` bypass matches direct identity GEMM backpropagation.

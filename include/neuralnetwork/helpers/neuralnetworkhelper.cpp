@@ -43,7 +43,7 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetworkHelper::calculate_forecast_
 std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetworkHelper::calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, std::optional<bool> force_checking_indexes) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
-  return _neural_network->calculate_forecast_metrics_all_layers(error_types, in_sample, force_checking_indexes);
+  return _neural_network->calculate_forecast_metrics_all_layers_for_helper(error_types, in_sample, force_checking_indexes, *this);
 }
 
 } // namespace myoddweb::nn

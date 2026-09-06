@@ -460,3 +460,46 @@ TEST_F(NeuralNetworkHelperTest, OptionsForceCheckingIndexesConfiguredTrueDefault
   ASSERT_TRUE(metrics_override[0][0].denominator().has_value());
   EXPECT_EQ(metrics_override[0][0].denominator().value(), capturer.final_size);
 }
+
+struct in_callback_metrics_evaluator
+{
+  std::optional<size_t> final_callback_metric_denominator;
+  size_t expected_final_check_size = 0;
+
+  bool operator()(NeuralNetworkHelper& helper)
+  {
+    if (helper.epoch() >= helper.number_of_epoch() && helper.number_of_epoch() > 0)
+    {
+      expected_final_check_size = helper.final_check_indexes().size();
+      auto metrics = helper.calculate_forecast_metrics({ ErrorCalculation::type::prediction_coverage }, false, false);
+      if (!metrics.empty() && !metrics[0].empty() && metrics[0][0].denominator().has_value())
+      {
+        final_callback_metric_denominator = metrics[0][0].denominator().value();
+      }
+    }
+    return true;
+  }
+};
+
+TEST_F(NeuralNetworkHelperTest, InCallbackForecastMetricsAtFinalCheckpointUsesFinalCheckIndexes)
+{
+  in_callback_metrics_evaluator evaluator;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.001)
+    .with_number_of_epoch(2)
+    .with_data_is_unique(false)
+    .with_shuffle_training_data(true)
+    .with_progress_callback(std::ref(evaluator))
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs(100, { 1.0, 2.0 });
+  std::vector<std::vector<double>> outputs(100, { 0.5 });
+
+  nn.train(inputs, outputs);
+
+  ASSERT_TRUE(evaluator.final_callback_metric_denominator.has_value());
+  EXPECT_GT(evaluator.expected_final_check_size, 0);
+  EXPECT_EQ(evaluator.final_callback_metric_denominator.value(), evaluator.expected_final_check_size);
+}
+

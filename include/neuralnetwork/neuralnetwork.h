@@ -113,7 +113,10 @@ private:
   double calculate_learning_rate_warmup(int epoch, double completed_percent) const;
 
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const;
-  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, std::optional<bool> force_checking_indexes = std::nullopt) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, std::optional<bool> force_checking_indexes = std::nullopt, const NeuralNetworkHelper* helper_override = nullptr) const;
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers_for_helper(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, std::optional<bool> force_checking_indexes, const NeuralNetworkHelper& helper) const;
+
+  friend class NeuralNetworkHelper;
 
   std::shared_ptr<NeuralNetworkHelper> create_initial_neural_network_helper(int number_of_epoch, const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs) const;
 

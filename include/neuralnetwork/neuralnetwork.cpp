@@ -449,6 +449,12 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
   return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr, force_checking_indexes);
 }
 
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_for_helper(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, std::optional<bool> force_checking_indexes, const NeuralNetworkHelper& helper) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return calculate_forecast_metrics_all_layers_impl(error_types, in_sample, nullptr, force_checking_indexes, &helper);
+}
+
 std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metrics_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -460,11 +466,13 @@ std::vector<NeuralNetworkHelperMetrics> NeuralNetwork::calculate_forecast_metric
   return {};
 }
 
-std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, std::optional<bool> force_checking_indexes) const
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_forecast_metrics_all_layers_impl(const std::vector<ErrorCalculation::type>& error_types, bool in_sample, const Layers* layers, std::optional<bool> force_checking_indexes, const NeuralNetworkHelper* helper_override) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 
-  std::shared_ptr<NeuralNetworkHelper> helper;
+  std::shared_ptr<NeuralNetworkHelper> owned_helper;
+  const NeuralNetworkHelper* helper = helper_override;
+  if (helper == nullptr || (helper->training_indexes().empty() && helper->checking_indexes().empty()))
   {
     std::shared_lock read(_mutex);
     if (_neural_network_helpers.empty())
@@ -495,7 +503,8 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
       }
       return errors;
     }
-    helper = _neural_network_helpers.back();
+    owned_helper = _neural_network_helpers.back();
+    helper = owned_helper.get();
   }
 
   const auto& training_inputs = helper->training_inputs();
