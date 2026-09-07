@@ -5,6 +5,8 @@
 #include "../common/simd_utils.h"
 #include "../common/tempbuffer.h"
 #include <numeric>
+#include <array>
+#include <cstring>
 
 
 namespace myoddweb::nn
@@ -725,6 +727,55 @@ void GRURNNLayer::initialize_layer_norm()
   _ln_h_bias_decays.assign(n, 0.0);
 }
 
+namespace
+{
+struct GruPreCalculateGatesTask
+{
+  const GRURNNLayer& layer;
+  size_t start;
+  size_t end;
+  size_t N_this;
+  size_t N_prev;
+  size_t num_time_steps;
+  const std::vector<double>& flattened_batch_inputs;
+  std::vector<double>& batch_pre_act;
+
+  void operator()() const
+  {
+    layer.pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs, batch_pre_act);
+  }
+};
+
+struct GruRunForwardPassTask
+{
+  const GRURNNLayer& layer;
+  size_t start;
+  size_t end;
+  size_t N_this;
+  size_t num_time_steps;
+  const std::vector<double>& batch_pre_act;
+  const std::vector<std::vector<double>>& batch_residual_output_values;
+  std::vector<double>& batch_output_sequences;
+  std::vector<HiddenStates>& batch_hidden_states;
+  bool is_training;
+
+  void operator()() const
+  {
+    layer.run_forward_pass(
+      start,
+      end,
+      N_this,
+      num_time_steps,
+      batch_pre_act,
+      batch_residual_output_values,
+      batch_output_sequences,
+      batch_hidden_states,
+      is_training
+    );
+  }
+};
+}
+
 void GRURNNLayer::calculate_forward_feed(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& previous_layer,
@@ -758,7 +809,7 @@ void GRURNNLayer::calculate_forward_feed(
         num_time_steps = t;
         flattened_batch_inputs.assign(batch_size * num_time_steps * N_prev, 0.0);
       }
-      std::copy(rnn_in.begin(), rnn_in.end(), flattened_batch_inputs.vec().begin() + b * num_time_steps * N_prev);
+      std::memcpy(flattened_batch_inputs.vec().data() + b * num_time_steps * N_prev, rnn_in.data(), rnn_in.size() * sizeof(double));
     }
     else
     {
@@ -772,7 +823,7 @@ void GRURNNLayer::calculate_forward_feed(
         }
         for (size_t t = 0; t < num_time_steps; ++t)
         {
-          std::copy(std_in.begin(), std_in.end(), flattened_batch_inputs.vec().begin() + (b * num_time_steps + t) * N_prev);
+          std::memcpy(flattened_batch_inputs.vec().data() + (b * num_time_steps + t) * N_prev, std_in.data(), N_prev * sizeof(double));
         }
       }
     }
@@ -807,10 +858,16 @@ void GRURNNLayer::calculate_forward_feed(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, N_this, N_prev, num_time_steps, &flattened_batch_inputs_ref, &batch_pre_act_ref, this]()
-          {
-            pre_calculate_gates(start, end, N_this, N_prev, num_time_steps, flattened_batch_inputs_ref, batch_pre_act_ref);
-          });
+        _task_queue_pool->enqueue(GruPreCalculateGatesTask{
+          *this,
+          start,
+          end,
+          N_this,
+          N_prev,
+          num_time_steps,
+          flattened_batch_inputs_ref,
+          batch_pre_act_ref
+        });
       }
       start = end;
     }
@@ -844,30 +901,18 @@ void GRURNNLayer::calculate_forward_feed(
       if (start < end)
       {
         auto& batch_output_sequences_ref = batch_output_sequences.vec();
-        _task_queue_pool->enqueue([
+        _task_queue_pool->enqueue(GruRunForwardPassTask{
+          *this,
           start, 
           end, 
           N_this,
-          &batch_pre_act_ref,
-          &batch_residual_output_values,
-          &batch_output_sequences_ref,
-          &batch_hidden_states,
-          is_training,
           num_time_steps,
-          this]()
-          {
-            run_forward_pass(
-              start, 
-              end, 
-              N_this,
-              num_time_steps,
-              batch_pre_act_ref,
-              batch_residual_output_values,
-              batch_output_sequences_ref,
-              batch_hidden_states,
-              is_training
-              );
-          });
+          batch_pre_act_ref,
+          batch_residual_output_values,
+          batch_output_sequences_ref,
+          batch_hidden_states,
+          is_training
+        });
       }
       start = end;
     }
@@ -882,7 +927,7 @@ void GRURNNLayer::calculate_forward_feed(
     
     const double* last_ptr = &batch_output_sequences.data()[(b * num_time_steps + num_time_steps - 1) * N_this];
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
-    std::copy(last_ptr, last_ptr + N_this, dest_ptr);
+    std::memcpy(dest_ptr, last_ptr, N_this * sizeof(double));
   }
 }
 
@@ -910,7 +955,7 @@ void GRURNNLayer::pre_calculate_gates(
       for (size_t step = step_start; step < step_end; ++step)
       {
         double* pre_t = &batch_pre_act[step * GateCount * N_this];
-        std::copy(_bias_cached.begin(), _bias_cached.end(), pre_t);
+        std::memcpy(pre_t, _bias_cached.data(), _bias_cached.size() * sizeof(double));
       }
     }
     else
@@ -918,15 +963,15 @@ void GRURNNLayer::pre_calculate_gates(
       for (size_t step = step_start; step < step_end; ++step)
       {
         double* pre_t = &batch_pre_act[step * GateCount * N_this];
-        std::copy(_z_b_values.begin(), _z_b_values.end(), pre_t);
-        std::copy(_r_b_values.begin(), _r_b_values.end(), pre_t + N_this);
-        std::copy(get_b_values().begin(), get_b_values().end(), pre_t + 2 * N_this);
+        std::memcpy(pre_t, _z_b_values.data(), N_this * sizeof(double));
+        std::memcpy(pre_t + N_this, _r_b_values.data(), N_this * sizeof(double));
+        std::memcpy(pre_t + 2 * N_this, get_b_values().data(), N_this * sizeof(double));
       }
     }
   }
   else
   {
-    std::fill(batch_pre_act.begin() + step_start * GateCount * N_this, batch_pre_act.begin() + step_end * GateCount * N_this, 0.0);
+    std::memset(batch_pre_act.data() + step_start * GateCount * N_this, 0, (step_end - step_start) * GateCount * N_this * sizeof(double));
   }
 
   size_t step = step_start;
@@ -1050,10 +1095,10 @@ void GRURNNLayer::run_forward_pass(
       const double* pre2 = &batch_pre_act[((b + 2) * num_time_steps + t) * GateCount * N_this];
       const double* pre3 = &batch_pre_act[((b + 3) * num_time_steps + t) * GateCount * N_this];
 
-      std::copy(pre0, pre0 + 3 * N_this, g0);
-      std::copy(pre1, pre1 + 3 * N_this, g1);
-      std::copy(pre2, pre2 + 3 * N_this, g2);
-      std::copy(pre3, pre3 + 3 * N_this, g3);
+      std::memcpy(g0, pre0, 3 * N_this * sizeof(double));
+      std::memcpy(g1, pre1, 3 * N_this * sizeof(double));
+      std::memcpy(g2, pre2, 3 * N_this * sizeof(double));
+      std::memcpy(g3, pre3, 3 * N_this * sizeof(double));
 
       double* z0 = g0;
       double* z1 = g1;
@@ -1106,8 +1151,8 @@ void GRURNNLayer::run_forward_pass(
 
       const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
       const double* pre1 = &batch_pre_act[((b + 1) * num_time_steps + t) * GateCount * N_this];
-      std::copy(pre0, pre0 + 3 * N_this, g0);
-      std::copy(pre1, pre1 + 3 * N_this, g1);
+      std::memcpy(g0, pre0, 3 * N_this * sizeof(double));
+      std::memcpy(g1, pre1, 3 * N_this * sizeof(double));
 
       double* z0 = g0;
       double* z1 = g1;
@@ -1140,7 +1185,7 @@ void GRURNNLayer::run_forward_pass(
       double* g0 = &group_packed.data()[0];
 
       const double* pre0 = &batch_pre_act[(b * num_time_steps + t) * GateCount * N_this];
-      std::copy(pre0, pre0 + 3 * N_this, g0);
+      std::memcpy(g0, pre0, 3 * N_this * sizeof(double));
 
       double* z0 = g0;
       double* r0 = g0 + N_this;
@@ -1184,7 +1229,7 @@ void GRURNNLayer::finalize_forward_step(
     simd::add_vectors(batch_residual_output_values[b].data(), h_hat_pre_ptr, N_this);
   }
 
-  std::copy(h_hat_pre_ptr, h_hat_pre_ptr + N_this, h_hat_activated_ptr);
+  std::memcpy(h_hat_activated_ptr, h_hat_pre_ptr, N_this * sizeof(double));
   get_activation().activate(h_hat_activated_ptr, h_hat_activated_ptr + N_this, is_training);
 
   if (is_training && get_dropout() > 0.0)
@@ -1248,7 +1293,7 @@ void GRURNNLayer::finalize_forward_step(
     double inv_std = 0.0;
     simd::layer_norm_forward(h_prev_slice, _ln_h_gain_values.data(), _ln_h_bias_values.data(), h_prev_slice, N_this, LayerNormEpsilon, inv_std);
     double* out_ptr = &batch_output_sequences.data()[(b * num_time_steps + t) * N_this];
-    std::copy(h_prev_slice, h_prev_slice + N_this, out_ptr);
+    std::memcpy(out_ptr, h_prev_slice, N_this * sizeof(double));
     item_packed[5 * N_this] = inv_std;
   }
 
@@ -1325,13 +1370,14 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const size_t N_prev = get_number_input_neurons();
   const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
   const int t_start = static_cast<int>(num_time_steps) - 1;
-  int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
+  const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
 
   workspace.resize(N_this, N_prev, end - start, num_time_steps);
 
   // Step 1: Pre-calculate upstream gradients from next layer
   const size_t N_next = next_layer.get_number_neurons();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
+  const bool is_identity = ((&next_layer == this) || (_identity_proxy != nullptr && &next_layer == _identity_proxy));
   const unsigned target_layer_idx = (use_direct_gradients && _identity_proxy != nullptr && &next_layer == _identity_proxy) ? (get_layer_index() + 1) : next_layer.get_layer_index();
 
   bool next_is_seq = false;
@@ -1361,6 +1407,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
   double* grad_next_all_ptr = workspace.grad_from_next_all_t.data();
   const double* next_w_data = next_layer.get_w_values().data();
+  const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
+  const double* W_next_T = (ff_next != nullptr && !ff_next->get_w_values_T().empty()) ? ff_next->get_w_values_T().data() : nullptr;
 
   for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
   {
@@ -1396,65 +1444,90 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       continue;
     }
 
-    if (next_is_seq && &next_layer != this)
+    double* dest_base = &grad_next_all_ptr[b_idx * num_time_steps * N_this];
+
+    if (next_is_seq)
     {
-      int t = t_start;
-      for (; t - 3 >= t_end; t -= 4)
+      if (is_identity)
       {
-        const double* g0 = &next_grad_matrix[t * N_next];
-        const double* g1 = &next_grad_matrix[(t - 1) * N_next];
-        const double* g2 = &next_grad_matrix[(t - 2) * N_next];
-        const double* g3 = &next_grad_matrix[(t - 3) * N_next];
-
-        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-        double* d1 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 1) * N_this];
-        double* d2 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 2) * N_this];
-        double* d3 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 3) * N_this];
-
-        simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+        std::memcpy(dest_base, next_grad_matrix, num_time_steps * N_this * sizeof(double));
       }
-      for (; t - 1 >= t_end; t -= 2)
+      else
       {
-        const double* g0 = &next_grad_matrix[t * N_next];
-        const double* g1 = &next_grad_matrix[(t - 1) * N_next];
+        int t = t_start;
+        for (; t - 3 >= t_end; t -= 4)
+        {
+          const double* g0 = &next_grad_matrix[t * N_next];
+          const double* g1 = &next_grad_matrix[(t - 1) * N_next];
+          const double* g2 = &next_grad_matrix[(t - 2) * N_next];
+          const double* g3 = &next_grad_matrix[(t - 3) * N_next];
 
-        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-        double* d1 = &grad_next_all_ptr[(b_idx * num_time_steps + t - 1) * N_this];
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+          double* d2 = &dest_base[(t - 2) * N_this];
+          double* d3 = &dest_base[(t - 3) * N_this];
 
-        simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
-      }
-      for (; t >= t_end; --t)
-      {
-        const double* g0 = &next_grad_matrix[t * N_next];
-        double* d0 = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
+          if (W_next_T != nullptr)
+          {
+            simd::gemm_four_batches(g0, g1, g2, g3, W_next_T, d0, d1, d2, d3, N_next, N_this);
+          }
+          else
+          {
+            simd::gemm_transposed_four_batches(g0, g1, g2, g3, next_w_data, d0, d1, d2, d3, N_this, N_next);
+          }
+        }
+        for (; t - 1 >= t_end; t -= 2)
+        {
+          const double* g0 = &next_grad_matrix[t * N_next];
+          const double* g1 = &next_grad_matrix[(t - 1) * N_next];
 
-        simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+          double* d0 = &dest_base[t * N_this];
+          double* d1 = &dest_base[(t - 1) * N_this];
+
+          if (W_next_T != nullptr)
+          {
+            simd::gemm_two_batches(g0, g1, W_next_T, d0, d1, N_next, N_this);
+          }
+          else
+          {
+            simd::gemm_transposed_two_batches(g0, g1, next_w_data, d0, d1, N_this, N_next);
+          }
+        }
+        for (; t >= t_end; --t)
+        {
+          const double* g0 = &next_grad_matrix[t * N_next];
+          double* d0 = &dest_base[t * N_this];
+
+          if (W_next_T != nullptr)
+          {
+            simd::gemm_one_batch(g0, W_next_T, d0, N_next, N_this);
+          }
+          else
+          {
+            simd::gemm_transposed_one_batch(g0, next_w_data, d0, N_this, N_next);
+          }
+        }
       }
     }
     else
     {
-      for (int t = t_start; t >= t_end; --t)
+      if (t_start >= t_end && next_grad_size == N_next)
       {
-        const double* next_grad_ptr = nullptr;
-        if (next_is_seq)
+        if (is_identity)
         {
-          next_grad_ptr = &next_grad_matrix[t * N_next];
+          std::memcpy(&dest_base[t_start * N_this], next_grad_matrix, N_this * sizeof(double));
         }
-        else if (t == t_start && next_grad_size == N_next)
+        else
         {
-          next_grad_ptr = next_grad_matrix;
-        }
-
-        if (next_grad_ptr != nullptr)
-        {
-          double* dest_ptr = &grad_next_all_ptr[(b_idx * num_time_steps + t) * N_this];
-          if (&next_layer == this)
+          const double* g_next_t = next_grad_matrix;
+          double* dest_t = &dest_base[t_start * N_this];
+          if (W_next_T != nullptr)
           {
-            simd::add_vectors(next_grad_ptr, dest_ptr, N_this);
+            simd::gemm_one_batch(g_next_t, W_next_T, dest_t, N_next, N_this);
           }
           else
           {
-            simd::gemv_add(next_w_data, next_grad_ptr, dest_ptr, N_this, N_next);
+            simd::gemv_add(next_w_data, g_next_t, dest_t, N_this, N_next);
           }
         }
       }
@@ -1472,18 +1545,42 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   const size_t batch_size_chunk = end - start;
   const size_t total_elements = batch_size_chunk * N_this;
 
+  std::array<const std::vector<HiddenState>*, 64> states_ptrs_stack;
+  std::vector<const std::vector<HiddenState>*> states_ptrs_heap;
+  const std::vector<HiddenState>** states_ptrs = (batch_size_chunk <= 64) ? states_ptrs_stack.data() : nullptr;
+  if (batch_size_chunk > 64)
+  {
+    states_ptrs_heap.resize(batch_size_chunk);
+    states_ptrs = states_ptrs_heap.data();
+  }
+  for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+  {
+    states_ptrs[b_idx] = &batch_hidden_states[start + b_idx].at(get_layer_index());
+  }
+
+  if (t_end > 0)
+  {
+    for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
+    {
+      if (N_prev > 0)
+      {
+        std::memset(&workspace.dx_matrix[b_idx * num_time_steps * N_prev], 0, t_end * N_prev * sizeof(double));
+      }
+      std::memset(&workspace.rnn_grad_matrix[b_idx * num_time_steps * GateCount * N_this], 0, t_end * GateCount * N_this * sizeof(double));
+    }
+  }
+
   for (int t = t_start; t >= t_end; --t)
   {
     // Step 2a: Contiguous activation derivative calculation for candidate recurrent states
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
-      size_t b = start + b_idx;
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& layer_states = *states_ptrs[b_idx];
       const auto& state = layer_states[t];
       const auto& packed_states = state.get_pre_activation_sums();
 
-      std::copy(&packed_states[2 * N_this], &packed_states[2 * N_this] + N_this, &workspace.h_hat_pre_buf[b_idx * N_this]);
-      std::copy(&packed_states[3 * N_this], &packed_states[3 * N_this] + N_this, &workspace.h_hat_val_buf[b_idx * N_this]);
+      std::memcpy(&workspace.h_hat_pre_buf[b_idx * N_this], &packed_states[2 * N_this], N_this * sizeof(double));
+      std::memcpy(&workspace.h_hat_val_buf[b_idx * N_this], &packed_states[3 * N_this], N_this * sizeof(double));
     }
 
     get_activation().activate_derivative(
@@ -1496,8 +1593,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
     // Calculate gate gradients
     for (size_t b_idx = 0; b_idx < batch_size_chunk; ++b_idx)
     {
-      size_t b = start + b_idx;
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& layer_states = *states_ptrs[b_idx];
       const auto& state = layer_states[t];
       const auto& packed_states = state.get_pre_activation_sums();
       
@@ -1525,8 +1621,8 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
         double* dy_buf = workspace.ln_dy_buf.data();
         double* dx_buf = workspace.ln_dx_buf.data();
         double* zero_buf = workspace.ln_zero_buf.data();
-        std::fill(zero_buf, zero_buf + N_this, 0.0);
-        std::copy(grad_next_ptr, grad_next_ptr + N_this, dy_buf);
+        std::memset(zero_buf, 0, N_this * sizeof(double));
+        std::memcpy(dy_buf, grad_next_ptr, N_this * sizeof(double));
         simd::add_vectors(d_next_h_ptr, dy_buf, N_this);
 
         const double* y_h = state.get_hidden_state_values().data();
@@ -1571,7 +1667,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       }
     }
 
-    std::fill(workspace.temp_Uh_T_dh_hat.begin(), workspace.temp_Uh_T_dh_hat.end(), 0.0);
+    std::memset(workspace.temp_Uh_T_dh_hat.data(), 0, workspace.temp_Uh_T_dh_hat.size() * sizeof(double));
     double* temp_Uh_ptr_all = workspace.temp_Uh_T_dh_hat.data();
     
     {
@@ -1611,8 +1707,7 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
 
     for (size_t b_idx = 0; b_idx < end - start; ++b_idx)
     {
-      size_t b = start + b_idx;
-      const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
+      const auto& layer_states = *states_ptrs[b_idx];
       const auto& packed_states = layer_states[t].get_pre_activation_sums();
       const double* r_vals = &packed_states[N_this];
       const double* h_prev_vals = (t > 0) ? layer_states[t - 1].get_hidden_state_values().data() : nullptr;
@@ -1627,12 +1722,12 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
       simd::gru_bptt_reset_step(N_this, temp_Uh_ptr, h_prev_vals, r_vals, dh_prev_accum, dr_ptr, dh_next);
 
       double* dx_t = &workspace.dx_matrix[(b_idx * num_time_steps + t) * N_prev];
-      std::fill_n(dx_t, N_prev, 0.0);
+      std::memset(dx_t, 0, N_prev * sizeof(double));
 
       double* dest = &rnn_grad_ptr_all[(b_idx * num_time_steps + t) * GateCount * N_this];
-      std::copy(dh_hat_ptr, dh_hat_ptr + N_this, dest);
-      std::copy(dz_ptr, dz_ptr + N_this, dest + N_this);
-      std::copy(dr_ptr, dr_ptr + N_this, dest + 2 * N_this); // Gate 3 (Reset)
+      std::memcpy(dest, dh_hat_ptr, N_this * sizeof(double));
+      std::memcpy(dest + N_this, dz_ptr, N_this * sizeof(double));
+      std::memcpy(dest + 2 * N_this, dr_ptr, N_this * sizeof(double)); // Gate 3 (Reset)
     }
 
     // Now run batched GEMM operations outside the batch loop:
@@ -1719,6 +1814,40 @@ void GRURNNLayer::calculate_bptt_batch_chunk(
   }
 }
 
+namespace
+{
+struct GruBpttTask
+{
+  const GRURNNLayer& layer;
+  size_t start;
+  size_t end;
+  size_t thread_idx;
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs;
+  const Layer& next_layer;
+  const std::vector<std::vector<double>>& batch_next_grad_matrix;
+  const std::vector<HiddenStates>& batch_hidden_states;
+  int bptt_max_ticks;
+
+  void operator()() const
+  {
+    auto& workspace = layer.get_workspace(thread_idx);
+    layer.calculate_bptt_batch_chunk(
+      start,
+      end,
+      batch_gradients_and_outputs,
+      next_layer,
+      batch_next_grad_matrix,
+      batch_hidden_states,
+      bptt_max_ticks,
+      workspace,
+      layer.get_rw_values_T(),
+      layer.get_z_rw_values_T(),
+      layer.get_r_rw_values_T()
+    );
+  }
+};
+}
+
 void GRURNNLayer::calculate_hidden_gradients(
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const Layer& next_layer,
@@ -1768,11 +1897,17 @@ void GRURNNLayer::calculate_hidden_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, t, &batch_gradients_and_outputs, &next_layer, &batch_next_grad_matrix, &batch_hidden_states, bptt_max_ticks, this]()
-          {
-            auto& workspace = get_workspace(t);
-            calculate_bptt_batch_chunk(start, end, batch_gradients_and_outputs, next_layer, batch_next_grad_matrix, batch_hidden_states, bptt_max_ticks, workspace, _rw_values_T, _z_rw_values_T, _r_rw_values_T);
-          });
+        _task_queue_pool->enqueue(GruBpttTask{
+          *this,
+          start,
+          end,
+          t,
+          batch_gradients_and_outputs,
+          next_layer,
+          batch_next_grad_matrix,
+          batch_hidden_states,
+          bptt_max_ticks
+        });
       }
       start = end;
     }
@@ -1848,6 +1983,7 @@ struct GruGradCalcTask
   size_t num_time_steps;
   int t_start;
   int t_end;
+  bool any_has_rnn_input;
   std::vector<double>& local_w_grads;
   std::vector<double>& local_rw_grads;
   std::vector<double>& local_z_w_grads;
@@ -1872,6 +2008,7 @@ struct GruGradCalcTask
       num_time_steps,
       t_start,
       t_end,
+      any_has_rnn_input,
       local_w_grads,
       local_rw_grads,
       local_z_w_grads,
@@ -1886,6 +2023,14 @@ struct GruGradCalcTask
 };
 }
 
+struct gru_batch_item
+{
+  const double* rnn_grads;
+  const double* prev_input_base;
+  size_t prev_input_stride;
+  const std::vector<HiddenState>* states;
+};
+
 void GRURNNLayer::calculate_and_store_gradients_chunk(
   size_t start,
   size_t end,
@@ -1897,6 +2042,7 @@ void GRURNNLayer::calculate_and_store_gradients_chunk(
   size_t num_time_steps,
   int t_start,
   int t_end,
+  bool any_has_rnn_input,
   std::vector<double>& local_w_grads,
   std::vector<double>& local_rw_grads,
   std::vector<double>& local_z_w_grads,
@@ -1913,6 +2059,17 @@ void GRURNNLayer::calculate_and_store_gradients_chunk(
     return;
   }
 
+  const size_t chunk_size = end - start;
+  std::array<gru_batch_item, 64> items_stack;
+  std::vector<gru_batch_item> items_heap;
+  gru_batch_item* items = (chunk_size <= 64) ? items_stack.data() : nullptr;
+  if (chunk_size > 64)
+  {
+    items_heap.resize(chunk_size);
+    items = items_heap.data();
+  }
+
+  size_t valid_items_count = 0;
   for (size_t b = start; b < end; ++b)
   {
     const auto& rnn_grads = batch_gradients_and_outputs[b].get_rnn_gate_gradients(get_layer_index());
@@ -1922,103 +2079,276 @@ void GRURNNLayer::calculate_and_store_gradients_chunk(
     }
     const auto& prev_outputs_rnn = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const auto& prev_outputs_std = batch_gradients_and_outputs[b].get_outputs(prev_layer_index);
-    const auto& prev_outputs = !prev_outputs_rnn.empty() ? prev_outputs_rnn : prev_outputs_std;
-    const auto& layer_states = hidden_states[b].at(get_layer_index());
 
-    for (int t = t_start; t >= t_end; --t)
+    const double* prev_base = nullptr;
+    size_t stride = 0;
+    if (!prev_outputs_rnn.empty())
     {
-      const size_t base_idx = t * GateCount * num_outputs;
-      const double* gh = &rnn_grads[base_idx];
-      const double* gz = &rnn_grads[base_idx + num_outputs];
-      const double* gr = &rnn_grads[base_idx + 2 * num_outputs];
-
-      if (has_bias())
+      if (prev_outputs_rnn.size() >= static_cast<size_t>(num_time_steps) * num_inputs)
       {
-        simd::add_vectors(gh, local_b_grads.data(), num_outputs);
-        simd::add_vectors(gz, local_z_b_grads.data(), num_outputs);
-        simd::add_vectors(gr, local_r_b_grads.data(), num_outputs);
+        prev_base = prev_outputs_rnn.data();
+        stride = num_inputs;
       }
-
-      const double* prev_input_ptr = nullptr;
-      if (prev_outputs.size() == num_inputs)
+      else if (prev_outputs_rnn.size() == num_inputs)
       {
-        prev_input_ptr = prev_outputs.data();
+        prev_base = prev_outputs_rnn.data();
+        stride = 0;
       }
-      else if (prev_outputs.size() >= static_cast<size_t>(t + 1) * num_inputs)
+    }
+    else if (!any_has_rnn_input)
+    {
+      if (prev_outputs_std.size() == num_inputs)
       {
-        prev_input_ptr = &prev_outputs[t * num_inputs];
+        prev_base = prev_outputs_std.data();
+        stride = 0;
       }
+    }
 
-      if (prev_input_ptr != nullptr)
+    const auto& states = hidden_states[b].at(get_layer_index());
+    items[valid_items_count++] = { rnn_grads.data(), prev_base, stride, &states };
+  }
+
+  if (valid_items_count == 0)
+  {
+    return;
+  }
+
+  if (has_bias() && !local_b_grads.empty())
+  {
+    double* const b_ptr = local_b_grads.data();
+    double* const zb_ptr = local_z_b_grads.data();
+    double* const rb_ptr = local_r_b_grads.data();
+    for (size_t k = 0; k < valid_items_count; ++k)
+    {
+      const auto& item = items[k];
+      for (int t = t_start; t >= t_end; --t)
       {
-        size_t i = 0;
-        for (; i + 3 < num_inputs; i += 4)
-        {
-          const double x0 = prev_input_ptr[i];
-          const double x1 = prev_input_ptr[i + 1];
-          const double x2 = prev_input_ptr[i + 2];
-          const double x3 = prev_input_ptr[i + 3];
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
 
-          simd::mul_add_four_scalars(x0, x1, x2, x3, gh, &local_w_grads[i * num_outputs], &local_w_grads[(i + 1) * num_outputs], &local_w_grads[(i + 2) * num_outputs], &local_w_grads[(i + 3) * num_outputs], num_outputs);
-          simd::mul_add_four_scalars(x0, x1, x2, x3, gz, &local_z_w_grads[i * num_outputs], &local_z_w_grads[(i + 1) * num_outputs], &local_z_w_grads[(i + 2) * num_outputs], &local_z_w_grads[(i + 3) * num_outputs], num_outputs);
-          simd::mul_add_four_scalars(x0, x1, x2, x3, gr, &local_r_w_grads[i * num_outputs], &local_r_w_grads[(i + 1) * num_outputs], &local_r_w_grads[(i + 2) * num_outputs], &local_r_w_grads[(i + 3) * num_outputs], num_outputs);
-        }
-        for (; i + 1 < num_inputs; i += 2)
-        {
-          const double x0 = prev_input_ptr[i];
-          const double x1 = prev_input_ptr[i + 1];
-
-          simd::mul_add_two_scalars(x0, x1, gh, &local_w_grads[i * num_outputs], &local_w_grads[(i + 1) * num_outputs], num_outputs);
-          simd::mul_add_two_scalars(x0, x1, gz, &local_z_w_grads[i * num_outputs], &local_z_w_grads[(i + 1) * num_outputs], num_outputs);
-          simd::mul_add_two_scalars(x0, x1, gr, &local_r_w_grads[i * num_outputs], &local_r_w_grads[(i + 1) * num_outputs], num_outputs);
-        }
-        for (; i < num_inputs; ++i)
-        {
-          simd::mul_add_three(prev_input_ptr[i], gh, gz, gr, &local_w_grads[i * num_outputs], &local_z_w_grads[i * num_outputs], &local_r_w_grads[i * num_outputs], num_outputs);
-        }
+        simd::add_three_vectors(gh, gz, gr, b_ptr, zb_ptr, rb_ptr, num_outputs);
       }
+    }
+  }
 
-      if (t > 0)
+  // Input weight gradient accumulation (outer loop on i for cache locality)
+  size_t i = 0;
+  for (; i + 3 < num_inputs; i += 4)
+  {
+    double* w0 = &local_w_grads[i * num_outputs];
+    double* w1 = &local_w_grads[(i + 1) * num_outputs];
+    double* w2 = &local_w_grads[(i + 2) * num_outputs];
+    double* w3 = &local_w_grads[(i + 3) * num_outputs];
+
+    double* zw0 = &local_z_w_grads[i * num_outputs];
+    double* zw1 = &local_z_w_grads[(i + 1) * num_outputs];
+    double* zw2 = &local_z_w_grads[(i + 2) * num_outputs];
+    double* zw3 = &local_z_w_grads[(i + 3) * num_outputs];
+
+    double* rw0 = &local_r_w_grads[i * num_outputs];
+    double* rw1 = &local_r_w_grads[(i + 1) * num_outputs];
+    double* rw2 = &local_r_w_grads[(i + 2) * num_outputs];
+    double* rw3 = &local_r_w_grads[(i + 3) * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      if (item.prev_input_base == nullptr)
       {
-        const double* prev_hidden_ptr = layer_states[t - 1].get_hidden_state_values().data();
-        const auto& packed = layer_states[t].get_pre_activation_sums();
+        continue;
+      }
+      for (int t = t_start; t >= t_end; --t)
+      {
+        const double* in_ptr = item.prev_input_base + t * item.prev_input_stride;
+        const double x0 = in_ptr[i];
+        const double x1 = in_ptr[i + 1];
+        const double x2 = in_ptr[i + 2];
+        const double x3 = in_ptr[i + 3];
+
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
+
+        simd::mul_add_four_scalars(x0, x1, x2, x3, gh, w0, w1, w2, w3, num_outputs);
+        simd::mul_add_four_scalars(x0, x1, x2, x3, gz, zw0, zw1, zw2, zw3, num_outputs);
+        simd::mul_add_four_scalars(x0, x1, x2, x3, gr, rw0, rw1, rw2, rw3, num_outputs);
+      }
+    }
+  }
+  for (; i + 1 < num_inputs; i += 2)
+  {
+    double* w0 = &local_w_grads[i * num_outputs];
+    double* w1 = &local_w_grads[(i + 1) * num_outputs];
+
+    double* zw0 = &local_z_w_grads[i * num_outputs];
+    double* zw1 = &local_z_w_grads[(i + 1) * num_outputs];
+
+    double* rw0 = &local_r_w_grads[i * num_outputs];
+    double* rw1 = &local_r_w_grads[(i + 1) * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      if (item.prev_input_base == nullptr)
+      {
+        continue;
+      }
+      for (int t = t_start; t >= t_end; --t)
+      {
+        const double* in_ptr = item.prev_input_base + t * item.prev_input_stride;
+        const double x0 = in_ptr[i];
+        const double x1 = in_ptr[i + 1];
+
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
+
+        simd::mul_add_two_scalars(x0, x1, gh, w0, w1, num_outputs);
+        simd::mul_add_two_scalars(x0, x1, gz, zw0, zw1, num_outputs);
+        simd::mul_add_two_scalars(x0, x1, gr, rw0, rw1, num_outputs);
+      }
+    }
+  }
+  for (; i < num_inputs; ++i)
+  {
+    double* w0 = &local_w_grads[i * num_outputs];
+    double* zw0 = &local_z_w_grads[i * num_outputs];
+    double* rw0 = &local_r_w_grads[i * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      if (item.prev_input_base == nullptr)
+      {
+        continue;
+      }
+      for (int t = t_start; t >= t_end; --t)
+      {
+        const double x_val = item.prev_input_base[t * item.prev_input_stride + i];
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
+
+        simd::mul_add_three(x_val, gh, gz, gr, w0, zw0, rw0, num_outputs);
+      }
+    }
+  }
+
+  // Recurrent weight gradient accumulation (outer loop on k for cache locality)
+  size_t k = 0;
+  for (; k + 3 < num_outputs; k += 4)
+  {
+    double* rw0 = &local_rw_grads[k * num_outputs];
+    double* rw1 = &local_rw_grads[(k + 1) * num_outputs];
+    double* rw2 = &local_rw_grads[(k + 2) * num_outputs];
+    double* rw3 = &local_rw_grads[(k + 3) * num_outputs];
+
+    double* z_rw0 = &local_z_rw_grads[k * num_outputs];
+    double* z_rw1 = &local_z_rw_grads[(k + 1) * num_outputs];
+    double* z_rw2 = &local_z_rw_grads[(k + 2) * num_outputs];
+    double* z_rw3 = &local_z_rw_grads[(k + 3) * num_outputs];
+
+    double* r_rw0 = &local_r_rw_grads[k * num_outputs];
+    double* r_rw1 = &local_r_rw_grads[(k + 1) * num_outputs];
+    double* r_rw2 = &local_r_rw_grads[(k + 2) * num_outputs];
+    double* r_rw3 = &local_r_rw_grads[(k + 3) * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      const auto& states = *item.states;
+      for (int t = t_start; t >= std::max(1, t_end); --t)
+      {
+        const double* prev_hidden_ptr = states[t - 1].get_hidden_state_values().data();
+        const auto& packed = states[t].get_pre_activation_sums();
         const double* r_vals = &packed[num_outputs];
 
-        size_t k = 0;
-        for (; k + 3 < num_outputs; k += 4)
-        {
-          const double hp0 = prev_hidden_ptr[k];
-          const double hp1 = prev_hidden_ptr[k + 1];
-          const double hp2 = prev_hidden_ptr[k + 2];
-          const double hp3 = prev_hidden_ptr[k + 3];
+        const double hp0 = prev_hidden_ptr[k];
+        const double hp1 = prev_hidden_ptr[k + 1];
+        const double hp2 = prev_hidden_ptr[k + 2];
+        const double hp3 = prev_hidden_ptr[k + 3];
 
-          const double rv0 = r_vals[k];
-          const double rv1 = r_vals[k + 1];
-          const double rv2 = r_vals[k + 2];
-          const double rv3 = r_vals[k + 3];
+        const double rv0 = r_vals[k];
+        const double rv1 = r_vals[k + 1];
+        const double rv2 = r_vals[k + 2];
+        const double rv3 = r_vals[k + 3];
 
-          simd::mul_add_four_scalars(rv0 * hp0, rv1 * hp1, rv2 * hp2, rv3 * hp3, gh, &local_rw_grads[k * num_outputs], &local_rw_grads[(k + 1) * num_outputs], &local_rw_grads[(k + 2) * num_outputs], &local_rw_grads[(k + 3) * num_outputs], num_outputs);
-          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gz, &local_z_rw_grads[k * num_outputs], &local_z_rw_grads[(k + 1) * num_outputs], &local_z_rw_grads[(k + 2) * num_outputs], &local_z_rw_grads[(k + 3) * num_outputs], num_outputs);
-          simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gr, &local_r_rw_grads[k * num_outputs], &local_r_rw_grads[(k + 1) * num_outputs], &local_r_rw_grads[(k + 2) * num_outputs], &local_r_rw_grads[(k + 3) * num_outputs], num_outputs);
-        }
-        for (; k + 1 < num_outputs; k += 2)
-        {
-          const double hp0 = prev_hidden_ptr[k];
-          const double hp1 = prev_hidden_ptr[k + 1];
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
 
-          const double rv0 = r_vals[k];
-          const double rv1 = r_vals[k + 1];
+        simd::mul_add_four_scalars(rv0 * hp0, rv1 * hp1, rv2 * hp2, rv3 * hp3, gh, rw0, rw1, rw2, rw3, num_outputs);
+        simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gz, z_rw0, z_rw1, z_rw2, z_rw3, num_outputs);
+        simd::mul_add_four_scalars(hp0, hp1, hp2, hp3, gr, r_rw0, r_rw1, r_rw2, r_rw3, num_outputs);
+      }
+    }
+  }
+  for (; k + 1 < num_outputs; k += 2)
+  {
+    double* rw0 = &local_rw_grads[k * num_outputs];
+    double* rw1 = &local_rw_grads[(k + 1) * num_outputs];
 
-          simd::mul_add_two_scalars(rv0 * hp0, rv1 * hp1, gh, &local_rw_grads[k * num_outputs], &local_rw_grads[(k + 1) * num_outputs], num_outputs);
-          simd::mul_add_two_scalars(hp0, hp1, gz, &local_z_rw_grads[k * num_outputs], &local_z_rw_grads[(k + 1) * num_outputs], num_outputs);
-          simd::mul_add_two_scalars(hp0, hp1, gr, &local_r_rw_grads[k * num_outputs], &local_r_rw_grads[(k + 1) * num_outputs], num_outputs);
-        }
-        for (; k < num_outputs; ++k)
-        {
-          const double hp = prev_hidden_ptr[k];
-          const double rv = r_vals[k];
-          simd::mul_add_three_scalars(rv * hp, hp, hp, gh, gz, gr, &local_rw_grads[k * num_outputs], &local_z_rw_grads[k * num_outputs], &local_r_rw_grads[k * num_outputs], num_outputs);
-        }
+    double* z_rw0 = &local_z_rw_grads[k * num_outputs];
+    double* z_rw1 = &local_z_rw_grads[(k + 1) * num_outputs];
+
+    double* r_rw0 = &local_r_rw_grads[k * num_outputs];
+    double* r_rw1 = &local_r_rw_grads[(k + 1) * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      const auto& states = *item.states;
+      for (int t = t_start; t >= std::max(1, t_end); --t)
+      {
+        const double* prev_hidden_ptr = states[t - 1].get_hidden_state_values().data();
+        const auto& packed = states[t].get_pre_activation_sums();
+        const double* r_vals = &packed[num_outputs];
+
+        const double hp0 = prev_hidden_ptr[k];
+        const double hp1 = prev_hidden_ptr[k + 1];
+
+        const double rv0 = r_vals[k];
+        const double rv1 = r_vals[k + 1];
+
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
+
+        simd::mul_add_two_scalars(rv0 * hp0, rv1 * hp1, gh, rw0, rw1, num_outputs);
+        simd::mul_add_two_scalars(hp0, hp1, gz, z_rw0, z_rw1, num_outputs);
+        simd::mul_add_two_scalars(hp0, hp1, gr, r_rw0, r_rw1, num_outputs);
+      }
+    }
+  }
+  for (; k < num_outputs; ++k)
+  {
+    double* rw0 = &local_rw_grads[k * num_outputs];
+    double* z_rw0 = &local_z_rw_grads[k * num_outputs];
+    double* r_rw0 = &local_r_rw_grads[k * num_outputs];
+
+    for (size_t b_idx = 0; b_idx < valid_items_count; ++b_idx)
+    {
+      const auto& item = items[b_idx];
+      const auto& states = *item.states;
+      for (int t = t_start; t >= std::max(1, t_end); --t)
+      {
+        const double hp = states[t - 1].get_hidden_state_values()[k];
+        const auto& packed = states[t].get_pre_activation_sums();
+        const double rv = packed[num_outputs + k];
+
+        const size_t base_idx = t * GateCount * num_outputs;
+        const double* gh = &item.rnn_grads[base_idx];
+        const double* gz = &item.rnn_grads[base_idx + num_outputs];
+        const double* gr = &item.rnn_grads[base_idx + 2 * num_outputs];
+
+        simd::mul_add_three_scalars(rv * hp, hp, hp, gh, gz, gr, rw0, z_rw0, r_rw0, num_outputs);
       }
     }
   }
@@ -2044,6 +2374,16 @@ void GRURNNLayer::calculate_and_store_gradients(
   const int t_end = (bptt_max_ticks > 0) ? std::max(0, t_start - bptt_max_ticks + 1) : 0;
   const unsigned prev_layer_index = previous_layer.get_layer_index();
 
+  bool any_has_rnn_input = false;
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    if (!batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index).empty())
+    {
+      any_has_rnn_input = true;
+      break;
+    }
+  }
+
   const auto num_threads = get_number_of_threads();
   const size_t N_this = num_outputs;
   const size_t N_prev = previous_layer.get_number_neurons();
@@ -2059,7 +2399,7 @@ void GRURNNLayer::calculate_and_store_gradients(
       0, batch_size,
       batch_gradients_and_outputs, hidden_states,
       prev_layer_index, num_inputs, num_outputs, num_time_steps,
-      t_start, t_end,
+      t_start, t_end, any_has_rnn_input,
       _w_grads, _rw_grads,
       _z_w_grads, _z_rw_grads,
       _r_w_grads, _r_rw_grads,
@@ -2108,26 +2448,29 @@ void GRURNNLayer::calculate_and_store_gradients(
     for (unsigned int t = 0; t < active_threads; ++t)
     {
       _thread_w_grads[t].resize(_w_grads.size());
-      std::fill(_thread_w_grads[t].begin(), _thread_w_grads[t].end(), 0.0);
+      std::memset(_thread_w_grads[t].data(), 0, _w_grads.size() * sizeof(double));
       _thread_rw_grads[t].resize(_rw_grads.size());
-      std::fill(_thread_rw_grads[t].begin(), _thread_rw_grads[t].end(), 0.0);
+      std::memset(_thread_rw_grads[t].data(), 0, _rw_grads.size() * sizeof(double));
 
       _thread_z_w_grads[t].resize(_z_w_grads.size());
-      std::fill(_thread_z_w_grads[t].begin(), _thread_z_w_grads[t].end(), 0.0);
+      std::memset(_thread_z_w_grads[t].data(), 0, _z_w_grads.size() * sizeof(double));
       _thread_z_rw_grads[t].resize(_z_rw_grads.size());
-      std::fill(_thread_z_rw_grads[t].begin(), _thread_z_rw_grads[t].end(), 0.0);
+      std::memset(_thread_z_rw_grads[t].data(), 0, _z_rw_grads.size() * sizeof(double));
 
       _thread_r_w_grads[t].resize(_r_w_grads.size());
-      std::fill(_thread_r_w_grads[t].begin(), _thread_r_w_grads[t].end(), 0.0);
+      std::memset(_thread_r_w_grads[t].data(), 0, _r_w_grads.size() * sizeof(double));
       _thread_r_rw_grads[t].resize(_r_rw_grads.size());
-      std::fill(_thread_r_rw_grads[t].begin(), _thread_r_rw_grads[t].end(), 0.0);
+      std::memset(_thread_r_rw_grads[t].data(), 0, _r_rw_grads.size() * sizeof(double));
 
-      _thread_b_grads[t].resize(has_bias() ? N_this : 0);
-      std::fill(_thread_b_grads[t].begin(), _thread_b_grads[t].end(), 0.0);
-      _thread_z_b_grads[t].resize(has_bias() ? N_this : 0);
-      std::fill(_thread_z_b_grads[t].begin(), _thread_z_b_grads[t].end(), 0.0);
-      _thread_r_b_grads[t].resize(has_bias() ? N_this : 0);
-      std::fill(_thread_r_b_grads[t].begin(), _thread_r_b_grads[t].end(), 0.0);
+      if (has_bias())
+      {
+        _thread_b_grads[t].resize(N_this);
+        std::memset(_thread_b_grads[t].data(), 0, N_this * sizeof(double));
+        _thread_z_b_grads[t].resize(N_this);
+        std::memset(_thread_z_b_grads[t].data(), 0, N_this * sizeof(double));
+        _thread_r_b_grads[t].resize(N_this);
+        std::memset(_thread_r_b_grads[t].data(), 0, N_this * sizeof(double));
+      }
     }
 
     size_t start = 0;
@@ -2142,7 +2485,7 @@ void GRURNNLayer::calculate_and_store_gradients(
           start, end,
           batch_gradients_and_outputs, hidden_states,
           prev_layer_index, num_inputs, num_outputs, num_time_steps,
-          t_start, t_end,
+          t_start, t_end, any_has_rnn_input,
           _thread_w_grads[t], _thread_rw_grads[t],
           _thread_z_w_grads[t], _thread_z_rw_grads[t],
           _thread_r_w_grads[t], _thread_r_rw_grads[t],
@@ -2241,6 +2584,7 @@ void GRURNNLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t exis
     swa_average_into(_ln_h_gain_values, other._ln_h_gain_values, existing_swa_count);
     swa_average_into(_ln_h_bias_values, other._ln_h_bias_values, existing_swa_count);
   }
+  cache_recurrent_weights();
 }
 
 void GRURNNLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha)
@@ -2270,6 +2614,7 @@ void GRURNNLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double a
     simd::lookahead_step(_ln_h_gain_values.data(), other._ln_h_gain_values.data(), alpha, _ln_h_gain_values.size());
     simd::lookahead_step(_ln_h_bias_values.data(), other._ln_h_bias_values.data(), alpha, _ln_h_bias_values.size());
   }
+  cache_recurrent_weights();
   other.cache_recurrent_weights();
 }
 
@@ -2277,13 +2622,13 @@ void GRURNNLayer::zero_gradients()
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   Layer::zero_gradients();
-  std::fill(_rw_grads.begin(), _rw_grads.end(), 0.0);
-  std::fill(_z_w_grads.begin(), _z_w_grads.end(), 0.0);
-  std::fill(_z_rw_grads.begin(), _z_rw_grads.end(), 0.0);
-  std::fill(_z_b_grads.begin(), _z_b_grads.end(), 0.0);
-  std::fill(_r_w_grads.begin(), _r_w_grads.end(), 0.0);
-  std::fill(_r_rw_grads.begin(), _r_rw_grads.end(), 0.0);
-  std::fill(_r_b_grads.begin(), _r_b_grads.end(), 0.0);
+  std::memset(_rw_grads.data(), 0, _rw_grads.size() * sizeof(double));
+  std::memset(_z_w_grads.data(), 0, _z_w_grads.size() * sizeof(double));
+  std::memset(_z_rw_grads.data(), 0, _z_rw_grads.size() * sizeof(double));
+  std::memset(_z_b_grads.data(), 0, _z_b_grads.size() * sizeof(double));
+  std::memset(_r_w_grads.data(), 0, _r_w_grads.size() * sizeof(double));
+  std::memset(_r_rw_grads.data(), 0, _r_rw_grads.size() * sizeof(double));
+  std::memset(_r_b_grads.data(), 0, _r_b_grads.size() * sizeof(double));
   // _ln_h_gain_grads/_ln_h_bias_grads are intentionally NOT zeroed here.
   // Unlike every other gradient above, which calculate_and_store_gradients()
   // recomputes from scratch each call (starting with this zero_gradients()),
@@ -2294,35 +2639,56 @@ void GRURNNLayer::zero_gradients()
   // first.
 }
 
+void GRURNNLayer::apply_gradient_update(
+  std::vector<double>& v,
+  std::vector<double>& g,
+  std::vector<double>& vel,
+  std::vector<double>& m1,
+  std::vector<double>& m2,
+  std::vector<long long>& ts,
+  const std::vector<double>& dec,
+  double learning_rate,
+  double clipping_scale,
+  bool is_bias)
+{
+  MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+  apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
+}
+
 void GRURNNLayer::apply_stored_gradients(double learning_rate, double clipping_scale)
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   
-  auto app = [&](std::vector<double>& v, std::vector<double>& g, std::vector<double>& vel, std::vector<double>& m1, std::vector<double>& m2, std::vector<long long>& ts, const std::vector<double>& dec, bool is_bias) {
-    apply_update_to_vector(v, g, vel, m1, m2, ts, dec, learning_rate, clipping_scale, is_bias, get_optimiser_type());
-  };
-
   // 1. Candidate State
-  app(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, false);
-  app(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, false);
-  if (has_bias()) app(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, true);
+  apply_gradient_update(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_rw_values, _rw_grads, _rw_velocities, _rw_m1, _rw_m2, _rw_timesteps, _rw_decays, learning_rate, clipping_scale, false);
+  if (has_bias())
+  {
+    apply_gradient_update(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true);
+  }
 
   // 2. Update Gate (z)
-  app(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, false);
-  app(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, false);
-  if (has_bias()) app(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, true);
+  apply_gradient_update(_z_w_values, _z_w_grads, _z_w_velocities, _z_w_m1, _z_w_m2, _z_w_timesteps, _z_w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_z_rw_values, _z_rw_grads, _z_rw_velocities, _z_rw_m1, _z_rw_m2, _z_rw_timesteps, _z_rw_decays, learning_rate, clipping_scale, false);
+  if (has_bias())
+  {
+    apply_gradient_update(_z_b_values, _z_b_grads, _z_b_velocities, _z_b_m1, _z_b_m2, _z_b_timesteps, _z_b_decays, learning_rate, clipping_scale, true);
+  }
 
   // 3. Reset Gate (r)
-  app(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, false);
-  app(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, false);
-  if (has_bias()) app(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, true);
+  apply_gradient_update(_r_w_values, _r_w_grads, _r_w_velocities, _r_w_m1, _r_w_m2, _r_w_timesteps, _r_w_decays, learning_rate, clipping_scale, false);
+  apply_gradient_update(_r_rw_values, _r_rw_grads, _r_rw_velocities, _r_rw_m1, _r_rw_m2, _r_rw_timesteps, _r_rw_decays, learning_rate, clipping_scale, false);
+  if (has_bias())
+  {
+    apply_gradient_update(_r_b_values, _r_b_grads, _r_b_velocities, _r_b_m1, _r_b_m2, _r_b_timesteps, _r_b_decays, learning_rate, clipping_scale, true);
+  }
 
   // 4. Recurrent-state LayerNorm gain/bias (no weight decay on either,
   // matching how biases already skip decay via is_bias=true).
   if (_use_layer_normalisation)
   {
-    app(_ln_h_gain_values, _ln_h_gain_grads, _ln_h_gain_velocities, _ln_h_gain_m1, _ln_h_gain_m2, _ln_h_gain_timesteps, _ln_h_gain_decays, true);
-    app(_ln_h_bias_values, _ln_h_bias_grads, _ln_h_bias_velocities, _ln_h_bias_m1, _ln_h_bias_m2, _ln_h_bias_timesteps, _ln_h_bias_decays, true);
+    apply_gradient_update(_ln_h_gain_values, _ln_h_gain_grads, _ln_h_gain_velocities, _ln_h_gain_m1, _ln_h_gain_m2, _ln_h_gain_timesteps, _ln_h_gain_decays, learning_rate, clipping_scale, true);
+    apply_gradient_update(_ln_h_bias_values, _ln_h_bias_grads, _ln_h_bias_velocities, _ln_h_bias_m1, _ln_h_bias_m2, _ln_h_bias_timesteps, _ln_h_bias_decays, learning_rate, clipping_scale, true);
   }
 
   cache_recurrent_weights();
@@ -2368,9 +2734,9 @@ void GRURNNLayer::cache_recurrent_weights()
   if (has_bias() && !_z_b_values.empty() && !_r_b_values.empty() && !get_b_values().empty())
   {
     _bias_cached.resize(3 * n);
-    std::copy(_z_b_values.begin(), _z_b_values.end(), _bias_cached.begin());
-    std::copy(_r_b_values.begin(), _r_b_values.end(), _bias_cached.begin() + n);
-    std::copy(get_b_values().begin(), get_b_values().end(), _bias_cached.begin() + 2 * n);
+    std::memcpy(_bias_cached.data(), _z_b_values.data(), n * sizeof(double));
+    std::memcpy(_bias_cached.data() + n, _r_b_values.data(), n * sizeof(double));
+    std::memcpy(_bias_cached.data() + 2 * n, get_b_values().data(), n * sizeof(double));
   }
 }
 

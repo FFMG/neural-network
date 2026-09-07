@@ -1874,6 +1874,7 @@ void LSTMLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alp
     simd::lookahead_step(_ln_c_gain_values.data(), other._ln_c_gain_values.data(), alpha, _ln_c_gain_values.size());
     simd::lookahead_step(_ln_c_bias_values.data(), other._ln_c_bias_values.data(), alpha, _ln_c_bias_values.size());
   }
+  cache_recurrent_weights();
   other.cache_recurrent_weights();
 }
 

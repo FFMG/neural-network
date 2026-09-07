@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 #include "layers/grurnnlayer.h"
+#include "layers/fflayer.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <array>
 
 
 using namespace myoddweb::nn;
@@ -1716,6 +1718,911 @@ TEST_F(GRURNNLayerTest, ResidualWithDropoutAndInferenceEquivalence)
     EXPECT_TRUE(std::isfinite(g));
   }
 }
+
+TEST_F(GRURNNLayerTest, BackpropFromFFLayerWithTransposedWeightsEquivalence)
+{
+  const size_t num_inputs = 3;
+  const size_t num_outputs = 4;
+  const size_t next_outputs = 2;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 2;
+
+  GRURNNLayer gru_layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 42);
+
+  // FFLayer with transposed weights
+  FFLayer ff_next(2, num_outputs, next_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+  std::vector<double> ff_weights = {
+    0.1, 0.2,
+    0.3, 0.4,
+    0.5, 0.6,
+    0.7, 0.8
+  };
+  ff_next.set_w_values(ff_weights);
+
+  // MockLayer with identical weights (does not provide get_w_values_T)
+  MockLayer mock_next(2, next_outputs, num_outputs);
+  mock_next.set_w_values(ff_weights);
+
+  std::vector<unsigned> topology = { static_cast<unsigned>(num_inputs), static_cast<unsigned>(num_outputs), static_cast<unsigned>(next_outputs) };
+  auto batch_go_ff = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_go_mock = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs_ff = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+  auto batch_hs_mock = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  MockLayer prev_layer(0, num_inputs);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = std::sin(static_cast<double>(b * num_time_steps + k + 1)) * 0.2;
+    }
+    batch_go_ff[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+    batch_go_mock[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  gru_layer.calculate_forward_feed(batch_go_ff, prev_layer, {}, batch_hs_ff, batch_size, true);
+  gru_layer.calculate_forward_feed(batch_go_mock, prev_layer, {}, batch_hs_mock, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * next_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t k = 0; k < upstream_grads[b].size(); ++k)
+    {
+      upstream_grads[b][k] = std::cos(static_cast<double>(b * num_time_steps + k + 1)) * 0.3;
+    }
+  }
+
+  gru_layer.calculate_hidden_gradients(batch_go_ff, ff_next, upstream_grads, batch_hs_ff, batch_size, num_time_steps);
+  gru_layer.calculate_hidden_gradients(batch_go_mock, mock_next, upstream_grads, batch_hs_mock, batch_size, num_time_steps);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto grads_ff = batch_go_ff[b].get_rnn_gate_gradients(1);
+    const auto grads_mock = batch_go_mock[b].get_rnn_gate_gradients(1);
+    ASSERT_EQ(grads_ff.size(), grads_mock.size());
+    for (size_t k = 0; k < grads_ff.size(); ++k)
+    {
+      EXPECT_NEAR(grads_ff[k], grads_mock[k], 1e-12) << "batch " << b << " index " << k;
+    }
+  }
+}
+
+TEST_F(GRURNNLayerTest, IdentityProxyBypassEquivalence)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 3;
+  const size_t num_time_steps = 2;
+  const size_t batch_size = 2;
+
+  GRURNNLayer gru_layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 99);
+
+  // MockLayer with identity matrix of size num_outputs x num_outputs
+  MockLayer mock_identity(2, num_outputs, num_outputs);
+  std::vector<double> identity_weights(num_outputs * num_outputs, 0.0);
+  for (size_t i = 0; i < num_outputs; ++i)
+  {
+    identity_weights[i * num_outputs + i] = 1.0;
+  }
+  mock_identity.set_w_values(identity_weights);
+
+  std::vector<unsigned> topology = { static_cast<unsigned>(num_inputs), static_cast<unsigned>(num_outputs), static_cast<unsigned>(num_outputs) };
+  auto batch_go_self = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_go_mock = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs_self = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+  auto batch_hs_mock = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  MockLayer prev_layer(0, num_inputs);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = 0.1 * static_cast<double>(b * num_time_steps + k + 1);
+    }
+    batch_go_self[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+    batch_go_mock[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  gru_layer.calculate_forward_feed(batch_go_self, prev_layer, {}, batch_hs_self, batch_size, true);
+  gru_layer.calculate_forward_feed(batch_go_mock, prev_layer, {}, batch_hs_mock, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t k = 0; k < upstream_grads[b].size(); ++k)
+    {
+      upstream_grads[b][k] = 0.05 * static_cast<double>(b + k + 1);
+    }
+  }
+
+  // Next layer = gru_layer itself (triggers is_identity fast path)
+  gru_layer.calculate_hidden_gradients(batch_go_self, gru_layer, upstream_grads, batch_hs_self, batch_size, num_time_steps);
+  // Next layer = mock_identity (triggers general matrix multiply)
+  gru_layer.calculate_hidden_gradients(batch_go_mock, mock_identity, upstream_grads, batch_hs_mock, batch_size, num_time_steps);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto grads_self = batch_go_self[b].get_rnn_gate_gradients(1);
+    const auto grads_mock = batch_go_mock[b].get_rnn_gate_gradients(1);
+    ASSERT_EQ(grads_self.size(), grads_mock.size());
+    for (size_t k = 0; k < grads_self.size(); ++k)
+    {
+      EXPECT_NEAR(grads_self[k], grads_mock[k], 1e-12) << "batch " << b << " index " << k;
+    }
+  }
+}
+
+TEST_F(GRURNNLayerTest, TruncatedBpttZeroesUnprocessedTimesteps)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 4;
+  const size_t batch_size = 2;
+  const int bptt_ticks = 2;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 123);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = 0.2 * static_cast<double>(b * num_time_steps + k + 1);
+    }
+    batch_go[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * num_outputs, 0.5));
+  layer.calculate_hidden_gradients(batch_go, next_layer, upstream_grads, batch_hs, batch_size, bptt_ticks);
+
+  const size_t t_end = num_time_steps - static_cast<size_t>(bptt_ticks);
+  const size_t gate_count_elements_per_t = GRURNNLayer::GateCount * num_outputs;
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& gate_grads = batch_go[b].get_rnn_gate_gradients(1);
+    ASSERT_EQ(gate_grads.size(), num_time_steps * gate_count_elements_per_t);
+    for (size_t t = 0; t < t_end; ++t)
+    {
+      for (size_t g = 0; g < gate_count_elements_per_t; ++g)
+      {
+        EXPECT_EQ(gate_grads[t * gate_count_elements_per_t + g], 0.0) << "t=" << t << " g=" << g;
+      }
+    }
+
+    bool has_nonzero = false;
+    for (size_t t = t_end; t < num_time_steps; ++t)
+    {
+      for (size_t g = 0; g < gate_count_elements_per_t; ++g)
+      {
+        if (std::abs(gate_grads[t * gate_count_elements_per_t + g]) > 1e-9)
+        {
+          has_nonzero = true;
+        }
+      }
+    }
+    EXPECT_TRUE(has_nonzero);
+
+    const auto& input_grads = batch_go[b].get_rnn_gradients(0);
+    if (!input_grads.empty())
+    {
+      for (size_t t = 0; t < t_end; ++t)
+      {
+        for (size_t i = 0; i < num_inputs; ++i)
+        {
+          EXPECT_EQ(input_grads[t * num_inputs + i], 0.0) << "t=" << t << " i=" << i;
+        }
+      }
+    }
+  }
+}
+
+TEST_F(GRURNNLayerTest, BatchItemWithoutPrevLayerInputStillAccumulatesBiasAndRecurrentGradients)
+{
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 1;
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  layer.set_w_values({ 0.5 });   layer.set_rw_values({ 0.1 });   layer.set_b_values({ 0.2 });
+  layer.set_z_w_values({ 0.5 }); layer.set_z_rw_values({ 0.1 }); layer.set_z_b_values({ 0.2 });
+  layer.set_r_w_values({ 0.6 }); layer.set_r_rw_values({ 0.2 }); layer.set_r_b_values({ 0.3 });
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  next_layer.set_w_values({ 1.0 });
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  auto batch_go_ref = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs_ref = create_batch_hidden_states(topology, 2, 2, GRURNNLayer::Multiplier);
+  batch_go_ref[0].set_rnn_outputs(0, { 1.0, 1.0 });
+  batch_go_ref[1].set_rnn_outputs(0, { 1.0, 1.0 });
+  layer.calculate_forward_feed(batch_go_ref, prev_layer, {}, batch_hs_ref, 2, true);
+  std::vector<std::vector<double>> batch_next_grads = { { 0.0, 1.0 }, { 0.0, 1.0 } };
+  layer.calculate_hidden_gradients(batch_go_ref, next_layer, batch_next_grads, batch_hs_ref, 2, 2);
+  layer.calculate_and_store_gradients(batch_go_ref, batch_hs_ref, prev_layer, 2, 2);
+
+  const double ref_w = layer.get_w_grads()[0];
+  const double ref_b = layer.get_b_grads()[0];
+  const double ref_rw = layer.get_rw_grads()[0];
+  const double ref_z_w = layer.get_z_w_grads()[0];
+  const double ref_z_b = layer.get_z_b_grads()[0];
+  const double ref_z_rw = layer.get_z_rw_grads()[0];
+  const double ref_r_w = layer.get_r_w_grads()[0];
+  const double ref_r_b = layer.get_r_b_grads()[0];
+  const double ref_r_rw = layer.get_r_rw_grads()[0];
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+  auto batch_hs = create_batch_hidden_states(topology, 2, 2, GRURNNLayer::Multiplier);
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+  batch_go[1].set_rnn_outputs(0, { 1.0, 1.0 });
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 2, true);
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 2, 2);
+
+  batch_go[1].set_rnn_outputs(0, std::vector<double>{});
+
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 2, 2);
+
+  EXPECT_NEAR(layer.get_b_grads()[0], ref_b, 1e-9);
+  EXPECT_NEAR(layer.get_z_b_grads()[0], ref_z_b, 1e-9);
+  EXPECT_NEAR(layer.get_r_b_grads()[0], ref_r_b, 1e-9);
+  EXPECT_NEAR(layer.get_rw_grads()[0], ref_rw, 1e-9);
+  EXPECT_NEAR(layer.get_z_rw_grads()[0], ref_z_rw, 1e-9);
+  EXPECT_NEAR(layer.get_r_rw_grads()[0], ref_r_rw, 1e-9);
+
+  EXPECT_NEAR(layer.get_w_grads()[0], ref_w / 2.0, 1e-9);
+  EXPECT_NEAR(layer.get_z_w_grads()[0], ref_z_w / 2.0, 1e-9);
+  EXPECT_NEAR(layer.get_r_w_grads()[0], ref_r_w / 2.0, 1e-9);
+}
+
+TEST_F(GRURNNLayerTest, CalculateAndStoreGradientsChunkLargeBatchHeapGrowth)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 70;
+  const size_t num_time_steps = 2;
+
+  GRURNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 42);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = std::sin(static_cast<double>(b * 10 + k)) * 0.3;
+    }
+    batch_go[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  layer_st.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t k = 0; k < upstream_grads[b].size(); ++k)
+    {
+      upstream_grads[b][k] = std::cos(static_cast<double>(b * 7 + k)) * 0.2;
+    }
+  }
+
+  layer_st.calculate_hidden_gradients(batch_go, next_layer, upstream_grads, batch_hs, batch_size, num_time_steps);
+  layer_st.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, static_cast<int>(num_time_steps));
+
+  for (double v : layer_st.get_w_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_rw_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_b_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_z_w_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_z_rw_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_z_b_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_r_w_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_r_rw_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+  for (double v : layer_st.get_r_b_grads())
+  {
+    EXPECT_TRUE(std::isfinite(v));
+  }
+}
+
+namespace
+{
+  static void assert_gru_gradients_near(const std::vector<double>& g_st, const std::vector<double>& g_mt, const char* name)
+  {
+    ASSERT_EQ(g_st.size(), g_mt.size()) << name;
+    for (size_t k = 0; k < g_st.size(); ++k)
+    {
+      EXPECT_NEAR(g_st[k], g_mt[k], 1e-12) << name << " index " << k;
+    }
+  }
+}
+
+TEST_F(GRURNNLayerTest, ThreadedGradientAccumulationEquivalence)
+{
+  const size_t num_inputs = 4;
+  const size_t num_outputs = 4;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 8;
+
+  GRURNNLayer layer_st(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 42);
+  GRURNNLayer layer_mt(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 4, true, 0.0, false, 42);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { static_cast<unsigned>(num_inputs), static_cast<unsigned>(num_outputs), static_cast<unsigned>(num_outputs) };
+  auto batch_go_st = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_go_mt = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs_st = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+  auto batch_hs_mt = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = std::sin(static_cast<double>(b * 10 + k)) * 0.5;
+    }
+    batch_go_st[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+    batch_go_mt[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  layer_st.calculate_forward_feed(batch_go_st, prev_layer, {}, batch_hs_st, batch_size, true);
+  layer_mt.calculate_forward_feed(batch_go_mt, prev_layer, {}, batch_hs_mt, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t k = 0; k < upstream_grads[b].size(); ++k)
+    {
+      upstream_grads[b][k] = std::cos(static_cast<double>(b * 5 + k)) * 0.2;
+    }
+  }
+
+  layer_st.calculate_hidden_gradients(batch_go_st, next_layer, upstream_grads, batch_hs_st, batch_size, num_time_steps);
+  layer_mt.calculate_hidden_gradients(batch_go_mt, next_layer, upstream_grads, batch_hs_mt, batch_size, num_time_steps);
+
+  layer_st.calculate_and_store_gradients(batch_go_st, batch_hs_st, prev_layer, batch_size, num_time_steps);
+  layer_mt.calculate_and_store_gradients(batch_go_mt, batch_hs_mt, prev_layer, batch_size, num_time_steps);
+
+  assert_gru_gradients_near(layer_st.get_w_grads(), layer_mt.get_w_grads(), "w_grads");
+  assert_gru_gradients_near(layer_st.get_rw_grads(), layer_mt.get_rw_grads(), "rw_grads");
+  assert_gru_gradients_near(layer_st.get_b_grads(), layer_mt.get_b_grads(), "b_grads");
+  assert_gru_gradients_near(layer_st.get_z_w_grads(), layer_mt.get_z_w_grads(), "z_w_grads");
+  assert_gru_gradients_near(layer_st.get_z_rw_grads(), layer_mt.get_z_rw_grads(), "z_rw_grads");
+  assert_gru_gradients_near(layer_st.get_z_b_grads(), layer_mt.get_z_b_grads(), "z_b_grads");
+  assert_gru_gradients_near(layer_st.get_r_w_grads(), layer_mt.get_r_w_grads(), "r_w_grads");
+  assert_gru_gradients_near(layer_st.get_r_rw_grads(), layer_mt.get_r_rw_grads(), "r_rw_grads");
+  assert_gru_gradients_near(layer_st.get_r_b_grads(), layer_mt.get_r_b_grads(), "r_b_grads");
+}
+
+TEST_F(GRURNNLayerTest, AnyHasRnnInputIsComputedOverWholeBatchNotPerChunk)
+{
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 1;
+  const size_t num_time_steps = 2;
+  const size_t batch_size = 3;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 7);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  next_layer.set_w_values({ 1.0 });
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_seq(num_time_steps * num_inputs);
+    for (size_t k = 0; k < in_seq.size(); ++k)
+    {
+      in_seq[k] = 0.1 * static_cast<double>(b * num_time_steps + k + 1);
+    }
+    batch_go[b].set_rnn_outputs(0, in_seq.data(), in_seq.size());
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  std::vector<std::vector<double>> upstream_grads(batch_size, std::vector<double>(num_time_steps * num_outputs, 0.3));
+  layer.calculate_hidden_gradients(batch_go, next_layer, upstream_grads, batch_hs, batch_size, num_time_steps);
+
+  const double item2_last_step_value = 0.1 * static_cast<double>(2 * num_time_steps + num_time_steps);
+  batch_go[2].set_rnn_outputs(0, std::vector<double>{});
+  batch_go[2].set_outputs(0, { item2_last_step_value });
+
+  const size_t w_size = static_cast<size_t>(num_inputs) * num_outputs;
+  const size_t rw_size = static_cast<size_t>(num_outputs) * num_outputs;
+  const size_t b_size = num_outputs;
+
+  const unsigned prev_layer_index = prev_layer.get_layer_index();
+  const int t_start = static_cast<int>(num_time_steps) - 1;
+  const int t_end = 0;
+
+  struct ChunkRunner
+  {
+    const GRURNNLayer& layer;
+    const std::vector<GradientsAndOutputs>& batch_go;
+    const std::vector<HiddenStates>& batch_hs;
+    unsigned prev_layer_index;
+    unsigned num_inputs;
+    unsigned num_outputs;
+    size_t num_time_steps;
+    int t_start;
+    int t_end;
+    size_t batch_size;
+    size_t w_size;
+    size_t rw_size;
+    size_t b_size;
+
+    std::array<std::vector<double>, 9> operator()(bool any_has_rnn_input) const
+    {
+      std::vector<double> w(w_size, 0.0), rw(rw_size, 0.0);
+      std::vector<double> zw(w_size, 0.0), zrw(rw_size, 0.0);
+      std::vector<double> rw2(w_size, 0.0), rrw(rw_size, 0.0);
+      std::vector<double> b(b_size, 0.0), zb(b_size, 0.0), rb(b_size, 0.0);
+      layer.calculate_and_store_gradients_chunk(
+        0, batch_size,
+        batch_go, batch_hs,
+        prev_layer_index, num_inputs, num_outputs, num_time_steps,
+        t_start, t_end, any_has_rnn_input,
+        w, rw, zw, zrw, rw2, rrw, b, zb, rb
+      );
+      return std::array<std::vector<double>, 9>{ w, rw, zw, zrw, rw2, rrw, b, zb, rb };
+    }
+  };
+
+  ChunkRunner run_chunk{
+    layer, batch_go, batch_hs,
+    prev_layer_index, num_inputs, num_outputs, num_time_steps,
+    t_start, t_end, batch_size,
+    w_size, rw_size, b_size
+  };
+
+  const auto rejected = run_chunk(/*any_has_rnn_input=*/true);
+  const auto accepted = run_chunk(/*any_has_rnn_input=*/false);
+
+  // Bias and recurrent-weight gradients never depend on prev-layer input, so
+  // they must be identical regardless of any_has_rnn_input.
+  for (size_t idx : { 1, 3, 5 })
+  {
+    ASSERT_EQ(rejected[idx].size(), accepted[idx].size());
+    for (size_t k = 0; k < rejected[idx].size(); ++k)
+    {
+      EXPECT_NEAR(rejected[idx][k], accepted[idx][k], 1e-12) << "recurrent-weight index " << idx << "," << k;
+    }
+  }
+  for (size_t idx : { 6, 7, 8 })
+  {
+    ASSERT_EQ(rejected[idx].size(), accepted[idx].size());
+    for (size_t k = 0; k < rejected[idx].size(); ++k)
+    {
+      EXPECT_NEAR(rejected[idx][k], accepted[idx][k], 1e-12) << "bias index " << idx << "," << k;
+    }
+  }
+
+  // Input-weight gradients must differ: any_has_rnn_input=false wrongly lets
+  // item 2's last-step value broadcast across every timestep.
+  bool any_input_weight_differs = false;
+  for (size_t idx : { 0, 2, 4 })
+  {
+    for (size_t k = 0; k < rejected[idx].size(); ++k)
+    {
+      if (std::abs(rejected[idx][k] - accepted[idx][k]) > 1e-9)
+      {
+        any_input_weight_differs = true;
+      }
+    }
+  }
+  EXPECT_TRUE(any_input_weight_differs);
+}
+
+TEST_F(GRURNNLayerTest, SwaAndLookaheadWeightCaching)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 2;
+
+  GRURNNLayer layer_base(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 11);
+  GRURNNLayer layer_snapshot(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 22);
+
+  std::vector<double> rw_snap = { 0.1, 0.2, 0.3, 0.4 };
+  std::vector<double> z_rw_snap = { 0.5, 0.6, 0.7, 0.8 };
+  std::vector<double> r_rw_snap = { 0.9, 1.0, 1.1, 1.2 };
+  layer_snapshot.set_rw_values(rw_snap);
+  layer_snapshot.set_z_rw_values(z_rw_snap);
+  layer_snapshot.set_r_rw_values(r_rw_snap);
+
+  layer_base.accumulate_swa_average(layer_snapshot, 1);
+
+  const auto& rw_base = layer_base.get_rw_values();
+  const auto& rw_base_T = layer_base.get_rw_values_T();
+  for (size_t r = 0; r < num_outputs; ++r)
+  {
+    for (size_t c = 0; c < num_outputs; ++c)
+    {
+      EXPECT_DOUBLE_EQ(rw_base_T[c * num_outputs + r], rw_base[r * num_outputs + c]);
+    }
+  }
+
+  const auto& z_rw_base = layer_base.get_z_rw_values();
+  const auto& z_rw_base_T = layer_base.get_z_rw_values_T();
+  for (size_t r = 0; r < num_outputs; ++r)
+  {
+    for (size_t c = 0; c < num_outputs; ++c)
+    {
+      EXPECT_DOUBLE_EQ(z_rw_base_T[c * num_outputs + r], z_rw_base[r * num_outputs + c]);
+    }
+  }
+
+  GRURNNLayer slow_layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 33);
+  GRURNNLayer fast_layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, 44);
+
+  std::vector<double> fast_rw = { 0.25, -0.15, 0.35, -0.45 };
+  fast_layer.set_rw_values(fast_rw);
+
+  slow_layer.update_lookahead_slow_weights(fast_layer, 0.5);
+
+  const auto& slow_rw = slow_layer.get_rw_values();
+  const auto& slow_rw_T = slow_layer.get_rw_values_T();
+  for (size_t r = 0; r < num_outputs; ++r)
+  {
+    for (size_t c = 0; c < num_outputs; ++c)
+    {
+      EXPECT_DOUBLE_EQ(slow_rw_T[c * num_outputs + r], slow_rw[r * num_outputs + c]);
+    }
+  }
+
+  const auto& fast_rw_current = fast_layer.get_rw_values();
+  const auto& fast_rw_T = fast_layer.get_rw_values_T();
+  for (size_t r = 0; r < num_outputs; ++r)
+  {
+    for (size_t c = 0; c < num_outputs; ++c)
+    {
+      EXPECT_DOUBLE_EQ(fast_rw_T[c * num_outputs + r], fast_rw_current[r * num_outputs + c]);
+    }
+  }
+}
+
+namespace
+{
+  static double gru_multi_batch_average_loss(
+    GRURNNLayer& layer,
+    const MockLayer& prev_layer,
+    const std::vector<unsigned>& topology,
+    const std::vector<std::vector<double>>& inputs_batch,
+    const std::vector<std::vector<double>>& targets_batch,
+    size_t num_time_steps,
+    unsigned num_outputs)
+  {
+    const size_t batch_size = inputs_batch.size();
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      batch_go[b].set_rnn_outputs(0, inputs_batch[b]);
+    }
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+    double total_loss = 0.0;
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& outputs = batch_go[b].get_rnn_outputs(1);
+      for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+      {
+        const double diff = outputs[i] - targets_batch[b][i];
+        total_loss += 0.5 * diff * diff;
+      }
+    }
+    return total_loss / static_cast<double>(batch_size);
+  }
+}
+
+TEST_F(GRURNNLayerTest, RecurrentAndInputWeightsFiniteDifferenceMultiBatchNumericalEquivalence)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 2;
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs, num_outputs };
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  std::vector<double> zw = { 0.2, -0.3, 0.1, 0.4 };
+  std::vector<double> rw = { -0.1, 0.2, 0.3, -0.2 };
+  std::vector<double> gw = { 0.3, -0.1, -0.2, 0.2 };
+
+  std::vector<double> zrw = { 0.15, -0.1, 0.05, 0.2 };
+  std::vector<double> rrw = { -0.1, 0.15, -0.2, 0.1 };
+  std::vector<double> grw = { 0.2, -0.05, 0.1, -0.15 };
+
+  std::vector<double> zb = { 0.05, -0.02 };
+  std::vector<double> rb = { -0.03, 0.04 };
+  std::vector<double> gb = { 0.02, -0.01 };
+
+  layer.set_z_w_values(zw);
+  layer.set_r_w_values(rw);
+  layer.set_w_values(gw);
+
+  layer.set_z_rw_values(zrw);
+  layer.set_r_rw_values(rrw);
+  layer.set_rw_values(grw);
+
+  layer.set_z_b_values(zb);
+  layer.set_r_b_values(rb);
+  layer.set_b_values(gb);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+  {
+    std::vector<double> identity(num_outputs * num_outputs, 0.0);
+    for (unsigned j = 0; j < num_outputs; ++j)
+    {
+      identity[j * num_outputs + j] = 1.0;
+    }
+    next_layer.set_w_values(identity);
+  }
+
+  std::vector<std::vector<double>> inputs_batch(batch_size, std::vector<double>(num_time_steps * num_inputs));
+  std::vector<std::vector<double>> targets_batch(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    for (size_t i = 0; i < inputs_batch[b].size(); ++i)
+    {
+      inputs_batch[b][i] = 0.2 * std::sin(static_cast<double>((b + 1) * 10 + i + 1));
+    }
+    for (size_t i = 0; i < targets_batch[b].size(); ++i)
+    {
+      targets_batch[b][i] = 0.15 * std::cos(static_cast<double>((b + 1) * 7 + i + 1));
+    }
+  }
+
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps, GRURNNLayer::Multiplier);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go[b].set_rnn_outputs(0, inputs_batch[b]);
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  std::vector<std::vector<double>> batch_next_grads(batch_size, std::vector<double>(num_time_steps * num_outputs));
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& outputs = batch_go[b].get_rnn_outputs(1);
+    for (size_t i = 0; i < num_time_steps * num_outputs; ++i)
+    {
+      batch_next_grads[b][i] = outputs[i] - targets_batch[b][i];
+    }
+  }
+
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, 0);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  const auto analytical_rw_grads = layer.get_rw_grads();
+  const auto analytical_gw_grads = layer.get_w_grads();
+  const auto analytical_z_rw_grads = layer.get_z_rw_grads();
+  const auto analytical_z_w_grads = layer.get_z_w_grads();
+  const auto analytical_r_rw_grads = layer.get_r_rw_grads();
+  const auto analytical_r_w_grads = layer.get_r_w_grads();
+
+  const double eps = 1e-6;
+
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto grw_pert = grw;
+    grw_pert[k] = grw[k] + eps;
+    layer.set_rw_values(grw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    grw_pert[k] = grw[k] - eps;
+    layer.set_rw_values(grw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_rw_values(grw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_rw_grads[k], num_grad, 1e-5) << "rw index " << k;
+  }
+
+  for (size_t k = 0; k < num_inputs * num_outputs; ++k)
+  {
+    auto gw_pert = gw;
+    gw_pert[k] = gw[k] + eps;
+    layer.set_w_values(gw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    gw_pert[k] = gw[k] - eps;
+    layer.set_w_values(gw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_w_values(gw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_gw_grads[k], num_grad, 1e-5) << "w index " << k;
+  }
+
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto zrw_pert = zrw;
+    zrw_pert[k] = zrw[k] + eps;
+    layer.set_z_rw_values(zrw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    zrw_pert[k] = zrw[k] - eps;
+    layer.set_z_rw_values(zrw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_z_rw_values(zrw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_z_rw_grads[k], num_grad, 1e-5) << "z_rw index " << k;
+  }
+
+  for (size_t k = 0; k < num_inputs * num_outputs; ++k)
+  {
+    auto zw_pert = zw;
+    zw_pert[k] = zw[k] + eps;
+    layer.set_z_w_values(zw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    zw_pert[k] = zw[k] - eps;
+    layer.set_z_w_values(zw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_z_w_values(zw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_z_w_grads[k], num_grad, 1e-5) << "z_w index " << k;
+  }
+
+  for (size_t k = 0; k < num_outputs * num_outputs; ++k)
+  {
+    auto rrw_pert = rrw;
+    rrw_pert[k] = rrw[k] + eps;
+    layer.set_r_rw_values(rrw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    rrw_pert[k] = rrw[k] - eps;
+    layer.set_r_rw_values(rrw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_r_rw_values(rrw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_r_rw_grads[k], num_grad, 1e-5) << "r_rw index " << k;
+  }
+
+  for (size_t k = 0; k < num_inputs * num_outputs; ++k)
+  {
+    auto rw_pert = rw;
+    rw_pert[k] = rw[k] + eps;
+    layer.set_r_w_values(rw_pert);
+    const double loss_plus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    rw_pert[k] = rw[k] - eps;
+    layer.set_r_w_values(rw_pert);
+    const double loss_minus = gru_multi_batch_average_loss(layer, prev_layer, topology, inputs_batch, targets_batch, num_time_steps, num_outputs);
+
+    layer.set_r_w_values(rw);
+    const double num_grad = (loss_plus - loss_minus) / (2.0 * eps);
+    EXPECT_NEAR(analytical_r_w_grads[k], num_grad, 1e-5) << "r_w index " << k;
+  }
+}
+
+TEST_F(GRURNNLayerTest, DropoutMathematicalSoundnessInBPTT)
+{
+  const size_t num_inputs = 2;
+  const size_t num_outputs = 2;
+  const size_t num_time_steps = 2;
+  const double dropout_rate = 0.5;
+
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, dropout_rate, nullptr, 1, true, 0.0, false, 888);
+
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs, num_outputs);
+  std::vector<double> identity(num_outputs * num_outputs, 0.0);
+  for (size_t j = 0; j < num_outputs; ++j)
+  {
+    identity[j * num_outputs + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { 2, 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, num_time_steps, GRURNNLayer::Multiplier);
+
+  batch_go[0].set_rnn_outputs(0, { 0.5, -0.5, 0.3, -0.3 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  const auto& item_states = batch_hs[0].at(1);
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    const auto& packed = item_states[t].get_pre_activation_sums();
+    ASSERT_GE(packed.size(), 5 * num_outputs);
+
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+      const double raw_candidate_act = packed[3 * num_outputs + j];
+      EXPECT_GE(raw_candidate_act, -1.0);
+      EXPECT_LE(raw_candidate_act, 1.0);
+
+      const double mask = packed[4 * num_outputs + j];
+      EXPECT_TRUE(mask == 0.0 || std::abs(mask - 2.0) < 1e-9);
+    }
+  }
+
+  std::vector<std::vector<double>> upstream_grads = { { 0.2, -0.1, 0.3, -0.2 } };
+  layer.calculate_hidden_gradients(batch_go, next_layer, upstream_grads, batch_hs, 1, num_time_steps);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, num_time_steps);
+
+  for (double g : layer.get_w_grads())
+  {
+    EXPECT_TRUE(std::isfinite(g));
+  }
+  for (double g : layer.get_rw_grads())
+  {
+    EXPECT_TRUE(std::isfinite(g));
+  }
+  for (double g : layer.get_b_grads())
+  {
+    EXPECT_TRUE(std::isfinite(g));
+  }
+}
+
 
 
 

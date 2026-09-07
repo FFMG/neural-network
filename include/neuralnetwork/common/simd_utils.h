@@ -5115,6 +5115,61 @@ public:
     }
   }
 
+  // Vectorized addition for three vectors (y0 += x0, y1 += x1, y2 += x2)
+  inline static void add_three_vectors(
+    const double* x0, const double* x1, const double* x2,
+    double* y0, double* y1, double* y2,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vx0_0 = _mm256_loadu_pd(x0 + j);
+      __m256d vx0_1 = _mm256_loadu_pd(x0 + j + 4);
+      __m256d vy0_0 = _mm256_loadu_pd(y0 + j);
+      __m256d vy0_1 = _mm256_loadu_pd(y0 + j + 4);
+      _mm256_storeu_pd(y0 + j, _mm256_add_pd(vy0_0, vx0_0));
+      _mm256_storeu_pd(y0 + j + 4, _mm256_add_pd(vy0_1, vx0_1));
+
+      __m256d vx1_0 = _mm256_loadu_pd(x1 + j);
+      __m256d vx1_1 = _mm256_loadu_pd(x1 + j + 4);
+      __m256d vy1_0 = _mm256_loadu_pd(y1 + j);
+      __m256d vy1_1 = _mm256_loadu_pd(y1 + j + 4);
+      _mm256_storeu_pd(y1 + j, _mm256_add_pd(vy1_0, vx1_0));
+      _mm256_storeu_pd(y1 + j + 4, _mm256_add_pd(vy1_1, vx1_1));
+
+      __m256d vx2_0 = _mm256_loadu_pd(x2 + j);
+      __m256d vx2_1 = _mm256_loadu_pd(x2 + j + 4);
+      __m256d vy2_0 = _mm256_loadu_pd(y2 + j);
+      __m256d vy2_1 = _mm256_loadu_pd(y2 + j + 4);
+      _mm256_storeu_pd(y2 + j, _mm256_add_pd(vy2_0, vx2_0));
+      _mm256_storeu_pd(y2 + j + 4, _mm256_add_pd(vy2_1, vx2_1));
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vx0 = _mm256_loadu_pd(x0 + j);
+      __m256d vy0 = _mm256_loadu_pd(y0 + j);
+      _mm256_storeu_pd(y0 + j, _mm256_add_pd(vy0, vx0));
+
+      __m256d vx1 = _mm256_loadu_pd(x1 + j);
+      __m256d vy1 = _mm256_loadu_pd(y1 + j);
+      _mm256_storeu_pd(y1 + j, _mm256_add_pd(vy1, vx1));
+
+      __m256d vx2 = _mm256_loadu_pd(x2 + j);
+      __m256d vy2 = _mm256_loadu_pd(y2 + j);
+      _mm256_storeu_pd(y2 + j, _mm256_add_pd(vy2, vx2));
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      y0[j] += x0[j];
+      y1[j] += x1[j];
+      y2[j] += x2[j];
+    }
+  }
+
   // Scalar fallback for scale_vector
   inline static void scalar_scale_vector(double* y, const double scale, size_t n, size_t start = 0) noexcept
   {

@@ -1036,6 +1036,7 @@ void FFLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha
   {
     simd::lookahead_step(_b_values.data(), other._b_values.data(), alpha, _b_values.size());
   }
+  cache_recurrent_weights();
   other.cache_recurrent_weights();
 }
 

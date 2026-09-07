@@ -250,6 +250,7 @@ public:
     size_t num_time_steps,
     int t_start,
     int t_end,
+    bool any_has_rnn_input,
     std::vector<double>& local_w_grads,
     std::vector<double>& local_rw_grads,
     std::vector<double>& local_z_w_grads,
@@ -259,6 +260,144 @@ public:
     std::vector<double>& local_b_grads,
     std::vector<double>& local_z_b_grads,
     std::vector<double>& local_r_b_grads) const;
+
+  struct bptt_workspace 
+  {
+    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
+    AlignedVector grad_from_next_all_t;
+    AlignedVector d_next_h;
+    AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x 3N]
+    AlignedVector dx_matrix;      // Stores input gradients [Batch x T x N_prev]
+    AlignedVector chunk_dz;
+    AlignedVector chunk_dr;
+    AlignedVector chunk_dh_hat;
+    AlignedVector chunk_dh_prev_accum;
+    AlignedVector h_hat_vals;
+    AlignedVector temp_Uh_T_dh_hat;
+    AlignedVector dh_hat_pre_deriv_buf;
+    AlignedVector h_hat_pre_buf;
+    AlignedVector h_hat_val_buf;
+
+    // Recurrent-state LayerNorm scratch (only used when the layer has
+    // use_layer_normalisation enabled): per-timestep combined external+recurrent
+    // gradient buffer and its LayerNorm-backward output, plus this
+    // workspace's share of the gain/bias gradients, accumulated across the
+    // whole calculate_bptt_batch_chunk call and merged into the layer's
+    // _ln_h_gain_grads/_ln_h_bias_grads by calculate_hidden_gradients once
+    // every dispatched chunk has completed.
+    AlignedVector ln_dy_buf;
+    AlignedVector ln_dx_buf;
+    AlignedVector ln_zero_buf;
+    AlignedVector ln_h_gain_grad_accum;
+    AlignedVector ln_h_bias_grad_accum;
+
+    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
+    {
+      grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
+      d_next_h.resize_and_zero(batch_chunk_size * n);
+      rnn_grad_matrix.resize(batch_chunk_size * num_time_steps * GateCount * n);
+      dx_matrix.resize(batch_chunk_size * num_time_steps * n_prev);
+      chunk_dz.resize(batch_chunk_size * n);
+      chunk_dr.resize(batch_chunk_size * n);
+      chunk_dh_hat.resize(batch_chunk_size * n);
+      chunk_dh_prev_accum.resize(batch_chunk_size * n);
+      h_hat_vals.resize(n);
+      temp_Uh_T_dh_hat.resize(batch_chunk_size * n);
+      dh_hat_pre_deriv_buf.resize(batch_chunk_size * n);
+      h_hat_pre_buf.resize(batch_chunk_size * n);
+      h_hat_val_buf.resize(batch_chunk_size * n);
+      ln_dy_buf.resize(n);
+      ln_dx_buf.resize(n);
+      ln_zero_buf.resize(n);
+      ln_h_gain_grad_accum.resize_and_zero(n);
+      ln_h_bias_grad_accum.resize_and_zero(n);
+    }
+  };
+
+  using BPTTWorkspace = bptt_workspace;
+
+  BPTTWorkspace& get_workspace(size_t thread_idx) const;
+  void allocate_workspace(unsigned int num_threads);
+  void allocate_workspace();
+
+  void pre_calculate_gates(
+    const size_t b_start,
+    const size_t b_end,
+    const size_t N_this,
+    const size_t N_prev,
+    const size_t num_time_steps,
+    const std::vector<double>& flattened_batch_inputs,
+    std::vector<double>& batch_pre_act
+  ) const;
+
+  void run_forward_pass(
+    const size_t start,
+    const size_t end,
+    const size_t N_this,
+    const size_t num_time_steps,
+    const std::vector<double>& batch_pre_act,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<double>& batch_output_sequences,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training
+  ) const;
+
+  void finalize_forward_step(
+    size_t b,
+    size_t t,
+    size_t N_this,
+    size_t num_time_steps,
+    double* h_prev_slice,
+    double* item_packed,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<double>& batch_output_sequences,
+    std::vector<HiddenStates>& batch_hidden_states,
+    bool is_training
+  ) const;
+
+  void calculate_bptt_batch_chunk(
+    size_t start,
+    size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const Layer& next_layer,
+    const std::vector<std::vector<double>>& batch_next_grad_matrix,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    int bptt_max_ticks,
+    BPTTWorkspace& workspace,
+    const BPTTWorkspace::AlignedVector& rw_values_T,
+    const BPTTWorkspace::AlignedVector& z_rw_values_T,
+    const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
+
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_rw_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _rw_values_T;
+  }
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_z_rw_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _z_rw_values_T;
+  }
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_r_rw_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _r_rw_values_T;
+  }
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_w_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _w_values_T;
+  }
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_z_w_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _z_w_values_T;
+  }
+  [[nodiscard]] inline const BPTTWorkspace::AlignedVector& get_r_w_values_T() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
+    return _r_w_values_T;
+  }
 
   [[nodiscard]] inline const std::vector<double>& get_rw_values() const noexcept
   {
@@ -662,112 +801,15 @@ public:
   }
 
 private:
-
-  void run_forward_pass(
-    const size_t start,
-    const size_t end,
-    const size_t N_this,
-    const size_t num_time_steps,
-    const std::vector<double>& batch_pre_act,
-    const std::vector<std::vector<double>>& batch_residual_output_values,
-    std::vector<double>& batch_output_sequences,
-    std::vector<HiddenStates>& batch_hidden_states,
-    bool is_training
-  ) const;
-
-  void finalize_forward_step(
-    size_t b,
-    size_t t,
+  void run_recurrent_gemm_backward(
+    size_t b_start,
+    size_t b_end,
     size_t N_this,
-    size_t num_time_steps,
-    double* h_prev_slice,
-    double* item_packed,
-    const std::vector<std::vector<double>>& batch_residual_output_values,
-    std::vector<double>& batch_output_sequences,
-    std::vector<HiddenStates>& batch_hidden_states,
-    bool is_training
-  ) const;
-
-  void pre_calculate_gates(
-    const size_t b_start,
-    const size_t b_end,
-    const size_t N_this,
-    const size_t N_prev,
-    const size_t num_time_steps,
-    const std::vector<double>& flattened_batch_inputs,
-    std::vector<double>& batch_pre_act
-  ) const;
-
-
-  struct BPTTWorkspace 
-  {
-    using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
-    AlignedVector grad_from_next_all_t;
-    AlignedVector d_next_h;
-    AlignedVector rnn_grad_matrix; // Stores gate gradients [Batch x T x 3N]
-    AlignedVector dx_matrix;      // Stores input gradients [Batch x T x N_prev]
-    AlignedVector chunk_dz;
-    AlignedVector chunk_dr;
-    AlignedVector chunk_dh_hat;
-    AlignedVector chunk_dh_prev_accum;
-    AlignedVector h_hat_vals;
-    AlignedVector temp_Uh_T_dh_hat;
-    AlignedVector dh_hat_pre_deriv_buf;
-    AlignedVector h_hat_pre_buf;
-    AlignedVector h_hat_val_buf;
-
-    // Recurrent-state LayerNorm scratch (only used when the layer has
-    // use_layer_normalisation enabled): per-timestep combined external+recurrent
-    // gradient buffer and its LayerNorm-backward output, plus this
-    // workspace's share of the gain/bias gradients, accumulated across the
-    // whole calculate_bptt_batch_chunk call and merged into the layer's
-    // _ln_h_gain_grads/_ln_h_bias_grads by calculate_hidden_gradients once
-    // every dispatched chunk has completed.
-    AlignedVector ln_dy_buf;
-    AlignedVector ln_dx_buf;
-    AlignedVector ln_zero_buf;
-    AlignedVector ln_h_gain_grad_accum;
-    AlignedVector ln_h_bias_grad_accum;
-
-    void resize(size_t n, size_t n_prev, size_t batch_chunk_size, size_t num_time_steps)
-    {
-      grad_from_next_all_t.resize_and_zero(batch_chunk_size * num_time_steps * n);
-      d_next_h.resize_and_zero(batch_chunk_size * n);
-      rnn_grad_matrix.resize_and_zero(batch_chunk_size * num_time_steps * GateCount * n);
-      dx_matrix.resize_and_zero(batch_chunk_size * num_time_steps * n_prev);
-      chunk_dz.resize_and_zero(batch_chunk_size * n);
-      chunk_dr.resize_and_zero(batch_chunk_size * n);
-      chunk_dh_hat.resize_and_zero(batch_chunk_size * n);
-      chunk_dh_prev_accum.resize_and_zero(batch_chunk_size * n);
-      h_hat_vals.resize_and_zero(n);
-      temp_Uh_T_dh_hat.resize_and_zero(batch_chunk_size * n);
-      dh_hat_pre_deriv_buf.resize_and_zero(batch_chunk_size * n);
-      h_hat_pre_buf.resize_and_zero(batch_chunk_size * n);
-      h_hat_val_buf.resize_and_zero(batch_chunk_size * n);
-      ln_dy_buf.resize_and_zero(n);
-      ln_dx_buf.resize_and_zero(n);
-      ln_zero_buf.resize_and_zero(n);
-      ln_h_gain_grad_accum.resize_and_zero(n);
-      ln_h_bias_grad_accum.resize_and_zero(n);
-    }
-  };
-
-  BPTTWorkspace& get_workspace(size_t thread_idx) const;
-  void allocate_workspace(unsigned int num_threads);
-  void allocate_workspace();
-
-  void calculate_bptt_batch_chunk(
-    size_t start,
-    size_t end,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const Layer& next_layer,
-    const std::vector<std::vector<double>>& batch_next_grad_matrix,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    int bptt_max_ticks,
-    BPTTWorkspace& workspace,
-    const BPTTWorkspace::AlignedVector& rw_values_T,
-    const BPTTWorkspace::AlignedVector& z_rw_values_T,
-    const BPTTWorkspace::AlignedVector& r_rw_values_T) const;
+    const double* U_z_T,
+    const double* U_r_T,
+    const double* dz_batch,
+    const double* dr_batch,
+    double* dh_next_batch) const;
 
   void initialize_recurrent_weights(double weight_decay, std::optional<uint32_t> seed);
   void initialize_layer_norm();
@@ -784,6 +826,18 @@ private:
     std::vector<double>& velocities, std::vector<double>& m1,
     std::vector<double>& m2, std::vector<long long>& timesteps,
     std::vector<double>& decays) const;
+
+  void apply_gradient_update(
+    std::vector<double>& v,
+    std::vector<double>& g,
+    std::vector<double>& vel,
+    std::vector<double>& m1,
+    std::vector<double>& m2,
+    std::vector<long long>& ts,
+    const std::vector<double>& dec,
+    double learning_rate,
+    double clipping_scale,
+    bool is_bias);
   
   // SoA for recurrent weights (Candidate State)
   std::vector<double> _rw_values;
@@ -875,16 +929,6 @@ private:
   BPTTWorkspace::AlignedVector _w_values_T;
   BPTTWorkspace::AlignedVector _z_w_values_T;
   BPTTWorkspace::AlignedVector _r_w_values_T;
-
-  void run_recurrent_gemm_backward(
-    size_t b_start,
-    size_t b_end,
-    size_t N_this,
-    const double* U_z_T,
-    const double* U_r_T,
-    const double* dz_batch,
-    const double* dr_batch,
-    double* dh_next_batch) const;
 
   // Per-thread workspaces for BPTT
   std::vector<std::unique_ptr<BPTTWorkspace>> _thread_workspaces;

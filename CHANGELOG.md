@@ -2,6 +2,40 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.52] - 2026-09-07
+
+### Optimised
+- Optimised `GRURNNLayer` cache locality, memory footprint, and backpropagation compute efficiency:
+  - Cache-locality loop inversion in `GRURNNLayer::calculate_and_store_gradients_chunk`: Inverted the gradient accumulation loops for candidate, update, and reset gates so outer loops iterate over input neurons $i$ and recurrent neurons $k$ with 4-way unrolling, keeping weight gradient accumulator rows resident in L1 cache while streaming across all batch items and timesteps.
+  - One-pass vector addition in SIMD: Added `simd::add_three_vectors(x0, x1, x2, y0, y1, y2, n)` with AVX2 and scalar fallback in `include/neuralnetwork/common/simd_utils.h` to accumulate candidate, update, and reset gate bias gradients in a single memory pass.
+  - Optimised `BPTTWorkspace::resize`: Removed unnecessary zero-fill on transient scratch buffers (`rnn_grad_matrix`, `dx_matrix`, `chunk_dz`, `chunk_dr`, `chunk_dh_hat`, `chunk_dh_prev_accum`, `h_hat_vals`, `temp_Uh_T_dh_hat`, `dh_hat_pre_deriv_buf`, `h_hat_pre_buf`, `h_hat_val_buf`, `ln_dy_buf`, `ln_dx_buf`, `ln_zero_buf`), reducing allocation and memory-zeroing overhead between training iterations.
+  - Stack-allocated batch item hoisting in `GRURNNLayer::calculate_and_store_gradients_chunk` and `calculate_bptt_batch_chunk`: Hoisted batch item extraction and hidden state pointers into stack buffers (`std::array<..., 64>`), eliminating heap allocations on chunk worker dispatches for standard batches.
+  - Fast contiguous SIMD GEMM backpropagation in `calculate_bptt_batch_chunk`: Added contiguous SIMD GEMM path using `W_next_T` when the downstream layer is an `FFLayer`, and added identity bypass (`std::memcpy`) when `next_layer` is `this` or `_identity_proxy`.
+  - Transposed weights accessors: Added public const accessors `get_rw_values_T()`, `get_z_rw_values_T()`, `get_r_rw_values_T()`, `get_w_values_T()`, `get_z_w_values_T()`, `get_r_w_values_T()`.
+  - Replaced `std::copy` and `std::fill` with `std::memcpy` and `std::memset` across `calculate_forward_feed`, `pre_calculate_gates`, `run_forward_pass`, `finalize_forward_step`, `zero_gradients`, `calculate_and_store_gradients`, and `cache_recurrent_weights`.
+  - Replaced lambda functions with named functor structs (`GruPreCalculateGatesTask`, `GruRunForwardPassTask`, `GruBpttTask`) and helper method `apply_gradient_update`.
+
+### Fixed
+- Fixed truncated BPTT stale memory bug in `GRURNNLayer::calculate_bptt_batch_chunk`: When truncated BPTT is active (`t_end > 0`), explicitly zeroed `workspace.rnn_grad_matrix` and `workspace.dx_matrix` for timesteps $t \in [0, t\_end)$, preventing uninitialised or stale gradients from corrupting sequence gradients.
+- Fixed multi-batch partial RNN input handling in `GRURNNLayer`: In `GRURNNLayer::calculate_and_store_gradients`, computed `any_has_rnn_input` across the entire batch upfront rather than per-chunk, ensuring thread-chunk boundary invariance when handling mixed sequence inputs and preventing corrupted multi-timestep input weight gradients.
+- Fixed transposed weights cache freshness:
+  - In `GRURNNLayer::accumulate_swa_average_impl`, added call to `cache_recurrent_weights()` to ensure transposed recurrent and input weights reflect the new SWA weights.
+  - In `GRURNNLayer::update_lookahead_slow_weights_impl`, `FFLayer::update_lookahead_slow_weights_impl`, and `LSTMLayer::update_lookahead_slow_weights_impl`, added `cache_recurrent_weights()` on the slow layer (`this`) in addition to `other`.
+- Verified mathematical validity of dropout in `GRURNNLayer`: Candidate gate activation derivatives use unscaled activation values $\hat{h}_{\text{raw}} \in [-1, 1]$ before inverted dropout, ensuring $1 - \hat{h}^2$ derivative remains bounded and mathematically exact, and incoming gradients are properly masked and scaled by $1 / (1 - p)$.
+
+### Added
+- Added unit tests in `tests/grurnnlayer_tests.cpp`:
+  - `GRURNNLayerTest.BackpropFromFFLayerWithTransposedWeightsEquivalence`: Verifies numerical equivalence between `FFLayer` contiguous transposed GEMM and standard transposed GEMM backpropagation into GRU.
+  - `GRURNNLayerTest.IdentityProxyBypassEquivalence`: Verifies numerical equivalence between `is_identity` direct memcpy bypass and general matrix multiplication.
+  - `GRURNNLayerTest.TruncatedBpttZeroesUnprocessedTimesteps`: Verifies that timesteps $[0, t\_end)$ are strictly zeroed under truncated BPTT.
+  - `GRURNNLayerTest.BatchItemWithoutPrevLayerInputStillAccumulatesBiasAndRecurrentGradients`: Verifies that an item with missing previous-layer input still contributes bias and recurrent gradients without crashing or corrupting input weight gradients.
+  - `GRURNNLayerTest.AnyHasRnnInputIsComputedOverWholeBatchNotPerChunk`: Verifies that `any_has_rnn_input` evaluated at batch level properly gates single-step fallback accumulation for input weights without affecting bias or recurrent gradients.
+  - `GRURNNLayerTest.CalculateAndStoreGradientsChunkLargeBatchHeapGrowth`: Tests chunk batch sizes exceeding 64 items to verify heap fallback logic for batch item and pointer arrays.
+  - `GRURNNLayerTest.ThreadedGradientAccumulationEquivalence`: Verifies exact gradient accumulation equivalence between single-threaded (1 thread) and multi-threaded (4 threads) dispatch.
+  - `GRURNNLayerTest.SwaAndLookaheadWeightCaching`: Verifies that `accumulate_swa_average_impl` and `update_lookahead_slow_weights_impl` refresh transposed weight caches for both slow and fast layers.
+  - `GRURNNLayerTest.RecurrentAndInputWeightsFiniteDifferenceMultiBatchNumericalEquivalence`: Verifies analytical gradients for all 6 weight matrices against two-sided finite difference numerical approximations.
+  - `GRURNNLayerTest.DropoutMathematicalSoundnessInBPTT`: Verifies that dropout mask scaling and candidate activation derivatives remain within theoretical bounds during training.
+
 ## [1.1.51] - 2026-09-05
 
 ### Optimised
