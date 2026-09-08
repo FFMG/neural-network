@@ -86,6 +86,12 @@ public:
 public:
   using AlignedVector = myoddweb::nn::AlignedVector<double, 32>;
 
+  struct thread_ff_grad_accumulators
+  {
+    AlignedVector w_grads;
+    AlignedVector b_grads;
+  };
+
   // Multiplier = 1: Standard pre-activation sum (z)
   static constexpr unsigned Multiplier = 1;
   static constexpr unsigned GateCount = 1;
@@ -94,6 +100,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
     return Multiplier;
+  }
+
+  [[nodiscard]] inline const std::vector<thread_ff_grad_accumulators>& get_thread_grad_accumulators() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return _thread_grad_accumulators;
   }
 
 public:
@@ -134,6 +146,52 @@ public:
     const Layer& previous_layer,
     size_t batch_size,
     int bptt_max_ticks) override;
+
+  void run_forward_chunk(
+    size_t start,
+    size_t end,
+    size_t num_time_steps,
+    size_t N_prev,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<std::vector<double>>& batch_residual_output_values,
+    std::vector<HiddenStates>& batch_hidden_states,
+    const double* in_buf_ptr,
+    double* pre_act_ptr,
+    bool is_training) const;
+
+  void run_backward_chunk(
+    size_t start,
+    size_t end,
+    size_t num_time_steps,
+    size_t N_next,
+    size_t N_this,
+    const double* W_next,
+    const double* W_next_T,
+    const double* next_grads_ptr,
+    double* this_grads_ptr,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states) const;
+
+  void run_post_gemm_backward(
+    size_t start,
+    size_t end,
+    size_t N_this,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    const double* flattened_this_grads) const;
+
+  void calculate_and_store_gradients_chunk(
+    size_t start,
+    size_t end,
+    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    unsigned prev_layer_index,
+    unsigned this_layer_index,
+    unsigned num_inputs,
+    unsigned num_outputs,
+    size_t num_time_steps,
+    std::span<double> local_w_grads,
+    std::span<double> local_b_grads) const;
 
   virtual double get_gradient_norm_sq() const override;
 
@@ -241,32 +299,6 @@ private:
     const double* W_next_T,
     const double* flattened_next_grads,
     double* flattened_this_grads) const;
-
-  void run_post_gemm_backward(
-    size_t start,
-    size_t end,
-    size_t N_this,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    const double* flattened_this_grads) const;
-
-  void calculate_and_store_gradients_chunk(
-    size_t start,
-    size_t end,
-    const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    unsigned prev_layer_index,
-    unsigned this_layer_index,
-    unsigned num_inputs,
-    unsigned num_outputs,
-    size_t num_time_steps,
-    std::span<double> local_w_grads,
-    std::span<double> local_b_grads) const;
-
-  struct thread_ff_grad_accumulators
-  {
-    AlignedVector w_grads;
-    AlignedVector b_grads;
-  };
 
   mutable std::vector<thread_ff_grad_accumulators> _thread_grad_accumulators;
   AlignedVector _w_values_T;

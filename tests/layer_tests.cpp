@@ -1151,15 +1151,17 @@ TEST(LayerTest, LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow)
 
   for (auto arch : architectures)
   {
+    SCOPED_TRACE(testing::Message() << "Architecture: " << static_cast<int>(arch));
     // Build a multi-layer network with a recurrent layer preceding an output layer
-    LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails ff_detail(Layer::Architecture::FF, 6, activation(activation::method::leakyRelu, 0.01), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
     LayerDetails rec_detail(arch, 6, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0);
 
     auto options = NeuralNetworkOptions::create({ 4, 6, 6, 2 })
       .with_hidden_layers({ ff_detail, rec_detail })
       .with_enable_bptt(true)
       .with_bptt_max_ticks(2)
-      .with_learning_rate(0.05);
+      .with_learning_rate(0.05)
+      .with_seed(42);
 
     Layers layers(options);
 

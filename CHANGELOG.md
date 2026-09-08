@@ -2,6 +2,29 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.53] - 2026-09-08
+
+### Optimised
+- Optimised `FFLayer` compute throughput, cache locality, and multi-threading efficiency:
+  - Fused chunk execution in `FFLayer::calculate_forward_feed` and `FFLayer::calculate_hidden_gradients`: Consolidated bias initialisation, GEMM, and post-GEMM activation/dropout into a single task pass (`run_forward_chunk`), and backward GEMM with post-GEMM derivative accumulation into a single task pass (`run_backward_chunk`). This halves thread synchronization barriers and keeps freshly computed GEMM outputs hot in L1/L2 cache for immediate activation.
+  - Zero-copy gradient accumulation for worker thread 0 in `FFLayer::calculate_and_store_gradients`: Worker thread 0 now accumulates directly into `_w_grads` and `_b_grads`, allocating auxiliary accumulator buffers only for threads $1 \dots T-1$ and eliminating an entire redundant buffer allocation, zeroing, and SIMD vector merge pass.
+  - Redundant FMADD zero-scalar bypass in `FFLayer::calculate_and_store_gradients_chunk`: Added checks for zero input blocks ($x_0 = x_1 = x_2 = x_3 = 0.0$), skipping useless SIMD load, FMADD, and write-backs across `num_outputs` doubles for inactive or dropped-out neurons.
+  - Small-Buffer Optimization (SBO) for activation derivatives and dropout masks: Stack-allocated `mask_buf` in `run_post_gemm` and `deriv_buf` in `run_post_gemm_backward` via `std::array<double, 64>` when $N_{\text{this}} \le 64$, removing heap allocation overhead for typical layer widths.
+  - Replaced lambda dispatch with named functor structs (`FfForwardTask`, `FfBackwardTask`, `FfPostGemmBackwardTask`, `FfGradsTask`).
+  - Added const accessor `get_thread_grad_accumulators()` in `FFLayer`.
+
+### Fixed
+- Fixed uninitialised memory bug in `FFLayer::calculate_forward_feed`: When previous layer RNN outputs were static or single-step (`rnn_in.size() == N_prev`) while `num_time_steps > 1`, now properly broadcasts across all timesteps $t \in [0, num\_time\_steps)$ and zero-fills partial sequences, preventing uninitialised heap memory from feeding into GEMM.
+- Fixed out-of-bounds memory read bug in `FFLayer::calculate_and_store_gradients_chunk`: When sequence inputs or incoming gradients had fewer elements than $num\_time\_steps \times N$ (e.g. single-step outputs), strides are safely set to 0 to broadcast step 0 across all timesteps without indexing past buffer bounds.
+- Fixed code formatting in `FFLayer::apply_stored_gradients` to enforce Allman brace blocks for all conditional statements.
+
+### Added
+- Added unit tests in `tests/fflayer_tests.cpp`:
+  - `FFLayerTest.ForwardFeedPartialSequenceBroadcastingSafety`: Verifies safe broadcasting and lack of uninitialised memory when `rnn_in` is single-step and sequence length is 3.
+  - `FFLayerTest.GradientsSingleStepBroadcastSafety`: Verifies that single-step inputs and gradients with multi-step sequence lengths accumulate safely without buffer overruns.
+  - `FFLayerTest.GradientsZeroScalarSkipEquivalence`: Verifies that zero-scalar skipping in gradient accumulation produces identical mathematical results.
+  - `FFLayerTest.MultiThreadedForwardAndBackwardEquivalence`: Verifies exact numerical equivalence between single-threaded (1 thread) and multi-threaded (4 threads) forward feed, backward pass, and gradient storage.
+
 ## [1.1.52] - 2026-09-07
 
 ### Optimised
