@@ -129,6 +129,7 @@
     <ClCompile Include="selfattentionlayer_mt_tests.cpp" />
     <ClCompile Include="taskqueue_tests.cpp" />
     <ClCompile Include="taskqueue_comprehensive_tests.cpp" />
+    <ClCompile Include="weight_decay_tests.cpp" />
     <ClCompile Include="weight_param_tests.cpp" />
     <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\attentionpoollayer.cpp" />

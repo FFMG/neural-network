@@ -2,6 +2,64 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.56] - 2026-09-09
+
+### Added
+- Added comprehensive unit test coverage and mathematical verification for weight decay across all optimisers and layer architectures:
+  - Vectorised optimiser weight decay tests in [`tests/layer_optimizer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_optimizer_tests.cpp):
+    - `ApplyUpdateToVectorSGDWithDecay`: Verifies SGD L2 regularisation ($g_{\text{eff}} = g + \lambda w$, $v = \mu v + g_{\text{eff}}$, $w = w - \eta v$) with zero and non-zero momentum across both AVX2 SIMD loops and scalar tails.
+    - `ApplyUpdateToVectorAdamWWithDecay`: Verifies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda) - \eta \cdot \text{step}$) in AdamW.
+    - `ApplyUpdateToVectorAdamIgnoresDecay`: Confirms standard Adam ignores weight decay, applying updates purely based on gradients.
+    - `ApplyUpdateToVectorNadamWWithDecay`: Verifies decoupled weight decay with Nesterov momentum in NadamW.
+    - `ApplyUpdateToVectorNadamIgnoresDecay`: Confirms standard Nadam ignores weight decay.
+    - `ApplyUpdateToVectorLionWithDecay`: Verifies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda) - \eta \operatorname{sign}(c)$) in Lion.
+    - `ApplyUpdateToVectorRAdamWithDecay`: Verifies decoupled weight decay in RAdam.
+    - `ApplyUpdateToVectorBiasExclusionAllOptimizers`: Verifies that biases (`is_bias = true`) are strictly excluded from weight decay across all optimisers (SGD, Adam, AdamW, Nadam, NadamW, Lion, RAdam).
+  - Dedicated layer-level weight decay test suite in [`tests/weight_decay_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/weight_decay_tests.cpp):
+    - `FFLayer`: Initialisation of `_w_decays` and `_b_decays`, exact mathematical decay under AdamW and SGD ($\mu = 0$), and bias stability.
+    - `FFOutputLayer`: Independent per-head weight decays (multiple heads with different $\lambda$ values decaying at their specific rates) and bias stability.
+    - `ElmanRNNLayer`: Concurrent decoupled decay of input weights `_w` and recurrent weights `_rw` with bias stability.
+    - `LSTMLayer`: Verification that all 8 weight matrices (input and recurrent for candidate, forget, input, and output gates) decay correctly, while all 4 gate biases and recurrent LayerNorm gain and bias parameters are preserved.
+    - `GRURNNLayer`: Verification that all 6 weight matrices (candidate, update gate, reset gate) decay correctly, while biases and LayerNorm gain/bias parameters are preserved.
+    - `TCNLayer`: Verification that causal dilated convolution weights decay correctly while biases remain unaffected.
+    - `EmbeddingLayer`: Verification that embedding vocabulary lookup weights decay at the specified rate.
+    - `AttentionPoolLayer`: Verification that attention projection weights `_wa` and context vector `_v` decay at the specified rate while attention bias `_ba` is preserved.
+    - `SelfAttentionLayer`: Verification that all projection weights (`_wq`, `_wk`, `_wv`, `_wo`) and feed-forward weights (`_ff1_w`, `_ff2_w`) decay correctly, while biases and post-attention/post-FF LayerNorm gain and bias parameters are preserved.
+    - `MultiOutputLayer`: Verification of weight decay propagation into branch hidden and output layers during `apply_stored_gradients`.
+    - `ResidualProjector`: Verification of L2 weight decay during `apply_weight_gradient`.
+
+## [1.1.55] - 2026-09-09
+
+### Optimised
+- Optimised `GRURNNLayer` gradient accumulation, BPTT execution, and state blending:
+  - Zero-copy gradient accumulation for worker thread 0 in `GRURNNLayer::calculate_and_store_gradients`: Worker thread 0 now accumulates directly into member gradient vectors (`_w_grads`, `_rw_grads`, `_z_w_grads`, `_z_rw_grads`, `_r_w_grads`, `_r_rw_grads`, `_b_grads`, `_z_b_grads`, `_r_b_grads`), allocating auxiliary accumulators only for threads $1 \dots T-1$ and saving redundant buffer allocations, zeroing, and merge operations.
+  - Multi-vector SIMD reduction in `GRURNNLayer::calculate_and_store_gradients`: Merged auxiliary thread accumulators into the member gradient vectors using `simd::accumulate_four_vectors` and `simd::accumulate_two_vectors`, cutting memory traffic and passes across the 6 weight matrices and 3 bias vectors.
+  - Vectorised state blending with dropout in `GRURNNLayer::finalize_forward_step`: Pre-computed dropout-scaled candidate states into a stack buffer (for $N_{\text{this}} \le 128$) and called `simd::gru_output_step` to blend states using AVX2 and FMA instructions for both dropout and non-dropout training paths.
+  - Fast path for single-step gradient accumulation in `GRURNNLayer::calculate_and_store_gradients_chunk`: When $num\_time\_steps == 1$, bypassed recurrent weight loops entirely (since recurrent transitions require $t \ge 1$), and eliminated timestep loops and stride calculations for input weights and biases.
+  - Zero-scalar bypass in `GRURNNLayer::calculate_and_store_gradients_chunk`: Skipped SIMD scalar multiplications and additions when input neurons ($x_0 = x_1 = x_2 = x_3 = 0.0$) or recurrent hidden states ($hp_0 = hp_1 = hp_2 = hp_3 = 0.0$) are zero.
+  - Guarded multi-threading dispatch to require `batch_size > 1` in `calculate_forward_feed`, `calculate_hidden_gradients`, and `calculate_and_store_gradients`.
+
+### Fixed
+- Fixed heap buffer overflow and sequence length detection in `GRURNNLayer::calculate_forward_feed`:
+  - Added division-by-zero guards `N_prev > 0` and `N_this > 0`.
+  - Scanned all batch items to determine the maximum sequence length $T_{\text{max}}$ before allocating `flattened_batch_inputs`, preventing buffer overflow when item 0 is static ($T=1$) and subsequent items contain sequences ($T > 1$).
+  - Added sequence length fallback to `batch_hidden_states[0].at(get_layer_index()).size()`.
+  - Safely broadcast single-step items across multi-step batch sequences.
+- Fixed direct gradients zeroing bug in `GRURNNLayer::calculate_bptt_batch_chunk`:
+  - Added static helper `get_output_grads_span` to inspect `rnn_gradients(target_layer_idx)`, `gradients(target_layer_idx)`, `rnn_gradients(this_layer_idx)`, and `gradients(this_layer_idx)`. Prevents upstream sequence gradients from being discarded or resolving to `nullptr` when the downstream layer is absent or gradients are assigned to the current layer.
+- Fixed sequence residual connection handling in `GRURNNLayer::finalize_forward_step`:
+  - Supported full-sequence residual tensors (`batch_residual_output_values[b].size() == num_time_steps * N_this`), slicing per timestep rather than only supporting single-step residuals.
+- Fixed input resolution per batch item in `GRURNNLayer::calculate_and_store_gradients_chunk`:
+  - Resolved `prev_outputs_rnn` and `prev_outputs_std` independently for each batch item without an item's static input being discarded when another item has sequence input.
+
+### Added
+- Added unit tests in `tests/grurnnlayer_tests.cpp`:
+  - `GRURNNLayerTest.DirectGradientsFallbackToLayerIndexRnnGradients`: Verifies that sequence gradients placed at `get_layer_index()` flow through BPTT when the downstream layer is absent.
+  - `GRURNNLayerTest.ForwardFeedFullSequenceResiduals`: Verifies that full sequence residual connections ($T \times N$) slice and accumulate per timestep.
+  - `GRURNNLayerTest.ForwardFeedPartialSequenceBroadcastingSafety`: Verifies mixed single-step and sequence items across batches do not overflow heap buffer and broadcast correctly.
+  - `GRURNNLayerTest.SingleStepFastPathGradientEquivalence`: Verifies single-step fast path matches exact analytical gradients.
+  - `GRURNNLayerTest.DropoutBPTTConsistencyMultiBatch`: Verifies dropout masking and backprop scaling consistency across multi-batch sequences.
+
 ## [1.1.54] - 2026-09-08
 
 ### Optimised

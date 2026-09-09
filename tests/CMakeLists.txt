@@ -98,6 +98,7 @@ add_executable(neuralnetwork_tests
     taskqueue_tests.cpp
     taskqueue_comprehensive_tests.cpp
     weight_param_tests.cpp
+    weight_decay_tests.cpp
     ${NN_SOURCES}
 )
 

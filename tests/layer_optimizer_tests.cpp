@@ -561,3 +561,211 @@ TEST_F(LayerOptimizerTest, ApplyUpdateToVectorRAdam)
     EXPECT_NEAR(values[2], 3.0 - 0.001 * 0.3, 1e-9);
 }
 
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorSGDWithDecay)
+{
+    // Size 6 exercises both AVX2 (first 4) and scalar tail (last 2)
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m1, m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.05, 0.05, 0.05, 0.05, 0.05, 0.05 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Zero gradients with zero momentum:
+    // grad_eff = 0 + decay * value
+    // v = grad_eff
+    // value = value - lr * v = value * (1 - lr * decay) = value * (1 - 0.0005) = value * 0.9995
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::SGD, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        const double expected = (static_cast<double>(i) + 1.0) * (1.0 - lr * 0.05);
+        EXPECT_NEAR(values[i], expected, 1e-9);
+        EXPECT_NEAR(grads[i], 0.05 * (static_cast<double>(i) + 1.0), 1e-9);
+        EXPECT_NEAR(velocities[i], 0.05 * (static_cast<double>(i) + 1.0), 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorAdamWWithDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.02, 0.02, 0.02, 0.02, 0.02, 0.02 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Zero gradients: Adam update = 0, weights decay by exactly (1 - lr * decay)
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::AdamW, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        const double expected = (static_cast<double>(i) + 1.0) * (1.0 - lr * 0.02);
+        EXPECT_NEAR(values[i], expected, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorAdamIgnoresDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Standard Adam must ignore weight decay (decay_ptr = nullptr)
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::Adam, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        // Values must remain completely unchanged since grad = 0
+        EXPECT_NEAR(values[i], static_cast<double>(i) + 1.0, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorNadamWWithDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.03, 0.03, 0.03, 0.03, 0.03, 0.03 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Zero gradients: NadamW decoupled decay
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::NadamW, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        const double expected = (static_cast<double>(i) + 1.0) * (1.0 - lr * 0.03);
+        EXPECT_NEAR(values[i], expected, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorNadamIgnoresDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Standard Nadam must ignore weight decay
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::Nadam, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        EXPECT_NEAR(values[i], static_cast<double>(i) + 1.0, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorLionWithDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2;
+    std::vector<long long> timesteps;
+    std::vector<double> decays = { 0.04, 0.04, 0.04, 0.04, 0.04, 0.04 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // Lion with decoupled decay and zero gradient: sign(c)=0, decay only
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::Lion, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        const double expected = (static_cast<double>(i) + 1.0) * (1.0 - lr * 0.04);
+        EXPECT_NEAR(values[i], expected, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorRAdamWithDecay)
+{
+    MockOptimizerLayer layer(6, 1);
+    std::vector<double> values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+    std::vector<double> decays = { 0.05, 0.05, 0.05, 0.05, 0.05, 0.05 };
+
+    const double lr = 0.01;
+    const double clipping = 1.0;
+
+    // RAdam with decoupled decay and zero gradient
+    layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, false, OptimiserType::RAdam, 0, 6);
+
+    for (size_t i = 0; i < 6; ++i)
+    {
+        const double expected = (static_cast<double>(i) + 1.0) * (1.0 - lr * 0.05);
+        EXPECT_NEAR(values[i], expected, 1e-9);
+    }
+}
+
+TEST_F(LayerOptimizerTest, ApplyUpdateToVectorBiasExclusionAllOptimizers)
+{
+    const std::vector<OptimiserType> optimisers = {
+        OptimiserType::SGD,
+        OptimiserType::Adam,
+        OptimiserType::AdamW,
+        OptimiserType::Nadam,
+        OptimiserType::NadamW,
+        OptimiserType::Lion,
+        OptimiserType::RAdam
+    };
+
+    MockOptimizerLayer layer(6, 1);
+
+    for (const auto opt : optimisers)
+    {
+        std::vector<double> values = { 1.5, 2.5, 3.5, 4.5, 5.5, 6.5 };
+        std::vector<double> grads = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        std::vector<double> velocities = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        std::vector<double> m1 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        std::vector<double> m2 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        std::vector<long long> timesteps = { 0, 0, 0, 0, 0, 0 };
+        std::vector<double> decays = { 0.5, 0.5, 0.5, 0.5, 0.5, 0.5 }; // Large decay value
+
+        const double lr = 0.05;
+        const double clipping = 1.0;
+
+        // is_bias = true must ALWAYS prevent weight decay from modifying values
+        layer.apply_update_to_vector(values, grads, velocities, m1, m2, timesteps, decays, lr, clipping, true, opt, 0, 6);
+
+        for (size_t i = 0; i < 6; ++i)
+        {
+            EXPECT_DOUBLE_EQ(values[i], static_cast<double>(i) + 1.5);
+        }
+    }
+}

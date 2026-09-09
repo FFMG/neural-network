@@ -1,11 +1,8 @@
 #pragma once
 #include "../common/aligned_allocator.h"
-#include "../helpers/errorcalculation.h"
-#include "../common/hiddenstate.h"
 #include "layer.h"
 
 #include <vector>
-
 
 namespace myoddweb::nn
 {
