@@ -4,6 +4,9 @@ All notable changes to the `neural-network` library will be documented in this f
 
 ## [1.1.56] - 2026-09-09
 
+### Fixed
+- Fixed GCC `-Werror=maybe-uninitialized` build error in `GRURNNLayer::finalize_forward_step`: Zero-initialised stack buffer `h_hat_final_stack` to prevent false-positive uninitialised warnings under strict compiler settings.
+
 ### Added
 - Added comprehensive unit test coverage and mathematical verification for weight decay across all optimisers and layer architectures:
   - Vectorised optimiser weight decay tests in [`tests/layer_optimizer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_optimizer_tests.cpp):

@@ -1312,7 +1312,7 @@ void GRURNNLayer::finalize_forward_step(
     double* mask_ptr = item_packed + 4 * N_this;
 
     constexpr size_t StackCap = 128;
-    double h_hat_final_stack[StackCap];
+    double h_hat_final_stack[StackCap] = {};
     std::vector<double> h_hat_final_heap;
     double* h_hat_final_buf = (N_this <= StackCap) ? h_hat_final_stack : (h_hat_final_heap.resize(N_this), h_hat_final_heap.data());
 
