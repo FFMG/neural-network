@@ -2,6 +2,33 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.54] - 2026-09-08
+
+### Optimised
+- Optimised `FFLayer` gradient accumulation, memory caching, and multi-threading efficiency:
+  - Multi-vector SIMD vector accumulation in `include/neuralnetwork/common/simd_utils.h`: Added `simd::accumulate_four_vectors(x0, x1, x2, x3, y, n)` ($y += x_0 + x_1 + x_2 + x_3$) and `simd::accumulate_two_vectors(x0, x1, y, n)` ($y += x_0 + x_1$) with AVX2 vectorization and scalar fallbacks.
+  - Multi-vector worker thread gradient accumulation merge in `FFLayer::calculate_and_store_gradients`: Merges worker thread accumulators in 4-way and 2-way vector passes via `accumulate_four_vectors` and `accumulate_two_vectors`, halving memory traffic on `_w_grads` and `_b_grads`.
+  - Vectorized bias accumulation in `FFLayer::calculate_and_store_gradients_chunk`: Merged incoming gradients across batch items (single-step) and timesteps (sequence steps) in 4-way and 2-way SIMD passes, replacing sequential element-wise additions.
+  - Fast path for single-step weight gradient accumulation in `FFLayer::calculate_and_store_gradients_chunk`: When `num_time_steps == 1`, bypasses the inner timestep loop and stride calculations, directly streaming single-step item inputs and gradients into weight gradient accumulators.
+  - Static sequence input optimization in `FFLayer::calculate_and_store_gradients_chunk`: When sequence input and gradient strides are zero (`x_stride == 0 && g_stride == 0`), scales inputs once by `num_time_steps`, skipping $T$ repetitive FMADD operations per sequence item.
+  - Parallelized chunk-level memory zeroing in `FFLayer::calculate_hidden_gradients`: Disabled synchronous zero-init of `flattened_this_grads_buffer` on the main thread and moved chunk zeroing via `std::memset` into `run_backward_chunk` across thread workers, warming L1/L2 caches immediately prior to backward GEMM.
+  - Small-Buffer Optimization (SBO) for sequence dropout output buffer in `FFLayer::run_post_gemm`: Added stack buffer `output_row_stack` (`std::array<double, 128>`) for sequence outputs when $num\_time\_steps \times N_{\text{this}} \le 128$, eliminating heap allocation for typical sequence lengths.
+  - Hoisted invariants: Hoisted `get_neurons()` and pre-calculated default dropout scale in `FFLayer::run_post_gemm`. Guarded multi-threading dispatch to require `batch_size > 1` in `calculate_hidden_gradients_from_output_gradients` and `calculate_and_store_gradients`.
+
+### Fixed
+- Fixed sequence length detection in `FFLayer::calculate_forward_feed`: Added division-by-zero guard `N_prev > 0` before calculating `num_time_steps`, and added sequence length fallback to `batch_hidden_states[0].at(get_layer_index()).size()`, ensuring sequence outputs are correctly shaped when previous layer inputs are static or broadcast.
+- Fixed direct gradient fallback in `FFLayer::calculate_hidden_gradients_from_output_gradients`: Created static helper `get_output_grads_span` to inspect `rnn_gradients(next_layer_idx)`, `gradients(next_layer_idx)`, `rnn_gradients(this_layer_idx)`, and `gradients(this_layer_idx)`. Prevents sequence gradients from being discarded or zeroed out when the downstream layer is absent.
+- Fixed sequence residual connection addition in `FFLayer::run_post_gemm`: Added support for full-sequence residual tensors (`residual.size() == num_time_steps * N_this`), slicing per timestep rather than only supporting single-step residuals.
+
+### Added
+- Added unit tests in `tests/simd_utils_tests.cpp`:
+  - `SimdUtilsTest.AccumulateFourAndTwoVectorsEquivalence`: Verifies AVX2 vectorized 4-way and 2-way vector accumulation against scalar references across varying vector sizes.
+- Added unit tests in `tests/fflayer_tests.cpp`:
+  - `FFLayerTest.DirectGradientsFallbackToLayerIndexRnnGradients`: Verifies fallback to `rnn_gradients(this_layer_idx)` when downstream layer is absent and `batch_output_gradients` is empty.
+  - `FFLayerTest.ForwardFeedFullSequenceResiduals`: Verifies that full sequence residual connections ($T \times N$) are sliced and accumulated correctly across each timestep.
+  - `FFLayerTest.ForwardFeedSequenceDetectionFromHiddenStates`: Verifies correct sequence length detection and output sizing from hidden states when input activations are static.
+  - `FFLayerTest.SingleStepFastPathGradientEquivalence`: Verifies that single-step fast path gradient accumulation strictly matches reference gradient calculations.
+
 ## [1.1.53] - 2026-09-08
 
 ### Optimised

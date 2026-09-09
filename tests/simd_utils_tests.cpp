@@ -3492,3 +3492,43 @@ TEST(SimdUtilsTest, ScaleFourVectorsEquivalence)
     }
   }
 }
+
+TEST(SimdUtilsTest, AccumulateFourAndTwoVectorsEquivalence)
+{
+  const std::vector<size_t> sizes = { 0, 1, 2, 3, 4, 5, 7, 8, 11, 15, 16, 23, 31, 32, 47, 64, 100, 128, 255, 256 };
+
+  for (size_t n : sizes)
+  {
+    std::vector<double> x0(n), x1(n), x2(n), x3(n);
+    std::vector<double> y_simd4(n), y_scalar4(n);
+    std::vector<double> y_simd2(n), y_scalar2(n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      x0[i] = 1.0 + static_cast<double>(i) * 0.1;
+      x1[i] = -2.5 + static_cast<double>(i) * 0.2;
+      x2[i] = 0.5 - static_cast<double>(i) * 0.05;
+      x3[i] = 3.14 + static_cast<double>(i) * 0.3;
+      y_simd4[i] = y_scalar4[i] = 10.0 + static_cast<double>(i) * 0.5;
+      y_simd2[i] = y_scalar2[i] = -5.0 + static_cast<double>(i) * 0.25;
+    }
+
+    simd::accumulate_four_vectors(x0.data(), x1.data(), x2.data(), x3.data(), y_simd4.data(), n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      y_scalar4[i] += x0[i] + x1[i] + x2[i] + x3[i];
+    }
+
+    simd::accumulate_two_vectors(x0.data(), x1.data(), y_simd2.data(), n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      y_scalar2[i] += x0[i] + x1[i];
+    }
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      EXPECT_NEAR(y_simd4[i], y_scalar4[i], 1e-12) << "4-way mismatch at index " << i << " for size " << n;
+      EXPECT_NEAR(y_simd2[i], y_scalar2[i], 1e-12) << "2-way mismatch at index " << i << " for size " << n;
+    }
+  }
+}

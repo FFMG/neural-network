@@ -131,6 +131,32 @@ struct FfGradsTask
     );
   }
 };
+
+static std::span<const double> get_output_grads_span(
+  const GradientsAndOutputs& go,
+  unsigned next_layer_idx,
+  unsigned this_layer_idx)
+{
+  const auto& rnn_next = go.get_rnn_gradients(next_layer_idx);
+  if (!rnn_next.empty())
+  {
+    return rnn_next;
+  }
+  if (next_layer_idx < go.number_layers())
+  {
+    const auto std_next = go.get_gradients(next_layer_idx);
+    if (!std_next.empty())
+    {
+      return std_next;
+    }
+  }
+  const auto& rnn_this = go.get_rnn_gradients(this_layer_idx);
+  if (!rnn_this.empty())
+  {
+    return rnn_this;
+  }
+  return go.get_gradients(this_layer_idx);
+}
 } // namespace
 
 FFLayer::FFLayer(
@@ -357,13 +383,25 @@ void FFLayer::calculate_forward_feed(
 
   // 1. Determine sequence length and flatten inputs
   size_t num_time_steps = 1;
-  for (size_t b = 0; b < batch_size; ++b)
+  if (N_prev > 0)
   {
-    const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
-    if (!rnn_in.empty())
+    for (size_t b = 0; b < batch_size; ++b)
     {
-      num_time_steps = rnn_in.size() / N_prev;
-      break;
+      const auto& rnn_in = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
+      if (!rnn_in.empty())
+      {
+        num_time_steps = rnn_in.size() / N_prev;
+        break;
+      }
+    }
+  }
+
+  if (!batch_hidden_states.empty())
+  {
+    const size_t hs_steps = batch_hidden_states[0].at(get_layer_index()).size();
+    if (hs_steps > num_time_steps)
+    {
+      num_time_steps = hs_steps;
     }
   }
 
@@ -395,16 +433,19 @@ void FFLayer::calculate_forward_feed(
         {
           for (size_t t = 0; t < num_time_steps; ++t)
           {
-            std::copy_n(rnn_in.data(), N_prev, dest_base + t * N_prev);
+            std::memcpy(dest_base + t * N_prev, rnn_in.data(), N_prev * sizeof(double));
           }
         }
         else
         {
           const size_t copy_size = std::min(rnn_in.size(), num_time_steps * N_prev);
-          std::copy_n(rnn_in.data(), copy_size, dest_base);
+          if (copy_size > 0 && rnn_in.data() != nullptr)
+          {
+            std::memcpy(dest_base, rnn_in.data(), copy_size * sizeof(double));
+          }
           if (copy_size < num_time_steps * N_prev)
           {
-            std::fill_n(dest_base + copy_size, num_time_steps * N_prev - copy_size, 0.0);
+            std::memset(dest_base + copy_size, 0, (num_time_steps * N_prev - copy_size) * sizeof(double));
           }
         }
       }
@@ -415,10 +456,13 @@ void FFLayer::calculate_forward_feed(
         for (size_t t = 0; t < num_time_steps; ++t)
         {
           double* t_dest = dest_base + t * N_prev;
-          std::copy_n(std_in.data(), copy_size, t_dest);
+          if (copy_size > 0 && std_in.data() != nullptr)
+          {
+            std::memcpy(t_dest, std_in.data(), copy_size * sizeof(double));
+          }
           if (copy_size < N_prev)
           {
-            std::fill_n(t_dest + copy_size, N_prev - copy_size, 0.0);
+            std::memset(t_dest + copy_size, 0, (N_prev - copy_size) * sizeof(double));
           }
         }
       }
@@ -587,10 +631,18 @@ void FFLayer::run_post_gemm(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const bool has_dropout = (is_training && get_dropout() > 0.0);
+  const double layer_dropout = get_dropout();
+  const double default_dropout_scale = (layer_dropout > 0.0 && layer_dropout < 1.0) ? (1.0 / (1.0 - layer_dropout)) : 1.0;
+  const auto& neurons = get_neurons();
+
   std::array<double, 64> mask_stack;
   TempBuffer<double, 2> mask_heap((has_dropout && N_this > 64) ? N_this : 0);
   double* mask_ptr = has_dropout ? ((N_this <= 64) ? mask_stack.data() : mask_heap.data()) : nullptr;
-  TempBuffer<double, 3> output_row_seq_buf(has_dropout ? num_time_steps * N_this : 0);
+
+  std::array<double, 128> output_row_stack;
+  const size_t seq_elem_count = has_dropout ? num_time_steps * N_this : 0;
+  TempBuffer<double, 3> output_row_heap(seq_elem_count > 128 ? seq_elem_count : 0);
+  double* output_row_ptr = has_dropout ? ((seq_elem_count <= 128) ? output_row_stack.data() : output_row_heap.data()) : nullptr;
 
   for (size_t b = start; b < end; b++)
   {
@@ -613,11 +665,16 @@ void FFLayer::run_post_gemm(
 
       double* current_pre_act = b_pre_act_base + t * N_this;
 
-      if (!batch_residual_output_values.empty() && batch_residual_output_values[b].size() == N_this)
+      if (!batch_residual_output_values.empty())
       {
-        if (num_time_steps == 1 || t == num_time_steps - 1)
+        const auto& res_vec = batch_residual_output_values[b];
+        if (res_vec.size() == num_time_steps * N_this)
         {
-          simd::add_vectors(batch_residual_output_values[b].data(), current_pre_act, N_this);
+          simd::add_vectors(res_vec.data() + t * N_this, current_pre_act, N_this);
+        }
+        else if (res_vec.size() == N_this && (num_time_steps == 1 || t == num_time_steps - 1))
+        {
+          simd::add_vectors(res_vec.data(), current_pre_act, N_this);
         }
       }
 
@@ -632,8 +689,7 @@ void FFLayer::run_post_gemm(
         r.activation_method.activate(current_pre_act + r.start, current_pre_act + r.end, is_training);
         if (has_dropout)
         {
-          double* current_output_row = output_row_seq_buf.data() + t * N_this;
-          const auto& neurons = get_neurons();
+          double* current_output_row = output_row_ptr + t * N_this;
           for (size_t j = r.start; j < r.end; j++)
           {
             const auto& neuron = neurons[j];
@@ -647,7 +703,8 @@ void FFLayer::run_post_gemm(
               }
               else
               {
-                double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
+                const double rate = neuron.get_dropout_rate();
+                const double scale = (rate == layer_dropout) ? default_dropout_scale : (1.0 / (1.0 - rate));
                 output *= scale;
                 mask_ptr[j] = scale;
               }
@@ -663,7 +720,7 @@ void FFLayer::run_post_gemm(
         if (has_dropout)
         {
           layer_states_ref[t].set_cell_state_values(mask_ptr, N_this);
-          layer_states_ref[t].set_hidden_state_values(output_row_seq_buf.data() + t * N_this, N_this);
+          layer_states_ref[t].set_hidden_state_values(output_row_ptr + t * N_this, N_this);
         }
         else
         {
@@ -672,7 +729,7 @@ void FFLayer::run_post_gemm(
       }
     }
 
-    const double* seq_ptr = has_dropout ? output_row_seq_buf.data() : b_pre_act_base;
+    const double* seq_ptr = has_dropout ? output_row_ptr : b_pre_act_base;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     std::memcpy(dest_ptr, seq_ptr + (num_time_steps - 1) * N_this, N_this * sizeof(double));
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
@@ -795,7 +852,7 @@ void FFLayer::calculate_hidden_gradients(
   }
 
   const size_t effective_batch_size = batch_size * num_time_steps;
-  TempBuffer<double, 5> flattened_this_grads_buffer(effective_batch_size * N_this, true);
+  TempBuffer<double, 5> flattened_this_grads_buffer(effective_batch_size * N_this, false);
   double* this_grads_ptr = flattened_this_grads_buffer.data();
 
   const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
@@ -859,6 +916,8 @@ void FFLayer::run_backward_chunk(
   const size_t b_step_start = start * num_time_steps;
   const size_t b_step_end = end * num_time_steps;
 
+  std::memset(this_grads_ptr + b_step_start * N_this, 0, (b_step_end - b_step_start) * N_this * sizeof(double));
+
   if (W_next_T != nullptr)
   {
     run_gemm_backward_fast(b_step_start, b_step_end, N_next, N_this, W_next_T, next_grads_ptr, this_grads_ptr);
@@ -895,96 +954,37 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
   const bool use_direct_gradients = batch_output_gradients.empty();
   const double* this_grads_ptr = nullptr;
 
-  const unsigned next_layer_idx = get_layer_index() + 1;
-  const bool has_next_layer_0 = (batch_size > 0 && next_layer_idx < batch_gradients_and_outputs[0].number_layers());
-  const bool can_bypass = (batch_size == 1) &&
-    ((use_direct_gradients && (batch_gradients_and_outputs[0].has_rnn_gradients(next_layer_idx)
-        ? batch_gradients_and_outputs[0].get_rnn_gradients(next_layer_idx).size() == num_time_steps * N_this
-        : ((has_next_layer_0 && !batch_gradients_and_outputs[0].get_gradients(next_layer_idx).empty())
-            ? batch_gradients_and_outputs[0].get_gradients(next_layer_idx).size() == num_time_steps * N_this
-            : batch_gradients_and_outputs[0].get_gradients(get_layer_index()).size() == num_time_steps * N_this))) ||
-     (!use_direct_gradients && !batch_output_gradients.empty() && batch_output_gradients[0].size() == num_time_steps * N_this));
+  const unsigned this_layer_idx = get_layer_index();
+  const unsigned next_layer_idx = this_layer_idx + 1;
+
+  const std::span<const double> first_grads = use_direct_gradients
+    ? get_output_grads_span(batch_gradients_and_outputs[0], next_layer_idx, this_layer_idx)
+    : (!batch_output_gradients.empty() ? std::span<const double>(batch_output_gradients[0]) : std::span<const double>{});
+
+  const bool can_bypass = (batch_size == 1) && (first_grads.size() == num_time_steps * N_this);
 
   TempBuffer<double, 8> output_this_grads_buffer(can_bypass ? 0 : effective_batch_size * N_this);
 
   if (can_bypass)
   {
-    if (use_direct_gradients)
-    {
-      const auto& rnn_g = batch_gradients_and_outputs[0].get_rnn_gradients(next_layer_idx);
-      if (!rnn_g.empty())
-      {
-        this_grads_ptr = rnn_g.data();
-      }
-      else
-      {
-        if (has_next_layer_0)
-        {
-          const auto next_g = batch_gradients_and_outputs[0].get_gradients(next_layer_idx);
-          if (!next_g.empty())
-          {
-            this_grads_ptr = next_g.data();
-          }
-          else
-          {
-            this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index()).data();
-          }
-        }
-        else
-        {
-          this_grads_ptr = batch_gradients_and_outputs[0].get_gradients(get_layer_index()).data();
-        }
-      }
-    }
-    else
-    {
-      this_grads_ptr = batch_output_gradients[0].data();
-    }
+    this_grads_ptr = first_grads.data();
   }
   else
   {
     double* dest_ptr = output_this_grads_buffer.data();
     for (size_t b = 0; b < batch_size; ++b)
     {
-      std::span<const double> next_grads;
-      if (use_direct_gradients)
+      const std::span<const double> next_grads = use_direct_gradients
+        ? get_output_grads_span(batch_gradients_and_outputs[b], next_layer_idx, this_layer_idx)
+        : (b < batch_output_gradients.size() ? std::span<const double>(batch_output_gradients[b]) : std::span<const double>{});
+
+      double* dest_base = dest_ptr + b * num_time_steps * N_this;
+      if (next_grads.empty() || next_grads.data() == nullptr)
       {
-        const auto& rnn_g = batch_gradients_and_outputs[b].get_rnn_gradients(next_layer_idx);
-        if (!rnn_g.empty())
-        {
-          next_grads = rnn_g;
-        }
-        else
-        {
-          const bool has_next = (next_layer_idx < batch_gradients_and_outputs[b].number_layers());
-          if (has_next)
-          {
-            next_grads = batch_gradients_and_outputs[b].get_gradients(next_layer_idx);
-            if (next_grads.empty())
-            {
-              next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
-            }
-          }
-          else
-          {
-            next_grads = batch_gradients_and_outputs[b].get_gradients(get_layer_index());
-          }
-        }
-      }
-      else
-      {
-        if (b < batch_output_gradients.size())
-        {
-          next_grads = batch_output_gradients[b];
-        }
-      }
-      if (next_grads.empty())
-      {
-        std::memset(dest_ptr + b * num_time_steps * N_this, 0, num_time_steps * N_this * sizeof(double));
+        std::memset(dest_base, 0, num_time_steps * N_this * sizeof(double));
         continue;
       }
 
-      double* dest_base = dest_ptr + b * num_time_steps * N_this;
       if (next_grads.size() == N_this)
       {
         for (size_t t = 0; t < num_time_steps; ++t)
@@ -1011,7 +1011,9 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
 
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this) / 50000))) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1)
+    ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((effective_batch_size * N_this) / 50000)))
+    : 1U;
   const bool use_multithreading = (active_threads > 1);
 
   if (!use_multithreading)
@@ -1065,7 +1067,9 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
 
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * num_inputs * num_outputs) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1)
+    ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * num_inputs * num_outputs) / 100000)))
+    : 1U;
 
   if (active_threads == 1)
   {
@@ -1134,7 +1138,48 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     _task_queue_pool->get();
 
     // Merge auxiliary accumulators directly into _w_grads and _b_grads
-    for (unsigned int t = 0; t < aux_threads; ++t)
+    unsigned int t = 0;
+    for (; t + 3 < aux_threads; t += 4)
+    {
+      simd::accumulate_four_vectors(
+        _thread_grad_accumulators[t].w_grads.data(),
+        _thread_grad_accumulators[t + 1].w_grads.data(),
+        _thread_grad_accumulators[t + 2].w_grads.data(),
+        _thread_grad_accumulators[t + 3].w_grads.data(),
+        _w_grads.data(),
+        _w_grads.size()
+      );
+      if (has_bias())
+      {
+        simd::accumulate_four_vectors(
+          _thread_grad_accumulators[t].b_grads.data(),
+          _thread_grad_accumulators[t + 1].b_grads.data(),
+          _thread_grad_accumulators[t + 2].b_grads.data(),
+          _thread_grad_accumulators[t + 3].b_grads.data(),
+          _b_grads.data(),
+          _b_grads.size()
+        );
+      }
+    }
+    for (; t + 1 < aux_threads; t += 2)
+    {
+      simd::accumulate_two_vectors(
+        _thread_grad_accumulators[t].w_grads.data(),
+        _thread_grad_accumulators[t + 1].w_grads.data(),
+        _w_grads.data(),
+        _w_grads.size()
+      );
+      if (has_bias())
+      {
+        simd::accumulate_two_vectors(
+          _thread_grad_accumulators[t].b_grads.data(),
+          _thread_grad_accumulators[t + 1].b_grads.data(),
+          _b_grads.data(),
+          _b_grads.size()
+        );
+      }
+    }
+    for (; t < aux_threads; ++t)
     {
       simd::add_vectors(_thread_grad_accumulators[t].w_grads.data(), _w_grads.data(), _w_grads.size());
       if (has_bias())
@@ -1429,100 +1474,287 @@ void FFLayer::calculate_and_store_gradients_chunk(
   if (has_bias() && !local_b_grads.empty())
   {
     double* b_grad_data = local_b_grads.data();
-    for (size_t k = 0; k < chunk_size; ++k)
+    if (num_time_steps == 1)
     {
-      const auto& item = items_ptr[k];
-      for (size_t t = 0; t < num_time_steps; ++t)
+      size_t k = 0;
+      for (; k + 3 < chunk_size; k += 4)
       {
-        const double* g_t = item.g_base + t * item.g_stride;
-        simd::add_vectors(g_t, b_grad_data, num_outputs);
+        simd::accumulate_four_vectors(
+          items_ptr[k].g_base,
+          items_ptr[k + 1].g_base,
+          items_ptr[k + 2].g_base,
+          items_ptr[k + 3].g_base,
+          b_grad_data,
+          num_outputs
+        );
+      }
+      for (; k + 1 < chunk_size; k += 2)
+      {
+        simd::accumulate_two_vectors(
+          items_ptr[k].g_base,
+          items_ptr[k + 1].g_base,
+          b_grad_data,
+          num_outputs
+        );
+      }
+      for (; k < chunk_size; ++k)
+      {
+        simd::add_vectors(items_ptr[k].g_base, b_grad_data, num_outputs);
+      }
+    }
+    else
+    {
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        const auto& item = items_ptr[k];
+        if (item.g_stride == 0)
+        {
+          simd::mul_add(static_cast<double>(num_time_steps), item.g_base, b_grad_data, num_outputs);
+        }
+        else
+        {
+          size_t t = 0;
+          for (; t + 3 < num_time_steps; t += 4)
+          {
+            simd::accumulate_four_vectors(
+              item.g_base + t * item.g_stride,
+              item.g_base + (t + 1) * item.g_stride,
+              item.g_base + (t + 2) * item.g_stride,
+              item.g_base + (t + 3) * item.g_stride,
+              b_grad_data,
+              num_outputs
+            );
+          }
+          for (; t + 1 < num_time_steps; t += 2)
+          {
+            simd::accumulate_two_vectors(
+              item.g_base + t * item.g_stride,
+              item.g_base + (t + 1) * item.g_stride,
+              b_grad_data,
+              num_outputs
+            );
+          }
+          for (; t < num_time_steps; ++t)
+          {
+            simd::add_vectors(item.g_base + t * item.g_stride, b_grad_data, num_outputs);
+          }
+        }
       }
     }
   }
 
-  // Weight gradients (outer loop unrolled by 4 to minimize L1 memory traffic)
-  size_t i = 0;
-  for (; i + 3 < num_inputs; i += 4)
+  // Weight gradients
+  if (num_time_steps == 1)
   {
-    double* w0 = &local_w_grads[i * num_outputs];
-    double* w1 = &local_w_grads[(i + 1) * num_outputs];
-    double* w2 = &local_w_grads[(i + 2) * num_outputs];
-    double* w3 = &local_w_grads[(i + 3) * num_outputs];
-
-    for (size_t k = 0; k < chunk_size; ++k)
+    // Fast path for non-recurrent / single-step training
+    size_t i = 0;
+    for (; i + 3 < num_inputs; i += 4)
     {
-      const auto& item = items_ptr[k];
-      const double* x_ptr = item.x_base;
-      const double* g_ptr = item.g_base;
-      const size_t x_stride = item.x_stride;
-      const size_t g_stride = item.g_stride;
+      double* w0 = &local_w_grads[i * num_outputs];
+      double* w1 = &local_w_grads[(i + 1) * num_outputs];
+      double* w2 = &local_w_grads[(i + 2) * num_outputs];
+      double* w3 = &local_w_grads[(i + 3) * num_outputs];
 
-      for (size_t t = 0; t < num_time_steps; ++t)
+      for (size_t k = 0; k < chunk_size; ++k)
       {
-        const double* x_t = x_ptr + t * x_stride;
-        const double* g_t = g_ptr + t * g_stride;
-        const double x0 = x_t[i];
-        const double x1 = x_t[i + 1];
-        const double x2 = x_t[i + 2];
-        const double x3 = x_t[i + 3];
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double x0 = item.x_base[i];
+        const double x1 = item.x_base[i + 1];
+        const double x2 = item.x_base[i + 2];
+        const double x3 = item.x_base[i + 3];
         if (x0 == 0.0 && x1 == 0.0 && x2 == 0.0 && x3 == 0.0)
         {
           continue;
         }
-        simd::mul_add_four_scalars(x0, x1, x2, x3, g_t, w0, w1, w2, w3, num_outputs);
+        simd::mul_add_four_scalars(x0, x1, x2, x3, item.g_base, w0, w1, w2, w3, num_outputs);
       }
     }
-  }
 
-  for (; i + 1 < num_inputs; i += 2)
-  {
-    double* w0 = &local_w_grads[i * num_outputs];
-    double* w1 = &local_w_grads[(i + 1) * num_outputs];
-
-    for (size_t k = 0; k < chunk_size; ++k)
+    for (; i + 1 < num_inputs; i += 2)
     {
-      const auto& item = items_ptr[k];
-      const double* x_ptr = item.x_base;
-      const double* g_ptr = item.g_base;
-      const size_t x_stride = item.x_stride;
-      const size_t g_stride = item.g_stride;
+      double* w0 = &local_w_grads[i * num_outputs];
+      double* w1 = &local_w_grads[(i + 1) * num_outputs];
 
-      for (size_t t = 0; t < num_time_steps; ++t)
+      for (size_t k = 0; k < chunk_size; ++k)
       {
-        const double* x_t = x_ptr + t * x_stride;
-        const double* g_t = g_ptr + t * g_stride;
-        const double x0 = x_t[i];
-        const double x1 = x_t[i + 1];
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double x0 = item.x_base[i];
+        const double x1 = item.x_base[i + 1];
         if (x0 == 0.0 && x1 == 0.0)
         {
           continue;
         }
-        simd::mul_add_two_scalars(x0, x1, g_t, w0, w1, num_outputs);
+        simd::mul_add_two_scalars(x0, x1, item.g_base, w0, w1, num_outputs);
       }
     }
-  }
 
-  for (; i < num_inputs; ++i)
-  {
-    double* w_grad_row = &local_w_grads[i * num_outputs];
-    for (size_t k = 0; k < chunk_size; ++k)
+    for (; i < num_inputs; ++i)
     {
-      const auto& item = items_ptr[k];
-      const double* x_ptr = item.x_base;
-      const double* g_ptr = item.g_base;
-      const size_t x_stride = item.x_stride;
-      const size_t g_stride = item.g_stride;
-
-      for (size_t t = 0; t < num_time_steps; ++t)
+      double* w_grad_row = &local_w_grads[i * num_outputs];
+      for (size_t k = 0; k < chunk_size; ++k)
       {
-        const double* x_t = x_ptr + t * x_stride;
-        const double* g_t = g_ptr + t * g_stride;
-        const double x_val = x_t[i];
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double x_val = item.x_base[i];
         if (x_val == 0.0)
         {
           continue;
         }
-        simd::mul_add(x_val, g_t, w_grad_row, num_outputs);
+        simd::mul_add(x_val, item.g_base, w_grad_row, num_outputs);
+      }
+    }
+  }
+  else
+  {
+    // General sequence loop with static stride optimization
+    size_t i = 0;
+    for (; i + 3 < num_inputs; i += 4)
+    {
+      double* w0 = &local_w_grads[i * num_outputs];
+      double* w1 = &local_w_grads[(i + 1) * num_outputs];
+      double* w2 = &local_w_grads[(i + 2) * num_outputs];
+      double* w3 = &local_w_grads[(i + 3) * num_outputs];
+
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double* x_ptr = item.x_base;
+        const double* g_ptr = item.g_base;
+        const size_t x_stride = item.x_stride;
+        const size_t g_stride = item.g_stride;
+
+        if (x_stride == 0 && g_stride == 0)
+        {
+          const double scale = static_cast<double>(num_time_steps);
+          const double x0 = x_ptr[i] * scale;
+          const double x1 = x_ptr[i + 1] * scale;
+          const double x2 = x_ptr[i + 2] * scale;
+          const double x3 = x_ptr[i + 3] * scale;
+          if (x0 == 0.0 && x1 == 0.0 && x2 == 0.0 && x3 == 0.0)
+          {
+            continue;
+          }
+          simd::mul_add_four_scalars(x0, x1, x2, x3, g_ptr, w0, w1, w2, w3, num_outputs);
+        }
+        else
+        {
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            const double* x_t = x_ptr + t * x_stride;
+            const double* g_t = g_ptr + t * g_stride;
+            const double x0 = x_t[i];
+            const double x1 = x_t[i + 1];
+            const double x2 = x_t[i + 2];
+            const double x3 = x_t[i + 3];
+            if (x0 == 0.0 && x1 == 0.0 && x2 == 0.0 && x3 == 0.0)
+            {
+              continue;
+            }
+            simd::mul_add_four_scalars(x0, x1, x2, x3, g_t, w0, w1, w2, w3, num_outputs);
+          }
+        }
+      }
+    }
+
+    for (; i + 1 < num_inputs; i += 2)
+    {
+      double* w0 = &local_w_grads[i * num_outputs];
+      double* w1 = &local_w_grads[(i + 1) * num_outputs];
+
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double* x_ptr = item.x_base;
+        const double* g_ptr = item.g_base;
+        const size_t x_stride = item.x_stride;
+        const size_t g_stride = item.g_stride;
+
+        if (x_stride == 0 && g_stride == 0)
+        {
+          const double scale = static_cast<double>(num_time_steps);
+          const double x0 = x_ptr[i] * scale;
+          const double x1 = x_ptr[i + 1] * scale;
+          if (x0 == 0.0 && x1 == 0.0)
+          {
+            continue;
+          }
+          simd::mul_add_two_scalars(x0, x1, g_ptr, w0, w1, num_outputs);
+        }
+        else
+        {
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            const double* x_t = x_ptr + t * x_stride;
+            const double* g_t = g_ptr + t * g_stride;
+            const double x0 = x_t[i];
+            const double x1 = x_t[i + 1];
+            if (x0 == 0.0 && x1 == 0.0)
+            {
+              continue;
+            }
+            simd::mul_add_two_scalars(x0, x1, g_t, w0, w1, num_outputs);
+          }
+        }
+      }
+    }
+
+    for (; i < num_inputs; ++i)
+    {
+      double* w_grad_row = &local_w_grads[i * num_outputs];
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        const auto& item = items_ptr[k];
+        if (item.x_base == nullptr || item.g_base == nullptr)
+        {
+          continue;
+        }
+        const double* x_ptr = item.x_base;
+        const double* g_ptr = item.g_base;
+        const size_t x_stride = item.x_stride;
+        const size_t g_stride = item.g_stride;
+
+        if (x_stride == 0 && g_stride == 0)
+        {
+          const double x_val = x_ptr[i] * static_cast<double>(num_time_steps);
+          if (x_val == 0.0)
+          {
+            continue;
+          }
+          simd::mul_add(x_val, g_ptr, w_grad_row, num_outputs);
+        }
+        else
+        {
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            const double* x_t = x_ptr + t * x_stride;
+            const double* g_t = g_ptr + t * g_stride;
+            const double x_val = x_t[i];
+            if (x_val == 0.0)
+            {
+              continue;
+            }
+            simd::mul_add(x_val, g_t, w_grad_row, num_outputs);
+          }
+        }
       }
     }
   }

@@ -5170,6 +5170,92 @@ public:
     }
   }
 
+  // Vectorized accumulation for four vectors into one target (y += x0 + x1 + x2 + x3)
+  inline static void accumulate_four_vectors(
+    const double* x0, const double* x1, const double* x2, const double* x3,
+    double* y,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vx0_0 = _mm256_loadu_pd(x0 + j);
+      __m256d vx0_1 = _mm256_loadu_pd(x0 + j + 4);
+      __m256d vx1_0 = _mm256_loadu_pd(x1 + j);
+      __m256d vx1_1 = _mm256_loadu_pd(x1 + j + 4);
+      __m256d vx2_0 = _mm256_loadu_pd(x2 + j);
+      __m256d vx2_1 = _mm256_loadu_pd(x2 + j + 4);
+      __m256d vx3_0 = _mm256_loadu_pd(x3 + j);
+      __m256d vx3_1 = _mm256_loadu_pd(x3 + j + 4);
+
+      __m256d vy_0 = _mm256_loadu_pd(y + j);
+      __m256d vy_1 = _mm256_loadu_pd(y + j + 4);
+
+      vy_0 = _mm256_add_pd(vy_0, _mm256_add_pd(_mm256_add_pd(vx0_0, vx1_0), _mm256_add_pd(vx2_0, vx3_0)));
+      vy_1 = _mm256_add_pd(vy_1, _mm256_add_pd(_mm256_add_pd(vx0_1, vx1_1), _mm256_add_pd(vx2_1, vx3_1)));
+
+      _mm256_storeu_pd(y + j, vy_0);
+      _mm256_storeu_pd(y + j + 4, vy_1);
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vx0 = _mm256_loadu_pd(x0 + j);
+      __m256d vx1 = _mm256_loadu_pd(x1 + j);
+      __m256d vx2 = _mm256_loadu_pd(x2 + j);
+      __m256d vx3 = _mm256_loadu_pd(x3 + j);
+      __m256d vy = _mm256_loadu_pd(y + j);
+      vy = _mm256_add_pd(vy, _mm256_add_pd(_mm256_add_pd(vx0, vx1), _mm256_add_pd(vx2, vx3)));
+      _mm256_storeu_pd(y + j, vy);
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      y[j] += x0[j] + x1[j] + x2[j] + x3[j];
+    }
+  }
+
+  // Vectorized accumulation for two vectors into one target (y += x0 + x1)
+  inline static void accumulate_two_vectors(
+    const double* x0, const double* x1,
+    double* y,
+    size_t n) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("simd");
+    size_t j = 0;
+#ifdef SIMD_AVX2_ENABLED
+    for (; j + 7 < n; j += 8)
+    {
+      __m256d vx0_0 = _mm256_loadu_pd(x0 + j);
+      __m256d vx0_1 = _mm256_loadu_pd(x0 + j + 4);
+      __m256d vx1_0 = _mm256_loadu_pd(x1 + j);
+      __m256d vx1_1 = _mm256_loadu_pd(x1 + j + 4);
+
+      __m256d vy_0 = _mm256_loadu_pd(y + j);
+      __m256d vy_1 = _mm256_loadu_pd(y + j + 4);
+
+      vy_0 = _mm256_add_pd(vy_0, _mm256_add_pd(vx0_0, vx1_0));
+      vy_1 = _mm256_add_pd(vy_1, _mm256_add_pd(vx0_1, vx1_1));
+
+      _mm256_storeu_pd(y + j, vy_0);
+      _mm256_storeu_pd(y + j + 4, vy_1);
+    }
+    for (; j + 3 < n; j += 4)
+    {
+      __m256d vx0 = _mm256_loadu_pd(x0 + j);
+      __m256d vx1 = _mm256_loadu_pd(x1 + j);
+      __m256d vy = _mm256_loadu_pd(y + j);
+      vy = _mm256_add_pd(vy, _mm256_add_pd(vx0, vx1));
+      _mm256_storeu_pd(y + j, vy);
+    }
+#endif
+    for (; j < n; ++j)
+    {
+      y[j] += x0[j] + x1[j];
+    }
+  }
+
   // Scalar fallback for scale_vector
   inline static void scalar_scale_vector(double* y, const double scale, size_t n, size_t start = 0) noexcept
   {

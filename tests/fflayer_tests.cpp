@@ -1548,3 +1548,190 @@ TEST_F(FFLayerTest, MultiThreadedForwardAndBackwardEquivalence)
   }
 }
 
+TEST_F(FFLayerTest, DirectGradientsFallbackToLayerIndexRnnGradients)
+{
+  // Test that when downstream layer is absent (layer is last layer or output-style backprop)
+  // and incoming sequence gradients are placed in rnn_gradients(this_layer_idx),
+  // calculate_hidden_gradients_from_output_gradients picks them up rather than zeroing them.
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 2;
+  const size_t num_time_steps = 3;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  std::vector<double> weights = { 0.2, 0.4, 0.6, 0.8 };
+  std::vector<double> biases = { 0.1, -0.1 };
+  layer.set_w_values(weights);
+  layer.set_b_values(biases);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> in_grads(num_time_steps * num_outputs);
+    for (size_t k = 0; k < in_grads.size(); ++k)
+    {
+      in_grads[k] = 0.5 * static_cast<double>(b * 4 + k + 1);
+    }
+    batch_go[b].set_rnn_gradients(1, in_grads.data(), in_grads.size());
+  }
+
+  // Call calculate_hidden_gradients_from_output_gradients with empty batch_output_gradients
+  layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, batch_hs, batch_size, 0);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& result_grads = batch_go[b].get_rnn_gradients(1);
+    ASSERT_EQ(result_grads.size(), num_time_steps * num_outputs);
+    for (size_t k = 0; k < result_grads.size(); ++k)
+    {
+      const double expected = 0.5 * static_cast<double>(b * 4 + k + 1); // Linear activation derivative is 1.0
+      EXPECT_NEAR(result_grads[k], expected, 1e-9);
+    }
+  }
+}
+
+TEST_F(FFLayerTest, ForwardFeedFullSequenceResiduals)
+{
+  // Test sequence forward feed with a full sequence residual connection of size (num_time_steps * num_outputs)
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 1;
+  const size_t num_time_steps = 3;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  // w = [1 0; 0 1], b = [0, 0] -> identity transform
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  // Inputs across 3 timesteps: [1, 2], [3, 4], [5, 6]
+  batch_go[0].set_rnn_outputs(0, { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 });
+
+  // Full sequence residual: [0.1, 0.2], [0.3, 0.4], [0.5, 0.6]
+  std::vector<std::vector<double>> residual = { { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 } };
+
+  layer.calculate_forward_feed(batch_go, prev_layer, residual, batch_hs, batch_size, false);
+
+  const auto& outputs = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(outputs.size(), 6);
+  EXPECT_NEAR(outputs[0], 1.1, 1e-9);
+  EXPECT_NEAR(outputs[1], 2.2, 1e-9);
+  EXPECT_NEAR(outputs[2], 3.3, 1e-9);
+  EXPECT_NEAR(outputs[3], 4.4, 1e-9);
+  EXPECT_NEAR(outputs[4], 5.5, 1e-9);
+  EXPECT_NEAR(outputs[5], 6.6, 1e-9);
+}
+
+TEST_F(FFLayerTest, ForwardFeedSequenceDetectionFromHiddenStates)
+{
+  // Test sequence length fallback to batch_hidden_states[0].at(get_layer_index()).size()
+  // when inputs are broadcast or static
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t batch_size = 1;
+  const size_t num_time_steps = 3;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+  layer.set_b_values({ 0.5, -0.5 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  // Set standard outputs (size 2) rather than rnn_outputs
+  batch_go[0].set_outputs(0, { 2.0, 4.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, false);
+
+  const auto& outputs = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(outputs.size(), num_time_steps * num_outputs);
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    EXPECT_NEAR(outputs[t * 2 + 0], 2.5, 1e-9);
+    EXPECT_NEAR(outputs[t * 2 + 1], 3.5, 1e-9);
+  }
+}
+
+TEST_F(FFLayerTest, SingleStepFastPathGradientEquivalence)
+{
+  // Test that single-step weight and bias gradients computed via the fast path (num_time_steps == 1)
+  // match reference calculations across various batch sizes.
+  const unsigned num_inputs = 4;
+  const unsigned num_outputs = 3;
+  const size_t batch_size = 5;
+  const size_t num_time_steps = 1;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  std::vector<double> weights(num_inputs * num_outputs, 0.2);
+  std::vector<double> biases(num_outputs, 0.1);
+  layer.set_w_values(weights);
+  layer.set_b_values(biases);
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  std::vector<double> expected_w_grads(num_inputs * num_outputs, 0.0);
+  std::vector<double> expected_b_grads(num_outputs, 0.0);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> x_b(num_inputs);
+    for (size_t i = 0; i < num_inputs; ++i)
+    {
+      x_b[i] = 0.3 * static_cast<double>(b + i + 1) - 0.5;
+    }
+    batch_go[b].set_outputs(0, x_b);
+
+    std::vector<double> g_b(num_outputs);
+    for (size_t j = 0; j < num_outputs; ++j)
+    {
+      g_b[j] = 0.2 * static_cast<double>(b * 2 + j + 1) - 0.3;
+      expected_b_grads[j] += g_b[j];
+      for (size_t i = 0; i < num_inputs; ++i)
+      {
+        expected_w_grads[i * num_outputs + j] += x_b[i] * g_b[j];
+      }
+    }
+    batch_go[b].set_gradients(1, g_b);
+  }
+
+  const double inv_batch = 1.0 / static_cast<double>(batch_size);
+  for (size_t k = 0; k < expected_w_grads.size(); ++k)
+  {
+    expected_w_grads[k] *= inv_batch;
+  }
+  for (size_t k = 0; k < expected_b_grads.size(); ++k)
+  {
+    expected_b_grads[k] *= inv_batch;
+  }
+
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  const auto& actual_w_grads = layer.get_w_grads();
+  const auto& actual_b_grads = layer.get_b_grads();
+
+  ASSERT_EQ(actual_w_grads.size(), expected_w_grads.size());
+  for (size_t k = 0; k < actual_w_grads.size(); ++k)
+  {
+    EXPECT_NEAR(actual_w_grads[k], expected_w_grads[k], 1e-9);
+  }
+
+  ASSERT_EQ(actual_b_grads.size(), expected_b_grads.size());
+  for (size_t k = 0; k < actual_b_grads.size(); ++k)
+  {
+    EXPECT_NEAR(actual_b_grads[k], expected_b_grads[k], 1e-9);
+  }
+}
+
+
