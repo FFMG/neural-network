@@ -80,10 +80,18 @@ public:
   void set_inference_temperature(unsigned output_layer_index, double t) noexcept;
 
   void train(
-    const NeuralNetworkOptions& options, 
+    const NeuralNetworkOptions& options,
     const double learning_rate,
-    std::vector<std::vector<double>>::const_iterator& training_inputs, 
+    std::vector<std::vector<double>>::const_iterator& training_inputs,
     std::vector<std::vector<double>>::const_iterator& training_outputs,
+    const size_t batch_size);
+
+  void train_with_advantages(
+    const NeuralNetworkOptions& options,
+    const double learning_rate,
+    std::vector<std::vector<double>>::const_iterator& training_inputs,
+    std::vector<std::vector<double>>::const_iterator& training_action_targets,
+    std::vector<double>::const_iterator& training_advantages,
     const size_t batch_size);
   void cache_recurrent_weights();
   void set_number_of_threads(int number_of_threads);
@@ -119,6 +127,22 @@ private:
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients,
     std::vector<std::vector<double>>::const_iterator outputs_begin,
+    size_t batch_size,
+    const std::vector<HiddenStates>& hidden_states) const;
+
+  void calculate_back_propagation_with_advantages(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<double>::const_iterator advantages_begin,
+    size_t batch_size,
+    const std::vector<HiddenStates>& hidden_states) const;
+
+  void calculate_back_propagation_output_layer_with_advantages(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<double>::const_iterator advantages_begin,
     size_t batch_size,
     const std::vector<HiddenStates>& hidden_states) const;
 

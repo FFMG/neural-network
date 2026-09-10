@@ -47,6 +47,12 @@ public:
   virtual ~NeuralNetwork();
 
   void train(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
+
+  void train_with_advantages(
+    const std::vector<std::vector<double>>& training_inputs,
+    const std::vector<std::vector<double>>& training_action_targets,
+    const std::vector<double>& training_advantages);
+
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
 
@@ -89,8 +95,15 @@ private:
   void optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 
   void train_single_batch(
-    std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
     std::vector<std::vector<double>>::const_iterator outputs_begin,
+    const size_t batch_size
+  );
+
+  void train_single_batch_with_advantages(
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<double>::const_iterator advantages_begin,
     const size_t batch_size
   );
 

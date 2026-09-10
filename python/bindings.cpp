@@ -364,6 +364,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def(py::init<const NeuralNetworkOptions&>())
         .def(py::init<const std::vector<unsigned>&, const activation::method&, const activation::method&>())
         .def("train", &NeuralNetwork::train, py::call_guard<py::gil_scoped_release>())
+        .def("train_with_advantages", &NeuralNetwork::train_with_advantages,
+             py::arg("training_inputs"), py::arg("training_action_targets"), py::arg("training_advantages"),
+             py::call_guard<py::gil_scoped_release>())
         .def("think", py::overload_cast<const std::vector<std::vector<double>>&>(&NeuralNetwork::think, py::const_))
         .def("think", py::overload_cast<const std::vector<double>&>(&NeuralNetwork::think, py::const_))
         .def("get_topology", &NeuralNetwork::get_topology)

@@ -70,6 +70,7 @@ Standalone Python examples are located in [python/examples/](python/examples/):
 - **XOR Classification (`python/examples/xor.py`)**: Classic non-linearly separable XOR problem using Feed-Forward layers and Sigmoid activation.
 - **Multi-Output Layer (`python/examples/multi_output.py`)**: Parallel multi-output model performing joint classification (Sigmoid) and regression (Tanh).
 - **General Example (`python/examples/example.py`)**: Comprehensive demonstration of configuration options, progress monitoring callbacks, and model serialization.
+- **Reinforcement Learning (`python/examples/tic_tac_toe.py`)**: Policy-gradient (REINFORCE) agent learning Tic-Tac-Toe via advantage rewards and playing against a Random opponent.
 
 ### Python Quickstart Example
 
@@ -513,6 +514,92 @@ You can calculate error metrics for the network's predictions using the `calcula
     /*force_checking_indexes=*/true
   );
 ```
+
+## Reinforcement Learning
+
+In addition to traditional supervised training over fixed datasets (`train`), the library supports on-policy **Reinforcement Learning** via policy gradients (REINFORCE) using `train_with_advantages`.
+
+### How It Works
+
+* **Supervised Learning (`train`)** minimises empirical loss with respect to static target labels across fixed epochs, schedules learning rates, and caches epoch validation errors.
+* **Reinforcement Learning (`train_with_advantages`)** performs a single on-policy update over trajectories collected during interaction with an environment.
+* **Advantage Scaling**: For each sample $b$ in a batch, the output layer's prediction delta ($\hat{y} - y_{target}$) is scaled directly by the scalar advantage $A_b$:
+  $$\nabla_\theta \mathcal{L}_{RL} = A_b \cdot \nabla_\theta \mathcal{L}_{CE}$$
+  * A **positive advantage** ($A > 0$) increases the probability of taking the chosen action.
+  * A **negative advantage** ($A < 0$) penalises the chosen action and decreases its probability.
+  * A **zero advantage** ($A = 0$) leaves the weights unchanged.
+* Hidden layer gradients are computed via standard backpropagation from the advantage-scaled output gradients, updating all upstream layers proportionally.
+* Sub-batches are chunked and executed according to `options.batch_size()`.
+* Model weights and optimiser velocity/momentum states persist across consecutive updates, allowing the agent to continuously learn online or episode-by-episode.
+
+> [!NOTE]
+> `train_with_advantages` requires a single output layer (multi-output architectures are not supported). Typically, a `Softmax` output head paired with `CrossEntropy` loss is used for discrete action spaces, with one-hot encoded action targets.
+
+### How to Trigger in C++
+
+```cpp
+#include "neuralnetwork.h"
+#include "neuralnetworkoptions.h"
+
+using namespace myoddweb::nn;
+
+// 1. Configure a policy network (e.g., 9 board inputs, 36 hidden units, 9 discrete actions)
+NeuralNetworkOptions options = NeuralNetworkOptions::create({ 9, 36, 9 })
+  .with_hidden_layers({
+    LayerDetails(Layer::Architecture::FF, 36, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  })
+  .with_output_layer_details(
+    OutputLayerDetails(9, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::Adam, 0.9)
+  )
+  .with_learning_rate(0.01)
+  .with_batch_size(16)
+  .build();
+
+NeuralNetwork nn(options);
+
+// 2. Collect states, chosen one-hot actions, and outcome advantages from an episode:
+std::vector<std::vector<double>> states = { /* state at step 0 */, /* state at step 1 */ };
+std::vector<std::vector<double>> actions = { /* one-hot action 0 */, /* one-hot action 1 */ };
+std::vector<double> advantages = { 1.0, 1.0 }; // e.g. +1.0 for win, -1.0 for loss, +0.2 for draw
+
+// 3. Trigger reinforcement learning policy update
+nn.train_with_advantages(states, actions, advantages);
+```
+
+### How to Trigger in Python
+
+```python
+import neuralnetwork as nn
+
+# 1. Build policy network
+options = (
+    nn.NeuralNetworkOptions.create([9, 36, 9])
+    .with_hidden_layers([
+        nn.LayerDetails(nn.LayerArchitecture.FF, 36, nn.Activation(nn.ActivationMethod.Relu, 0.0),
+                        0.0, 0.0, nn.OptimiserType.Adam, 0.9)
+    ])
+    .with_output_layer_details(
+        nn.OutputLayerDetails(9, nn.Activation(nn.ActivationMethod.Softmax, 0.0, 1.0),
+                              nn.ErrorCalculationType.CrossEntropy, nn.EvaluationConfig(),
+                              0.0, nn.OptimiserType.Adam, 0.9)
+    )
+    .with_learning_rate(0.01)
+    .with_batch_size(16)
+    .build()
+)
+
+net = nn.NeuralNetwork(options)
+
+# 2. Collect trajectory and compute advantages
+states = [[0.0] * 9]                # Initial empty board
+actions = [[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]  # Chose centre cell (4)
+advantages = [1.0]                  # Positive reward / advantage
+
+# 3. Update network policy
+net.train_with_advantages(states, actions, advantages)
+```
+
+See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent.
 
 ## Performance Optimization (SIMD)
 

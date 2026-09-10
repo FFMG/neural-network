@@ -137,7 +137,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `build()`: Finalises and returns the immutable options object.
 *   `nn.NeuralNetwork`: Core neural network model.
     *   `NeuralNetwork(options)`: Constructor.
-    *   `train(inputs, outputs)`: Runs training on the provided datasets.
+    *   `train(inputs, outputs)`: Runs supervised training on the provided datasets.
+    *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs.
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `get_topology()`: Returns the list of layer sizes.
     *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`, `calculate_forecast_metrics_all_layers(error_types, in_sample=True, force_checking_indexes=None)`: Computes model forecast error metrics. When `force_checking_indexes` is omitted (`None`), it defaults to `options.force_checking_indexes()`.
@@ -270,6 +271,18 @@ Run command:
 python python/examples/example.py
 ```
 
+#### Reinforcement Learning Tic-Tac-Toe (`examples/tic_tac_toe.py`)
+
+Demonstrates training a policy network using Reinforcement Learning (REINFORCE policy gradient) with `train_with_advantages`:
+- Network learns the game with rewards for wins (+1.0), draws (+0.2), and losses (-1.0).
+- After training, evaluates the trained agent over 100 matches against a Random opponent.
+- Plays and visualises a full step-by-step demonstration game.
+
+Run command:
+```bash
+python python/examples/tic_tac_toe.py
+```
+
 ---
 
 ## Assumptions & Prerequisites
@@ -336,6 +349,7 @@ Run any of the example scripts from the repository root:
 python python/examples/xor.py
 python python/examples/multi_output.py
 python python/examples/example.py
+python python/examples/tic_tac_toe.py
 ```
 
 ---
@@ -351,4 +365,5 @@ python python/examples/example.py
     *   `examples/xor.py`: Classic XOR classification example with output validation.
     *   `examples/multi_output.py`: Multi-output example with classification (Sigmoid) and regression (Tanh) heads.
     *   `examples/example.py`: General Python script illustrating options configuration, progress callbacks, training, inference, and serialization.
+    *   `examples/tic_tac_toe.py`: Reinforcement Learning Tic-Tac-Toe example using policy gradient (`train_with_advantages`).
 

@@ -570,7 +570,7 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
 }
 
 void NeuralNetwork::train_single_batch(
-    std::vector<std::vector<double>>::const_iterator inputs_begin, 
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
     std::vector<std::vector<double>>::const_iterator outputs_begin,
     const size_t batch_size
   )
@@ -579,6 +579,58 @@ void NeuralNetwork::train_single_batch(
   DenormalDisabler disabler;
   std::unique_lock<std::shared_mutex> lock(_mutex);
   _layers.train(_options, _learning_rate, inputs_begin, outputs_begin, batch_size);
+}
+
+void NeuralNetwork::train_single_batch_with_advantages(
+    std::vector<std::vector<double>>::const_iterator inputs_begin,
+    std::vector<std::vector<double>>::const_iterator outputs_begin,
+    std::vector<double>::const_iterator advantages_begin,
+    const size_t batch_size
+  )
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  _layers.train_with_advantages(_options, _learning_rate, inputs_begin, outputs_begin, advantages_begin, batch_size);
+}
+
+void NeuralNetwork::train_with_advantages(
+  const std::vector<std::vector<double>>& training_inputs,
+  const std::vector<std::vector<double>>& training_action_targets,
+  const std::vector<double>& training_advantages)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  DenormalDisabler disabler;
+
+  if (training_action_targets.size() != training_inputs.size() ||
+      training_advantages.size() != training_inputs.size())
+  {
+    Logger::panic("The number of training inputs, action targets and advantages must all match.");
+  }
+  if (training_inputs.empty())
+  {
+    return;
+  }
+
+  const auto& batch_size = _options.batch_size();
+  if (batch_size <= 0)
+  {
+    Logger::panic("The batch size must be a positive number.");
+  }
+
+  _learning_rate = _options.learning_rate();
+
+  const auto total_samples = training_inputs.size();
+  const auto batch_size_size_t = static_cast<size_t>(batch_size);
+  for (size_t start = 0; start < total_samples; start += batch_size_size_t)
+  {
+    const auto current_batch_size = std::min(batch_size_size_t, total_samples - start);
+    train_single_batch_with_advantages(
+      training_inputs.begin() + start,
+      training_action_targets.begin() + start,
+      training_advantages.begin() + start,
+      current_batch_size);
+  }
 }
 
 void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const

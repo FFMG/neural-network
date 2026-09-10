@@ -489,6 +489,64 @@ void Layers::calculate_back_propagation(
   calculate_back_propagation_input_layer(options, gradients, batch_size);
 }
 
+void Layers::calculate_back_propagation_with_advantages(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
+  std::vector<double>::const_iterator advantages_begin,
+  size_t batch_size,
+  const std::vector<HiddenStates>& hidden_states) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  calculate_back_propagation_output_layer_with_advantages(options, gradients, outputs_begin, advantages_begin, batch_size, hidden_states);
+  calculate_back_propagation_hidden_layers(options, gradients, batch_size, hidden_states);
+  calculate_back_propagation_input_layer(options, gradients, batch_size);
+}
+
+void Layers::calculate_back_propagation_output_layer_with_advantages(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
+  std::vector<double>::const_iterator advantages_begin,
+  size_t batch_size,
+  const std::vector<HiddenStates>& hidden_states) const
+{
+  (void)options;
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  auto& ol = output_layer();
+
+  if (ol.is_multi_output())
+  {
+    Logger::panic("Advantage-weighted training does not support multi-output-layer output heads.");
+  }
+
+  ol.calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
+
+  const unsigned output_layer_index = ol.get_layer_index();
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const double advantage = *(advantages_begin + b);
+
+    auto* raw = gradients[b].get_gradients_raw(output_layer_index);
+    const auto count = gradients[b].get_gradients(output_layer_index).size();
+    for (size_t i = 0; i < count; ++i)
+    {
+      raw[i] *= advantage;
+    }
+
+    if (gradients[b].has_rnn_gradients(output_layer_index))
+    {
+      const auto rnn_count = gradients[b].get_rnn_gradients(output_layer_index).size();
+      auto* rnn_raw = gradients[b].get_rnn_gradients_raw(output_layer_index, rnn_count);
+      for (size_t i = 0; i < rnn_count; ++i)
+      {
+        rnn_raw[i] *= advantage;
+      }
+    }
+  }
+}
+
 void Layers::calculate_back_propagation_input_layer(
   const NeuralNetworkOptions& options,
   std::vector<GradientsAndOutputs>& gradients,
@@ -748,6 +806,48 @@ void Layers::train(
   // 2. Calculate gradients via back-propagation
   calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
   calculate_back_propagation(options, _training_gradients_buffer, outputs_begin, batch_size, _training_hidden_states_buffer);
+  update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);
+}
+
+void Layers::train_with_advantages(
+  const NeuralNetworkOptions& options,
+  const double learning_rate,
+  std::vector<std::vector<double>>::const_iterator& inputs_begin,
+  std::vector<std::vector<double>>::const_iterator& outputs_begin,
+  std::vector<double>::const_iterator& advantages_begin,
+  const size_t batch_size)
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+
+  const size_t prev_grad_size = _training_gradients_buffer.size();
+  if (prev_grad_size < batch_size)
+  {
+    _training_gradients_buffer.reserve(batch_size);
+    while (_training_gradients_buffer.size() < batch_size)
+    {
+      _training_gradients_buffer.emplace_back(options.topology());
+    }
+  }
+
+  const size_t prev_hidden_size = _training_hidden_states_buffer.size();
+  if (prev_hidden_size < batch_size)
+  {
+    _training_hidden_states_buffer.reserve(batch_size);
+    while (_training_hidden_states_buffer.size() < batch_size)
+    {
+      _training_hidden_states_buffer.emplace_back(options.topology());
+    }
+  }
+
+  // Zero out existing reused elements; newly created elements were initialized by constructor
+  for (size_t i = 0; i < prev_grad_size && i < batch_size; ++i)
+  {
+    _training_gradients_buffer[i].prepare_for_training();
+  }
+
+  // 2. Calculate gradients via advantage-scaled back-propagation
+  calculate_forward_feed(options, _training_gradients_buffer, inputs_begin, batch_size, _training_hidden_states_buffer, true);
+  calculate_back_propagation_with_advantages(options, _training_gradients_buffer, outputs_begin, advantages_begin, batch_size, _training_hidden_states_buffer);
   update_weights(options, _training_gradients_buffer, learning_rate, batch_size, _training_hidden_states_buffer);
 }
 

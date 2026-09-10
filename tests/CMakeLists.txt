@@ -81,7 +81,8 @@ add_executable(neuralnetwork_tests
     lstmlayer_tests.cpp
     multioutputlayer_tests.cpp
     network_integration_tests.cpp
-    neuralnetwork_tests.cpp    
+    neuralnetwork_advantage_training_tests.cpp
+    neuralnetwork_tests.cpp
     neuralnetworkhelper_tests.cpp
     trainingmonitor_tests.cpp
     neuron_tests.cpp

@@ -2,6 +2,37 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.57] - 2026-09-10
+
+### Added
+- Added on-policy Reinforcement Learning support via policy gradients (REINFORCE) with `NeuralNetwork::train_with_advantages` and `Layers::train_with_advantages`:
+  - Output-layer delta scaling: Multiplies output error deltas directly by per-sample scalar advantages before hidden-layer backpropagation, scaling all upstream hidden-layer weight and bias updates proportionally.
+  - Sub-batching support: Automatically chunks trajectory updates according to `options.batch_size()`.
+  - Guarded single output layer constraint: Enforces single output head (throws explanatory error if multi-output head is used).
+  - Optimiser persistence: Preserves layer optimiser velocity/momentum states across consecutive calls for online and episodic learning.
+- Added Python bindings for Reinforcement Learning:
+  - Bound `NeuralNetwork::train_with_advantages` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp) with GIL release guard (`py::call_guard<py::gil_scoped_release>()`).
+- Added Tic-Tac-Toe Reinforcement Learning example in [`python/examples/tic_tac_toe.py`](file:///H:/projects/github/trading/neuralnetwork/python/examples/tic_tac_toe.py):
+  - Self-training agent learning Tic-Tac-Toe using policy gradients with scalar rewards (+1.0 for win, +0.2 for draw, -1.0 for loss).
+  - Masked action sampling over valid board cells.
+  - Post-training evaluation of 100 matches against a Random opponent with win/draw/loss statistics.
+  - Step-by-step visual demonstration match rendering the 3x3 board at each turn.
+- Added unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/neuralnetwork_advantage_training_tests.cpp):
+  - `PositiveAdvantageIncreasesTakenActionProbability`: Verifies positive advantage increases the chosen action's probability.
+  - `NegativeAdvantageDecreasesTakenActionProbability`: Verifies negative advantage decreases the chosen action's probability.
+  - `ZeroAdvantageLeavesOutputWeightsUnchanged`: Verifies zero advantage produces no change to output weights.
+  - `ZeroAdvantageLeavesHiddenWeightsUnchanged`: Verifies zero advantage leaves hidden-layer weights strictly unchanged.
+  - `AdvantageMagnitudeScalesOutputWeightDeltaLinearly`: Verifies output weight updates scale linearly with advantage magnitude.
+  - `AdvantageMagnitudeScalesHiddenWeightDeltaLinearly`: Verifies hidden-layer weight updates scale linearly with advantage magnitude.
+  - `HandlesMoreExamplesThanConfiguredBatchSizeByChunking`: Verifies sub-batch chunking across uneven batch boundaries.
+  - `EmptyInputsLeavesWeightsUnchanged`: Verifies empty input vectors are safely handled without throwing or altering weights.
+  - `MismatchedInputSizesThrows`: Verifies validation error when input, target, or advantage vector lengths mismatch.
+  - `MultiOutputLayerHeadThrows`: Verifies validation error when multi-output heads are used.
+  - `SerializerSavesAndLoadsAdvantageTrainedNetwork`: Verifies that saving and loading an advantage-trained network preserves all weights and inference outputs identically.
+  - `WorksWithAdamOptimiser`: Verifies policy gradient updates operate correctly under the Adam optimiser.
+- Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](file:///H:/projects/github/trading/neuralnetwork/.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
+- Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
+
 ## [1.1.56] - 2026-09-09
 
 ### Fixed
