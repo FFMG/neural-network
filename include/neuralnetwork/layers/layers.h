@@ -89,9 +89,9 @@ public:
   void train_with_advantages(
     const NeuralNetworkOptions& options,
     const double learning_rate,
-    std::vector<std::vector<double>>::const_iterator& training_inputs,
-    std::vector<std::vector<double>>::const_iterator& training_action_targets,
-    std::vector<double>::const_iterator& training_advantages,
+    std::vector<std::vector<double>>::const_iterator training_inputs,
+    std::vector<std::vector<double>>::const_iterator training_action_targets,
+    std::vector<double>::const_iterator training_advantages,
     const size_t batch_size);
   void cache_recurrent_weights();
   void set_number_of_threads(int number_of_threads);

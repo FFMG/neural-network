@@ -36,22 +36,32 @@ All notable changes to the `neural-network` library will be documented in this f
   - `ContinuousActionRegressionPolicyWithMSE`: Verifies advantage scaling on continuous action / regression policies using Linear outputs and MSE loss.
   - `RecurrentLSTMPolicyNetwork`: Verifies advantage-weighted policy gradient updates on recurrent LSTM networks with BPTT.
   - `ExtremeAdvantageScalingNumericalStability`: Verifies that extreme advantage magnitudes ($\pm 100.0$) maintain numerical stability and valid probabilities without producing `NaN` or exploding weights under gradient clipping.
+  - `NonFiniteInputThrows`: Verifies `NaN` and `Inf` values inside input feature vectors throw `std::runtime_error`.
+  - `NonFiniteActionTargetThrows`: Verifies `NaN` and `Inf` values inside action target vectors throw `std::runtime_error`.
+  - `NegativeActionTargetWithSoftmaxThrows`: Verifies negative action target values throw `std::runtime_error` when output activation is Softmax.
+  - `ZeroSumActionTargetWithSoftmaxThrows`: Verifies all-zero action target vectors throw `std::runtime_error` when output activation is Softmax.
+  - `SoftmaxTemperatureScalingInPolicyNetwork`: Verifies policy gradient learning with exploration temperature scaling ($\tau \neq 1.0$).
+  - `LabelSmoothingWithAdvantageTraining`: Verifies advantage-weighted policy gradient updates with Cross-Entropy label smoothing.
 - Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](file:///H:/projects/github/trading/neuralnetwork/.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
 
 ### Optimised
 - Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.cpp):
-  - Hoisted output neuron count query outside per-sample batch loop.
+  - Hoisted output neuron count, recurrent layer detection (`has_rnn`), and RNN gradient size queries outside the per-sample batch loop.
   - Replaced scalar advantage multiplication loops with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h).
   - Added identity bypass (`advantage == 1.0`) to avoid redundant scaling arithmetic and memory writes.
   - Added zero-advantage fast path (`advantage == 0.0`) using `std::memset` to rapidly zero out gradients.
+- Optimised trajectory training concurrency in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
+  - Replaced per-sub-batch mutex acquisition with a single exclusive lock over the entire trajectory batch loop, eliminating lock contention and ensuring atomic rollout updates across threads.
+  - Standardised iterator parameter passing by value in [`Layers::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.h) to eliminate unnecessary references and allow direct rvalue passing.
 
 ### Fixed
-- Added robust upfront input and mathematical validation in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
+- Added robust upfront input, target, and mathematical validation in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
   - Pre-emptive multi-output check before batch allocation or forward computation.
   - Rigorous per-sample dimension checks ensuring training inputs match input topology (or valid BPTT multiples).
   - Rigorous per-sample dimension checks ensuring action targets match output topology (or valid BPTT multiples).
-  - Validation ensuring all advantage values are finite (`!std::isfinite`), preventing `NaN` or `Inf` from corrupting model parameters.
+  - Element-wise validation ensuring all values in `training_inputs`, `training_action_targets`, and `training_advantages` are finite (`std::isfinite`), preventing `NaN` or `Inf` corruption.
+  - Domain validation for Softmax policies ensuring action target probabilities are non-negative ($y_j \ge 0$) with non-zero sum ($\sum_j y_j > 0$).
 
 ## [1.1.56] - 2026-09-09
 

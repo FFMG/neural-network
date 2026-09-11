@@ -523,3 +523,138 @@ TEST(NeuralNetworkAdvantageTrainingTest, ExtremeAdvantageScalingNumericalStabili
   EXPECT_LE(output_negative[0], 1.0);
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, NonFiniteInputThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  std::vector<std::vector<double>> nan_inputs = { { 0.2, std::numeric_limits<double>::quiet_NaN(), 0.4 } };
+  EXPECT_THROW(nn.train_with_advantages(nan_inputs, action_targets, advantages), std::runtime_error);
+
+  std::vector<std::vector<double>> inf_inputs = { { 0.2, std::numeric_limits<double>::infinity(), 0.4 } };
+  EXPECT_THROW(nn.train_with_advantages(inf_inputs, action_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, NonFiniteActionTargetThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<double> advantages = { 1.0 };
+
+  std::vector<std::vector<double>> nan_targets = { { std::numeric_limits<double>::quiet_NaN(), 0.0 } };
+  EXPECT_THROW(nn.train_with_advantages(inputs, nan_targets, advantages), std::runtime_error);
+
+  std::vector<std::vector<double>> inf_targets = { { 1.0, std::numeric_limits<double>::infinity() } };
+  EXPECT_THROW(nn.train_with_advantages(inputs, inf_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, NegativeActionTargetWithSoftmaxThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> negative_targets = { { -0.5, 1.5 } };
+  std::vector<double> advantages = { 1.0 };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, negative_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ZeroSumActionTargetWithSoftmaxThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> zero_targets = { { 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, zero_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, SoftmaxTemperatureScalingInPolicyNetwork)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 2.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.2)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, { 1.0 });
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_GT(after[0], before[0]);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, LabelSmoothingWithAdvantageTraining)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.2, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.2)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+
+  const auto before = nn.think(inputs[0]);
+  ASSERT_NO_THROW(nn.train_with_advantages(inputs, action_targets, { 1.0 }));
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_GT(after[0], before[0]);
+}
+
+

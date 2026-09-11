@@ -626,6 +626,7 @@ void NeuralNetwork::train_with_advantages(
   const auto input_size = _options.topology().front();
   const auto output_size = _options.topology().back();
   const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
+  const bool is_softmax = (_layers.output_layer().get_activation(0).get_method() == activation::method::softmax);
 
   for (size_t i = 0; i < training_inputs.size(); ++i)
   {
@@ -635,12 +636,39 @@ void NeuralNetwork::train_with_advantages(
     {
       Logger::panic("Training input size at index ", i, " (", current_in_size, ") does not match network input dimension (", input_size, ").");
     }
+    for (size_t j = 0; j < current_in_size; ++j)
+    {
+      if (!std::isfinite(training_inputs[i][j]))
+      {
+        Logger::panic("Training input value at sample ", i, ", index ", j, " is not finite (NaN or Inf).");
+      }
+    }
 
     const auto current_out_size = training_action_targets[i].size();
     const bool is_valid_out_size = (current_out_size == output_size) || (is_bptt && output_size > 0 && current_out_size % output_size == 0);
     if (!is_valid_out_size)
     {
       Logger::panic("Training action target size at index ", i, " (", current_out_size, ") does not match network output dimension (", output_size, ").");
+    }
+
+    double target_sum = 0.0;
+    for (size_t j = 0; j < current_out_size; ++j)
+    {
+      const double target_val = training_action_targets[i][j];
+      if (!std::isfinite(target_val))
+      {
+        Logger::panic("Training action target value at sample ", i, ", index ", j, " is not finite (NaN or Inf).");
+      }
+      if (is_softmax && target_val < 0.0)
+      {
+        Logger::panic("Training action target at sample ", i, ", index ", j, " is negative (", target_val, "), which is invalid for Softmax policies.");
+      }
+      target_sum += target_val;
+    }
+
+    if (is_softmax && target_sum <= 0.0)
+    {
+      Logger::panic("Training action target at sample ", i, " has a sum of zero or less, which is invalid for Softmax policies.");
     }
 
     if (!std::isfinite(training_advantages[i]))
@@ -653,10 +681,14 @@ void NeuralNetwork::train_with_advantages(
 
   const auto total_samples = training_inputs.size();
   const auto batch_size_size_t = static_cast<size_t>(batch_size);
+
+  std::unique_lock<std::shared_mutex> lock(_mutex);
   for (size_t start = 0; start < total_samples; start += batch_size_size_t)
   {
     const auto current_batch_size = std::min(batch_size_size_t, total_samples - start);
-    train_single_batch_with_advantages(
+    _layers.train_with_advantages(
+      _options,
+      _learning_rate,
       training_inputs.begin() + start,
       training_action_targets.begin() + start,
       training_advantages.begin() + start,

@@ -526,6 +526,9 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
 
   const unsigned output_layer_index = ol.get_layer_index();
   const auto count = ol.get_number_neurons();
+  const bool has_rnn = (batch_size > 0) && gradients[0].has_rnn_gradients(output_layer_index);
+  const size_t rnn_count = has_rnn ? gradients[0].get_rnn_gradients(output_layer_index).size() : 0;
+
   for (size_t b = 0; b < batch_size; ++b)
   {
     const double advantage = *(advantages_begin + b);
@@ -544,9 +547,8 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
       simd::mul_scalar(raw, advantage, raw, count);
     }
 
-    if (gradients[b].has_rnn_gradients(output_layer_index))
+    if (has_rnn)
     {
-      const auto rnn_count = gradients[b].get_rnn_gradients(output_layer_index).size();
       auto* rnn_raw = gradients[b].get_rnn_gradients_raw(output_layer_index, rnn_count);
       if (advantage == 0.0)
       {
@@ -825,9 +827,9 @@ void Layers::train(
 void Layers::train_with_advantages(
   const NeuralNetworkOptions& options,
   const double learning_rate,
-  std::vector<std::vector<double>>::const_iterator& inputs_begin,
-  std::vector<std::vector<double>>::const_iterator& outputs_begin,
-  std::vector<double>::const_iterator& advantages_begin,
+  std::vector<std::vector<double>>::const_iterator inputs_begin,
+  std::vector<std::vector<double>>::const_iterator outputs_begin,
+  std::vector<double>::const_iterator advantages_begin,
   const size_t batch_size)
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
