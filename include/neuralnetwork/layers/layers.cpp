@@ -7,6 +7,7 @@
 #include "layers.h"
 #include "lstmlayer.h"
 #include "multioutputlayer.h"
+#include "../common/simd_utils.h"
 
 
 namespace myoddweb::nn
@@ -524,24 +525,36 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
   ol.calculate_output_gradients(gradients, outputs_begin, hidden_states, batch_size);
 
   const unsigned output_layer_index = ol.get_layer_index();
+  const auto count = ol.get_number_neurons();
   for (size_t b = 0; b < batch_size; ++b)
   {
     const double advantage = *(advantages_begin + b);
+    if (advantage == 1.0)
+    {
+      continue;
+    }
 
     auto* raw = gradients[b].get_gradients_raw(output_layer_index);
-    const auto count = gradients[b].get_gradients(output_layer_index).size();
-    for (size_t i = 0; i < count; ++i)
+    if (advantage == 0.0)
     {
-      raw[i] *= advantage;
+      std::memset(raw, 0, count * sizeof(double));
+    }
+    else
+    {
+      simd::mul_scalar(raw, advantage, raw, count);
     }
 
     if (gradients[b].has_rnn_gradients(output_layer_index))
     {
       const auto rnn_count = gradients[b].get_rnn_gradients(output_layer_index).size();
       auto* rnn_raw = gradients[b].get_rnn_gradients_raw(output_layer_index, rnn_count);
-      for (size_t i = 0; i < rnn_count; ++i)
+      if (advantage == 0.0)
       {
-        rnn_raw[i] *= advantage;
+        std::memset(rnn_raw, 0, rnn_count * sizeof(double));
+      }
+      else
+      {
+        simd::mul_scalar(rnn_raw, advantage, rnn_raw, rnn_count);
       }
     }
   }

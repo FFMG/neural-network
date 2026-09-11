@@ -30,8 +30,28 @@ All notable changes to the `neural-network` library will be documented in this f
   - `MultiOutputLayerHeadThrows`: Verifies validation error when multi-output heads are used.
   - `SerializerSavesAndLoadsAdvantageTrainedNetwork`: Verifies that saving and loading an advantage-trained network preserves all weights and inference outputs identically.
   - `WorksWithAdamOptimiser`: Verifies policy gradient updates operate correctly under the Adam optimiser.
+  - `MismatchedInputDimensionsThrows`: Verifies validation error when input sample feature dimension does not match input layer topology.
+  - `MismatchedActionTargetDimensionsThrows`: Verifies validation error when action target dimension does not match output layer topology.
+  - `NonFiniteAdvantageThrows`: Verifies `NaN` and `Inf` advantage values throw `std::runtime_error`.
+  - `ContinuousActionRegressionPolicyWithMSE`: Verifies advantage scaling on continuous action / regression policies using Linear outputs and MSE loss.
+  - `RecurrentLSTMPolicyNetwork`: Verifies advantage-weighted policy gradient updates on recurrent LSTM networks with BPTT.
+  - `ExtremeAdvantageScalingNumericalStability`: Verifies that extreme advantage magnitudes ($\pm 100.0$) maintain numerical stability and valid probabilities without producing `NaN` or exploding weights under gradient clipping.
 - Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](file:///H:/projects/github/trading/neuralnetwork/.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
+
+### Optimised
+- Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.cpp):
+  - Hoisted output neuron count query outside per-sample batch loop.
+  - Replaced scalar advantage multiplication loops with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h).
+  - Added identity bypass (`advantage == 1.0`) to avoid redundant scaling arithmetic and memory writes.
+  - Added zero-advantage fast path (`advantage == 0.0`) using `std::memset` to rapidly zero out gradients.
+
+### Fixed
+- Added robust upfront input and mathematical validation in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
+  - Pre-emptive multi-output check before batch allocation or forward computation.
+  - Rigorous per-sample dimension checks ensuring training inputs match input topology (or valid BPTT multiples).
+  - Rigorous per-sample dimension checks ensuring action targets match output topology (or valid BPTT multiples).
+  - Validation ensuring all advantage values are finite (`!std::isfinite`), preventing `NaN` or `Inf` from corrupting model parameters.
 
 ## [1.1.56] - 2026-09-09
 

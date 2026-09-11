@@ -5,7 +5,9 @@
 #include "layers/multioutputlayerdetails.h"
 #include "neuralnetwork.h"
 #include "neuralnetworkoptions.h"
+#include <cmath>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -355,3 +357,169 @@ TEST(NeuralNetworkAdvantageTrainingTest, WorksWithAdamOptimiser)
 
   EXPECT_GT(after[0], before[0]);
 }
+
+TEST(NeuralNetworkAdvantageTrainingTest, MismatchedInputDimensionsThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, MismatchedActionTargetDimensionsThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, NonFiniteAdvantageThrows)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+
+  EXPECT_THROW(
+    nn.train_with_advantages(inputs, action_targets, { std::numeric_limits<double>::quiet_NaN() }),
+    std::runtime_error);
+
+  EXPECT_THROW(
+    nn.train_with_advantages(inputs, action_targets, { std::numeric_limits<double>::infinity() }),
+    std::runtime_error);
+
+  EXPECT_THROW(
+    nn.train_with_advantages(inputs, action_targets, { -std::numeric_limits<double>::infinity() }),
+    std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ContinuousActionRegressionPolicyWithMSE)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    1,
+    activation(activation::method::linear, 0.0),
+    ErrorCalculation::type::mse,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.2 } };
+  const auto initial_prediction = nn.think(inputs[0])[0];
+  const double target = initial_prediction + 1.0;
+  std::vector<std::vector<double>> targets = { { target } };
+
+  nn.train_with_advantages(inputs, targets, { 1.0 });
+  const auto after_positive = nn.think(inputs[0])[0];
+  EXPECT_GT(after_positive, initial_prediction);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, RecurrentLSTMPolicyNetwork)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::Lstm, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::Adam,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.05)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.5, 0.3 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  const auto before_weights = collect_layer_weights(nn, 1);
+  ASSERT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
+  const auto after_weights = collect_layer_weights(nn, 1);
+
+  ASSERT_EQ(before_weights.size(), after_weights.size());
+  bool any_weight_changed = false;
+  for (size_t i = 0; i < before_weights.size(); ++i)
+  {
+    if (std::abs(after_weights[i] - before_weights[i]) > 1e-12)
+    {
+      any_weight_changed = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(any_weight_changed);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ExtremeAdvantageScalingNumericalStability)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.01, 1, 42u);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.2, 0.3 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+
+  std::vector<double> extreme_positive_adv = { 100.0 };
+  ASSERT_NO_THROW(nn.train_with_advantages(inputs, action_targets, extreme_positive_adv));
+
+  const auto output_positive = nn.think(inputs[0]);
+  EXPECT_TRUE(std::isfinite(output_positive[0]));
+  EXPECT_TRUE(std::isfinite(output_positive[1]));
+  EXPECT_GE(output_positive[0], 0.0);
+  EXPECT_LE(output_positive[0], 1.0);
+
+  std::vector<double> extreme_negative_adv = { -100.0 };
+  ASSERT_NO_THROW(nn.train_with_advantages(inputs, action_targets, extreme_negative_adv));
+
+  const auto output_negative = nn.think(inputs[0]);
+  EXPECT_TRUE(std::isfinite(output_negative[0]));
+  EXPECT_TRUE(std::isfinite(output_negative[1]));
+  EXPECT_GE(output_negative[0], 0.0);
+  EXPECT_LE(output_negative[0], 1.0);
+}
+

@@ -602,6 +602,11 @@ void NeuralNetwork::train_with_advantages(
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   DenormalDisabler disabler;
 
+  if (_layers.output_layer().is_multi_output())
+  {
+    Logger::panic("Advantage-weighted training does not support multi-output-layer output heads.");
+  }
+
   if (training_action_targets.size() != training_inputs.size() ||
       training_advantages.size() != training_inputs.size())
   {
@@ -616,6 +621,32 @@ void NeuralNetwork::train_with_advantages(
   if (batch_size <= 0)
   {
     Logger::panic("The batch size must be a positive number.");
+  }
+
+  const auto input_size = _options.topology().front();
+  const auto output_size = _options.topology().back();
+  const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
+
+  for (size_t i = 0; i < training_inputs.size(); ++i)
+  {
+    const auto current_in_size = training_inputs[i].size();
+    const bool is_valid_in_size = (current_in_size == input_size) || (is_bptt && input_size > 0 && current_in_size % input_size == 0);
+    if (!is_valid_in_size)
+    {
+      Logger::panic("Training input size at index ", i, " (", current_in_size, ") does not match network input dimension (", input_size, ").");
+    }
+
+    const auto current_out_size = training_action_targets[i].size();
+    const bool is_valid_out_size = (current_out_size == output_size) || (is_bptt && output_size > 0 && current_out_size % output_size == 0);
+    if (!is_valid_out_size)
+    {
+      Logger::panic("Training action target size at index ", i, " (", current_out_size, ") does not match network output dimension (", output_size, ").");
+    }
+
+    if (!std::isfinite(training_advantages[i]))
+    {
+      Logger::panic("Advantage value at index ", i, " is not finite (NaN or Inf).");
+    }
   }
 
   _learning_rate = _options.learning_rate();
