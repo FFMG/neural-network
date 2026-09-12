@@ -1,14 +1,12 @@
+#include "../common/logger.h"
+#include "../common/simd_utils.h"
+#include "../common/tempbuffer.h"
 #include "../libraries/instrumentor.h"
 #include "embeddinglayer.h"
 #include "fflayer.h"
-#include "../common/simd_utils.h"
-#include "../common/logger.h"
-#include "../common/tempbuffer.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <numeric>
-#include <stdexcept>
 
 namespace myoddweb::nn
 {
@@ -57,11 +55,11 @@ EmbeddingLayer::EmbeddingLayer(
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
   if (_vocabulary_size == 0)
   {
-    throw std::invalid_argument("EmbeddingLayer: vocabulary_size must be greater than 0");
+    Logger::panic("EmbeddingLayer: vocabulary_size must be greater than 0");
   }
   if (_embedding_dimension == 0)
   {
-    throw std::invalid_argument("EmbeddingLayer: embedding_dimension must be greater than 0");
+    Logger::panic("EmbeddingLayer: embedding_dimension must be greater than 0");
   }
 }
 
@@ -118,11 +116,11 @@ EmbeddingLayer::EmbeddingLayer(
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
   if (_vocabulary_size == 0)
   {
-    throw std::invalid_argument("EmbeddingLayer: vocabulary_size must be greater than 0");
+    Logger::panic("EmbeddingLayer: vocabulary_size must be greater than 0");
   }
   if (_embedding_dimension == 0)
   {
-    throw std::invalid_argument("EmbeddingLayer: embedding_dimension must be greater than 0");
+    Logger::panic("EmbeddingLayer: embedding_dimension must be greater than 0");
   }
 }
 

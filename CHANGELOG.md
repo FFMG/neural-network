@@ -77,6 +77,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
 
 ### Optimised
+- Removed a couple of throw std::* and replaced by Logger::panic 
 - Enhanced thread safety and durability in [`Logger`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/logger.h):
   - Made `_min_level` atomic (`std::atomic<LogLevel>`) with relaxed memory ordering to prevent data races during concurrent logging and runtime level changes across threads.
   - Added compile-time `static_assert` guarantees verifying exact tag string lengths match `TagLen` across all build configurations.

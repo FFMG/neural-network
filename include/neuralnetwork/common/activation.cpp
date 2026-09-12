@@ -605,7 +605,7 @@ double activation::weight_initialization(unsigned fan_in, unsigned fan_out, std:
     return he_initialization(fan_in, seed);
 
   default:
-    throw std::invalid_argument("Unknown activation type!");
+    Logger::panic("Unknown activation type :", (int)_method,"!");
   }
 }
 
