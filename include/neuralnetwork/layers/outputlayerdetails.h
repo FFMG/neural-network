@@ -34,6 +34,10 @@ public:
     {
       Logger::panic("The weight decay cannot be -ve!");
     }
+    if (_optimiser_type == OptimiserType::Adam && _weight_decay > 0.0)
+    {
+      Logger::warning("OutputLayerDetails configured with OptimiserType::Adam and weight_decay > 0. Standard Adam does not apply weight decay. Use OptimiserType::AdamW if decoupled weight decay is desired.");
+    }
   }
 
   OutputLayerDetails(const OutputLayerDetails& src) noexcept :

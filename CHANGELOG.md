@@ -2,6 +2,16 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.58] - 2026-09-12
+
+### Added
+- Added warning logs and documentation clarifying that [`OptimiserType::Adam`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/optimiser.h) deliberately does not apply weight decay:
+  - [`LayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layerdetails.h) and [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/outputlayerdetails.h) constructors now log a [`Logger::warning`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/logger.h) if configured with `OptimiserType::Adam` and `weight_decay > 0`, informing the user that standard Adam ignores weight decay and recommending [`OptimiserType::AdamW`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/optimiser.h) for decoupled weight decay.
+  - Added unit test `ApplyUpdateToWeightAdamIgnoresDecay` in [`tests/layer_optimizer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_optimizer_tests.cpp) confirming scalar updates ignore weight decay for `OptimiserType::Adam` alongside vectorised `ApplyUpdateToVectorAdamIgnoresDecay`.
+  - Added unit tests `AdamWeightDecayWarning`, `AdamZeroWeightDecayNoWarning`, and `AdamWWeightDecayNoWarning` in [`tests/layer_details_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_details_tests.cpp) and [`tests/output_layer_details_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/output_layer_details_tests.cpp).
+  - Updated examples [`examples/addingproblem.h`](file:///H:/projects/github/trading/neuralnetwork/examples/addingproblem.h) and [`examples/lstm_multi.h`](file:///H:/projects/github/trading/neuralnetwork/examples/lstm_multi.h) to use `OptimiserType::AdamW` where weight decay is configured.
+  - Updated [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md) to highlight that standard Adam does not apply weight decay and warns when `weight_decay > 0`.
+
 ## [1.1.57] - 2026-09-10
 
 ### Added

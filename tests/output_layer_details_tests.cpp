@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "layers/outputlayerdetails.h"
 
 
@@ -9,7 +9,7 @@ TEST(OutputLayerDetailsTest, ConstructorAndGetters) {
   ErrorCalculation::type err_type = ErrorCalculation::type::cross_entropy;
   EvaluationConfig config;
   double weight_decay = 0.01;
-  OptimiserType optimiser = OptimiserType::Adam;
+  OptimiserType optimiser = OptimiserType::AdamW;
   double momentum = 0.9;
 
   OutputLayerDetails details(layer_size, act, err_type, config, weight_decay, optimiser, momentum);
@@ -45,7 +45,7 @@ TEST(OutputLayerDetailsTest, MoveConstructor) {
 
 TEST(OutputLayerDetailsTest, AssignmentOperator) {
   OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-  OutputLayerDetails other(10, activation(activation::method::relu, 0.0), ErrorCalculation::type::rmse, EvaluationConfig(), 0.1, OptimiserType::Adam, 0.9);
+  OutputLayerDetails other(10, activation(activation::method::relu, 0.0), ErrorCalculation::type::rmse, EvaluationConfig(), 0.1, OptimiserType::AdamW, 0.9);
   
   other = details;
 
@@ -55,7 +55,7 @@ TEST(OutputLayerDetailsTest, AssignmentOperator) {
 
 TEST(OutputLayerDetailsTest, MoveAssignmentOperator) {
   OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
-  OutputLayerDetails other(10, activation(activation::method::relu, 0.0), ErrorCalculation::type::rmse, EvaluationConfig(), 0.1, OptimiserType::Adam, 0.9);
+  OutputLayerDetails other(10, activation(activation::method::relu, 0.0), ErrorCalculation::type::rmse, EvaluationConfig(), 0.1, OptimiserType::AdamW, 0.9);
   
   other = std::move(details);
 
@@ -66,3 +66,47 @@ TEST(OutputLayerDetailsTest, MoveAssignmentOperator) {
 TEST(OutputLayerDetailsTest, InvalidWeightDecay) {
   EXPECT_ANY_THROW(OutputLayerDetails(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), -0.1, OptimiserType::SGD, 0.0));
 }
+
+TEST(OutputLayerDetailsTest, AdamWeightDecayWarning)
+{
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay > 0 with Adam should log a warning
+  OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.05, OptimiserType::Adam, 0.9);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_NE(output.find("Standard Adam does not apply weight decay"), std::string::npos);
+  EXPECT_NE(output.find("AdamW"), std::string::npos);
+}
+
+TEST(OutputLayerDetailsTest, AdamZeroWeightDecayNoWarning)
+{
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay == 0 with Adam should NOT log a warning
+  OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::Adam, 0.9);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
+}
+
+TEST(OutputLayerDetailsTest, AdamWWeightDecayNoWarning)
+{
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay > 0 with AdamW is valid and should NOT log a warning
+  OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.05, OptimiserType::AdamW, 0.9);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
+}
+

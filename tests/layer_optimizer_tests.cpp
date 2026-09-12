@@ -90,6 +90,30 @@ TEST_F(LayerOptimizerTest, ApplyUpdateToWeightAdam) {
     EXPECT_NEAR(m2[0], 0.00001, 1e-9);
 }
 
+TEST_F(LayerOptimizerTest, ApplyUpdateToWeightAdamIgnoresDecay)
+{
+    MockOptimizerLayer layer(1, 1);
+    std::vector<double> values = { 1.0 };
+    std::vector<double> grads = { 0.0 };
+    std::vector<double> velocities;
+    std::vector<double> m1 = { 0.0 };
+    std::vector<double> m2 = { 0.0 };
+    std::vector<long long> timesteps = { 0 };
+    std::vector<double> decays = { 0.05 }; // Non-zero weight decay
+    
+    double input_grad = 0.1;
+    double lr = 0.001;
+    double clipping = 1.0;
+    
+    // Standard Adam deliberately ignores weight decay:
+    // value must equal 0.999 (same as decays = 0.0), NOT decaying by (1 - lr * decay)
+    layer.apply_update_to_weight(values, grads, velocities, m1, m2, timesteps, decays, 0, input_grad, lr, clipping, OptimiserType::Adam, 0);
+    
+    EXPECT_NEAR(values[0], 0.999, 1e-6);
+    EXPECT_NEAR(m1[0], 0.1, 1e-9);
+    EXPECT_NEAR(m2[0], 0.00001, 1e-9);
+}
+
 TEST_F(LayerOptimizerTest, ApplyUpdateToWeightAdamW) {
     MockOptimizerLayer layer(1, 1);
     std::vector<double> values = { 1.0 };

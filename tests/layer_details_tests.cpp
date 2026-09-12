@@ -25,7 +25,7 @@ protected:
 TEST_F(LayerDetailsTest, LayerDetailsMethods) {
     MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
     activation act(activation::method::relu, 0.1, 1.0);
-    LayerDetails details(Layer::Architecture::FF, 10, act, 0.2, 0.001, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+    LayerDetails details(Layer::Architecture::FF, 10, act, 0.2, 0.001, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
 
     EXPECT_EQ(details.get_layer_architecture(), Layer::Architecture::FF);
     EXPECT_EQ(details.get_size(), 10);
@@ -33,7 +33,7 @@ TEST_F(LayerDetailsTest, LayerDetailsMethods) {
     EXPECT_EQ(details.get_activation().get_alpha(), 0.1);
     EXPECT_EQ(details.get_dropout(), 0.2);
     EXPECT_EQ(details.get_weight_decay(), 0.001);
-    EXPECT_EQ(details.get_optimiser_type(), OptimiserType::Adam);
+    EXPECT_EQ(details.get_optimiser_type(), OptimiserType::AdamW);
     EXPECT_EQ(details.get_momentum(), 0.9);
 
     // Copy constructor
@@ -466,4 +466,56 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
     EXPECT_NEAR(outputs[2], -0.26894, 1e-4);
     EXPECT_NEAR(outputs[3], -0.3034, 1e-3);
     EXPECT_NEAR(outputs[4], -0.1587, 1e-2);
+}
+
+TEST_F(LayerDetailsTest, AdamWeightDecayWarning)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  activation act(activation::method::relu, 0.1, 1.0);
+
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay > 0 with Adam should log a warning
+  LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.05, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_NE(output.find("Standard Adam does not apply weight decay"), std::string::npos);
+  EXPECT_NE(output.find("AdamW"), std::string::npos);
+}
+
+TEST_F(LayerDetailsTest, AdamZeroWeightDecayNoWarning)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  activation act(activation::method::relu, 0.1, 1.0);
+
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay == 0 with Adam should NOT log a warning
+  LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
+}
+
+TEST_F(LayerDetailsTest, AdamWWeightDecayNoWarning)
+{
+  MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  activation act(activation::method::relu, 0.1, 1.0);
+
+  std::stringstream buffer;
+  std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+  // Weight decay > 0 with AdamW is valid and should NOT log a warning
+  LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.05, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+
+  std::cout.rdbuf(old_cout);
+
+  std::string output = buffer.str();
+  EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
 }

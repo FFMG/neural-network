@@ -49,6 +49,10 @@ public:
     _embedding_dimension(embedding_dimension)
   {
     MYODDWEB_PROFILE_FUNCTION("LayerDetails");
+    if (_optimiser_type == OptimiserType::Adam && _weight_decay > 0.0)
+    {
+      Logger::warning("LayerDetails configured with OptimiserType::Adam and weight_decay > 0. Standard Adam does not apply weight decay. Use OptimiserType::AdamW if decoupled weight decay is desired.");
+    }
   }
 
   LayerDetails(const LayerDetails& src) noexcept :

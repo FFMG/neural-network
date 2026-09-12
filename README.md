@@ -45,8 +45,8 @@ myoddweb::nn::NeuralNetwork nn(options);
 
 * None
 * SGD
-* Adam
-* AdamW
+* Adam (Standard Adam does not apply weight decay; if `weight_decay > 0` is configured, a warning is logged. Use `AdamW` if decoupled weight decay is desired.)
+* AdamW (Adam with decoupled weight decay)
 * Nadam
 * NadamW
 * Adagrad

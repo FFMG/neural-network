@@ -29,7 +29,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `Momentum`: Stochastic Gradient Descent with Momentum.
     *   `Nesterov`: Nesterov Accelerated Gradient.
     *   `RMSProp`: Root Mean Squared Propagation.
-    *   `Adam`: Adaptive Moment Estimation.
+    *   `Adam`: Adaptive Moment Estimation (standard Adam does not apply weight decay; if `weight_decay > 0` is configured, a warning is logged. Use `AdamW` for decoupled weight decay).
     *   `AdamW`: Adam with decoupled Weight decay.
     *   `AdaGrad`: Adaptive Gradient algorithm.
     *   `AdaDelta`: Extension of AdaGrad that seeks to reduce its aggressive learning rate decay.
