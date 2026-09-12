@@ -659,9 +659,15 @@ void NeuralNetwork::train_with_advantages(
       {
         Logger::panic("Training action target value at sample ", i, ", index ", j, " is not finite (NaN or Inf).");
       }
-      if (is_softmax && target_val < 0.0)
+      const auto neuron_idx = static_cast<unsigned>(j % output_size);
+      const auto neuron_act = _layers.output_layer().get_activation(neuron_idx).get_method();
+      if (neuron_act == activation::method::softmax && target_val < 0.0)
       {
         Logger::panic("Training action target at sample ", i, ", index ", j, " is negative (", target_val, "), which is invalid for Softmax policies.");
+      }
+      if (neuron_act == activation::method::tanh && (target_val < -1.0 || target_val > 1.0))
+      {
+        Logger::panic("Training action target at sample ", i, ", index ", j, " is outside [-1.0, 1.0] (", target_val, "), which is unreachable for Tanh output layers.");
       }
       target_sum += target_val;
     }

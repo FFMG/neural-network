@@ -42,6 +42,11 @@ All notable changes to the `neural-network` library will be documented in this f
   - `ZeroSumActionTargetWithSoftmaxThrows`: Verifies all-zero action target vectors throw `std::runtime_error` when output activation is Softmax.
   - `SoftmaxTemperatureScalingInPolicyNetwork`: Verifies policy gradient learning with exploration temperature scaling ($\tau \neq 1.0$).
   - `LabelSmoothingWithAdvantageTraining`: Verifies advantage-weighted policy gradient updates with Cross-Entropy label smoothing.
+  - `FFTanhHiddenLayerWithAdamWAndSoftmax`: Verifies advantage-weighted policy gradient training on a Feed Forward network with Tanh hidden layers, AdamW optimiser, and Softmax output.
+  - `FFTanhOutputLayerWithAdamWAndMSE`: Verifies continuous action policy training with Tanh output activation, MSE loss, and AdamW optimiser under advantage scaling.
+  - `AdamWDecoupledWeightDecayWithAdvantageTraining`: Verifies that under zero advantage ($A_t = 0$), AdamW applies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda)$) strictly to weights while biases remain unaffected.
+  - `TanhOutputTargetOutOfRangeThrows`: Verifies validation rejection when action targets exceed the reachable range of Tanh output layers ($[-1.0, 1.0]$).
+  - `FFTanhWithNegativeAdvantageDecreasesProbability`: Verifies negative advantage updates penalise chosen actions under Tanh hidden layers and AdamW optimiser.
 - Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](file:///H:/projects/github/trading/neuralnetwork/.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
 
@@ -62,6 +67,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Rigorous per-sample dimension checks ensuring action targets match output topology (or valid BPTT multiples).
   - Element-wise validation ensuring all values in `training_inputs`, `training_action_targets`, and `training_advantages` are finite (`std::isfinite`), preventing `NaN` or `Inf` corruption.
   - Domain validation for Softmax policies ensuring action target probabilities are non-negative ($y_j \ge 0$) with non-zero sum ($\sum_j y_j > 0$).
+  - Target range validation for Tanh output layers, rejecting any action target values outside $[-1.0, 1.0]$ to prevent vanishing gradients and unreachable target explosion.
 
 ## [1.1.56] - 2026-09-09
 

@@ -657,4 +657,234 @@ TEST(NeuralNetworkAdvantageTrainingTest, LabelSmoothingWithAdvantageTraining)
   EXPECT_GT(after[0], before[0]);
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, FFTanhHiddenLayerWithAdamWAndSoftmax)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, advantages);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_GT(after[0], before[0]);
+  EXPECT_LT(after[1], before[1]);
+  EXPECT_NEAR(after[0] + after[1], 1.0, 1e-6);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, FFTanhOutputLayerWithAdamWAndMSE)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    1,
+    activation(activation::method::tanh, 0.0),
+    ErrorCalculation::type::mse,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.3, -0.2, 0.5 } };
+  std::vector<std::vector<double>> action_targets = { { 0.8 } };
+  std::vector<double> advantages = { 1.0 };
+
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, advantages);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_GT(after[0], before[0]);
+  EXPECT_LT(std::abs(after[0] - action_targets[0][0]), std::abs(before[0] - action_targets[0][0]));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, AdamWDecoupledWeightDecayWithAdvantageTraining)
+{
+  const double weight_decay = 0.1;
+  const double learning_rate = 0.05;
+
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 2, activation(activation::method::tanh, 0.0), 0.0, weight_decay, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    1,
+    activation(activation::method::tanh, 0.0),
+    ErrorCalculation::type::mse,
+    eval_config,
+    weight_decay,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(learning_rate)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  const auto initial_hidden_weights = collect_layer_weights(nn, 1);
+  const auto initial_output_weights = collect_layer_weights(nn, 2);
+  const double initial_bias = nn.get_layer(1).get_bias_value(0);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.5 } };
+  std::vector<std::vector<double>> targets = { { 0.5 } };
+  std::vector<double> zero_advantages = { 0.0 };
+
+  nn.train_with_advantages(inputs, targets, zero_advantages);
+
+  const auto updated_hidden_weights = collect_layer_weights(nn, 1);
+  const auto updated_output_weights = collect_layer_weights(nn, 2);
+  const double updated_bias = nn.get_layer(1).get_bias_value(0);
+
+  const double expected_decay_factor = 1.0 - learning_rate * weight_decay;
+  for (size_t i = 0; i < initial_hidden_weights.size(); ++i)
+  {
+    EXPECT_NEAR(updated_hidden_weights[i], initial_hidden_weights[i] * expected_decay_factor, 1e-6);
+  }
+  for (size_t i = 0; i < initial_output_weights.size(); ++i)
+  {
+    EXPECT_NEAR(updated_output_weights[i], initial_output_weights[i] * expected_decay_factor, 1e-6);
+  }
+  EXPECT_DOUBLE_EQ(updated_bias, initial_bias);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, TanhOutputTargetOutOfRangeThrows)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    1,
+    activation(activation::method::tanh, 0.0),
+    ErrorCalculation::type::mse,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<double> advantages = { 1.0 };
+
+  std::vector<std::vector<double>> out_of_range_high = { { 1.05 } };
+  EXPECT_THROW(nn.train_with_advantages(inputs, out_of_range_high, advantages), std::runtime_error);
+
+  std::vector<std::vector<double>> out_of_range_low = { { -1.05 } };
+  EXPECT_THROW(nn.train_with_advantages(inputs, out_of_range_low, advantages), std::runtime_error);
+
+  std::vector<std::vector<double>> in_range = { { 0.85 } };
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, in_range, advantages));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, FFTanhWithNegativeAdvantageDecreasesProbability)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> negative_advantages = { -1.0 };
+
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, negative_advantages);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_LT(after[0], before[0]);
+  EXPECT_GT(after[1], before[1]);
+}
+
+
 
