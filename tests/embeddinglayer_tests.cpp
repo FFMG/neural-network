@@ -73,7 +73,7 @@ TEST(EmbeddingLayerTest, ValidationThrowsOnInvalidConfiguration)
       1, 2, 0, 4, 0.0, Layer::Role::Hidden,
       activation(activation::method::linear, 0.0),
       OptimiserType::Adam, -1, 0.0, nullptr, 1, 0.0, std::nullopt),
-    std::invalid_argument);
+    std::runtime_error);
 
   // 2. embed_dim == 0
   EXPECT_THROW(
@@ -81,7 +81,7 @@ TEST(EmbeddingLayerTest, ValidationThrowsOnInvalidConfiguration)
       1, 2, 10, 0, 0.0, Layer::Role::Hidden,
       activation(activation::method::linear, 0.0),
       OptimiserType::Adam, -1, 0.0, nullptr, 1, 0.0, std::nullopt),
-    std::invalid_argument);
+    std::runtime_error);
 
   // 3. layer_size != num_inputs * embed_dim through Layer::create_hidden_layer
   LayerDetails bad_ld(
