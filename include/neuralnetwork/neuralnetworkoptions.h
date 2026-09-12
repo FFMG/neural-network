@@ -825,6 +825,14 @@ public:
   [[nodiscard]] inline const CosineAnnealingWarmRestartsDetails& cosine_annealing_warm_restarts() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _cosine_annealing; }
   [[nodiscard]] inline const LookaheadDetails& lookahead() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _lookahead; }
   [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
+  inline void set_output_layer_temperature(unsigned head_idx, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    if (head_idx < _output_layer_details.size())
+    {
+      _output_layer_details[head_idx].set_temperature(t);
+    }
+  }
   inline void set_output_layer_inference_temperature(unsigned head_idx, double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");

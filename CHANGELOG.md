@@ -5,6 +5,20 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.57] - 2026-09-10
 
 ### Added
+- Added dual-temperature activation controls and runtime temperature setters:
+  - Added [`activation::set_temperature`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h) and [`activation::set_inference_temperature`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h).
+  - Added `set_temperature` to [`Layer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.h), [`Layers`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.h), [`MultiOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/multioutputlayer.h), [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/outputlayerdetails.h), and [`NeuralNetworkOptions`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetworkoptions.h).
+  - Added `get_inference_temperature()`, `set_temperature()`, and `set_inference_temperature()` to [`NeuralNetwork`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.h) supporting both single-head and indexed multi-output heads.
+  - Exposed Python bindings for `get_inference_temperature`, `set_temperature`, `set_inference_temperature` on `NeuralNetwork`, and `temperature` / `inference_temperature` properties on `Activation` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp).
+- Added comprehensive temperature and optimiser unit tests in [`tests/temperature_and_optimiser_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/temperature_and_optimiser_tests.cpp):
+  - `ActivationTemperatureClampingAndValidation`: Verifies negative, zero, sub-epsilon (< 1e-6), and non-finite (`NaN`/`Inf`) temperatures are clamped to 1e-6 in constructors and runtime setters.
+  - `SoftmaxInferenceTemperatureControlsSharpness`: Mathematically verifies entropy modulation across low ($T = 0.2$), standard ($T = 1.0$), and high ($T = 5.0$) temperatures.
+  - `SoftmaxDualTemperatureTrainingVsInference`: Validates decoupling high training exploration ($T_{\text{train}} = 2.0$) from sharp inference exploitation ($T_{\text{infer}} = 0.2$).
+  - `NeuralNetworkInferenceTemperatureRuntimeAdjustment`: Tests dynamic runtime modification of inference temperature on a trained network.
+  - `MultiOutputLayerIndependentTemperatures`: Tests independent temperature configurations and runtime setters across multiple output heads.
+  - `RLAdvantageTrainingWithExplorationVsExploitationTemperature`: Verifies policy gradient advantage updates with dual temperatures.
+  - `ExtremeInferenceTemperatureStability`: Verifies numerical stability under extreme temperatures ($10^{-6}$ argmax and $100.0$ uniform).
+  - `JsonSerializationRoundTripAllOptimisersAndTemperatures`: Verifies round-trip serialization and inference consistency across all seven optimisers (`AdamW`, `Adam`, `SGD`, `Nadam`, `NadamW`, `Lion`, `RAdam`) and dual temperatures.
 - Added on-policy Reinforcement Learning support via policy gradients (REINFORCE) with `NeuralNetwork::train_with_advantages` and `Layers::train_with_advantages`:
   - Output-layer delta scaling: Multiplies output error deltas directly by per-sample scalar advantages before hidden-layer backpropagation, scaling all upstream hidden-layer weight and bias updates proportionally.
   - Sub-batching support: Automatically chunks trajectory updates according to `options.batch_size()`.
@@ -51,6 +65,8 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
 
 ### Optimised
+- Optimised softmax normalization in [`activation::calculate_softmax`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
+  - Replaced scalar probability division loop with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h) multiplying by reciprocal sum ($1 / \sum e^z$).
 - Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.cpp):
   - Hoisted output neuron count, recurrent layer detection (`has_rnn`), and RNN gradient size queries outside the per-sample batch loop.
   - Replaced scalar advantage multiplication loops with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h).
@@ -61,6 +77,11 @@ All notable changes to the `neural-network` library will be documented in this f
   - Standardised iterator parameter passing by value in [`Layers::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.h) to eliminate unnecessary references and allow direct rvalue passing.
 
 ### Fixed
+- Fixed activation temperature validation and clamping:
+  - Guarded against $\le 0.0$, sub-epsilon, and non-finite (`NaN`/`Inf`) values in [`activation::activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp) and runtime setters, clamping both training and inference temperatures to $10^{-6}$ to prevent division by zero and `NaN` propagation.
+- Fixed untrained model serialization panic:
+  - Corrected `_learning_rate` initialisation in [`NeuralNetwork::NeuralNetwork`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp) from `0.0` to `options.learning_rate()`, ensuring untrained networks serialize valid learning rates and prevent deserialization corruption panics.
+  - Updated `_learning_rate` in [`NeuralNetwork::train`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp) to track the final learning rate at the end of training.
 - Added robust upfront input, target, and mathematical validation in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
   - Pre-emptive multi-output check before batch allocation or forward computation.
   - Rigorous per-sample dimension checks ensuring training inputs match input topology (or valid BPTT multiples).

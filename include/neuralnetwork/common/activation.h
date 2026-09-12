@@ -143,14 +143,16 @@ public:
     return _inference_temperature;
   }
 
+  inline void set_temperature(double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    _temperature = (!std::isfinite(t) || t < 1e-6) ? 1e-6 : t;
+  }
+
   inline void set_inference_temperature(double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("activation");
-    _inference_temperature = t;
-    if (_inference_temperature < 1e-6)
-    {
-      _inference_temperature = 1e-6;
-    }
+    _inference_temperature = (!std::isfinite(t) || t < 1e-6) ? 1e-6 : t;
   }
 
 private:

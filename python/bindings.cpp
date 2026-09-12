@@ -157,6 +157,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("method_to_string", py::overload_cast<>(&activation::method_to_string, py::const_))
         .def_property_readonly("method", &activation::get_method)
         .def_property_readonly("alpha", &activation::get_alpha)
+        .def_property("temperature", &activation::get_temperature, &activation::set_temperature)
         .def_property("inference_temperature", &activation::get_inference_temperature, &activation::set_inference_temperature);
 
     py::class_<EvaluationConfig>(m, "EvaluationConfig")
@@ -378,7 +379,12 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("get_learning_rate", &NeuralNetwork::get_learning_rate)
         .def("get_temperature", py::overload_cast<>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_temperature, py::const_))
-        .def("get_inference_temperature", &NeuralNetwork::get_inference_temperature)
+        .def("get_inference_temperature", py::overload_cast<>(&NeuralNetwork::get_inference_temperature, py::const_))
+        .def("get_inference_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_inference_temperature, py::const_))
+        .def("set_temperature", py::overload_cast<double>(&NeuralNetwork::set_temperature))
+        .def("set_temperature", py::overload_cast<unsigned, double>(&NeuralNetwork::set_temperature))
+        .def("set_inference_temperature", py::overload_cast<double>(&NeuralNetwork::set_inference_temperature))
+        .def("set_inference_temperature", py::overload_cast<unsigned, double>(&NeuralNetwork::set_inference_temperature))
         .def("get_percent_complete", &NeuralNetwork::get_percent_complete)
         .def("has_training_data", &NeuralNetwork::has_training_data)
         .def("options", py::overload_cast<>(&NeuralNetwork::options))

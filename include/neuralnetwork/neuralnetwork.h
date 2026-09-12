@@ -71,7 +71,12 @@ public:
   double get_learning_rate() const noexcept;
   double get_temperature() const noexcept;
   double get_temperature(unsigned output_layer_index) const noexcept;
+  double get_inference_temperature() const noexcept;
   double get_inference_temperature(unsigned output_layer_index) const noexcept;
+  void set_temperature(double t) noexcept;
+  void set_temperature(unsigned output_layer_index, double t) noexcept;
+  void set_inference_temperature(double t) noexcept;
+  void set_inference_temperature(unsigned output_layer_index, double t) noexcept;
 
   double get_percent_complete() const noexcept;
   bool has_training_data() const;

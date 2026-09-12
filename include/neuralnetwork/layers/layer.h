@@ -210,6 +210,18 @@ public:
     return _ranges[range_index].activation_method.get_inference_temperature();
   }
 
+  inline void set_temperature(unsigned range_index, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
+#if VALIDATE_DATA == 1
+    if (range_index >= _ranges.size())
+    {
+      Logger::panic("Trying to set temperature for range ", range_index, " which is out of bounds!");
+    }
+#endif
+    _ranges[range_index].activation_method.set_temperature(t);
+  }
+
   inline void set_inference_temperature(unsigned range_index, double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("layer_activation_helper");
@@ -787,6 +799,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("Layer");
     return _layer_activation_helper.get_inference_temperature(range_index);
+  }
+
+  virtual void set_temperature(unsigned range_index, double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("Layer");
+    _layer_activation_helper.set_temperature(range_index, t);
   }
 
   virtual void set_inference_temperature(unsigned range_index, double t) noexcept

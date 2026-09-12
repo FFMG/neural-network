@@ -190,6 +190,12 @@ double Layers::get_inference_temperature(unsigned output_layer_index) const noex
   return output_layer().get_inference_temperature(output_layer_index);
 }
 
+void Layers::set_temperature(unsigned output_layer_index, double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  _layers.back()->set_temperature(output_layer_index, t);
+}
+
 void Layers::set_inference_temperature(unsigned output_layer_index, double t) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");

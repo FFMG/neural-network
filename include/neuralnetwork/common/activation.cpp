@@ -24,8 +24,8 @@ namespace myoddweb::nn
 activation::activation(const method method, double alpha, double temperature, double inference_temperature) :
   _method(method),
   _alpha(alpha),
-  _temperature(temperature),
-  _inference_temperature(inference_temperature)
+  _temperature((!std::isfinite(temperature) || temperature < 1e-6) ? 1e-6 : temperature),
+  _inference_temperature((!std::isfinite(inference_temperature) || inference_temperature < 1e-6) ? 1e-6 : inference_temperature)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -415,11 +415,9 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
     return;
   }
 
+  const size_t count = static_cast<size_t>(end - begin);
   const double inv_sum = 1.0 / sum;
-  for (double* it = begin; it != end; ++it)
-  {
-    *it = *it * inv_sum;
-  }
+  simd::mul_scalar(begin, inv_sum, begin, count);
 }
 
 double activation::calculate_softmax(double, double) noexcept

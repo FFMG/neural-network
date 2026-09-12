@@ -18,7 +18,7 @@
 namespace myoddweb::nn
 {
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
-  _learning_rate(0.0),
+  _learning_rate(options.learning_rate()),
   _layers(options),
   _options(options),
   _shuffle_engine(make_shuffle_engine(options))
@@ -368,7 +368,11 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
 double NeuralNetwork::get_learning_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
-  return _learning_rate;
+  if (_learning_rate > 0.0)
+  {
+    return _learning_rate;
+  }
+  return _options.learning_rate();
 }
 
 double NeuralNetwork::get_temperature() const noexcept
@@ -384,11 +388,45 @@ double NeuralNetwork::get_temperature(unsigned output_layer_index) const noexcep
   return _layers.get_temperature(output_layer_index);
 }
 
+double NeuralNetwork::get_inference_temperature() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return get_inference_temperature(0);
+}
+
 double NeuralNetwork::get_inference_temperature(unsigned output_layer_index) const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::shared_lock<std::shared_mutex> read(_mutex);
   return _layers.get_inference_temperature(output_layer_index);
+}
+
+void NeuralNetwork::set_temperature(double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  set_temperature(0, t);
+}
+
+void NeuralNetwork::set_temperature(unsigned output_layer_index, double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  _layers.set_temperature(output_layer_index, t);
+  _options.set_output_layer_temperature(output_layer_index, t);
+}
+
+void NeuralNetwork::set_inference_temperature(double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  set_inference_temperature(0, t);
+}
+
+void NeuralNetwork::set_inference_temperature(unsigned output_layer_index, double t) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  _layers.set_inference_temperature(output_layer_index, t);
+  _options.set_output_layer_inference_temperature(output_layer_index, t);
 }
 
 double NeuralNetwork::get_percent_complete() const noexcept
@@ -1133,6 +1171,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
   }
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), final_lr_value);
+  if (final_lr_value > 0.0)
+  {
+    _learning_rate = final_lr_value;
+  }
 
   // Post-training temperature calibration using the training set
   optimize_inference_temperature(training_inputs, training_outputs);

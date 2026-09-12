@@ -77,6 +77,7 @@ public:
 
   [[nodiscard]] double get_temperature(unsigned output_layer_index) const noexcept;
   [[nodiscard]] double get_inference_temperature(unsigned output_layer_index) const noexcept;
+  void set_temperature(unsigned output_layer_index, double t) noexcept;
   void set_inference_temperature(unsigned output_layer_index, double t) noexcept;
 
   void train(

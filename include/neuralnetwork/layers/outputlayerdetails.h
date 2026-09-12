@@ -138,6 +138,11 @@ public:
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
     return _momentum;
   }
+  inline void set_temperature(double t) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");
+    _activation.set_temperature(t);
+  }
   inline void set_inference_temperature(double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("OutputLayerDetails");

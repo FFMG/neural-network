@@ -807,6 +807,19 @@ public:
     return _branches[range_index].layers.back()->get_inference_temperature(0);
   }
 
+  inline void set_temperature(unsigned range_index, double t) noexcept override
+  {
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    std::lock_guard<std::mutex> lock(_mutex);
+#if VALIDATE_DATA == 1
+    if (range_index >= _branches.size())
+    {
+      Logger::panic("Trying to set temperature for branch ", range_index, " which is out of bounds!");
+    }
+#endif
+    _branches[range_index].layers.back()->set_temperature(0, t);
+  }
+
   inline void set_inference_temperature(unsigned range_index, double t) noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
