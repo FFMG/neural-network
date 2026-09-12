@@ -19,6 +19,18 @@ All notable changes to the `neural-network` library will be documented in this f
   - `RLAdvantageTrainingWithExplorationVsExploitationTemperature`: Verifies policy gradient advantage updates with dual temperatures.
   - `ExtremeInferenceTemperatureStability`: Verifies numerical stability under extreme temperatures ($10^{-6}$ argmax and $100.0$ uniform).
   - `JsonSerializationRoundTripAllOptimisersAndTemperatures`: Verifies round-trip serialization and inference consistency across all seven optimisers (`AdamW`, `Adam`, `SGD`, `Nadam`, `NadamW`, `Lion`, `RAdam`) and dual temperatures.
+- Added comprehensive unit tests for `Logger` in [`tests/logger_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/logger_tests.cpp):
+  - `MinimumLevelFiltersLowerSeverityMessages`: Verifies log level filtering per severity threshold.
+  - `PanicAlwaysThrowsEvenWhenLoggingIsFullyDisabled`: Confirms `Logger::panic` always throws `std::runtime_error` regardless of whether logging is set to `None`.
+  - `WarningErrorAndPanicFlushImmediately`: Verifies immediate buffer flush (`std::cout.flush()`) on Warning, Error, and Panic.
+  - `TraceDebugAndInfoDoNotFlushImmediately`: Confirms Trace, Debug, and Info remain buffered without forcing immediate syncs.
+  - `ConcurrentLoggingDoesNotInterleaveMessages`: Multi-threaded test verifying that concurrent writes from 8 parallel threads do not interleave mid-line characters.
+  - `LevelStringRoundTripIsCaseInsensitive`: Verifies case-insensitive string parsing and serialization of all log levels.
+  - `MultiLineMessageIndentsSubsequentLines`: Validates vertical indentation of multi-line log messages aligning underneath the log tag.
+  - `LazyLoggingCallableOnlyEvaluatedWhenSeverityEnabled`: Ensures expensive callable/lambda arguments are never evaluated when their severity level is disabled.
+  - `FactoryFormatsMixedTypesAndVectors`: Verifies `Logger::factory` string formatting with mixed primitive types and vectors.
+  - `AllLogLevelsCanBeSetAndRetrieved`: Validates getting and setting every log level in `Logger::LogLevel`.
+  - `AtomicLevelConcurrentReadAndWriteStress`: Stress tests concurrent level modifications and reads across multiple writer and reader threads.
 - Added on-policy Reinforcement Learning support via policy gradients (REINFORCE) with `NeuralNetwork::train_with_advantages` and `Layers::train_with_advantages`:
   - Output-layer delta scaling: Multiplies output error deltas directly by per-sample scalar advantages before hidden-layer backpropagation, scaling all upstream hidden-layer weight and bias updates proportionally.
   - Sub-batching support: Automatically chunks trajectory updates according to `options.batch_size()`.
@@ -65,6 +77,11 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
 
 ### Optimised
+- Enhanced thread safety and durability in [`Logger`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/logger.h):
+  - Made `_min_level` atomic (`std::atomic<LogLevel>`) with relaxed memory ordering to prevent data races during concurrent logging and runtime level changes across threads.
+  - Added compile-time `static_assert` guarantees verifying exact tag string lengths match `TagLen` across all build configurations.
+  - Serialised console writes with a static mutex (`output_mutex()`) to eliminate torn or interleaved characters during parallel multi-threaded execution.
+  - Added immediate `std::cout.flush()` for Warning, Error, and Panic messages to ensure critical diagnostics are not lost during abnormal termination or unhandled exceptions.
 - Optimised softmax normalization in [`activation::calculate_softmax`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
   - Replaced scalar probability division loop with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h) multiplying by reciprocal sum ($1 / \sum e^z$).
 - Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.cpp):

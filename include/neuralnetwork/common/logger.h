@@ -1,18 +1,16 @@
 #pragma once
 
 // C headers
-#include <cassert>
 #include <cctype>
 #include <cstdio>
-#ifndef NDEBUG
-#include <cstring>
-#endif
 
 // C++ headers
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -135,12 +133,12 @@ public:
 
   static void set_level(LogLevel level)
   {
-    instance()._min_level = level;
+    instance()._min_level.store(level, std::memory_order_relaxed);
   }
 
   static LogLevel get_level()
   {
-    return instance()._min_level;
+    return instance()._min_level.load(std::memory_order_relaxed);
   }
 
   template <typename... Args>
@@ -215,13 +213,19 @@ public:
     return oss.str();
   }
 private:
-  LogLevel _min_level; // Stores the minimum logging level set by the user
+  std::atomic<LogLevel> _min_level; // Stores the minimum logging level set by the user
 
   bool can_log(LogLevel level) const
   {
-    return (level == LogLevel::Panic || level >= _min_level);
+    return (level == LogLevel::Panic || level >= _min_level.load(std::memory_order_relaxed));
   }
-  
+
+  static std::mutex& output_mutex()
+  {
+    static std::mutex mutex;
+    return mutex;
+  }
+
   static void get_current_time_string(char (&buf)[TimeStringBufferSize])
   {
     auto now = std::chrono::system_clock::now();
@@ -358,13 +362,17 @@ private:
         break;
     }
 
-    // sanity check in case we add new tags
-#ifndef NDEBUG
-    assert(strlen(tag) == TagLen);
-#endif
+    static_assert(sizeof("[trace]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[debug]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[info ]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[warn ]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[error]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[panic]") - 1 == TagLen, "Log tag length mismatch");
+    static_assert(sizeof("[ unk ]") - 1 == TagLen, "Log tag length mismatch");
+
     // 3. prepare for output
     constexpr size_t indent_len = TimeStringLen + 1 + TagLen + 1; // time + space + tag + space
-    char indent[24];
+    char indent[indent_len + 1];
     std::fill_n(indent, indent_len, ' ');
     indent[indent_len] = '\0';
 
@@ -387,11 +395,19 @@ private:
     oss.write(message.data() + start, message.size() - start);
 
     // 6. Print the final message to the console
-    std::cout << oss.str();
+    const std::string final_message = oss.str();
+    {
+      std::lock_guard<std::mutex> lock(output_mutex());
+      std::cout << final_message;
+      if (level >= LogLevel::Warning)
+      {
+        std::cout.flush();
+      }
+    }
 
     if (level == LogLevel::Panic)
     {
-      throw std::runtime_error(oss.str());
+      throw std::runtime_error(final_message);
     }
   }
 };
