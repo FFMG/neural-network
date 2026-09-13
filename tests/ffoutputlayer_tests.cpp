@@ -959,3 +959,154 @@ TEST_F(FFOutputLayerTest, OutputGradientsSingleTargetBroadcastToLastStep)
     EXPECT_NEAR(std_grads[0], -0.1, 1e-9);
     EXPECT_NEAR(std_grads[1], 0.2, 1e-9);
 }
+
+TEST_F(FFOutputLayerTest, OutputLayerAppliesMomentumWithSGD)
+{
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 2;
+    const double momentum = 0.9;
+    const double learning_rate = 0.1;
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, momentum)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    layer.set_w_values({ 1.0, 1.0 });
+    layer.set_w_velocities({ 0.5, 0.5 });
+    layer.set_w_grads({ 1.0, 1.0 });
+    layer.set_b_values({ 0.0, 0.0 });
+    layer.set_b_velocities({ 0.0, 0.0 });
+    layer.set_b_grads({ 0.0, 0.0 });
+
+    layer.apply_stored_gradients(learning_rate, 1.0);
+
+    // With momentum = 0.9 and grad = 1.0:
+    // v_new = 0.9 * 0.5 + 1.0 = 1.45
+    // w_new = 1.0 - 0.1 * 1.45 = 0.855
+    const auto& w_vals = layer.get_w_values();
+    EXPECT_NEAR(w_vals[0], 0.855, 1e-9);
+    EXPECT_NEAR(w_vals[1], 0.855, 1e-9);
+
+    const auto& w_vel = layer.get_w_velocities();
+    EXPECT_NEAR(w_vel[0], 1.45, 1e-9);
+    EXPECT_NEAR(w_vel[1], 1.45, 1e-9);
+}
+
+TEST_F(FFOutputLayerTest, OutputLayerApplyStoredGradientsFastPathEquivalence)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    const double momentum = 0.8;
+    const double learning_rate = 0.05;
+
+    // Single-head configuration (exercises fast path)
+    std::vector<OutputLayerDetails> single_details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::AdamW, momentum)
+    };
+    FFOutputLayer layer_single(1, single_details, num_inputs, num_outputs, 1, true, std::nullopt);
+    layer_single.set_w_values({ 0.5, -0.3, 0.2, 0.8 });
+    layer_single.set_w_grads({ 0.1, -0.2, 0.3, -0.1 });
+    layer_single.set_b_values({ 0.05, -0.05 });
+    layer_single.set_b_grads({ 0.02, -0.01 });
+
+    // Multi-head configuration with matching optimizer settings (also routes through fast path)
+    std::vector<OutputLayerDetails> multi_details = {
+        OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::AdamW, momentum),
+        OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.01, OptimiserType::AdamW, momentum)
+    };
+    FFOutputLayer layer_multi(1, multi_details, num_inputs, num_outputs, 1, true, std::nullopt);
+    layer_multi.set_w_values({ 0.5, -0.3, 0.2, 0.8 });
+    layer_multi.set_w_grads({ 0.1, -0.2, 0.3, -0.1 });
+    layer_multi.set_b_values({ 0.05, -0.05 });
+    layer_multi.set_b_grads({ 0.02, -0.01 });
+
+    layer_single.apply_stored_gradients(learning_rate, 1.0);
+    layer_multi.apply_stored_gradients(learning_rate, 1.0);
+
+    const auto& w_single = layer_single.get_w_values();
+    const auto& w_multi = layer_multi.get_w_values();
+    ASSERT_EQ(w_single.size(), w_multi.size());
+    for (size_t i = 0; i < w_single.size(); ++i)
+    {
+        EXPECT_NEAR(w_single[i], w_multi[i], 1e-12);
+    }
+
+    const auto& b_single = layer_single.get_b_values();
+    const auto& b_multi = layer_multi.get_b_values();
+    ASSERT_EQ(b_single.size(), b_multi.size());
+    for (size_t i = 0; i < b_single.size(); ++i)
+    {
+        EXPECT_NEAR(b_single[i], b_multi[i], 1e-12);
+    }
+}
+
+TEST_F(FFOutputLayerTest, OutputLayerMetricsSharpeSortinoNoCrossBatchLeakage)
+{
+    const unsigned num_inputs = 1;
+    const unsigned num_outputs = 1;
+    const double penalty = 0.05;
+
+    EvaluationConfig cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-8, 0.0, { 0.5 }, penalty, 0.0);
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::sharpe_ratio_loss, cfg, 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, false, std::nullopt);
+
+    // Two independent batch examples of length 2 each.
+    // Batch 0: pred = [1.0, 1.0], target = [0.1, 0.1]
+    // Batch 1: pred = [-1.0, -1.0], target = [0.1, 0.1]
+    // If transaction costs leaked across batch items, step 0 of batch 1 would compare against step 1 of batch 0 (| -1.0 - 1.0 | = 2.0).
+    // Without leakage, step 0 of batch 1 compares against initial 0.0 (| -1.0 - 0.0 | = 1.0).
+    std::vector<std::vector<double>> predictions = {
+        { 1.0, 1.0 },
+        { -1.0, -1.0 }
+    };
+    std::vector<std::vector<double>> targets = {
+        { 0.1, 0.1 },
+        { 0.1, 0.1 }
+    };
+
+    const auto metrics = layer.calculate_output_metrics({ ErrorCalculation::type::sharpe_ratio_loss }, targets, predictions);
+    ASSERT_EQ(metrics.size(), 1);
+    ASSERT_EQ(metrics[0].size(), 1);
+
+    // Verify metric is finite and valid
+    EXPECT_TRUE(std::isfinite(metrics[0][0].error()));
+
+    // Calculate expected return sequence independently per batch item:
+    // Batch 0:
+    //   t=0: pos=1.0, prev=0.0, cost=0.0, ret = 1.0 * 0.1 = 0.1
+    //   t=1: pos=1.0, prev=1.0, cost=0.05 * 0 = 0.0, ret = 0.1
+    // Batch 1:
+    //   t=0: pos=-1.0, prev=0.0, cost=0.05 * 0 = 0.0 (t=0 has no prev step cost in calculate_portfolio_returns), ret = -0.1
+    //   t=1: pos=-1.0, prev=-1.0, cost=0.0, ret = -0.1
+    // Pooled returns: [0.1, 0.1, -0.1, -0.1]
+    const std::vector<double> expected_pooled = { 0.1, 0.1, -0.1, -0.1 };
+    const auto expected_stats = ErrorCalculation::calculate_sharpe_batch_stats(expected_pooled, cfg.epsilon());
+    const double expected_loss = (expected_stats.sigma > 0.0) ? (-expected_stats.mean / expected_stats.sigma) : 0.0;
+
+    EXPECT_NEAR(metrics[0][0].error(), expected_loss, 1e-9);
+}
+
+TEST_F(FFOutputLayerTest, OutputLayerEmptyHiddenStatesDefensive)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> targets;
+    std::vector<HiddenStates> empty_hs;
+
+    // batch_size = 0 should return cleanly without throwing
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 0));
+
+    // empty batch_hidden_states should return cleanly without throwing
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 1));
+}
+

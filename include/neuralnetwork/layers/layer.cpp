@@ -1035,7 +1035,8 @@ void Layer::apply_update_to_vector(
     bool is_bias,
     OptimiserType optimiser_type,
     size_t start,
-    size_t count)
+    size_t count,
+    std::optional<double> momentum_override)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
   const size_t total_n = values.size();
@@ -1044,6 +1045,8 @@ void Layer::apply_update_to_vector(
   {
     return;
   }
+
+  const double momentum = momentum_override.has_value() ? momentum_override.value() : get_momentum();
 
   double p1 = 1.0;
   double p2 = 1.0;
@@ -1055,7 +1058,7 @@ void Layer::apply_update_to_vector(
     {
       ++timesteps[start];
     }
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.999;
     const double ts = (!timesteps.empty() && start < timesteps.size()) ? static_cast<double>(timesteps[start]) : 1.0;
     p1 = 1.0 - std::pow(beta1, ts);
@@ -1067,7 +1070,7 @@ void Layer::apply_update_to_vector(
     {
       ++timesteps[start];
     }
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.999;
     const double ts = (!timesteps.empty() && start < timesteps.size()) ? static_cast<double>(timesteps[start]) : 1.0;
     const double beta2_t = std::pow(beta2, ts);
@@ -1096,9 +1099,9 @@ void Layer::apply_update_to_vector(
       size_t chunk_end = std::min(chunk_start + chunk_size, start + n);
       if (chunk_start < chunk_end)
       {
-        _task_queue_pool->enqueue([&values, &grads, &velocities, &m1, &m2, &decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end, p1, p2, rect_factor, this]()
+        _task_queue_pool->enqueue([&values, &grads, &velocities, &m1, &m2, &decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end, p1, p2, rect_factor, momentum, this]()
         {
-          apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end - chunk_start, p1, p2, rect_factor);
+          apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, chunk_start, chunk_end - chunk_start, p1, p2, rect_factor, momentum);
         });
       }
     }
@@ -1106,7 +1109,7 @@ void Layer::apply_update_to_vector(
   }
   else
   {
-    apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, start, n, p1, p2, rect_factor);
+    apply_update_to_vector_internal(values, grads, velocities, m1, m2, decays, learning_rate, clipping_scale, is_bias, optimiser_type, start, n, p1, p2, rect_factor, momentum);
   }
 }
 
@@ -1125,7 +1128,8 @@ void Layer::apply_update_to_vector_internal(
     size_t count,
     double p1,
     double p2,
-    double rect_factor)
+    double rect_factor,
+    double momentum)
 {
   MYODDWEB_PROFILE_FUNCTION("Layer");
 
@@ -1137,7 +1141,6 @@ void Layer::apply_update_to_vector_internal(
 
   case OptimiserType::SGD:
   {
-    const double momentum = get_momentum();
     const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
     simd::sgd_step(values.data() + start, grads.data() + start, velocities.data() + start, decay_ptr, momentum, learning_rate, clipping_scale, is_bias, count);
   }
@@ -1146,7 +1149,7 @@ void Layer::apply_update_to_vector_internal(
   case OptimiserType::Adam:
   case OptimiserType::AdamW:
   {
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
     const double* decay_ptr = (optimiser_type == OptimiserType::AdamW && !is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
@@ -1158,7 +1161,7 @@ void Layer::apply_update_to_vector_internal(
   case OptimiserType::Nadam:
   case OptimiserType::NadamW:
   {
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
     const double* decay_ptr = (optimiser_type == OptimiserType::NadamW && !is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;
@@ -1169,7 +1172,7 @@ void Layer::apply_update_to_vector_internal(
 
   case OptimiserType::Lion:
   {
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.99;
     // Lion has no separate decoupled-decay variant (unlike Adam/AdamW, Nadam/NadamW), so
     // decay is applied unconditionally whenever configured, the same way SGD applies it.
@@ -1181,7 +1184,7 @@ void Layer::apply_update_to_vector_internal(
 
   case OptimiserType::RAdam:
   {
-    const double beta1 = get_momentum();
+    const double beta1 = momentum;
     const double beta2 = 0.999;
     const double epsilon = 1e-8;
     const double* decay_ptr = (!is_bias && decays.size() >= start + count) ? (decays.data() + start) : nullptr;

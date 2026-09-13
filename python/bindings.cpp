@@ -235,7 +235,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         }, py::arg("vocabulary_size"), py::arg("embedding_dimension"), py::arg("size"), py::arg("activation"), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0);
 
     py::class_<OutputLayerDetails>(m, "OutputLayerDetails")
-        .def(py::init<unsigned, const activation&, const ErrorCalculation::type&, const EvaluationConfig&, double, OptimiserType, double>())
+        .def(py::init<unsigned, const activation&, const ErrorCalculation::type&, const EvaluationConfig&, double, OptimiserType, double>(),
+             py::arg("size"), py::arg("activation"), py::arg("output_error_calculation_type"), py::arg("error_evaluation_config") = EvaluationConfig(),
+             py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0)
         .def_property_readonly("size", &OutputLayerDetails::get_size)
         .def_property_readonly("activation", &OutputLayerDetails::get_activation)
         .def_property_readonly("output_error_calculation_type", &OutputLayerDetails::get_output_error_calculation_type)

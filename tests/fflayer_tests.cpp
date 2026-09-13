@@ -1734,4 +1734,95 @@ TEST_F(FFLayerTest, SingleStepFastPathGradientEquivalence)
   }
 }
 
+TEST_F(FFLayerTest, EmptyHiddenStatesDefensive)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  MockLayer prev_layer(0, num_inputs);
+  MockLayer next_layer(2, num_outputs);
+
+  std::vector<GradientsAndOutputs> empty_go;
+  std::vector<HiddenStates> empty_hs;
+  std::vector<std::vector<double>> empty_matrix;
+
+  // Verify zero batch size does not crash
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(empty_go, next_layer, empty_matrix, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(empty_go, empty_matrix, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_and_store_gradients(empty_go, empty_hs, prev_layer, 0, 0));
+
+  // Verify empty hidden states vector does not crash
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(empty_go, next_layer, empty_matrix, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(empty_go, empty_matrix, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_and_store_gradients(empty_go, empty_hs, prev_layer, 1, 0));
+}
+
+TEST_F(FFLayerTest, StaticContextSequenceBPTTWeightGradientEquivalence)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  const size_t num_time_steps = 3;
+  const size_t batch_size = 1;
+
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  layer.set_w_values({ 0.0, 0.0, 0.0, 0.0 });
+  layer.set_b_values({ 0.0, 0.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+
+  // Provide static input (size == num_inputs, NOT num_time_steps * num_inputs): x_stride is 0
+  const std::vector<double> static_input = { 2.0, -1.5 };
+  batch_go[0].set_outputs(0, static_input);
+
+  // Provide sequence gradients: t=0: [0.1, 0.2], t=1: [0.3, 0.4], t=2: [0.5, 0.6]
+  const std::vector<double> seq_grads = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 };
+  batch_go[0].set_rnn_gradients(1, seq_grads.data(), seq_grads.size());
+  batch_go[0].set_gradients(1, { 0.5, 0.6 });
+
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+
+  // Sum of gradients over all 3 timesteps:
+  // sum_g[0] = 0.1 + 0.3 + 0.5 = 0.9
+  // sum_g[1] = 0.2 + 0.4 + 0.6 = 1.2
+  // Expected weight gradients:
+  // w[0,0] = x[0] * sum_g[0] = 2.0 * 0.9 = 1.8
+  // w[0,1] = x[0] * sum_g[1] = 2.0 * 1.2 = 2.4
+  // w[1,0] = x[1] * sum_g[0] = -1.5 * 0.9 = -1.35
+  // w[1,1] = x[1] * sum_g[1] = -1.5 * 1.2 = -1.8
+  const auto& w_grads = layer.get_w_grads();
+  EXPECT_NEAR(w_grads[0], 1.8, 1e-9);
+  EXPECT_NEAR(w_grads[1], 2.4, 1e-9);
+  EXPECT_NEAR(w_grads[2], -1.35, 1e-9);
+  EXPECT_NEAR(w_grads[3], -1.8, 1e-9);
+
+  // Expected bias gradients: sum_g = [0.9, 1.2]
+  const auto& b_grads = layer.get_b_grads();
+  EXPECT_NEAR(b_grads[0], 0.9, 1e-9);
+  EXPECT_NEAR(b_grads[1], 1.2, 1e-9);
+}
+
+TEST_F(FFLayerTest, WeightDecayWithAdamW)
+{
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 1;
+  const double weight_decay = 0.1;
+  const double learning_rate = 0.01;
+
+  FFLayer layer(1, num_inputs, num_outputs, weight_decay, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::AdamW, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+  layer.set_w_values({ 1.0 });
+  layer.set_w_grads({ 0.0 }); // Zero gradient: only weight decay updates the weight
+
+  layer.apply_stored_gradients(learning_rate, 1.0);
+
+  // With zero grad, AdamW decoupled weight decay performs:
+  // w = w - learning_rate * decay * w = 1.0 - 0.01 * 0.1 * 1.0 = 0.999
+  const auto& w_vals = layer.get_w_values();
+  EXPECT_NEAR(w_vals[0], 0.999, 1e-6);
+}
+
+
 

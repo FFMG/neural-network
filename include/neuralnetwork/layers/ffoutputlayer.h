@@ -74,6 +74,15 @@ public:
 
   void apply_stored_gradients(double learning_rate, double clipping_scale) override;
 
+  void run_output_gradients(
+    const size_t start,
+    const size_t end,
+    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
+    const std::vector<HiddenStates>& batch_hidden_states,
+    size_t num_neurons,
+    const PerHeadStepContexts& per_head_step_context) const;
+
   [[nodiscard]] double get_momentum(unsigned neuron_number) const noexcept override;
 
   [[nodiscard]] inline bool has_sharpe_sortino_heads() const noexcept
@@ -103,14 +112,6 @@ private:
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const;
 
-  void run_output_gradients(
-    const size_t start,
-    const size_t end,
-    std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    std::vector<std::vector<double>>::const_iterator target_outputs_begin,
-    const std::vector<HiddenStates>& batch_hidden_states,
-    size_t num_neurons,
-    const PerHeadStepContexts& per_head_step_context) const;
 
   void calculate_error_deltas(
     std::vector<double>& deltas,

@@ -2,6 +2,40 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.59] - 2026-09-13
+
+### Fixed
+- Fixed critical mathematical bug where momentum and Adam first-moment `beta1` were dropped (forced to `0.0`) on [`FFOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.h):
+  - In [`Layer::apply_update_to_vector`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.h) and [`Layer::apply_update_to_vector_internal`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.cpp), added support for an explicit `momentum_override` parameter.
+  - In [`FFOutputLayer::apply_stored_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp), passed `detail.get_momentum()` to ensure SGD, Adam, AdamW, Nadam, NadamW, Lion, and RAdam receive the head's configured momentum and first-moment decay factor.
+- Fixed potential crash / undefined behaviour on empty hidden states or zero batch size across all gradient functions in [`FFLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) and [`FFOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - Added defensive validation guarding against `batch_hidden_states.empty()` and missing layer indices before indexing time steps, backed by `size()` and `empty()` helper methods on [`HiddenStates`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/hiddenstates.h).
+- Fixed null pointer vulnerability in bias gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) by verifying `g_base != nullptr` prior to SIMD vector accumulation.
+- Fixed cross-example transaction cost leakage in [`FFOutputLayer::calculate_output_metrics`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp) for Sharpe ratio and Sortino ratio losses:
+  - Sequences are now evaluated per batch item before pooling returns, ensuring initial step positions are compared to zero rather than the previous batch item's final position.
+
+### Performance
+- Added fast-path contiguous vectorized updates in [`FFOutputLayer::apply_stored_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - When output heads share identical optimizer types and momentums (the standard configuration), the layer performs a single contiguous vectorized update across all weights and biases rather than looping $N_{\text{inputs}}$ times over small slices.
+- Optimized static-context sequence weight gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) for recurrent sequence training (BPTT):
+  - For items with static inputs across timesteps (`x_stride == 0`), sequence gradients are pre-accumulated across timesteps once per item, collapsing the $T$-timestep loop into a single SIMD fused multiply-add per input group.
+- Optimized buffer copying in [`FFOutputLayer::run_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - Replaced vector `assign` reallocations with fixed-capacity pre-sized buffers and direct memory copy (`std::memcpy`).
+- Eliminated redundant full-vector scaling in [`FFLayer::calculate_and_store_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) when `batch_size == 1`.
+- Replaced lambda thread pool task with named functor `FfOutputGradientsTask` in [`FFOutputLayer::calculate_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp) adhering to coding standards.
+
+### Added
+- Added Python binding default parameter values for [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp) constructor (`error_evaluation_config`, `weight_decay`, `optimiser_type`, and `momentum`).
+- Added comprehensive unit tests in [`tests/ffoutputlayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/ffoutputlayer_tests.cpp):
+  - `OutputLayerAppliesMomentumWithSGD`: Verifies momentum is retained and correctly applied on output layers.
+  - `OutputLayerApplyStoredGradientsFastPathEquivalence`: Confirms numerical equivalence between fast-path contiguous updates and multi-head slice updates.
+  - `OutputLayerMetricsSharpeSortinoNoCrossBatchLeakage`: Confirms Sharpe ratio metrics do not subtract transaction costs across batch item boundaries.
+  - `OutputLayerEmptyHiddenStatesDefensive`: Confirms zero batch size and empty hidden states do not crash.
+- Added comprehensive unit tests in [`tests/fflayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/fflayer_tests.cpp):
+  - `EmptyHiddenStatesDefensive`: Verifies empty hidden states safety across all FFLayer gradient methods.
+  - `StaticContextSequenceBPTTWeightGradientEquivalence`: Validates pre-summed sequence gradient math for static inputs under BPTT.
+  - `WeightDecayWithAdamW`: Confirms decoupled weight decay on FFLayer with AdamW.
+
 ## [1.1.58] - 2026-09-12
 
 ### Added

@@ -838,7 +838,8 @@ public:
     bool is_bias,
     OptimiserType optimiser_type,
     size_t start = 0,
-    size_t count = 0);
+    size_t count = 0,
+    std::optional<double> momentum_override = std::nullopt);
 
   void apply_update_to_weight(
     std::vector<double>& values,
@@ -1420,7 +1421,8 @@ private:
     size_t count,
     double p1,
     double p2,
-    double rect_factor);
+    double rect_factor,
+    double momentum);
 
   [[nodiscard]] inline bool is_bias_index(const std::vector<double>& values) const noexcept
   { 

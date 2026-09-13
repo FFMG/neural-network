@@ -7,6 +7,33 @@
 
 namespace myoddweb::nn
 {
+namespace
+{
+struct FfOutputGradientsTask
+{
+  const FFOutputLayer* layer;
+  size_t start;
+  size_t end;
+  std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
+  std::vector<std::vector<double>>::const_iterator target_outputs_begin;
+  const std::vector<HiddenStates>* batch_hidden_states;
+  size_t num_neurons;
+  const PerHeadStepContexts* per_head_step_context;
+
+  void operator()() const
+  {
+    layer->run_output_gradients(
+      start,
+      end,
+      *batch_gradients_and_outputs,
+      target_outputs_begin,
+      *batch_hidden_states,
+      num_neurons,
+      *per_head_step_context);
+  }
+};
+} // namespace
+
 FFOutputLayer::FFOutputLayer(
   unsigned layer_index,
   const std::vector<OutputLayerDetails>& output_layer_details,
@@ -355,9 +382,23 @@ void FFOutputLayer::calculate_output_gradients(
   size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
+  if (num_time_steps == 0)
+  {
+    return;
+  }
+
   const size_t N_total = get_number_neurons();
   const auto num_threads = get_number_of_threads();
-  const size_t num_time_steps = batch_hidden_states.empty() ? 1 : batch_hidden_states[0].at(get_layer_index()).size();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
   const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000))) : 1;
   const bool use_multithreading = (active_threads > 1);
@@ -384,17 +425,16 @@ void FFOutputLayer::calculate_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
-        _task_queue_pool->enqueue([start, end, &batch_gradients_and_outputs, target_outputs_begin, &batch_hidden_states, N_total, &per_head_step_context, this]()
-          {
-            run_output_gradients(
-              start,
-              end,
-              batch_gradients_and_outputs,
-              target_outputs_begin,
-              batch_hidden_states,
-              N_total,
-              per_head_step_context);
-          });
+        _task_queue_pool->enqueue(FfOutputGradientsTask{
+          this,
+          start,
+          end,
+          &batch_gradients_and_outputs,
+          target_outputs_begin,
+          &batch_hidden_states,
+          N_total,
+          &per_head_step_context
+        });
       }
       start = end;
     }
@@ -423,6 +463,12 @@ void FFOutputLayer::run_output_gradients(
   TempBuffer<double, 58> current_target(num_neurons);
   TempBuffer<double, 59> deltas(num_neurons);
 
+  deriv_buf.vec().resize(num_neurons);
+  rnn_grads_row.vec().resize(num_time_steps * num_neurons);
+  given_outputs_vec.vec().resize(num_neurons);
+  current_target.vec().resize(num_neurons);
+  deltas.vec().resize(num_neurons);
+
   for (size_t b = start; b < end; b++)
   {
     const auto& target_outputs = *(target_outputs_begin + b);
@@ -434,18 +480,18 @@ void FFOutputLayer::run_output_gradients(
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      given_outputs_vec.vec().assign(given_outputs.data(), given_outputs.data() + given_outputs.size());
+      std::memcpy(given_outputs_vec.data(), given_outputs.data(), num_neurons * sizeof(double));
       
       // Determine target for this time step
       if (target_outputs.size() == num_time_steps * num_neurons)
       {
         const double* tgt_ptr = target_outputs.data() + t * num_neurons;
-        current_target.vec().assign(tgt_ptr, tgt_ptr + num_neurons);
+        std::memcpy(current_target.data(), tgt_ptr, num_neurons * sizeof(double));
       }
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        current_target.vec().assign(target_outputs.data(), target_outputs.data() + target_outputs.size());
+        std::memcpy(current_target.data(), target_outputs.data(), std::min(target_outputs.size(), num_neurons) * sizeof(double));
       }
       else
       {
@@ -668,8 +714,75 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
 
     for (const auto& error_type : error_types)
     {
-      const auto result = ErrorCalculation::calculate_error(error_type, unrolled_checking_outputs, unrolled_predictions, configs, activation_method);
-      layer_errors.emplace_back(result.ratio, error_type, result.numerator, result.denominator);
+      if (error_type == ErrorCalculation::type::sharpe_ratio_loss)
+      {
+        std::vector<double> pooled_returns;
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+          const size_t p_steps = total_outputs > 0 ? (predictions[b].size() / total_outputs) : 0;
+          const size_t c_steps = total_outputs > 0 ? (checking_outputs[b].size() / total_outputs) : 0;
+          const size_t num_steps = std::min(p_steps, c_steps);
+          const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+          const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
+
+          std::vector<std::vector<double>> b_preds;
+          std::vector<std::vector<double>> b_targets;
+          b_preds.reserve(num_steps);
+          b_targets.reserve(num_steps);
+
+          for (size_t t = 0; t < num_steps; ++t)
+          {
+            const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+            const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+            b_preds.emplace_back(p_start, p_start + num_neurons);
+            b_targets.emplace_back(c_start, c_start + num_neurons);
+          }
+
+          auto returns_b = ErrorCalculation::calculate_portfolio_returns(b_targets, b_preds, configs.transaction_cost_penalty());
+          pooled_returns.insert(pooled_returns.end(), returns_b.begin(), returns_b.end());
+        }
+
+        const auto stats = ErrorCalculation::calculate_sharpe_batch_stats(pooled_returns, configs.epsilon());
+        const double loss = (stats.sigma > 0.0) ? (-stats.mean / stats.sigma) : 0.0;
+        layer_errors.emplace_back(loss, error_type, std::nullopt, std::nullopt);
+      }
+      else if (error_type == ErrorCalculation::type::sortino_ratio_loss)
+      {
+        std::vector<double> pooled_returns;
+        for (size_t b = 0; b < batch_size; ++b)
+        {
+          const size_t p_steps = total_outputs > 0 ? (predictions[b].size() / total_outputs) : 0;
+          const size_t c_steps = total_outputs > 0 ? (checking_outputs[b].size() / total_outputs) : 0;
+          const size_t num_steps = std::min(p_steps, c_steps);
+          const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+          const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
+
+          std::vector<std::vector<double>> b_preds;
+          std::vector<std::vector<double>> b_targets;
+          b_preds.reserve(num_steps);
+          b_targets.reserve(num_steps);
+
+          for (size_t t = 0; t < num_steps; ++t)
+          {
+            const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+            const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+            b_preds.emplace_back(p_start, p_start + num_neurons);
+            b_targets.emplace_back(c_start, c_start + num_neurons);
+          }
+
+          auto returns_b = ErrorCalculation::calculate_portfolio_returns(b_targets, b_preds, configs.transaction_cost_penalty());
+          pooled_returns.insert(pooled_returns.end(), returns_b.begin(), returns_b.end());
+        }
+
+        const auto stats = ErrorCalculation::calculate_sortino_batch_stats(pooled_returns, configs.sortino_target_return(), configs.epsilon());
+        const double loss = (stats.sigma > 0.0) ? (-(stats.mean - configs.sortino_target_return()) / stats.sigma) : 0.0;
+        layer_errors.emplace_back(loss, error_type, std::nullopt, std::nullopt);
+      }
+      else
+      {
+        const auto result = ErrorCalculation::calculate_error(error_type, unrolled_checking_outputs, unrolled_predictions, configs, activation_method);
+        layer_errors.emplace_back(result.ratio, error_type, result.numerator, result.denominator);
+      }
     }
     errors.emplace_back(std::move(layer_errors));
   }
@@ -687,31 +800,57 @@ void FFOutputLayer::apply_stored_gradients(double learning_rate, double clipping
     return;
   }
 
-  // We need to apply the gradients for each head separately.
-  // This is because each head can have its own optimizer.
-  unsigned current_output_neuron = 0;
-  const unsigned num_inputs = get_number_input_neurons();
-  const unsigned num_outputs = get_number_output_neurons();
-
-  for (const auto& detail : output_layer_details())
+  const auto& details = output_layer_details();
+  bool all_same_optimiser = true;
+  const auto first_optimiser = details[0].get_optimiser_type();
+  const auto first_momentum = details[0].get_momentum();
+  for (size_t h = 1; h < details.size(); ++h)
   {
-    const unsigned section_size = detail.get_size();
-    const OptimiserType optimiser_type = detail.get_optimiser_type();
-
-    // 1. Update weights for this head
-    for (unsigned i = 0; i < num_inputs; ++i)
+    if (details[h].get_optimiser_type() != first_optimiser || details[h].get_momentum() != first_momentum)
     {
-      const unsigned start_weight_index = i * num_outputs + current_output_neuron;
-      apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, optimiser_type, start_weight_index, section_size);
+      all_same_optimiser = false;
+      break;
     }
+  }
 
-    // 2. Update biases for this head (if they exist)
+  if (all_same_optimiser)
+  {
+    // Fast path: all heads share optimizer type and momentum.
+    // Update entire weight and bias tensors in a single contiguous vectorized call.
+    apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, first_optimiser, 0, 0, first_momentum);
     if (has_bias())
     {
-      apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, optimiser_type, current_output_neuron, section_size);
+      apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, first_optimiser, 0, 0, first_momentum);
     }
+  }
+  else
+  {
+    // Multi-head with heterogeneous optimizers or momentums: apply per head.
+    unsigned current_output_neuron = 0;
+    const unsigned num_inputs = get_number_input_neurons();
+    const unsigned num_outputs = get_number_output_neurons();
 
-    current_output_neuron += section_size;
+    for (const auto& detail : details)
+    {
+      const unsigned section_size = detail.get_size();
+      const OptimiserType optimiser_type = detail.get_optimiser_type();
+      const double momentum = detail.get_momentum();
+
+      // 1. Update weights for this head
+      for (unsigned i = 0; i < num_inputs; ++i)
+      {
+        const unsigned start_weight_index = i * num_outputs + current_output_neuron;
+        apply_update_to_vector(_w_values, _w_grads, _w_velocities, _w_m1, _w_m2, _w_timesteps, _w_decays, learning_rate, clipping_scale, false, optimiser_type, start_weight_index, section_size, momentum);
+      }
+
+      // 2. Update biases for this head (if they exist)
+      if (has_bias())
+      {
+        apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, optimiser_type, current_output_neuron, section_size, momentum);
+      }
+
+      current_output_neuron += section_size;
+    }
   }
 
   // Clear gradients

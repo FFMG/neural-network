@@ -756,17 +756,21 @@ void FFLayer::calculate_hidden_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const auto N_this = get_number_neurons();
-  const auto N_next = next_layer.get_number_neurons();
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
   {
     return;
   }
-
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const auto this_layer_index = get_layer_index();
+  if (this_layer_index >= batch_hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = batch_hidden_states[0].at(this_layer_index).size();
   if (num_time_steps == 0)
   {
     return;
   }
+  const auto N_next = next_layer.get_number_neurons();
 
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
   const double* next_grads_ptr = nullptr;
@@ -939,12 +943,17 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const auto N_this = get_number_neurons();
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
   {
     return;
   }
 
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const auto this_layer_index = get_layer_index();
+  if (this_layer_index >= batch_hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = batch_hidden_states[0].at(this_layer_index).size();
   if (num_time_steps == 0)
   {
     return;
@@ -1050,7 +1059,7 @@ Layer* FFLayer::clone() const { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return new
 void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, const std::vector<HiddenStates>& hidden_states, const Layer& previous_layer, size_t batch_size, int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || hidden_states.empty())
   {
     return;
   }
@@ -1058,8 +1067,11 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
   const unsigned num_inputs = get_number_input_neurons();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const unsigned this_layer_index = get_layer_index();
-
-  const size_t num_time_steps = hidden_states[0].at(get_layer_index()).size();
+  if (this_layer_index >= hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = hidden_states[0].at(this_layer_index).size();
   if (num_time_steps == 0)
   {
     return;
@@ -1189,11 +1201,14 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     }
   }
 
-  const double inv_batch = 1.0 / static_cast<double>(batch_size);
-  simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
-  if (has_bias())
+  if (batch_size > 1)
   {
-    simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
+    const double inv_batch = 1.0 / static_cast<double>(batch_size);
+    simd::scale_vector(_w_grads.data(), inv_batch, _w_grads.size());
+    if (has_bias())
+    {
+      simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
+    }
   }
 }
 
@@ -1476,30 +1491,47 @@ void FFLayer::calculate_and_store_gradients_chunk(
     double* b_grad_data = local_b_grads.data();
     if (num_time_steps == 1)
     {
+      std::array<const double*, 64> valid_g_stack;
+      std::vector<const double*> valid_g_heap;
+      const double** valid_g_ptr = valid_g_stack.data();
+      if (chunk_size > 64)
+      {
+        valid_g_heap.resize(chunk_size);
+        valid_g_ptr = valid_g_heap.data();
+      }
+      size_t valid_g_count = 0;
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        if (items_ptr[k].g_base != nullptr)
+        {
+          valid_g_ptr[valid_g_count++] = items_ptr[k].g_base;
+        }
+      }
+
       size_t k = 0;
-      for (; k + 3 < chunk_size; k += 4)
+      for (; k + 3 < valid_g_count; k += 4)
       {
         simd::accumulate_four_vectors(
-          items_ptr[k].g_base,
-          items_ptr[k + 1].g_base,
-          items_ptr[k + 2].g_base,
-          items_ptr[k + 3].g_base,
+          valid_g_ptr[k],
+          valid_g_ptr[k + 1],
+          valid_g_ptr[k + 2],
+          valid_g_ptr[k + 3],
           b_grad_data,
           num_outputs
         );
       }
-      for (; k + 1 < chunk_size; k += 2)
+      for (; k + 1 < valid_g_count; k += 2)
       {
         simd::accumulate_two_vectors(
-          items_ptr[k].g_base,
-          items_ptr[k + 1].g_base,
+          valid_g_ptr[k],
+          valid_g_ptr[k + 1],
           b_grad_data,
           num_outputs
         );
       }
-      for (; k < chunk_size; ++k)
+      for (; k < valid_g_count; ++k)
       {
-        simd::add_vectors(items_ptr[k].g_base, b_grad_data, num_outputs);
+        simd::add_vectors(valid_g_ptr[k], b_grad_data, num_outputs);
       }
     }
     else
@@ -1507,6 +1539,10 @@ void FFLayer::calculate_and_store_gradients_chunk(
       for (size_t k = 0; k < chunk_size; ++k)
       {
         const auto& item = items_ptr[k];
+        if (item.g_base == nullptr)
+        {
+          continue;
+        }
         if (item.g_stride == 0)
         {
           simd::mul_add(static_cast<double>(num_time_steps), item.g_base, b_grad_data, num_outputs);
@@ -1617,6 +1653,60 @@ void FFLayer::calculate_and_store_gradients_chunk(
   }
   else
   {
+    // Check if any items have static inputs (x_stride == 0) with dynamic gradients (g_stride > 0)
+    std::vector<double> summed_g_buffer;
+    std::vector<const double*> static_g_ptrs(chunk_size, nullptr);
+    size_t dynamic_g_static_x_count = 0;
+    for (size_t k = 0; k < chunk_size; ++k)
+    {
+      if (items_ptr[k].x_base != nullptr && items_ptr[k].g_base != nullptr &&
+          items_ptr[k].x_stride == 0 && items_ptr[k].g_stride > 0)
+      {
+        ++dynamic_g_static_x_count;
+      }
+    }
+    if (dynamic_g_static_x_count > 0)
+    {
+      summed_g_buffer.resize(dynamic_g_static_x_count * num_outputs, 0.0);
+      size_t cur_buf_idx = 0;
+      for (size_t k = 0; k < chunk_size; ++k)
+      {
+        const auto& item = items_ptr[k];
+        if (item.x_base != nullptr && item.g_base != nullptr &&
+            item.x_stride == 0 && item.g_stride > 0)
+        {
+          double* sum_ptr = &summed_g_buffer[cur_buf_idx * num_outputs];
+          ++cur_buf_idx;
+          size_t t = 0;
+          for (; t + 3 < num_time_steps; t += 4)
+          {
+            simd::accumulate_four_vectors(
+              item.g_base + t * item.g_stride,
+              item.g_base + (t + 1) * item.g_stride,
+              item.g_base + (t + 2) * item.g_stride,
+              item.g_base + (t + 3) * item.g_stride,
+              sum_ptr,
+              num_outputs
+            );
+          }
+          for (; t + 1 < num_time_steps; t += 2)
+          {
+            simd::accumulate_two_vectors(
+              item.g_base + t * item.g_stride,
+              item.g_base + (t + 1) * item.g_stride,
+              sum_ptr,
+              num_outputs
+            );
+          }
+          for (; t < num_time_steps; ++t)
+          {
+            simd::add_vectors(item.g_base + t * item.g_stride, sum_ptr, num_outputs);
+          }
+          static_g_ptrs[k] = sum_ptr;
+        }
+      }
+    }
+
     // General sequence loop with static stride optimization
     size_t i = 0;
     for (; i + 3 < num_inputs; i += 4)
@@ -1638,9 +1728,11 @@ void FFLayer::calculate_and_store_gradients_chunk(
         const size_t x_stride = item.x_stride;
         const size_t g_stride = item.g_stride;
 
-        if (x_stride == 0 && g_stride == 0)
+        if (x_stride == 0)
         {
-          const double scale = static_cast<double>(num_time_steps);
+          const bool is_dynamic_g = (g_stride > 0);
+          const double scale = is_dynamic_g ? 1.0 : static_cast<double>(num_time_steps);
+          const double* eff_g = is_dynamic_g ? static_g_ptrs[k] : g_ptr;
           const double x0 = x_ptr[i] * scale;
           const double x1 = x_ptr[i + 1] * scale;
           const double x2 = x_ptr[i + 2] * scale;
@@ -1649,7 +1741,7 @@ void FFLayer::calculate_and_store_gradients_chunk(
           {
             continue;
           }
-          simd::mul_add_four_scalars(x0, x1, x2, x3, g_ptr, w0, w1, w2, w3, num_outputs);
+          simd::mul_add_four_scalars(x0, x1, x2, x3, eff_g, w0, w1, w2, w3, num_outputs);
         }
         else
         {
@@ -1688,16 +1780,18 @@ void FFLayer::calculate_and_store_gradients_chunk(
         const size_t x_stride = item.x_stride;
         const size_t g_stride = item.g_stride;
 
-        if (x_stride == 0 && g_stride == 0)
+        if (x_stride == 0)
         {
-          const double scale = static_cast<double>(num_time_steps);
+          const bool is_dynamic_g = (g_stride > 0);
+          const double scale = is_dynamic_g ? 1.0 : static_cast<double>(num_time_steps);
+          const double* eff_g = is_dynamic_g ? static_g_ptrs[k] : g_ptr;
           const double x0 = x_ptr[i] * scale;
           const double x1 = x_ptr[i + 1] * scale;
           if (x0 == 0.0 && x1 == 0.0)
           {
             continue;
           }
-          simd::mul_add_two_scalars(x0, x1, g_ptr, w0, w1, num_outputs);
+          simd::mul_add_two_scalars(x0, x1, eff_g, w0, w1, num_outputs);
         }
         else
         {
@@ -1732,14 +1826,17 @@ void FFLayer::calculate_and_store_gradients_chunk(
         const size_t x_stride = item.x_stride;
         const size_t g_stride = item.g_stride;
 
-        if (x_stride == 0 && g_stride == 0)
+        if (x_stride == 0)
         {
-          const double x_val = x_ptr[i] * static_cast<double>(num_time_steps);
+          const bool is_dynamic_g = (g_stride > 0);
+          const double scale = is_dynamic_g ? 1.0 : static_cast<double>(num_time_steps);
+          const double* eff_g = is_dynamic_g ? static_g_ptrs[k] : g_ptr;
+          const double x_val = x_ptr[i] * scale;
           if (x_val == 0.0)
           {
             continue;
           }
-          simd::mul_add(x_val, g_ptr, w_grad_row, num_outputs);
+          simd::mul_add(x_val, eff_g, w_grad_row, num_outputs);
         }
         else
         {

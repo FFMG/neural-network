@@ -190,6 +190,16 @@ public:
     return _layer_views[layer_number][time_step];
   }
 
+  size_t size() const noexcept
+  {
+    return _layer_views.size();
+  }
+
+  bool empty() const noexcept
+  {
+    return _layer_views.empty();
+  }
+
 private:
   std::vector<unsigned> _topology;
   std::vector<std::vector<double>> _pre_activation_sums; // [layer][time * neuron]
