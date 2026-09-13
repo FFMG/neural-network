@@ -21,11 +21,12 @@
 
 namespace myoddweb::nn
 {
-activation::activation(const method method, double alpha, double temperature, double inference_temperature) :
+activation::activation(const method method, double alpha, double temperature, double inference_temperature, double logit_cap) :
   _method(method),
   _alpha(alpha),
   _temperature((!std::isfinite(temperature) || temperature < 1e-6) ? 1e-6 : temperature),
-  _inference_temperature((!std::isfinite(inference_temperature) || inference_temperature < 1e-6) ? 1e-6 : inference_temperature)
+  _inference_temperature((!std::isfinite(inference_temperature) || inference_temperature < 1e-6) ? 1e-6 : inference_temperature),
+  _logit_cap((!std::isfinite(logit_cap) || logit_cap < 0.0) ? 0.0 : logit_cap)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   switch (_method)
@@ -88,7 +89,7 @@ activation::activation(const method method, double alpha, double temperature, do
 }
 
 activation::activation(const method method, double alpha, double temperature) :
-  activation(method, alpha, temperature, temperature)
+  activation(method, alpha, temperature, temperature, 0.0)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
 }
@@ -98,6 +99,7 @@ activation::activation(const activation& src) noexcept :
   _alpha(src._alpha),
   _temperature(src._temperature),
   _inference_temperature(src._inference_temperature),
+  _logit_cap(src._logit_cap),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -109,6 +111,7 @@ activation::activation(activation&& src) noexcept :
   _alpha(src._alpha),
   _temperature(src._temperature),
   _inference_temperature(src._inference_temperature),
+  _logit_cap(src._logit_cap),
   _activate_ptr(src._activate_ptr),
   _derivative_ptr(src._derivative_ptr)
 {
@@ -124,6 +127,7 @@ activation& activation::operator=(const activation& src) noexcept
     _alpha = src._alpha;
     _temperature = src._temperature;
     _inference_temperature = src._inference_temperature;
+    _logit_cap = src._logit_cap;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -139,6 +143,7 @@ activation& activation::operator=(activation&& src) noexcept
     _alpha = src._alpha;
     _temperature = src._temperature;
     _inference_temperature = src._inference_temperature;
+    _logit_cap = src._logit_cap;
     _activate_ptr = src._activate_ptr;
     _derivative_ptr = src._derivative_ptr;
   }
@@ -162,7 +167,7 @@ void activation::activate(double* begin, double* end, bool is_training) const
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (_method == method::softmax)
   {
-    calculate_softmax(begin, end, is_training ? _temperature : _inference_temperature);
+    calculate_softmax(begin, end, is_training ? _temperature : _inference_temperature, _logit_cap);
     return;
   }
 
@@ -313,12 +318,24 @@ double activation::calculate_elu_derivative(double x, double alpha) noexcept
   return x > 0.0 ? 1.0 : alpha * std::exp(x);
 }
 
-void activation::calculate_softmax(double* begin, double* end, double temperature)
+void activation::calculate_softmax(double* begin, double* end, double temperature, double logit_cap)
 {
   MYODDWEB_PROFILE_FUNCTION("activation");
   if (begin == end)
   {
     return;
+  }
+
+  if (logit_cap > 0.0)
+  {
+    const double inv_cap = 1.0 / logit_cap;
+    for (double* it = begin; it != end; ++it)
+    {
+      if (!std::isnan(*it))
+      {
+        *it = logit_cap * std::tanh(*it * inv_cap);
+      }
+    }
   }
 
   // Find max for numerical stability
@@ -364,7 +381,7 @@ void activation::calculate_softmax(double* begin, double* end, double temperatur
 
   // Exponentiate and accumulate in higher precision
   double sum = 0.0;
-  constexpr double LOGIT_CLAMP = 30.0;
+  constexpr double LOGIT_CLAMP = 500.0;
   const double inv_temperature = 1.0 / temperature;
 
   for (double* it = begin; it != end; ++it)

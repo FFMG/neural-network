@@ -2,6 +2,26 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.60] - 2026-09-13
+
+### Added
+- Added Soft Logit Capping ($z_i' = C \cdot \tanh(z_i / C)$) for Softmax activation in [`activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h) and [`activation.cpp`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
+  - Strictly bounds pre-activation logits within $(-C, C)$, preventing logit range explosion during reinforcement learning and advantage training.
+  - When $C \le 50$, the maximum span cannot exceed $2C \le 100$, cleanly eliminating runaway logit warnings ($> 200$) and panics ($> 1000$) through sound mathematical formulation.
+  - Added `logit_cap` parameter and getter/setter (`get_logit_cap()`, `set_logit_cap()`) on [`activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h).
+- Added exact chain-rule gradient scaling in [`FFOutputLayer::run_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - When cross-entropy loss skips explicit derivative computation, output gradients $\delta_k = y_k - t_k$ are scaled by $\left(1 - \tanh^2(z_k / C)\right)$ when `logit_cap > 0.0`, ensuring exact backward pass gradients that vanish as logits approach saturation.
+- Added serialization and deserialization support for `"activation-logit-cap"` across [`NeuralNetworkSerializer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/helpers/neuralnetworkserializer.cpp):
+  - Serialises and deserialises `logit_cap` for output layers, hidden layers, activation helpers, and multi-output layer configurations with exact backward compatibility (defaults missing keys to `0.0`).
+- Exposed Python bindings for `logit_cap` property and constructors on `Activation` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp).
+- Added unit tests:
+  - `SoftLogitCappingGetterSetter`, `SoftLogitCappingStrictlyBoundsExtremeLogits`, and `SoftLogitCappingApproximatesLinearForSmallLogits` in [`tests/activation_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/activation_tests.cpp).
+  - `CalculateOutputGradientsCESoftLogitCapping` in [`tests/ffoutputlayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/ffoutputlayer_tests.cpp).
+
+### Fixed
+- Fixed artificial underflow probability floor in softmax by expanding `LOGIT_CLAMP` from `30.0` to `500.0` in [`activation::calculate_softmax`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
+  - The previous clamp at $30.0$ prevented probabilities from falling below $e^{-30} \approx 10^{-14}$, maintaining non-zero gradients indefinitely and causing Adam optimizer updates to drive unregularised weights and biases towards infinity.
+
 ## [1.1.59] - 2026-09-13
 
 ### Fixed

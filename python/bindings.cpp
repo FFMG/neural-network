@@ -150,6 +150,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
 
     // 2. Structs / Helper Classes
     py::class_<activation>(m, "Activation")
+        .def(py::init<const activation::method, double, double, double, double>(),
+             py::arg("method"), py::arg("alpha"), py::arg("temperature"), py::arg("inference_temperature"), py::arg("logit_cap") = 0.0)
         .def(py::init<const activation::method, double, double, double>())
         .def(py::init<const activation::method, double, double>(), py::arg("method"), py::arg("alpha"), py::arg("temperature") = 1.0)
         .def("activate", py::overload_cast<double>(&activation::activate, py::const_))
@@ -158,7 +160,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("method", &activation::get_method)
         .def_property_readonly("alpha", &activation::get_alpha)
         .def_property("temperature", &activation::get_temperature, &activation::set_temperature)
-        .def_property("inference_temperature", &activation::get_inference_temperature, &activation::set_inference_temperature);
+        .def_property("inference_temperature", &activation::get_inference_temperature, &activation::set_inference_temperature)
+        .def_property("logit_cap", &activation::get_logit_cap, &activation::set_logit_cap);
 
     py::class_<EvaluationConfig>(m, "EvaluationConfig")
         .def(py::init<>())

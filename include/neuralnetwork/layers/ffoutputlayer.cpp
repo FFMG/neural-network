@@ -535,6 +535,17 @@ void FFOutputLayer::run_output_gradients(
           {
             std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
+
+          if (activation.get_logit_cap() > 0.0)
+          {
+            const double cap = activation.get_logit_cap();
+            const double inv_cap = 1.0 / cap;
+            for (size_t i = 0; i < range_size; ++i)
+            {
+              const double t_val = std::tanh(pre_act[r.start + i] * inv_cap);
+              out_grad_ptr[i] *= (1.0 - t_val * t_val);
+            }
+          }
         }
         else if (activation.get_method() == activation::method::linear)
         {

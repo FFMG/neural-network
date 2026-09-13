@@ -1329,8 +1329,9 @@ std::vector<OutputLayerDetails> NeuralNetworkSerializer::get_output_layer_detail
     const auto output_alpha = (double)output_layer_object->get_float("activation-alpha");
     const auto output_temperature = output_layer_object->get_or<double>("activation-temperature", 1.0);
     const auto output_inference_temperature = output_layer_object->get_or<double>("activation-inference-temperature", output_temperature);
+    const auto output_logit_cap = output_layer_object->get_or<double>("activation-logit-cap", 0.0);
     const auto output_error_calculation_type = ErrorCalculation::string_to_type(output_error_calculation_typ_str);
-    const auto output_activation_method = activation(output_method, output_alpha, output_temperature, output_inference_temperature);
+    const auto output_activation_method = activation(output_method, output_alpha, output_temperature, output_inference_temperature, output_logit_cap);
     const auto optimiser_type = string_to_optimiser_type(output_layer_object->try_get_string("optimiser-type", false));
     const auto momentum = output_layer_object->get<double>("momentum");
 
@@ -1427,6 +1428,7 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     const auto hidden_alpha = phlo->get<double>("activation-alpha");
     const auto hidden_temperature = phlo->get_or<double>("activation-temperature", 1.0);
     const auto hidden_inference_temperature = phlo->get_or<double>("activation-inference-temperature", hidden_temperature);
+    const auto hidden_logit_cap = phlo->get_or<double>("activation-logit-cap", 0.0);
 
     const auto optimiser_type = string_to_optimiser_type(phlo->try_get_string("optimiser-type", false));
     const auto momentum = phlo->get<double>("momentum");
@@ -1436,7 +1438,7 @@ std::vector<LayerDetails> NeuralNetworkSerializer::get_hidden_layers(const TinyJ
     hidden_layer.emplace_back(LayerDetails(
       Layer::architecture_from_string(layer_architecture_string == nullptr ? "ff" : layer_architecture_string),
       phlo->get<unsigned>("size"),
-      activation(hidden_method, hidden_alpha, hidden_temperature, hidden_inference_temperature),
+      activation(hidden_method, hidden_alpha, hidden_temperature, hidden_inference_temperature, hidden_logit_cap),
       phlo->get<double>("dropout"),
       phlo->get<double>("weight-decay"),
       optimiser_type,
@@ -1812,8 +1814,9 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
   const auto alpha = layer_object.get_or<double>("activation-alpha", 1.0);
   const auto temperature = layer_object.get_or<double>("activation-temperature", 1.0);
   const auto inference_temperature = layer_object.get_or<double>("activation-inference-temperature", temperature);
+  const auto logit_cap = layer_object.get_or<double>("activation-logit-cap", 0.0);
 
-  activation default_activation(method, alpha, temperature, inference_temperature);
+  activation default_activation(method, alpha, temperature, inference_temperature, logit_cap);
 
   layer_activation_helper lah(default_activation, num_inputs, num_outputs);
 
@@ -1828,10 +1831,12 @@ layer_activation_helper NeuralNetworkSerializer::get_activation_helper(const Tin
         const auto r_start = r_obj->get<unsigned>("start");
         const auto r_end = r_obj->get<unsigned>("end");
         const auto r_method_str = r_obj->get_string("activation-method");
+        const auto r_method = activation::string_to_method(r_method_str);
         const auto r_alpha = r_obj->get<double>("activation-alpha");
         const auto r_temperature = r_obj->get_or<double>("activation-temperature", 1.0);
         const auto r_inference_temperature = r_obj->get_or<double>("activation-inference-temperature", r_temperature);
-        lah.set_bounds(activation(activation::string_to_method(r_method_str), r_alpha, r_temperature, r_inference_temperature), r_start, r_end);
+        const auto r_logit_cap = r_obj->get_or<double>("activation-logit-cap", 0.0);
+        lah.set_bounds(activation(r_method, r_alpha, r_temperature, r_inference_temperature, r_logit_cap), r_start, r_end);
       }
     }
   }
@@ -2781,6 +2786,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_output_layer_details(const 
     set_float(output_layer_object, "activation-alpha", output_layer_detail.get_activation().get_alpha());
     set_float(output_layer_object, "activation-temperature", output_layer_detail.get_activation().get_temperature());
     set_float(output_layer_object, "activation-inference-temperature", output_layer_detail.get_activation().get_inference_temperature());
+    set_float(output_layer_object, "activation-logit-cap", output_layer_detail.get_activation().get_logit_cap());
     output_layer_object->set_string("error-calculation-type", ErrorCalculation::type_to_string(output_layer_detail.get_output_error_calculation_type()).c_str());
     add_error_evaluation_config(output_layer_object, output_layer_detail.get_error_evaluation_config());
     set_float(output_layer_object, "weight-decay", output_layer_detail.get_weight_decay());
@@ -2825,6 +2831,7 @@ TinyJSON::TJValueArray* NeuralNetworkSerializer::add_hidden_layers(const std::ve
     set_float(hidden_layer_object, "activation-alpha", hl.get_activation().get_alpha());
     set_float(hidden_layer_object, "activation-temperature", hl.get_activation().get_temperature());
     set_float(hidden_layer_object, "activation-inference-temperature", hl.get_activation().get_inference_temperature());
+    set_float(hidden_layer_object, "activation-logit-cap", hl.get_activation().get_logit_cap());
     set_float(hidden_layer_object, "dropout", hl.get_dropout());
     set_float(hidden_layer_object, "weight-decay", hl.get_weight_decay());
     hidden_layer_object->set("optimiser-type", optimiser_type_to_string(hl.get_optimiser_type()).c_str());
@@ -3014,6 +3021,7 @@ void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON
     set_float(json, "activation-alpha", default_range.activation_method.get_alpha());
     set_float(json, "activation-temperature", default_range.activation_method.get_temperature());
     set_float(json, "activation-inference-temperature", default_range.activation_method.get_inference_temperature());
+    set_float(json, "activation-logit-cap", default_range.activation_method.get_logit_cap());
   }
   else
   {
@@ -3037,6 +3045,7 @@ void NeuralNetworkSerializer::add_activation_helper(const Layer& layer, TinyJSON
     set_float(range_object, "activation-alpha", r.activation_method.get_alpha());
     set_float(range_object, "activation-temperature", r.activation_method.get_temperature());
     set_float(range_object, "activation-inference-temperature", r.activation_method.get_inference_temperature());
+    set_float(range_object, "activation-logit-cap", r.activation_method.get_logit_cap());
     ranges_array->add(range_object);
     delete range_object;
   }
@@ -3090,11 +3099,12 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
       const auto alpha = phlo->get<double>("activation-alpha");
       const auto temperature = phlo->get_or<double>("activation-temperature", 1.0);
       const auto inference_temperature = phlo->get_or<double>("activation-inference-temperature", temperature);
+      const auto logit_cap = phlo->get_or<double>("activation-logit-cap", 0.0);
 
       hidden_layers.emplace_back(LayerDetails(
         Layer::architecture_from_string(phlo->try_get_string("architecture", false)),
         phlo->get<unsigned>("size"),
-        activation(method, alpha, temperature, inference_temperature),
+        activation(method, alpha, temperature, inference_temperature, logit_cap),
         phlo->get<double>("dropout"),
         phlo->get<double>("weight-decay"),
         string_to_optimiser_type(phlo->try_get_string("optimiser-type", false)),
@@ -3122,10 +3132,11 @@ std::vector<MultiOutputLayerDetails> NeuralNetworkSerializer::get_multi_output_l
     const auto alpha = (double)od_obj->get_float("activation-alpha");
     const auto temperature = od_obj->get_or<double>("activation-temperature", 1.0);
     const auto inference_temperature = od_obj->get_or<double>("activation-inference-temperature", temperature);
+    const auto logit_cap = od_obj->get_or<double>("activation-logit-cap", 0.0);
 
     const auto output_details = OutputLayerDetails(
       od_obj->get<unsigned>("size"),
-      activation(method, alpha, temperature, inference_temperature),
+      activation(method, alpha, temperature, inference_temperature, logit_cap),
       ErrorCalculation::string_to_type(od_obj->get_string("error-calculation-type")),
       get_error_evaluation_config(od_obj),
       od_obj->get<double>("weight-decay"),

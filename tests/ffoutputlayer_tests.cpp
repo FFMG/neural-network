@@ -111,6 +111,34 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsCE) {
     EXPECT_NEAR(grads[1], 0.5, 1e-9);
 }
 
+TEST_F(FFOutputLayerTest, CalculateOutputGradientsCESoftLogitCapping)
+{
+    unsigned num_inputs = 2;
+    unsigned num_outputs = 2;
+    // logit_cap = 10.0
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::softmax, 0.0, 1.0, 1.0, 10.0), ErrorCalculation::type::cross_entropy, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+    
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5, 0.5 });
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ 10.0, -10.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+    std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+
+    const auto grads = batch_go[0].get_gradients(1);
+    const double expected_factor = 1.0 - std::pow(std::tanh(1.0), 2.0);
+    EXPECT_NEAR(grads[0], -0.5 * expected_factor, 1e-7);
+    EXPECT_NEAR(grads[1], 0.5 * expected_factor, 1e-7);
+}
+
 TEST_F(FFOutputLayerTest, SharpeRatioLossDoesNotCoupleTransactionCostAcrossExamples) {
     // Regression test for the batch-statistics builder coupling transaction cost across unrelated
     // training examples: example 0 has a large position swing between its two time steps

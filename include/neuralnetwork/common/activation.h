@@ -32,7 +32,7 @@ public:
     softmax
   };
 
-  activation(const method method, double alpha, double temperature, double inference_temperature);
+  activation(const method method, double alpha, double temperature, double inference_temperature, double logit_cap = 0.0);
   activation(const method method, double alpha, double temperature = 1.0);
   activation(const activation& src) noexcept;
   activation(activation&& src) noexcept;
@@ -155,6 +155,18 @@ public:
     _inference_temperature = (!std::isfinite(t) || t < 1e-6) ? 1e-6 : t;
   }
 
+  [[nodiscard]] inline double get_logit_cap() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    return _logit_cap;
+  }
+
+  inline void set_logit_cap(double cap) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("activation");
+    _logit_cap = (!std::isfinite(cap) || cap < 0.0) ? 0.0 : cap;
+  }
+
 private:
   [[nodiscard]] static bool iequals(const std::string& str, const char* lit) noexcept;
   [[nodiscard]] double he_initialization(unsigned fan_in, std::optional<uint32_t> seed) const noexcept;
@@ -185,7 +197,7 @@ private:
   [[nodiscard]] static double calculate_quick_gelu_derivative(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_elu_derivative(double x, double alpha) noexcept;
-  static void calculate_softmax(double* begin, double* end, double temperature);
+  static void calculate_softmax(double* begin, double* end, double temperature, double logit_cap = 0.0);
   [[nodiscard]] static double calculate_softmax(double x, double alpha) noexcept;
   [[nodiscard]] static double calculate_softmax_derivative(double x, double alpha) noexcept;
 
@@ -193,6 +205,7 @@ private:
   double _alpha;
   double _temperature;
   double _inference_temperature;
+  double _logit_cap = 0.0;
   activation_function _activate_ptr;
   activation_function _derivative_ptr;
 };

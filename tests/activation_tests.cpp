@@ -324,6 +324,60 @@ TEST_F(ActivationTest, SoftmaxExtremeLogitRangeStillProducesValidDistribution) {
   EXPECT_NEAR(input[1], 1.0, 1e-9);
 }
 
+TEST_F(ActivationTest, SoftLogitCappingGetterSetter)
+{
+  activation act(activation::method::softmax, 0.0);
+  EXPECT_DOUBLE_EQ(act.get_logit_cap(), 0.0);
+
+  act.set_logit_cap(50.0);
+  EXPECT_DOUBLE_EQ(act.get_logit_cap(), 50.0);
+
+  act.set_logit_cap(-10.0);
+  EXPECT_DOUBLE_EQ(act.get_logit_cap(), 0.0);
+
+  act.set_logit_cap(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_DOUBLE_EQ(act.get_logit_cap(), 0.0);
+}
+
+TEST_F(ActivationTest, SoftLogitCappingStrictlyBoundsExtremeLogits)
+{
+  // When logit_cap is set to 50.0, even inputs that would otherwise span 2000 (catastrophic threshold)
+  // are bounded to (-50, 50), avoiding warnings/panic and producing a valid probability distribution.
+  activation act(activation::method::softmax, 0.0, 1.0, 1.0, 50.0);
+  std::vector<double> input = { -1000.0, 0.0, 1000.0 };
+  act.activate(input.data(), input.data() + input.size());
+
+  double sum = 0.0;
+  for (double v : input)
+  {
+    EXPECT_TRUE(std::isfinite(v));
+    EXPECT_GE(v, 0.0);
+    EXPECT_LE(v, 1.0);
+    sum += v;
+  }
+  EXPECT_NEAR(sum, 1.0, 1e-9);
+  EXPECT_NEAR(input[2], 1.0, 1e-9);
+}
+
+TEST_F(ActivationTest, SoftLogitCappingApproximatesLinearForSmallLogits)
+{
+  // For small operational logits (|z| <= 2), soft capping with C=50.0 introduces < 0.1% deviation.
+  activation act_capped(activation::method::softmax, 0.0, 1.0, 1.0, 50.0);
+  activation act_uncapped(activation::method::softmax, 0.0);
+
+  std::vector<double> input_capped = { -1.5, 0.2, 1.8 };
+  std::vector<double> input_uncapped = { -1.5, 0.2, 1.8 };
+
+  act_capped.activate(input_capped.data(), input_capped.data() + input_capped.size());
+  act_uncapped.activate(input_uncapped.data(), input_uncapped.data() + input_uncapped.size());
+
+  ASSERT_EQ(input_capped.size(), input_uncapped.size());
+  for (size_t i = 0; i < input_capped.size(); ++i)
+  {
+    EXPECT_NEAR(input_capped[i], input_uncapped[i], 1e-3);
+  }
+}
+
 TEST_F(ActivationTest, UnknownStringToMethodThrows) {
   EXPECT_THROW((void)activation::string_to_method("not-a-real-activation"), std::runtime_error);
 }
