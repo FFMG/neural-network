@@ -5,53 +5,53 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.60] - 2026-09-13
 
 ### Added
-- Added Soft Logit Capping ($z_i' = C \cdot \tanh(z_i / C)$) for Softmax activation in [`activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h) and [`activation.cpp`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
+- Added Soft Logit Capping ($z_i' = C \cdot \tanh(z_i / C)$) for Softmax activation in [`activation`](./include/neuralnetwork/common/activation.h) and [`activation.cpp`](./include/neuralnetwork/common/activation.cpp):
   - Strictly bounds pre-activation logits within $(-C, C)$, preventing logit range explosion during reinforcement learning and advantage training.
   - When $C \le 50$, the maximum span cannot exceed $2C \le 100$, cleanly eliminating runaway logit warnings ($> 200$) and panics ($> 1000$) through sound mathematical formulation.
-  - Added `logit_cap` parameter and getter/setter (`get_logit_cap()`, `set_logit_cap()`) on [`activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h).
-- Added exact chain-rule gradient scaling in [`FFOutputLayer::run_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - Added `logit_cap` parameter and getter/setter (`get_logit_cap()`, `set_logit_cap()`) on [`activation`](./include/neuralnetwork/common/activation.h).
+- Added exact chain-rule gradient scaling in [`FFOutputLayer::run_output_gradients`](./include/neuralnetwork/layers/ffoutputlayer.cpp):
   - When cross-entropy loss skips explicit derivative computation, output gradients $\delta_k = y_k - t_k$ are scaled by $\left(1 - \tanh^2(z_k / C)\right)$ when `logit_cap > 0.0`, ensuring exact backward pass gradients that vanish as logits approach saturation.
-- Added serialization and deserialization support for `"activation-logit-cap"` across [`NeuralNetworkSerializer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/helpers/neuralnetworkserializer.cpp):
+- Added serialization and deserialization support for `"activation-logit-cap"` across [`NeuralNetworkSerializer`](./include/neuralnetwork/helpers/neuralnetworkserializer.cpp):
   - Serialises and deserialises `logit_cap` for output layers, hidden layers, activation helpers, and multi-output layer configurations with exact backward compatibility (defaults missing keys to `0.0`).
-- Exposed Python bindings for `logit_cap` property and constructors on `Activation` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp).
+- Exposed Python bindings for `logit_cap` property and constructors on `Activation` in [`python/bindings.cpp`](./python/bindings.cpp).
 - Added unit tests:
-  - `SoftLogitCappingGetterSetter`, `SoftLogitCappingStrictlyBoundsExtremeLogits`, and `SoftLogitCappingApproximatesLinearForSmallLogits` in [`tests/activation_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/activation_tests.cpp).
-  - `CalculateOutputGradientsCESoftLogitCapping` in [`tests/ffoutputlayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/ffoutputlayer_tests.cpp).
+  - `SoftLogitCappingGetterSetter`, `SoftLogitCappingStrictlyBoundsExtremeLogits`, and `SoftLogitCappingApproximatesLinearForSmallLogits` in [`tests/activation_tests.cpp`](./tests/activation_tests.cpp).
+  - `CalculateOutputGradientsCESoftLogitCapping` in [`tests/ffoutputlayer_tests.cpp`](./tests/ffoutputlayer_tests.cpp).
 
 ### Fixed
-- Fixed artificial underflow probability floor in softmax by expanding `LOGIT_CLAMP` from `30.0` to `500.0` in [`activation::calculate_softmax`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
+- Fixed artificial underflow probability floor in softmax by expanding `LOGIT_CLAMP` from `30.0` to `500.0` in [`activation::calculate_softmax`](./include/neuralnetwork/common/activation.cpp):
   - The previous clamp at $30.0$ prevented probabilities from falling below $e^{-30} \approx 10^{-14}$, maintaining non-zero gradients indefinitely and causing Adam optimizer updates to drive unregularised weights and biases towards infinity.
 
 ## [1.1.59] - 2026-09-13
 
 ### Fixed
-- Fixed critical mathematical bug where momentum and Adam first-moment `beta1` were dropped (forced to `0.0`) on [`FFOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.h):
-  - In [`Layer::apply_update_to_vector`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.h) and [`Layer::apply_update_to_vector_internal`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.cpp), added support for an explicit `momentum_override` parameter.
-  - In [`FFOutputLayer::apply_stored_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp), passed `detail.get_momentum()` to ensure SGD, Adam, AdamW, Nadam, NadamW, Lion, and RAdam receive the head's configured momentum and first-moment decay factor.
-- Fixed potential crash / undefined behaviour on empty hidden states or zero batch size across all gradient functions in [`FFLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) and [`FFOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
-  - Added defensive validation guarding against `batch_hidden_states.empty()` and missing layer indices before indexing time steps, backed by `size()` and `empty()` helper methods on [`HiddenStates`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/hiddenstates.h).
-- Fixed null pointer vulnerability in bias gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) by verifying `g_base != nullptr` prior to SIMD vector accumulation.
-- Fixed cross-example transaction cost leakage in [`FFOutputLayer::calculate_output_metrics`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp) for Sharpe ratio and Sortino ratio losses:
+- Fixed critical mathematical bug where momentum and Adam first-moment `beta1` were dropped (forced to `0.0`) on [`FFOutputLayer`](./include/neuralnetwork/layers/ffoutputlayer.h):
+  - In [`Layer::apply_update_to_vector`](./include/neuralnetwork/layers/layer.h) and [`Layer::apply_update_to_vector_internal`](./include/neuralnetwork/layers/layer.cpp), added support for an explicit `momentum_override` parameter.
+  - In [`FFOutputLayer::apply_stored_gradients`](./include/neuralnetwork/layers/ffoutputlayer.cpp), passed `detail.get_momentum()` to ensure SGD, Adam, AdamW, Nadam, NadamW, Lion, and RAdam receive the head's configured momentum and first-moment decay factor.
+- Fixed potential crash / undefined behaviour on empty hidden states or zero batch size across all gradient functions in [`FFLayer`](./include/neuralnetwork/layers/fflayer.cpp) and [`FFOutputLayer`](./include/neuralnetwork/layers/ffoutputlayer.cpp):
+  - Added defensive validation guarding against `batch_hidden_states.empty()` and missing layer indices before indexing time steps, backed by `size()` and `empty()` helper methods on [`HiddenStates`](./include/neuralnetwork/common/hiddenstates.h).
+- Fixed null pointer vulnerability in bias gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](./include/neuralnetwork/layers/fflayer.cpp) by verifying `g_base != nullptr` prior to SIMD vector accumulation.
+- Fixed cross-example transaction cost leakage in [`FFOutputLayer::calculate_output_metrics`](./include/neuralnetwork/layers/ffoutputlayer.cpp) for Sharpe ratio and Sortino ratio losses:
   - Sequences are now evaluated per batch item before pooling returns, ensuring initial step positions are compared to zero rather than the previous batch item's final position.
 
 ### Performance
-- Added fast-path contiguous vectorized updates in [`FFOutputLayer::apply_stored_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+- Added fast-path contiguous vectorized updates in [`FFOutputLayer::apply_stored_gradients`](./include/neuralnetwork/layers/ffoutputlayer.cpp):
   - When output heads share identical optimizer types and momentums (the standard configuration), the layer performs a single contiguous vectorized update across all weights and biases rather than looping $N_{\text{inputs}}$ times over small slices.
-- Optimized static-context sequence weight gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) for recurrent sequence training (BPTT):
+- Optimized static-context sequence weight gradient accumulation in [`FFLayer::calculate_and_store_gradients_chunk`](./include/neuralnetwork/layers/fflayer.cpp) for recurrent sequence training (BPTT):
   - For items with static inputs across timesteps (`x_stride == 0`), sequence gradients are pre-accumulated across timesteps once per item, collapsing the $T$-timestep loop into a single SIMD fused multiply-add per input group.
-- Optimized buffer copying in [`FFOutputLayer::run_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp):
+- Optimized buffer copying in [`FFOutputLayer::run_output_gradients`](./include/neuralnetwork/layers/ffoutputlayer.cpp):
   - Replaced vector `assign` reallocations with fixed-capacity pre-sized buffers and direct memory copy (`std::memcpy`).
-- Eliminated redundant full-vector scaling in [`FFLayer::calculate_and_store_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/fflayer.cpp) when `batch_size == 1`.
-- Replaced lambda thread pool task with named functor `FfOutputGradientsTask` in [`FFOutputLayer::calculate_output_gradients`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/ffoutputlayer.cpp) adhering to coding standards.
+- Eliminated redundant full-vector scaling in [`FFLayer::calculate_and_store_gradients`](./include/neuralnetwork/layers/fflayer.cpp) when `batch_size == 1`.
+- Replaced lambda thread pool task with named functor `FfOutputGradientsTask` in [`FFOutputLayer::calculate_output_gradients`](./include/neuralnetwork/layers/ffoutputlayer.cpp) adhering to coding standards.
 
 ### Added
-- Added Python binding default parameter values for [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp) constructor (`error_evaluation_config`, `weight_decay`, `optimiser_type`, and `momentum`).
-- Added comprehensive unit tests in [`tests/ffoutputlayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/ffoutputlayer_tests.cpp):
+- Added Python binding default parameter values for [`OutputLayerDetails`](./python/bindings.cpp) constructor (`error_evaluation_config`, `weight_decay`, `optimiser_type`, and `momentum`).
+- Added comprehensive unit tests in [`tests/ffoutputlayer_tests.cpp`](./tests/ffoutputlayer_tests.cpp):
   - `OutputLayerAppliesMomentumWithSGD`: Verifies momentum is retained and correctly applied on output layers.
   - `OutputLayerApplyStoredGradientsFastPathEquivalence`: Confirms numerical equivalence between fast-path contiguous updates and multi-head slice updates.
   - `OutputLayerMetricsSharpeSortinoNoCrossBatchLeakage`: Confirms Sharpe ratio metrics do not subtract transaction costs across batch item boundaries.
   - `OutputLayerEmptyHiddenStatesDefensive`: Confirms zero batch size and empty hidden states do not crash.
-- Added comprehensive unit tests in [`tests/fflayer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/fflayer_tests.cpp):
+- Added comprehensive unit tests in [`tests/fflayer_tests.cpp`](./tests/fflayer_tests.cpp):
   - `EmptyHiddenStatesDefensive`: Verifies empty hidden states safety across all FFLayer gradient methods.
   - `StaticContextSequenceBPTTWeightGradientEquivalence`: Validates pre-summed sequence gradient math for static inputs under BPTT.
   - `WeightDecayWithAdamW`: Confirms decoupled weight decay on FFLayer with AdamW.
@@ -59,22 +59,22 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [1.1.58] - 2026-09-12
 
 ### Added
-- Added warning logs and documentation clarifying that [`OptimiserType::Adam`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/optimiser.h) deliberately does not apply weight decay:
-  - [`LayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layerdetails.h) and [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/outputlayerdetails.h) constructors now log a [`Logger::warning`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/logger.h) if configured with `OptimiserType::Adam` and `weight_decay > 0`, informing the user that standard Adam ignores weight decay and recommending [`OptimiserType::AdamW`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/optimiser.h) for decoupled weight decay.
-  - Added unit test `ApplyUpdateToWeightAdamIgnoresDecay` in [`tests/layer_optimizer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_optimizer_tests.cpp) confirming scalar updates ignore weight decay for `OptimiserType::Adam` alongside vectorised `ApplyUpdateToVectorAdamIgnoresDecay`.
-  - Added unit tests `AdamWeightDecayWarning`, `AdamZeroWeightDecayNoWarning`, and `AdamWWeightDecayNoWarning` in [`tests/layer_details_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_details_tests.cpp) and [`tests/output_layer_details_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/output_layer_details_tests.cpp).
-  - Updated examples [`examples/addingproblem.h`](file:///H:/projects/github/trading/neuralnetwork/examples/addingproblem.h) and [`examples/lstm_multi.h`](file:///H:/projects/github/trading/neuralnetwork/examples/lstm_multi.h) to use `OptimiserType::AdamW` where weight decay is configured.
-  - Updated [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md) to highlight that standard Adam does not apply weight decay and warns when `weight_decay > 0`.
+- Added warning logs and documentation clarifying that [`OptimiserType::Adam`](./include/neuralnetwork/common/optimiser.h) deliberately does not apply weight decay:
+  - [`LayerDetails`](./include/neuralnetwork/layers/layerdetails.h) and [`OutputLayerDetails`](./include/neuralnetwork/layers/outputlayerdetails.h) constructors now log a [`Logger::warning`](./include/neuralnetwork/common/logger.h) if configured with `OptimiserType::Adam` and `weight_decay > 0`, informing the user that standard Adam ignores weight decay and recommending [`OptimiserType::AdamW`](./include/neuralnetwork/common/optimiser.h) for decoupled weight decay.
+  - Added unit test `ApplyUpdateToWeightAdamIgnoresDecay` in [`tests/layer_optimizer_tests.cpp`](./tests/layer_optimizer_tests.cpp) confirming scalar updates ignore weight decay for `OptimiserType::Adam` alongside vectorised `ApplyUpdateToVectorAdamIgnoresDecay`.
+  - Added unit tests `AdamWeightDecayWarning`, `AdamZeroWeightDecayNoWarning`, and `AdamWWeightDecayNoWarning` in [`tests/layer_details_tests.cpp`](./tests/layer_details_tests.cpp) and [`tests/output_layer_details_tests.cpp`](./tests/output_layer_details_tests.cpp).
+  - Updated examples [`examples/addingproblem.h`](./examples/addingproblem.h) and [`examples/lstm_multi.h`](./examples/lstm_multi.h) to use `OptimiserType::AdamW` where weight decay is configured.
+  - Updated [`README.md`](./README.md) and [`python/README.md`](./python/README.md) to highlight that standard Adam does not apply weight decay and warns when `weight_decay > 0`.
 
 ## [1.1.57] - 2026-09-10
 
 ### Added
 - Added dual-temperature activation controls and runtime temperature setters:
-  - Added [`activation::set_temperature`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h) and [`activation::set_inference_temperature`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.h).
-  - Added `set_temperature` to [`Layer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layer.h), [`Layers`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.h), [`MultiOutputLayer`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/multioutputlayer.h), [`OutputLayerDetails`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/outputlayerdetails.h), and [`NeuralNetworkOptions`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetworkoptions.h).
-  - Added `get_inference_temperature()`, `set_temperature()`, and `set_inference_temperature()` to [`NeuralNetwork`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.h) supporting both single-head and indexed multi-output heads.
-  - Exposed Python bindings for `get_inference_temperature`, `set_temperature`, `set_inference_temperature` on `NeuralNetwork`, and `temperature` / `inference_temperature` properties on `Activation` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp).
-- Added comprehensive temperature and optimiser unit tests in [`tests/temperature_and_optimiser_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/temperature_and_optimiser_tests.cpp):
+  - Added [`activation::set_temperature`](./include/neuralnetwork/common/activation.h) and [`activation::set_inference_temperature`](./include/neuralnetwork/common/activation.h).
+  - Added `set_temperature` to [`Layer`](./include/neuralnetwork/layers/layer.h), [`Layers`](./include/neuralnetwork/layers/layers.h), [`MultiOutputLayer`](./include/neuralnetwork/layers/multioutputlayer.h), [`OutputLayerDetails`](./include/neuralnetwork/layers/outputlayerdetails.h), and [`NeuralNetworkOptions`](./include/neuralnetwork/neuralnetworkoptions.h).
+  - Added `get_inference_temperature()`, `set_temperature()`, and `set_inference_temperature()` to [`NeuralNetwork`](./include/neuralnetwork/neuralnetwork.h) supporting both single-head and indexed multi-output heads.
+  - Exposed Python bindings for `get_inference_temperature`, `set_temperature`, `set_inference_temperature` on `NeuralNetwork`, and `temperature` / `inference_temperature` properties on `Activation` in [`python/bindings.cpp`](./python/bindings.cpp).
+- Added comprehensive temperature and optimiser unit tests in [`tests/temperature_and_optimiser_tests.cpp`](./tests/temperature_and_optimiser_tests.cpp):
   - `ActivationTemperatureClampingAndValidation`: Verifies negative, zero, sub-epsilon (< 1e-6), and non-finite (`NaN`/`Inf`) temperatures are clamped to 1e-6 in constructors and runtime setters.
   - `SoftmaxInferenceTemperatureControlsSharpness`: Mathematically verifies entropy modulation across low ($T = 0.2$), standard ($T = 1.0$), and high ($T = 5.0$) temperatures.
   - `SoftmaxDualTemperatureTrainingVsInference`: Validates decoupling high training exploration ($T_{\text{train}} = 2.0$) from sharp inference exploitation ($T_{\text{infer}} = 0.2$).
@@ -83,7 +83,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `RLAdvantageTrainingWithExplorationVsExploitationTemperature`: Verifies policy gradient advantage updates with dual temperatures.
   - `ExtremeInferenceTemperatureStability`: Verifies numerical stability under extreme temperatures ($10^{-6}$ argmax and $100.0$ uniform).
   - `JsonSerializationRoundTripAllOptimisersAndTemperatures`: Verifies round-trip serialization and inference consistency across all seven optimisers (`AdamW`, `Adam`, `SGD`, `Nadam`, `NadamW`, `Lion`, `RAdam`) and dual temperatures.
-- Added comprehensive unit tests for `Logger` in [`tests/logger_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/logger_tests.cpp):
+- Added comprehensive unit tests for `Logger` in [`tests/logger_tests.cpp`](./tests/logger_tests.cpp):
   - `MinimumLevelFiltersLowerSeverityMessages`: Verifies log level filtering per severity threshold.
   - `PanicAlwaysThrowsEvenWhenLoggingIsFullyDisabled`: Confirms `Logger::panic` always throws `std::runtime_error` regardless of whether logging is set to `None`.
   - `WarningErrorAndPanicFlushImmediately`: Verifies immediate buffer flush (`std::cout.flush()`) on Warning, Error, and Panic.
@@ -101,13 +101,13 @@ All notable changes to the `neural-network` library will be documented in this f
   - Guarded single output layer constraint: Enforces single output head (throws explanatory error if multi-output head is used).
   - Optimiser persistence: Preserves layer optimiser velocity/momentum states across consecutive calls for online and episodic learning.
 - Added Python bindings for Reinforcement Learning:
-  - Bound `NeuralNetwork::train_with_advantages` in [`python/bindings.cpp`](file:///H:/projects/github/trading/neuralnetwork/python/bindings.cpp) with GIL release guard (`py::call_guard<py::gil_scoped_release>()`).
-- Added Tic-Tac-Toe Reinforcement Learning example in [`python/examples/tic_tac_toe.py`](file:///H:/projects/github/trading/neuralnetwork/python/examples/tic_tac_toe.py):
+  - Bound `NeuralNetwork::train_with_advantages` in [`python/bindings.cpp`](./python/bindings.cpp) with GIL release guard (`py::call_guard<py::gil_scoped_release>()`).
+- Added Tic-Tac-Toe Reinforcement Learning example in [`python/examples/tic_tac_toe.py`](./python/examples/tic_tac_toe.py):
   - Self-training agent learning Tic-Tac-Toe using policy gradients with scalar rewards (+1.0 for win, +0.2 for draw, -1.0 for loss).
   - Masked action sampling over valid board cells.
   - Post-training evaluation of 100 matches against a Random opponent with win/draw/loss statistics.
   - Step-by-step visual demonstration match rendering the 3x3 board at each turn.
-- Added unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/neuralnetwork_advantage_training_tests.cpp):
+- Added unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp):
   - `PositiveAdvantageIncreasesTakenActionProbability`: Verifies positive advantage increases the chosen action's probability.
   - `NegativeAdvantageDecreasesTakenActionProbability`: Verifies negative advantage decreases the chosen action's probability.
   - `ZeroAdvantageLeavesOutputWeightsUnchanged`: Verifies zero advantage produces no change to output weights.
@@ -137,34 +137,34 @@ All notable changes to the `neural-network` library will be documented in this f
   - `AdamWDecoupledWeightDecayWithAdvantageTraining`: Verifies that under zero advantage ($A_t = 0$), AdamW applies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda)$) strictly to weights while biases remain unaffected.
   - `TanhOutputTargetOutOfRangeThrows`: Verifies validation rejection when action targets exceed the reachable range of Tanh output layers ($[-1.0, 1.0]$).
   - `FFTanhWithNegativeAdvantageDecreasesProbability`: Verifies negative advantage updates penalise chosen actions under Tanh hidden layers and AdamW optimiser.
-- Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](file:///H:/projects/github/trading/neuralnetwork/.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
-- Added Reinforcement Learning section to [`README.md`](file:///H:/projects/github/trading/neuralnetwork/README.md) and [`python/README.md`](file:///H:/projects/github/trading/neuralnetwork/python/README.md).
+- Added GitHub Actions workflow in [`.github/workflows/tic_tac_toe.yml`](./.github/workflows/tic_tac_toe.yml) to automatically compile the Python bindings and execute the Tic-Tac-Toe Reinforcement Learning example in CI.
+- Added Reinforcement Learning section to [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
 
 ### Optimised
 - Removed a couple of throw std::* and replaced by Logger::panic 
-- Enhanced thread safety and durability in [`Logger`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/logger.h):
+- Enhanced thread safety and durability in [`Logger`](./include/neuralnetwork/common/logger.h):
   - Made `_min_level` atomic (`std::atomic<LogLevel>`) with relaxed memory ordering to prevent data races during concurrent logging and runtime level changes across threads.
   - Added compile-time `static_assert` guarantees verifying exact tag string lengths match `TagLen` across all build configurations.
   - Serialised console writes with a static mutex (`output_mutex()`) to eliminate torn or interleaved characters during parallel multi-threaded execution.
   - Added immediate `std::cout.flush()` for Warning, Error, and Panic messages to ensure critical diagnostics are not lost during abnormal termination or unhandled exceptions.
-- Optimised softmax normalization in [`activation::calculate_softmax`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp):
-  - Replaced scalar probability division loop with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h) multiplying by reciprocal sum ($1 / \sum e^z$).
-- Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.cpp):
+- Optimised softmax normalization in [`activation::calculate_softmax`](./include/neuralnetwork/common/activation.cpp):
+  - Replaced scalar probability division loop with AVX2 vectorised [`simd::mul_scalar`](./include/neuralnetwork/common/simd_utils.h) multiplying by reciprocal sum ($1 / \sum e^z$).
+- Optimised advantage gradient scaling in [`Layers::calculate_back_propagation_output_layer_with_advantages`](./include/neuralnetwork/layers/layers.cpp):
   - Hoisted output neuron count, recurrent layer detection (`has_rnn`), and RNN gradient size queries outside the per-sample batch loop.
-  - Replaced scalar advantage multiplication loops with AVX2 vectorised [`simd::mul_scalar`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/simd_utils.h).
+  - Replaced scalar advantage multiplication loops with AVX2 vectorised [`simd::mul_scalar`](./include/neuralnetwork/common/simd_utils.h).
   - Added identity bypass (`advantage == 1.0`) to avoid redundant scaling arithmetic and memory writes.
   - Added zero-advantage fast path (`advantage == 0.0`) using `std::memset` to rapidly zero out gradients.
-- Optimised trajectory training concurrency in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
+- Optimised trajectory training concurrency in [`NeuralNetwork::train_with_advantages`](./include/neuralnetwork/neuralnetwork.cpp):
   - Replaced per-sub-batch mutex acquisition with a single exclusive lock over the entire trajectory batch loop, eliminating lock contention and ensuring atomic rollout updates across threads.
-  - Standardised iterator parameter passing by value in [`Layers::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/layers/layers.h) to eliminate unnecessary references and allow direct rvalue passing.
+  - Standardised iterator parameter passing by value in [`Layers::train_with_advantages`](./include/neuralnetwork/layers/layers.h) to eliminate unnecessary references and allow direct rvalue passing.
 
 ### Fixed
 - Fixed activation temperature validation and clamping:
-  - Guarded against $\le 0.0$, sub-epsilon, and non-finite (`NaN`/`Inf`) values in [`activation::activation`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/common/activation.cpp) and runtime setters, clamping both training and inference temperatures to $10^{-6}$ to prevent division by zero and `NaN` propagation.
+  - Guarded against $\le 0.0$, sub-epsilon, and non-finite (`NaN`/`Inf`) values in [`activation::activation`](./include/neuralnetwork/common/activation.cpp) and runtime setters, clamping both training and inference temperatures to $10^{-6}$ to prevent division by zero and `NaN` propagation.
 - Fixed untrained model serialization panic:
-  - Corrected `_learning_rate` initialisation in [`NeuralNetwork::NeuralNetwork`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp) from `0.0` to `options.learning_rate()`, ensuring untrained networks serialize valid learning rates and prevent deserialization corruption panics.
-  - Updated `_learning_rate` in [`NeuralNetwork::train`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp) to track the final learning rate at the end of training.
-- Added robust upfront input, target, and mathematical validation in [`NeuralNetwork::train_with_advantages`](file:///H:/projects/github/trading/neuralnetwork/include/neuralnetwork/neuralnetwork.cpp):
+  - Corrected `_learning_rate` initialisation in [`NeuralNetwork::NeuralNetwork`](./include/neuralnetwork/neuralnetwork.cpp) from `0.0` to `options.learning_rate()`, ensuring untrained networks serialize valid learning rates and prevent deserialization corruption panics.
+  - Updated `_learning_rate` in [`NeuralNetwork::train`](./include/neuralnetwork/neuralnetwork.cpp) to track the final learning rate at the end of training.
+- Added robust upfront input, target, and mathematical validation in [`NeuralNetwork::train_with_advantages`](./include/neuralnetwork/neuralnetwork.cpp):
   - Pre-emptive multi-output check before batch allocation or forward computation.
   - Rigorous per-sample dimension checks ensuring training inputs match input topology (or valid BPTT multiples).
   - Rigorous per-sample dimension checks ensuring action targets match output topology (or valid BPTT multiples).
@@ -179,7 +179,7 @@ All notable changes to the `neural-network` library will be documented in this f
 
 ### Added
 - Added comprehensive unit test coverage and mathematical verification for weight decay across all optimisers and layer architectures:
-  - Vectorised optimiser weight decay tests in [`tests/layer_optimizer_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/layer_optimizer_tests.cpp):
+  - Vectorised optimiser weight decay tests in [`tests/layer_optimizer_tests.cpp`](./tests/layer_optimizer_tests.cpp):
     - `ApplyUpdateToVectorSGDWithDecay`: Verifies SGD L2 regularisation ($g_{\text{eff}} = g + \lambda w$, $v = \mu v + g_{\text{eff}}$, $w = w - \eta v$) with zero and non-zero momentum across both AVX2 SIMD loops and scalar tails.
     - `ApplyUpdateToVectorAdamWWithDecay`: Verifies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda) - \eta \cdot \text{step}$) in AdamW.
     - `ApplyUpdateToVectorAdamIgnoresDecay`: Confirms standard Adam ignores weight decay, applying updates purely based on gradients.
@@ -188,7 +188,7 @@ All notable changes to the `neural-network` library will be documented in this f
     - `ApplyUpdateToVectorLionWithDecay`: Verifies decoupled weight decay ($w \leftarrow w(1 - \eta \lambda) - \eta \operatorname{sign}(c)$) in Lion.
     - `ApplyUpdateToVectorRAdamWithDecay`: Verifies decoupled weight decay in RAdam.
     - `ApplyUpdateToVectorBiasExclusionAllOptimizers`: Verifies that biases (`is_bias = true`) are strictly excluded from weight decay across all optimisers (SGD, Adam, AdamW, Nadam, NadamW, Lion, RAdam).
-  - Dedicated layer-level weight decay test suite in [`tests/weight_decay_tests.cpp`](file:///H:/projects/github/trading/neuralnetwork/tests/weight_decay_tests.cpp):
+  - Dedicated layer-level weight decay test suite in [`tests/weight_decay_tests.cpp`](./tests/weight_decay_tests.cpp):
     - `FFLayer`: Initialisation of `_w_decays` and `_b_decays`, exact mathematical decay under AdamW and SGD ($\mu = 0$), and bias stability.
     - `FFOutputLayer`: Independent per-head weight decays (multiple heads with different $\lambda$ values decaying at their specific rates) and bias stability.
     - `ElmanRNNLayer`: Concurrent decoupled decay of input weights `_w` and recurrent weights `_rw` with bias stability.
