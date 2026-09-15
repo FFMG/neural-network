@@ -69,6 +69,8 @@ public:
   std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_all_layers(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true, std::optional<bool> force_checking_indexes = std::nullopt) const;
 
   double get_learning_rate() const noexcept;
+  void set_learning_rate(double learning_rate) noexcept;
+  [[nodiscard]] bool has_learning_rate_override() const noexcept;
   double get_temperature() const noexcept;
   double get_temperature(unsigned output_layer_index) const noexcept;
   double get_inference_temperature() const noexcept;
@@ -150,6 +152,7 @@ private:
   mutable std::shared_mutex _mutex;
 
   double _learning_rate;
+  bool _has_learning_rate_override = false;
   Layers _layers;
   NeuralNetworkOptions _options;
   std::vector<std::shared_ptr<NeuralNetworkHelper>> _neural_network_helpers;

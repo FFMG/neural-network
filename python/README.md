@@ -142,7 +142,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `get_topology()`: Returns the list of layer sizes.
     *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`, `calculate_forecast_metrics_all_layers(error_types, in_sample=True, force_checking_indexes=None)`: Computes model forecast error metrics. When `force_checking_indexes` is omitted (`None`), it defaults to `options.force_checking_indexes()`.
-    *   `get_learning_rate()`, `get_temperature()`, `get_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
+    *   `get_learning_rate()`, `set_learning_rate(learning_rate)`, `has_learning_rate_override()`, `learning_rate` property (getter/setter), `get_temperature()`, `get_inference_temperature()`, `set_temperature()`, `set_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
     *   `load(filepath)`: Static method to load a network instance from a JSON file.
@@ -283,6 +283,18 @@ Run command:
 python python/examples/tic_tac_toe.py
 ```
 
+#### Reinforcement Learning Gridworld (`examples/gridworld.py`)
+
+Demonstrates discrete action policy navigation in a 4x4 obstacle grid using Reinforcement Learning with `train_with_advantages`:
+- Agent navigates from Start $(0, 0)$ around obstacles towards Goal $(3, 3)$.
+- Uses action masking and discounted advantage scaling to converge to the optimal 6-step path.
+- Includes formatted ASCII grid path visualisation, step-by-step logs, and full learned policy map rendering.
+
+Run command:
+```bash
+python python/examples/gridworld.py
+```
+
 ---
 
 ## Assumptions & Prerequisites
@@ -350,6 +362,7 @@ python python/examples/xor.py
 python python/examples/multi_output.py
 python python/examples/example.py
 python python/examples/tic_tac_toe.py
+python python/examples/gridworld.py
 ```
 
 ---
@@ -366,4 +379,6 @@ python python/examples/tic_tac_toe.py
     *   `examples/multi_output.py`: Multi-output example with classification (Sigmoid) and regression (Tanh) heads.
     *   `examples/example.py`: General Python script illustrating options configuration, progress callbacks, training, inference, and serialization.
     *   `examples/tic_tac_toe.py`: Reinforcement Learning Tic-Tac-Toe example using policy gradient (`train_with_advantages`).
+    *   `examples/gridworld.py`: Reinforcement Learning Gridworld navigation example with ASCII path visualisation and policy maps (`train_with_advantages`).
+
 

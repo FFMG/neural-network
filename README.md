@@ -244,6 +244,30 @@ The library supports various strategies to manage learning rate dynamics:
       .build();
 ```
 
+### Dynamic / External Learning Rate Control
+
+Callers driving external training schedules (such as reinforcement learning episode loops, decay schedules, or online policy-gradient updates via `train_with_advantages()`) can forcefully set the learning rate at runtime via `NeuralNetwork::set_learning_rate(double)`:
+
+*   **Runtime Override:** Calling `nn.set_learning_rate(lr)` forcefully overrides the learning rate used by subsequent `train()` and `train_with_advantages()` calls, bypassing the internal epoch/warmup/cosine-annealing/decay scheduler entirely.
+*   **State Querying:** Query `nn.get_learning_rate()` to retrieve the current active learning rate, and `nn.has_learning_rate_override()` to check whether an external override is active.
+*   **Restoring Default Schedule:** Calling `nn.set_learning_rate(0.0)` clears the active override and restores the original options-based scheduler.
+*   **Validation:** Negative, non-finite (`NaN`/`Inf`) values are rejected with a warning log, leaving the current rate unchanged.
+
+```cpp
+    NeuralNetwork nn(options);
+
+    // Dynamic RL episode-based decay loop
+    for (int episode = 0; episode < 1000; ++episode)
+    {
+      const double episode_lr = 0.01 * std::pow(0.995, episode);
+      nn.set_learning_rate(episode_lr);
+      nn.train_with_advantages(inputs, targets, advantages);
+    }
+
+    // Clear override and restore options-configured scheduler
+    nn.set_learning_rate(0.0);
+```
+
 ### Dropout
 
 Individual layers can have dropout applied via `LayerDetails`. During training, neurons are randomly deactivated according to the dropout rate, and the remaining activations are scaled by `1 / (1 - rate)` to maintain the expected sum. Dropout is automatically disabled during inference (`think`).
@@ -599,7 +623,7 @@ advantages = [1.0]                  # Positive reward / advantage
 net.train_with_advantages(states, actions, advantages)
 ```
 
-See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent.
+See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent, and [python/examples/gridworld.py](python/examples/gridworld.py) for an obstacle-avoiding navigation agent with visual ASCII path and policy map displays.
 
 ## Performance Optimization (SIMD)
 
