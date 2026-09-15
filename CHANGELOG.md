@@ -2,6 +2,17 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.62] - 2026-09-15
+
+### Added
+- Added clean, fully working Gridworld reinforcement learning example in [`python/examples/gridworld.py`](./python/examples/gridworld.py):
+  - Demonstrates discrete policy gradient training with `NeuralNetwork::train_with_advantages` in a 4x4 obstacle grid.
+  - Implements action masking for boundary and obstacle avoidance, with discounted advantage scaling rewarding path efficiency.
+  - Features formatted ASCII grid path visualisation, step-by-step navigation transition logs, and full learned policy map rendering across all accessible grid cells.
+  - Added support for `GRIDWORLD_EPISODES` environment variable override for custom training or CI execution.
+- Added GitHub Actions CI workflow in [`.github/workflows/gridworld.yml`](./.github/workflows/gridworld.yml) to build the Python binding and run the GridWorld RL example automatically.
+- Updated documentation across [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
+
 ## [1.1.61] - 2026-09-14
 
 ### Added

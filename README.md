@@ -623,7 +623,7 @@ advantages = [1.0]                  # Positive reward / advantage
 net.train_with_advantages(states, actions, advantages)
 ```
 
-See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent.
+See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent, and [python/examples/gridworld.py](python/examples/gridworld.py) for an obstacle-avoiding navigation agent with visual ASCII path and policy map displays.
 
 ## Performance Optimization (SIMD)
 

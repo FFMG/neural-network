@@ -283,6 +283,18 @@ Run command:
 python python/examples/tic_tac_toe.py
 ```
 
+#### Reinforcement Learning Gridworld (`examples/gridworld.py`)
+
+Demonstrates discrete action policy navigation in a 4x4 obstacle grid using Reinforcement Learning with `train_with_advantages`:
+- Agent navigates from Start $(0, 0)$ around obstacles towards Goal $(3, 3)$.
+- Uses action masking and discounted advantage scaling to converge to the optimal 6-step path.
+- Includes formatted ASCII grid path visualisation, step-by-step logs, and full learned policy map rendering.
+
+Run command:
+```bash
+python python/examples/gridworld.py
+```
+
 ---
 
 ## Assumptions & Prerequisites
@@ -350,6 +362,7 @@ python python/examples/xor.py
 python python/examples/multi_output.py
 python python/examples/example.py
 python python/examples/tic_tac_toe.py
+python python/examples/gridworld.py
 ```
 
 ---
@@ -366,4 +379,6 @@ python python/examples/tic_tac_toe.py
     *   `examples/multi_output.py`: Multi-output example with classification (Sigmoid) and regression (Tanh) heads.
     *   `examples/example.py`: General Python script illustrating options configuration, progress callbacks, training, inference, and serialization.
     *   `examples/tic_tac_toe.py`: Reinforcement Learning Tic-Tac-Toe example using policy gradient (`train_with_advantages`).
+    *   `examples/gridworld.py`: Reinforcement Learning Gridworld navigation example with ASCII path visualisation and policy maps (`train_with_advantages`).
+
 
