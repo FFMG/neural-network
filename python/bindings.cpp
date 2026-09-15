@@ -382,6 +382,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("calculate_forecast_metrics_all_layers", &NeuralNetwork::calculate_forecast_metrics_all_layers,
              py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt)
         .def("get_learning_rate", &NeuralNetwork::get_learning_rate)
+        .def("set_learning_rate", &NeuralNetwork::set_learning_rate, py::arg("learning_rate"))
+        .def("has_learning_rate_override", &NeuralNetwork::has_learning_rate_override)
+        .def_property("learning_rate", &NeuralNetwork::get_learning_rate, &NeuralNetwork::set_learning_rate)
         .def("get_temperature", py::overload_cast<>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_temperature", py::overload_cast<unsigned>(&NeuralNetwork::get_temperature, py::const_))
         .def("get_inference_temperature", py::overload_cast<>(&NeuralNetwork::get_inference_temperature, py::const_))

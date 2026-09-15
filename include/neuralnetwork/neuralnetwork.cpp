@@ -19,6 +19,7 @@ namespace myoddweb::nn
 {
 NeuralNetwork::NeuralNetwork(const NeuralNetworkOptions& options) :
   _learning_rate(options.learning_rate()),
+  _has_learning_rate_override(false),
   _layers(options),
   _options(options),
   _shuffle_engine(make_shuffle_engine(options))
@@ -49,6 +50,7 @@ NeuralNetwork::NeuralNetwork(
   const std::vector<std::map<ErrorCalculation::type, double>>& errors
 ) :
   _learning_rate(options.learning_rate()),
+  _has_learning_rate_override(false),
   _layers(layers),
   _options(options),
   _saved_errors(errors),
@@ -59,6 +61,7 @@ NeuralNetwork::NeuralNetwork(
 
 NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _learning_rate(src._learning_rate),
+  _has_learning_rate_override(src._has_learning_rate_override),
   _layers(src._layers),
   _options(src._options),
   _saved_errors(src._saved_errors),
@@ -81,6 +84,7 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
 
 NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
   _learning_rate(src._learning_rate),
+  _has_learning_rate_override(src._has_learning_rate_override),
   _layers(std::move(src._layers)),
   _options(std::move(src._options)),
   _neural_network_helpers(std::move(src._neural_network_helpers)),
@@ -98,6 +102,7 @@ NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
   }
   src._neural_network_helpers.clear();
   src._learning_rate = 0.0;
+  src._has_learning_rate_override = false;
 }
 
 NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
@@ -111,6 +116,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     std::lock(lhs_lock, rhs_lock);
 
     _learning_rate = src._learning_rate;
+    _has_learning_rate_override = src._has_learning_rate_override;
     _layers = src._layers;
     _options = src._options;
     _saved_errors = src._saved_errors;
@@ -141,6 +147,7 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
     std::lock(lhs_lock, rhs_lock);
 
     _learning_rate = src._learning_rate;
+    _has_learning_rate_override = src._has_learning_rate_override;
     _layers = std::move(src._layers);
     _options = std::move(src._options);
     _saved_errors = std::move(src._saved_errors);
@@ -157,6 +164,7 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
     }
     src._neural_network_helpers.clear();
     src._learning_rate = 0.0;
+    src._has_learning_rate_override = false;
   }
   return *this;
 }
@@ -368,11 +376,40 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
 double NeuralNetwork::get_learning_rate() const noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
   if (_learning_rate > 0.0)
   {
     return _learning_rate;
   }
   return _options.learning_rate();
+}
+
+void NeuralNetwork::set_learning_rate(double learning_rate) noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::unique_lock<std::shared_mutex> lock(_mutex);
+  if (!std::isfinite(learning_rate) || learning_rate < 0.0)
+  {
+    Logger::warning("Invalid learning rate passed to set_learning_rate: ", learning_rate, ". Learning rate must be finite and >= 0.0.");
+    return;
+  }
+  if (learning_rate == 0.0)
+  {
+    _has_learning_rate_override = false;
+    _learning_rate = _options.learning_rate();
+  }
+  else
+  {
+    _has_learning_rate_override = true;
+    _learning_rate = learning_rate;
+  }
+}
+
+bool NeuralNetwork::has_learning_rate_override() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  return _has_learning_rate_override;
 }
 
 double NeuralNetwork::get_temperature() const noexcept
@@ -721,7 +758,10 @@ void NeuralNetwork::train_with_advantages(
     }
   }
 
-  _learning_rate = _options.learning_rate();
+  if (!_has_learning_rate_override)
+  {
+    _learning_rate = _options.learning_rate();
+  }
 
   const auto total_samples = training_inputs.size();
   const auto batch_size_size_t = static_cast<size_t>(batch_size);
@@ -880,11 +920,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   DenormalDisabler disabler;
 
   const auto& number_of_epoch = _options.number_of_epoch();
-  _learning_rate = _options.learning_rate();
-  if (_options.learning_rate_warmup_target() > 0.0)
+  if (!_has_learning_rate_override)
   {
-    _learning_rate = _options.learning_rate_warmup_start();
-    Logger::info("Using learning rate warmup, starting at ", std::setprecision(15),  _learning_rate, " and ending at ", _options.learning_rate(), " (at ", std::setprecision(4), (_options.learning_rate_warmup_target()*100.0), "%)", ".");
+    _learning_rate = _options.learning_rate();
+    if (_options.learning_rate_warmup_target() > 0.0)
+    {
+      _learning_rate = _options.learning_rate_warmup_start();
+      Logger::info("Using learning rate warmup, starting at ", std::setprecision(15),  _learning_rate, " and ending at ", _options.learning_rate(), " (at ", std::setprecision(4), (_options.learning_rate_warmup_target()*100.0), "%)", ".");
+    }
   }
   const auto& progress_callback = _options.progress_callback();
   const auto& batch_size = _options.batch_size();
@@ -1025,12 +1068,20 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
   for (auto epoch = 0; epoch < number_of_epoch; ++epoch)
   {
     // Learning rate
-    auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, epoch, number_of_epoch, learning_rate_scheduler);
+    if (!_has_learning_rate_override)
+    {
+      auto learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, epoch, number_of_epoch, learning_rate_scheduler);
 
-    base_helper->set_learning_rate(learning_rate);
-    base_helper->set_epoch(epoch);
+      base_helper->set_learning_rate(learning_rate);
+      base_helper->set_epoch(epoch);
 
-    _learning_rate = base_helper->learning_rate();
+      _learning_rate = base_helper->learning_rate();
+    }
+    else
+    {
+      base_helper->set_learning_rate(_learning_rate);
+      base_helper->set_epoch(epoch);
+    }
 
     // Only recreate/shuffle BPTT batches if shuffle is enabled
     if (_options.shuffle_bptt_batches())
@@ -1171,7 +1222,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     }
   }
   Logger::info("Final Learning rate: ", std::fixed, std::setprecision(15), final_lr_value);
-  if (final_lr_value > 0.0)
+  if (!_has_learning_rate_override && final_lr_value > 0.0)
   {
     _learning_rate = final_lr_value;
   }
@@ -1189,7 +1240,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& training_input
     delete callback_task;
 
     // calculate the final learning rate for the final callback.
-    auto final_learning_rate = calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, number_of_epoch, number_of_epoch, learning_rate_scheduler);
+    auto final_learning_rate = _has_learning_rate_override
+      ? _learning_rate
+      : calculate_learning_rate(learning_rate_base, learning_rate_decay_rate, boost_interval, per_boost_ratio, number_of_epoch, number_of_epoch, learning_rate_scheduler);
 
     // create the final helper representing 100% done
     final_helper = std::make_shared<NeuralNetworkHelper>(*base_helper);

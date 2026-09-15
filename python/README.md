@@ -142,7 +142,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `get_topology()`: Returns the list of layer sizes.
     *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`, `calculate_forecast_metrics_all_layers(error_types, in_sample=True, force_checking_indexes=None)`: Computes model forecast error metrics. When `force_checking_indexes` is omitted (`None`), it defaults to `options.force_checking_indexes()`.
-    *   `get_learning_rate()`, `get_temperature()`, `get_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
+    *   `get_learning_rate()`, `set_learning_rate(learning_rate)`, `has_learning_rate_override()`, `learning_rate` property (getter/setter), `get_temperature()`, `get_inference_temperature()`, `set_temperature()`, `set_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
     *   `load(filepath)`: Static method to load a network instance from a JSON file.
