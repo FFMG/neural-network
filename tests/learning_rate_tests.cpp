@@ -699,4 +699,223 @@ TEST_F(LearningRateTest, ThreadSafetyHelperLifecycle)
   ASSERT_TRUE(callback_run.load());
 }
 
+TEST_F(LearningRateTest, SetLearningRateGetterSetterAndOverride)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.05)
+    .build();
+
+  NeuralNetwork nn(options);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.05);
+  EXPECT_FALSE(nn.has_learning_rate_override());
+
+  // Set explicit learning rate override
+  nn.set_learning_rate(0.02);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.02);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+
+  // Reset override with 0.0
+  nn.set_learning_rate(0.0);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.05);
+  EXPECT_FALSE(nn.has_learning_rate_override());
+
+  // Re-apply override
+  nn.set_learning_rate(0.03);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.03);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+
+  // Invalid values (negative, NaN, Inf) should be rejected and keep current state
+  nn.set_learning_rate(-0.01);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.03);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+
+  nn.set_learning_rate(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.03);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+
+  nn.set_learning_rate(std::numeric_limits<double>::infinity());
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.03);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+}
+
+TEST_F(LearningRateTest, SetLearningRateOverridesTrainWithAdvantages)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.0);
+
+  const uint32_t fixed_seed = 12345;
+  auto options_default = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(fixed_seed)
+    .build();
+
+  auto options_override = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(fixed_seed)
+    .build();
+
+  NeuralNetwork nn_large_lr(options_default);
+  NeuralNetwork nn_small_lr(options_override);
+
+  // Forcefully override learning rate on second network to 0.01 (1/10th)
+  nn_small_lr.set_learning_rate(0.01);
+  EXPECT_DOUBLE_EQ(nn_small_lr.get_learning_rate(), 0.01);
+  EXPECT_TRUE(nn_small_lr.has_learning_rate_override());
+
+  const std::vector<std::vector<double>> inputs = { { 0.5, -0.2, 0.8 } };
+  const std::vector<std::vector<double>> targets = { { 1.0, 0.0 } };
+  const std::vector<double> advantages = { 2.0 };
+
+  const auto initial_out_large = nn_large_lr.think(inputs.front());
+  const auto initial_out_small = nn_small_lr.think(inputs.front());
+  EXPECT_NEAR(initial_out_large[0], initial_out_small[0], 1e-12);
+  EXPECT_NEAR(initial_out_large[1], initial_out_small[1], 1e-12);
+
+  nn_large_lr.train_with_advantages(inputs, targets, advantages);
+  nn_small_lr.train_with_advantages(inputs, targets, advantages);
+
+  const auto trained_out_large = nn_large_lr.think(inputs.front());
+  const auto trained_out_small = nn_small_lr.think(inputs.front());
+
+  const double delta_large = std::abs(trained_out_large[0] - initial_out_large[0]);
+  const double delta_small = std::abs(trained_out_small[0] - initial_out_small[0]);
+
+  // Network trained with lr=0.1 must update more than network trained with forced lr=0.01
+  EXPECT_GT(delta_large, 0.0);
+  EXPECT_GT(delta_small, 0.0);
+  EXPECT_GT(delta_large, delta_small * 5.0);
+}
+
+namespace
+{
+struct RateRecorder
+{
+  std::vector<double> recorded_rates;
+  std::mutex mutex;
+
+  bool record(NeuralNetworkHelper& helper)
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    recorded_rates.push_back(helper.learning_rate());
+    return true;
+  }
+
+  bool operator()(NeuralNetworkHelper& helper)
+  {
+    return record(helper);
+  }
+};
+}
+
+TEST_F(LearningRateTest, SetLearningRateOverridesTrainEpochsAndBypassesScheduler)
+{
+  std::vector<std::vector<double>> inputs, outputs;
+  get_simple_test_data(inputs, outputs);
+
+  RateRecorder recorder;
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.1)
+    .with_learning_rate_warmup(0.01, 0.5) // Warmup from 0.01 to 0.1 over 50% epochs
+    .with_learning_rate_decay_rate(0.95)
+    .with_number_of_epoch(20)
+    .with_shuffle_training_data(false)
+    .with_data_is_unique(true)
+    .with_progress_callback(std::ref(recorder))
+    .build();
+
+  NeuralNetwork nn(options);
+  const double forced_lr = 0.035;
+  nn.set_learning_rate(forced_lr);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), forced_lr);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+
+  nn.train(inputs, outputs);
+
+  ASSERT_FALSE(recorder.recorded_rates.empty());
+  for (double rate : recorder.recorded_rates)
+  {
+    // Every epoch must use the forced learning rate, completely bypassing warmup and decay
+    EXPECT_DOUBLE_EQ(rate, forced_lr);
+  }
+
+  // Post-training, get_learning_rate() must still return the forced learning rate
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), forced_lr);
+  EXPECT_TRUE(nn.has_learning_rate_override());
+}
+
+namespace
+{
+struct ConcurrentReader
+{
+  const NeuralNetwork* nn;
+  std::atomic<bool>* stop_flag;
+
+  void operator()() const
+  {
+    while (!stop_flag->load())
+    {
+      const double lr = nn->get_learning_rate();
+      EXPECT_GE(lr, 0.0);
+      const bool overridden = nn->has_learning_rate_override();
+      (void)overridden;
+      std::this_thread::yield();
+    }
+  }
+};
+}
+
+TEST_F(LearningRateTest, SetLearningRateThreadSafety)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_learning_rate(0.05)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::atomic<bool> stop_flag(false);
+
+  ConcurrentReader reader{ &nn, &stop_flag };
+  std::thread reader_thread_1(reader);
+  std::thread reader_thread_2(reader);
+
+  for (int i = 1; i <= 200; ++i)
+  {
+    const double test_lr = 0.001 * static_cast<double>(i);
+    nn.set_learning_rate(test_lr);
+    EXPECT_DOUBLE_EQ(nn.get_learning_rate(), test_lr);
+    EXPECT_TRUE(nn.has_learning_rate_override());
+  }
+
+  nn.set_learning_rate(0.0);
+  EXPECT_DOUBLE_EQ(nn.get_learning_rate(), 0.05);
+  EXPECT_FALSE(nn.has_learning_rate_override());
+
+  stop_flag.store(true);
+  reader_thread_1.join();
+  reader_thread_2.join();
+}
+
 

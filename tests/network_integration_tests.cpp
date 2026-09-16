@@ -222,9 +222,10 @@ TEST(NetworkIntegrationTest, XorFFConvergenceLion)
   auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
     .with_hidden_layers(hidden_layers)
     .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::sigmoid, 1.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Lion, 0.9))
-    .with_learning_rate(0.1)
+    .with_learning_rate(0.01)
     .with_number_of_epoch(200)
     .with_shuffle_training_data(true)
+    .with_seed(42)
     .with_has_bias(true)
     .build();
 

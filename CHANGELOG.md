@@ -2,6 +2,39 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.62] - 2026-09-15
+
+### Added
+- Added clean, fully working Gridworld reinforcement learning example in [`python/examples/gridworld.py`](./python/examples/gridworld.py):
+  - Demonstrates discrete policy gradient training with `NeuralNetwork::train_with_advantages` in a 4x4 obstacle grid.
+  - Implements action masking for boundary and obstacle avoidance, with discounted advantage scaling rewarding path efficiency.
+  - Features formatted ASCII grid path visualisation, step-by-step navigation transition logs, and full learned policy map rendering across all accessible grid cells.
+  - Added support for `GRIDWORLD_EPISODES` environment variable override for custom training or CI execution.
+- Added GitHub Actions CI workflow in [`.github/workflows/gridworld.yml`](./.github/workflows/gridworld.yml) to build the Python binding and run the GridWorld RL example automatically.
+- Updated documentation across [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
+
+## [1.1.61] - 2026-09-14
+
+### Added
+- Added dynamic runtime learning rate control on [`NeuralNetwork`](./include/neuralnetwork/neuralnetwork.h) via `set_learning_rate(double)` and `has_learning_rate_override()`:
+  - Allows callers (e.g. reinforcement learning episode loops or custom outer schedulers) to forcefully override the learning rate used by subsequent `train()` and `train_with_advantages()` calls.
+  - Calling `set_learning_rate(lr)` with a positive rate marks the override active and completely bypasses internal epoch warmup, cosine-annealing, and decay schedulers.
+  - Calling `set_learning_rate(0.0)` clears any active override and restores default options-based scheduling.
+  - Added input validation guarding against negative and non-finite (`NaN`/`Inf`) values with warning logs, preserving existing rates safely.
+  - Ensured thread safety with `std::shared_lock<std::shared_mutex>` in `get_learning_rate()` and `has_learning_rate_override()`, matching `std::unique_lock` in `set_learning_rate()`.
+- Exposed Python bindings in [`python/bindings.cpp`](./python/bindings.cpp):
+  - Added `set_learning_rate(learning_rate)`, `has_learning_rate_override()`, and read/write `learning_rate` property on `NeuralNetwork`.
+- Added unit tests in [`tests/learning_rate_tests.cpp`](./tests/learning_rate_tests.cpp):
+  - `SetLearningRateGetterSetterAndOverride`: Validates getter/setter, override flag, 0.0 reset, and rejection of negative/NaN/Inf values.
+  - `SetLearningRateOverridesTrainWithAdvantages`: Confirms `train_with_advantages()` respects forced learning rates instead of resetting to options.
+  - `SetLearningRateOverridesTrainEpochsAndBypassesScheduler`: Validates that `train()` epoch iterations bypass warmup and cosine decay when overridden.
+  - `SetLearningRateThreadSafety`: Validates concurrent read/write access across multiple threads.
+- Updated documentation in [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
+
+### Fixed
+- Fixed bug in `NeuralNetwork::train_with_advantages` where `_learning_rate` was unconditionally overwritten by `_options.learning_rate()`, ensuring runtime overrides are preserved.
+- Fixed `NeuralNetwork::train` unconditionally resetting `_learning_rate` to `_options.learning_rate()` and recalculating scheduler rates when an override is active.
+
 ## [1.1.60] - 2026-09-13
 
 ### Added
