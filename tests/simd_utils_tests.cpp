@@ -3532,3 +3532,47 @@ TEST(SimdUtilsTest, AccumulateFourAndTwoVectorsEquivalence)
     }
   }
 }
+
+TEST(SimdUtilsTest, TanhActivateAndDerivativeEquivalence)
+{
+  const std::vector<size_t> sizes = { 0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 63, 64, 127, 128 };
+
+  for (size_t n : sizes)
+  {
+    std::vector<double> input_simd(n);
+    std::vector<double> input_scalar(n);
+    std::vector<double> deriv_simd_with_y(n);
+    std::vector<double> deriv_simd_no_y(n);
+    std::vector<double> deriv_scalar(n);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      const double x = -4.0 + 0.25 * static_cast<double>(i);
+      input_simd[i] = x;
+      input_scalar[i] = x;
+    }
+
+    // Test activate
+    simd::tanh_activate(input_simd.data(), n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      const double expected_val = std::tanh(input_scalar[i]);
+      EXPECT_NEAR(input_simd[i], expected_val, 1e-6) << "Activation mismatch at size " << n << ", idx " << i;
+    }
+
+    // Test derivative with y_begin
+    simd::tanh_derivative(input_scalar.data(), n, input_simd.data(), deriv_simd_with_y.data());
+
+    // Test derivative without y_begin (nullptr)
+    simd::tanh_derivative(input_scalar.data(), n, nullptr, deriv_simd_no_y.data());
+
+    for (size_t i = 0; i < n; ++i)
+    {
+      const double t = std::tanh(input_scalar[i]);
+      deriv_scalar[i] = 1.0 - t * t;
+      EXPECT_NEAR(deriv_simd_with_y[i], deriv_scalar[i], 1e-6) << "Derivative with y mismatch at size " << n << ", idx " << i;
+      EXPECT_NEAR(deriv_simd_no_y[i], deriv_scalar[i], 1e-6) << "Derivative without y mismatch at size " << n << ", idx " << i;
+    }
+  }
+}
+

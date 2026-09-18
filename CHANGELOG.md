@@ -2,6 +2,34 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.64] - 2026-09-18
+
+### Added
+- Added entropy regularisation for policy gradient advantage training (`train_with_advantages`) with Softmax output layers to prevent premature policy collapse and maintain exploration:
+  - Added `NeuralNetworkOptions::with_entropy_coefficient(double)` and `entropy_coefficient()` in [`include/neuralnetwork/neuralnetworkoptions.h`](./include/neuralnetwork/neuralnetworkoptions.h), defaulting to `0.0` (disabled).
+  - Added validation ensuring `entropy_coefficient` is non-negative and finite in `NeuralNetworkOptions::build()`.
+  - Added analytical entropy regularisation gradient $\frac{\partial(-\beta H)}{\partial z_k} = \beta \cdot p_k (\ln p_k + H)$ in `Layers::calculate_back_propagation_output_layer_with_advantages` in [`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp) across feed-forward and recurrent BPTT time steps.
+  - Added serialisation and deserialisation support for `"entropy-coefficient"` in [`include/neuralnetwork/helpers/neuralnetworkserializer.cpp`](./include/neuralnetwork/helpers/neuralnetworkserializer.cpp).
+  - Exposed `with_entropy_coefficient` and `entropy_coefficient` in Python bindings ([`python/bindings.cpp`](./python/bindings.cpp)) and documented in [`python/README.md`](./python/README.md).
+  - Added comprehensive unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp) covering regression safety, probability dispersion toward uniform distribution, linear scaling, non-Softmax isolation, serialisation persistence, input validation, and BPTT recurrent layers.
+
+## [1.1.63] - 2026-09-17
+
+### Added
+- Added comprehensive unit test coverage for `tanh`, `FFLayer`, and `FFOutputLayer`:
+  - Added `SimdUtilsTanhActivateAndDerivative` in [`tests/simd_utils_tests.cpp`](./tests/simd_utils_tests.cpp): verifies AVX2 SIMD `simd::tanh_activate` and `simd::tanh_derivative` across varied buffer sizes (aligned, unaligned, tail elements), covering both raw pre-activations and cached post-activations (`y_begin`).
+  - Added `CalculateHiddenGradientsTanh` in [`tests/fflayer_tests.cpp`](./tests/fflayer_tests.cpp): verifies hidden layer backpropagation through `FFLayer` with `tanh` activation ($g_{next} W_{next}^T \odot (1 - \tanh^2(z))$).
+  - Added `ForwardFeedTanhMultiNeuronMultiBatch` in [`tests/fflayer_tests.cpp`](./tests/fflayer_tests.cpp): verifies multi-neuron, multi-batch forward feed through `FFLayer` with `tanh` against exact analytical calculations.
+  - Added `CalculateOutputGradientsTanhMSE` in [`tests/ffoutputlayer_tests.cpp`](./tests/ffoutputlayer_tests.cpp): verifies exact analytical output gradients on `FFOutputLayer` with `tanh` activation and MSE loss without dropout ($dE/dz = \frac{\hat{y} - y}{N} \cdot (1 - \hat{y}^2)$).
+  - Added `TanhBoundaryAndExtremeValues` in [`tests/activation_tests.cpp`](./tests/activation_tests.cpp): verifies exact zero, mathematical symmetry ($\tanh(-x) = -\tanh(x)$, $\tanh'(-x) = \tanh'(x)$), small-value stability ($10^{-8}$), and extreme saturation ($\pm 50$, $\pm 100$).
+- Updated documentation across [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
+
+### Optimised
+- Optimised `simd::tanh_derivative` in [`include/neuralnetwork/common/simd_utils.h`](./include/neuralnetwork/common/simd_utils.h): accelerated vectorized AVX2 derivative computation with fused negative multiply-add (`_mm256_fnmadd_pd`) when `SIMD_FMA_ENABLED` is available, computing $1.0 - y^2$ in a single hardware cycle.
+- Optimised `simd::tanh_pd` in [`include/neuralnetwork/common/simd_utils.h`](./include/neuralnetwork/common/simd_utils.h): accelerated vector $\tanh$ evaluation with fused multiply-subtract (`_mm256_fmsub_pd`) under `SIMD_FMA_ENABLED`.
+- Vectorized `Layer::calculate_log_cosh_error_deltas` in [`include/neuralnetwork/layers/layer.cpp`](./include/neuralnetwork/layers/layer.cpp) with AVX2 SIMD using `simd::tanh_pd`.
+- Vectorized soft logit capping gradient scaling in `FFOutputLayer::run_output_gradients` in [`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp) with AVX2 SIMD and FMA using `simd::tanh_pd`.
+
 ## [1.1.62] - 2026-09-15
 
 ### Added

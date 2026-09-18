@@ -540,7 +540,26 @@ void FFOutputLayer::run_output_gradients(
           {
             const double cap = activation.get_logit_cap();
             const double inv_cap = 1.0 / cap;
-            for (size_t i = 0; i < range_size; ++i)
+            size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+            const __m256d vec_inv_cap = _mm256_set1_pd(inv_cap);
+            const __m256d vec_one = _mm256_set1_pd(1.0);
+            for (; i + 3 < range_size; i += 4)
+            {
+              __m256d v_pre = _mm256_loadu_pd(pre_act + r.start + i);
+              __m256d v_scaled = _mm256_mul_pd(v_pre, vec_inv_cap);
+              __m256d v_tanh = simd::tanh_pd(v_scaled);
+#ifdef SIMD_FMA_ENABLED
+              __m256d v_deriv = _mm256_fnmadd_pd(v_tanh, v_tanh, vec_one);
+#else
+              __m256d v_deriv = _mm256_sub_pd(vec_one, _mm256_mul_pd(v_tanh, v_tanh));
+#endif
+              __m256d v_grad = _mm256_loadu_pd(out_grad_ptr + i);
+              v_grad = _mm256_mul_pd(v_grad, v_deriv);
+              _mm256_storeu_pd(out_grad_ptr + i, v_grad);
+            }
+#endif
+            for (; i < range_size; ++i)
             {
               const double t_val = std::tanh(pre_act[r.start + i] * inv_cap);
               out_grad_ptr[i] *= (1.0 - t_val * t_val);

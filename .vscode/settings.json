@@ -66,5 +66,6 @@
     "shared_mutex": "cpp",
     "cinttypes": "cpp",
     "unordered_set": "cpp"
-  }
-}
+  },
+  "cmake.sourceDirectory": "${workspaceFolder}/tests"
+}

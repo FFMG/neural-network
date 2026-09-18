@@ -62,6 +62,45 @@ TEST_F(FFOutputLayerTest, CalculateOutputGradientsMSE) {
     EXPECT_NEAR(grads[1], 0.2, 1e-9);
 }
 
+TEST_F(FFOutputLayerTest, CalculateOutputGradientsTanhMSE)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    const double z0 = 0.6;
+    const double z1 = -0.4;
+    const double y0 = std::tanh(z0);
+    const double y1 = std::tanh(z1);
+
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ z0, z1 });
+    batch_hs[0].at(1, 0).set_hidden_state_values({ y0, y1 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+    const double target0 = 0.2;
+    const double target1 = -0.8;
+    std::vector<std::vector<double>> targets = { { target0, target1 } };
+    layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1);
+
+    const double expected_delta0 = (y0 - target0) / static_cast<double>(num_outputs);
+    const double expected_delta1 = (y1 - target1) / static_cast<double>(num_outputs);
+    const double expected_grad0 = expected_delta0 * (1.0 - y0 * y0);
+    const double expected_grad1 = expected_delta1 * (1.0 - y1 * y1);
+
+    const auto grads = batch_go[0].get_gradients(1);
+    EXPECT_NEAR(grads[0], expected_grad0, 1e-9);
+    EXPECT_NEAR(grads[1], expected_grad1, 1e-9);
+}
+
+
 TEST_F(FFOutputLayerTest, CalculateOutputGradientsBCE) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 1;

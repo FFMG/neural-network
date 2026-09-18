@@ -1140,6 +1140,34 @@ TEST_F(ActivationTest, StatisticalWeightInitializationVerification)
   EXPECT_NEAR(var_selu, 0.01, 0.003);
 }
 
+TEST_F(ActivationTest, TanhBoundaryAndExtremeValues)
+{
+  activation act(activation::method::tanh, 0.0);
 
+  // Exact zero
+  EXPECT_DOUBLE_EQ(act.activate(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(act.activate_derivative(0.0), 1.0);
 
+  // Symmetry: tanh(-x) == -tanh(x), tanh'(-x) == tanh'(x)
+  const std::vector<double> test_vals = { 1e-8, 1e-5, 0.01, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0 };
+  for (double x : test_vals)
+  {
+    const double pos_act = act.activate(x);
+    const double neg_act = act.activate(-x);
+    EXPECT_NEAR(pos_act, -neg_act, 1e-12) << "Symmetry failed for x=" << x;
+    EXPECT_GE(pos_act, -1.0);
+    EXPECT_LE(pos_act, 1.0);
 
+    const double pos_deriv = act.activate_derivative(x);
+    const double neg_deriv = act.activate_derivative(-x);
+    EXPECT_NEAR(pos_deriv, neg_deriv, 1e-12) << "Derivative symmetry failed for x=" << x;
+    EXPECT_GE(pos_deriv, 0.0);
+    EXPECT_LE(pos_deriv, 1.0);
+  }
+
+  // Extreme saturation: |tanh(x)| -> 1.0, tanh'(x) -> 0.0
+  EXPECT_NEAR(act.activate(50.0), 1.0, 1e-12);
+  EXPECT_NEAR(act.activate(-50.0), -1.0, 1e-12);
+  EXPECT_NEAR(act.activate_derivative(50.0), 0.0, 1e-12);
+  EXPECT_NEAR(act.activate_derivative(-50.0), 0.0, 1e-12);
+}
