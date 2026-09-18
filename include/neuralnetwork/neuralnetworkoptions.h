@@ -55,7 +55,8 @@ private:
     _cosine_annealing(false, 10, 1.0, 0.0, 1.0),
     _lookahead(false, 5, 0.5),
     _seed(std::nullopt),
-    _force_checking_indexes(false)
+    _force_checking_indexes(false),
+    _entropy_coefficient(0.0)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     if (topology.size() < 2)
@@ -126,7 +127,8 @@ public:
     _cosine_annealing(nno._cosine_annealing),
     _lookahead(nno._lookahead),
     _seed(nno._seed),
-    _force_checking_indexes(nno._force_checking_indexes)
+    _force_checking_indexes(nno._force_checking_indexes),
+    _entropy_coefficient(nno._entropy_coefficient)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
   }
@@ -164,7 +166,8 @@ public:
     _cosine_annealing(std::move(nno._cosine_annealing)),
     _lookahead(std::move(nno._lookahead)),
     _seed(nno._seed),
-    _force_checking_indexes(nno._force_checking_indexes)
+    _force_checking_indexes(nno._force_checking_indexes),
+    _entropy_coefficient(nno._entropy_coefficient)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     nno._progress_callback = nullptr;
@@ -181,6 +184,7 @@ public:
     nno._cosine_annealing = CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0);
     nno._lookahead = LookaheadDetails(false, 5, 0.5);
     nno._seed = std::nullopt;
+    nno._entropy_coefficient = 0.0;
   }
 
   NeuralNetworkOptions& operator=(const NeuralNetworkOptions& nno) noexcept
@@ -221,6 +225,7 @@ public:
       _lookahead = nno._lookahead;
       _seed = nno._seed;
       _force_checking_indexes = nno._force_checking_indexes;
+      _entropy_coefficient = nno._entropy_coefficient;
     }
     return *this;
   }
@@ -263,6 +268,7 @@ public:
       _lookahead = std::move(nno._lookahead);
       _seed = nno._seed;
       _force_checking_indexes = nno._force_checking_indexes;
+      _entropy_coefficient = nno._entropy_coefficient;
 
       nno._progress_callback = nullptr;
       nno._log_level = Logger::LogLevel::None;
@@ -292,6 +298,7 @@ public:
       nno._lookahead = LookaheadDetails(false, 5, 0.5);
       nno._seed = std::nullopt;
       nno._force_checking_indexes = false;
+      nno._entropy_coefficient = 0.0;
     }
     return *this;
   }
@@ -547,6 +554,13 @@ public:
     return *this;
   }
 
+  NeuralNetworkOptions& with_entropy_coefficient(double entropy_coefficient) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _entropy_coefficient = entropy_coefficient;
+    return *this;
+  }
+
   NeuralNetworkOptions& build()
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -732,6 +746,14 @@ public:
         Logger::warning("Both Lookahead and Stochastic Weight Averaging are enabled. SWA snapshots are taken on an epoch cadence that is not aligned with Lookahead's batch-count synchronisation, so SWA will typically average in Lookahead's fast (not yet synchronised) weights, and the final SWA average replaces the finalized Lookahead slow weights.");
       }
     }
+    if (entropy_coefficient() < 0.0)
+    {
+      Logger::panic("The entropy coefficient cannot be negative!");
+    }
+    if (!std::isfinite(entropy_coefficient()))
+    {
+      Logger::panic("The entropy coefficient must be a finite number!");
+    }
     return *this;
   }
 
@@ -787,7 +809,8 @@ public:
       .with_cosine_annealing_warm_restarts(CosineAnnealingWarmRestartsDetails(false, 10, 1.0, 0.0, 1.0))
       .with_lookahead(LookaheadDetails(false, 5, 0.5))
       .with_seed(std::nullopt)
-      .with_force_checking_indexes(false);
+      .with_force_checking_indexes(false)
+      .with_entropy_coefficient(0.0);
   }
 
   [[nodiscard]] inline const std::vector<unsigned>& topology() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _topology; }
@@ -825,6 +848,7 @@ public:
   [[nodiscard]] inline const CosineAnnealingWarmRestartsDetails& cosine_annealing_warm_restarts() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _cosine_annealing; }
   [[nodiscard]] inline const LookaheadDetails& lookahead() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _lookahead; }
   [[nodiscard]] inline std::optional<uint32_t> seed() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _seed; }
+  [[nodiscard]] inline double entropy_coefficient() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _entropy_coefficient; }
   inline void set_output_layer_temperature(unsigned head_idx, double t) noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -876,5 +900,6 @@ private:
   LookaheadDetails _lookahead;
   std::optional<uint32_t> _seed;
   bool _force_checking_indexes;
+  double _entropy_coefficient;
 };
 } // namespace myoddweb::nn

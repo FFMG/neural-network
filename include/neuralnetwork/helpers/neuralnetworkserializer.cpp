@@ -1598,6 +1598,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
 
   const auto seed_enabled = options_object->get_or<bool>("seed-enabled", false);
   const std::optional<uint32_t> seed = seed_enabled ? std::optional<uint32_t>(static_cast<uint32_t>(options_object->get_or<long long>("seed", 0))) : std::nullopt;
+  const auto entropy_coefficient = options_object->get_or<double>("entropy-coefficient", 0.0);
 
   const auto final_error_calculation_types_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("final-error-calculation-types"));
   std::vector<ErrorCalculation::type> final_error_calculation_types = {};
@@ -1648,7 +1649,8 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
       lookahead_enabled,
       lookahead_synchronisation_period,
       lookahead_slow_weights_step_size))
-    .with_seed(seed);
+    .with_seed(seed)
+    .with_entropy_coefficient(entropy_coefficient);
 
   if (multi_output_layer_details.size())
   {
@@ -1993,6 +1995,7 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   set_float(options_object, "lookahead-slow-weights-step-size", options.lookahead().slow_weights_step_size());
   options_object->set_boolean("seed-enabled", options.seed().has_value());
   options_object->set_number("seed", options.seed().has_value() ? static_cast<long long>(options.seed().value()) : 0LL);
+  set_float(options_object, "entropy-coefficient", options.entropy_coefficient());
 
   json.set("options", options_object);
 

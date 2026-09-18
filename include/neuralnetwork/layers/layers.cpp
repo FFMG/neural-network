@@ -7,11 +7,45 @@
 #include "layers.h"
 #include "lstmlayer.h"
 #include "multioutputlayer.h"
+#include "outputlayer.h"
 #include "../common/simd_utils.h"
+#include <cmath>
 
 
 namespace myoddweb::nn
 {
+namespace
+{
+// Adds an entropy regularisation gradient term to a softmax output layer during policy advantage training.
+// For softmax probabilities p and entropy H = -sum_k(p_k * log(p_k)), d(-beta*H)/dz_k = beta * p_k * (log(p_k) + H).
+void add_entropy_bonus_to_gradients(double* raw, const double* probabilities, size_t count, double entropy_coefficient) noexcept
+{
+  if (raw == nullptr || probabilities == nullptr || count == 0)
+  {
+    return;
+  }
+
+  double entropy = 0.0;
+  for (size_t k = 0; k < count; ++k)
+  {
+    const double p = probabilities[k];
+    if (p > 0.0 && std::isfinite(p))
+    {
+      entropy -= p * std::log(p);
+    }
+  }
+
+  for (size_t k = 0; k < count; ++k)
+  {
+    const double p = probabilities[k];
+    if (p > 0.0 && std::isfinite(p))
+    {
+      raw[k] += entropy_coefficient * p * (std::log(p) + entropy);
+    }
+  }
+}
+} // namespace
+
 Layers::Layers(const NeuralNetworkOptions& options) noexcept
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
@@ -519,7 +553,6 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
   size_t batch_size,
   const std::vector<HiddenStates>& hidden_states) const
 {
-  (void)options;
   MYODDWEB_PROFILE_FUNCTION("Layers");
   auto& ol = output_layer();
 
@@ -564,6 +597,53 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
       {
         simd::mul_scalar(rnn_raw, advantage, rnn_raw, rnn_count);
       }
+    }
+  }
+
+  // Apply entropy regularisation bonus to softmax heads during advantage training.
+  const auto entropy_coefficient = options.entropy_coefficient();
+  if (entropy_coefficient > 0.0)
+  {
+    const auto* output_layer_with_details = dynamic_cast<const OutputLayer*>(&ol);
+    if (output_layer_with_details == nullptr)
+    {
+      Logger::panic("Advantage training with entropy regularisation requires an OutputLayer.");
+      return;
+    }
+
+    unsigned neuron_offset = 0;
+    for (const auto& detail : output_layer_with_details->output_layer_details())
+    {
+      const auto detail_size = detail.get_size();
+      if (detail.get_activation().get_method() != activation::method::softmax)
+      {
+        neuron_offset += detail_size;
+        continue;
+      }
+
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        auto* raw = gradients[b].get_gradients_raw(output_layer_index);
+        const auto outputs = gradients[b].get_outputs(output_layer_index);
+        add_entropy_bonus_to_gradients(raw + neuron_offset, outputs.data() + neuron_offset, detail_size, entropy_coefficient);
+
+        if (has_rnn)
+        {
+          auto* rnn_raw = gradients[b].get_rnn_gradients_raw(output_layer_index, rnn_count);
+          const auto& rnn_outputs = gradients[b].get_rnn_outputs(output_layer_index);
+          const auto time_steps = (count > 0) ? (rnn_count / count) : 0;
+          for (size_t t = 0; t < time_steps; ++t)
+          {
+            add_entropy_bonus_to_gradients(
+              rnn_raw + t * count + neuron_offset,
+              rnn_outputs.data() + t * count + neuron_offset,
+              detail_size,
+              entropy_coefficient);
+          }
+        }
+      }
+
+      neuron_offset += detail_size;
     }
   }
 }

@@ -504,6 +504,18 @@ These options control the overall execution of the training process:
 
 For classification tasks using Softmax, the network automatically optimizes the inference temperature ($T$) post-training using a calibration set to ensure well-calibrated probability outputs.
 
+### Policy Advantage Training & Entropy Regularisation
+
+The library supports policy gradient reinforcement learning via `train_with_advantages`:
+
+*   **Reward-Weighted Gradient Scaling:** Scales cross-entropy output gradients by scalar advantage estimates ($A_t$), accelerating actions with positive advantages and depressing actions with negative advantages.
+*   **Entropy Regularisation (`with_entropy_coefficient`):** Prevents premature policy collapse and sustains exploration across the discrete action space by adding an entropy bonus loss term:
+    $$L(\theta) = - \mathbb{E}[A(s, a) \log \pi_\theta(a|s)] - \beta H(\pi_\theta(\cdot|s))$$
+    where $H(\pi) = -\sum_k p_k \ln p_k$ and the analytical gradient with respect to output logit $z_k$ is:
+    $$\frac{\partial(-\beta H)}{\partial z_k} = \beta \cdot p_k (\ln p_k + H)$$
+    When probabilities approach a uniform distribution ($p_k = 1/N$), the entropy gradient vanishes ($\ln(1/N) + \ln N = 0$). When the policy collapses toward a deterministic action, the gradient pushes probabilities back toward uniformity.
+*   **Persisted & Configurable:** Configured through `options.with_entropy_coefficient(beta)` (defaults to `0.0`, disabled), serialized/deserialized seamlessly via `NeuralNetworkSerializer`, and exposed in Python bindings.
+
 ## Examples
 
 ### XOR

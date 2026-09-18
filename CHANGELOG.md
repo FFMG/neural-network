@@ -2,6 +2,17 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.64] - 2026-09-18
+
+### Added
+- Added entropy regularisation for policy gradient advantage training (`train_with_advantages`) with Softmax output layers to prevent premature policy collapse and maintain exploration:
+  - Added `NeuralNetworkOptions::with_entropy_coefficient(double)` and `entropy_coefficient()` in [`include/neuralnetwork/neuralnetworkoptions.h`](./include/neuralnetwork/neuralnetworkoptions.h), defaulting to `0.0` (disabled).
+  - Added validation ensuring `entropy_coefficient` is non-negative and finite in `NeuralNetworkOptions::build()`.
+  - Added analytical entropy regularisation gradient $\frac{\partial(-\beta H)}{\partial z_k} = \beta \cdot p_k (\ln p_k + H)$ in `Layers::calculate_back_propagation_output_layer_with_advantages` in [`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp) across feed-forward and recurrent BPTT time steps.
+  - Added serialisation and deserialisation support for `"entropy-coefficient"` in [`include/neuralnetwork/helpers/neuralnetworkserializer.cpp`](./include/neuralnetwork/helpers/neuralnetworkserializer.cpp).
+  - Exposed `with_entropy_coefficient` and `entropy_coefficient` in Python bindings ([`python/bindings.cpp`](./python/bindings.cpp)) and documented in [`python/README.md`](./python/README.md).
+  - Added comprehensive unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp) covering regression safety, probability dispersion toward uniform distribution, linear scaling, non-Softmax isolation, serialisation persistence, input validation, and BPTT recurrent layers.
+
 ## [1.1.63] - 2026-09-17
 
 ### Added

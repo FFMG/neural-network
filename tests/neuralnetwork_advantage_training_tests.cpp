@@ -844,6 +844,141 @@ TEST(NeuralNetworkAdvantageTrainingTest, TanhOutputTargetOutOfRangeThrows)
   EXPECT_NO_THROW(nn.train_with_advantages(inputs, in_range, advantages));
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, ZeroEntropyCoefficientMatchesPreExistingZeroAdvantageBehaviour)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.5, 4, 42u).with_entropy_coefficient(0.0);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 }, { 0.0, 1.0 } };
+  std::vector<double> advantages = { 0.0, 0.0 };
+
+  const auto before = collect_output_layer_weights(nn);
+  nn.train_with_advantages(inputs, action_targets, advantages);
+  const auto after = collect_output_layer_weights(nn);
+
+  ASSERT_EQ(before.size(), after.size());
+  for (size_t i = 0; i < before.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(before[i], after[i]);
+  }
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, PositiveEntropyCoefficientMovesProbabilitiesTowardUniformWithZeroAdvantage)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.5, 4, 42u).with_entropy_coefficient(0.2);
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> zero_advantage = { 0.0 };
+
+  const auto before = nn.think(inputs[0]);
+  ASSERT_NE(before[0], 0.5);
+  nn.train_with_advantages(inputs, action_targets, zero_advantage);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_LT(std::abs(after[0] - 0.5), std::abs(before[0] - 0.5));
+  EXPECT_NEAR(after[0] + after[1], 1.0, 1e-9);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyCoefficientMagnitudeScalesWeightDeltaLinearly)
+{
+  auto options_a = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u).with_entropy_coefficient(0.1);
+  auto options_b = build_policy_options(OptimiserType::SGD, 0.1, 4, 42u).with_entropy_coefficient(0.2);
+  NeuralNetwork nn_a(options_a);
+  NeuralNetwork nn_b(options_b);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  std::vector<double> zero_advantage = { 0.0 };
+
+  const auto before_a = collect_output_layer_weights(nn_a);
+  const auto before_b = collect_output_layer_weights(nn_b);
+  ASSERT_EQ(before_a, before_b);
+
+  nn_a.train_with_advantages(inputs, action_targets, zero_advantage);
+  nn_b.train_with_advantages(inputs, action_targets, zero_advantage);
+
+  const auto after_a = collect_output_layer_weights(nn_a);
+  const auto after_b = collect_output_layer_weights(nn_b);
+
+  ASSERT_EQ(before_a.size(), after_a.size());
+  bool any_nonzero_delta = false;
+  for (size_t i = 0; i < before_a.size(); ++i)
+  {
+    const double delta_a = after_a[i] - before_a[i];
+    const double delta_b = after_b[i] - before_b[i];
+    EXPECT_NEAR(delta_b, 2.0 * delta_a, 1e-9);
+    if (std::abs(delta_a) > 1e-12)
+    {
+      any_nonzero_delta = true;
+    }
+  }
+  EXPECT_TRUE(any_nonzero_delta);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyCoefficientHasNoEffectOnNonSoftmaxOutput)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    1,
+    activation(activation::method::linear, 0.0),
+    ErrorCalculation::type::mse,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  auto options_no_entropy = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .with_entropy_coefficient(0.0)
+    .build();
+
+  auto options_with_entropy = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .with_entropy_coefficient(5.0)
+    .build();
+
+  NeuralNetwork nn_no_entropy(options_no_entropy);
+  NeuralNetwork nn_with_entropy(options_with_entropy);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.2 } };
+  std::vector<std::vector<double>> targets = { { 0.8 } };
+  std::vector<double> advantages = { 1.0 };
+
+  nn_no_entropy.train_with_advantages(inputs, targets, advantages);
+  nn_with_entropy.train_with_advantages(inputs, targets, advantages);
+
+  const auto output_no_entropy = nn_no_entropy.think(inputs[0]);
+  const auto output_with_entropy = nn_with_entropy.think(inputs[0]);
+
+  ASSERT_EQ(output_no_entropy.size(), output_with_entropy.size());
+  for (size_t i = 0; i < output_no_entropy.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(output_no_entropy[i], output_with_entropy[i]);
+  }
+}
+
 TEST(NeuralNetworkAdvantageTrainingTest, FFTanhWithNegativeAdvantageDecreasesProbability)
 {
   std::vector<LayerDetails> hidden_layers =
@@ -884,6 +1019,78 @@ TEST(NeuralNetworkAdvantageTrainingTest, FFTanhWithNegativeAdvantageDecreasesPro
 
   EXPECT_LT(after[0], before[0]);
   EXPECT_GT(after[1], before[1]);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, SerialisationPreservesEntropyCoefficient)
+{
+  auto options = build_policy_options(OptimiserType::SGD, 0.2, 4, 42u).with_entropy_coefficient(0.15);
+  NeuralNetwork nn(options);
+
+  const std::string test_file_path = "test_entropy_coeff_network.json";
+  NeuralNetworkSerializer::save(nn, test_file_path);
+
+  std::unique_ptr<NeuralNetwork> loaded_nn(NeuralNetworkSerializer::load(test_file_path));
+  std::remove(test_file_path.c_str());
+
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_DOUBLE_EQ(loaded_nn->options().entropy_coefficient(), 0.15);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyCoefficientNegativeThrows)
+{
+  EXPECT_THROW(
+    build_policy_options(OptimiserType::SGD, 0.2, 4, 42u).with_entropy_coefficient(-0.1).build(),
+    std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyCoefficientNonFiniteThrows)
+{
+  EXPECT_THROW(
+    build_policy_options(OptimiserType::SGD, 0.2, 4, 42u).with_entropy_coefficient(std::numeric_limits<double>::quiet_NaN()).build(),
+    std::runtime_error);
+  EXPECT_THROW(
+    build_policy_options(OptimiserType::SGD, 0.2, 4, 42u).with_entropy_coefficient(std::numeric_limits<double>::infinity()).build(),
+    std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyBonusAppliedToRecurrentLayerBPTT)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.0);
+
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_entropy_coefficient(0.2)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.5, -0.2, 0.1, 0.3 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0, 1.0 } };
+  std::vector<double> advantages = { 1.0 };
+
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
 }
 
 
