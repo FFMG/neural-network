@@ -188,6 +188,17 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * `size`: Must equal number of input features $\times D$.
 * Weights are trained via backpropagation and can be saved/loaded via `NeuralNetworkSerializer`.
 
+### Feed-Forward & Output Layers
+
+*   `nn.LayerArchitecture.FF`: Standard dense feed-forward layer ($Z = X W + b$), accelerated via AVX2 SIMD GEMM. Backpropagation utilizes pre-transposed weight caching for contiguous memory access and supports inverted dropout (`with_hidden_layers`).
+*   `nn.OutputLayerDetails`: Configures the network's output layer (under the hood instantiated as an `FFOutputLayer`). Supports single or compound multi-head outputs with independent activation functions, loss functions (MSE, RMSE, Huber, Log-Cosh, BCE, Cross-Entropy, Quantile, Sharpe, Sortino), weight decay, and optimizers. Automatically optimizes derivative calculations and supports soft logit capping (`logit_cap`).
+
+### Hyperbolic Tangent (Tanh) Activation
+
+*   `nn.ActivationMethod.Tanh`: Hyperbolic tangent activation $\tanh(x) \in (-1, 1)$.
+*   Analytical derivative: $\tanh'(x) = 1 - \tanh^2(x) = 1 - y^2$. During hidden and output backpropagation, derivatives are evaluated in $O(1)$ from cached post-activations.
+*   AVX2 SIMD vectorized across batch activations and derivatives, featuring single-cycle FMA operations and accelerated Log-Cosh loss delta calculations.
+
 ### Examples
 
 Standalone python examples are located in the [examples/](examples/) folder.

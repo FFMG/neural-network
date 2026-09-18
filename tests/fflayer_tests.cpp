@@ -294,6 +294,48 @@ TEST_F(FFLayerTest, ForwardFeedTanh) {
     EXPECT_NEAR(batch_go[0].get_output(1, 0), expected, 1e-9);
 }
 
+TEST_F(FFLayerTest, ForwardFeedTanhMultiNeuronMultiBatch)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 3;
+    const size_t batch_size = 2;
+
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+    const std::vector<double> weights = { 0.2, -0.5, 0.8, -0.3, 0.6, 0.1 };
+    const std::vector<double> biases = { 0.1, -0.2, 0.05 };
+    layer.set_w_values(weights);
+    layer.set_b_values(biases);
+
+    MockLayer prev_layer(0, num_inputs);
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, 1);
+
+    const std::vector<double> input_b0 = { 0.5, -1.0 };
+    const std::vector<double> input_b1 = { 1.2, 0.4 };
+    batch_go[0].set_outputs(0, input_b0);
+    batch_go[1].set_outputs(0, input_b1);
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, false);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      const auto& x = (b == 0) ? input_b0 : input_b1;
+      for (unsigned j = 0; j < num_outputs; ++j)
+      {
+        double z = biases[j];
+        for (unsigned i = 0; i < num_inputs; ++i)
+        {
+          z += x[i] * weights[i * num_outputs + j];
+        }
+        const double expected = std::tanh(z);
+        EXPECT_NEAR(batch_go[b].get_output(1, j), expected, 1e-9);
+      }
+    }
+}
+
+
 TEST_F(FFLayerTest, ForwardFeedSoftmax) {
     unsigned num_inputs = 2;
     unsigned num_outputs = 2;
@@ -400,6 +442,49 @@ TEST_F(FFLayerTest, CalculateHiddenGradients) {
     EXPECT_NEAR(grads[0], 0.5, 1e-9);
     EXPECT_NEAR(grads[1], 0.8, 1e-9);
 }
+
+TEST_F(FFLayerTest, CalculateHiddenGradientsTanh)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    const unsigned next_outputs = 2;
+
+    FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+    FFLayer next_layer(2, num_outputs, next_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+    layer.set_w_values({ 1.0, 0.0, 0.0, 1.0 });
+    layer.set_b_values({ 0.0, 0.0 });
+
+    next_layer.set_w_values({ 0.5, 0.2, -0.4, 0.8 });
+    next_layer.set_b_values({ 0.0, 0.0 });
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs, next_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    const double z0 = 0.5;
+    const double z1 = -0.3;
+    const double y0 = std::tanh(z0);
+    const double y1 = std::tanh(z1);
+
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ z0, z1 });
+    batch_hs[0].at(1, 0).set_hidden_state_values({ y0, y1 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0 });
+
+    const double g_next0 = 1.0;
+    const double g_next1 = -0.5;
+    std::vector<std::vector<double>> batch_next_grads = { { g_next0, g_next1 } };
+
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, 1, 0);
+
+    const double expected_delta0 = (1.0 * 0.5 + (-0.5) * 0.2) * (1.0 - y0 * y0);
+    const double expected_delta1 = (1.0 * (-0.4) + (-0.5) * 0.8) * (1.0 - y1 * y1);
+
+    const auto grads = batch_go[0].get_gradients(1);
+    EXPECT_NEAR(grads[0], expected_delta0, 1e-9);
+    EXPECT_NEAR(grads[1], expected_delta1, 1e-9);
+}
+
 
 TEST_F(FFLayerTest, CalculateAndStoreGradients) {
     unsigned num_inputs = 1;

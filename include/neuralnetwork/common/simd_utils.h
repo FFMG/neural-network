@@ -6365,8 +6365,12 @@ public:
     __m256d exp_u = exp_pd(u);
     __m256d denom = _mm256_add_pd(exp_u, vec_one);
     __m256d r_denom = reciprocal_pd(denom);
+#ifdef SIMD_FMA_ENABLED
+    __m256d val = _mm256_fmsub_pd(vec_two, r_denom, vec_one);
+#else
     __m256d term = _mm256_mul_pd(vec_two, r_denom);
     __m256d val = _mm256_sub_pd(term, vec_one);
+#endif
     __m256d x_sign = _mm256_and_pd(x, sign_mask);
     return _mm256_xor_pd(val, x_sign);
   }
@@ -6612,7 +6616,11 @@ public:
       for (; i + 3 < size; i += 4)
       {
         __m256d y = _mm256_loadu_pd(y_begin + i);
+#ifdef SIMD_FMA_ENABLED
+        __m256d res = _mm256_fnmadd_pd(y, y, vec_one);
+#else
         __m256d res = _mm256_sub_pd(vec_one, _mm256_mul_pd(y, y));
+#endif
         _mm256_storeu_pd(out + i, res);
       }
     }
@@ -6622,8 +6630,12 @@ public:
       {
         __m256d vx = _mm256_loadu_pd(begin + i);
         __m256d val = tanh_pd(vx);
+#ifdef SIMD_FMA_ENABLED
+        __m256d res = _mm256_fnmadd_pd(val, val, vec_one);
+#else
         __m256d t2 = _mm256_mul_pd(val, val);
         __m256d res = _mm256_sub_pd(vec_one, t2);
+#endif
         _mm256_storeu_pd(out + i, res);
       }
     }

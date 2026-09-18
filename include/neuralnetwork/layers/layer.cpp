@@ -876,7 +876,21 @@ void Layer::calculate_log_cosh_error_deltas(
   const unsigned start_idx = neurons.front().get_index();
   const size_t count = neurons.size();
 
-  for (size_t i = 0; i < count; ++i)
+  size_t i = 0;
+#ifdef SIMD_AVX2_ENABLED
+  const __m256d vec_inv = _mm256_set1_pd(inv_num_neurons);
+  for (; i + 3 < count; i += 4)
+  {
+    const size_t idx = start_idx + i;
+    __m256d vec_given = _mm256_loadu_pd(given_outputs.data() + idx);
+    __m256d vec_target = _mm256_loadu_pd(target_outputs.data() + idx);
+    __m256d vec_diff = _mm256_sub_pd(vec_given, vec_target);
+    __m256d vec_tanh = simd::tanh_pd(vec_diff);
+    __m256d vec_res = _mm256_mul_pd(vec_tanh, vec_inv);
+    _mm256_storeu_pd(deltas.data() + idx, vec_res);
+  }
+#endif
+  for (; i < count; ++i)
   {
     const size_t idx = start_idx + i;
     const double x = given_outputs[idx] - target_outputs[idx];

@@ -385,14 +385,14 @@ private:
     size_t pos = 0;
     while ((pos = message.find('\n', start)) != std::string::npos)
     {
-      oss.write(message.data() + start, pos - start + 1);
+      oss.write(message.data() + start, static_cast<std::streamsize>(pos - start + 1));
       start = pos + 1;
       if(start < message.size())
       {
-        oss.write(indent, indent_len);
+        oss.write(indent, static_cast<std::streamsize>(indent_len));
       }
     }
-    oss.write(message.data() + start, message.size() - start);
+    oss.write(message.data() + start, static_cast<std::streamsize>(message.size() - start));
 
     // 6. Print the final message to the console
     const std::string final_message = oss.str();

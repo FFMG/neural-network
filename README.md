@@ -445,6 +445,36 @@ This stabilizes training, reduces variance across noisy minibatches, and improve
 
 Lookahead is fully orthogonal to other training strategies and can seamlessly co-exist with Stochastic Weight Averaging (SWA), Cosine Annealing with Warm Restarts, and residual connections. The configuration is encapsulated in `LookaheadDetails` and persisted by `NeuralNetworkSerializer::save`/`load`.
 
+### Feed-Forward & Output Layers (`FFLayer` and `FFOutputLayer`)
+
+The library provides high-performance dense and output layer implementations:
+
+*   **`FFLayer` (Dense / Feed-Forward Layer):**
+    *   **Forward Feed:** Computes pre-activation sums $Z = X W + b$ (plus optional residual skip connection $X_{res}$) and activations $A = \sigma(Z)$. Accelerated using hand-tuned AVX2 SIMD GEMM kernels processing 4, 2, or 1 batch item per iteration.
+    *   **Fast Backward Pass:** Automatically maintains a pre-transposed weight cache ($W^T$) synchronized on initialization and weight updates. Backpropagation through next hidden layers uses forward GEMM kernels on $W^T$, guaranteeing contiguous sequential memory access and eliminating cache misses from strided column reads.
+    *   **Inverted Dropout:** Drops neurons during training with probability $p$ and scales remaining activations by $1 / (1 - p)$. The cached binary mask is recorded in the cell state to scale gradients during backpropagation without recalculating random masks.
+    *   **Thread Safety & Scaling:** Employs aligned thread-local gradient accumulators (`thread_ff_grad_accumulators`) to completely eliminate cache line false sharing during multi-threaded batch backpropagation.
+*   **`FFOutputLayer` (Compound / Multi-Head Output Layer):**
+    *   Derives from `FFLayer` and `OutputLayer`, serving as the primary output projection layer.
+    *   **Multi-Head Architecture:** Supports splitting output neurons across multiple independent heads, each with its own activation function, loss metric (MSE, RMSE, Huber, Log-Cosh, BCE, Cross-Entropy, Quantile, Sharpe, Sortino), weight decay, and optimizer.
+    *   **Derivative Optimization:** Automatically detects canonical loss-activation pairings (e.g. Softmax with Cross-Entropy, Sigmoid with Binary Cross-Entropy) where the loss delta $\delta = \hat{y} - y$ directly represents $\frac{\partial L}{\partial Z}$, skipping redundant activation derivative evaluations.
+    *   **Exact Chain Rule Scaling:** For general activations (such as `tanh` with MSE), exact analytical derivatives are applied ($\frac{\partial L}{\partial Z} = \delta \odot \sigma'(Z)$). When soft logit capping is active ($C > 0$), gradients are scaled by $(1 - \tanh^2(Z / C))$ via vectorized AVX2/FMA SIMD instructions.
+    *   **Isolated Sequence Losses:** Sharpe and Sortino ratio loss contexts are evaluated per training example without cross-sample return or position leakage.
+
+### Hyperbolic Tangent (`tanh`) Activation
+
+The `tanh` activation method maps real inputs to the $(-1, 1)$ interval:
+$$\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}} = \frac{2}{1 + e^{-2|x|}} - 1$$
+
+*   **Exact Analytical Derivative:**
+    $$\frac{d}{dx}\tanh(x) = 1 - \tanh^2(x) = 1 - y^2$$
+    During backpropagation through hidden layers (`FFLayer`) and output layers (`FFOutputLayer`), the derivative is computed in $O(1)$ time directly from the saved post-activation output values $y$, eliminating expensive transcendental evaluations. When dropout is enabled, it falls back to raw pre-activations to ensure numerical integrity.
+*   **AVX2 & FMA SIMD Acceleration:**
+    *   Vectorized batch activation (`simd::tanh_activate`) processes 4 doubles per vector cycle using a degree-6 polynomial minimax approximation of $\exp(u)$ with Newton-Raphson reciprocal division.
+    *   Vectorized derivative (`simd::tanh_derivative`) uses fused negative multiply-add (`_mm256_fnmadd_pd`) when `SIMD_FMA_ENABLED` is available to compute $1.0 - y^2$ in a single hardware cycle.
+    *   Vectorized `tanh_pd` uses fused multiply-subtract (`_mm256_fmsub_pd`) for $(2 \cdot \text{rcp} - 1.0)$ computation.
+    *   Batched Log-Cosh loss deltas ($\frac{1}{N}\tanh(\hat{y} - y)$) in `Layer::calculate_log_cosh_error_deltas` are accelerated via AVX2 SIMD `simd::tanh_pd`.
+
 ### General Training Options
 
 These options control the overall execution of the training process:
