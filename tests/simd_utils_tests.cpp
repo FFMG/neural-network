@@ -5,6 +5,10 @@
 #include <cmath>
 #include <algorithm>
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 
 using namespace myoddweb::nn;
 namespace {

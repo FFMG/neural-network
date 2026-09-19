@@ -514,7 +514,20 @@ The library supports policy gradient reinforcement learning via `train_with_adva
     where $H(\pi) = -\sum_k p_k \ln p_k$ and the analytical gradient with respect to output logit $z_k$ is:
     $$\frac{\partial(-\beta H)}{\partial z_k} = \beta \cdot p_k (\ln p_k + H)$$
     When probabilities approach a uniform distribution ($p_k = 1/N$), the entropy gradient vanishes ($\ln(1/N) + \ln N = 0$). When the policy collapses toward a deterministic action, the gradient pushes probabilities back toward uniformity.
-*   **Persisted & Configurable:** Configured through `options.with_entropy_coefficient(beta)` (defaults to `0.0`, disabled), serialized/deserialized seamlessly via `NeuralNetworkSerializer`, and exposed in Python bindings.
+*   **Persisted & Configurable:** Configured through `options.with_entropy_coefficient(beta)` (defaults to `0.0`, disabled), serialised/deserialised seamlessly via `NeuralNetworkSerializer`, and exposed in Python bindings.
+
+### High-Performance Memory Allocator (`mimalloc`)
+
+The library integrates [Microsoft's mimalloc](https://github.com/microsoft/mimalloc/) concurrent memory allocator:
+
+*   **Thread-Local Free Lists:** Eliminates heap lock contention across multi-threaded batch operations (`TaskQueue`, multi-threaded GEMM, and parallel backward passes).
+*   **Lock-Free Cross-Thread Deallocation:** Enables worker threads to pass and free gradient and hidden state buffers seamlessly without stalling other threads.
+*   **Cache Locality:** Segregates allocations across 64KB pages to maximise L1/L2 cache hit rates and minimise TLB misses.
+*   **AVX2 Alignment:** `AlignedAllocator` utilises `mi_malloc_aligned` for zero-overhead 32-byte alignment.
+*   **Configurable & Optional:**
+    *   Enabled by default via CMake: `ENABLE_MIMALLOC=ON` (defines `MYODDWEB_USE_MIMALLOC=1`).
+    *   Can be disabled via CMake: `-DENABLE_MIMALLOC=OFF` to fall back cleanly to standard CRT (`_aligned_malloc` on Windows, `posix_memalign` on POSIX, and default C++ `new`/`delete`).
+
 
 ## Examples
 

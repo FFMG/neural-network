@@ -2,6 +2,25 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.65] - 2026-09-19
+
+### Added
+- Integrated Microsoft's `mimalloc` high-performance memory allocator (v2.1.7):
+  - Vendored static `mimalloc` in [`include/neuralnetwork/libraries/mimalloc`](./include/neuralnetwork/libraries/mimalloc).
+  - Added global `new` and `delete` replacement override via [`include/neuralnetwork/common/mimalloc_override.cpp`](./include/neuralnetwork/common/mimalloc_override.cpp) when `MYODDWEB_USE_MIMALLOC` is defined.
+  - Integrated `mi_malloc_aligned` and `mi_free` into [`include/neuralnetwork/common/aligned_allocator.h`](./include/neuralnetwork/common/aligned_allocator.h) for SIMD-aligned allocations (`AlignedVector`).
+  - Added `ENABLE_MIMALLOC` CMake option (default: `ON`) in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt) defining `MYODDWEB_USE_MIMALLOC=1` and linking against `mimalloc-static`.
+  - Added dedicated unit tests in [`tests/mimalloc_tests.cpp`](./tests/mimalloc_tests.cpp) covering runtime allocator detection, alignment verification across 16/32/64/128-byte boundaries, `AlignedVector` container integration, and multi-threaded concurrent allocation stress.
+  - Added dedicated CI workflow in [`.github/workflows/tests-no-mimalloc.yml`](./.github/workflows/tests-no-mimalloc.yml) validating compilation and unit tests with `-DENABLE_MIMALLOC=OFF` across Windows, Ubuntu, and macOS runners.
+  - Configured Visual Studio project files ([`examples/neuralnetwork.vcxproj`](./examples/neuralnetwork.vcxproj) and [`tests/neuralnetwork_tests.vcxproj`](./tests/neuralnetwork_tests.vcxproj)) with `mimalloc` include paths, single-source compilation (`static.c`), and `mimalloc_override.cpp`.
+  - Documented `mimalloc` configuration, architecture, and build toggles in [`README.md`](./README.md).
+
+### Fixed
+- Fixed sequential test interaction in [`tests/output_layer_details_tests.cpp`](./tests/output_layer_details_tests.cpp) and [`tests/layer_details_tests.cpp`](./tests/layer_details_tests.cpp) where `NeuralNetworkOptions::build()` in earlier tests set `Logger::LogLevel::None`, suppressing warning log captures in `AdamWeightDecayWarning`. Tests now explicitly scope and restore `Logger::LogLevel::Warning`.
+- Fixed false-positive GCC 13 `-Wfree-nonheap-object` compiler error under `-Werror` on Linux by computing smoothed vectors directly in `ErrorCalculation::smooth_labels` ([`include/neuralnetwork/helpers/errorcalculation.h`](./include/neuralnetwork/helpers/errorcalculation.h)) without temporary span indirection, and added `-Wno-free-nonheap-object` for GCC in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt).
+- Fixed Windows GitHub Actions CI build by replacing `microsoft/setup-msbuild` with `ilammy/msvc-dev-cmd` and specifying `-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl` so Ninja properly targets MSVC instead of inadvertently falling back to the pre-installed MinGW GCC toolchain, and guarded global `operator new`/`delete` in [`include/neuralnetwork/common/mimalloc_override.cpp`](./include/neuralnetwork/common/mimalloc_override.cpp) with `!defined(__MINGW32__)`.
+- Fixed false-positive GCC 13 `-Warray-bounds` and `-Wstringop-overflow` compiler errors on Linux Release builds when inlining SIMD vector unrolled loops (`_mm256_loadu_pd`) with small test buffers by adding compiler suppression flags in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt) and diagnostic pragmas in [`include/neuralnetwork/common/simd_utils.h`](./include/neuralnetwork/common/simd_utils.h) and [`tests/simd_utils_tests.cpp`](./tests/simd_utils_tests.cpp).
+
 ## [1.1.64] - 2026-09-18
 
 ### Added

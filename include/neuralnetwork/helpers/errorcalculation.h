@@ -1246,8 +1246,23 @@ public:
     {
       Logger::panic("The label smoothing factor must be in the range [0.0, 1.0)!");
     }
-    std::vector<double> smoothed(targets.size(), 0.0);
-    smooth_labels(targets, std::span<double>(smoothed), label_smoothing);
+    if (targets.empty())
+    {
+      return {};
+    }
+    const size_t num_classes = targets.size();
+    std::vector<double> smoothed(num_classes);
+    if (label_smoothing == 0.0)
+    {
+      std::copy(targets.begin(), targets.end(), smoothed.begin());
+      return smoothed;
+    }
+    const double smooth_prior = label_smoothing / static_cast<double>(num_classes);
+    const double one_minus_smoothing = 1.0 - label_smoothing;
+    for (size_t i = 0; i < num_classes; ++i)
+    {
+      smoothed[i] = targets[i] * one_minus_smoothing + smooth_prior;
+    }
     return smoothed;
   }
 

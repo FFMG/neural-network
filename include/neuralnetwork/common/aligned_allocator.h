@@ -6,7 +6,9 @@
 #include <vector>
 #include <algorithm>
 
-#ifdef _WIN32
+#if defined(MYODDWEB_USE_MIMALLOC)
+#include "../libraries/mimalloc/include/mimalloc.h"
+#elif defined(_WIN32)
 #include <malloc.h>
 #else
 #include <stdlib.h>
@@ -53,7 +55,13 @@ public:
       return nullptr;
     }
     pointer p;
-#ifdef _WIN32
+#if defined(MYODDWEB_USE_MIMALLOC)
+    p = static_cast<pointer>(mi_malloc_aligned(n * sizeof(T), Alignment));
+    if (!p) 
+    {
+      throw std::bad_alloc();
+    }
+#elif defined(_WIN32)
     p = static_cast<pointer>(_aligned_malloc(n * sizeof(T), Alignment));
     if (!p) 
     {
@@ -74,7 +82,9 @@ public:
     {
       return;
     }
-#ifdef _WIN32
+#if defined(MYODDWEB_USE_MIMALLOC)
+    mi_free(p);
+#elif defined(_WIN32)
     _aligned_free(p);
 #else
     free(p);
