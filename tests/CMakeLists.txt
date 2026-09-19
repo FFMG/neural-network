@@ -158,7 +158,7 @@ else()
         target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(neuralnetwork_tests PRIVATE -Wno-free-nonheap-object)
+        target_compile_options(neuralnetwork_tests PRIVATE -Wno-free-nonheap-object -Wno-array-bounds -Wno-stringop-overflow)
     endif()
 endif()
 

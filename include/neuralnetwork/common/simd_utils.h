@@ -19,6 +19,12 @@
 #define SELU_ALPHA 1.67326
 #endif
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+
 namespace myoddweb::nn
 {
 class simd
@@ -7263,4 +7269,7 @@ public:
     }
   }
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 } // namespace myoddweb::nn
