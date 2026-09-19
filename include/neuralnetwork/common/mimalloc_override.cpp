@@ -1,4 +1,4 @@
-#if defined(MYODDWEB_USE_MIMALLOC)
+#if defined(MYODDWEB_USE_MIMALLOC) && !defined(__MINGW32__)
 
 #if defined(_MSC_VER)
 #pragma warning(push)

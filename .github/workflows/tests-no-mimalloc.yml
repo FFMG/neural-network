@@ -14,22 +14,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Visual Studio
-      uses: microsoft/setup-msbuild@v2
+    - name: Set up MSVC
+      uses: ilammy/msvc-dev-cmd@v1
       with:
-        vs-version: '17.0'
+        arch: x64
 
     - name: Install Ninja
       run: choco install ninja
       
     - name: Configure CMake
-      run: cmake -B tests/build -S tests -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DENABLE_MIMALLOC=OFF
+      run: cmake -B tests/build -S tests -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DENABLE_MIMALLOC=OFF
       
     - name: Build
-      run: cmake --build ${{github.workspace}}/tests/build --config Release
+      run: cmake --build tests/build --config Release
 
     - name: Run Tests
-      working-directory: ${{github.workspace}}/tests/build
+      working-directory: tests/build
       run: ctest -C Release --output-on-failure
 
   build-and-test-unix:
