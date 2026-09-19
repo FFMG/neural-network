@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(NeuralNetworkTests LANGUAGES CXX)
+project(NeuralNetworkTests LANGUAGES CXX C)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -19,8 +19,20 @@ FetchContent_MakeAvailable(googletest)
 # Option to enable Tracy Profiler
 option(ENABLE_TRACY "Enable Tracy Profiler" OFF)
 
+# Option to enable Microsoft mimalloc high-performance allocator
+option(ENABLE_MIMALLOC "Enable Microsoft mimalloc high-performance allocator" ON)
+
 # Define source files from the main project (relative to this directory)
 set(NN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../include/neuralnetwork")
+
+if(ENABLE_MIMALLOC)
+    set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_STATIC ON CACHE BOOL "" FORCE)
+    set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${NN_SOURCE_DIR}/libraries/mimalloc" "${CMAKE_CURRENT_BINARY_DIR}/mimalloc" EXCLUDE_FROM_ALL)
+endif()
 
 set(NN_SOURCES
     "${NN_SOURCE_DIR}/common/activation.cpp"
@@ -46,10 +58,15 @@ if(ENABLE_TRACY)
     list(APPEND NN_SOURCES "${NN_SOURCE_DIR}/libraries/tracy/TracyClient.cpp")
 endif()
 
+if(ENABLE_MIMALLOC)
+    list(APPEND NN_SOURCES "${NN_SOURCE_DIR}/common/mimalloc_override.cpp")
+endif()
+
 # Define include directories
 set(NN_INCLUDE_DIRS
     "${NN_SOURCE_DIR}"
     "${NN_SOURCE_DIR}/libraries"
+    "${NN_SOURCE_DIR}/libraries/mimalloc/include"
 )
 
 # Create the test executable
@@ -80,6 +97,7 @@ add_executable(neuralnetwork_tests
     lookahead_tests.cpp
     lstmlayer_mt_tests.cpp
     lstmlayer_tests.cpp
+    mimalloc_tests.cpp
     multioutputlayer_tests.cpp
     network_integration_tests.cpp
     neuralnetwork_advantage_training_tests.cpp
@@ -114,6 +132,15 @@ target_include_directories(neuralnetwork_tests PRIVATE
 target_link_libraries(neuralnetwork_tests PRIVATE
     gtest_main
 )
+
+if(ENABLE_MIMALLOC)
+    target_link_libraries(neuralnetwork_tests PRIVATE
+        mimalloc-static
+    )
+    target_compile_definitions(neuralnetwork_tests PRIVATE
+        MYODDWEB_USE_MIMALLOC=1
+    )
+endif()
 
 # Set strict warning levels
 if(MSVC)

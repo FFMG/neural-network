@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "layers/outputlayerdetails.h"
-
+#include "common/logger.h"
 
 using namespace myoddweb::nn;
 TEST(OutputLayerDetailsTest, ConstructorAndGetters) {
@@ -69,6 +69,9 @@ TEST(OutputLayerDetailsTest, InvalidWeightDecay) {
 
 TEST(OutputLayerDetailsTest, AdamWeightDecayWarning)
 {
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   std::stringstream buffer;
   std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
 
@@ -76,6 +79,7 @@ TEST(OutputLayerDetailsTest, AdamWeightDecayWarning)
   OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.05, OptimiserType::Adam, 0.9);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_NE(output.find("Standard Adam does not apply weight decay"), std::string::npos);
@@ -84,6 +88,9 @@ TEST(OutputLayerDetailsTest, AdamWeightDecayWarning)
 
 TEST(OutputLayerDetailsTest, AdamZeroWeightDecayNoWarning)
 {
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   std::stringstream buffer;
   std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
 
@@ -91,6 +98,7 @@ TEST(OutputLayerDetailsTest, AdamZeroWeightDecayNoWarning)
   OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::Adam, 0.9);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
@@ -98,6 +106,9 @@ TEST(OutputLayerDetailsTest, AdamZeroWeightDecayNoWarning)
 
 TEST(OutputLayerDetailsTest, AdamWWeightDecayNoWarning)
 {
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   std::stringstream buffer;
   std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
 
@@ -105,6 +116,7 @@ TEST(OutputLayerDetailsTest, AdamWWeightDecayNoWarning)
   OutputLayerDetails details(5, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.05, OptimiserType::AdamW, 0.9);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);

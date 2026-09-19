@@ -47,10 +47,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MYODDWEB_USE_MIMALLOC;_DEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;../include/neuralnetwork/libraries/mimalloc/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
@@ -66,10 +66,10 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MYODDWEB_USE_MIMALLOC;NDEBUG;_CONSOLE;VALIDATE_DATA=1;_CRT_SECURE_NO_WARNINGS;MYODDWEB_PROFILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../include;../include/neuralnetwork;../include/neuralnetwork/libraries;../include/neuralnetwork/libraries/mimalloc/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
@@ -112,6 +112,7 @@
     <ClCompile Include="lookahead_tests.cpp" />
     <ClCompile Include="lstmlayer_tests.cpp" />
     <ClCompile Include="lstmlayer_mt_tests.cpp" />
+    <ClCompile Include="mimalloc_tests.cpp" />
     <ClCompile Include="multioutputlayer_tests.cpp" />
     <ClCompile Include="network_integration_tests.cpp" />
     <ClCompile Include="neuralnetworkhelper_tests.cpp" />
@@ -148,12 +149,16 @@
     <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkhelper.cpp" />
     <ClCompile Include="..\include\neuralnetwork\helpers\neuralnetworkserializer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\neuron.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\common\mimalloc_override.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\libraries\mimalloc\src\static.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\neuralnetwork\common\stochasticweightaveragingdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\libraries\mimalloc\include\mimalloc.h" />
+    <ClInclude Include="..\include\neuralnetwork\libraries\mimalloc\include\mimalloc-new-delete.h" />
     <ClInclude Include="test_helper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

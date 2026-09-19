@@ -2,6 +2,22 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.65] - 2026-09-19
+
+### Added
+- Integrated Microsoft's `mimalloc` high-performance memory allocator (v2.1.7):
+  - Vendored static `mimalloc` in [`include/neuralnetwork/libraries/mimalloc`](./include/neuralnetwork/libraries/mimalloc).
+  - Added global `new` and `delete` replacement override via [`include/neuralnetwork/common/mimalloc_override.cpp`](./include/neuralnetwork/common/mimalloc_override.cpp) when `MYODDWEB_USE_MIMALLOC` is defined.
+  - Integrated `mi_malloc_aligned` and `mi_free` into [`include/neuralnetwork/common/aligned_allocator.h`](./include/neuralnetwork/common/aligned_allocator.h) for SIMD-aligned allocations (`AlignedVector`).
+  - Added `ENABLE_MIMALLOC` CMake option (default: `ON`) in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt) defining `MYODDWEB_USE_MIMALLOC=1` and linking against `mimalloc-static`.
+  - Added dedicated unit tests in [`tests/mimalloc_tests.cpp`](./tests/mimalloc_tests.cpp) covering runtime allocator detection, alignment verification across 16/32/64/128-byte boundaries, `AlignedVector` container integration, and multi-threaded concurrent allocation stress.
+  - Added dedicated CI workflow in [`.github/workflows/tests-no-mimalloc.yml`](./.github/workflows/tests-no-mimalloc.yml) validating compilation and unit tests with `-DENABLE_MIMALLOC=OFF` across Windows, Ubuntu, and macOS runners.
+  - Configured Visual Studio project files ([`examples/neuralnetwork.vcxproj`](./examples/neuralnetwork.vcxproj) and [`tests/neuralnetwork_tests.vcxproj`](./tests/neuralnetwork_tests.vcxproj)) with `mimalloc` include paths, single-source compilation (`static.c`), and `mimalloc_override.cpp`.
+  - Documented `mimalloc` configuration, architecture, and build toggles in [`README.md`](./README.md).
+
+### Fixed
+- Fixed sequential test interaction in [`tests/output_layer_details_tests.cpp`](./tests/output_layer_details_tests.cpp) and [`tests/layer_details_tests.cpp`](./tests/layer_details_tests.cpp) where `NeuralNetworkOptions::build()` in earlier tests set `Logger::LogLevel::None`, suppressing warning log captures in `AdamWeightDecayWarning`. Tests now explicitly scope and restore `Logger::LogLevel::Warning`.
+
 ## [1.1.64] - 2026-09-18
 
 ### Added

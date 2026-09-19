@@ -7,6 +7,7 @@
 #include "helpers/errorcalculation.h"
 #include "common/optimiser.h"
 #include "common/evaluationconfig.h"
+#include "common/logger.h"
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
@@ -471,6 +472,9 @@ TEST_F(LayerDetailsTest, ActivationVarietyVerification) {
 TEST_F(LayerDetailsTest, AdamWeightDecayWarning)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   activation act(activation::method::relu, 0.1, 1.0);
 
   std::stringstream buffer;
@@ -480,6 +484,7 @@ TEST_F(LayerDetailsTest, AdamWeightDecayWarning)
   LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.05, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_NE(output.find("Standard Adam does not apply weight decay"), std::string::npos);
@@ -489,6 +494,9 @@ TEST_F(LayerDetailsTest, AdamWeightDecayWarning)
 TEST_F(LayerDetailsTest, AdamZeroWeightDecayNoWarning)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   activation act(activation::method::relu, 0.1, 1.0);
 
   std::stringstream buffer;
@@ -498,6 +506,7 @@ TEST_F(LayerDetailsTest, AdamZeroWeightDecayNoWarning)
   LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
@@ -506,6 +515,9 @@ TEST_F(LayerDetailsTest, AdamZeroWeightDecayNoWarning)
 TEST_F(LayerDetailsTest, AdamWWeightDecayNoWarning)
 {
   MYODDWEB_PROFILE_FUNCTION("LayerDetailsTest");
+  const auto original_level = Logger::get_level();
+  Logger::set_level(Logger::LogLevel::Warning);
+
   activation act(activation::method::relu, 0.1, 1.0);
 
   std::stringstream buffer;
@@ -515,6 +527,7 @@ TEST_F(LayerDetailsTest, AdamWWeightDecayNoWarning)
   LayerDetails details(Layer::Architecture::FF, 10, act, 0.0, 0.05, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
 
   std::cout.rdbuf(old_cout);
+  Logger::set_level(original_level);
 
   std::string output = buffer.str();
   EXPECT_EQ(output.find("Standard Adam does not apply weight decay"), std::string::npos);
