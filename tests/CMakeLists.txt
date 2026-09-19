@@ -157,6 +157,9 @@ else()
     else()
         target_compile_options(neuralnetwork_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
     endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(neuralnetwork_tests PRIVATE -Wno-free-nonheap-object)
+    endif()
 endif()
 
 # Add preprocessor definitions to match the main project

@@ -17,6 +17,7 @@ All notable changes to the `neural-network` library will be documented in this f
 
 ### Fixed
 - Fixed sequential test interaction in [`tests/output_layer_details_tests.cpp`](./tests/output_layer_details_tests.cpp) and [`tests/layer_details_tests.cpp`](./tests/layer_details_tests.cpp) where `NeuralNetworkOptions::build()` in earlier tests set `Logger::LogLevel::None`, suppressing warning log captures in `AdamWeightDecayWarning`. Tests now explicitly scope and restore `Logger::LogLevel::Warning`.
+- Fixed false-positive GCC 13 `-Wfree-nonheap-object` compiler error under `-Werror` on Linux by computing smoothed vectors directly in `ErrorCalculation::smooth_labels` ([`include/neuralnetwork/helpers/errorcalculation.h`](./include/neuralnetwork/helpers/errorcalculation.h)) without temporary span indirection, and added `-Wno-free-nonheap-object` for GCC in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt).
 
 ## [1.1.64] - 2026-09-18
 
