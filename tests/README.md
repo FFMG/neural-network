@@ -36,3 +36,8 @@ To build and run the tests using GCC/G++ on Linux or via MinGW/WSL on Windows, e
     ```bash
     ./neuralnetwork_tests
     ```
+
+## CMake Configuration Options
+
+* `-DENABLE_MIMALLOC=ON` (default: `ON`): Builds with Microsoft `mimalloc` (v3.5.3) high-performance concurrent allocator (`MYODDWEB_USE_MIMALLOC=1`). Set to `OFF` to fall back to the standard CRT allocator.
+* `-DENABLE_TRACY=ON` (default: `OFF`): Enables Tracy Profiler instrumentation (`TRACY_ENABLE`).

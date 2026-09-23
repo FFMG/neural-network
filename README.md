@@ -518,11 +518,11 @@ The library supports policy gradient reinforcement learning via `train_with_adva
 
 ### High-Performance Memory Allocator (`mimalloc`)
 
-The library integrates [Microsoft's mimalloc](https://github.com/microsoft/mimalloc/) concurrent memory allocator:
+The library integrates [Microsoft's mimalloc](https://github.com/microsoft/mimalloc/) (v3.5.3) concurrent memory allocator:
 
 *   **Thread-Local Free Lists:** Eliminates heap lock contention across multi-threaded batch operations (`TaskQueue`, multi-threaded GEMM, and parallel backward passes).
 *   **Lock-Free Cross-Thread Deallocation:** Enables worker threads to pass and free gradient and hidden state buffers seamlessly without stalling other threads.
-*   **Cache Locality:** Segregates allocations across 64KB pages to maximise L1/L2 cache hit rates and minimise TLB misses.
+*   **Cache Locality & V3 Architecture:** Segregates allocations across memory pages and sub-processes to maximise L1/L2 cache hit rates and minimise TLB misses while using less memory than legacy v2 designs.
 *   **AVX2 Alignment:** `AlignedAllocator` utilises `mi_malloc_aligned` for zero-overhead 32-byte alignment.
 *   **Configurable & Optional:**
     *   Enabled by default via CMake: `ENABLE_MIMALLOC=ON` (defines `MYODDWEB_USE_MIMALLOC=1`).

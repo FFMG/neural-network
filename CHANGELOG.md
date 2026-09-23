@@ -2,6 +2,15 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [1.1.66] - 2026-09-23
+
+### Changed
+- Upgraded Microsoft's `mimalloc` high-performance memory allocator from `v2.1.7` to `v3.5.3` (addressing issue [#19](https://github.com/FFMG/neural-network/issues/19)):
+  - Updated vendored static `mimalloc` sources in [`include/neuralnetwork/libraries/mimalloc`](./include/neuralnetwork/libraries/mimalloc) to the latest v3 architecture, providing improved page mapping (`page-map.c`), reduced memory footprint, and thread-local/sub-process enhancements.
+  - Updated runtime version verification in [`tests/mimalloc_tests.cpp`](./tests/mimalloc_tests.cpp) to validate against `MI_MALLOC_VERSION` (version code `30503`).
+  - Added unit test coverage in [`tests/mimalloc_tests.cpp`](./tests/mimalloc_tests.cpp) for runtime heap inspection and collection services (`RuntimeHeapServices`), continuous vector growth and reallocation boundary alignment (`AlignedVectorReallocationAndGrowth`), and large buffer allocations (`LargeAlignedAllocations`).
+  - Updated documentation across [`README.md`](./README.md) and [`tests/README.md`](./tests/README.md) to reflect `mimalloc` v3.5.3 integration, v3 architectural benefits, and CMake configuration options.
+
 ## [1.1.65] - 2026-09-19
 
 ### Added
