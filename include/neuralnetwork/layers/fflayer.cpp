@@ -538,16 +538,19 @@ void FFLayer::run_forward_chunk(
     for (size_t eb = b_step_start; eb < b_step_end; ++eb)
     {
       double* dest = pre_act_ptr + eb * N_this;
-      std::copy_n(b_ptr, copy_size, dest);
+      if (copy_size > 0)
+      {
+        std::memcpy(dest, b_ptr, copy_size * sizeof(double));
+      }
       if (copy_size < N_this)
       {
-        std::fill_n(dest + copy_size, N_this - copy_size, 0.0);
+        std::memset(dest + copy_size, 0, (N_this - copy_size) * sizeof(double));
       }
     }
   }
   else
   {
-    std::fill_n(pre_act_ptr + b_step_start * N_this, (b_step_end - b_step_start) * N_this, 0.0);
+    std::memset(pre_act_ptr + b_step_start * N_this, 0, (b_step_end - b_step_start) * N_this * sizeof(double));
   }
 
   run_gemm(b_step_start, b_step_end, N_prev, N_this, in_buf_ptr, pre_act_ptr);

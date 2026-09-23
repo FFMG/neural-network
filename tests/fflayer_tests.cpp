@@ -1909,5 +1909,66 @@ TEST_F(FFLayerTest, WeightDecayWithAdamW)
   EXPECT_NEAR(w_vals[0], 0.999, 1e-6);
 }
 
+TEST_F(FFLayerTest, ForwardFeedBiasAndZeroFillExact)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 4;
+  const size_t batch_size = 2;
+  const size_t num_time_steps = 2;
+
+  // Layer with bias
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  // Set weights to all zero so output is purely the bias (and zero-filled remainder)
+  std::vector<double> zero_weights(num_inputs * num_outputs, 0.0);
+  layer.set_w_values(zero_weights);
+
+  // Partial bias: only 2 biases set instead of 4; remaining 2 must be 0.0
+  std::vector<double> partial_biases = { 0.75, -0.25 };
+  layer.set_b_values(partial_biases);
+
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, num_time_steps);
+  std::vector<std::vector<double>> residual_outputs;
+
+  // Layer input: 1.0 everywhere
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    std::vector<double> inputs(num_time_steps * num_inputs, 1.0);
+    batch_go[b].set_rnn_outputs(0, inputs.data(), inputs.size());
+  }
+
+  MockLayer prev_layer(0, num_inputs);
+  layer.calculate_forward_feed(batch_go, prev_layer, residual_outputs, batch_hs, batch_size, false);
+
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    const auto& rnn_outs = batch_go[b].get_rnn_outputs(1);
+    ASSERT_EQ(rnn_outs.size(), num_time_steps * num_outputs);
+    for (size_t t = 0; t < num_time_steps; ++t)
+    {
+      const size_t base = t * num_outputs;
+      EXPECT_NEAR(rnn_outs[base + 0], 0.75, 1e-12);
+      EXPECT_NEAR(rnn_outs[base + 1], -0.25, 1e-12);
+      EXPECT_NEAR(rnn_outs[base + 2], 0.0, 1e-12);
+      EXPECT_NEAR(rnn_outs[base + 3], 0.0, 1e-12);
+    }
+  }
+}
+
+TEST_F(FFLayerTest, CalculateOutputGradientsPanic)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 2;
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<std::vector<double>> targets;
+  std::vector<HiddenStates> batch_hs;
+
+  EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
 
 

@@ -2,7 +2,25 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
-## [1.1.66] - 2026-09-23
+## [0.0.67] - 2026-09-23
+
+### Fixed
+- Fixed missing polymorphic override of `calculate_hidden_gradients_from_output_gradients` in `FFOutputLayer` ([`include/neuralnetwork/layers/ffoutputlayer.h`](./include/neuralnetwork/layers/ffoutputlayer.h), [`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)), ensuring it panics with `"The output layer cannot do hidden layer calculations!"` rather than erroneously inheriting hidden-layer backpropagation.
+- Fixed potential buffer overruns and uninitialised target values in `FFOutputLayer::run_output_gradients` ([`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)) when targets or hidden outputs have fewer elements than the layer's neuron count, ensuring bounded copies with tail zero-filling.
+- Fixed null pointer dereference risk for `pre_act` in `FFOutputLayer::run_output_gradients` when pre-activation sums are empty during logit-capping or activation derivative evaluation.
+- Fixed bounds check and pointer safety in `FFOutputLayer::calculate_sharpe_sortino_context` ([`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)) preventing out-of-bounds reads when targets or given outputs are incomplete or empty.
+- Fixed multi-threading workload condition in `FFOutputLayer::calculate_output_gradients` ([`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)) to require `batch_size > 1` and clamp `active_threads` to `batch_size`, eliminating empty thread chunk overhead and thread scheduling latency for single-item batches.
+
+### Optimised
+- Optimised `FFOutputLayer::calculate_output_metrics` ([`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)): sequence unrolling into sample vectors is now lazily performed only when standard error metrics are present, and Sharpe/Sortino pooled portfolio returns are computed once per output head when either or both metrics are evaluated.
+- Removed redundant `.vec().resize(...)` calls on `TempBuffer` instances in `FFOutputLayer::run_output_gradients` ([`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp)).
+- Accelerated bias copy and zero-fill initialisation in `FFLayer::run_forward_chunk` ([`include/neuralnetwork/layers/fflayer.cpp`](./include/neuralnetwork/layers/fflayer.cpp)) by replacing element-wise `std::copy_n` / `std::fill_n` with vectorised `std::memcpy` and `std::memset`.
+
+### Added
+- Added comprehensive unit tests in [`tests/ffoutputlayer_tests.cpp`](./tests/ffoutputlayer_tests.cpp) covering polymorphic hidden-gradient panics (`CalculateHiddenGradientsPanics`), safe partial/empty target gradient calculation (`CalculateOutputGradientsPartialTargetSafe`), and combined Sharpe/Sortino/MSE metric evaluation equivalence (`CalculateOutputMetricsCombinedMetricsExact`).
+- Added unit tests in [`tests/fflayer_tests.cpp`](./tests/fflayer_tests.cpp) verifying exact bias copying and zero-filling behaviour (`ForwardFeedBiasAndZeroFillExact`) and output gradient panic on hidden layers (`CalculateOutputGradientsPanic`).
+
+## [0.0.66] - 2026-09-23
 
 ### Changed
 - Upgraded Microsoft's `mimalloc` high-performance memory allocator from `v2.1.7` to `v3.5.3` (addressing issue [#19](https://github.com/FFMG/neural-network/issues/19)):
@@ -11,7 +29,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added unit test coverage in [`tests/mimalloc_tests.cpp`](./tests/mimalloc_tests.cpp) for runtime heap inspection and collection services (`RuntimeHeapServices`), continuous vector growth and reallocation boundary alignment (`AlignedVectorReallocationAndGrowth`), and large buffer allocations (`LargeAlignedAllocations`).
   - Updated documentation across [`README.md`](./README.md) and [`tests/README.md`](./tests/README.md) to reflect `mimalloc` v3.5.3 integration, v3 architectural benefits, and CMake configuration options.
 
-## [1.1.65] - 2026-09-19
+## [0.0.65] - 2026-09-19
 
 ### Added
 - Integrated Microsoft's `mimalloc` high-performance memory allocator (v2.1.7):
@@ -30,7 +48,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed Windows GitHub Actions CI build by replacing `microsoft/setup-msbuild` with `ilammy/msvc-dev-cmd` and specifying `-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl` so Ninja properly targets MSVC instead of inadvertently falling back to the pre-installed MinGW GCC toolchain, and guarded global `operator new`/`delete` in [`include/neuralnetwork/common/mimalloc_override.cpp`](./include/neuralnetwork/common/mimalloc_override.cpp) with `!defined(__MINGW32__)`.
 - Fixed false-positive GCC 13 `-Warray-bounds` and `-Wstringop-overflow` compiler errors on Linux Release builds when inlining SIMD vector unrolled loops (`_mm256_loadu_pd`) with small test buffers by adding compiler suppression flags in [`tests/CMakeLists.txt`](./tests/CMakeLists.txt) and diagnostic pragmas in [`include/neuralnetwork/common/simd_utils.h`](./include/neuralnetwork/common/simd_utils.h) and [`tests/simd_utils_tests.cpp`](./tests/simd_utils_tests.cpp).
 
-## [1.1.64] - 2026-09-18
+## [0.0.64] - 2026-09-18
 
 ### Added
 - Added entropy regularisation for policy gradient advantage training (`train_with_advantages`) with Softmax output layers to prevent premature policy collapse and maintain exploration:
@@ -41,7 +59,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `with_entropy_coefficient` and `entropy_coefficient` in Python bindings ([`python/bindings.cpp`](./python/bindings.cpp)) and documented in [`python/README.md`](./python/README.md).
   - Added comprehensive unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp) covering regression safety, probability dispersion toward uniform distribution, linear scaling, non-Softmax isolation, serialisation persistence, input validation, and BPTT recurrent layers.
 
-## [1.1.63] - 2026-09-17
+## [0.0.63] - 2026-09-17
 
 ### Added
 - Added comprehensive unit test coverage for `tanh`, `FFLayer`, and `FFOutputLayer`:
@@ -58,7 +76,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Vectorized `Layer::calculate_log_cosh_error_deltas` in [`include/neuralnetwork/layers/layer.cpp`](./include/neuralnetwork/layers/layer.cpp) with AVX2 SIMD using `simd::tanh_pd`.
 - Vectorized soft logit capping gradient scaling in `FFOutputLayer::run_output_gradients` in [`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp) with AVX2 SIMD and FMA using `simd::tanh_pd`.
 
-## [1.1.62] - 2026-09-15
+## [0.0.62] - 2026-09-15
 
 ### Added
 - Added clean, fully working Gridworld reinforcement learning example in [`python/examples/gridworld.py`](./python/examples/gridworld.py):
@@ -69,7 +87,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added GitHub Actions CI workflow in [`.github/workflows/gridworld.yml`](./.github/workflows/gridworld.yml) to build the Python binding and run the GridWorld RL example automatically.
 - Updated documentation across [`README.md`](./README.md) and [`python/README.md`](./python/README.md).
 
-## [1.1.61] - 2026-09-14
+## [0.0.61] - 2026-09-14
 
 ### Added
 - Added dynamic runtime learning rate control on [`NeuralNetwork`](./include/neuralnetwork/neuralnetwork.h) via `set_learning_rate(double)` and `has_learning_rate_override()`:
@@ -91,7 +109,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed bug in `NeuralNetwork::train_with_advantages` where `_learning_rate` was unconditionally overwritten by `_options.learning_rate()`, ensuring runtime overrides are preserved.
 - Fixed `NeuralNetwork::train` unconditionally resetting `_learning_rate` to `_options.learning_rate()` and recalculating scheduler rates when an override is active.
 
-## [1.1.60] - 2026-09-13
+## [0.0.60] - 2026-09-13
 
 ### Added
 - Added Soft Logit Capping ($z_i' = C \cdot \tanh(z_i / C)$) for Softmax activation in [`activation`](./include/neuralnetwork/common/activation.h) and [`activation.cpp`](./include/neuralnetwork/common/activation.cpp):
@@ -111,7 +129,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed artificial underflow probability floor in softmax by expanding `LOGIT_CLAMP` from `30.0` to `500.0` in [`activation::calculate_softmax`](./include/neuralnetwork/common/activation.cpp):
   - The previous clamp at $30.0$ prevented probabilities from falling below $e^{-30} \approx 10^{-14}$, maintaining non-zero gradients indefinitely and causing Adam optimizer updates to drive unregularised weights and biases towards infinity.
 
-## [1.1.59] - 2026-09-13
+## [0.0.59] - 2026-09-13
 
 ### Fixed
 - Fixed critical mathematical bug where momentum and Adam first-moment `beta1` were dropped (forced to `0.0`) on [`FFOutputLayer`](./include/neuralnetwork/layers/ffoutputlayer.h):
@@ -145,7 +163,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `StaticContextSequenceBPTTWeightGradientEquivalence`: Validates pre-summed sequence gradient math for static inputs under BPTT.
   - `WeightDecayWithAdamW`: Confirms decoupled weight decay on FFLayer with AdamW.
 
-## [1.1.58] - 2026-09-12
+## [0.0.58] - 2026-09-12
 
 ### Added
 - Added warning logs and documentation clarifying that [`OptimiserType::Adam`](./include/neuralnetwork/common/optimiser.h) deliberately does not apply weight decay:
@@ -155,7 +173,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Updated examples [`examples/addingproblem.h`](./examples/addingproblem.h) and [`examples/lstm_multi.h`](./examples/lstm_multi.h) to use `OptimiserType::AdamW` where weight decay is configured.
   - Updated [`README.md`](./README.md) and [`python/README.md`](./python/README.md) to highlight that standard Adam does not apply weight decay and warns when `weight_decay > 0`.
 
-## [1.1.57] - 2026-09-10
+## [0.0.57] - 2026-09-10
 
 ### Added
 - Added dual-temperature activation controls and runtime temperature setters:
@@ -261,7 +279,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Domain validation for Softmax policies ensuring action target probabilities are non-negative ($y_j \ge 0$) with non-zero sum ($\sum_j y_j > 0$).
   - Target range validation for Tanh output layers, rejecting any action target values outside $[-1.0, 1.0]$ to prevent vanishing gradients and unreachable target explosion.
 
-## [1.1.56] - 2026-09-09
+## [0.0.56] - 2026-09-09
 
 ### Fixed
 - Fixed GCC `-Werror=maybe-uninitialized` build error in `GRURNNLayer::finalize_forward_step`: Zero-initialised stack buffer `h_hat_final_stack` to prevent false-positive uninitialised warnings under strict compiler settings.
@@ -290,7 +308,7 @@ All notable changes to the `neural-network` library will be documented in this f
     - `MultiOutputLayer`: Verification of weight decay propagation into branch hidden and output layers during `apply_stored_gradients`.
     - `ResidualProjector`: Verification of L2 weight decay during `apply_weight_gradient`.
 
-## [1.1.55] - 2026-09-09
+## [0.0.55] - 2026-09-09
 
 ### Optimised
 - Optimised `GRURNNLayer` gradient accumulation, BPTT execution, and state blending:
@@ -322,7 +340,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `GRURNNLayerTest.SingleStepFastPathGradientEquivalence`: Verifies single-step fast path matches exact analytical gradients.
   - `GRURNNLayerTest.DropoutBPTTConsistencyMultiBatch`: Verifies dropout masking and backprop scaling consistency across multi-batch sequences.
 
-## [1.1.54] - 2026-09-08
+## [0.0.54] - 2026-09-08
 
 ### Optimised
 - Optimised `FFLayer` gradient accumulation, memory caching, and multi-threading efficiency:
@@ -349,7 +367,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `FFLayerTest.ForwardFeedSequenceDetectionFromHiddenStates`: Verifies correct sequence length detection and output sizing from hidden states when input activations are static.
   - `FFLayerTest.SingleStepFastPathGradientEquivalence`: Verifies that single-step fast path gradient accumulation strictly matches reference gradient calculations.
 
-## [1.1.53] - 2026-09-08
+## [0.0.53] - 2026-09-08
 
 ### Optimised
 - Optimised `FFLayer` compute throughput, cache locality, and multi-threading efficiency:
@@ -372,7 +390,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `FFLayerTest.GradientsZeroScalarSkipEquivalence`: Verifies that zero-scalar skipping in gradient accumulation produces identical mathematical results.
   - `FFLayerTest.MultiThreadedForwardAndBackwardEquivalence`: Verifies exact numerical equivalence between single-threaded (1 thread) and multi-threaded (4 threads) forward feed, backward pass, and gradient storage.
 
-## [1.1.52] - 2026-09-07
+## [0.0.52] - 2026-09-07
 
 ### Optimised
 - Optimised `GRURNNLayer` cache locality, memory footprint, and backpropagation compute efficiency:
@@ -406,7 +424,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `GRURNNLayerTest.RecurrentAndInputWeightsFiniteDifferenceMultiBatchNumericalEquivalence`: Verifies analytical gradients for all 6 weight matrices against two-sided finite difference numerical approximations.
   - `GRURNNLayerTest.DropoutMathematicalSoundnessInBPTT`: Verifies that dropout mask scaling and candidate activation derivatives remain within theoretical bounds during training.
 
-## [1.1.51] - 2026-09-05
+## [0.0.51] - 2026-09-05
 
 ### Optimised
 - Optimised `LSTMLayer` cache locality and backpropagation compute efficiency:
@@ -499,7 +517,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added unit tests in `tests/swa_tests.cpp`:
   - `SwaTests.LayerRunningMeanRefreshesTransposedWeightsCache`: Verifies that `accumulate_swa_average` refreshes the cached transposed weight matrix `_w_values_T`.
 
-## [1.1.50] - 2026-09-05
+## [0.0.50] - 2026-09-05
 
 ### Fixed
 - Fixed mathematical bug in activation derivative calculation under dropout across `FFLayer`, `ElmanRNNLayer`, `TcnLayer`, `AttentionPoolLayer`, `EmbeddingLayer`, and `FFOutputLayer`:
@@ -528,7 +546,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `SelfAttentionLayerTest.DropoutNotInference`: Verifies that self-attention inference mode matches 0.0 dropout execution.
   - `SelfAttentionLayerTest.DropoutConsistencyVerification`: Verifies 100% dropout forward zeroing and backward gradient zeroing in self-attention layers.
 
-## [1.1.49] - 2026-09-03
+## [0.0.49] - 2026-09-03
 
 ### Fixed
 - Fixed segmentation fault in concurrent multi-threaded inference (`NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`):
@@ -539,7 +557,7 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Added
 - Added comprehensive unit test suite in `tests/residualprojector_tests.cpp` covering all constructors, factory methods, single and batched vector projections, in-place projection buffer states, weight gradient application with decay and clipping, direct weight delta updates, lazy `WeightParam` caching and invalidation, running-mean SWA accumulation, and Lookahead slow weight updates.
 
-## [1.1.48] - 2026-09-03
+## [0.0.48] - 2026-09-03
 
 ### Optimised
 - Optimised `ElmanRNNLayer` memory allocations, cache locality, and compute efficiency:
@@ -565,7 +583,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `ElmanRNNLayerTest.AdamOptimiserAndSettersCoverage`: Verifies Adam optimiser state updates, setters, getters, and cloning for recurrent weights.
   - `ElmanRNNLayerTest.SpanAndVectorOverloadEquivalence`: Verifies that `std::span` and `std::vector` overloads for gradient calculation produce identical results.
 
-## [1.1.47] - 2026-09-03
+## [0.0.47] - 2026-09-03
 
 ### Optimised
 - Optimised `FFLayer` buffer allocations and memory bandwidth across forward and backward passes:
@@ -583,7 +601,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `FFLayerTest.InferenceMultiThreadingConsistency`: Verifies that multi-threaded evaluation during inference produces identical results to single-threaded execution across multi-step sequences.
   - `FFLayerTest.SingleSampleContiguousBypassVerification`: Verifies consecutive zero-copy bypass execution across multiple sequence iterations with `batch_size == 1`.
 
-## [1.1.46] - 2026-09-03
+## [0.0.46] - 2026-09-03
 
 ### Optimised
 - Optimised `LSTMLayer` memory bandwidth and buffer allocations during backpropagation:
@@ -601,7 +619,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added unit test `SimdUtilsTest.ScaleFourVectorsEquivalence` verifying AVX2-fused 4-vector scaling against scalar implementation across various vector lengths.
 - Added unit test `LSTMLayerTest.RecurrentWeightsFiniteDifferenceNumericalEquivalence` confirming multi-step analytical recurrent gradients match numerical finite differences across all 4 gates.
 
-## [1.1.45] - 2026-09-02
+## [0.0.45] - 2026-09-02
 
 ### Added
 - Added `ErrorResult` structure returning metric `ratio` along with optional sample counts (`numerator` and `denominator`) across ratio-based error and metric functions:
@@ -640,7 +658,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `with_force_checking_indexes` and `force_checking_indexes` on `nn.NeuralNetworkOptions`.
   - Exposed `force_checking_indexes = None` default parameter in `calculate_forecast_metrics` and `calculate_forecast_metrics_all_layers`.
 
-## [1.1.44] - 2026-09-01
+## [0.0.44] - 2026-09-01
 
 ### Optimised
 - Optimised `TcnLayer` forward feed, backpropagation, and multi-threaded scaling:
@@ -670,7 +688,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `InferenceForwardFeedMTConsistency`: Verifies multi-threaded inference consistency with `is_training = false`.
   - `SingleStepInferenceAndTrainingThreadCountInvariance`: Verifies forward feed and gradient calculation across all thread counts for single-step ($T=1$) sequences.
 
-## [1.1.43] - 2026-09-01
+## [0.0.43] - 2026-09-01
 
 ### Refactored
 - Encapsulated `SelfAttentionLayer` internal multi-threading task structures and positional encoding:
@@ -695,7 +713,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added static convenience factory methods to `LayerDetails`: `create_ff`, `create_elman`, `create_gru`, `create_lstm`, `create_tcn`, `create_self_attention`, `create_attention_pool`, and `create_embedding` for simplified layer definition.
   - Added comprehensive multi-threading invariance tests (`OddBatchSizeAllGradsThreadCountInvariance`), positional encoding precomputation tests (`PositionalEncodingPrecomputationMatchesFormula`), and multi-timestep stability tests (`LargeDimensionMultiTimestepEquivalence`).
 
-## [1.1.42] - 2026-08-30
+## [0.0.42] - 2026-08-30
 
 ### Fixed
 - Fixed gradient backpropagation flow in multi-layer topologies where a recurrent/sequence layer precedes a feedforward or output layer:
@@ -703,7 +721,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Corrected `Layers::calculate_back_propagation_hidden_layers` to inspect `hidden_1.is_recurrent()` rather than `has_rnn_gradients(next_layer_idx)`. This resolves an issue where standard feedforward/output layers that populated sequence gradients caused upstream layers to incorrectly bypass dense weight matrix backpropagation in favour of direct output gradient injection through an identity proxy.
   - Expanded `LayerTest.LayersTrainMathematicalSoundnessMultiLayerRecurrentGradientFlow` to verify gradient flow across Elman, GRU, and LSTM layers.
 
-## [1.1.41] - 2026-08-25
+## [0.0.41] - 2026-08-25
 
 ### Added
 - Implemented Differentiable Sharpe and Sortino Ratio Losses (`ErrorCalculation::type::sharpe_ratio_loss` and `ErrorCalculation::type::sortino_ratio_loss`):
@@ -719,7 +737,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.SharpeRatioLoss`, `ErrorCalculationType.SortinoRatioLoss`, and properties in `EvaluationConfig` and `NeuralNetworkOptions`.
   - Comprehensive unit, finite-difference gradient verification, multi-asset, serializer round-trip, and end-to-end feedforward and recurrent BPTT training convergence tests.
 
-## [1.1.40] - 2026-08-25
+## [0.0.40] - 2026-08-25
 
 ### Added
 - Implemented Quantile / Pinball Loss for Single and Multi-Quantile Regression (`ErrorCalculation::type::quantile_loss`):
@@ -732,14 +750,14 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` exposing `ErrorCalculationType.QuantileLoss`, `ErrorCalculationType.PinballLoss`, and `quantiles` in `EvaluationConfig` and `NeuralNetworkOptions`.
   - Comprehensive unit, multi-quantile vector loss, asymmetric penalties, gradient deltas, serializer round-trip, and end-to-end training integration test suite in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.39] - 2026-08-24
+## [0.0.39] - 2026-08-24
 
 ### Added
 - Extended `NeuralNetwork::log_training_info` to log Cosine Annealing with Warm Restarts configuration (enabled status, initial cycle period, cycle multiplier, minimum learning rate floor, and restart decay).
 - Added schedule conflict detection warning in `NeuralNetworkOptions::build` when both adaptive learning rates and Cosine Annealing with Warm Restarts are simultaneously enabled.
 - Added `NeuralNetworkOptions::adaptive_learning_rates()` accessor alias.
 
-## [1.1.38] - 2026-08-23
+## [0.0.38] - 2026-08-23
 
 ### Added
 - Implemented Lookahead Optimiser Wrapper (`LookaheadDetails`):
@@ -753,7 +771,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Python bindings in `python/bindings.cpp` for `LookaheadDetails` and `NeuralNetworkOptions`.
   - Comprehensive unit, SIMD equivalence, layer interpolation, serializer round-trip, and end-to-end training tests in `tests/lookahead_tests.cpp` and `tests/simd_utils_tests.cpp`.
 
-## [1.1.37] - 2026-08-23
+## [0.0.37] - 2026-08-23
 
 ### Added
 - Implemented Cosine Annealing with Warm Restarts (SGDR) learning rate scheduler (`CosineAnnealingWarmRestartsDetails`):
@@ -764,7 +782,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` for `CosineAnnealingWarmRestartsDetails` and `NeuralNetworkOptions`.
   - Comprehensive unit and integration test suite in `tests/cosine_annealing_warm_restarts_tests.cpp` and `tests/network_integration_tests.cpp`.
 
-## [1.1.36] - 2026-08-22
+## [0.0.36] - 2026-08-22
 
 ### Added
 - Implemented RAdam (Rectified Adam) Optimiser (`OptimiserType::RAdam`):
@@ -776,7 +794,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` exposing `OptimiserType.RAdam`.
   - Comprehensive unit and integration test coverage across early-step unadapted momentum, tractable variance rectification, decoupled decay, SIMD equivalence across vector sizes, and end-to-end training.
 
-## [1.1.35] - 2026-08-22
+## [0.0.35] - 2026-08-22
 
 ### Added
 - Added Label Smoothing Regularisation ($\alpha \in [0.0, 1.0)$) across classification loss metrics and output layer gradient delta calculations:
@@ -788,7 +806,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added Python bindings in `python/bindings.cpp` for `EvaluationConfig` with `label_smoothing`.
   - Added comprehensive unit and integration tests in `tests/error_calculation_tests.cpp`, `tests/layer_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.34] - 2026-08-22
+## [0.0.34] - 2026-08-22
 
 ### Added
 - Added `EmbeddingLayer` architecture (`Layer::Architecture::Embedding`) for categorical entity embeddings:
@@ -800,7 +818,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Extended `LayerDetails` constructor and properties with `vocabulary_size` and `embedding_dimension`.
   - Added comprehensive test suite `EmbeddingLayerTest` in `tests/embeddinglayer_tests.cpp` covering construction, invalid parameter validation, hand-computed forward pass, index clamping, finite-difference gradient verification, multi-threaded accumulation equivalence, serializer round-trip, and end-to-end training convergence.
 
-## [1.1.33] - 2026-08-22
+## [0.0.33] - 2026-08-22
 
 ### Added
 - Added `QuickGELU` activation function ($f(x) = x \cdot \sigma(\alpha x) = \frac{x}{1 + e^{-\alpha x}}$ with default $\alpha = 1.702$):
@@ -812,7 +830,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Updated documentation in `README.md` and `python/README.md`.
   - Added unit tests `ActivationTest.QuickGELU`, `ActivationTest.QuickGELUWithCustomAlpha`, `SimdUtilsTest.QuickGeluActivateAndDerivativeVsScalar`, and updated vectorized and string roundtrip test suites.
 
-## [1.1.32] - 2026-08-22
+## [0.0.32] - 2026-08-22
 
 ### Changed
 - Optimised `LSTMLayer` forward feed and BPTT backward pass for GELU activation:
@@ -825,7 +843,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added unit tests `SimdUtilsTest.LstmForwardStepGeluVsStandard` and `SimdUtilsTest.LstmBpttGateStepGeluVsStandard` in `tests/simd_utils_tests.cpp`.
 - Added unit tests `LSTMLayerTest.GeluForwardFeedEquivalence` and `LSTMLayerTest.GeluBpttNumericalGradientEquivalence` in `tests/lstmlayer_tests.cpp`.
 
-## [1.1.31] - 2026-08-21
+## [0.0.31] - 2026-08-21
 
 ### Changed
 - Optimised `LSTMLayer` forward feed and gradient pipeline:
@@ -839,7 +857,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added unit tests `SimdUtilsTest.GemmFourWeightsBatches`, `SimdUtilsTest.LstmForwardStepTanhVsStandard`, and `SimdUtilsTest.SumSqFour` in `tests/simd_utils_tests.cpp`.
 - Added forward pass equivalence and output gradient tests `LSTMLayerTest.ForwardFeedFusedEquivalence` and `LSTMLayerTest.OutputGradientsFusedEquivalence` in `tests/lstmlayer_tests.cpp`.
 
-## [1.1.30] - 2026-08-19
+## [0.0.30] - 2026-08-19
 
 ### Changed
 - Optimised `LSTMLayer` and BPTT performance bottlenecks:
@@ -853,7 +871,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added unit tests `SimdUtilsTest.GemmFourMatricesBatches`, `SimdUtilsTest.LstmBpttGateStepTanhVsStandard`, and `SimdUtilsTest.AddFourVectors` in `tests/simd_utils_tests.cpp`.
 - Added multi-batch, multi-timestep numerical gradient equivalence test `LSTMLayerTest.FastBpttKernelsNumericalGradientEquivalence` in `tests/lstmlayer_tests.cpp`.
 
-## [1.1.29] - 2026-08-18
+## [0.0.29] - 2026-08-18
 
 ### Added
 - Implemented a multi-head causal self-attention hidden layer, a small Transformer encoder block (`SelfAttentionLayer` / `Layer::Architecture::SelfAttention`):
@@ -869,7 +887,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `Layer::Architecture::SelfAttention` and `number_of_heads`/`feed_forward_hidden_size` in Python bindings.
 - Added unit and integration tests covering forward/backward correctness (hand-derived causal-masking check and per-family numerical-gradient checks), placement validation, LayerNorm toggling, batch isolation, SWA averaging, cloning, serializer round-trips, and thread-count invariance in `tests/selfattentionlayer_tests.cpp`, `tests/selfattentionlayer_mt_tests.cpp`, `tests/layer_tests.cpp`, `tests/layer_details_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.28] - 2026-08-18
+## [0.0.28] - 2026-08-18
 
 ### Added
 - Implemented a dilated causal 1D convolution ("Temporal Convolutional Network" block) hidden layer (`TcnLayer` / `Layer::Architecture::Tcn`):
@@ -884,7 +902,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `Layer::Architecture::Tcn` and `kernel_size`/`dilation` in Python bindings.
 - Added unit and integration tests covering forward/backward correctness (hand-computed and numerical-gradient checks), placement validation, residual support, batch isolation, SWA averaging, cloning, serializer round-trips, and single-vs-multi-threaded equivalence in `tests/tcnlayer_tests.cpp`, `tests/tcnlayer_mt_tests.cpp`, `tests/layer_tests.cpp`, `tests/layer_details_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.27] - 2026-08-17
+## [0.0.27] - 2026-08-17
 
 ### Changed
 - Optimized `LSTMLayer` and BPTT execution pipeline:
@@ -904,7 +922,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `LSTMLayerTest.CalculateAndStoreGradientsSingleStepEquivalence`: verifies single-step gradient accumulation and asserts zero recurrent gradient leakage at $t = 0$.
   - `LSTMLayerTest.CalculateAndStoreGradientsBpttMaxTicksTruncation`: validates that gradient accumulation correctly respects `bptt_max_ticks` truncation.
 
-## [1.1.26] - 2026-08-17
+## [0.0.26] - 2026-08-17
 
 ### Changed
 - Optimized `GRURNNLayer::calculate_and_store_gradients_chunk` in `include/neuralnetwork/layers/grurnnlayer.cpp`:
@@ -919,7 +937,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `GRURNNLayerTest.CalculateAndStoreGradientsVariousTopologiesMathematicalProof`: analytically proves gradient accumulation against exact paper formulas ($10^{-14}$ precision) across asymmetric 4-wide/2-wide/1-wide topologies.
   - `GRURNNLayerTest.CalculateAndStoreGradientsSingleStepEquivalence`: verifies single-step BPTT gradient updates and asserts zero recurrent gradient leakage at $t = 0$.
 
-## [1.1.25] - 2026-08-17
+## [0.0.25] - 2026-08-17
 
 ### Fixed
 - Fixed `TrainingMonitor` per-checkpoint metric history not persisting across progress callbacks:
@@ -934,7 +952,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - `NeuralNetworkHelperTest.TrainingMonitorsMultiOutputSharedCopies`
 - Added test `NetworkIntegrationTest.FloatingPointWeightsSerializationPrecision` in `tests/network_integration_tests.cpp` to verify precision round-tripping for floating-point weights during JSON serialization.
 
-## [1.1.24] - 2026-08-16
+## [0.0.24] - 2026-08-16
 
 ### Added
 - Added opt-in network-wide reproducibility seed (`NeuralNetworkOptions::with_seed` / `seed()`) for deterministic training runs:
@@ -946,7 +964,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `with_seed` and `seed` in Python pybind11 bindings and updated Python documentation.
 - Added comprehensive unit and integration tests covering RNG seed derivation, seeded weight initialization, deterministic dropout, and seeded training convergence in `tests/activation_tests.cpp`, `tests/neuron_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.23] - 2026-08-16
+## [0.0.23] - 2026-08-16
 
 ### Added
 - Refactored Stochastic Weight Averaging options to use dedicated `StochasticWeightAveragingDetails` class (`include/neuralnetwork/common/stochasticweightaveragingdetails.h`) with builder methods in `NeuralNetworkOptions`, serialization support, and Python bindings.
@@ -958,7 +976,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Exposed `Layer::Architecture::AttentionPool` and `attention_hidden_size` in Python bindings.
 - Added unit and integration tests covering SIMD softmax, layer options validation, attention pooling forward/backward gradient correctness, and serialization in `tests/simd_utils_tests.cpp`, `tests/layer_tests.cpp`, `tests/attentionpoollayer_tests.cpp`, `tests/stochastic_weight_averaging_details_tests.cpp`, and `tests/network_integration_tests.cpp`.
 
-## [1.1.22] - 2026-08-15
+## [0.0.22] - 2026-08-15
 
 ### Added
 - Implemented Stochastic Weight Averaging (SWA) to improve model generalisation by maintaining running averages of weights across training epochs:
@@ -968,7 +986,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Added serialization support in `NeuralNetworkSerializer` and exposed options in Python bindings.
 - Added unit and integration tests in `tests/swa_tests.cpp` and `tests/network_integration_tests.cpp` verifying running mean calculation, layer propagation, and serialization round-tripping.
 
-## [1.1.21] - 2026-08-15
+## [0.0.21] - 2026-08-15
 
 ### Added
 - Implemented recurrent-state Layer Normalization for `GRURNNLayer` and `LSTMLayer`:
@@ -982,7 +1000,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed `GRURNNLayer::zero_gradients` and `LSTMLayer::zero_gradients` clearing Layer Normalization gain/bias gradients before they were applied.
 - Fixed `use_layer_normalisation` not persisting during `NeuralNetworkSerializer` hidden-layer configuration serialization.
 
-## [1.1.20] - 2026-08-15
+## [0.0.20] - 2026-08-15
 
 ### Fixed
 - Fixed training thread contention caused by nested thread-pool oversubscription in `Layers::update_weights`:
@@ -991,7 +1009,7 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Added
 - Added unit and integration tests verifying thread count configurations and deep network convergence in `tests/network_integration_tests.cpp`.
 
-## [1.1.19] - 2026-08-15
+## [0.0.19] - 2026-08-15
 
 ### Added
 - Implemented Lion (EvoLved Sign Momentum) optimiser (`OptimiserType::Lion`):
@@ -1005,7 +1023,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed weight explosion clamping in per-weight Lion updates to match vectorised implementation.
 - Fixed `OptimiserType::Lamb` enum case in Python bindings.
 
-## [1.1.18] - 2026-08-14
+## [0.0.18] - 2026-08-14
 
 ### Changed
 - Optimized `LSTMLayer::calculate_forward_feed`'s recurrent pass in `include/neuralnetwork/layers/lstmlayer.cpp`: batched the recurrent (hidden-to-hidden) GEMV operations for all four gates (forget, input, output, candidate) across groups of up to 4 batch items per timestep using `simd::gemm_four_batches`, `simd::gemm_two_batches`, and `simd::gemm_one_batch` (against the raw, non-transposed recurrent weight matrices) instead of evaluating batch items individually via `simd::gemv_add_four` against the transposed weight caches.
@@ -1023,9 +1041,9 @@ All notable changes to the `neural-network` library will be documented in this f
   - Removed dangerous `static thread_local` return references in `Layer::get_weight_params()` and `Layer::get_bias_weight_params()`.
 
 ### Added
-- Added 9 unit tests in `tests/lstmlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items, mirroring the GRURNNLayer regression suite added in `[1.1.17]`.
+- Added 9 unit tests in `tests/lstmlayer_tests.cpp`: `NoBatchCrossTalkFourWideGroupInference`, `NoBatchCrossTalkOneWideCleanupInference`, `NoBatchCrossTalkFourWideGroupTraining`, `NoBatchCrossTalkOneWideCleanupTraining`, `NoBatchCrossTalkExactFourMultiple`, `NoBatchCrossTalkOneWideCleanupRemainder`, `NoBatchCrossTalkTwoWideCleanupRemainder`, `NoBatchCrossTalkTwoFullFourWideGroups`, and `NoBatchCrossTalkLargerHiddenSize` to verify zero cross-talk between grouped batch items, mirroring the GRURNNLayer regression suite added in `[0.0.17]`.
 
-## [1.1.17] - 2026-08-14
+## [0.0.17] - 2026-08-14
 
 ### Added
 - Created dedicated `python/examples/` folder for standalone Python library examples.
@@ -1047,7 +1065,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Refactored post-recurrent step logic into `GRURNNLayer::finalize_forward_step` in `include/neuralnetwork/layers/grurnnlayer.cpp`, eliminating redundant memory copies by aliasing state buffers in-place during `simd::gru_output_step`.
 
 
-## [1.1.16] - 2026-08-13
+## [0.0.16] - 2026-08-13
 
 
 ### Added
@@ -1058,7 +1076,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Optimized `FFLayer::cache_recurrent_weights` in `include/neuralnetwork/layers/fflayer.cpp`: replaced naive nested loop with `simd::transpose`.
 - Optimized `GRURNNLayer::cache_recurrent_weights` in `include/neuralnetwork/layers/grurnnlayer.cpp`: replaced 6 manual nested weight matrix transposition loops for input ($W_h, W_z, W_r$) and recurrent ($RW_h, RW_z, RW_r$) weight matrices with `simd::transpose`.
 
-## [1.1.15] - 2026-08-13
+## [0.0.15] - 2026-08-13
 
 ### Fixed
 - Fixed mathematical bug in `activation::calculate_softmax` in `include/neuralnetwork/common/activation.cpp`: the NaN-detection scan started at `begin + 1`, never checking `*begin` itself (which had already seeded `max_val`/`min_val`). A NaN in the *first* logit of a row was therefore never detected — every subsequent comparison against a NaN `max_val` evaluates to false, so the extreme/catastrophic-range checks were silently bypassed, the whole row was exponentiated against a NaN max (producing NaN everywhere), and the `sum` non-finite fallback then kicked in and wrote a fake, deterministic `{1.0, 0.0, 0.0, ...}` "confident class 0" result — masking serious numerical instability as a confident prediction, contradicting the function's own documented intent ("If any input is NaN produce NaN outputs"). A NaN anywhere after index 0 was already handled correctly. Fixed by scanning from `begin` instead of `begin + 1`.
@@ -1069,7 +1087,7 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Added
 - Added unit tests in `tests/activation_tests.cpp`: `SoftmaxNaNAtFirstIndexPropagatesNaN` and `SoftmaxNaNAtLaterIndexPropagatesNaN` (NaN-propagation regression, previously entirely untested), `SoftmaxDerivativeScalarFallbackReturnsZeroNotSigmoid` and `SoftmaxDerivativeBatchedFallbackReturnsZeroForWholeRange` (softmax derivative fallback correctness), `SoftmaxCatastrophicLogitRangePanics` and `SoftmaxExtremeLogitRangeStillProducesValidDistribution` (previously-untested extreme/catastrophic logit-range warning and panic paths), and `UnknownStringToMethodThrows` (previously-untested `string_to_method` failure path).
 
-## [1.1.14] - 2026-08-13
+## [0.0.14] - 2026-08-13
 
 ### Fixed
 - Fixed mathematical bug in `ErrorCalculation::calculate_prediction_coverage` in `include/neuralnetwork/helpers/errorcalculation.h`: the non-softmax branch measured confidence as the raw magnitude of a prediction (`abs(value) > threshold`) instead of its distance from the activation's neutral baseline. For `sigmoid` heads (neutral point 0.5, not 0.0) this silently undercounted confidently-negative predictions (values near 0.0 read as "unconfident" purely because they are numerically small) while still requiring `tanh`/`linear`/`relu` heads to clear the threshold from 0.0, which was already correct for those. Now uses the same `baseline = (activation_method == sigmoid) ? 0.5 : 0.0` convention already used by `calculate_directional_accuracy`/`calculate_directional_confidence_score`.
@@ -1079,13 +1097,13 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Added
 - Added unit tests in `tests/error_calculation_tests.cpp`: `PredictionCoverageSigmoidUsesNeutralBaseline` and `PredictionCoverageEmptySequencePanics` (prediction-coverage baseline/edge cases), `MSESkipsNonFiniteValuesButKeepsFiniteOnesInTheAverage` and `MSEReturnsNaNWhenNoValidValuesExist` (non-finite handling), `MismatchedVectorSizePanicsForStrictMetrics` and `MismatchedVectorSizeSkippedSilentlyForSequenceMetrics` (previously-untested panic vs. skip behaviour across all metric functions on mismatched row sizes), and `UnknownStringToTypeThrows` (previously-untested `string_to_type` failure path).
 
-## [1.1.13] - 2026-08-13
+## [0.0.13] - 2026-08-13
 
 ### Fixed
 - Fixed performance issue in `NeuralNetwork::calculate_forecast_metrics_all_layers_impl` in `include/neuralnetwork/neuralnetwork.cpp`: the per-row thread_local `GradientsAndOutputs` evaluation cache was fully `zero()`-ed on every call (an epoch-callback hot path), which zero-fills both `_outputs` and `_gradients`. `_outputs` is already fully overwritten by the subsequent forward-only `calculate_forward_feed` pass, and `_gradients`/`_rnn_gradients`/`_rnn_gate_gradients` are never written or read outside of backward propagation (which this forecast-only path never runs), so zeroing them was wasted work on every epoch. Switched to the existing (previously unused in production code) `GradientsAndOutputs::reset_for_inference()`, which clears only `_rnn_outputs` — the one piece of cached state that does need clearing, to prevent a stale BPTT sequence output from a prior call leaking into the prediction extracted for a reused cache row.
 - Added unit test `BPTTForecastMetricsCacheReuseRepeatable` in `tests/network_integration_tests.cpp` to verify that interleaved in-sample/out-of-sample calls to `calculate_forecast_metrics` on a BPTT-enabled network reuse the thread_local cache correctly and reproduce bit-identical results on repeat, guarding against stale cached state leaking across calls.
 
-## [1.1.12] - 2026-08-12
+## [0.0.12] - 2026-08-12
 
 ### Added
 - Added `inline_task<R>` class in `include/neuralnetwork/common/inline_task.h`: a move-only, type-erased task wrapper with a 96-byte inline buffer and a 3-pointer manual vtable (invoke, move, destroy).
@@ -1108,7 +1126,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Corrected single-timestep gradient buffer targeted by `set_gradients` to `get_layer_index() - 1` (preceding layer), preventing buffer overflow crashes when input size $N_{prev}$ exceeds layer size $N_{this}$.
 - Required `is_training` guard before enabling multithreading in `ElmanRNNLayer::calculate_forward_feed` in `include/neuralnetwork/layers/elmanrnnlayer.cpp`, preventing thread pool queue contention during concurrent multi-threaded inference (`think()`).
 
-## [1.1.11] - 2026-08-11
+## [0.0.11] - 2026-08-11
 
 ### Changed
 - Optimised `LSTMLayer` BPTT backward pass in `include/neuralnetwork/layers/lstmlayer.cpp`: the forward pass already computes `tanh(g)` (candidate) and `tanh(c)` (cell state) once per timestep, but discarded them, so BPTT re-evaluated `get_activation().activate(...)` on both a second time, every timestep, every training batch.
@@ -1116,7 +1134,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - BPTT now copies the cached activations directly instead of recomputing them, matching the "compute once, cache, reuse in backward" pattern already used by `GRURNNLayer` and `ElmanRNNLayer`. Raw (pre-activation) `g` and `c` values are still stored and available, so `activate_derivative` continues to work correctly for any configured activation method, not just `tanh`.
 - Added unit test `ForwardFeedCachesActivatedCandidateAndCellStateForBptt` to `tests/lstmlayer_tests.cpp`, asserting the cached activated slots equal `tanh()` of the raw values stored during the forward pass.
 
-## [1.1.10] - 2026-08-11
+## [0.0.10] - 2026-08-11
 
 ### Added
 - Added `bptt-supervise-last-step-only` configuration option (`NeuralNetworkOptions::with_bptt_supervise_last_step_only`). When enabled, only the final time step ($t = \text{bptt\_max\_ticks} - 1$) of each sequence window is supervised with target outputs during BPTT training, enabling sequence-to-one forecasting.
@@ -1139,7 +1157,7 @@ All notable changes to the `neural-network` library will be documented in this f
   - Previously, `create_shuffled_indexes_in_lock` permuted the row order before `create_bptt_batches` sliced consecutive array entries into fixed-size windows, so each "sequence" fed to BPTT was actually `bptt_max_ticks` unrelated, randomly ordered historical rows glued together rather than a genuine contiguous time window. Evaluation was unaffected, as it always indexed the untouched chronological array directly.
   - Recurrent networks should use `shuffle-bptt-batches` instead (shuffles whole chronological blocks after windowing), as already documented in `README.md`.
 
-## [1.1.9] - 2026-08-11
+## [0.0.9] - 2026-08-11
 
 ### Added
 - Added unit tests `FFLayerCalculateAndStoreGradientsMathematicalSoundness` and `LayersTrainCoverageAndConsistencyAcrossBatchSizes` to `tests/layer_tests.cpp` to mathematically prove weight/bias gradient calculations against analytical formulas ($10^{-14}$ precision) and verify multi-batch training execution.
@@ -1156,7 +1174,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Optimized `FFOutputLayer::run_output_gradients` in `include/neuralnetwork/layers/ffoutputlayer.cpp`:
   - Replaced local heap `std::vector` allocations with `TempBuffer` for thread-local buffer reuse.
 
-## [1.1.8] - 2026-08-07
+## [0.0.8] - 2026-08-07
 
 ### Added
 - Added `HandCalculatedAnalyticalProofs` and `AllTypesStringRoundtripCoverage` to `tests/error_calculation_tests.cpp` to mathematically prove all 16 error metrics against exact paper calculations ($10^{-12}$ precision) and verify string roundtrip conversions.
@@ -1192,7 +1210,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Fixed heap corruption (`0xc0000374`) in `HiddenStates::assign` in `include/neuralnetwork/common/hiddenstates.h` by checking if buffer memory address shifted (`views[0].get_pre_activation_sums().data() != _pre_activation_sums[layer_number].data()`) during vector relocation and triggering automatic view rebuild.
 - Fixed MSVC CRT thread-local storage heap corruption (`0xc0000374`) in `Layers::think` in `include/neuralnetwork/layers/layers.cpp` during concurrent testing (`NetworkIntegrationTest.ThinkConcurrentMultiThreadedInference`) by replacing `thread_local` cache structures with standard local vectors.
 
-## [1.1.7] - 2026-08-04
+## [0.0.7] - 2026-08-04
 
 ### Added
 - Added `reset_cool_down()` method to `AdaptiveLearningRateScheduler` in `include/neuralnetwork/helpers/adaptivelearningratescheduler.h`.
@@ -1223,12 +1241,12 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Fixed
 - Fixed typo in log message in `AdaptiveLearningRateScheduler::update` (`"learning down rate"` -> `"learning rate"`).
 
-## [1.1.6] - 2026-07-27
+## [0.0.6] - 2026-07-27
 
 ### Changed
 - Optimized `FFLayer::run_post_gemm` in `include/neuralnetwork/layers/fflayer.cpp` to reuse thread-local buffers via `TempBuffer` tags 7 and 8, completely avoiding dynamic stack vector allocation during forward feed.
 
-## [1.1.5] - 2026-07-26
+## [0.0.5] - 2026-07-26
 
 ### Added
 - Added custom unit test cases (`MishAVX2Correctness`, `MishAVX2AllPositive`, `MishAVX2AllNegative`) in `tests/activation_tests.cpp` to verify optimized Mish SIMD branches.
@@ -1239,7 +1257,7 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Fixed
 - Fixed thread-local storage heap corruption (`Exit code 0xc0000374`) during concurrent testing (`LearningRateTest.ConcurrentThinkDuringTrainingIsThreadSafe`) by replacing local `thread_local` vectors in `FFLayer`, `ElmanRNNLayer`, `LSTMLayer`, and `GRURNNLayer` forward pass functions with standard local vectors. This removes unsafe destructors running on thread termination of ephemeral test threads.
 
-## [1.1.4] - 2026-07-25
+## [0.0.4] - 2026-07-25
 
 ### Added
 - Added custom unit test cases (`ELUAVX2AllPositive`, `ELUAVX2AllNegative`, `SELUAVX2AllPositive`, `SELUAVX2AllNegative`) in `tests/activation_tests.cpp` to verify optimized SIMD branches.
@@ -1247,7 +1265,7 @@ All notable changes to the `neural-network` library will be documented in this f
 ### Changed
 - Optimized `simd::elu_activate`, `simd::elu_derivative`, `simd::selu_activate`, and `simd::selu_derivative` in `include/neuralnetwork/common/simd_utils.h` using AVX2 mask checking (`_mm256_movemask_pd`) to completely bypass expensive vectorized exponentiation (`exp_pd`) when inputs are all positive or all non-positive.
 
-## [1.1.3] - 2026-07-19
+## [0.0.3] - 2026-07-19
 
 ### Added
 - Added `ShuffleSingleStepsBehavior` test to `tests/network_integration_tests.cpp` to verify stochastic gradient descent shuffling behavior when backpropagation through time (BPTT) is disabled.
@@ -1256,12 +1274,12 @@ All notable changes to the `neural-network` library will be documented in this f
 - Corrected and optimized `NeuralNetwork::create_bptt_batches` in `include/neuralnetwork/neuralnetwork.cpp` to correctly shuffle training data between epochs when BPTT is disabled.
 - Optimized `NeuralNetwork::calculate_forecast_metrics_all_layers_impl` in `include/neuralnetwork/neuralnetwork.cpp` by eliminating a redundant copy of checking indices.
 
-## [1.1.2] - 2026-07-18
+## [0.0.2] - 2026-07-18
 
 ### Changed
 - Optimized `FFLayer::run_post_gemm`, `ElmanRNNLayer::calculate_forward_feed`, `LSTMLayer::calculate_forward_feed`, and `GRURNNLayer::run_forward_pass` by replacing dynamically allocated local vectors with `thread_local` vectors, eliminating heap allocation overhead from layer forward paths.
 
-## [1.1.1] - 2026-07-18
+## [0.0.1] - 2026-07-18
 
 ### Added
 - Added comprehensive unit tests in `tests/layer_tests.cpp` to verify `Layer::calculate_huber_loss_error_deltas` behavior under different direction penalty configurations.
@@ -1272,7 +1290,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Optimized `Layer::calculate_huber_loss_error_deltas` using loop unswitching to eliminate branching overhead inside the neuron loop for maximum performance.
 - Optimized `simd::adam_step`, `simd::scalar_adam_step`, `simd::nadam_step`, and `simd::scalar_nadam_step` in `include/neuralnetwork/common/simd_utils.h` using loop unswitching on `decays != nullptr` to eliminate branching in the hot path.
 
-## [1.1.0] - 2026-06-12
+## [0.0.0] - 2026-06-12
 
 ### Added
 - Created the `myoddweb::nn` namespace.

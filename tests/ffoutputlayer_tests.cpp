@@ -1177,3 +1177,98 @@ TEST_F(FFOutputLayerTest, OutputLayerEmptyHiddenStatesDefensive)
     EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 1));
 }
 
+TEST_F(FFOutputLayerTest, CalculateHiddenGradientsPanics)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 2;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> batch_next_grads;
+    std::vector<HiddenStates> batch_hs;
+
+    // Both polymorphic hidden gradient methods must panic on an output layer
+    EXPECT_THROW(layer.calculate_hidden_gradients(batch_go, layer, batch_next_grads, batch_hs, 1, 1), std::runtime_error);
+    EXPECT_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, batch_next_grads, batch_hs, 1, 1), std::runtime_error);
+}
+
+TEST_F(FFOutputLayerTest, CalculateOutputGradientsPartialTargetSafe)
+{
+    const unsigned num_inputs = 4;
+    const unsigned num_outputs = 4;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    // Provide hidden state values and pre-activations
+    batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5, 0.5, 0.5, 0.5 });
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.5, 0.5, 0.5, 0.5 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0, 1.0, 1.0 });
+
+    // Target has only 2 elements instead of 4; the remaining 2 should safely zero-fill without buffer overrun
+    std::vector<std::vector<double>> partial_targets = { { 1.0, 0.0 } };
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, partial_targets.begin(), batch_hs, 1));
+
+    const auto grads = batch_go[0].get_gradients(1);
+    ASSERT_EQ(grads.size(), 4);
+    // (0.5 - 1.0) / 4 = -0.125
+    EXPECT_NEAR(grads[0], -0.125, 1e-9);
+    // (0.5 - 0.0) / 4 = 0.125
+    EXPECT_NEAR(grads[1], 0.125, 1e-9);
+    // (0.5 - 0.0) / 4 = 0.125 (target zero-filled)
+    EXPECT_NEAR(grads[2], 0.125, 1e-9);
+    EXPECT_NEAR(grads[3], 0.125, 1e-9);
+}
+
+TEST_F(FFOutputLayerTest, CalculateOutputMetricsCombinedMetricsExact)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs = 1;
+    EvaluationConfig cfg(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-6, 0.0, { 0.5 }, 0.01, 0.0);
+
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::sharpe_ratio_loss, cfg, 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, false, std::nullopt);
+
+    std::vector<std::vector<double>> predictions = {
+        { 0.5, 0.8, -0.2, 0.4 },
+        { 0.1, -0.5, 0.6, -0.3 }
+    };
+    std::vector<std::vector<double>> targets = {
+        { 0.02, -0.01, 0.03, 0.01 },
+        { -0.02, 0.04, -0.01, 0.02 }
+    };
+
+    // Evaluate Sharpe individually
+    const auto sharpe_only = layer.calculate_output_metrics({ ErrorCalculation::type::sharpe_ratio_loss }, targets, predictions);
+    // Evaluate Sortino individually
+    const auto sortino_only = layer.calculate_output_metrics({ ErrorCalculation::type::sortino_ratio_loss }, targets, predictions);
+    // Evaluate MSE individually
+    const auto mse_only = layer.calculate_output_metrics({ ErrorCalculation::type::mse }, targets, predictions);
+
+    // Evaluate all three concurrently
+    const auto combined = layer.calculate_output_metrics(
+        { ErrorCalculation::type::sharpe_ratio_loss, ErrorCalculation::type::sortino_ratio_loss, ErrorCalculation::type::mse },
+        targets,
+        predictions
+    );
+
+    ASSERT_EQ(combined.size(), 1);
+    ASSERT_EQ(combined[0].size(), 3);
+
+    EXPECT_NEAR(combined[0][0].error(), sharpe_only[0][0].error(), 1e-12);
+    EXPECT_NEAR(combined[0][1].error(), sortino_only[0][0].error(), 1e-12);
+    EXPECT_NEAR(combined[0][2].error(), mse_only[0][0].error(), 1e-12);
+}
+

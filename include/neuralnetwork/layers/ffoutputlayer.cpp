@@ -256,6 +256,22 @@ void FFOutputLayer::calculate_hidden_gradients(
   Logger::panic("The output layer cannot do hidden layer calculations!");
 }
 
+void FFOutputLayer::calculate_hidden_gradients_from_output_gradients(
+  std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
+  const std::vector<std::vector<double>>& batch_output_gradients,
+  const std::vector<HiddenStates>& batch_hidden_states,
+  size_t batch_size,
+  int bptt_max_ticks) const
+{
+  (void)batch_gradients_and_outputs;
+  (void)batch_output_gradients;
+  (void)batch_hidden_states;
+  (void)batch_size;
+  (void)bptt_max_ticks;
+  MYODDWEB_PROFILE_FUNCTION("FFOutputLayer");
+  Logger::panic("The output layer cannot do hidden layer calculations!");
+}
+
 PerHeadStepContexts FFOutputLayer::calculate_sharpe_sortino_context(
   std::vector<std::vector<double>>::const_iterator target_outputs_begin,
   const std::vector<HiddenStates>& batch_hidden_states,
@@ -307,7 +323,7 @@ PerHeadStepContexts FFOutputLayer::calculate_sharpe_sortino_context(
         {
           tgt_base = target_outputs.data() + t * num_neurons;
         }
-        else if (t == num_time_steps - 1)
+        else if (t == num_time_steps - 1 && target_outputs.size() >= head_bounds.start + head_width)
         {
           tgt_base = target_outputs.data();
         }
@@ -316,7 +332,17 @@ PerHeadStepContexts FFOutputLayer::calculate_sharpe_sortino_context(
           continue;
         }
 
+        if (tgt_base == nullptr)
+        {
+          continue;
+        }
+
         const auto& given_outputs = layer_states[t].get_hidden_state_values();
+        if (given_outputs.size() < head_bounds.start + head_width)
+        {
+          continue;
+        }
+
         gt_seq.emplace_back(tgt_base + head_bounds.start, tgt_base + head_bounds.start + head_width);
         pos_seq.emplace_back(given_outputs.data() + head_bounds.start, given_outputs.data() + head_bounds.start + head_width);
       }
@@ -400,7 +426,9 @@ void FFOutputLayer::calculate_output_gradients(
   const size_t N_total = get_number_neurons();
   const auto num_threads = get_number_of_threads();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000))) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1)
+    ? std::max(1U, std::min({ max_layer_threads, static_cast<unsigned int>(batch_size), static_cast<unsigned int>((batch_size * num_time_steps * N_total) / 50000) }))
+    : 1U;
   const bool use_multithreading = (active_threads > 1);
   const auto per_head_step_context = _has_sharpe_sortino_heads
     ? calculate_sharpe_sortino_context(target_outputs_begin, batch_hidden_states, batch_size)
@@ -463,12 +491,6 @@ void FFOutputLayer::run_output_gradients(
   TempBuffer<double, 58> current_target(num_neurons);
   TempBuffer<double, 59> deltas(num_neurons);
 
-  deriv_buf.vec().resize(num_neurons);
-  rnn_grads_row.vec().resize(num_time_steps * num_neurons);
-  given_outputs_vec.vec().resize(num_neurons);
-  current_target.vec().resize(num_neurons);
-  deltas.vec().resize(num_neurons);
-
   for (size_t b = start; b < end; b++)
   {
     const auto& target_outputs = *(target_outputs_begin + b);
@@ -480,7 +502,15 @@ void FFOutputLayer::run_output_gradients(
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      std::memcpy(given_outputs_vec.data(), given_outputs.data(), num_neurons * sizeof(double));
+      const size_t copy_outputs = std::min(given_outputs.size(), num_neurons);
+      if (copy_outputs > 0)
+      {
+        std::memcpy(given_outputs_vec.data(), given_outputs.data(), copy_outputs * sizeof(double));
+      }
+      if (copy_outputs < num_neurons)
+      {
+        std::memset(given_outputs_vec.data() + copy_outputs, 0, (num_neurons - copy_outputs) * sizeof(double));
+      }
       
       // Determine target for this time step
       if (target_outputs.size() == num_time_steps * num_neurons)
@@ -491,7 +521,15 @@ void FFOutputLayer::run_output_gradients(
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        std::memcpy(current_target.data(), target_outputs.data(), std::min(target_outputs.size(), num_neurons) * sizeof(double));
+        const size_t copy_target = std::min(target_outputs.size(), num_neurons);
+        if (copy_target > 0)
+        {
+          std::memcpy(current_target.data(), target_outputs.data(), copy_target * sizeof(double));
+        }
+        if (copy_target < num_neurons)
+        {
+          std::memset(current_target.data() + copy_target, 0, (num_neurons - copy_target) * sizeof(double));
+        }
       }
       else
       {
@@ -503,7 +541,8 @@ void FFOutputLayer::run_output_gradients(
       calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), per_head_step_context, b, gated_step_index);
       ++gated_step_index;
 
-      const double* pre_act = current_hidden_state.get_pre_activation_sums().data();
+      const auto& pre_act_vec = current_hidden_state.get_pre_activation_sums();
+      const double* pre_act = pre_act_vec.empty() ? nullptr : pre_act_vec.data();
       const double* mask_vals = has_dropout ? current_hidden_state.get_cell_state_values().data() : nullptr;
       const double* y_vals = has_dropout ? nullptr : current_hidden_state.get_hidden_state_values().data();
 
@@ -536,7 +575,7 @@ void FFOutputLayer::run_output_gradients(
             std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
 
-          if (activation.get_logit_cap() > 0.0)
+          if (activation.get_logit_cap() > 0.0 && pre_act != nullptr)
           {
             const double cap = activation.get_logit_cap();
             const double inv_cap = 1.0 / cap;
@@ -585,8 +624,8 @@ void FFOutputLayer::run_output_gradients(
         else
         {
           activation.activate_derivative(
-            pre_act + r.start,
-            pre_act + r.end,
+            pre_act ? (pre_act + r.start) : nullptr,
+            pre_act ? (pre_act + r.end) : nullptr,
             y_vals ? (y_vals + r.start) : nullptr,
             deriv_buf.data() + r.start
           );
@@ -705,40 +744,82 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     const auto& configs = evaluation_config(output_layer_index);
     const size_t num_neurons = bounds.end - bounds.start + 1;
 
-    // Unroll sequences: treat each time step of each batch item as an independent sample for metrics.
-    // This ensures that ErrorCalculation (which works on samples) correctly handles Softmax max-indices, etc.
-    const size_t est_steps = (total_outputs > 0 && !predictions.empty()) ? (predictions[0].size() / total_outputs) : 1;
-    const size_t est_samples = batch_size * (est_steps > 0 ? est_steps : 1);
+    bool has_sharpe_or_sortino = false;
+    bool has_standard_errors = false;
+    for (const auto& error_type : error_types)
+    {
+      if (error_type == ErrorCalculation::type::sharpe_ratio_loss || error_type == ErrorCalculation::type::sortino_ratio_loss)
+      {
+        has_sharpe_or_sortino = true;
+      }
+      else
+      {
+        has_standard_errors = true;
+      }
+    }
+
     std::vector<std::vector<double>> unrolled_predictions;
     std::vector<std::vector<double>> unrolled_checking_outputs;
-    unrolled_predictions.reserve(est_samples);
-    unrolled_checking_outputs.reserve(est_samples);
 
-    for (size_t b = 0; b < batch_size; ++b)
+    if (has_standard_errors && total_outputs > 0)
     {
-      const size_t p_total = predictions[b].size();
-      const size_t c_total = checking_outputs[b].size();
+      // Unroll sequences: treat each time step of each batch item as an independent sample for metrics.
+      // This ensures that ErrorCalculation (which works on samples) correctly handles Softmax max-indices, etc.
+      const size_t est_steps = !predictions.empty() ? (predictions[0].size() / total_outputs) : 1;
+      const size_t est_samples = batch_size * (est_steps > 0 ? est_steps : 1);
+      unrolled_predictions.reserve(est_samples);
+      unrolled_checking_outputs.reserve(est_samples);
 
-      if (total_outputs == 0)
+      for (size_t b = 0; b < batch_size; ++b)
       {
-        continue;
+        const size_t p_total = predictions[b].size();
+        const size_t c_total = checking_outputs[b].size();
+
+        const size_t p_steps = p_total / total_outputs;
+        const size_t c_steps = c_total / total_outputs;
+        const size_t num_steps = std::min(p_steps, c_steps);
+
+        // Align at the end. For example, if c_steps=1 and p_steps=10, we take the last prediction step.
+        const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+        const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
+
+        for (size_t t = 0; t < num_steps; ++t)
+        {
+          const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+          const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+
+          unrolled_predictions.emplace_back(p_start, p_start + num_neurons);
+          unrolled_checking_outputs.emplace_back(c_start, c_start + num_neurons);
+        }
       }
+    }
 
-      const size_t p_steps = p_total / total_outputs;
-      const size_t c_steps = c_total / total_outputs;
-      const size_t num_steps = std::min(p_steps, c_steps);
-
-      // Align at the end. For example, if c_steps=1 and p_steps=10, we take the last prediction step.
-      const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
-      const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
-
-      for (size_t t = 0; t < num_steps; ++t)
+    std::vector<double> pooled_returns;
+    if (has_sharpe_or_sortino && total_outputs > 0)
+    {
+      for (size_t b = 0; b < batch_size; ++b)
       {
-        const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
-        const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+        const size_t p_steps = predictions[b].size() / total_outputs;
+        const size_t c_steps = checking_outputs[b].size() / total_outputs;
+        const size_t num_steps = std::min(p_steps, c_steps);
+        const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
+        const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
 
-        unrolled_predictions.emplace_back(p_start, p_start + num_neurons);
-        unrolled_checking_outputs.emplace_back(c_start, c_start + num_neurons);
+        std::vector<std::vector<double>> b_preds;
+        std::vector<std::vector<double>> b_targets;
+        b_preds.reserve(num_steps);
+        b_targets.reserve(num_steps);
+
+        for (size_t t = 0; t < num_steps; ++t)
+        {
+          const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
+          const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
+          b_preds.emplace_back(p_start, p_start + num_neurons);
+          b_targets.emplace_back(c_start, c_start + num_neurons);
+        }
+
+        auto returns_b = ErrorCalculation::calculate_portfolio_returns(b_targets, b_preds, configs.transaction_cost_penalty());
+        pooled_returns.insert(pooled_returns.end(), returns_b.begin(), returns_b.end());
       }
     }
 
@@ -746,64 +827,12 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> FFOutputLayer::calculate_ou
     {
       if (error_type == ErrorCalculation::type::sharpe_ratio_loss)
       {
-        std::vector<double> pooled_returns;
-        for (size_t b = 0; b < batch_size; ++b)
-        {
-          const size_t p_steps = total_outputs > 0 ? (predictions[b].size() / total_outputs) : 0;
-          const size_t c_steps = total_outputs > 0 ? (checking_outputs[b].size() / total_outputs) : 0;
-          const size_t num_steps = std::min(p_steps, c_steps);
-          const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
-          const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
-
-          std::vector<std::vector<double>> b_preds;
-          std::vector<std::vector<double>> b_targets;
-          b_preds.reserve(num_steps);
-          b_targets.reserve(num_steps);
-
-          for (size_t t = 0; t < num_steps; ++t)
-          {
-            const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
-            const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
-            b_preds.emplace_back(p_start, p_start + num_neurons);
-            b_targets.emplace_back(c_start, c_start + num_neurons);
-          }
-
-          auto returns_b = ErrorCalculation::calculate_portfolio_returns(b_targets, b_preds, configs.transaction_cost_penalty());
-          pooled_returns.insert(pooled_returns.end(), returns_b.begin(), returns_b.end());
-        }
-
         const auto stats = ErrorCalculation::calculate_sharpe_batch_stats(pooled_returns, configs.epsilon());
         const double loss = (stats.sigma > 0.0) ? (-stats.mean / stats.sigma) : 0.0;
         layer_errors.emplace_back(loss, error_type, std::nullopt, std::nullopt);
       }
       else if (error_type == ErrorCalculation::type::sortino_ratio_loss)
       {
-        std::vector<double> pooled_returns;
-        for (size_t b = 0; b < batch_size; ++b)
-        {
-          const size_t p_steps = total_outputs > 0 ? (predictions[b].size() / total_outputs) : 0;
-          const size_t c_steps = total_outputs > 0 ? (checking_outputs[b].size() / total_outputs) : 0;
-          const size_t num_steps = std::min(p_steps, c_steps);
-          const size_t p_offset = (p_steps > num_steps) ? (p_steps - num_steps) : 0;
-          const size_t c_offset = (c_steps > num_steps) ? (c_steps - num_steps) : 0;
-
-          std::vector<std::vector<double>> b_preds;
-          std::vector<std::vector<double>> b_targets;
-          b_preds.reserve(num_steps);
-          b_targets.reserve(num_steps);
-
-          for (size_t t = 0; t < num_steps; ++t)
-          {
-            const auto p_start = predictions[b].begin() + (t + p_offset) * total_outputs + bounds.start;
-            const auto c_start = checking_outputs[b].begin() + (t + c_offset) * total_outputs + bounds.start;
-            b_preds.emplace_back(p_start, p_start + num_neurons);
-            b_targets.emplace_back(c_start, c_start + num_neurons);
-          }
-
-          auto returns_b = ErrorCalculation::calculate_portfolio_returns(b_targets, b_preds, configs.transaction_cost_penalty());
-          pooled_returns.insert(pooled_returns.end(), returns_b.begin(), returns_b.end());
-        }
-
         const auto stats = ErrorCalculation::calculate_sortino_batch_stats(pooled_returns, configs.sortino_target_return(), configs.epsilon());
         const double loss = (stats.sigma > 0.0) ? (-(stats.mean - configs.sortino_target_return()) / stats.sigma) : 0.0;
         layer_errors.emplace_back(loss, error_type, std::nullopt, std::nullopt);
