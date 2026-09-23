@@ -485,3 +485,47 @@ TEST_F(AttentionPoolLayerTest, DropoutWithTanhActivationDerivative) {
     EXPECT_GT(dropped_count, 0);
     EXPECT_EQ(kept_count + dropped_count, static_cast<int>(N));
 }
+
+TEST_F(AttentionPoolLayerTest, CalculateOutputGradientsPanic)
+{
+    const unsigned N = 2, d_a = 2;
+    AttentionPoolLayer layer = make_layer(N, d_a, false);
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> targets;
+    std::vector<HiddenStates> batch_hs;
+
+    EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
+TEST_F(AttentionPoolLayerTest, EmptyBatchAndStatesDefensive)
+{
+    const unsigned N = 2, d_a = 2;
+    AttentionPoolLayer layer = make_layer(N, d_a, false);
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<HiddenStates> empty_hs;
+    MockLayer next_layer(2, N);
+
+    // batch_size == 0
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+}
+
+TEST_F(AttentionPoolLayerTest, ForwardFeedPartialBias)
+{
+    const unsigned N = 2, d_a = 4;
+    AttentionPoolLayer layer = make_layer(N, d_a, true);
+
+    // Partial bias: only 2 biases set instead of d_a = 4
+    layer.set_ba_values({ 0.1, -0.1 });
+
+    MockLayer prev_layer(0, N);
+    std::vector<unsigned> topology = { N, N };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    std::vector<double> seq(2 * N, 0.5);
+    batch_go[0].set_rnn_outputs(0, seq.data(), seq.size());
+
+    EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
+}

@@ -1027,12 +1027,39 @@ void GRURNNLayer::pre_calculate_gates(
     }
     else
     {
+      const size_t copy_z = std::min(_z_b_values.size(), N_this);
+      const size_t copy_r = std::min(_r_b_values.size(), N_this);
+      const auto& b_vals = get_b_values();
+      const size_t copy_h = std::min(b_vals.size(), N_this);
       for (size_t step = step_start; step < step_end; ++step)
       {
         double* pre_t = &batch_pre_act[step * GateCount * N_this];
-        std::memcpy(pre_t, _z_b_values.data(), N_this * sizeof(double));
-        std::memcpy(pre_t + N_this, _r_b_values.data(), N_this * sizeof(double));
-        std::memcpy(pre_t + 2 * N_this, get_b_values().data(), N_this * sizeof(double));
+        if (copy_z > 0)
+        {
+          std::memcpy(pre_t, _z_b_values.data(), copy_z * sizeof(double));
+        }
+        if (copy_z < N_this)
+        {
+          std::memset(pre_t + copy_z, 0, (N_this - copy_z) * sizeof(double));
+        }
+
+        if (copy_r > 0)
+        {
+          std::memcpy(pre_t + N_this, _r_b_values.data(), copy_r * sizeof(double));
+        }
+        if (copy_r < N_this)
+        {
+          std::memset(pre_t + N_this + copy_r, 0, (N_this - copy_r) * sizeof(double));
+        }
+
+        if (copy_h > 0)
+        {
+          std::memcpy(pre_t + 2 * N_this, b_vals.data(), copy_h * sizeof(double));
+        }
+        if (copy_h < N_this)
+        {
+          std::memset(pre_t + 2 * N_this + copy_h, 0, (N_this - copy_h) * sizeof(double));
+        }
       }
     }
   }
@@ -1926,13 +1953,17 @@ void GRURNNLayer::calculate_hidden_gradients(
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
   {
     return;
   }
-
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
   const size_t N_this = get_number_neurons();
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
   if (num_time_steps == 0 || N_this == 0)
   {
     return;
@@ -2006,7 +2037,17 @@ void GRURNNLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("GRURNNLayer");
   const auto N_this = get_number_neurons();
-  if (N_this == 0 || batch_size == 0)
+  if (N_this == 0 || batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
+  if (num_time_steps == 0)
   {
     return;
   }
@@ -2956,12 +2997,25 @@ void GRURNNLayer::cache_recurrent_weights()
     simd::transpose(_r_w_values.data(), _r_w_values_T.data(), n_prev, n);
   }
 
-  if (has_bias() && !_z_b_values.empty() && !_r_b_values.empty() && !get_b_values().empty())
+  if (has_bias() && (!_z_b_values.empty() || !_r_b_values.empty() || !get_b_values().empty()))
   {
-    _bias_cached.resize(3 * n);
-    std::memcpy(_bias_cached.data(), _z_b_values.data(), n * sizeof(double));
-    std::memcpy(_bias_cached.data() + n, _r_b_values.data(), n * sizeof(double));
-    std::memcpy(_bias_cached.data() + 2 * n, get_b_values().data(), n * sizeof(double));
+    _bias_cached.assign(3 * n, 0.0);
+    const size_t copy_z = std::min(_z_b_values.size(), n);
+    if (copy_z > 0)
+    {
+      std::memcpy(_bias_cached.data(), _z_b_values.data(), copy_z * sizeof(double));
+    }
+    const size_t copy_r = std::min(_r_b_values.size(), n);
+    if (copy_r > 0)
+    {
+      std::memcpy(_bias_cached.data() + n, _r_b_values.data(), copy_r * sizeof(double));
+    }
+    const auto& b_vals = get_b_values();
+    const size_t copy_h = std::min(b_vals.size(), n);
+    if (copy_h > 0)
+    {
+      std::memcpy(_bias_cached.data() + 2 * n, b_vals.data(), copy_h * sizeof(double));
+    }
   }
 }
 

@@ -601,3 +601,61 @@ TEST_F(TcnLayerTest, DropoutWithTanhActivationDerivative) {
     EXPECT_GT(dropped_count, 0);
     EXPECT_EQ(kept_count + dropped_count, static_cast<int>(N_out));
 }
+
+TEST_F(TcnLayerTest, EmptyBatchAndStatesDefensive)
+{
+    const unsigned N_in = 2;
+    const unsigned N_out = 2;
+    TcnLayer layer(1, N_in, N_out, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<HiddenStates> empty_hs;
+    MockLayer next_layer(2, N_out);
+
+    // batch_size == 0
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+
+    // empty_hs with batch_size > 0
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+}
+
+TEST_F(TcnLayerTest, CalculateOutputGradientsPanic)
+{
+    const unsigned N_in = 2;
+    const unsigned N_out = 2;
+    TcnLayer layer(1, N_in, N_out, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> targets;
+    std::vector<HiddenStates> batch_hs;
+
+    EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
+TEST_F(TcnLayerTest, ForwardFeedPartialBias)
+{
+    const unsigned N_in = 2;
+    const unsigned N_out = 4;
+    TcnLayer layer(1, N_in, N_out, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+    layer.set_w_values(std::vector<double>(N_in * N_out, 0.0));
+    // Partial bias: only 2 biases provided instead of 4
+    layer.set_b_values({ 0.75, -0.25 });
+
+    MockLayer prev_layer(0, N_in);
+    std::vector<unsigned> topology = { N_in, N_out };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+    EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
+
+    const auto& out = batch_go[0].get_rnn_outputs(1);
+    ASSERT_EQ(out.size(), N_out);
+    EXPECT_NEAR(out[0], 0.75, 1e-9);
+    EXPECT_NEAR(out[1], -0.25, 1e-9);
+    EXPECT_NEAR(out[2], 0.0, 1e-9);
+    EXPECT_NEAR(out[3], 0.0, 1e-9);
+}

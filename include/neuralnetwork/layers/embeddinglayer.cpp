@@ -218,7 +218,7 @@ void EmbeddingLayer::calculate_forward_feed(
   TempBuffer<double, 2> output_row_seq_buf(num_time_steps * N_this);
   for (size_t b = 0; b < batch_size; ++b)
   {
-    if (!batch_hidden_states.empty())
+    if (!batch_hidden_states.empty() && get_layer_index() < batch_hidden_states[b].size())
     {
       if (batch_hidden_states[b].at(get_layer_index()).size() != num_time_steps)
       {
@@ -297,7 +297,7 @@ void EmbeddingLayer::calculate_forward_feed(
         }
       }
 
-      if (!batch_hidden_states.empty())
+      if (!batch_hidden_states.empty() && get_layer_index() < batch_hidden_states[b].size())
       {
         auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
         layer_states_ref[t].set_cell_state_values(mask_buf.data(), N_this);
@@ -335,7 +335,7 @@ void EmbeddingLayer::calculate_hidden_gradients(
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
   const auto N_this = get_number_neurons();
   const auto N_next = next_layer.get_number_neurons();
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty() || get_layer_index() >= batch_hidden_states[0].size())
   {
     return;
   }
@@ -433,7 +433,7 @@ void EmbeddingLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
   const auto N_this = get_number_neurons();
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty() || get_layer_index() >= batch_hidden_states[0].size())
   {
     return;
   }
@@ -510,6 +510,10 @@ void EmbeddingLayer::run_post_gemm_backward(
 
   for (size_t b = start; b < end; ++b)
   {
+    if (b >= batch_hidden_states.size() || get_layer_index() >= batch_hidden_states[b].size())
+    {
+      continue;
+    }
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
     const size_t num_time_steps = layer_states.size();
     if (num_time_steps == 0)
@@ -562,7 +566,8 @@ void EmbeddingLayer::calculate_and_store_gradients(
   int /*bptt_max_ticks*/)
 {
   MYODDWEB_PROFILE_FUNCTION("EmbeddingLayer");
-  if (batch_size == 0)
+  const unsigned this_layer_index = get_layer_index();
+  if (batch_size == 0 || hidden_states.empty() || this_layer_index >= hidden_states[0].size())
   {
     return;
   }
@@ -570,9 +575,8 @@ void EmbeddingLayer::calculate_and_store_gradients(
   const unsigned num_outputs = get_number_neurons();
   const unsigned num_inputs = get_number_input_neurons();
   const unsigned prev_layer_index = previous_layer.get_layer_index();
-  const unsigned this_layer_index = get_layer_index();
 
-  const size_t num_time_steps = hidden_states[0].at(get_layer_index()).size();
+  const size_t num_time_steps = hidden_states[0].at(this_layer_index).size();
   if (num_time_steps == 0)
   {
     return;

@@ -489,15 +489,41 @@ void SelfAttentionLayer::process_forward_range(
       double* v_row = scratch.V.data() + t * d;
       if (use_bias)
       {
-        std::copy(_bq.values.begin(), _bq.values.end(), q_row);
-        std::copy(_bk.values.begin(), _bk.values.end(), k_row);
-        std::copy(_bv.values.begin(), _bv.values.end(), v_row);
+        const size_t copy_q = std::min(_bq.values.size(), d);
+        if (copy_q > 0)
+        {
+          std::memcpy(q_row, _bq.values.data(), copy_q * sizeof(double));
+        }
+        if (copy_q < d)
+        {
+          std::memset(q_row + copy_q, 0, (d - copy_q) * sizeof(double));
+        }
+
+        const size_t copy_k = std::min(_bk.values.size(), d);
+        if (copy_k > 0)
+        {
+          std::memcpy(k_row, _bk.values.data(), copy_k * sizeof(double));
+        }
+        if (copy_k < d)
+        {
+          std::memset(k_row + copy_k, 0, (d - copy_k) * sizeof(double));
+        }
+
+        const size_t copy_v = std::min(_bv.values.size(), d);
+        if (copy_v > 0)
+        {
+          std::memcpy(v_row, _bv.values.data(), copy_v * sizeof(double));
+        }
+        if (copy_v < d)
+        {
+          std::memset(v_row + copy_v, 0, (d - copy_v) * sizeof(double));
+        }
       }
       else
       {
-        std::fill(q_row, q_row + d, 0.0);
-        std::fill(k_row, k_row + d, 0.0);
-        std::fill(v_row, v_row + d, 0.0);
+        std::memset(q_row, 0, d * sizeof(double));
+        std::memset(k_row, 0, d * sizeof(double));
+        std::memset(v_row, 0, d * sizeof(double));
       }
       const double* x_row = scratch.xp.data() + t * d;
       for (size_t i = 0; i < d; ++i)
@@ -537,11 +563,19 @@ void SelfAttentionLayer::process_forward_range(
       double* ao_row = scratch.ao.data() + t * d;
       if (use_bias)
       {
-        std::copy(_bo.values.begin(), _bo.values.end(), ao_row);
+        const size_t copy_bo = std::min(_bo.values.size(), d);
+        if (copy_bo > 0)
+        {
+          std::memcpy(ao_row, _bo.values.data(), copy_bo * sizeof(double));
+        }
+        if (copy_bo < d)
+        {
+          std::memset(ao_row + copy_bo, 0, (d - copy_bo) * sizeof(double));
+        }
       }
       else
       {
-        std::fill(ao_row, ao_row + d, 0.0);
+        std::memset(ao_row, 0, d * sizeof(double));
       }
       simd::gemm_one_batch(scratch.ctx.data() + t * d, _wo.values.data(), ao_row, d, d);
     }
@@ -570,11 +604,19 @@ void SelfAttentionLayer::process_forward_range(
       double* ffh_row = scratch.ffh_pre.data() + t * d_ff;
       if (use_bias)
       {
-        std::copy(_ff1_b.values.begin(), _ff1_b.values.end(), ffh_row);
+        const size_t copy_ff1 = std::min(_ff1_b.values.size(), d_ff);
+        if (copy_ff1 > 0)
+        {
+          std::memcpy(ffh_row, _ff1_b.values.data(), copy_ff1 * sizeof(double));
+        }
+        if (copy_ff1 < d_ff)
+        {
+          std::memset(ffh_row + copy_ff1, 0, (d_ff - copy_ff1) * sizeof(double));
+        }
       }
       else
       {
-        std::fill(ffh_row, ffh_row + d_ff, 0.0);
+        std::memset(ffh_row, 0, d_ff * sizeof(double));
       }
       simd::gemm_one_batch(scratch.y1n.data() + t * d, _ff1_w.values.data(), ffh_row, d, d_ff);
     }
@@ -589,11 +631,19 @@ void SelfAttentionLayer::process_forward_range(
       double* ffo_row = scratch.ffo.data() + t * d;
       if (use_bias)
       {
-        std::copy(_ff2_b.values.begin(), _ff2_b.values.end(), ffo_row);
+        const size_t copy_ff2 = std::min(_ff2_b.values.size(), d);
+        if (copy_ff2 > 0)
+        {
+          std::memcpy(ffo_row, _ff2_b.values.data(), copy_ff2 * sizeof(double));
+        }
+        if (copy_ff2 < d)
+        {
+          std::memset(ffo_row + copy_ff2, 0, (d - copy_ff2) * sizeof(double));
+        }
       }
       else
       {
-        std::fill(ffo_row, ffo_row + d, 0.0);
+        std::memset(ffo_row, 0, d * sizeof(double));
       }
       simd::gemm_one_batch(scratch.ffh.data() + t * d_ff, _ff2_w.values.data(), ffo_row, d_ff, d);
     }
@@ -1193,7 +1243,12 @@ void SelfAttentionLayer::calculate_hidden_gradients(
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
   {
     return;
   }
@@ -1206,7 +1261,7 @@ void SelfAttentionLayer::calculate_hidden_gradients(
   std::vector<double> raw_delta_all;
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const size_t T = batch_hidden_states[b].at(get_layer_index()).size();
+    const size_t T = batch_hidden_states[b].at(layer_idx).size();
     const size_t base = raw_delta_all.size();
     raw_delta_all.resize(base + T * d, 0.0);
     if (T == 0 || N_next == 0)
@@ -1249,13 +1304,17 @@ void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const unsigned this_layer_index = get_layer_index();
+  if (this_layer_index >= batch_hidden_states[0].size())
   {
     return;
   }
 
   const size_t d = get_number_neurons();
-  const unsigned this_layer_index = get_layer_index();
   const bool use_direct_gradients = batch_output_gradients.empty();
 
   std::vector<double> raw_delta_all;

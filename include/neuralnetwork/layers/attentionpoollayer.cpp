@@ -363,7 +363,7 @@ void AttentionPoolLayer::calculate_forward_feed(
         double score = 0.0;
         for (size_t j = 0; j < d_a; ++j)
         {
-          double e = use_bias ? _ba_values[j] : 0.0;
+          double e = (use_bias && j < _ba_values.size()) ? _ba_values[j] : 0.0;
           const double* wa_row = _wa_values.data() + j;
           for (size_t i = 0; i < N; ++i)
           {
@@ -459,7 +459,7 @@ void AttentionPoolLayer::attention_backward_one(
     double score = 0.0;
     for (size_t j = 0; j < d_a; ++j)
     {
-      double e = use_bias ? _ba_values[j] : 0.0;
+      double e = (use_bias && j < _ba_values.size()) ? _ba_values[j] : 0.0;
       for (size_t i = 0; i < N; ++i)
       {
         e += h_t[i] * _wa_values[i * d_a + j];

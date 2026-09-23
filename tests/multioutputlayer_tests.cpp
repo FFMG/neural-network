@@ -392,3 +392,40 @@ TEST_F(MultiOutputLayerTest, DropoutNotInference) {
         EXPECT_NEAR(val, (double)num_inputs, 1e-7); // No dropout, no scaling
     }
 }
+
+TEST_F(MultiOutputLayerTest, CalculateOutputGradientsPartialTargetSafe)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs_branch = 2;
+    OutputLayerDetails o(num_outputs_branch, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    MultiOutputLayerDetails mod({}, o);
+
+    MultiOutputLayer layer(1, num_inputs, num_outputs_branch, { mod }, 1, true, std::nullopt);
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs_branch };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    // Partial target: only 1 target value instead of 2 for the branch; must not crash/overrun
+    std::vector<std::vector<double>> partial_targets = { { 0.5 } };
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, partial_targets.begin(), batch_hs, 1));
+}
+
+TEST_F(MultiOutputLayerTest, EmptyBatchAndStatesDefensive)
+{
+    const unsigned num_inputs = 2;
+    const unsigned num_outputs_branch = 2;
+    OutputLayerDetails o(num_outputs_branch, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::SGD, 0.0);
+    MultiOutputLayerDetails mod({}, o);
+
+    MultiOutputLayer layer(1, num_inputs, num_outputs_branch, { mod }, 1, true, std::nullopt);
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> targets;
+    std::vector<HiddenStates> empty_hs;
+
+    // batch_size == 0
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, layer, {}, empty_hs, 0, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+}

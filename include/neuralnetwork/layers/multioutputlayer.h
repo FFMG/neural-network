@@ -487,53 +487,77 @@ public:
     const std::vector<HiddenStates>& batch_hidden_states,
     size_t batch_size) const override
   {
-     MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
-     (void)batch_gradients_and_outputs;
-     (void)batch_hidden_states;
-     (void)batch_size;
-     std::lock_guard<std::mutex> lock(_mutex);
-     unsigned offset = 0;
-     const unsigned total_outputs = get_number_neurons();
+    MYODDWEB_PROFILE_FUNCTION("MultiOutputLayer");
+    (void)batch_gradients_and_outputs;
+    (void)batch_hidden_states;
+    if (batch_size == 0 || _branches.empty())
+    {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    unsigned offset = 0;
+    const unsigned total_outputs = get_number_neurons();
 
-     for (size_t i = 0; i < _branches.size(); ++i)
-     {
-       auto& branch = const_cast<Branch&>(_branches[i]);
-       const auto& last_layer = *branch.layers.back();
-       const unsigned b_out_size = last_layer.get_number_neurons();
-       
-       // Determine number of time steps from hidden states
-       const size_t num_time_steps = branch.hidden_states[0].at(last_layer.get_layer_index()).size();
+    for (size_t i = 0; i < _branches.size(); ++i)
+    {
+      auto& branch = const_cast<Branch&>(_branches[i]);
+      if (branch.layers.empty() || branch.hidden_states.empty())
+      {
+        continue;
+      }
+      const auto& last_layer = *branch.layers.back();
+      const unsigned b_out_size = last_layer.get_number_neurons();
+      const auto last_layer_idx = last_layer.get_layer_index();
+      if (last_layer_idx >= branch.hidden_states[0].size())
+      {
+        continue;
+      }
 
-       std::vector<std::vector<double>> sub_targets(batch_size);
-       for(size_t b=0; b<batch_size; ++b)
-       {
-         const auto& full_target = *(target_outputs_begin + b);
-         if (full_target.size() == num_time_steps * total_outputs)
-         {
-           sub_targets[b].reserve(num_time_steps * b_out_size);
-           for (size_t t = 0; t < num_time_steps; ++t)
-           {
-             sub_targets[b].insert(sub_targets[b].end(), 
-               full_target.begin() + t * total_outputs + offset, 
-               full_target.begin() + t * total_outputs + offset + b_out_size);
-           }
-         }
-         else
-         {
-           // Fallback for single step target (or mismatched size)
-           sub_targets[b].assign(full_target.begin() + offset, full_target.begin() + offset + b_out_size);
-         }
-       }
-       
-       branch.layers.back()->calculate_output_gradients(
-         branch.gradients_and_outputs,
-         sub_targets.begin(),
-         branch.hidden_states,
-         batch_size
-       );
-       
-       offset += b_out_size;
-     }
+      // Determine number of time steps from hidden states
+      const size_t num_time_steps = branch.hidden_states[0].at(last_layer_idx).size();
+      if (num_time_steps == 0)
+      {
+        continue;
+      }
+
+      std::vector<std::vector<double>> sub_targets(batch_size);
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        const auto& full_target = *(target_outputs_begin + b);
+        if (full_target.size() == num_time_steps * total_outputs)
+        {
+          sub_targets[b].resize(num_time_steps * b_out_size, 0.0);
+          for (size_t t = 0; t < num_time_steps; ++t)
+          {
+            const size_t seg_start = t * total_outputs + offset;
+            if (seg_start < full_target.size())
+            {
+              const size_t copy_cnt = std::min(static_cast<size_t>(b_out_size), full_target.size() - seg_start);
+              std::memcpy(sub_targets[b].data() + t * b_out_size, full_target.data() + seg_start, copy_cnt * sizeof(double));
+            }
+          }
+        }
+        else
+        {
+          // Fallback for single step target (or mismatched size)
+          sub_targets[b].resize(b_out_size, 0.0);
+          if (offset < full_target.size())
+          {
+            const size_t copy_cnt = std::min(static_cast<size_t>(b_out_size), full_target.size() - offset);
+            std::memcpy(sub_targets[b].data(), full_target.data() + offset, copy_cnt * sizeof(double));
+          }
+        }
+      }
+
+      branch.layers.back()->calculate_output_gradients(
+        branch.gradients_and_outputs,
+        sub_targets.begin(),
+        branch.hidden_states,
+        batch_size
+      );
+
+      offset += b_out_size;
+    }
   }
 
   // New method for custom backprop

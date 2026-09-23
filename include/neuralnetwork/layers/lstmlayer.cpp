@@ -714,21 +714,58 @@ void LSTMLayer::pre_calculate_gates(
   {
     if (!_bias_cached.empty())
     {
+      const size_t cached_bytes = _bias_cached.size() * sizeof(double);
       for (size_t step = step_start; step < step_end; ++step)
       {
         double* pre_t = batch_pre_act + step * GateCount * N_this;
-        std::memcpy(pre_t, _bias_cached.data(), _bias_cached.size() * sizeof(double));
+        std::memcpy(pre_t, _bias_cached.data(), cached_bytes);
       }
     }
     else
     {
+      const size_t copy_f = std::min(_f_b_values.size(), N_this);
+      const size_t copy_i = std::min(_i_b_values.size(), N_this);
+      const size_t copy_o = std::min(_o_b_values.size(), N_this);
+      const auto& b_vals = get_b_values();
+      const size_t copy_g = std::min(b_vals.size(), N_this);
       for (size_t step = step_start; step < step_end; ++step)
       {
         double* pre_t = batch_pre_act + step * GateCount * N_this;
-        std::memcpy(pre_t, _f_b_values.data(), N_this * sizeof(double));
-        std::memcpy(pre_t + N_this, _i_b_values.data(), N_this * sizeof(double));
-        std::memcpy(pre_t + 2 * N_this, _o_b_values.data(), N_this * sizeof(double));
-        std::memcpy(pre_t + 3 * N_this, get_b_values().data(), N_this * sizeof(double));
+        if (copy_f > 0)
+        {
+          std::memcpy(pre_t, _f_b_values.data(), copy_f * sizeof(double));
+        }
+        if (copy_f < N_this)
+        {
+          std::memset(pre_t + copy_f, 0, (N_this - copy_f) * sizeof(double));
+        }
+
+        if (copy_i > 0)
+        {
+          std::memcpy(pre_t + N_this, _i_b_values.data(), copy_i * sizeof(double));
+        }
+        if (copy_i < N_this)
+        {
+          std::memset(pre_t + N_this + copy_i, 0, (N_this - copy_i) * sizeof(double));
+        }
+
+        if (copy_o > 0)
+        {
+          std::memcpy(pre_t + 2 * N_this, _o_b_values.data(), copy_o * sizeof(double));
+        }
+        if (copy_o < N_this)
+        {
+          std::memset(pre_t + 2 * N_this + copy_o, 0, (N_this - copy_o) * sizeof(double));
+        }
+
+        if (copy_g > 0)
+        {
+          std::memcpy(pre_t + 3 * N_this, b_vals.data(), copy_g * sizeof(double));
+        }
+        if (copy_g < N_this)
+        {
+          std::memset(pre_t + 3 * N_this + copy_g, 0, (N_this - copy_g) * sizeof(double));
+        }
       }
     }
   }
@@ -1135,12 +1172,31 @@ void LSTMLayer::finalize_forward_step(
 void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, std::vector<std::vector<double>>::const_iterator target_outputs_begin, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
   const size_t N_this = get_number_neurons();
   TempBuffer<double, 15> deltas_buf(0);
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& states = batch_hidden_states[b].at(get_layer_index());
+    const auto& states = batch_hidden_states[b].at(layer_idx);
     const size_t T = states.size();
+    if (T == 0)
+    {
+      double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(layer_idx);
+      if (dest_ptr != nullptr)
+      {
+        std::memset(dest_ptr, 0, N_this * sizeof(double));
+      }
+      batch_gradients_and_outputs[b].set_rnn_gradients(layer_idx, nullptr, 0);
+      continue;
+    }
     if (deltas_buf.size() < T * N_this)
     {
       deltas_buf.assign(T * N_this, 0.0);
@@ -1152,7 +1208,18 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
       for (size_t t = 0; t < T; ++t)
       {
         const auto& given = states[t].get_hidden_state_values();
-        simd::sub_vectors(given.data(), &targets[t * N_this], deltas + t * N_this, N_this);
+        if (given.size() >= N_this)
+        {
+          simd::sub_vectors(given.data(), &targets[t * N_this], deltas + t * N_this, N_this);
+        }
+        else
+        {
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            const double g = (j < given.size()) ? given[j] : 0.0;
+            deltas[t * N_this + j] = g - targets[t * N_this + j];
+          }
+        }
       }
     }
     else
@@ -1163,9 +1230,10 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
         for (size_t j = 0; j < N_this; ++j)
         {
           size_t idx = t * N_this + j;
+          const double g = (j < given.size()) ? given[j] : 0.0;
           if (idx < targets.size())
           {
-            deltas[idx] = given[j] - targets[idx];
+            deltas[idx] = g - targets[idx];
           }
           else
           {
@@ -1174,9 +1242,12 @@ void LSTMLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& bat
         }
       }
     }
-    double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::memcpy(dest_ptr, deltas + (T - 1) * N_this, N_this * sizeof(double));
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas, T * N_this);
+    double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(layer_idx);
+    if (dest_ptr != nullptr)
+    {
+      std::memcpy(dest_ptr, deltas + (T - 1) * N_this, N_this * sizeof(double));
+    }
+    batch_gradients_and_outputs[b].set_rnn_gradients(layer_idx, deltas, T * N_this);
   }
 }
 
@@ -1189,12 +1260,17 @@ void LSTMLayer::calculate_hidden_gradients(
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
   {
     return;
   }
   const size_t N_this = get_number_neurons();
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
   if (num_time_steps == 0 || N_this == 0)
   {
     return;
@@ -1202,7 +1278,7 @@ void LSTMLayer::calculate_hidden_gradients(
   const auto num_threads = get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 4) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this) * 4) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
   if (_use_layer_normalisation)
@@ -1270,7 +1346,17 @@ void LSTMLayer::calculate_hidden_gradients_from_output_gradients(
 {
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   const auto N_this = get_number_neurons();
-  if (N_this == 0 || batch_size == 0)
+  if (N_this == 0 || batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
+  if (num_time_steps == 0)
   {
     return;
   }
@@ -2019,13 +2105,30 @@ void LSTMLayer::cache_recurrent_weights()
     simd::transpose(_o_w_values.data(), _o_w_values_T.data(), n_prev, n);
   }
 
-  if (has_bias() && !_f_b_values.empty() && !_i_b_values.empty() && !_o_b_values.empty() && !get_b_values().empty())
+  if (has_bias() && (!_f_b_values.empty() || !_i_b_values.empty() || !_o_b_values.empty() || !get_b_values().empty()))
   {
-    _bias_cached.resize(4 * n);
-    std::copy(_f_b_values.begin(), _f_b_values.end(), _bias_cached.begin());
-    std::copy(_i_b_values.begin(), _i_b_values.end(), _bias_cached.begin() + n);
-    std::copy(_o_b_values.begin(), _o_b_values.end(), _bias_cached.begin() + 2 * n);
-    std::copy(get_b_values().begin(), get_b_values().end(), _bias_cached.begin() + 3 * n);
+    _bias_cached.assign(4 * n, 0.0);
+    const size_t copy_f = std::min(_f_b_values.size(), n);
+    if (copy_f > 0)
+    {
+      std::memcpy(_bias_cached.data(), _f_b_values.data(), copy_f * sizeof(double));
+    }
+    const size_t copy_i = std::min(_i_b_values.size(), n);
+    if (copy_i > 0)
+    {
+      std::memcpy(_bias_cached.data() + n, _i_b_values.data(), copy_i * sizeof(double));
+    }
+    const size_t copy_o = std::min(_o_b_values.size(), n);
+    if (copy_o > 0)
+    {
+      std::memcpy(_bias_cached.data() + 2 * n, _o_b_values.data(), copy_o * sizeof(double));
+    }
+    const auto& b_vals = get_b_values();
+    const size_t copy_g = std::min(b_vals.size(), n);
+    if (copy_g > 0)
+    {
+      std::memcpy(_bias_cached.data() + 3 * n, b_vals.data(), copy_g * sizeof(double));
+    }
   }
 }
 

@@ -282,11 +282,19 @@ void TcnLayer::process_forward_range(
     {
       if (use_bias)
       {
-        std::copy(_b_values.begin(), _b_values.end(), pre_act);
+        const size_t copy_size = std::min(_b_values.size(), N_out);
+        if (copy_size > 0)
+        {
+          std::memcpy(pre_act, _b_values.data(), copy_size * sizeof(double));
+        }
+        if (copy_size < N_out)
+        {
+          std::memset(pre_act + copy_size, 0, (N_out - copy_size) * sizeof(double));
+        }
       }
       else
       {
-        std::fill_n(pre_act, N_out, 0.0);
+        std::memset(pre_act, 0, N_out * sizeof(double));
       }
 
       size_t j = 0;
@@ -608,13 +616,13 @@ void TcnLayer::calculate_hidden_gradients(
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("TcnLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
   {
     return;
   }
 
   const auto num_threads = get_number_of_threads();
-  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
   if (active_threads <= 1)
   {
     process_hidden_gradients_range(0, batch_size, 0, batch_gradients_and_outputs, batch_hidden_states, &next_layer, batch_next_grad_matrix);
@@ -653,13 +661,13 @@ void TcnLayer::calculate_hidden_gradients_from_output_gradients(
   int /*bptt_max_ticks*/) const
 {
   MYODDWEB_PROFILE_FUNCTION("TcnLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
   {
     return;
   }
 
   const auto num_threads = get_number_of_threads();
-  const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
   if (active_threads <= 1)
   {
     process_hidden_gradients_range(0, batch_size, 0, batch_gradients_and_outputs, batch_hidden_states, nullptr, batch_output_gradients);

@@ -2975,4 +2975,84 @@ TEST_F(LSTMLayerTest, RecurrentAndInputWeightsFiniteDifferenceMultiBatchNumerica
   }
 }
 
+TEST_F(LSTMLayerTest, EmptyBatchAndStatesDefensive)
+{
+  LSTMLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
 
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<std::vector<double>> targets;
+  std::vector<HiddenStates> empty_hs;
+  MockLayer next_layer(2, 2);
+
+  // batch_size == 0
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+
+  // empty_hs with batch_size > 0
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 1));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+}
+
+TEST_F(LSTMLayerTest, CalculateOutputGradientsZeroTimeSteps)
+{
+  LSTMLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 0, LSTMLayer::Multiplier);
+  std::vector<std::vector<double>> targets = { { 0.5, 0.5 } };
+
+  // Must not underflow (T - 1) or crash
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
+}
+
+TEST_F(LSTMLayerTest, CalculateOutputGradientsPartialTarget)
+{
+  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  std::vector<unsigned> topology = { 2, 3 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
+  batch_hs[0].at(1, 0).set_hidden_state_values({ 1.0, 2.0, 3.0 });
+
+  std::vector<std::vector<double>> targets = { { 0.5, 1.0 } };
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
+
+  const auto& rnn_grads = batch_go[0].get_rnn_gradients(1);
+  ASSERT_EQ(rnn_grads.size(), 3);
+  EXPECT_NEAR(rnn_grads[0], 0.5, 1e-9);
+  EXPECT_NEAR(rnn_grads[1], 1.0, 1e-9);
+  EXPECT_NEAR(rnn_grads[2], 0.0, 1e-9);
+}
+
+TEST_F(LSTMLayerTest, ForwardFeedPartialBias)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 4;
+  LSTMLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_f_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_f_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_i_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_i_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_o_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_o_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+
+  // Partial biases
+  layer.set_b_values({ 0.1, -0.1 });
+  layer.set_f_b_values({ 0.2, -0.2 });
+  layer.set_i_b_values({ 0.3, -0.3 });
+  layer.set_o_b_values({ 0.4, -0.4 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, LSTMLayer::Multiplier);
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
+}

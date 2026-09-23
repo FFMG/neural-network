@@ -554,19 +554,23 @@ void ElmanRNNLayer::pre_calculate_gates(
   {
     const auto& biases = get_b_values();
     const size_t copy_size = std::min<size_t>(biases.size(), N_this);
+    const double* b_ptr = biases.data();
     for (size_t step = step_start; step < step_end; ++step)
     {
       double* dest = &batch_pre_act[step * N_this];
-      std::copy_n(biases.begin(), copy_size, dest);
+      if (copy_size > 0)
+      {
+        std::memcpy(dest, b_ptr, copy_size * sizeof(double));
+      }
       if (copy_size < N_this)
       {
-        std::fill_n(dest + copy_size, N_this - copy_size, 0.0);
+        std::memset(dest + copy_size, 0, (N_this - copy_size) * sizeof(double));
       }
     }
   }
   else
   {
-    std::fill_n(&batch_pre_act[step_start * N_this], (step_end - step_start) * N_this, 0.0);
+    std::memset(&batch_pre_act[step_start * N_this], 0, (step_end - step_start) * N_this * sizeof(double));
   }
 
   size_t step = step_start;
@@ -636,12 +640,31 @@ void ElmanRNNLayer::pre_calculate_gates(
 void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>& batch_gradients_and_outputs, std::vector<std::vector<double>>::const_iterator target_outputs_begin, const std::vector<HiddenStates>& batch_hidden_states, size_t batch_size) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
+  {
+    return;
+  }
   const size_t N_this = get_number_neurons();
   TempBuffer<double, 15> deltas_buf(0);
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& states = batch_hidden_states[b].at(get_layer_index());
+    const auto& states = batch_hidden_states[b].at(layer_idx);
     const size_t T = states.size();
+    if (T == 0)
+    {
+      double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(layer_idx);
+      if (dest_ptr != nullptr)
+      {
+        std::memset(dest_ptr, 0, N_this * sizeof(double));
+      }
+      batch_gradients_and_outputs[b].set_rnn_gradients(layer_idx, nullptr, 0);
+      continue;
+    }
     if (deltas_buf.size() < T * N_this)
     {
       deltas_buf.assign(T * N_this, 0.0);
@@ -653,7 +676,18 @@ void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>&
       for (size_t t = 0; t < T; ++t)
       {
         const auto& given = states[t].get_hidden_state_values();
-        simd::sub_vectors(given.data(), &targets[t * N_this], deltas + t * N_this, N_this);
+        if (given.size() >= N_this)
+        {
+          simd::sub_vectors(given.data(), &targets[t * N_this], deltas + t * N_this, N_this);
+        }
+        else
+        {
+          for (size_t j = 0; j < N_this; ++j)
+          {
+            const double g = (j < given.size()) ? given[j] : 0.0;
+            deltas[t * N_this + j] = g - targets[t * N_this + j];
+          }
+        }
       }
     }
     else
@@ -664,9 +698,10 @@ void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>&
         for (size_t j = 0; j < N_this; ++j)
         {
           size_t idx = t * N_this + j;
+          const double g = (j < given.size()) ? given[j] : 0.0;
           if (idx < targets.size())
           {
-            deltas[idx] = given[j] - targets[idx];
+            deltas[idx] = g - targets[idx];
           }
           else
           {
@@ -675,9 +710,12 @@ void ElmanRNNLayer::calculate_output_gradients(std::vector<GradientsAndOutputs>&
         }
       }
     }
-    double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
-    std::copy_n(deltas + (T - 1) * N_this, N_this, dest_ptr);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), deltas, T * N_this);
+    double* dest_ptr = batch_gradients_and_outputs[b].get_gradients_raw(layer_idx);
+    if (dest_ptr != nullptr)
+    {
+      std::memcpy(dest_ptr, deltas + (T - 1) * N_this, N_this * sizeof(double));
+    }
+    batch_gradients_and_outputs[b].set_rnn_gradients(layer_idx, deltas, T * N_this);
   }
 }
 
@@ -690,12 +728,17 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
   {
     return;
   }
   const size_t N_this = get_number_neurons();
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
   if (num_time_steps == 0 || N_this == 0)
   {
     return;
@@ -704,7 +747,7 @@ void ElmanRNNLayer::calculate_hidden_gradients(
   const auto num_threads = get_number_of_threads();
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned int max_layer_threads = std::min(num_threads, 4U);
-  const unsigned int active_threads = (num_threads > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this)) / 100000))) : 1;
+  const unsigned int active_threads = (num_threads > 1 && batch_size > 1) ? std::max(1U, std::min(max_layer_threads, static_cast<unsigned int>((batch_size * num_time_steps * N_this * (N_next + N_this)) / 100000))) : 1;
   const bool use_multithreading = (active_threads > 1);
 
   if (!use_multithreading)
@@ -741,12 +784,17 @@ void ElmanRNNLayer::calculate_hidden_gradients_from_output_gradients(
   int bptt_max_ticks) const
 {
   MYODDWEB_PROFILE_FUNCTION("ElmanRNNLayer");
-  if (batch_size == 0)
+  if (batch_size == 0 || batch_hidden_states.empty())
+  {
+    return;
+  }
+  const auto layer_idx = get_layer_index();
+  if (layer_idx >= batch_hidden_states[0].size())
   {
     return;
   }
   const size_t N_this = get_number_neurons();
-  const size_t num_time_steps = batch_hidden_states[0].at(get_layer_index()).size();
+  const size_t num_time_steps = batch_hidden_states[0].at(layer_idx).size();
   if (num_time_steps == 0 || N_this == 0)
   {
     return;

@@ -2890,3 +2890,58 @@ TEST_F(GRURNNLayerTest, DropoutBPTTConsistencyMultiBatch)
     }
   }
 }
+
+TEST_F(GRURNNLayerTest, EmptyBatchAndStatesDefensive)
+{
+  GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<HiddenStates> empty_hs;
+  MockLayer next_layer(2, 2);
+
+  // batch_size == 0
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+
+  // empty_hs with batch_size > 0
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+}
+
+TEST_F(GRURNNLayerTest, CalculateOutputGradientsPanic)
+{
+  GRURNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<std::vector<double>> targets;
+  std::vector<HiddenStates> batch_hs;
+
+  EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
+TEST_F(GRURNNLayerTest, ForwardFeedPartialBias)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 4;
+  GRURNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, false, std::nullopt);
+
+  layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_z_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_z_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  layer.set_r_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_r_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+
+  // Partial biases
+  layer.set_b_values({ 0.1, -0.1 });
+  layer.set_z_b_values({ 0.2, -0.2 });
+  layer.set_r_b_values({ 0.3, -0.3 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, GRURNNLayer::Multiplier);
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
+}

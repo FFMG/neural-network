@@ -567,3 +567,38 @@ TEST(EmbeddingLayerTest, DropoutWithTanhActivationDerivative)
   EXPECT_GT(dropped_count, 0);
   EXPECT_EQ(kept_count + dropped_count, static_cast<int>(embed_dim));
 }
+
+TEST(EmbeddingLayerTest, CalculateOutputGradientsPanic)
+{
+  const unsigned vocab_size = 10;
+  const unsigned embed_dim = 4;
+  EmbeddingLayer layer = make_embedding_layer(1, vocab_size, embed_dim);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<std::vector<double>> targets;
+  std::vector<HiddenStates> batch_hs;
+
+  EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
+TEST(EmbeddingLayerTest, EmptyBatchAndStatesDefensive)
+{
+  const unsigned vocab_size = 10;
+  const unsigned embed_dim = 4;
+  EmbeddingLayer layer = make_embedding_layer(1, vocab_size, embed_dim);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<HiddenStates> empty_hs;
+  MockLayer next_layer(2, embed_dim);
+  MockLayer prev_layer(0, 1);
+
+  // batch_size == 0
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_and_store_gradients(batch_go, empty_hs, prev_layer, 0, 0));
+
+  // empty hidden states with batch_size > 0
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_and_store_gradients(batch_go, empty_hs, prev_layer, 1, 0));
+}

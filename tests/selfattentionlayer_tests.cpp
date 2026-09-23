@@ -667,4 +667,55 @@ TEST_F(SelfAttentionLayerTest, DropoutConsistencyVerification) {
     }
 }
 
+TEST_F(SelfAttentionLayerTest, EmptyBatchAndStatesDefensive)
+{
+    const unsigned d = 4, H = 2, d_ff = 8;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, false, false, activation(activation::method::linear, 0.0));
 
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<HiddenStates> empty_hs;
+    MockLayer next_layer(2, d);
+
+    // batch_size == 0
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+
+    // empty_hs with batch_size > 0
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+    EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+}
+
+TEST_F(SelfAttentionLayerTest, CalculateOutputGradientsPanic)
+{
+    const unsigned d = 4, H = 2, d_ff = 8;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, false, false, activation(activation::method::linear, 0.0));
+
+    std::vector<GradientsAndOutputs> batch_go;
+    std::vector<std::vector<double>> targets;
+    std::vector<HiddenStates> batch_hs;
+
+    EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
+}
+
+TEST_F(SelfAttentionLayerTest, ForwardFeedPartialBias)
+{
+    const unsigned d = 4, H = 2, d_ff = 8;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, false, activation(activation::method::linear, 0.0));
+
+    // Provide partial bias (only 2 elements instead of d=4 or d_ff=8)
+    std::vector<double> partial_bias = { 0.5, -0.5 };
+    layer.set_bq_values(partial_bias);
+    layer.set_bk_values(partial_bias);
+    layer.set_bv_values(partial_bias);
+    layer.set_bo_values(partial_bias);
+    layer.set_ff1_b_values(partial_bias);
+    layer.set_ff2_b_values(partial_bias);
+
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go[0].set_rnn_outputs(0, std::vector<double>(d, 1.0).data(), d);
+
+    EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false));
+}

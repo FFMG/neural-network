@@ -1074,3 +1074,84 @@ TEST_F(ElmanRNNLayerTest, SpanAndVectorOverloadEquivalence)
     EXPECT_NEAR(vec_b_grads[i], span_b_grads[i], 1e-14);
   }
 }
+
+TEST_F(ElmanRNNLayerTest, EmptyBatchAndStatesDefensive)
+{
+  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+  std::vector<GradientsAndOutputs> batch_go;
+  std::vector<std::vector<double>> targets;
+  std::vector<HiddenStates> empty_hs;
+  MockLayer next_layer(2, 2);
+
+  // batch_size == 0
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 0, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 0, 0));
+
+  // empty_hs with batch_size > 0
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), empty_hs, 1));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients(batch_go, next_layer, {}, empty_hs, 1, 0));
+  EXPECT_NO_THROW(layer.calculate_hidden_gradients_from_output_gradients(batch_go, {}, empty_hs, 1, 0));
+}
+
+TEST_F(ElmanRNNLayerTest, CalculateOutputGradientsZeroTimeSteps)
+{
+  ElmanRNNLayer layer(1, 2, 2, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+  std::vector<unsigned> topology = { 2, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  // Create hidden states with 0 time steps
+  auto batch_hs = create_batch_hidden_states(topology, 1, 0);
+  std::vector<std::vector<double>> targets = { { 0.5, 0.5 } };
+
+  // Must not underflow (T - 1) or crash
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
+}
+
+TEST_F(ElmanRNNLayerTest, CalculateOutputGradientsPartialTarget)
+{
+  ElmanRNNLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, std::nullopt);
+
+  std::vector<unsigned> topology = { 2, 3 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+  batch_hs[0].at(1, 0).set_hidden_state_values({ 1.0, 2.0, 3.0 });
+
+  // Partial target: only 2 values for 3 outputs
+  std::vector<std::vector<double>> targets = { { 0.5, 1.0 } };
+  EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
+
+  const auto& rnn_grads = batch_go[0].get_rnn_gradients(1);
+  ASSERT_EQ(rnn_grads.size(), 3);
+  EXPECT_NEAR(rnn_grads[0], 0.5, 1e-9);
+  EXPECT_NEAR(rnn_grads[1], 1.0, 1e-9);
+  EXPECT_NEAR(rnn_grads[2], 0.0, 1e-9); // missing target -> 0.0 delta
+}
+
+TEST_F(ElmanRNNLayerTest, ForwardFeedPartialBias)
+{
+  const unsigned num_inputs = 2;
+  const unsigned num_outputs = 4;
+  ElmanRNNLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+
+  layer.set_w_values(std::vector<double>(num_inputs * num_outputs, 0.0));
+  layer.set_rw_values(std::vector<double>(num_outputs * num_outputs, 0.0));
+  // Partial bias: 2 biases provided instead of 4
+  layer.set_b_values({ 0.8, -0.4 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+  batch_go[0].set_rnn_outputs(0, { 1.0, 1.0 });
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+
+  const auto rnn_outs = batch_go[0].get_rnn_outputs(1);
+  ASSERT_EQ(rnn_outs.size(), num_outputs);
+  EXPECT_NEAR(rnn_outs[0], 0.8, 1e-9);
+  EXPECT_NEAR(rnn_outs[1], -0.4, 1e-9);
+  EXPECT_NEAR(rnn_outs[2], 0.0, 1e-9);
+  EXPECT_NEAR(rnn_outs[3], 0.0, 1e-9);
+}
