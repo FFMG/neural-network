@@ -44,9 +44,24 @@ TEST(MimallocTest, BuildConfigurationActive)
 {
 #if defined(MYODDWEB_USE_MIMALLOC)
   const int version = mi_version();
-  EXPECT_GT(version, 0);
+  EXPECT_EQ(version, 30503);
+  EXPECT_EQ(MI_MALLOC_VERSION, 30503);
 #else
   SUCCEED() << "mimalloc is disabled in this build configuration";
+#endif
+}
+
+TEST(MimallocTest, RuntimeHeapServices)
+{
+#if defined(MYODDWEB_USE_MIMALLOC)
+  void* ptr = mi_malloc_aligned(128, 32);
+  ASSERT_NE(ptr, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(ptr) % 32, 0u);
+  EXPECT_GE(mi_usable_size(ptr), 128u);
+  mi_free(ptr);
+  mi_collect(false);
+#else
+  SUCCEED() << "mimalloc runtime heap services disabled in this build configuration";
 #endif
 }
 
@@ -102,6 +117,38 @@ TEST(MimallocTest, AlignedVectorLifecycle)
   for (size_t i = 0; i < test_size; ++i)
   {
     EXPECT_DOUBLE_EQ(vec[i], static_cast<double>(i * 2));
+  }
+}
+
+TEST(MimallocTest, AlignedVectorReallocationAndGrowth)
+{
+  AlignedVector<double, 32> vec;
+  for (size_t i = 0; i < 2048; ++i)
+  {
+    vec.push_back(static_cast<double>(i));
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(vec.data()) % 32, 0u);
+  }
+
+  for (size_t i = 0; i < 2048; ++i)
+  {
+    EXPECT_DOUBLE_EQ(vec[i], static_cast<double>(i));
+  }
+}
+
+TEST(MimallocTest, LargeAlignedAllocations)
+{
+  AlignedAllocator<double, 32> allocator;
+  const size_t large_sizes[] = { 65536, 262144 };
+  for (const size_t size : large_sizes)
+  {
+    double* p = allocator.allocate(size);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(p) % 32, 0u);
+    p[0] = 1.234;
+    p[size - 1] = 5.678;
+    EXPECT_DOUBLE_EQ(p[0], 1.234);
+    EXPECT_DOUBLE_EQ(p[size - 1], 5.678);
+    allocator.deallocate(p, size);
   }
 }
 
