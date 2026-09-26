@@ -542,7 +542,13 @@ The library integrates [Microsoft's mimalloc](https://github.com/microsoft/mimal
 
   NeuralNetwork nn(options);
   nn.train(training_inputs, training_outputs);
+
+  // Standard inference returning a new vector:
   auto output = nn.think({0, 0, 1});
+
+  // High-throughput inference reusing an existing output buffer (zero-allocation):
+  std::vector<double> cached_output;
+  nn.think({0, 0, 1}, cached_output);
 ```
 
 ### Persistence

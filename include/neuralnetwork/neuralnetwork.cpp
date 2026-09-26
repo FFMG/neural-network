@@ -353,13 +353,14 @@ std::vector<std::vector<double>> NeuralNetwork::think(const std::vector<std::vec
   return _layers.think(_options, inputs);
 }
 
-std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
+void NeuralNetwork::think(const std::vector<double>& inputs, std::vector<double>& outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   DenormalDisabler disabler;
   if (inputs.empty())
   {
-    return {};
+    outputs.clear();
+    return;
   }
   const auto input_size = _options.topology().front();
   const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
@@ -367,10 +368,19 @@ std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) cons
   if (!is_valid_size)
   {
     Logger::error("The input size, '", inputs.size(),"' does not match the topology!");
-    return {};
+    outputs.clear();
+    return;
   }
   std::shared_lock<std::shared_mutex> read(_mutex);
-  return _layers.think(_options, inputs);
+  _layers.think(_options, inputs, outputs);
+}
+
+std::vector<double> NeuralNetwork::think(const std::vector<double>& inputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::vector<double> outputs;
+  think(inputs, outputs);
+  return outputs;
 }
 
 double NeuralNetwork::get_learning_rate() const noexcept

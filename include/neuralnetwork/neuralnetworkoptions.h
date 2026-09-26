@@ -32,7 +32,7 @@ private:
     _batch_size(1),
     _data_is_unique(true),
     _progress_callback(nullptr),
-    _log_level(Logger::LogLevel::None),
+    _log_level(std::nullopt),
     _number_of_threads(0),
     _learning_rate_decay_rate(0.0),
     _adaptive_learning_rate(false),
@@ -171,7 +171,7 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     nno._progress_callback = nullptr;
-    nno._log_level = Logger::LogLevel::None;
+    nno._log_level = std::nullopt;
     nno._number_of_epoch = 0;
     nno._batch_size = 0;
     nno._learning_rate = 0.00;
@@ -271,7 +271,7 @@ public:
       _entropy_coefficient = nno._entropy_coefficient;
 
       nno._progress_callback = nullptr;
-      nno._log_level = Logger::LogLevel::None;
+      nno._log_level = std::nullopt;
       nno._number_of_epoch = 0;
       nno._batch_size = 0;
       nno._learning_rate = 0.00;
@@ -569,8 +569,10 @@ public:
     std::sort(_final_error_calculation_types.begin(), _final_error_calculation_types.end());
     _final_error_calculation_types.erase(std::unique(_final_error_calculation_types.begin(), _final_error_calculation_types.end()), _final_error_calculation_types.end());
 
-    // set the log level first
-    Logger::set_level(log_level());
+    if (_log_level.has_value())
+    {
+      Logger::set_level(*_log_level);
+    }
 
     if (topology().size() != 2 + hidden_layers().size())
     {
@@ -821,7 +823,7 @@ public:
   [[nodiscard]] inline int batch_size() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _batch_size; }
   [[nodiscard]] inline bool data_is_unique() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _data_is_unique; }
   [[nodiscard]] inline const std::function<bool(NeuralNetworkHelper&)>& progress_callback() const { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _progress_callback; }
-  [[nodiscard]] inline Logger::LogLevel log_level() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_level; }
+  [[nodiscard]] inline Logger::LogLevel log_level() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _log_level.value_or(Logger::LogLevel::None); }
   [[nodiscard]] inline int number_of_threads() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _number_of_threads; }
   [[nodiscard]] inline double learning_rate_decay_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_decay_rate; }
   [[nodiscard]] inline bool adaptive_learning_rate() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _adaptive_learning_rate; }
@@ -876,7 +878,7 @@ private:
   int _batch_size;
   bool _data_is_unique;
   std::function<bool(NeuralNetworkHelper&)> _progress_callback;
-  Logger::LogLevel _log_level;
+  std::optional<Logger::LogLevel> _log_level;
   int _number_of_threads;
   double _learning_rate_decay_rate;
   bool _adaptive_learning_rate;

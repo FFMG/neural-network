@@ -55,6 +55,7 @@ public:
 
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
+  void think(const std::vector<double>& inputs, std::vector<double>& outputs) const;
 
   const std::vector<unsigned>& get_topology() const;
   [[nodiscard]] const Layers& get_layers() const;

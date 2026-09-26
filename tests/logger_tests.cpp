@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/logger.h"
+#include "neuralnetworkoptions.h"
 
 #include <iostream>
 #include <sstream>
@@ -364,3 +365,40 @@ TEST_F(LoggerTest, AtomicLevelConcurrentReadAndWriteStress)
 
   EXPECT_GT(total_reads.load(), 0);
 }
+
+TEST_F(LoggerTest, NeuralNetworkOptionsDefaultPreservesGlobalLogLevel)
+{
+  Logger::set_level(Logger::LogLevel::Debug);
+  EXPECT_EQ(Logger::get_level(), Logger::LogLevel::Debug);
+
+  const auto options = NeuralNetworkOptions::create({ 2, 4, 1 }).build();
+  EXPECT_EQ(Logger::get_level(), Logger::LogLevel::Debug);
+  EXPECT_EQ(options.log_level(), Logger::LogLevel::None);
+}
+
+TEST_F(LoggerTest, NeuralNetworkOptionsExplicitLogLevelUpdatesGlobalLevel)
+{
+  Logger::set_level(Logger::LogLevel::Debug);
+  EXPECT_EQ(Logger::get_level(), Logger::LogLevel::Debug);
+
+  const auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_log_level(Logger::LogLevel::Warning)
+    .build();
+  EXPECT_EQ(Logger::get_level(), Logger::LogLevel::Warning);
+  EXPECT_EQ(options.log_level(), Logger::LogLevel::Warning);
+}
+
+TEST_F(LoggerTest, NeuralNetworkOptionsLogLevelCopyAndMovePreservesState)
+{
+  auto original = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_log_level(Logger::LogLevel::Trace);
+  EXPECT_EQ(original.log_level(), Logger::LogLevel::Trace);
+
+  auto copied = original;
+  EXPECT_EQ(copied.log_level(), Logger::LogLevel::Trace);
+
+  auto moved = std::move(original);
+  EXPECT_EQ(moved.log_level(), Logger::LogLevel::Trace);
+  EXPECT_EQ(original.log_level(), Logger::LogLevel::None);
+}
+

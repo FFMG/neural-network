@@ -361,6 +361,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("lookahead", &NeuralNetworkOptions::lookahead)
         .def("with_final_error_calculation_types", &NeuralNetworkOptions::with_final_error_calculation_types)
         .def("with_log_level", &NeuralNetworkOptions::with_log_level)
+        .def("log_level", &NeuralNetworkOptions::log_level)
         .def("with_seed", &NeuralNetworkOptions::with_seed)
         .def("seed", &NeuralNetworkOptions::seed)
         .def("with_entropy_coefficient", &NeuralNetworkOptions::with_entropy_coefficient, py::arg("entropy_coefficient"))

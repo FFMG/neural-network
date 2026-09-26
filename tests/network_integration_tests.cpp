@@ -2600,6 +2600,145 @@ TEST(NetworkIntegrationTest, ThinkConcurrentMultiThreadedInference)
   EXPECT_TRUE(success.load());
 }
 
+TEST(NetworkIntegrationTest, ThinkOutputBufferMatchesReturnOverload)
+{
+  auto options = NeuralNetworkOptions::create({ 3, 8, 2 }).build();
+  NeuralNetwork nn(options);
+
+  const std::vector<std::vector<double>> test_inputs =
+  {
+    { 0.1, 0.2, 0.3 },
+    { -0.5, 0.0, 0.5 },
+    { 0.9, -0.4, 0.1 }
+  };
+
+  std::vector<double> out_buffer;
+  for (const auto& input : test_inputs)
+  {
+    const auto expected = nn.think(input);
+    nn.think(input, out_buffer);
+
+    ASSERT_EQ(out_buffer.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+    {
+      EXPECT_DOUBLE_EQ(out_buffer[i], expected[i]);
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkOutputBufferZeroAllocationReuse)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
+  NeuralNetwork nn(options);
+
+  std::vector<double> out_buffer;
+  out_buffer.reserve(2);
+  const size_t initial_capacity = out_buffer.capacity();
+
+  for (int iter = 0; iter < 100; ++iter)
+  {
+    const double val = static_cast<double>(iter) * 0.01;
+    const std::vector<double> input = { val, 1.0 - val };
+
+    const auto expected = nn.think(input);
+    nn.think(input, out_buffer);
+
+    ASSERT_EQ(out_buffer.size(), 2u);
+    EXPECT_DOUBLE_EQ(out_buffer[0], expected[0]);
+    EXPECT_DOUBLE_EQ(out_buffer[1], expected[1]);
+    EXPECT_EQ(out_buffer.capacity(), initial_capacity);
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkOutputBufferEmptyAndInvalidSize)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 }).build();
+  NeuralNetwork nn(options);
+
+  std::vector<double> out_buffer = { 1.0, 2.0, 3.0 };
+  const std::vector<double> empty_input;
+  nn.think(empty_input, out_buffer);
+  EXPECT_TRUE(out_buffer.empty());
+
+  out_buffer = { 4.0, 5.0 };
+  const std::vector<double> invalid_size_input = { 0.1, 0.2, 0.3 };
+  nn.think(invalid_size_input, out_buffer);
+  EXPECT_TRUE(out_buffer.empty());
+}
+
+TEST(NetworkIntegrationTest, ThinkInPlaceBufferSafety)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
+  NeuralNetwork nn(options);
+
+  std::vector<double> input = { 0.42, -0.17 };
+  const auto expected = nn.think(input);
+
+  std::vector<double> inout_buffer = input;
+  nn.think(inout_buffer, inout_buffer);
+
+  ASSERT_EQ(inout_buffer.size(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(inout_buffer[i], expected[i]);
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkInferenceWorkspaceTopologySwitching)
+{
+  auto options_a = NeuralNetworkOptions::create({ 2, 4, 1 }).build();
+  auto options_b = NeuralNetworkOptions::create({ 3, 6, 2 }).build();
+
+  NeuralNetwork nn_a(options_a);
+  NeuralNetwork nn_b(options_b);
+
+  const std::vector<double> input_a = { 0.3, 0.7 };
+  const std::vector<double> input_b = { 0.1, -0.2, 0.8 };
+
+  std::vector<double> out_a;
+  std::vector<double> out_b;
+
+  for (int iter = 0; iter < 10; ++iter)
+  {
+    const auto expected_a = nn_a.think(input_a);
+    nn_a.think(input_a, out_a);
+    ASSERT_EQ(out_a.size(), 1u);
+    EXPECT_DOUBLE_EQ(out_a[0], expected_a[0]);
+
+    const auto expected_b = nn_b.think(input_b);
+    nn_b.think(input_b, out_b);
+    ASSERT_EQ(out_b.size(), 2u);
+    EXPECT_DOUBLE_EQ(out_b[0], expected_b[0]);
+    EXPECT_DOUBLE_EQ(out_b[1], expected_b[1]);
+  }
+}
+
+TEST(NetworkIntegrationTest, ThinkBatchAndSingleInterleaving)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 }).build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> batch_inputs =
+  {
+    { 0.1, 0.9 },
+    { 0.5, 0.5 },
+    { 0.8, 0.2 }
+  };
+
+  std::vector<double> single_out;
+  nn.think(batch_inputs[0], single_out);
+
+  const auto batch_out = nn.think(batch_inputs);
+  ASSERT_EQ(batch_out.size(), 3u);
+  EXPECT_DOUBLE_EQ(single_out[0], batch_out[0][0]);
+  EXPECT_DOUBLE_EQ(single_out[1], batch_out[0][1]);
+
+  nn.think(batch_inputs[2], single_out);
+  EXPECT_DOUBLE_EQ(single_out[0], batch_out[2][0]);
+  EXPECT_DOUBLE_EQ(single_out[1], batch_out[2][1]);
+}
+
+
 namespace {
   // Shared topology for the seed-determinism tests below: a GRU hidden layer
   // (exercises recurrent + gate weight-init seeding) with dropout enabled

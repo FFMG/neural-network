@@ -20,7 +20,7 @@ namespace
 // For softmax probabilities p and entropy H = -sum_k(p_k * log(p_k)), d(-beta*H)/dz_k = beta * p_k * (log(p_k) + H).
 void add_entropy_bonus_to_gradients(double* raw, const double* probabilities, size_t count, double entropy_coefficient) noexcept
 {
-  if (raw == nullptr || probabilities == nullptr || count == 0)
+  if (raw == nullptr || probabilities == nullptr || count == 0 || entropy_coefficient <= 0.0)
   {
     return;
   }
@@ -43,6 +43,98 @@ void add_entropy_bonus_to_gradients(double* raw, const double* probabilities, si
       raw[k] += entropy_coefficient * p * (std::log(p) + entropy);
     }
   }
+}
+
+class inference_workspace final
+{
+public:
+  void prepare(const std::vector<unsigned>& topology, size_t batch_size)
+  {
+    if (_topology != topology)
+    {
+      _topology = topology;
+      _gradients.clear();
+      _hidden_states.clear();
+    }
+
+    if (_gradients.size() > 512 && batch_size <= 32)
+    {
+      _gradients.clear();
+      _hidden_states.clear();
+      _gradients.shrink_to_fit();
+      _hidden_states.shrink_to_fit();
+    }
+
+    if (_gradients.size() < batch_size)
+    {
+      _gradients.reserve(batch_size);
+      while (_gradients.size() < batch_size)
+      {
+        _gradients.emplace_back(_topology);
+      }
+    }
+
+    if (_hidden_states.size() < batch_size)
+    {
+      _hidden_states.reserve(batch_size);
+      while (_hidden_states.size() < batch_size)
+      {
+        _hidden_states.emplace_back(_topology);
+      }
+    }
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+      _gradients[b].reset_for_inference();
+    }
+  }
+
+  std::vector<GradientsAndOutputs>& gradients() noexcept
+  {
+    return _gradients;
+  }
+
+  [[nodiscard]] const std::vector<GradientsAndOutputs>& gradients() const noexcept
+  {
+    return _gradients;
+  }
+
+  std::vector<HiddenStates>& hidden_states() noexcept
+  {
+    return _hidden_states;
+  }
+
+  [[nodiscard]] const std::vector<HiddenStates>& hidden_states() const noexcept
+  {
+    return _hidden_states;
+  }
+
+  std::vector<std::vector<double>>& input_wrapper() noexcept
+  {
+    return _input_wrapper;
+  }
+
+  [[nodiscard]] const std::vector<std::vector<double>>& input_wrapper() const noexcept
+  {
+    return _input_wrapper;
+  }
+
+  [[nodiscard]] const std::vector<unsigned>& topology() const noexcept
+  {
+    return _topology;
+  }
+
+private:
+  std::vector<unsigned> _topology;
+  std::vector<GradientsAndOutputs> _gradients;
+  std::vector<HiddenStates> _hidden_states;
+  std::vector<std::vector<double>> _input_wrapper;
+};
+
+inference_workspace& get_inference_workspace()
+{
+  thread_local inference_workspace workspace;
+  return workspace;
 }
 } // namespace
 
@@ -625,7 +717,10 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
       {
         auto* raw = gradients[b].get_gradients_raw(output_layer_index);
         const auto outputs = gradients[b].get_outputs(output_layer_index);
-        add_entropy_bonus_to_gradients(raw + neuron_offset, outputs.data() + neuron_offset, detail_size, entropy_coefficient);
+        if (raw != nullptr && outputs.size() >= neuron_offset + detail_size)
+        {
+          add_entropy_bonus_to_gradients(raw + neuron_offset, outputs.data() + neuron_offset, detail_size, entropy_coefficient);
+        }
 
         if (has_rnn)
         {
@@ -634,11 +729,24 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
           const auto time_steps = (count > 0) ? (rnn_count / count) : 0;
           for (size_t t = 0; t < time_steps; ++t)
           {
-            add_entropy_bonus_to_gradients(
-              rnn_raw + t * count + neuron_offset,
-              rnn_outputs.data() + t * count + neuron_offset,
-              detail_size,
-              entropy_coefficient);
+            const double* prob_data = nullptr;
+            if (rnn_outputs.size() >= (t * count + neuron_offset + detail_size))
+            {
+              prob_data = rnn_outputs.data() + t * count + neuron_offset;
+            }
+            else if (time_steps == 1 && outputs.size() >= neuron_offset + detail_size)
+            {
+              prob_data = outputs.data() + neuron_offset;
+            }
+
+            if (rnn_raw != nullptr && prob_data != nullptr && (t * count + neuron_offset + detail_size <= rnn_count))
+            {
+              add_entropy_bonus_to_gradients(
+                rnn_raw + t * count + neuron_offset,
+                prob_data,
+                detail_size,
+                entropy_coefficient);
+            }
           }
         }
       }
@@ -821,51 +929,57 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
   const size_t batch_size = inputs.size();
-  if (batch_size == 0) return {};
+  if (batch_size == 0)
+  {
+    return {};
+  }
 
   const auto& topology = options.topology();
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.reserve(batch_size);
-  while (gradients.size() < batch_size)
-  {
-    gradients.emplace_back(topology);
-  }
+  auto& workspace = get_inference_workspace();
+  workspace.prepare(topology, batch_size);
 
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.reserve(batch_size);
-  while (hidden_states.size() < batch_size)
-  {
-    hidden_states.emplace_back(topology);
-  }
-
-  calculate_forward_feed(options, gradients, inputs.begin(), batch_size, hidden_states, false);
+  calculate_forward_feed(options, workspace.gradients(), inputs.begin(), batch_size, workspace.hidden_states(), false);
 
   std::vector<std::vector<double>> outputs;
   outputs.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
   {
-    const auto s = gradients[i].output_back_span();
+    const auto s = workspace.gradients()[i].output_back_span();
     outputs.emplace_back(s.begin(), s.end());
   }
   return outputs;
 }
 
+void Layers::think(const NeuralNetworkOptions& options, const std::vector<double>& inputs, std::vector<double>& outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
+  if (inputs.empty())
+  {
+    outputs.clear();
+    return;
+  }
+
+  const auto& topology = options.topology();
+
+  auto& workspace = get_inference_workspace();
+  workspace.prepare(topology, 1);
+  if (workspace.input_wrapper().size() != 1)
+  {
+    workspace.input_wrapper().resize(1);
+  }
+  workspace.input_wrapper()[0] = inputs;
+
+  calculate_forward_feed(options, workspace.gradients(), workspace.input_wrapper().begin(), 1, workspace.hidden_states(), false);
+  const auto s = workspace.gradients().front().output_back_span();
+  outputs.assign(s.begin(), s.end());
+}
+
 std::vector<double> Layers::think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
-  const auto& topology = options.topology();
-
-  std::vector<GradientsAndOutputs> gradients;
-  gradients.emplace_back(topology);
-
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.emplace_back(topology);
-
-  const std::vector<std::vector<double>> all_inputs = { inputs };
-
-  calculate_forward_feed(options, gradients, all_inputs.begin(), 1, hidden_states, false);
-  const auto s = gradients.front().output_back_span();
-  return std::vector<double>(s.begin(), s.end());
+  std::vector<double> outputs;
+  think(options, inputs, outputs);
+  return outputs;
 }
 
 void Layers::train(

@@ -2,6 +2,33 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.68] - 2026-09-26
+
+### Optimised
+- Optimised inference performance in `Layers::think` and `NeuralNetwork::think` ([`include/neuralnetwork/layers/layers.h`](./include/neuralnetwork/layers/layers.h), [`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp), [`include/neuralnetwork/neuralnetwork.h`](./include/neuralnetwork/neuralnetwork.h), [`include/neuralnetwork/neuralnetwork.cpp`](./include/neuralnetwork/neuralnetwork.cpp)):
+  - Added thread-local `inference_workspace` reusing `GradientsAndOutputs`, `HiddenStates`, and input wrapper buffers across repeated `think` invocations, eliminating dynamic memory allocations during forward-pass inference.
+  - Added zero-allocation output buffer overload `void think(const std::vector<double>& inputs, std::vector<double>& outputs) const` on both `NeuralNetwork` and `Layers`, allowing high-throughput callers to pre-allocate and reuse the output vector without reallocation.
+  - Reimplemented `std::vector<double> think(const std::vector<double>& inputs) const` to delegate directly to the buffer overload.
+  - Added automatic buffer shrinking and topology change detection in `inference_workspace::prepare` to safely reclaim memory when transitioning from large batch inference to small queries or across differing topologies.
+
+### Fixed
+- Fixed global log level preservation in `NeuralNetworkOptions` ([`include/neuralnetwork/neuralnetworkoptions.h`](./include/neuralnetwork/neuralnetworkoptions.h)):
+  - Changed `_log_level` from `Logger::LogLevel` initialised to `Logger::LogLevel::None` to `std::optional<Logger::LogLevel>`, ensuring `NeuralNetworkOptions::build()` only modifies `Logger::set_level(...)` if an explicit log level was configured via `with_log_level(...)`.
+  - Maintained backward compatibility via `options.log_level()`, which returns `Logger::LogLevel::None` if not explicitly specified.
+- Fixed gradient calculation bounds and null pointer guards during policy gradient advantage backpropagation with entropy regularisation in `Layers::calculate_back_propagation_output_layer_with_advantages` ([`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp)):
+  - Added early-exit check in `add_entropy_bonus_to_gradients` when `entropy_coefficient <= 0.0`.
+  - Added bounds checking preventing buffer overruns on recurrent gradient vectors (`rnn_raw`, `rnn_outputs`).
+  - Added fallback to standard output layer activations when `time_steps == 1` and recurrent outputs are stored in the non-recurrent buffer.
+- Added defensive empty input check in `Layers::think(options, inputs, outputs)` ensuring `outputs.clear()` is called and no invalid forward feed is executed.
+
+### Added
+- Added Python binding for `NeuralNetworkOptions.log_level()` in [`python/bindings.cpp`](./python/bindings.cpp) and updated documentation in [`python/README.md`](./python/README.md).
+- Documented the zero-allocation `think(inputs, outputs)` buffer overload in [`README.md`](./README.md).
+- Added comprehensive unit tests:
+  - In [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): `ThinkOutputBufferMatchesReturnOverload`, `ThinkOutputBufferZeroAllocationReuse`, `ThinkOutputBufferEmptyAndInvalidSize`, `ThinkInPlaceBufferSafety`, `ThinkInferenceWorkspaceTopologySwitching`, and `ThinkBatchAndSingleInterleaving`.
+  - In [`tests/logger_tests.cpp`](./tests/logger_tests.cpp): `NeuralNetworkOptionsDefaultPreservesGlobalLogLevel`, `NeuralNetworkOptionsExplicitLogLevelUpdatesGlobalLevel`, and `NeuralNetworkOptionsLogLevelCopyAndMovePreservesState`.
+  - In [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp): `EntropyBonusZeroCoefficientIsIdenticalToDisabled` and `EntropyBonusRecurrentSingleTimestepSafe`.
+
 ## [0.0.67] - 2026-09-23
 
 ### Fixed

@@ -98,6 +98,7 @@ public:
   void set_number_of_threads(int number_of_threads);
   std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const NeuralNetworkOptions& options, const std::vector<double>& inputs) const;
+  void think(const NeuralNetworkOptions& options, const std::vector<double>& inputs, std::vector<double>& outputs) const;
   [[nodiscard]] size_t get_total_weights() const noexcept;
   void accumulate_swa_average(const Layers& snapshot, size_t existing_swa_count);
   void update_lookahead_slow_weights(Layers& fast_layers, double alpha);

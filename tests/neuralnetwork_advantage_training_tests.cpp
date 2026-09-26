@@ -1093,5 +1093,67 @@ TEST(NeuralNetworkAdvantageTrainingTest, EntropyBonusAppliedToRecurrentLayerBPTT
   EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyBonusZeroCoefficientIsIdenticalToDisabled)
+{
+  auto options_default = build_policy_options(OptimiserType::SGD, 0.1, 1, 42u);
+  auto options_zero = build_policy_options(OptimiserType::SGD, 0.1, 1, 42u).with_entropy_coefficient(0.0);
 
+  NeuralNetwork nn_default(options_default);
+  NeuralNetwork nn_zero(options_zero);
 
+  const std::vector<std::vector<double>> inputs = { { 0.3, -0.2, 0.5 } };
+  const std::vector<std::vector<double>> action_targets = { { 1.0, 0.0 } };
+  const std::vector<double> advantages = { 0.75 };
+
+  nn_default.train_with_advantages(inputs, action_targets, advantages);
+  nn_zero.train_with_advantages(inputs, action_targets, advantages);
+
+  const auto out_default = nn_default.think(inputs[0]);
+  const auto out_zero = nn_zero.think(inputs[0]);
+
+  ASSERT_EQ(out_default.size(), out_zero.size());
+  for (size_t i = 0; i < out_default.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(out_default[i], out_zero[i]);
+  }
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, EntropyBonusRecurrentSingleTimestepSafe)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::Elman, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.0, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    2,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.0);
+
+  auto options = NeuralNetworkOptions::create({ 2, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.1)
+    .with_batch_size(1)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(1)
+    .with_entropy_coefficient(0.1)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.4, -0.6 } };
+  std::vector<std::vector<double>> action_targets = { { 0.0, 1.0 } };
+  std::vector<double> advantages = { 1.5 };
+
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
+}
