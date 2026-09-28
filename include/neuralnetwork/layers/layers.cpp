@@ -65,7 +65,7 @@ std::vector<std::vector<double>> build_masked_action_targets(
         {
           if (mask[k] == 1.0)
           {
-            target[k] += probabilities[k] - (probabilities[k] / legal_probability);
+            target[k] = (target[k] - (probabilities[k] / legal_probability)) + probabilities[k];
           }
           else
           {

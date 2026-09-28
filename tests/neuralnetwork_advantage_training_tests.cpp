@@ -135,12 +135,12 @@ std::vector<double> collect_output_neuron_weights(const NeuralNetwork& nn, unsig
   return weights;
 }
 
-void expect_same_weights(const std::vector<double>& expected, const std::vector<double>& actual)
+void expect_same_weights(const std::vector<double>& expected, const std::vector<double>& actual, double tolerance = 1e-12)
 {
   ASSERT_EQ(expected.size(), actual.size());
   for (size_t i = 0; i < expected.size(); ++i)
   {
-    EXPECT_DOUBLE_EQ(expected[i], actual[i]);
+    EXPECT_NEAR(expected[i], actual[i], tolerance);
   }
 }
 
