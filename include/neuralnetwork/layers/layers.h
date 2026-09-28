@@ -93,7 +93,9 @@ public:
     std::vector<std::vector<double>>::const_iterator training_inputs,
     std::vector<std::vector<double>>::const_iterator training_action_targets,
     std::vector<double>::const_iterator training_advantages,
-    const size_t batch_size);
+    const size_t batch_size,
+    const std::vector<std::vector<double>>* action_masks = nullptr,
+    size_t action_masks_offset = 0);
   void cache_recurrent_weights();
   void set_number_of_threads(int number_of_threads);
   std::vector<std::vector<double>> think(const NeuralNetworkOptions& options, const std::vector<std::vector<double>>& inputs) const;
@@ -138,7 +140,9 @@ private:
     std::vector<std::vector<double>>::const_iterator outputs_begin,
     std::vector<double>::const_iterator advantages_begin,
     size_t batch_size,
-    const std::vector<HiddenStates>& hidden_states) const;
+    const std::vector<HiddenStates>& hidden_states,
+    const std::vector<std::vector<double>>* action_masks,
+    size_t action_masks_offset) const;
 
   void calculate_back_propagation_output_layer_with_advantages(
     const NeuralNetworkOptions& options,
@@ -146,7 +150,9 @@ private:
     std::vector<std::vector<double>>::const_iterator outputs_begin,
     std::vector<double>::const_iterator advantages_begin,
     size_t batch_size,
-    const std::vector<HiddenStates>& hidden_states) const;
+    const std::vector<HiddenStates>& hidden_states,
+    const std::vector<std::vector<double>>* action_masks,
+    size_t action_masks_offset) const;
 
   void calculate_back_propagation_input_layer(
     const NeuralNetworkOptions& options,

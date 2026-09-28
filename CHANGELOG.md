@@ -2,6 +2,18 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.69] - 2026-09-28
+
+### Added
+- Added invalid-action masking to policy-gradient advantage training ([`include/neuralnetwork/neuralnetwork.h`](./include/neuralnetwork/neuralnetwork.h), [`include/neuralnetwork/neuralnetwork.cpp`](./include/neuralnetwork/neuralnetwork.cpp), [`include/neuralnetwork/layers/layers.h`](./include/neuralnetwork/layers/layers.h), [`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp)):
+  - New overload `train_with_advantages(inputs, action_targets, advantages, action_masks)`, one mask per example with one value per output neuron (1.0 legal, 0.0 illegal). An empty mask list is identical to the existing three-argument overload, which now forwards to it.
+  - Softmax probabilities are renormalised over the legal actions and illegal actions receive no gradient, so lowering a taken action's probability moves it onto the other legal actions instead of onto actions the caller never allows. Implemented entirely through the targets (`build_masked_action_targets`): an illegal action's target becomes its own probability and a legal action's target is shifted by `p - p/S`, so the existing logit-cap, temperature and dropout handling in the output layer is unchanged.
+  - The entropy bonus is computed over the renormalised legal distribution (`add_masked_entropy_bonus_to_gradients`) and never pushes probability back onto illegal actions.
+  - Validation panics on a mask count or size mismatch, non-binary mask values, a masked non-softmax neuron, a non-zero target on an illegal action, a softmax head with no legal probability, and masks combined with BPTT, label smoothing or the direction penalty.
+- Added the four-argument `train_with_advantages` overload to the Python bindings ([`python/bindings.cpp`](./python/bindings.cpp)); both overloads are now bound explicitly with `py::overload_cast`.
+- Added unit tests in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp): `ActionMaskEmptyListMatchesUnmaskedOverload`, `ActionMaskAllLegalMatchesUnmasked`, `ActionMaskIllegalActionOutputWeightsUnchanged`, `ActionMaskUnmaskedControlDoesMoveIllegalActionWeights`, `ActionMaskNegativeAdvantageShiftsLegalProbabilityAwayFromTakenAction`, `ActionMaskPositiveAdvantageShiftsLegalProbabilityTowardsTakenAction`, `ActionMaskSingleLegalActionLeavesWeightsUnchanged`, `ActionMaskBatchedMultipleSamples`, `ActionMaskEntropyLeavesIllegalActionOutputWeightsUnchanged`, `ActionMaskCountMismatchThrows`, `ActionMaskSizeMismatchThrows`, `ActionMaskNonBinaryValueThrows`, `ActionMaskTargetOnIllegalActionThrows`, `ActionMaskAllIllegalThrows` and `ActionMaskOnNonSoftmaxOutputThrows`.
+- Updated [`README.md`](./README.md) and [`python/README.md`](./python/README.md) with invalid-action masking documentation and usage examples in C++ and Python.
+
 ## [0.0.68] - 2026-09-26
 
 ### Optimised

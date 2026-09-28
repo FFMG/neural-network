@@ -53,6 +53,12 @@ public:
     const std::vector<std::vector<double>>& training_action_targets,
     const std::vector<double>& training_advantages);
 
+  void train_with_advantages(
+    const std::vector<std::vector<double>>& training_inputs,
+    const std::vector<std::vector<double>>& training_action_targets,
+    const std::vector<double>& training_advantages,
+    const std::vector<std::vector<double>>& training_action_masks);
+
   std::vector<std::vector<double>> think(const std::vector<std::vector<double>>& inputs) const;
   std::vector<double> think(const std::vector<double>& inputs) const;
   void think(const std::vector<double>& inputs, std::vector<double>& outputs) const;

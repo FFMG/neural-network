@@ -613,12 +613,18 @@ In addition to traditional supervised training over fixed datasets (`train`), th
   * A **positive advantage** ($A > 0$) increases the probability of taking the chosen action.
   * A **negative advantage** ($A < 0$) penalises the chosen action and decreases its probability.
   * A **zero advantage** ($A = 0$) leaves the weights unchanged.
+* **Invalid-Action Masking**: In environments where certain actions are invalid at a given step (e.g. occupied squares in board games, order book constraints):
+  * `train_with_advantages(states, actions, advantages, action_masks)` accepts a binary mask per sample (1.0 = legal, 0.0 = illegal).
+  * Softmax probabilities are renormalised over the legal actions only ($q_k = p_k / \sum_{j \in \text{legal}} p_j$), and illegal actions receive zero gradient ($t'_k = p_k$).
+  * A negative advantage shifts probability away from the taken action exclusively onto other *legal* actions rather than onto illegal options.
+  * When entropy regularisation is configured (`with_entropy_coefficient`), the entropy bonus is computed over the renormalised legal distribution and never pushes probability onto illegal actions.
+  * Passing an empty mask list `{}` is identical to calling the unmasked 3-argument overload.
 * Hidden layer gradients are computed via standard backpropagation from the advantage-scaled output gradients, updating all upstream layers proportionally.
 * Sub-batches are chunked and executed according to `options.batch_size()`.
 * Model weights and optimiser velocity/momentum states persist across consecutive updates, allowing the agent to continuously learn online or episode-by-episode.
 
 > [!NOTE]
-> `train_with_advantages` requires a single output layer (multi-output architectures are not supported). Typically, a `Softmax` output head paired with `CrossEntropy` loss is used for discrete action spaces, with one-hot encoded action targets.
+> `train_with_advantages` requires a single output layer (multi-output architectures are not supported). Typically, a `Softmax` output head paired with `CrossEntropy` loss is used for discrete action spaces, with one-hot encoded action targets. Only softmax output heads support action masking.
 
 ### How to Trigger in C++
 
@@ -642,13 +648,22 @@ NeuralNetworkOptions options = NeuralNetworkOptions::create({ 9, 36, 9 })
 
 NeuralNetwork nn(options);
 
-// 2. Collect states, chosen one-hot actions, and outcome advantages from an episode:
+// 2. Collect states, chosen one-hot actions, outcome advantages, and legal action masks from an episode:
 std::vector<std::vector<double>> states = { /* state at step 0 */, /* state at step 1 */ };
 std::vector<std::vector<double>> actions = { /* one-hot action 0 */, /* one-hot action 1 */ };
-std::vector<double> advantages = { 1.0, 1.0 }; // e.g. +1.0 for win, -1.0 for loss, +0.2 for draw
+std::vector<double> advantages = { 1.0, -1.0 }; // e.g. +1.0 for win, -1.0 for loss
 
-// 3. Trigger reinforcement learning policy update
-nn.train_with_advantages(states, actions, advantages);
+// Optional invalid-action masks (1.0 = legal, 0.0 = illegal):
+std::vector<std::vector<double>> action_masks = {
+  { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 }, // step 0: all moves legal
+  { 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0 }  // step 1: cells 1 and 4 occupied/illegal
+};
+
+// 3. Trigger reinforcement learning policy update (with action masks)
+nn.train_with_advantages(states, actions, advantages, action_masks);
+
+// Or without masks:
+// nn.train_with_advantages(states, actions, advantages);
 ```
 
 ### How to Trigger in Python
@@ -675,13 +690,17 @@ options = (
 
 net = nn.NeuralNetwork(options)
 
-# 2. Collect trajectory and compute advantages
+# 2. Collect trajectory, compute advantages, and provide legal action masks
 states = [[0.0] * 9]                # Initial empty board
 actions = [[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]  # Chose centre cell (4)
 advantages = [1.0]                  # Positive reward / advantage
+masks = [[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]    # 1.0 = legal, 0.0 = illegal
 
-# 3. Update network policy
-net.train_with_advantages(states, actions, advantages)
+# 3. Update network policy (with action masks)
+net.train_with_advantages(states, actions, advantages, masks)
+
+# Or without masks:
+# net.train_with_advantages(states, actions, advantages)
 ```
 
 See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a complete working implementation where an agent learns Tic-Tac-Toe and plays against a Random opponent, and [python/examples/gridworld.py](python/examples/gridworld.py) for an obstacle-avoiding navigation agent with visual ASCII path and policy map displays.

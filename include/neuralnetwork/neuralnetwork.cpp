@@ -685,6 +685,17 @@ void NeuralNetwork::train_with_advantages(
   const std::vector<double>& training_advantages)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  static const std::vector<std::vector<double>> no_action_masks;
+  train_with_advantages(training_inputs, training_action_targets, training_advantages, no_action_masks);
+}
+
+void NeuralNetwork::train_with_advantages(
+  const std::vector<std::vector<double>>& training_inputs,
+  const std::vector<std::vector<double>>& training_action_targets,
+  const std::vector<double>& training_advantages,
+  const std::vector<std::vector<double>>& training_action_masks)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   DenormalDisabler disabler;
 
   if (_layers.output_layer().is_multi_output())
@@ -768,6 +779,46 @@ void NeuralNetwork::train_with_advantages(
     }
   }
 
+  const bool has_action_masks = !training_action_masks.empty();
+  if (has_action_masks)
+  {
+    if (training_action_masks.size() != training_inputs.size())
+    {
+      Logger::panic("The number of action masks (", training_action_masks.size(), ") must match the number of training inputs (", training_inputs.size(), ").");
+    }
+    if (is_bptt)
+    {
+      Logger::panic("Action masks are not supported with BPTT advantage training.");
+    }
+    for (size_t i = 0; i < training_action_masks.size(); ++i)
+    {
+      const auto& mask = training_action_masks[i];
+      if (mask.size() != output_size)
+      {
+        Logger::panic("Action mask size at index ", i, " (", mask.size(), ") does not match network output dimension (", output_size, ").");
+      }
+      for (size_t j = 0; j < mask.size(); ++j)
+      {
+        if (mask[j] != 0.0 && mask[j] != 1.0)
+        {
+          Logger::panic("Action mask value at sample ", i, ", index ", j, " is ", mask[j], " - it must be exactly 0.0 (illegal) or 1.0 (legal).");
+        }
+        if (mask[j] == 1.0)
+        {
+          continue;
+        }
+        if (_layers.output_layer().get_activation(static_cast<unsigned>(j)).get_method() != activation::method::softmax)
+        {
+          Logger::panic("Action mask at sample ", i, ", index ", j, " masks a non-softmax output neuron, which is not supported.");
+        }
+        if (training_action_targets[i][j] != 0.0)
+        {
+          Logger::panic("Action target at sample ", i, ", index ", j, " is non-zero on an action its mask marks illegal.");
+        }
+      }
+    }
+  }
+
   if (!_has_learning_rate_override)
   {
     _learning_rate = _options.learning_rate();
@@ -786,7 +837,9 @@ void NeuralNetwork::train_with_advantages(
       training_inputs.begin() + start,
       training_action_targets.begin() + start,
       training_advantages.begin() + start,
-      current_batch_size);
+      current_batch_size,
+      has_action_masks ? &training_action_masks : nullptr,
+      start);
   }
 }
 

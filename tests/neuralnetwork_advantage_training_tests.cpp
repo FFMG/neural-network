@@ -92,6 +92,69 @@ std::vector<double> collect_output_layer_weights(const NeuralNetwork& nn)
 {
   return collect_layer_weights(nn, 2);
 }
+
+NeuralNetworkOptions build_three_action_policy_options(double entropy_coefficient)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    3,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  return NeuralNetworkOptions::create({ 3, 4, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.5)
+    .with_batch_size(4)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .with_clip_threshold(1000.0)
+    .build()
+    .with_entropy_coefficient(entropy_coefficient);
+}
+
+std::vector<double> collect_output_neuron_weights(const NeuralNetwork& nn, unsigned output_index)
+{
+  const auto& layer = nn.get_layer(2);
+  std::vector<double> weights;
+  for (unsigned input_index = 0; input_index < layer.get_number_input_neurons(); ++input_index)
+  {
+    weights.push_back(layer.get_weight_value(input_index, output_index));
+  }
+  return weights;
+}
+
+void expect_same_weights(const std::vector<double>& expected, const std::vector<double>& actual)
+{
+  ASSERT_EQ(expected.size(), actual.size());
+  for (size_t i = 0; i < expected.size(); ++i)
+  {
+    EXPECT_DOUBLE_EQ(expected[i], actual[i]);
+  }
+}
+
+bool any_weight_changed(const std::vector<double>& before, const std::vector<double>& after)
+{
+  for (size_t i = 0; i < before.size() && i < after.size(); ++i)
+  {
+    if (before[i] != after[i])
+    {
+      return true;
+    }
+  }
+  return false;
+}
 } // namespace
 
 TEST(NeuralNetworkAdvantageTrainingTest, PositiveAdvantageIncreasesTakenActionProbability)
@@ -1157,3 +1220,244 @@ TEST(NeuralNetworkAdvantageTrainingTest, EntropyBonusRecurrentSingleTimestepSafe
 
   EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
 }
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskEmptyListMatchesUnmaskedOverload)
+{
+  NeuralNetwork unmasked(build_three_action_policy_options(0.0));
+  NeuralNetwork masked(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 0.0, 1.0 } };
+  std::vector<double> advantages = { -0.7, 1.3 };
+  std::vector<std::vector<double>> no_masks;
+
+  unmasked.train_with_advantages(inputs, action_targets, advantages);
+  masked.train_with_advantages(inputs, action_targets, advantages, no_masks);
+
+  expect_same_weights(collect_output_layer_weights(unmasked), collect_output_layer_weights(masked));
+  expect_same_weights(collect_layer_weights(unmasked, 1), collect_layer_weights(masked, 1));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskAllLegalMatchesUnmasked)
+{
+  NeuralNetwork unmasked(build_three_action_policy_options(0.0));
+  NeuralNetwork masked(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 } };
+  std::vector<double> advantages = { -0.7, 1.3 };
+  std::vector<std::vector<double>> all_legal = { { 1.0, 1.0, 1.0 }, { 1.0, 1.0, 1.0 } };
+
+  unmasked.train_with_advantages(inputs, action_targets, advantages);
+  masked.train_with_advantages(inputs, action_targets, advantages, all_legal);
+
+  const auto unmasked_weights = collect_output_layer_weights(unmasked);
+  const auto masked_weights = collect_output_layer_weights(masked);
+  ASSERT_EQ(unmasked_weights.size(), masked_weights.size());
+  for (size_t i = 0; i < unmasked_weights.size(); ++i)
+  {
+    EXPECT_NEAR(unmasked_weights[i], masked_weights[i], 1e-12);
+  }
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskIllegalActionOutputWeightsUnchanged)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { -1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 } };
+
+  const auto illegal_before = collect_output_neuron_weights(nn, 2);
+  const auto legal_before = collect_output_neuron_weights(nn, 1);
+  nn.train_with_advantages(inputs, action_targets, advantages, masks);
+
+  expect_same_weights(illegal_before, collect_output_neuron_weights(nn, 2));
+  EXPECT_TRUE(any_weight_changed(legal_before, collect_output_neuron_weights(nn, 1)));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskUnmaskedControlDoesMoveIllegalActionWeights)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { -1.0 };
+
+  const auto before = collect_output_neuron_weights(nn, 2);
+  nn.train_with_advantages(inputs, action_targets, advantages);
+
+  EXPECT_TRUE(any_weight_changed(before, collect_output_neuron_weights(nn, 2)));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskNegativeAdvantageShiftsLegalProbabilityAwayFromTakenAction)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { -1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 } };
+
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, advantages, masks);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_LT(after[0] / (after[0] + after[1]), before[0] / (before[0] + before[1]));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskEntropyLeavesIllegalActionOutputWeightsUnchanged)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.5));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> zero_advantage = { 0.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 } };
+
+  const auto illegal_before = collect_output_neuron_weights(nn, 2);
+  const auto legal_before = collect_output_neuron_weights(nn, 0);
+  nn.train_with_advantages(inputs, action_targets, zero_advantage, masks);
+
+  expect_same_weights(illegal_before, collect_output_neuron_weights(nn, 2));
+  EXPECT_TRUE(any_weight_changed(legal_before, collect_output_neuron_weights(nn, 0)));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskCountMismatchThrows)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.0, 1.0 };
+  std::vector<std::vector<double>> one_mask = { { 1.0, 1.0, 1.0 } };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, one_mask), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskSizeMismatchThrows)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> short_mask = { { 1.0, 1.0 } };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, short_mask), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskNonBinaryValueThrows)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> half_mask = { { 1.0, 0.5, 1.0 } };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, half_mask), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskTargetOnIllegalActionThrows)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 0.0, 0.0, 1.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 } };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, masks), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskOnNonSoftmaxOutputThrows)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails linear_output(2, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, eval_config, 0.0, OptimiserType::SGD, 0.9);
+  auto linear_options = NeuralNetworkOptions::create({ 3, 4, 2 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(linear_output)
+    .with_learning_rate(0.1)
+    .with_batch_size(4)
+    .with_number_of_epoch(1)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build();
+  NeuralNetwork linear_nn(linear_options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 0.5, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 0.0 } };
+
+  EXPECT_THROW(linear_nn.train_with_advantages(inputs, action_targets, advantages, masks), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskPositiveAdvantageShiftsLegalProbabilityTowardsTakenAction)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 } };
+
+  const auto illegal_before = collect_output_neuron_weights(nn, 2);
+  const auto before = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, action_targets, advantages, masks);
+  const auto after = nn.think(inputs[0]);
+
+  EXPECT_GT(after[0] / (after[0] + after[1]), before[0] / (before[0] + before[1]));
+  expect_same_weights(illegal_before, collect_output_neuron_weights(nn, 2));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskSingleLegalActionLeavesWeightsUnchanged)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.5 };
+  std::vector<std::vector<double>> masks = { { 1.0, 0.0, 0.0 } };
+
+  const auto before = collect_output_layer_weights(nn);
+  nn.train_with_advantages(inputs, action_targets, advantages, masks);
+  const auto after = collect_output_layer_weights(nn);
+
+  expect_same_weights(before, after);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskBatchedMultipleSamples)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 0.0, 1.0 } };
+  std::vector<double> advantages = { 1.0, -1.0 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 }, { 1.0, 0.0, 1.0 } };
+
+  const auto before = collect_output_layer_weights(nn);
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages, masks));
+  const auto after = collect_output_layer_weights(nn);
+
+  EXPECT_TRUE(any_weight_changed(before, after));
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskAllIllegalThrows)
+{
+  NeuralNetwork nn(build_three_action_policy_options(0.0));
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 } };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> masks = { { 0.0, 0.0, 0.0 } };
+
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, masks), std::runtime_error);
+}
+
