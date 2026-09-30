@@ -100,6 +100,8 @@
     <ClCompile Include="ffoutputlayer_tests.cpp" />
     <ClCompile Include="ffoutputlayer_mt_tests.cpp" />
     <ClCompile Include="gradients_and_outputs_tests.cpp" />
+    <ClCompile Include="grnlayer_mt_tests.cpp" />
+    <ClCompile Include="grnlayer_tests.cpp" />
     <ClCompile Include="grurnnlayer_mt_tests.cpp" />
     <ClCompile Include="grurnnlayer_tests.cpp" />
     <ClCompile Include="hidden_state_tests.cpp" />

@@ -258,6 +258,7 @@ public:
     case Layer::Architecture::AttentionPool:
     case Layer::Architecture::Tcn:
     case Layer::Architecture::SelfAttention:
+    case Layer::Architecture::Grn:
       return true;
     case Layer::Architecture::None:
     case Layer::Architecture::FF:
@@ -266,6 +267,34 @@ public:
     default:
       return false;
     }
+  }
+
+  [[nodiscard]] static LayerDetails create_grn(
+    unsigned layer_size,
+    unsigned feed_forward_hidden_size,
+    const activation& activation_method,
+    double dropout = 0.0,
+    double weight_decay = 0.0,
+    OptimiserType optimiser_type = OptimiserType::None,
+    double momentum = 0.0,
+    bool use_layer_normalisation = true) noexcept
+  {
+    return LayerDetails(
+      Layer::Architecture::Grn,
+      layer_size,
+      activation_method,
+      dropout,
+      weight_decay,
+      optimiser_type,
+      momentum,
+      use_layer_normalisation,
+      0,
+      0,
+      0,
+      0,
+      feed_forward_hidden_size,
+      0,
+      0);
   }
 private:
   Layer::Architecture _layer_architecture;

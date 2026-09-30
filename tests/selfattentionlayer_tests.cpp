@@ -3,6 +3,8 @@
 #include "test_helper.h"
 #include <vector>
 #include <cmath>
+#include <thread>
+#include <atomic>
 
 
 using namespace myoddweb::nn;
@@ -715,7 +717,194 @@ TEST_F(SelfAttentionLayerTest, ForwardFeedPartialBias)
     MockLayer previous_layer(0, d);
     auto batch_go = create_batch_gradients_and_outputs(topology, 1);
     auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
-    batch_go[0].set_rnn_outputs(0, std::vector<double>(d, 1.0).data(), d);
-
     EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false));
+}
+
+TEST_F(SelfAttentionLayerTest, AttentionWeightsExtractionAndCausalStructure)
+{
+    const unsigned d = 4, H = 2, d_ff = 8;
+    const size_t T = 3;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, false, activation(activation::method::linear, 0.0));
+
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+
+    std::vector<double> input_seq = {
+        1.0, 0.5, -0.5, 0.2,
+        0.8, -0.2, 0.3, 0.9,
+        -0.4, 0.6, 1.1, -0.7
+    };
+    batch_go[0].set_rnn_outputs(0, input_seq.data(), T * d);
+
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false);
+    EXPECT_TRUE(layer.get_last_attention_weights(0).empty());
+    EXPECT_TRUE(layer.get_last_mean_attention_weights(0).empty());
+
+    layer.set_capture_attention(true);
+
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, true);
+    EXPECT_TRUE(layer.get_last_attention_weights(0).empty());
+
+    // Forward pass during inference (is_training = false)
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 1, false);
+
+    const auto weights = layer.get_last_attention_weights(0);
+    EXPECT_EQ(weights.size(), H);
+    for (size_t h = 0; h < H; ++h)
+    {
+        EXPECT_EQ(weights[h].size(), T);
+        for (size_t q = 0; q < T; ++q)
+        {
+            EXPECT_EQ(weights[h][q].size(), T);
+            double row_sum = 0.0;
+            for (size_t k = 0; k < T; ++k)
+            {
+                const double w = weights[h][q][k];
+                if (k > q)
+                {
+                    // Causal mask: query at step q must not attend to future step k > q
+                    EXPECT_DOUBLE_EQ(w, 0.0);
+                }
+                else
+                {
+                    EXPECT_GE(w, 0.0);
+                    EXPECT_LE(w, 1.0);
+                }
+                row_sum += w;
+            }
+            EXPECT_NEAR(row_sum, 1.0, 1e-6);
+        }
+    }
+
+    // Check mean attention weights across heads
+    const auto& mean_weights = layer.get_last_mean_attention_weights(0);
+    EXPECT_EQ(mean_weights.size(), T);
+    for (size_t q = 0; q < T; ++q)
+    {
+        EXPECT_EQ(mean_weights[q].size(), T);
+        double row_sum = 0.0;
+        for (size_t k = 0; k < T; ++k)
+        {
+            double expected_mean = 0.0;
+            for (size_t h = 0; h < H; ++h)
+            {
+                expected_mean += weights[h][q][k];
+            }
+            expected_mean /= static_cast<double>(H);
+            EXPECT_NEAR(mean_weights[q][k], expected_mean, 1e-9);
+            row_sum += mean_weights[q][k];
+        }
+        EXPECT_NEAR(row_sum, 1.0, 1e-6);
+    }
+}
+
+
+TEST_F(SelfAttentionLayerTest, AttentionCaptureCoversEveryBatchItemWithThreads)
+{
+    const unsigned d = 4, H = 2, d_ff = 4;
+    const size_t T = 3;
+    const size_t batch_size = 6;
+    SelfAttentionLayer layer(
+        1, d, d, H, d_ff,
+        0.0, Layer::Role::Hidden, activation(activation::method::linear, 0.0), OptimiserType::SGD,
+        -1, 0.0, nullptr, 4, true, false, 0.0, std::nullopt);
+    layer.set_capture_attention(true);
+
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+    auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+    auto batch_hs = create_batch_hidden_states(topology, batch_size, 1, 1);
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        std::vector<double> input_seq(T * d);
+        for (size_t i = 0; i < input_seq.size(); ++i)
+        {
+            input_seq[i] = std::sin(static_cast<double>(b * 13 + i) * 0.37);
+        }
+        batch_go[b].set_rnn_outputs(0, input_seq.data(), input_seq.size());
+    }
+    layer.calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, batch_size, false);
+
+    for (size_t b = 0; b < batch_size; ++b)
+    {
+        const auto weights = layer.get_last_attention_weights(b);
+        ASSERT_EQ(weights.size(), H) << "batch " << b;
+        for (size_t h = 0; h < H; ++h)
+        {
+            for (size_t q = 0; q < T; ++q)
+            {
+                double row_sum = 0.0;
+                for (size_t k = 0; k < T; ++k)
+                {
+                    row_sum += weights[h][q][k];
+                }
+                EXPECT_NEAR(row_sum, 1.0, 1e-9) << "batch " << b << " head " << h << " query " << q;
+            }
+        }
+    }
+
+    EXPECT_TRUE(layer.get_last_attention_weights(batch_size).empty());
+    EXPECT_TRUE(layer.get_last_mean_attention_weights(batch_size).empty());
+
+    EXPECT_NE(layer.get_last_attention_weights(0)[0][2][0], layer.get_last_attention_weights(1)[0][2][0]);
+}
+
+namespace
+{
+struct concurrent_inference_worker
+{
+  const SelfAttentionLayer* layer;
+  const std::vector<double>* input_seq;
+  unsigned d;
+  size_t T;
+  std::atomic<int>* failures;
+
+  void operator()() const
+  {
+    std::vector<unsigned> topology = { d, d };
+    MockLayer previous_layer(0, d);
+    for (int iteration = 0; iteration < 50; ++iteration)
+    {
+      auto batch_go = create_batch_gradients_and_outputs(topology, 2);
+      auto batch_hs = create_batch_hidden_states(topology, 2, 1, 1);
+      batch_go[0].set_rnn_outputs(0, input_seq->data(), input_seq->size());
+      batch_go[1].set_rnn_outputs(0, input_seq->data(), input_seq->size());
+      layer->calculate_forward_feed(batch_go, previous_layer, {}, batch_hs, 2, false);
+      const auto mean = layer->get_last_mean_attention_weights(0);
+      if (mean.size() != T)
+      {
+        ++(*failures);
+      }
+    }
+  }
+};
+} // namespace
+
+TEST_F(SelfAttentionLayerTest, ConcurrentInferenceWithAttentionCaptureIsSafe)
+{
+    const unsigned d = 4, H = 2, d_ff = 4;
+    const size_t T = 3;
+    SelfAttentionLayer layer = make_layer(d, H, d_ff, true, false);
+    layer.set_capture_attention(true);
+
+    std::vector<double> input_seq(T * d);
+    for (size_t i = 0; i < input_seq.size(); ++i)
+    {
+        input_seq[i] = std::cos(static_cast<double>(i) * 0.41);
+    }
+
+    std::atomic<int> failures{ 0 };
+    const concurrent_inference_worker worker{ &layer, &input_seq, d, T, &failures };
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 4; ++i)
+    {
+        threads.emplace_back(worker);
+    }
+    for (auto& thread : threads)
+    {
+        thread.join();
+    }
+    EXPECT_EQ(failures.load(), 0);
 }

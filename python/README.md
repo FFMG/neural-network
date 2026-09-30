@@ -71,6 +71,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `Tcn`: Dilated causal 1D convolution ("Temporal Convolutional Network" block) over a window of preceding timesteps (see "TCN" below).
     *   `SelfAttention`: Multi-head causal self-attention plus a position-wise feed-forward sub-block (see "Self-Attention" below).
     *   `Embedding`: Categorical entity embeddings mapping discrete integer IDs to dense continuous vectors (see "Embedding" below).
+    *   `Grn`: Gated Residual Network with Gated Linear Unit and Layer Normalisation (see "Gated Residual Network (GRN)" below).
 *   `nn.LayerRole`: Structural role of a layer.
     *   `Input`: Network input layer.
     *   `Hidden`: Network hidden layer.
@@ -95,7 +96,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `EvaluationConfig(neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda, epsilon, label_smoothing, quantiles, transaction_cost_penalty, sortino_target_return)`: Constructor.
     *   Properties: `neutral_tolerance`, `confidence_threshold`, `huber_delta`, `direction_lambda`, `use_direction_penalty`, `cross_entropy_lambda`, `epsilon`, `label_smoothing`, `quantiles`, `transaction_cost_penalty`, `sortino_target_return` (all read-only).
 *   `nn.LayerDetails`: Specifications for configuring a hidden layer.
-    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0, vocabulary_size=0, embedding_dimension=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, and also for `SelfAttention` (see "Self-Attention" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`. `vocabulary_size`/`embedding_dimension` configure an `Embedding` layer's discrete categorical entity lookup table (see "Embedding" below).
+    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0, vocabulary_size=0, embedding_dimension=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, `SelfAttention`, and `Grn` (see "Gated Residual Network (GRN)" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`. `feed_forward_hidden_size` also configures the intermediate dense expansion size for `Grn` layers. `vocabulary_size`/`embedding_dimension` configure an `Embedding` layer's discrete categorical entity lookup table (see "Embedding" below).
     *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size`, `kernel_size`, `dilation`, `number_of_heads`, `feed_forward_hidden_size`, `vocabulary_size`, `embedding_dimension`, `is_recurrent` (all read-only).
     *   Static Factory Methods:
         *   `create_ff(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0)`
@@ -106,6 +107,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
         *   `create_self_attention(size, number_of_heads, feed_forward_hidden_size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0, use_layer_normalisation=True)`
         *   `create_attention_pool(size, attention_hidden_size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0)`
         *   `create_embedding(vocabulary_size, embedding_dimension, size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0)`
+        *   `create_grn(size, feed_forward_hidden_size, activation=Elu, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0, use_layer_normalisation=True)`
 *   `nn.OutputLayerDetails`: Specifications for configuring the output layer.
     *   `OutputLayerDetails(size, activation, error_type, evaluation_config, weight_decay, optimiser_type, momentum)`: Constructor.
     *   Properties: `size`, `activation`, `output_error_calculation_type`, `error_evaluation_config`, `weight_decay`, `optimiser_type`, `momentum` (all read-only).
@@ -144,6 +146,9 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `get_topology()`: Returns the list of layer sizes.
     *   `calculate_forecast_metric(...)`, `calculate_forecast_metrics(error_types, in_sample=True)`, `calculate_forecast_metrics_all_layers(error_types, in_sample=True, force_checking_indexes=None)`: Computes model forecast error metrics. When `force_checking_indexes` is omitted (`None`), it defaults to `options.force_checking_indexes()`.
     *   `get_learning_rate()`, `set_learning_rate(learning_rate)`, `has_learning_rate_override()`, `learning_rate` property (getter/setter), `get_temperature()`, `get_inference_temperature()`, `set_temperature()`, `set_inference_temperature()`, `get_percent_complete()`, `has_training_data()`, `options()`.
+    *   `set_attention_capture(capture)`: Enables/disables recording of attention weights during inference (off by default).
+    *   `get_attention_weights(layer_index, batch_index=0)`: Returns 3D attention weight tensor `[head][query_t][key_t]` from the last inference pass of the target `SelfAttention` layer.
+    *   `get_mean_attention_weights(layer_index, batch_index=0)`: Returns 2D attention weight matrix `[query_t][key_t]` averaged across all heads from the last inference pass.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
     *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
     *   `load(filepath)`: Static method to load a network instance from a JSON file.
@@ -188,6 +193,22 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * `embedding_dimension`: Dimension $D$ of each embedding vector.
 * `size`: Must equal number of input features $\times D$.
 * Weights are trained via backpropagation and can be saved/loaded via `NeuralNetworkSerializer`.
+
+### Gated Residual Network (GRN)
+
+`nn.LayerArchitecture.Grn` provides non-linear processing with adaptive gating, skip connection, and layer normalisation:
+* Math: $\text{GRN}(a) = \text{LayerNorm}(a + \text{GLU}(\text{Dropout}(\eta_1)))$ where $\eta_1 = W_2 \cdot \text{Activation}(W_1 a + b_1) + b_2$ and $\text{GLU}(\gamma) = \gamma_{\text{val}} \odot \sigma(\gamma_{\text{gate}})$.
+* `feed_forward_hidden_size`: Dimension of the intermediate non-linear projection ($W_1$).
+* `use_layer_normalisation`: Controls final Layer Normalisation over the residual sum (defaults to `True`).
+* Residual connection: If input dimension equals output dimension ($d_{in} == d_{out}$), an exact zero-parameter identity shortcut is used; if $d_{in} \neq d_{out}$, a trainable linear projection skip ($W_{\text{skip}} a + b_{\text{skip}}$) matches dimensions.
+* Fully differentiable with exact analytical backward pass for all parameters.
+
+### Attention Interpretability
+
+`nn.NeuralNetwork` allows inspecting causal attention distributions across sequence timesteps:
+* `get_attention_weights(layer_index, batch_index=0)`: Yields the 3D tensor $[H, T, T]$ of softmax weights for head $h$, query timestep $i$, and key timestep $j$.
+* `get_mean_attention_weights(layer_index, batch_index=0)`: Yields the 2D matrix $[T, T]$ averaged over all $H$ attention heads.
+* Valid for inspecting `SelfAttention` layers during or following inference.
 
 ### Feed-Forward & Output Layers
 
@@ -307,6 +328,18 @@ Run command:
 python python/examples/gridworld.py
 ```
 
+#### GRN & Attention Interpretability (`examples/grn_attention.py`)
+
+Demonstrates combining Multi-Head Self-Attention with a Gated Residual Network (GRN) for temporal sequence modeling and extracting attention weight distributions for model interpretability:
+- Configures a temporal pipeline with `SelfAttention` and `Grn` hidden layers.
+- Evaluates BPTT sequence training on synthetic multi-feature temporal data.
+- Extracts per-head and mean attention matrices (`get_attention_weights`, `get_mean_attention_weights`) and prints a causal attention map across sequence timesteps.
+
+Run command:
+```bash
+python python/examples/grn_attention.py
+```
+
 ---
 
 ## Assumptions & Prerequisites
@@ -351,6 +384,8 @@ g++ -O3 -Wall -shared -std=c++17 -fPIC -I../include \
     ../include/neuralnetwork/layers/lstmlayer.cpp \
     ../include/neuralnetwork/layers/tcnlayer.cpp \
     ../include/neuralnetwork/layers/selfattentionlayer.cpp \
+    ../include/neuralnetwork/layers/grnlayer.cpp \
+    ../include/neuralnetwork/layers/embeddinglayer.cpp \
     ../include/neuralnetwork/layers/layer.cpp \
     ../include/neuralnetwork/layers/layers.cpp \
     ../include/neuralnetwork/libraries/TinyJSON.cpp \
@@ -375,6 +410,7 @@ python python/examples/multi_output.py
 python python/examples/example.py
 python python/examples/tic_tac_toe.py
 python python/examples/gridworld.py
+python python/examples/grn_attention.py
 ```
 
 ---
@@ -392,5 +428,6 @@ python python/examples/gridworld.py
     *   `examples/example.py`: General Python script illustrating options configuration, progress callbacks, training, inference, and serialization.
     *   `examples/tic_tac_toe.py`: Reinforcement Learning Tic-Tac-Toe example using policy gradient (`train_with_advantages`).
     *   `examples/gridworld.py`: Reinforcement Learning Gridworld navigation example with ASCII path visualisation and policy maps (`train_with_advantages`).
+    *   `examples/grn_attention.py`: Gated Residual Network (GRN) and attention interpretability example extracting temporal attention weights.
 
 

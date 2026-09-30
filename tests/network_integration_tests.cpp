@@ -2,6 +2,7 @@
 #include "layers/attentionpoollayer.h"
 #include "layers/tcnlayer.h"
 #include "layers/selfattentionlayer.h"
+#include "layers/grnlayer.h"
 #include "layers/fflayer.h"
 #include "layers/grurnnlayer.h"
 #include "layers/elmanrnnlayer.h"
@@ -14,6 +15,8 @@
 #include "helpers/neuralnetworkserializer.h"
 #include "test_helper.h"
 #include <cmath>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -3659,4 +3662,318 @@ TEST(NetworkIntegrationTest, SharpeAndSortinoSerializationRoundTrip)
       EXPECT_NEAR(orig_preds[i][j], rest_preds[i][j], 1e-12);
     }
   }
+}
+
+TEST(NetworkIntegrationTest, GrnLayerPipelineAndSerializationRoundTrip)
+{
+  MYODDWEB_PROFILE_FUNCTION("NetworkIntegrationTest");
+  const unsigned input_size = 4;
+  const unsigned hidden_size = 4;
+  const unsigned feed_forward_size = 8;
+  const unsigned output_size = 1;
+  const size_t time_steps = 4;
+
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(
+      Layer::Architecture::SelfAttention,
+      hidden_size,
+      activation(activation::method::linear, 0.0),
+      0.0,
+      1e-4,
+      OptimiserType::AdamW,
+      0.9,
+      true,
+      0,
+      0,
+      0,
+      2,
+      feed_forward_size,
+      0,
+      0
+    ),
+    LayerDetails::create_grn(
+      hidden_size,
+      feed_forward_size,
+      activation(activation::method::elu, 1.0),
+      0.0,
+      1e-4,
+      OptimiserType::AdamW,
+      0.9,
+      true
+    )
+  };
+
+  OutputLayerDetails output_details(
+    output_size,
+    activation(activation::method::linear, 0.0),
+    ErrorCalculation::type::huber_loss,
+    { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 },
+    1e-4,
+    OptimiserType::AdamW,
+    0.9
+  );
+
+  auto options = NeuralNetworkOptions::create({ input_size, hidden_size, hidden_size, output_size })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details({ output_details })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(2)
+    .with_batch_size(1)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(time_steps)
+    .with_shuffle_bptt_batches(false)
+    .with_bptt_supervise_last_step_only(false)
+    .with_seed(12345)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> targets;
+  for (size_t t = 0; t < time_steps; ++t)
+  {
+    const double v = static_cast<double>(t + 1) * 0.25;
+    inputs.push_back({ v, v * 0.5, -v, v * 1.5 });
+    targets.push_back({ v * 0.8 });
+  }
+
+  std::vector<double> flattened_seq;
+  for (const auto& row : inputs)
+  {
+    flattened_seq.insert(flattened_seq.end(), row.begin(), row.end());
+  }
+  std::vector<std::vector<double>> think_inputs = { flattened_seq };
+
+  nn.set_attention_capture(false);
+  const auto before_training = nn.think(think_inputs);
+  ASSERT_FALSE(before_training.empty());
+  EXPECT_TRUE(nn.get_attention_weights(1, 0).empty());
+
+  nn.train(inputs, targets);
+
+  nn.set_attention_capture(true);
+  const auto initial_think = nn.think(think_inputs);
+  ASSERT_FALSE(initial_think.empty());
+
+  ASSERT_EQ(before_training[0].size(), initial_think[0].size());
+  double total_change = 0.0;
+  for (size_t j = 0; j < initial_think[0].size(); ++j)
+  {
+    EXPECT_TRUE(std::isfinite(initial_think[0][j]));
+    total_change += std::abs(initial_think[0][j] - before_training[0][j]);
+  }
+  EXPECT_GT(total_change, 0.0);
+
+  // Verify attention weight extraction on the trained model
+  const auto attention_weights = nn.get_attention_weights(1, 0);
+  ASSERT_EQ(attention_weights.size(), 2u); // 2 heads
+  for (size_t h = 0; h < 2u; ++h)
+  {
+    ASSERT_EQ(attention_weights[h].size(), time_steps);
+    for (size_t q = 0; q < time_steps; ++q)
+    {
+      double row_sum = 0.0;
+      for (size_t k = 0; k < time_steps; ++k)
+      {
+        if (k > q)
+        {
+          EXPECT_DOUBLE_EQ(attention_weights[h][q][k], 0.0);
+        }
+        row_sum += attention_weights[h][q][k];
+      }
+      EXPECT_NEAR(row_sum, 1.0, 1e-5);
+    }
+  }
+
+  const auto mean_attention = nn.get_mean_attention_weights(1, 0);
+  ASSERT_EQ(mean_attention.size(), time_steps);
+
+  // Serialize to file
+  const std::string test_path = "test_grn_attention_roundtrip.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  // Reload from file
+  auto restored_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  std::remove(test_path.c_str());
+  ASSERT_NE(restored_nn, nullptr);
+
+  const auto& restored_opts = restored_nn->options();
+  ASSERT_EQ(restored_opts.hidden_layers().size(), 2u);
+  EXPECT_EQ(restored_opts.hidden_layers()[0].get_layer_architecture(), Layer::Architecture::SelfAttention);
+  EXPECT_EQ(restored_opts.hidden_layers()[1].get_layer_architecture(), Layer::Architecture::Grn);
+  EXPECT_EQ(restored_opts.hidden_layers()[1].get_feed_forward_hidden_size(), feed_forward_size);
+  EXPECT_TRUE(restored_opts.hidden_layers()[1].get_use_layer_normalisation());
+
+  // Compare inference outputs
+  const auto orig_preds = nn.think(think_inputs);
+  const auto rest_preds = restored_nn->think(think_inputs);
+
+  ASSERT_EQ(orig_preds.size(), rest_preds.size());
+  for (size_t i = 0; i < orig_preds.size(); ++i)
+  {
+    ASSERT_EQ(orig_preds[i].size(), rest_preds[i].size());
+    for (size_t j = 0; j < orig_preds[i].size(); ++j)
+    {
+      EXPECT_NEAR(orig_preds[i][j], rest_preds[i][j], 1e-12);
+    }
+  }
+}
+namespace
+{
+std::unique_ptr<NeuralNetwork> make_trained_grn_network(unsigned input_size, unsigned hidden_size, bool use_layer_normalisation, std::vector<std::vector<double>>& think_inputs)
+{
+  const size_t time_steps = 3;
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails::create_grn(hidden_size, 6, activation(activation::method::elu, 1.0), 0.0, 1e-4, OptimiserType::AdamW, 0.9, use_layer_normalisation)
+  };
+
+  OutputLayerDetails output_details(
+    1,
+    activation(activation::method::linear, 0.0),
+    ErrorCalculation::type::huber_loss,
+    { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 },
+    1e-4,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ input_size, hidden_size, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details({ output_details })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(2)
+    .with_batch_size(1)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(time_steps)
+    .with_shuffle_bptt_batches(false)
+    .with_bptt_supervise_last_step_only(false)
+    .with_seed(777)
+    .build();
+
+  auto nn = std::make_unique<NeuralNetwork>(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> targets;
+  std::vector<double> flattened;
+  for (size_t t = 0; t < time_steps; ++t)
+  {
+    std::vector<double> row;
+    for (unsigned i = 0; i < input_size; ++i)
+    {
+      row.push_back(0.1 * static_cast<double>((t + 1) * (i + 1)) - 0.3);
+    }
+    flattened.insert(flattened.end(), row.begin(), row.end());
+    inputs.push_back(row);
+    targets.push_back({ 0.2 * static_cast<double>(t + 1) });
+  }
+  nn->train(inputs, targets);
+  think_inputs = { flattened };
+  return nn;
+}
+
+void expect_grn_roundtrip_matches(unsigned input_size, unsigned hidden_size, bool use_layer_normalisation, const std::string& path)
+{
+  std::vector<std::vector<double>> think_inputs;
+  auto nn = make_trained_grn_network(input_size, hidden_size, use_layer_normalisation, think_inputs);
+
+  NeuralNetworkSerializer::save(*nn, path);
+  auto restored = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(path));
+  std::remove(path.c_str());
+  ASSERT_NE(restored, nullptr);
+
+  const auto& restored_layer = restored->options().hidden_layers()[0];
+  EXPECT_EQ(restored_layer.get_layer_architecture(), Layer::Architecture::Grn);
+  EXPECT_EQ(restored_layer.get_use_layer_normalisation(), use_layer_normalisation);
+  EXPECT_EQ(restored_layer.get_feed_forward_hidden_size(), 6u);
+
+  const auto original = nn->think(think_inputs);
+  const auto reloaded = restored->think(think_inputs);
+  ASSERT_EQ(original.size(), reloaded.size());
+  for (size_t i = 0; i < original.size(); ++i)
+  {
+    ASSERT_EQ(original[i].size(), reloaded[i].size());
+    for (size_t j = 0; j < original[i].size(); ++j)
+    {
+      EXPECT_TRUE(std::isfinite(original[i][j]));
+      EXPECT_NEAR(original[i][j], reloaded[i][j], 1e-12);
+    }
+  }
+}
+} // namespace
+
+TEST(NetworkIntegrationTest, GrnSerializationIdentitySkipWithoutLayerNormalisation)
+{
+  expect_grn_roundtrip_matches(4, 4, false, "test_grn_identity_no_ln.json");
+}
+
+TEST(NetworkIntegrationTest, GrnSerializationProjectedSkipWithoutLayerNormalisation)
+{
+  expect_grn_roundtrip_matches(4, 3, false, "test_grn_projected_no_ln.json");
+}
+
+TEST(NetworkIntegrationTest, GrnSerializationProjectedSkipWithLayerNormalisation)
+{
+  expect_grn_roundtrip_matches(3, 5, true, "test_grn_projected_ln.json");
+}
+
+TEST(NetworkIntegrationTest, GrnSerializationMissingKeyIsRejected)
+{
+  std::vector<std::vector<double>> think_inputs;
+  auto nn = make_trained_grn_network(3, 4, true, think_inputs);
+  const std::string path = "test_grn_missing_key.json";
+  NeuralNetworkSerializer::save(*nn, path);
+
+  std::string json;
+  {
+    std::ifstream in(path);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    json = buffer.str();
+  }
+  const std::string key = "\"w2-values\"";
+  const auto position = json.find(key);
+  ASSERT_NE(position, std::string::npos);
+  json.replace(position, key.size(), "\"w2-renamed\"");
+  {
+    std::ofstream out(path, std::ios::trunc);
+    out << json;
+  }
+
+  bool rejected = false;
+  try
+  {
+    auto restored = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(path));
+    rejected = (restored == nullptr);
+  }
+  catch (const std::exception&)
+  {
+    rejected = true;
+  }
+  std::remove(path.c_str());
+  EXPECT_TRUE(rejected);
+}
+
+TEST(NetworkIntegrationTest, GrnOptionsValidationRejectsZeroSizes)
+{
+  EXPECT_THROW(
+    NeuralNetworkOptions::create({ 2, 2, 1 })
+      .with_hidden_layers({ LayerDetails::create_grn(2, 0, activation(activation::method::elu, 1.0)) })
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(4)
+      .build(),
+    std::runtime_error);
+
+  EXPECT_THROW(
+    NeuralNetworkOptions::create({ 2, 2, 1 })
+      .with_hidden_layers({ LayerDetails::create_grn(0, 4, activation(activation::method::elu, 1.0)) })
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(4)
+      .build(),
+    std::runtime_error);
+
+  EXPECT_NO_THROW(
+    NeuralNetworkOptions::create({ 2, 2, 1 })
+      .with_hidden_layers({ LayerDetails::create_grn(2, 4, activation(activation::method::elu, 1.0)) })
+      .with_enable_bptt(true)
+      .with_bptt_max_ticks(4)
+      .build());
 }

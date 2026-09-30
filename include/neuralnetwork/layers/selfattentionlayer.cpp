@@ -245,7 +245,8 @@ SelfAttentionLayer::SelfAttentionLayer(const SelfAttentionLayer& src) noexcept :
   _wq(src._wq), _bq(src._bq), _wk(src._wk), _bk(src._bk),
   _wv(src._wv), _bv(src._bv), _wo(src._wo), _bo(src._bo),
   _ff1_w(src._ff1_w), _ff1_b(src._ff1_b), _ff2_w(src._ff2_w), _ff2_b(src._ff2_b),
-  _ln1_gain(src._ln1_gain), _ln1_bias(src._ln1_bias), _ln2_gain(src._ln2_gain), _ln2_bias(src._ln2_bias)
+  _ln1_gain(src._ln1_gain), _ln1_bias(src._ln1_bias), _ln2_gain(src._ln2_gain), _ln2_bias(src._ln2_bias),
+  _capture_attention(src._capture_attention.load())
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
 }
@@ -260,7 +261,8 @@ SelfAttentionLayer::SelfAttentionLayer(SelfAttentionLayer&& src) noexcept :
   _wq(std::move(src._wq)), _bq(std::move(src._bq)), _wk(std::move(src._wk)), _bk(std::move(src._bk)),
   _wv(std::move(src._wv)), _bv(std::move(src._bv)), _wo(std::move(src._wo)), _bo(std::move(src._bo)),
   _ff1_w(std::move(src._ff1_w)), _ff1_b(std::move(src._ff1_b)), _ff2_w(std::move(src._ff2_w)), _ff2_b(std::move(src._ff2_b)),
-  _ln1_gain(std::move(src._ln1_gain)), _ln1_bias(std::move(src._ln1_bias)), _ln2_gain(std::move(src._ln2_gain)), _ln2_bias(std::move(src._ln2_bias))
+  _ln1_gain(std::move(src._ln1_gain)), _ln1_bias(std::move(src._ln1_bias)), _ln2_gain(std::move(src._ln2_gain)), _ln2_bias(std::move(src._ln2_bias)),
+  _capture_attention(src._capture_attention.load())
 {
   MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
   src._number_of_heads = 0;
@@ -283,6 +285,7 @@ SelfAttentionLayer& SelfAttentionLayer::operator=(const SelfAttentionLayer& src)
     _wv = src._wv; _bv = src._bv; _wo = src._wo; _bo = src._bo;
     _ff1_w = src._ff1_w; _ff1_b = src._ff1_b; _ff2_w = src._ff2_w; _ff2_b = src._ff2_b;
     _ln1_gain = src._ln1_gain; _ln1_bias = src._ln1_bias; _ln2_gain = src._ln2_gain; _ln2_bias = src._ln2_bias;
+    _capture_attention.store(src._capture_attention.load());
   }
   return *this;
 }
@@ -302,6 +305,7 @@ SelfAttentionLayer& SelfAttentionLayer::operator=(SelfAttentionLayer&& src) noex
     _wv = std::move(src._wv); _bv = std::move(src._bv); _wo = std::move(src._wo); _bo = std::move(src._bo);
     _ff1_w = std::move(src._ff1_w); _ff1_b = std::move(src._ff1_b); _ff2_w = std::move(src._ff2_w); _ff2_b = std::move(src._ff2_b);
     _ln1_gain = std::move(src._ln1_gain); _ln1_bias = std::move(src._ln1_bias); _ln2_gain = std::move(src._ln2_gain); _ln2_bias = std::move(src._ln2_bias);
+    _capture_attention.store(src._capture_attention.load());
 
     src._number_of_heads = 0;
     src._feed_forward_hidden_size = 0;
@@ -476,6 +480,15 @@ void SelfAttentionLayer::process_forward_range(
       continue;
     }
 
+    attention_capture* capture = nullptr;
+    if (scratch.capture != nullptr)
+    {
+      capture = &(*scratch.capture)[b];
+      capture->heads = H;
+      capture->steps = T;
+      capture->weights.assign(H * T * T, 0.0);
+    }
+
     scratch.xp.resize(T * d);
     add_positional_encoding(scratch.xp.data(), seq.data(), T, d, _pe_inv_denom.data(), _pe_cache.data(), _pe_cache.size());
 
@@ -547,6 +560,11 @@ void SelfAttentionLayer::process_forward_range(
           scratch.scores[t2] = simd::dot_product(q_row, k_row, head_size) * scale;
         }
         simd::softmax_forward(scratch.scores.data(), t + 1);
+        if (capture != nullptr)
+        {
+          double* capture_row = capture->weights.data() + (m * T + t) * T;
+          std::memcpy(capture_row, scratch.scores.data(), (t + 1) * sizeof(double));
+        }
         double* ctx_row = scratch.ctx.data() + t * d + off;
         for (size_t t2 = 0; t2 <= t; ++t2)
         {
@@ -727,6 +745,13 @@ void SelfAttentionLayer::calculate_forward_feed(
     return;
   }
 
+  std::vector<attention_capture> capture;
+  const bool capture_attention = !is_training && _capture_attention.load();
+  if (capture_attention)
+  {
+    capture.resize(batch_size);
+  }
+
   const unsigned prev_layer_index = previous_layer.get_layer_index();
   const auto num_threads = get_number_of_threads();
   const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
@@ -734,11 +759,16 @@ void SelfAttentionLayer::calculate_forward_feed(
   if (active_threads <= 1)
   {
     forward_scratch scratch;
+    scratch.capture = capture_attention ? &capture : nullptr;
     process_forward_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, batch_residual_output_values, batch_hidden_states, is_training, scratch);
   }
   else
   {
     std::vector<forward_scratch> thread_scratch(active_threads);
+    for (auto& thread_scratch_item : thread_scratch)
+    {
+      thread_scratch_item.capture = capture_attention ? &capture : nullptr;
+    }
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -761,6 +791,12 @@ void SelfAttentionLayer::calculate_forward_feed(
       start = end;
     }
     _task_queue_pool->get();
+  }
+
+  if (capture_attention)
+  {
+    std::lock_guard<std::mutex> lock(_attention_mutex);
+    _last_attention = std::move(capture);
   }
 }
 
@@ -1613,6 +1649,65 @@ void SelfAttentionLayer::zero_gradients()
   {
     std::fill(fr.family->grads.begin(), fr.family->grads.end(), 0.0);
   }
+}
+
+void SelfAttentionLayer::set_capture_attention(bool capture) noexcept
+{
+  _capture_attention.store(capture);
+}
+
+std::vector<std::vector<std::vector<double>>> SelfAttentionLayer::get_last_attention_weights(size_t batch_index) const
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  std::lock_guard<std::mutex> lock(_attention_mutex);
+  if (batch_index >= _last_attention.size() || _last_attention[batch_index].weights.empty())
+  {
+    return {};
+  }
+  const auto& item = _last_attention[batch_index];
+  std::vector<std::vector<std::vector<double>>> result(item.heads, std::vector<std::vector<double>>(item.steps));
+  for (size_t m = 0; m < item.heads; ++m)
+  {
+    for (size_t t = 0; t < item.steps; ++t)
+    {
+      const double* row = item.weights.data() + (m * item.steps + t) * item.steps;
+      result[m][t].assign(row, row + item.steps);
+    }
+  }
+  return result;
+}
+
+std::vector<std::vector<double>> SelfAttentionLayer::get_last_mean_attention_weights(size_t batch_index) const
+{
+  MYODDWEB_PROFILE_FUNCTION("SelfAttentionLayer");
+  std::lock_guard<std::mutex> lock(_attention_mutex);
+  if (batch_index >= _last_attention.size() || _last_attention[batch_index].weights.empty())
+  {
+    return {};
+  }
+  const auto& item = _last_attention[batch_index];
+  const size_t T = item.steps;
+  std::vector<std::vector<double>> mean_attn(T, std::vector<double>(T, 0.0));
+  for (size_t m = 0; m < item.heads; ++m)
+  {
+    for (size_t t = 0; t < T; ++t)
+    {
+      const double* row = item.weights.data() + (m * T + t) * T;
+      for (size_t t2 = 0; t2 < T; ++t2)
+      {
+        mean_attn[t][t2] += row[t2];
+      }
+    }
+  }
+  const double inv_h = 1.0 / static_cast<double>(item.heads);
+  for (auto& row : mean_attn)
+  {
+    for (auto& value : row)
+    {
+      value *= inv_h;
+    }
+  }
+  return mean_attn;
 }
 
 } // namespace myoddweb::nn

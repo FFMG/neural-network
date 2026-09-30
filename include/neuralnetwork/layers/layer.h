@@ -254,7 +254,8 @@ public:
     AttentionPool,
     Tcn,
     SelfAttention,
-    Embedding
+    Embedding,
+    Grn
   };
 
   enum class Role
@@ -312,6 +313,9 @@ public:
     case Architecture::Embedding:
       return "Embedding";
 
+    case Architecture::Grn:
+      return "Grn";
+
     default:
       Logger::panic("Unknown Layer architecture: ", (int)architecture);
     }
@@ -364,6 +368,10 @@ public:
     if (lower_str == "embedding")
     {
       return Architecture::Embedding;
+    }
+    if (lower_str == "grn")
+    {
+      return Architecture::Grn;
     }
     Logger::panic("Unknown Layer architecture: ", str);
   }
@@ -581,6 +589,7 @@ public:
     case Architecture::AttentionPool:
     case Architecture::Tcn:
     case Architecture::SelfAttention:
+    case Architecture::Grn:
       return true;
     case Architecture::None:
     case Architecture::FF:
@@ -589,6 +598,23 @@ public:
     default:
       return false;
     }
+  }
+
+  virtual void set_capture_attention(bool capture) noexcept
+  {
+    (void)capture;
+  }
+
+  [[nodiscard]] virtual std::vector<std::vector<std::vector<double>>> get_last_attention_weights(size_t batch_index = 0) const
+  {
+    (void)batch_index;
+    return {};
+  }
+
+  [[nodiscard]] virtual std::vector<std::vector<double>> get_last_mean_attention_weights(size_t batch_index = 0) const
+  {
+    (void)batch_index;
+    return {};
   }
 
   [[nodiscard]] inline OptimiserType get_optimiser_type() const noexcept

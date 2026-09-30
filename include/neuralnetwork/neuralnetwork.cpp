@@ -500,6 +500,40 @@ bool NeuralNetwork::has_training_data() const
   return !_saved_errors.empty();
 }
 
+void NeuralNetwork::set_attention_capture(bool capture)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  for (unsigned i = 0; i < _layers.size(); ++i)
+  {
+    _layers[i].set_capture_attention(capture);
+  }
+}
+
+std::vector<std::vector<std::vector<double>>> NeuralNetwork::get_attention_weights(unsigned layer_index, size_t batch_index) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  if (layer_index >= _layers.size())
+  {
+    Logger::panic("Layer index ", layer_index, " is out of range for get_attention_weights!");
+    return {};
+  }
+  return _layers[layer_index].get_last_attention_weights(batch_index);
+}
+
+std::vector<std::vector<double>> NeuralNetwork::get_mean_attention_weights(unsigned layer_index, size_t batch_index) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::shared_lock<std::shared_mutex> read(_mutex);
+  if (layer_index >= _layers.size())
+  {
+    Logger::panic("Layer index ", layer_index, " is out of range for get_mean_attention_weights!");
+    return {};
+  }
+  return _layers[layer_index].get_last_mean_attention_weights(batch_index);
+}
+
 NeuralNetworkHelperMetrics NeuralNetwork::calculate_forecast_metric(ErrorCalculation::type error_type) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");

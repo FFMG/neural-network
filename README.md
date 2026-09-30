@@ -71,6 +71,7 @@ Standalone Python examples are located in [python/examples/](python/examples/):
 - **Multi-Output Layer (`python/examples/multi_output.py`)**: Parallel multi-output model performing joint classification (Sigmoid) and regression (Tanh).
 - **General Example (`python/examples/example.py`)**: Comprehensive demonstration of configuration options, progress monitoring callbacks, and model serialization.
 - **Reinforcement Learning (`python/examples/tic_tac_toe.py`)**: Policy-gradient (REINFORCE) agent learning Tic-Tac-Toe via advantage rewards and playing against a Random opponent.
+- **GRN & Attention Interpretability (`python/examples/grn_attention.py`)**: Temporal sequence modeling combining Multi-Head Self-Attention with Gated Residual Networks (GRN) and extracting attention weights.
 
 ### Python Quickstart Example
 
@@ -474,6 +475,25 @@ $$\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}} = \frac{2}{1 + e^{-2|x|}} - 1$$
     *   Vectorized derivative (`simd::tanh_derivative`) uses fused negative multiply-add (`_mm256_fnmadd_pd`) when `SIMD_FMA_ENABLED` is available to compute $1.0 - y^2$ in a single hardware cycle.
     *   Vectorized `tanh_pd` uses fused multiply-subtract (`_mm256_fmsub_pd`) for $(2 \cdot \text{rcp} - 1.0)$ computation.
     *   Batched Log-Cosh loss deltas ($\frac{1}{N}\tanh(\hat{y} - y)$) in `Layer::calculate_log_cosh_error_deltas` are accelerated via AVX2 SIMD `simd::tanh_pd`.
+
+### Gated Residual Network (`GrnLayer`)
+
+The library includes a native implementation of the **Gated Residual Network (GRN)**:
+*   **Nonlinear Processing with Adaptive Gating:**
+    $$\text{GRN}(a) = \text{LayerNorm}(a + \text{GLU}(\text{Dropout}(\eta_1)))$$
+    where $\eta_1 = W_2 \cdot \text{Activation}(W_1 a + b_1) + b_2$ and $\text{GLU}(\gamma) = \gamma_{:\text{size}} \odot \sigma(\gamma_{\text{size}:})$.
+*   **Adaptive Skip Shortcut:** When the input dimension equals the output dimension ($d_{in} == d_{out}$), an exact identity shortcut is utilized with zero extra parameters. When dimensions differ ($d_{in} \neq d_{out}$), a linear projection shortcut ($W_{\text{skip}} a + b_{\text{skip}}$) automatically projects the input to match dimensions.
+*   **Optional Layer Normalisation:** Normalises the residual sum across neuron features, defaulting to enabled (`use_layer_normalisation = true`).
+*   **Exact Backward Pass:** Differentiable end-to-end with analytical gradients for LayerNorm, GLU gating, intermediate dense projections, and residual pathways.
+*   **Integration:** Fully compatible with BPTT recurrent pipelines, multi-threading via `TaskQueue`, AdamW/Lion/NadamW optimisers, Lookahead, SWA, and `NeuralNetworkSerializer`.
+
+### Self-Attention Interpretability
+
+`NeuralNetwork` provides thread-safe accessors for inspecting attention weight distributions computed by `SelfAttentionLayer`:
+*   `nn.set_attention_capture(true)`: Attention weights are only recorded during inference (`think`) once capture is enabled (it is off by default so the inference hot path does not allocate).
+*   `nn.get_attention_weights(layer_index, batch_index = 0)`: Returns a 3D tensor $[H, T, T]$ containing the causal softmax attention distributions for each head $h$, query step $i$, and key step $j$.
+*   `nn.get_mean_attention_weights(layer_index, batch_index = 0)`: Returns a 2D matrix $[T, T]$ averaged across all attention heads.
+*   **Temporal Interpretability:** Provides transparent visibility into temporal dependencies learned across sequence steps during inference.
 
 ### General Training Options
 
