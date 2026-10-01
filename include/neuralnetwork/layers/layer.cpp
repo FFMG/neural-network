@@ -13,6 +13,7 @@
 #include "tcnlayer.h"
 #include "selfattentionlayer.h"
 #include "embeddinglayer.h"
+#include "grnlayer.h"
 
 
 namespace myoddweb::nn
@@ -250,6 +251,34 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       ld.get_dropout(),
       residual_projector,
       number_of_threads,
+      ld.get_momentum(),
+      seed
+    );
+
+  case Layer::Architecture::Grn:
+    if (ld.get_feed_forward_hidden_size() == 0)
+    {
+      Logger::panic("Grn hidden layers must have a non-zero feed_forward_hidden_size.");
+    }
+    if (ld.get_size() == 0)
+    {
+      Logger::panic("Grn hidden layers must have a non-zero size.");
+    }
+    return std::make_unique<GrnLayer>(
+      layer_index,
+      number_input_neurons,
+      ld.get_size(),
+      ld.get_feed_forward_hidden_size(),
+      ld.get_weight_decay(),
+      Role::Hidden,
+      ld.get_activation(),
+      ld.get_optimiser_type(),
+      residual_layer_number,
+      ld.get_dropout(),
+      residual_projector,
+      number_of_threads,
+      has_bias,
+      ld.get_use_layer_normalisation(),
       ld.get_momentum(),
       seed
     );

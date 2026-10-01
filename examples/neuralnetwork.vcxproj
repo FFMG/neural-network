@@ -146,6 +146,7 @@
   <ItemGroup>
     <ClCompile Include="..\include\neuralnetwork\common\activation.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\attentionpoollayer.cpp" />
+    <ClCompile Include="..\include\neuralnetwork\layers\grnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\tcnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\selfattentionlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\elmanrnnlayer.cpp" />
@@ -176,6 +177,7 @@
     <ClInclude Include="..\include\neuralnetwork\common\stochasticweightaveragingdetails.h" />
     <ClInclude Include="..\include\neuralnetwork\common\tempbuffer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\attentionpoollayer.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\grnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\layergradients.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\tcnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\layers\selfattentionlayer.h" />

@@ -618,6 +618,17 @@ public:
           Logger::panic("SelfAttention hidden layers require bptt_max_ticks to be greater than 1.");
         }
       }
+      if (hl.get_layer_architecture() == Layer::Architecture::Grn)
+      {
+        if (hl.get_feed_forward_hidden_size() == 0)
+        {
+          Logger::panic("Grn hidden layers require feed_forward_hidden_size to be non-zero.");
+        }
+        if (hl.get_size() == 0)
+        {
+          Logger::panic("Grn hidden layers require size to be non-zero.");
+        }
+      }
     }
 
     // check the output layer

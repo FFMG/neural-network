@@ -47,6 +47,7 @@ set(NN_SOURCES
     "${NN_SOURCE_DIR}/layers/lstmlayer.cpp"
     "${NN_SOURCE_DIR}/layers/tcnlayer.cpp"
     "${NN_SOURCE_DIR}/layers/selfattentionlayer.cpp"
+    "${NN_SOURCE_DIR}/layers/grnlayer.cpp"
     "${NN_SOURCE_DIR}/layers/embeddinglayer.cpp"
     "${NN_SOURCE_DIR}/neuralnetwork.cpp"
     "${NN_SOURCE_DIR}/helpers/neuralnetworkhelper.cpp"
@@ -85,6 +86,8 @@ add_executable(neuralnetwork_tests
     ffoutputlayer_mt_tests.cpp
     ffoutputlayer_tests.cpp
     gradients_and_outputs_tests.cpp
+    grnlayer_mt_tests.cpp
+    grnlayer_tests.cpp
     grurnnlayer_mt_tests.cpp
     grurnnlayer_tests.cpp
     hidden_state_tests.cpp

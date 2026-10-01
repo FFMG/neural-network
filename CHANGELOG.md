@@ -2,6 +2,37 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.70] - 2026-09-29
+
+### Added
+- Added `GrnLayer` (Gated Residual Network) architecture ([`include/neuralnetwork/layers/grnlayer.h`](./include/neuralnetwork/layers/grnlayer.h), [`include/neuralnetwork/layers/grnlayer.cpp`](./include/neuralnetwork/layers/grnlayer.cpp)):
+  - Implements non-linear processing with Gated Linear Unit (GLU) gating, adaptive skip connection, and optional Layer Normalisation.
+  - Supports automatic dimension matching: exact zero-parameter identity connection when $d_{in} == d_{out}$, and trainable linear projection shortcut when $d_{in} \neq d_{out}$.
+  - Fully differentiable with exact analytical backward pass for LayerNorm, GLU gating, intermediate dense projections, and residual pathways.
+  - Multi-threaded batch execution via `TaskQueue` with thread-local accumulators preventing cache line contention.
+  - Supports SWA, Lookahead, and optimiser updates for all 8 weight families.
+  - Added `Layer::Architecture::Grn` and `LayerDetails::create_grn(...)` factory with full options validation in `NeuralNetworkOptions::build()`.
+- Added Attention Weight extraction for temporal interpretability ([`include/neuralnetwork/layers/selfattentionlayer.h`](./include/neuralnetwork/layers/selfattentionlayer.h), [`include/neuralnetwork/layers/selfattentionlayer.cpp`](./include/neuralnetwork/layers/selfattentionlayer.cpp), [`include/neuralnetwork/neuralnetwork.h`](./include/neuralnetwork/neuralnetwork.h), [`include/neuralnetwork/neuralnetwork.cpp`](./include/neuralnetwork/neuralnetwork.cpp)):
+  - Caches post-softmax causal attention weights during inference passes.
+  - Added thread-safe accessors `NeuralNetwork::get_attention_weights(layer_index, batch_index = 0)` returning 3D tensor $[H, T, T]$ for each head, query step, and key step.
+  - Added thread-safe accessor `NeuralNetwork::get_mean_attention_weights(layer_index, batch_index = 0)` returning 2D matrix $[T, T]$ averaged across all attention heads.
+- Attention capture is opt-in via `NeuralNetwork::set_attention_capture(bool)` (default off), stored flat per batch item, only recorded on inference passes and guarded by a mutex so concurrent `think()` calls are safe.
+- GRN backward fixes: LayerNorm gain/bias gradients now recover `x_hat` (previously only correct for gain=1, bias=0), dropout masks and external residuals are taken from the stored forward state, the layer publishes its input gradient so earlier layers (SelfAttention, GRN) receive real gradients, and bias gradients stay zero when `has_bias` is false.
+- Updated `NeuralNetworkSerializer` ([`include/neuralnetwork/helpers/neuralnetworkserializer.h`](./include/neuralnetwork/helpers/neuralnetworkserializer.h), [`include/neuralnetwork/helpers/neuralnetworkserializer.cpp`](./include/neuralnetwork/helpers/neuralnetworkserializer.cpp)):
+  - Serialises and deserialises `GrnLayer` with all 8 weight families, `feed-forward-hidden-size`, and `use-layer-normalisation`.
+  - Added `load_weights` support for `GrnLayer` in multi-output branches.
+- Updated Python bindings and tooling ([`python/bindings.cpp`](./python/bindings.cpp), [`python/neuralnetwork_py.vcxproj`](./python/neuralnetwork_py.vcxproj)):
+  - Added `LayerArchitecture.Grn` enum value.
+  - Added `LayerDetails.create_grn(...)` factory method with default arguments.
+  - Bound `NeuralNetwork.get_attention_weights` and `NeuralNetwork.get_mean_attention_weights`.
+  - Added `python/examples/grn_attention.py` demonstrating temporal sequence modeling and attention weight visualisation.
+- Added comprehensive unit and multi-threading tests:
+  - [`tests/grnlayer_tests.cpp`](./tests/grnlayer_tests.cpp): construction, zero gating, layer norm, finite-difference numerical gradient checks on weights and inputs, SWA, and Lookahead.
+  - [`tests/grnlayer_mt_tests.cpp`](./tests/grnlayer_mt_tests.cpp): multi-threading determinism verifying 1 thread vs $N$ threads produces matching outputs and gradients (within 1e-12, summation order differs between thread counts).
+  - [`tests/selfattentionlayer_tests.cpp`](./tests/selfattentionlayer_tests.cpp): verified attention weight dimensions, causal masking, row sums to 1.0, and head averaging.
+  - [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): end-to-end BPTT training pipeline with SelfAttention + GRN and JSON serialization roundtrip.
+- Updated [`README.md`](./README.md) and [`python/README.md`](./python/README.md) with comprehensive GRN and attention interpretability documentation and build commands.
+
 ## [0.0.69] - 2026-09-28
 
 ### Added

@@ -200,6 +200,14 @@ Layers NeuralNetworkSerializer::create_layers(
       continue;
     }
 
+    if (type == "grnlayer")
+    {
+      layers.emplace_back(
+        create_grnlayer(layer_index, *layer_object, options.number_of_threads(), layer_seed)
+      );
+      continue;
+    }
+
     Logger::panic("Unknown Layer type:", type);
   }
 
@@ -1061,6 +1069,170 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_embeddinglayer(
     w_m2,
     w_timesteps,
     w_decays,
+    residual_projector.get(),
+    number_of_threads,
+    lah,
+    momentum
+  );
+
+  return layer;
+}
+
+namespace
+{
+void validate_grn_family(
+  const char* name,
+  size_t expected_size,
+  const std::vector<double>& values,
+  const std::vector<double>& grads,
+  const std::vector<double>& velocities,
+  const std::vector<double>& m1,
+  const std::vector<double>& m2,
+  const std::vector<long long>& timesteps,
+  const std::vector<double>& decays)
+{
+  if (values.size() != expected_size ||
+    grads.size() != expected_size ||
+    velocities.size() != expected_size ||
+    m1.size() != expected_size ||
+    m2.size() != expected_size ||
+    timesteps.size() != expected_size ||
+    decays.size() != expected_size)
+  {
+    Logger::panic("GrnLayer '", name, "' is missing or has the wrong number of values, expected ", expected_size, ".");
+  }
+}
+} // namespace
+
+std::unique_ptr<Layer> NeuralNetworkSerializer::create_grnlayer(
+  unsigned layer_index,
+  const TinyJSON::TJValueObject& layer_object,
+  int number_of_threads,
+  std::optional<uint32_t> seed
+)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto neurons = get_neurons(layer_object, layer_index, seed);
+
+  auto residual_layer_number = layer_object.get<int>("residual-layer-number");
+
+  auto optimiser_type_string = layer_object.try_get_string("optimiser-type");
+  if (optimiser_type_string == nullptr)
+  {
+    Logger::panic("Missing layer 'optimiser-type'.");
+  }
+  auto optimiser_type = string_to_optimiser_type(optimiser_type_string);
+
+  auto layer_role_number = layer_object.get<int>("layer-role");
+  auto layer_role = (Layer::Role)layer_role_number;
+
+  auto lah = get_activation_helper(layer_object);
+
+  auto num_input_neurons = layer_object.get<unsigned>("number-input-neurons");
+  auto layer_size = static_cast<unsigned>(neurons.size());
+  auto feed_forward_hidden_size = layer_object.get<unsigned>("feed-forward-hidden-size");
+  auto use_layer_normalisation = layer_object.get<bool>("use-layer-normalisation");
+
+  auto w1_values = layer_object.get<std::vector<double>>("w1-values");
+  auto w1_grads = layer_object.get<std::vector<double>>("w1-grads");
+  auto w1_velocities = layer_object.get<std::vector<double>>("w1-velocities");
+  auto w1_m1 = layer_object.get<std::vector<double>>("w1-m1");
+  auto w1_m2 = layer_object.get<std::vector<double>>("w1-m2");
+  auto w1_timesteps = layer_object.get<std::vector<long long>>("w1-timesteps");
+  auto w1_decays = layer_object.get<std::vector<double>>("w1-decays");
+
+  auto b1_values = layer_object.get<std::vector<double>>("b1-values");
+  auto b1_grads = layer_object.get<std::vector<double>>("b1-grads");
+  auto b1_velocities = layer_object.get<std::vector<double>>("b1-velocities");
+  auto b1_m1 = layer_object.get<std::vector<double>>("b1-m1");
+  auto b1_m2 = layer_object.get<std::vector<double>>("b1-m2");
+  auto b1_timesteps = layer_object.get<std::vector<long long>>("b1-timesteps");
+  auto b1_decays = layer_object.get<std::vector<double>>("b1-decays");
+
+  auto w2_values = layer_object.get<std::vector<double>>("w2-values");
+  auto w2_grads = layer_object.get<std::vector<double>>("w2-grads");
+  auto w2_velocities = layer_object.get<std::vector<double>>("w2-velocities");
+  auto w2_m1 = layer_object.get<std::vector<double>>("w2-m1");
+  auto w2_m2 = layer_object.get<std::vector<double>>("w2-m2");
+  auto w2_timesteps = layer_object.get<std::vector<long long>>("w2-timesteps");
+  auto w2_decays = layer_object.get<std::vector<double>>("w2-decays");
+
+  auto b2_values = layer_object.get<std::vector<double>>("b2-values");
+  auto b2_grads = layer_object.get<std::vector<double>>("b2-grads");
+  auto b2_velocities = layer_object.get<std::vector<double>>("b2-velocities");
+  auto b2_m1 = layer_object.get<std::vector<double>>("b2-m1");
+  auto b2_m2 = layer_object.get<std::vector<double>>("b2-m2");
+  auto b2_timesteps = layer_object.get<std::vector<long long>>("b2-timesteps");
+  auto b2_decays = layer_object.get<std::vector<double>>("b2-decays");
+
+  auto w_skip_values = layer_object.get<std::vector<double>>("w-skip-values");
+  auto w_skip_grads = layer_object.get<std::vector<double>>("w-skip-grads");
+  auto w_skip_velocities = layer_object.get<std::vector<double>>("w-skip-velocities");
+  auto w_skip_m1 = layer_object.get<std::vector<double>>("w-skip-m1");
+  auto w_skip_m2 = layer_object.get<std::vector<double>>("w-skip-m2");
+  auto w_skip_timesteps = layer_object.get<std::vector<long long>>("w-skip-timesteps");
+  auto w_skip_decays = layer_object.get<std::vector<double>>("w-skip-decays");
+
+  auto b_skip_values = layer_object.get<std::vector<double>>("b-skip-values");
+  auto b_skip_grads = layer_object.get<std::vector<double>>("b-skip-grads");
+  auto b_skip_velocities = layer_object.get<std::vector<double>>("b-skip-velocities");
+  auto b_skip_m1 = layer_object.get<std::vector<double>>("b-skip-m1");
+  auto b_skip_m2 = layer_object.get<std::vector<double>>("b-skip-m2");
+  auto b_skip_timesteps = layer_object.get<std::vector<long long>>("b-skip-timesteps");
+  auto b_skip_decays = layer_object.get<std::vector<double>>("b-skip-decays");
+
+  auto ln_gain_values = layer_object.get<std::vector<double>>("ln-gain-values");
+  auto ln_gain_grads = layer_object.get<std::vector<double>>("ln-gain-grads");
+  auto ln_gain_velocities = layer_object.get<std::vector<double>>("ln-gain-velocities");
+  auto ln_gain_m1 = layer_object.get<std::vector<double>>("ln-gain-m1");
+  auto ln_gain_m2 = layer_object.get<std::vector<double>>("ln-gain-m2");
+  auto ln_gain_timesteps = layer_object.get<std::vector<long long>>("ln-gain-timesteps");
+  auto ln_gain_decays = layer_object.get<std::vector<double>>("ln-gain-decays");
+
+  auto ln_bias_values = layer_object.get<std::vector<double>>("ln-bias-values");
+  auto ln_bias_grads = layer_object.get<std::vector<double>>("ln-bias-grads");
+  auto ln_bias_velocities = layer_object.get<std::vector<double>>("ln-bias-velocities");
+  auto ln_bias_m1 = layer_object.get<std::vector<double>>("ln-bias-m1");
+  auto ln_bias_m2 = layer_object.get<std::vector<double>>("ln-bias-m2");
+  auto ln_bias_timesteps = layer_object.get<std::vector<long long>>("ln-bias-timesteps");
+  auto ln_bias_decays = layer_object.get<std::vector<double>>("ln-bias-decays");
+
+  double momentum = layer_object.get_or<double>("momentum", 0.0);
+  std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
+
+  const size_t d_in = num_input_neurons;
+  const size_t d_out = layer_size;
+  const size_t d_ff = feed_forward_hidden_size;
+  const size_t skip_weights = (d_in != d_out) ? d_in * d_out : 0;
+  const size_t skip_biases = (d_in != d_out) ? d_out : 0;
+  const size_t norm_size = use_layer_normalisation ? d_out : 0;
+  validate_grn_family("w1", d_in * d_ff, w1_values, w1_grads, w1_velocities, w1_m1, w1_m2, w1_timesteps, w1_decays);
+  validate_grn_family("b1", d_ff, b1_values, b1_grads, b1_velocities, b1_m1, b1_m2, b1_timesteps, b1_decays);
+  validate_grn_family("w2", d_ff * 2 * d_out, w2_values, w2_grads, w2_velocities, w2_m1, w2_m2, w2_timesteps, w2_decays);
+  validate_grn_family("b2", 2 * d_out, b2_values, b2_grads, b2_velocities, b2_m1, b2_m2, b2_timesteps, b2_decays);
+  validate_grn_family("w-skip", skip_weights, w_skip_values, w_skip_grads, w_skip_velocities, w_skip_m1, w_skip_m2, w_skip_timesteps, w_skip_decays);
+  validate_grn_family("b-skip", skip_biases, b_skip_values, b_skip_grads, b_skip_velocities, b_skip_m1, b_skip_m2, b_skip_timesteps, b_skip_decays);
+  validate_grn_family("ln-gain", norm_size, ln_gain_values, ln_gain_grads, ln_gain_velocities, ln_gain_m1, ln_gain_m2, ln_gain_timesteps, ln_gain_decays);
+  validate_grn_family("ln-bias", norm_size, ln_bias_values, ln_bias_grads, ln_bias_velocities, ln_bias_m1, ln_bias_m2, ln_bias_timesteps, ln_bias_decays);
+
+  auto layer = std::make_unique<GrnLayer>(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    residual_layer_number,
+    num_input_neurons,
+    layer_size,
+    feed_forward_hidden_size,
+    use_layer_normalisation,
+    neurons,
+    w1_values, w1_grads, w1_velocities, w1_m1, w1_m2, w1_timesteps, w1_decays,
+    b1_values, b1_grads, b1_velocities, b1_m1, b1_m2, b1_timesteps, b1_decays,
+    w2_values, w2_grads, w2_velocities, w2_m1, w2_m2, w2_timesteps, w2_decays,
+    b2_values, b2_grads, b2_velocities, b2_m1, b2_m2, b2_timesteps, b2_decays,
+    w_skip_values, w_skip_grads, w_skip_velocities, w_skip_m1, w_skip_m2, w_skip_timesteps, w_skip_decays,
+    b_skip_values, b_skip_grads, b_skip_velocities, b_skip_m1, b_skip_m2, b_skip_timesteps, b_skip_decays,
+    ln_gain_values, ln_gain_grads, ln_gain_velocities, ln_gain_m1, ln_gain_m2, ln_gain_timesteps, ln_gain_decays,
+    ln_bias_values, ln_bias_grads, ln_bias_velocities, ln_bias_m1, ln_bias_m2, ln_bias_timesteps, ln_bias_decays,
     residual_projector.get(),
     number_of_threads,
     lah,
@@ -2631,6 +2803,105 @@ void NeuralNetworkSerializer::add_embeddinglayer(const EmbeddingLayer& layer, Ti
   delete layer_object;
 }
 
+void NeuralNetworkSerializer::add_grnlayer(const GrnLayer& layer, TinyJSON::TJValueArray& layers)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
+  auto layer_object = new TinyJSON::TJValueObject();
+  auto layer_array = new TinyJSON::TJValueArray();
+  for (const auto& neuron : layer.get_neurons())
+  {
+    auto* neuron_object = add_neuron(neuron);
+    layer_array->add(neuron_object);
+    delete neuron_object;
+  }
+  layer_object->set_string("layer-name", "grnlayer");
+  layer_object->set("neurons", layer_array);
+  layer_object->set_number("residual-layer-number", layer.get_residual_layer_number());
+  layer_object->set_string("optimiser-type", optimiser_type_to_string(layer.get_optimiser_type()).c_str());
+  add_activation_helper(layer, *layer_object);
+  layer_object->set_number("layer-role", (int)layer.get_layer_role());
+  layer_object->set_number("number-input-neurons", layer.get_number_input_neurons());
+  layer_object->set_number("feed-forward-hidden-size", layer.get_feed_forward_hidden_size());
+  layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
+
+  set_floats(layer_object, "w1-values", layer.get_w1_values());
+  set_floats(layer_object, "w1-grads", layer.get_w1_grads());
+  set_floats(layer_object, "w1-velocities", layer.get_w1_velocities());
+  set_floats(layer_object, "w1-m1", layer.get_w1_m1());
+  set_floats(layer_object, "w1-m2", layer.get_w1_m2());
+  layer_object->set_numbers("w1-timesteps", layer.get_w1_timesteps());
+  set_floats(layer_object, "w1-decays", layer.get_w1_decays());
+
+  set_floats(layer_object, "b1-values", layer.get_b1_values());
+  set_floats(layer_object, "b1-grads", layer.get_b1_grads());
+  set_floats(layer_object, "b1-velocities", layer.get_b1_velocities());
+  set_floats(layer_object, "b1-m1", layer.get_b1_m1());
+  set_floats(layer_object, "b1-m2", layer.get_b1_m2());
+  layer_object->set_numbers("b1-timesteps", layer.get_b1_timesteps());
+  set_floats(layer_object, "b1-decays", layer.get_b1_decays());
+
+  set_floats(layer_object, "w2-values", layer.get_w2_values());
+  set_floats(layer_object, "w2-grads", layer.get_w2_grads());
+  set_floats(layer_object, "w2-velocities", layer.get_w2_velocities());
+  set_floats(layer_object, "w2-m1", layer.get_w2_m1());
+  set_floats(layer_object, "w2-m2", layer.get_w2_m2());
+  layer_object->set_numbers("w2-timesteps", layer.get_w2_timesteps());
+  set_floats(layer_object, "w2-decays", layer.get_w2_decays());
+
+  set_floats(layer_object, "b2-values", layer.get_b2_values());
+  set_floats(layer_object, "b2-grads", layer.get_b2_grads());
+  set_floats(layer_object, "b2-velocities", layer.get_b2_velocities());
+  set_floats(layer_object, "b2-m1", layer.get_b2_m1());
+  set_floats(layer_object, "b2-m2", layer.get_b2_m2());
+  layer_object->set_numbers("b2-timesteps", layer.get_b2_timesteps());
+  set_floats(layer_object, "b2-decays", layer.get_b2_decays());
+
+  set_floats(layer_object, "w-skip-values", layer.get_w_skip_values());
+  set_floats(layer_object, "w-skip-grads", layer.get_w_skip_grads());
+  set_floats(layer_object, "w-skip-velocities", layer.get_w_skip_velocities());
+  set_floats(layer_object, "w-skip-m1", layer.get_w_skip_m1());
+  set_floats(layer_object, "w-skip-m2", layer.get_w_skip_m2());
+  layer_object->set_numbers("w-skip-timesteps", layer.get_w_skip_timesteps());
+  set_floats(layer_object, "w-skip-decays", layer.get_w_skip_decays());
+
+  set_floats(layer_object, "b-skip-values", layer.get_b_skip_values());
+  set_floats(layer_object, "b-skip-grads", layer.get_b_skip_grads());
+  set_floats(layer_object, "b-skip-velocities", layer.get_b_skip_velocities());
+  set_floats(layer_object, "b-skip-m1", layer.get_b_skip_m1());
+  set_floats(layer_object, "b-skip-m2", layer.get_b_skip_m2());
+  layer_object->set_numbers("b-skip-timesteps", layer.get_b_skip_timesteps());
+  set_floats(layer_object, "b-skip-decays", layer.get_b_skip_decays());
+
+  set_floats(layer_object, "ln-gain-values", layer.get_ln_gain_values());
+  set_floats(layer_object, "ln-gain-grads", layer.get_ln_gain_grads());
+  set_floats(layer_object, "ln-gain-velocities", layer.get_ln_gain_velocities());
+  set_floats(layer_object, "ln-gain-m1", layer.get_ln_gain_m1());
+  set_floats(layer_object, "ln-gain-m2", layer.get_ln_gain_m2());
+  layer_object->set_numbers("ln-gain-timesteps", layer.get_ln_gain_timesteps());
+  set_floats(layer_object, "ln-gain-decays", layer.get_ln_gain_decays());
+
+  set_floats(layer_object, "ln-bias-values", layer.get_ln_bias_values());
+  set_floats(layer_object, "ln-bias-grads", layer.get_ln_bias_grads());
+  set_floats(layer_object, "ln-bias-velocities", layer.get_ln_bias_velocities());
+  set_floats(layer_object, "ln-bias-m1", layer.get_ln_bias_m1());
+  set_floats(layer_object, "ln-bias-m2", layer.get_ln_bias_m2());
+  layer_object->set_numbers("ln-bias-timesteps", layer.get_ln_bias_timesteps());
+  set_floats(layer_object, "ln-bias-decays", layer.get_ln_bias_decays());
+
+  set_float(layer_object, "momentum", layer.get_momentum());
+
+  auto residual_projector = add_residual_projector(layer.get_residual_projector());
+  if (residual_projector != nullptr)
+  {
+    layer_object->set("residual-projector", residual_projector);
+    delete residual_projector;
+  }
+
+  layers.add(layer_object);
+  delete layer_array;
+  delete layer_object;
+}
+
 void NeuralNetworkSerializer::add_tcnlayer(const TcnLayer& layer, TinyJSON::TJValueArray& layers)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetworkSerializer");
@@ -2958,6 +3229,13 @@ void NeuralNetworkSerializer::add_layer(const Layer* layer, TinyJSON::TJValueArr
   if (nullptr != embeddinglayer)
   {
     add_embeddinglayer(*embeddinglayer, layers);
+    return;
+  }
+
+  auto grnlayer = dynamic_cast<const GrnLayer*>(layer);
+  if (nullptr != grnlayer)
+  {
+    add_grnlayer(*grnlayer, layers);
     return;
   }
 
@@ -3619,6 +3897,20 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     if (layer_object.has_key("v-m2")) attentionpool_layer->set_v_m2(layer_object.get<std::vector<double>>("v-m2"));
     if (layer_object.has_key("v-timesteps")) attentionpool_layer->set_v_timesteps(layer_object.get<std::vector<long long>>("v-timesteps"));
     if (layer_object.has_key("v-decays")) attentionpool_layer->set_v_decays(layer_object.get<std::vector<double>>("v-decays"));
+  }
+
+  // GRN specific weights
+  auto* grn_layer = dynamic_cast<GrnLayer*>(&layer);
+  if (grn_layer)
+  {
+    if (layer_object.has_key("w1-values")) grn_layer->set_w1_values(layer_object.get<std::vector<double>>("w1-values"));
+    if (layer_object.has_key("b1-values")) grn_layer->set_b1_values(layer_object.get<std::vector<double>>("b1-values"));
+    if (layer_object.has_key("w2-values")) grn_layer->set_w2_values(layer_object.get<std::vector<double>>("w2-values"));
+    if (layer_object.has_key("b2-values")) grn_layer->set_b2_values(layer_object.get<std::vector<double>>("b2-values"));
+    if (layer_object.has_key("w-skip-values")) grn_layer->set_w_skip_values(layer_object.get<std::vector<double>>("w-skip-values"));
+    if (layer_object.has_key("b-skip-values")) grn_layer->set_b_skip_values(layer_object.get<std::vector<double>>("b-skip-values"));
+    if (layer_object.has_key("ln-gain-values")) grn_layer->set_ln_gain_values(layer_object.get<std::vector<double>>("ln-gain-values"));
+    if (layer_object.has_key("ln-bias-values")) grn_layer->set_ln_bias_values(layer_object.get<std::vector<double>>("ln-bias-values"));
   }
 
   // Residual projector

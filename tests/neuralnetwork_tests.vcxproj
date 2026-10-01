@@ -82,6 +82,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\include\neuralnetwork\layers\grnlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\lstmlayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\embeddinglayer.cpp" />
     <ClCompile Include="..\include\neuralnetwork\layers\tcnlayer.cpp" />
@@ -100,6 +101,8 @@
     <ClCompile Include="ffoutputlayer_tests.cpp" />
     <ClCompile Include="ffoutputlayer_mt_tests.cpp" />
     <ClCompile Include="gradients_and_outputs_tests.cpp" />
+    <ClCompile Include="grnlayer_mt_tests.cpp" />
+    <ClCompile Include="grnlayer_tests.cpp" />
     <ClCompile Include="grurnnlayer_mt_tests.cpp" />
     <ClCompile Include="grurnnlayer_tests.cpp" />
     <ClCompile Include="hidden_state_tests.cpp" />
@@ -157,6 +160,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\neuralnetwork\common\stochasticweightaveragingdetails.h" />
+    <ClInclude Include="..\include\neuralnetwork\layers\grnlayer.h" />
     <ClInclude Include="..\include\neuralnetwork\libraries\mimalloc\include\mimalloc.h" />
     <ClInclude Include="..\include\neuralnetwork\libraries\mimalloc\include\mimalloc-new-delete.h" />
     <ClInclude Include="test_helper.h" />

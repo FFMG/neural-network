@@ -2,6 +2,8 @@
 #include "layer.h"
 
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <vector>
 
 
@@ -837,6 +839,10 @@ public:
 
   Layer* clone() const override;
 
+  [[nodiscard]] std::vector<std::vector<std::vector<double>>> get_last_attention_weights(size_t batch_index = 0) const override;
+  [[nodiscard]] std::vector<std::vector<double>> get_last_mean_attention_weights(size_t batch_index = 0) const override;
+  void set_capture_attention(bool capture) noexcept override;
+
 private:
   static void add_positional_encoding(
     double* xp,
@@ -847,8 +853,16 @@ private:
     const double* pe_cache,
     size_t pe_cache_size);
 
+  struct attention_capture
+  {
+    size_t heads = 0;
+    size_t steps = 0;
+    std::vector<double> weights;
+  };
+
   struct forward_scratch
   {
+    std::vector<attention_capture>* capture = nullptr;
     std::vector<double> mask;
     std::vector<double> scores;
     std::vector<double> xp;
@@ -1061,6 +1075,9 @@ private:
   WeightFamily _wq, _bq, _wk, _bk, _wv, _bv, _wo, _bo;
   WeightFamily _ff1_w, _ff1_b, _ff2_w, _ff2_b;
   WeightFamily _ln1_gain, _ln1_bias, _ln2_gain, _ln2_bias;
+  std::atomic<bool> _capture_attention{ false };
+  mutable std::mutex _attention_mutex;
+  mutable std::vector<attention_capture> _last_attention;
 };
 
 } // namespace myoddweb::nn

@@ -1377,3 +1377,32 @@ TEST(LayerTest, CalculateErrorDeltasBCEWithLabelSmoothing)
 
 
 
+
+TEST(LayerTest, CreateHiddenLayerRejectsGrnZeroFeedForwardHiddenSize)
+{
+  activation act(activation::method::elu, 1.0);
+  const LayerDetails ld = LayerDetails::create_grn(4, 0, act);
+
+  EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerRejectsGrnZeroSize)
+{
+  activation act(activation::method::elu, 1.0);
+  const LayerDetails ld = LayerDetails::create_grn(0, 8, act);
+
+  EXPECT_THROW(Layer::create_hidden_layer(2, 4, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
+}
+
+TEST(LayerTest, CreateHiddenLayerAcceptsGrnWithDifferentInputAndOutputSize)
+{
+  activation act(activation::method::elu, 1.0);
+  const LayerDetails ld = LayerDetails::create_grn(5, 8, act);
+
+  auto layer = Layer::create_hidden_layer(2, 3, ld, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt);
+  ASSERT_NE(layer, nullptr);
+  EXPECT_EQ(layer->get_layer_architecture(), Layer::Architecture::Grn);
+  EXPECT_EQ(layer->get_number_neurons(), 5u);
+  EXPECT_EQ(layer->get_number_input_neurons(), 3u);
+}
+
