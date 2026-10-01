@@ -48,7 +48,7 @@ def run_grn_attention_example():
 
     # 2. Configure hidden layers:
     # Layer 1: Multi-Head Self-Attention
-    attention_act = nn.Activation(nn.ActivationMethod.Linear)
+    attention_act = nn.Activation(nn.ActivationMethod.Linear, 0.0)
     attention_layer = nn.LayerDetails.create_self_attention(
         size=hidden_dim,
         number_of_heads=num_heads,
@@ -58,11 +58,11 @@ def run_grn_attention_example():
         weight_decay=1e-4,
         optimiser_type=nn.OptimiserType.AdamW,
         momentum=0.9,
-        use_layer_norm=True
+        use_layer_normalisation=True
     )
 
     # Layer 2: Gated Residual Network (GRN)
-    grn_act = nn.Activation(nn.ActivationMethod.Elu)
+    grn_act = nn.Activation(nn.ActivationMethod.Elu, 1.0)
     grn_layer = nn.LayerDetails.create_grn(
         size=hidden_dim,
         feed_forward_hidden_size=ffn_dim,
@@ -71,7 +71,7 @@ def run_grn_attention_example():
         weight_decay=1e-4,
         optimiser_type=nn.OptimiserType.AdamW,
         momentum=0.9,
-        use_layer_norm=True
+        use_layer_normalisation=True
     )
 
     hidden_layers = [attention_layer, grn_layer]
@@ -90,7 +90,7 @@ def run_grn_attention_example():
         transaction_cost_penalty=0.0,
         sortino_target_return=0.0
     )
-    output_act = nn.Activation(nn.ActivationMethod.Linear)
+    output_act = nn.Activation(nn.ActivationMethod.Linear, 0.0)
     output_layer = nn.OutputLayerDetails(
         1,
         output_act,
@@ -135,12 +135,12 @@ def run_grn_attention_example():
     net.train(training_inputs, training_targets)
     print("Training complete.")
 
-    # 7. Perform inference
+    # 7. Perform inference with the sequence window to populate attention weights
     print("\nRunning inference on the test sequence...")
     net.set_attention_capture(True)
-    predictions = net.think(training_inputs)
-    for t, (inp, pred, targ) in enumerate(zip(training_inputs, predictions, training_targets)):
-        print(f"  Step {t}: Target = {targ[0]:.4f}, Prediction = {pred[0]:.4f}")
+    flattened_seq = [val for row in training_inputs for val in row]
+    predictions = net.think([flattened_seq])
+    print(f"Sequence prediction output: {predictions[0][0]:.4f}")
 
     # 8. Extract and inspect attention weights for interpretability
     # Layer 1 is the Self-Attention layer

@@ -154,7 +154,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def(py::init<const activation::method, double, double, double, double>(),
              py::arg("method"), py::arg("alpha"), py::arg("temperature"), py::arg("inference_temperature"), py::arg("logit_cap") = 0.0)
         .def(py::init<const activation::method, double, double, double>())
-        .def(py::init<const activation::method, double, double>(), py::arg("method"), py::arg("alpha"), py::arg("temperature") = 1.0)
+        .def(py::init<const activation::method, double, double>(), py::arg("method"), py::arg("alpha") = 1.0, py::arg("temperature") = 1.0)
         .def("activate", py::overload_cast<double>(&activation::activate, py::const_))
         .def("activate_derivative", py::overload_cast<double>(&activation::activate_derivative, py::const_))
         .def("method_to_string", py::overload_cast<>(&activation::method_to_string, py::const_))
@@ -239,7 +239,7 @@ PYBIND11_MODULE(neuralnetwork, m) {
         }, py::arg("vocabulary_size"), py::arg("embedding_dimension"), py::arg("size"), py::arg("activation"), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0)
         .def_static("create_grn", [](unsigned size, unsigned feed_forward_hidden_size, const activation& act, double dropout, double weight_decay, OptimiserType opt, double momentum, bool use_layer_norm) {
             return LayerDetails::create_grn(size, feed_forward_hidden_size, act, dropout, weight_decay, opt, momentum, use_layer_norm);
-        }, py::arg("size"), py::arg("feed_forward_hidden_size"), py::arg("activation") = activation(activation::method::elu), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0, py::arg("use_layer_normalisation") = true);
+        }, py::arg("size"), py::arg("feed_forward_hidden_size"), py::arg("activation") = activation(activation::method::elu, 1.0), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0, py::arg("use_layer_normalisation") = true);
 
     py::class_<OutputLayerDetails>(m, "OutputLayerDetails")
         .def(py::init<unsigned, const activation&, const ErrorCalculation::type&, const EvaluationConfig&, double, OptimiserType, double>(),
