@@ -624,6 +624,8 @@ You can calculate error metrics for the network's predictions using the `calcula
 
 In addition to traditional supervised training over fixed datasets (`train`), the library supports on-policy **Reinforcement Learning** via policy gradients (REINFORCE) using `train_with_advantages`.
 
+For a dedicated, in-depth guide covering the underlying mathematics, full configuration options reference, invalid-action masking rules, and complete C++ and Python examples, see the [Reinforcement Learning Guide](docs/reinforced-learning.md).
+
 ### How It Works
 
 * **Supervised Learning (`train`)** minimises empirical loss with respect to static target labels across fixed epochs, schedules learning rates, and caches epoch validation errors.
@@ -738,6 +740,7 @@ For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel
 
 ## Repository Layout
 
+*   `\docs\`: In-depth architectural guides and feature documentation (e.g. [Reinforcement Learning](docs/reinforced-learning.md)).
 *   `\include\neuralnetwork\`: The stand-alone core C++ neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
 *   `\examples\`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
 *   `\tests\`: Comprehensive unit test suite.

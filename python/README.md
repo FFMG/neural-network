@@ -328,6 +328,8 @@ Run command:
 python python/examples/gridworld.py
 ```
 
+For detailed documentation on reinforcement learning configuration options, advantage calculations, and invalid-action masking, see the [Reinforcement Learning Guide](../docs/reinforced-learning.md).
+
 #### GRN & Attention Interpretability (`examples/grn_attention.py`)
 
 Demonstrates combining Multi-Head Self-Attention with a Gated Residual Network (GRN) for temporal sequence modeling and extracting attention weight distributions for model interpretability:
