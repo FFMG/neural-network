@@ -44,6 +44,7 @@ private:
     _learning_rate_warmup_target(0.0),
     _shuffle_training_data(true),
     _shuffle_bptt_batches(true),
+    _bptt_random_offset(false),
     _bptt_supervise_last_step_only(false),
     _final_error_calculation_types({}),
     _enable_bptt(true),
@@ -116,6 +117,7 @@ public:
     _learning_rate_warmup_target(nno._learning_rate_warmup_target),
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
+    _bptt_random_offset(nno._bptt_random_offset),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
     _final_error_calculation_types(nno._final_error_calculation_types),
     _enable_bptt(nno._enable_bptt),
@@ -155,6 +157,7 @@ public:
     _learning_rate_warmup_target(nno._learning_rate_warmup_target),
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
+    _bptt_random_offset(nno._bptt_random_offset),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
     _final_error_calculation_types(std::move(nno._final_error_calculation_types)),
     _enable_bptt(nno._enable_bptt),
@@ -212,6 +215,7 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _bptt_random_offset = nno._bptt_random_offset;
       _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
@@ -255,6 +259,7 @@ public:
       _learning_rate_warmup_target = nno._learning_rate_warmup_target;
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
+      _bptt_random_offset = nno._bptt_random_offset;
       _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
@@ -282,6 +287,7 @@ public:
       nno._learning_rate_warmup_target = 0.0;
       nno._shuffle_training_data = true;
       nno._shuffle_bptt_batches = true;
+      nno._bptt_random_offset = false;
       nno._bptt_supervise_last_step_only = false;
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
@@ -446,6 +452,12 @@ public:
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
     _shuffle_bptt_batches = shuffle_bptt_batches;
+    return *this;
+  }
+  NeuralNetworkOptions& with_bptt_random_offset(bool bptt_random_offset)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _bptt_random_offset = bptt_random_offset;
     return *this;
   }
   NeuralNetworkOptions& with_bptt_supervise_last_step_only(bool bptt_supervise_last_step_only)
@@ -847,6 +859,7 @@ public:
   [[nodiscard]] inline double learning_rate_warmup_target() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _learning_rate_warmup_target; }
   [[nodiscard]] inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
   [[nodiscard]] inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
+  [[nodiscard]] inline bool bptt_random_offset() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_random_offset; }
   [[nodiscard]] inline bool bptt_supervise_last_step_only() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_supervise_last_step_only; }
   [[nodiscard]] inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
@@ -901,6 +914,7 @@ private:
   double _learning_rate_warmup_target; //  the percentage of the epoch to reach during warmup
   bool _shuffle_training_data;
   bool _shuffle_bptt_batches;
+  bool _bptt_random_offset;
   bool _bptt_supervise_last_step_only;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;

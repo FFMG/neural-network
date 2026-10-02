@@ -91,6 +91,8 @@ public:
   bool has_training_data() const;
   void create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const;
 
+  static std::vector<size_t> bptt_start_indexes(size_t total_samples, size_t bptt_size, size_t offset);
+
   void set_attention_capture(bool capture);
   [[nodiscard]] std::vector<std::vector<std::vector<double>>> get_attention_weights(unsigned layer_index, size_t batch_index = 0) const;
   [[nodiscard]] std::vector<std::vector<double>> get_mean_attention_weights(unsigned layer_index, size_t batch_index = 0) const;

@@ -877,6 +877,24 @@ void NeuralNetwork::train_with_advantages(
   }
 }
 
+std::vector<size_t> NeuralNetwork::bptt_start_indexes(size_t total_samples, size_t bptt_size, size_t offset)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  std::vector<size_t> start_indexes;
+  if (bptt_size == 0 || total_samples < bptt_size)
+  {
+    return start_indexes;
+  }
+
+  const auto first_index = std::min(offset, total_samples - bptt_size);
+  start_indexes.reserve((total_samples - first_index) / bptt_size);
+  for (auto start_index = first_index; start_index + bptt_size <= total_samples; start_index += bptt_size)
+  {
+    start_indexes.push_back(start_index);
+  }
+  return start_indexes;
+}
+
 void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& inputs, const std::vector<std::vector<double>>& outputs, std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -884,7 +902,10 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   const auto& bptt_size_option = static_cast<size_t>(_options.bptt_max_ticks());
   const auto& is_shuffled = _options.shuffle_bptt_batches();
 
-  if (!bptt_inputs.empty())
+  const auto is_random_offset = is_shuffled && _options.bptt_random_offset() && _options.enable_bptt() && bptt_size_option > 1;
+  const auto is_first_build = bptt_inputs.empty();
+
+  if (!is_first_build && !is_random_offset)
   {
     if (is_shuffled && bptt_inputs.size() > 1)
     {
@@ -956,12 +977,13 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
   const size_t output_size = outputs[0].size();
 
   // 1. Identify valid sequence start indices
-  std::vector<size_t> start_indices;
-  start_indices.reserve(total_samples / bptt_size);
-  for (size_t start_idx = 0; start_idx + bptt_size <= total_samples; start_idx += bptt_size)
+  size_t offset = 0;
+  if (is_random_offset && !is_first_build)
   {
-    start_indices.push_back(start_idx);
+    std::uniform_int_distribution<size_t> offset_distribution(0, std::min(bptt_size - 1, total_samples - bptt_size));
+    offset = offset_distribution(_shuffle_engine);
   }
+  auto start_indices = bptt_start_indexes(total_samples, bptt_size, offset);
 
   // 2. Shuffle indices instead of data if requested
   if (is_shuffled)
@@ -1985,6 +2007,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Enabled               : ", _options.enable_bptt() ? "true" : "false");
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
+  Logger::info(tab, "BPTT random block offset   : ", _options.bptt_random_offset() ? "true" : "false");
   Logger::info(tab, "BPTT Supervise Last Step Only: ", _options.bptt_supervise_last_step_only() ? "true" : "false");
   if (_options.seed().has_value())
   {

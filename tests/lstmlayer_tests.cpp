@@ -26,6 +26,26 @@ TEST_F(LSTMLayerTest, ConstructionAndTopology) {
   EXPECT_EQ(layer.get_pre_activation_multiplier(), LSTMLayer::Multiplier);
 }
 
+TEST_F(LSTMLayerTest, ConstructionAllocatesOneWorkspacePerThread) {
+  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
+  EXPECT_EQ(layer.number_of_workspaces(), 4u);
+}
+
+TEST_F(LSTMLayerTest, CopyConstructionAllocatesItsOwnWorkspaces) {
+  // A copy must not rely on its worker threads creating the workspaces lazily: they would all
+  // resize the same vector at once, (the end-of-training SWA crash).
+  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
+  LSTMLayer copy(layer);
+  EXPECT_EQ(copy.number_of_workspaces(), layer.number_of_workspaces());
+}
+
+TEST_F(LSTMLayerTest, CopyAssignmentAllocatesItsOwnWorkspaces) {
+  LSTMLayer layer(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
+  LSTMLayer other(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 4, true, 0.0, false, std::nullopt);
+  other = layer;
+  EXPECT_EQ(other.number_of_workspaces(), layer.number_of_workspaces());
+}
+
 TEST_F(LSTMLayerTest, ForwardFeedMathematicalVerification) {
   // 1 input, 1 hidden neuron
   LSTMLayer layer(1, 1, 1, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);

@@ -2,6 +2,22 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.71] - 2026-10-02
+
+### Added
+- Added `NeuralNetworkOptions::with_bptt_random_offset(bool)` / `bptt_random_offset()` (JSON `bptt-random-offset`, default `false`):
+  - When enabled with BPTT batch shuffling, sequence blocks are rebuilt on each rebuild with a random start offset in `[0, bptt_max_ticks - 1]`.
+  - Ensures every sample eventually acts as the final supervised timestep when `bptt_supervise_last_step_only` is active, avoiding fixed-boundary data skipping.
+  - Serialised and deserialised by `NeuralNetworkSerializer`, logged with BPTT settings, and bound in Python.
+- Added `NeuralNetwork::bptt_start_indexes(total_samples, bptt_size, offset)` to calculate contiguous sequence start indices from an offset (clamped so at least one block fits).
+- `LSTMLayer::number_of_workspaces()`, a read-only count of the per-thread workspaces, (for tests).
+
+### Fixed
+- `LSTMLayer` copy constructor did not allocate the per-thread workspaces, (the copy assignment and the other constructors do, as do the GRU and Elman layers). The first multi-threaded forward pass of a copied LSTM layer then had up to 4 worker threads each call `allocate_workspace` through `get_workspace`, resizing the same `_thread_workspaces` vector at the same time. SWA snapshots the layers by copy and deploys that copy at the end of training, so the final metrics pass of an LSTM run with SWA could crash, (access violation in `AlignedVector::resize_and_zero` from `LSTMLayer::run_forward_pass`). Tests in [`tests/lstmlayer_tests.cpp`](./tests/lstmlayer_tests.cpp) check that construction, copy construction and copy assignment all allocate the workspaces.
+
+### Tests
+- Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): sequence start indexes from offset with clamping, serialization round-trip, default option state, sample coverage over rebuilds, and end-to-end BPTT training with random offset.
+
 ## [0.0.70] - 2026-09-29
 
 ### Added

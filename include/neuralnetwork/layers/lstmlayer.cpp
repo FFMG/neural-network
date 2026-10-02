@@ -257,6 +257,12 @@ LSTMLayer::LSTMLayer(const LSTMLayer& src) noexcept :
   MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
   _identity_proxy = nullptr;
   cache_recurrent_weights();
+
+  // The per-thread workspaces are not copied, (they are unique_ptr scratch space), so they must
+  // be created here, like the other constructors and the copy assignment do. Without them every
+  // worker thread of the first multi-threaded pass creates its own, resizing the same vector at
+  // the same time, (a copy is what SWA snapshots and then deploys at the end of training).
+  allocate_workspace();
 }
 
 LSTMLayer::LSTMLayer(LSTMLayer&& src) noexcept :

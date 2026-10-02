@@ -346,6 +346,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_clip_threshold", &NeuralNetworkOptions::with_clip_threshold)
         .def("with_shuffle_training_data", &NeuralNetworkOptions::with_shuffle_training_data)
         .def("with_shuffle_bptt_batches", &NeuralNetworkOptions::with_shuffle_bptt_batches)
+        .def("with_bptt_random_offset", &NeuralNetworkOptions::with_bptt_random_offset)
+        .def("bptt_random_offset", &NeuralNetworkOptions::bptt_random_offset)
         .def("with_bptt_supervise_last_step_only", &NeuralNetworkOptions::with_bptt_supervise_last_step_only)
         .def("bptt_supervise_last_step_only", &NeuralNetworkOptions::bptt_supervise_last_step_only)
         .def("with_enable_bptt", &NeuralNetworkOptions::with_enable_bptt)

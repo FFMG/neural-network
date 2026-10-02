@@ -16,6 +16,7 @@
 #include "test_helper.h"
 #include <cmath>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -2438,6 +2439,204 @@ TEST(NetworkIntegrationTest, SingleStepShufflePreservesPairingIntegrity)
       EXPECT_DOUBLE_EQ(bptt_out[i][0], bptt_in[i][0] * 100.0);
     }
   }
+}
+
+TEST(NetworkIntegrationTest, BpttStartIndexesFromOffset)
+{
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(12, 3, 0), (std::vector<size_t>{ 0, 3, 6, 9 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(12, 3, 1), (std::vector<size_t>{ 1, 4, 7 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(12, 3, 2), (std::vector<size_t>{ 2, 5, 8 }));
+}
+
+TEST(NetworkIntegrationTest, BpttStartIndexesClampsTheOffsetSoOneBlockFits)
+{
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(12, 3, 20), (std::vector<size_t>{ 9 }));
+}
+
+TEST(NetworkIntegrationTest, BpttStartIndexesEmptyWhenNoBlockFits)
+{
+  EXPECT_TRUE(NeuralNetwork::bptt_start_indexes(2, 3, 0).empty());
+  EXPECT_TRUE(NeuralNetwork::bptt_start_indexes(12, 0, 0).empty());
+}
+
+namespace
+{
+  void make_bptt_offset_rows(std::vector<std::vector<double>>& inputs, std::vector<std::vector<double>>& outputs)
+  {
+    for (size_t i = 0; i < 12; ++i)
+    {
+      inputs.push_back({ static_cast<double>(i + 1) });
+      outputs.push_back({ static_cast<double>((i + 1) * 100) });
+    }
+  }
+
+  std::set<double> supervised_outputs(const std::vector<std::vector<double>>& bptt_outputs)
+  {
+    std::set<double> values;
+    for (const auto& output : bptt_outputs)
+    {
+      values.insert(output[0]);
+    }
+    return values;
+  }
+}
+
+TEST(NetworkIntegrationTest, BpttRandomOffsetIsOffByDefault)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 }).build();
+  EXPECT_FALSE(options.bptt_random_offset());
+
+  auto copy = NeuralNetworkOptions::create({ 1, 2, 1 }).with_bptt_random_offset(true).build();
+  NeuralNetworkOptions copied(copy);
+  EXPECT_TRUE(copied.bptt_random_offset());
+}
+
+TEST(NetworkIntegrationTest, BpttWithoutRandomOffsetAlwaysSupervisesTheSameRows)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  for (int pass = 0; pass < 50; ++pass)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    EXPECT_EQ(supervised_outputs(bptt_out), (std::set<double>{ 300.0, 600.0, 900.0, 1200.0 }));
+  }
+}
+
+TEST(NetworkIntegrationTest, BpttRandomOffsetFirstBuildStartsAtZero)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_random_offset(true)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+
+  ASSERT_EQ(bptt_in.size(), 4u);
+  EXPECT_EQ(supervised_outputs(bptt_out), (std::set<double>{ 300.0, 600.0, 900.0, 1200.0 }));
+}
+
+TEST(NetworkIntegrationTest, BpttRandomOffsetEventuallySupervisesEveryRow)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_random_offset(true)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  std::set<double> seen;
+  for (int pass = 0; pass < 200; ++pass)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    ASSERT_EQ(bptt_in.size(), bptt_out.size());
+    ASSERT_GE(bptt_in.size(), 3u);
+    for (size_t seq = 0; seq < bptt_in.size(); ++seq)
+    {
+      ASSERT_EQ(bptt_in[seq].size(), 3u);
+      EXPECT_DOUBLE_EQ(bptt_in[seq][1], bptt_in[seq][0] + 1.0);
+      EXPECT_DOUBLE_EQ(bptt_in[seq][2], bptt_in[seq][1] + 1.0);
+      ASSERT_EQ(bptt_out[seq].size(), 1u);
+      EXPECT_DOUBLE_EQ(bptt_out[seq][0], bptt_in[seq][2] * 100.0);
+      seen.insert(bptt_out[seq][0]);
+    }
+  }
+
+  std::set<double> expected;
+  for (int row = 3; row <= 12; ++row)
+  {
+    expected.insert(row * 100.0);
+  }
+  EXPECT_EQ(seen, expected);
+}
+
+TEST(NetworkIntegrationTest, BpttRandomOffsetSerializerSaveLoad)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_random_offset(true)
+    .with_bptt_supervise_last_step_only(true)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::string test_path = "test_bptt_random_offset_save_load.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_TRUE(loaded_nn->options().bptt_random_offset());
+  EXPECT_TRUE(loaded_nn->options().bptt_supervise_last_step_only());
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, BpttStartIndexesBoundaryCases)
+{
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(5, 5, 0), (std::vector<size_t>{ 0 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(5, 5, 2), (std::vector<size_t>{ 0 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(10, 5, 5), (std::vector<size_t>{ 5 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(10, 4, 3), (std::vector<size_t>{ 3 }));
+  EXPECT_EQ(NeuralNetwork::bptt_start_indexes(10, 4, 2), (std::vector<size_t>{ 2, 6 }));
+}
+
+TEST(NetworkIntegrationTest, BpttRandomOffsetEndToEndTraining)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_random_offset(true)
+    .with_bptt_supervise_last_step_only(true)
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_batch_size(2)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  nn.train(inputs, outputs);
+  EXPECT_GT(nn.get_percent_complete(), 0.0);
 }
 
 TEST(NetworkIntegrationTest, ThinkPerformanceSingleInferenceThroughput)

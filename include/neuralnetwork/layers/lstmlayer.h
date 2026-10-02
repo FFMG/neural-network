@@ -182,6 +182,13 @@ public:
     return true;
   }
 
+  // The number of per-thread workspaces currently allocated, (read only, for tests).
+  [[nodiscard]] inline size_t number_of_workspaces() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("LSTMLayer");
+    return _thread_workspaces.size();
+  }
+
   /*
    * Multiplier = 7:
    * 1. Forget gate (f) pre-activation
