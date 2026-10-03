@@ -312,7 +312,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("sample_size", &NeuralNetworkHelper::sample_size)
         .def("calculate_forecast_metric", &NeuralNetworkHelper::calculate_forecast_metric)
         .def("calculate_forecast_metrics", &NeuralNetworkHelper::calculate_forecast_metrics,
-             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt);
+             py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt)
+        .def("calculate_forecast_metrics_with", &NeuralNetworkHelper::calculate_forecast_metrics_with,
+             py::arg("neural_network"), py::arg("error_types"), py::arg("in_sample") = true, py::arg("force_checking_indexes") = std::nullopt);
 
     // 3. NeuralNetworkOptions
     py::class_<NeuralNetworkOptions>(m, "NeuralNetworkOptions")

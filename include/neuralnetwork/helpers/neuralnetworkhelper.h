@@ -214,6 +214,8 @@ public:
   std::vector<NeuralNetworkHelperMetrics> calculate_forecast_metric(ErrorCalculation::type error_type) const;
   std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics(const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true, std::optional<bool> force_checking_indexes = std::nullopt) const;
 
+  std::vector<std::vector<NeuralNetworkHelperMetrics>> calculate_forecast_metrics_with(const NeuralNetwork& neural_network, const std::vector<ErrorCalculation::type>& error_types, bool in_sample = true, std::optional<bool> force_checking_indexes = std::nullopt) const;
+
   NeuralNetworkHelper(
     NeuralNetwork& neural_network,
     double learning_rate,

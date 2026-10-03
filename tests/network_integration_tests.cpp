@@ -2822,6 +2822,117 @@ TEST(NetworkIntegrationTest, MirrorTrainingDataEndToEndBpttTraining)
   EXPECT_GT(nn.get_percent_complete(), 0.0);
 }
 
+TEST(NetworkIntegrationTest, HelperScoresTheSameRowsWithAnotherNetwork)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
+    .with_number_of_epoch(20)
+    .with_learning_rate(0.01)
+    .with_seed(42)
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (int i = 0; i < 40; ++i)
+  {
+    const double x = (i % 10) / 10.0;
+    inputs.push_back({ x, 1.0 - x });
+    outputs.push_back({ x > 0.5 ? 1.0 : -1.0 });
+  }
+  nn.train(inputs, outputs);
+
+  const std::vector<ErrorCalculation::type> error_types = { ErrorCalculation::type::mse, ErrorCalculation::type::directional_accuracy };
+  NeuralNetworkHelper helper(nn, 0.01, 5, inputs, outputs);
+
+  NeuralNetwork copy(nn);
+  const auto own = helper.calculate_forecast_metrics(error_types, true);
+  const auto with_copy = helper.calculate_forecast_metrics_with(copy, error_types, true);
+  ASSERT_FALSE(own.empty());
+  ASSERT_EQ(own.size(), with_copy.size());
+  for (size_t layer = 0; layer < own.size(); ++layer)
+  {
+    ASSERT_EQ(own[layer].size(), with_copy[layer].size());
+    for (size_t metric = 0; metric < own[layer].size(); ++metric)
+    {
+      EXPECT_DOUBLE_EQ(own[layer][metric].error(), with_copy[layer][metric].error());
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, HelperScoresWithCheckpointLoadedFromFile)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
+    .with_number_of_epoch(20)
+    .with_learning_rate(0.01)
+    .with_seed(42)
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (int i = 0; i < 40; ++i)
+  {
+    const double x = (i % 10) / 10.0;
+    inputs.push_back({ x, 1.0 - x });
+    outputs.push_back({ x > 0.5 ? 1.0 : -1.0 });
+  }
+  nn.train(inputs, outputs);
+
+  const std::string test_path = "test_helper_checkpoint_scoring.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+  std::unique_ptr<NeuralNetwork> loaded(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded, nullptr);
+
+  const std::vector<ErrorCalculation::type> error_types = { ErrorCalculation::type::mse, ErrorCalculation::type::directional_accuracy };
+  NeuralNetworkHelper helper(nn, 0.01, 5, inputs, outputs);
+
+  const auto own_in_sample = helper.calculate_forecast_metrics(error_types, true);
+  const auto loaded_in_sample = helper.calculate_forecast_metrics_with(*loaded, error_types, true);
+  ASSERT_FALSE(own_in_sample.empty());
+  ASSERT_EQ(own_in_sample.size(), loaded_in_sample.size());
+  for (size_t layer = 0; layer < own_in_sample.size(); ++layer)
+  {
+    ASSERT_EQ(own_in_sample[layer].size(), loaded_in_sample[layer].size());
+    for (size_t metric = 0; metric < own_in_sample[layer].size(); ++metric)
+    {
+      EXPECT_DOUBLE_EQ(own_in_sample[layer][metric].error(), loaded_in_sample[layer][metric].error());
+    }
+  }
+
+  const auto own_out_sample = helper.calculate_forecast_metrics(error_types, false);
+  const auto loaded_out_sample = helper.calculate_forecast_metrics_with(*loaded, error_types, false);
+  ASSERT_FALSE(own_out_sample.empty());
+  ASSERT_EQ(own_out_sample.size(), loaded_out_sample.size());
+  for (size_t layer = 0; layer < own_out_sample.size(); ++layer)
+  {
+    ASSERT_EQ(own_out_sample[layer].size(), loaded_out_sample[layer].size());
+    for (size_t metric = 0; metric < own_out_sample[layer].size(); ++metric)
+    {
+      EXPECT_DOUBLE_EQ(own_out_sample[layer][metric].error(), loaded_out_sample[layer][metric].error());
+    }
+  }
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, HelperRejectsANetworkWithAnotherTopology)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 3, 1 }).with_number_of_epoch(1).build();
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = { { 0.1, 0.2 }, { 0.3, 0.4 }, { 0.5, 0.6 }, { 0.7, 0.8 } };
+  std::vector<std::vector<double>> outputs = { { 0.1 }, { 0.2 }, { 0.3 }, { 0.4 } };
+  NeuralNetworkHelper helper(nn, 0.01, 5, inputs, outputs);
+
+  NeuralNetwork other(NeuralNetworkOptions::create({ 2, 4, 1 }).build());
+  EXPECT_THROW(helper.calculate_forecast_metrics_with(other, { ErrorCalculation::type::mse }, true), std::runtime_error);
+
+  NeuralNetwork different_input(NeuralNetworkOptions::create({ 3, 3, 1 }).build());
+  EXPECT_THROW(helper.calculate_forecast_metrics_with(different_input, { ErrorCalculation::type::mse }, true), std::runtime_error);
+
+  NeuralNetwork different_output(NeuralNetworkOptions::create({ 2, 3, 2 }).build());
+  EXPECT_THROW(helper.calculate_forecast_metrics_with(different_output, { ErrorCalculation::type::mse }, true), std::runtime_error);
+}
+
 TEST(NetworkIntegrationTest, ThinkPerformanceSingleInferenceThroughput)
 {
   auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })

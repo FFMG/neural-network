@@ -508,7 +508,10 @@ These options control the overall execution of the training process:
 *   **`number_of_epoch`:** Total number of training iterations over the dataset.
 *   **`batch_size`:** Number of samples processed before internal gradient updates are applied.
 *   **`number_of_threads`:** Controls multi-threaded execution for GEMM and layer operations.
-*   **`progress_callback`:** A lambda or function called after each epoch to monitor error metrics and progress.
+*   **`progress_callback`:** A lambda or function called after each epoch to monitor error metrics and training progress:
+    *   `helper.calculate_forecast_metric(type)`: Evaluates an error metric (e.g. MSE, Directional Accuracy) across the default output layer.
+    *   `helper.calculate_forecast_metrics(types, in_sample)`: Evaluates metrics across all output layers on either in-sample training rows or out-of-sample checking rows.
+    *   `helper.calculate_forecast_metrics_with(other_nn, types, in_sample)`: Scores the exact same partition rows and indices held by the helper using another neural network of matching topology (for example, evaluating a best checkpoint loaded back from disk or a baseline model).
 *   **`has_bias`:** Global toggle to enable or disable bias neurons for all layers.
 *   **`log_training_info`:** Toggle to enable or disable printing training statistics/configurations to the log output at the start of training (defaults to `true`).
 
@@ -520,7 +523,8 @@ These options control the overall execution of the training process:
       .with_has_bias(true)
       .with_log_training_info(true)
       .with_progress_callback([](NeuralNetworkHelper& helper) {
-          Logger::info("Epoch: ", helper.epoch(), " Error: ", helper.error());
+          auto metrics = helper.calculate_forecast_metrics({ ErrorCalculation::type::mse }, false);
+          Logger::info("Epoch: ", helper.epoch(), " Val MSE: ", metrics[0][0].error());
           return true; // Return false to stop training early
       })
       .build();

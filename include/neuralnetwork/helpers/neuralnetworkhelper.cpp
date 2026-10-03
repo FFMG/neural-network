@@ -46,4 +46,23 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetworkHelper::calcul
   return _neural_network->calculate_forecast_metrics_all_layers_for_helper(error_types, in_sample, force_checking_indexes, *this);
 }
 
+std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetworkHelper::calculate_forecast_metrics_with(const NeuralNetwork& neural_network, const std::vector<ErrorCalculation::type>& error_types, bool in_sample, std::optional<bool> force_checking_indexes) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetworkHelper");
+  if (_neural_network == nullptr || neural_network.get_topology() != _neural_network->get_topology())
+  {
+    Logger::panic("Cannot score the training rows with a network of a different topology!");
+  }
+  if (_training_indexes->empty() && _checking_indexes->empty())
+  {
+    std::shared_lock read(_neural_network->_mutex);
+    if (!_neural_network->_neural_network_helpers.empty())
+    {
+      const auto& stored = _neural_network->_neural_network_helpers.back();
+      return neural_network.calculate_forecast_metrics_all_layers_for_helper(error_types, in_sample, force_checking_indexes, *stored);
+    }
+  }
+  return neural_network.calculate_forecast_metrics_all_layers_for_helper(error_types, in_sample, force_checking_indexes, *this);
+}
+
 } // namespace myoddweb::nn
