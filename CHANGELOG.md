@@ -11,11 +11,17 @@ All notable changes to the `neural-network` library will be documented in this f
   - Serialised and deserialised by `NeuralNetworkSerializer`, logged with BPTT settings, and bound in Python.
 - Added `NeuralNetwork::bptt_start_indexes(total_samples, bptt_size, offset)` to calculate contiguous sequence start indices from an offset (clamped so at least one block fits).
 - `LSTMLayer::number_of_workspaces()`, a read-only count of the per-thread workspaces, (for tests).
+- Added `NeuralNetworkOptions::with_mirror_training_data(input_signs, output_signs)` / `mirror_training_data()` (JSON `mirror-input-signs` / `mirror-output-signs`, default empty/off):
+  - Augments training batches with sign-mirrored copies to prevent directional bias from market trend regimes.
+  - Multiplies input and target features by configurable sign masks (+1 / -1); mirrors entire BPTT blocks preserving sequence integrity.
+  - Validates sign counts and values in `build()`, serialised and deserialised by `NeuralNetworkSerializer`, and exposed in Python bindings.
+- Added `NeuralNetwork::mirror_values(values, signs)` static helper to multiply row vectors by sign masks.
 
 ### Fixed
 - `LSTMLayer` copy constructor did not allocate the per-thread workspaces, (the copy assignment and the other constructors do, as do the GRU and Elman layers). The first multi-threaded forward pass of a copied LSTM layer then had up to 4 worker threads each call `allocate_workspace` through `get_workspace`, resizing the same `_thread_workspaces` vector at the same time. SWA snapshots the layers by copy and deploys that copy at the end of training, so the final metrics pass of an LSTM run with SWA could crash, (access violation in `AlignedVector::resize_and_zero` from `LSTMLayer::run_forward_pass`). Tests in [`tests/lstmlayer_tests.cpp`](./tests/lstmlayer_tests.cpp) check that construction, copy construction and copy assignment all allocate the workspaces.
 
 ### Tests
+- Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): row mirroring, sign validation, single-step and BPTT block mirroring, serialization round-trip, and end-to-end training integration tests.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): sequence start indexes from offset with clamping, serialization round-trip, default option state, sample coverage over rebuilds, and end-to-end BPTT training with random offset.
 
 ## [0.0.70] - 2026-09-29

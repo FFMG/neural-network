@@ -45,6 +45,8 @@ private:
     _shuffle_training_data(true),
     _shuffle_bptt_batches(true),
     _bptt_random_offset(false),
+    _mirror_input_signs({}),
+    _mirror_output_signs({}),
     _bptt_supervise_last_step_only(false),
     _final_error_calculation_types({}),
     _enable_bptt(true),
@@ -118,6 +120,8 @@ public:
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
     _bptt_random_offset(nno._bptt_random_offset),
+    _mirror_input_signs(nno._mirror_input_signs),
+    _mirror_output_signs(nno._mirror_output_signs),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
     _final_error_calculation_types(nno._final_error_calculation_types),
     _enable_bptt(nno._enable_bptt),
@@ -158,6 +162,8 @@ public:
     _shuffle_training_data(nno._shuffle_training_data),
     _shuffle_bptt_batches(nno._shuffle_bptt_batches),
     _bptt_random_offset(nno._bptt_random_offset),
+    _mirror_input_signs(std::move(nno._mirror_input_signs)),
+    _mirror_output_signs(std::move(nno._mirror_output_signs)),
     _bptt_supervise_last_step_only(nno._bptt_supervise_last_step_only),
     _final_error_calculation_types(std::move(nno._final_error_calculation_types)),
     _enable_bptt(nno._enable_bptt),
@@ -216,6 +222,8 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _bptt_random_offset = nno._bptt_random_offset;
+      _mirror_input_signs = nno._mirror_input_signs;
+      _mirror_output_signs = nno._mirror_output_signs;
       _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _enable_bptt = nno._enable_bptt;
       _bptt_max_ticks = nno._bptt_max_ticks;
@@ -260,6 +268,8 @@ public:
       _shuffle_training_data = nno._shuffle_training_data;
       _shuffle_bptt_batches = nno._shuffle_bptt_batches;
       _bptt_random_offset = nno._bptt_random_offset;
+      _mirror_input_signs = std::move(nno._mirror_input_signs);
+      _mirror_output_signs = std::move(nno._mirror_output_signs);
       _bptt_supervise_last_step_only = nno._bptt_supervise_last_step_only;
       _final_error_calculation_types = std::move(nno._final_error_calculation_types);
       _enable_bptt = nno._enable_bptt;
@@ -288,6 +298,8 @@ public:
       nno._shuffle_training_data = true;
       nno._shuffle_bptt_batches = true;
       nno._bptt_random_offset = false;
+      nno._mirror_input_signs = {};
+      nno._mirror_output_signs = {};
       nno._bptt_supervise_last_step_only = false;
       nno._final_error_calculation_types = {};
       nno._bptt_max_ticks = 0;
@@ -460,6 +472,13 @@ public:
     _bptt_random_offset = bptt_random_offset;
     return *this;
   }
+  NeuralNetworkOptions& with_mirror_training_data(const std::vector<double>& input_signs, const std::vector<double>& output_signs)
+  {
+    MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
+    _mirror_input_signs = input_signs;
+    _mirror_output_signs = output_signs;
+    return *this;
+  }
   NeuralNetworkOptions& with_bptt_supervise_last_step_only(bool bptt_supervise_last_step_only)
   {
     MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions");
@@ -589,6 +608,36 @@ public:
     if (topology().size() != 2 + hidden_layers().size())
     {
       Logger::panic("The topology size does not match the number of hidden layers!");
+    }
+
+    if (!_mirror_input_signs.empty() || !_mirror_output_signs.empty())
+    {
+      if (_mirror_input_signs.size() != topology().front())
+      {
+        Logger::panic("The mirror input signs size (", _mirror_input_signs.size(), ") does not match the number of inputs (", topology().front(), ")!");
+      }
+      if (_mirror_output_signs.empty())
+      {
+        Logger::panic("The mirror output signs cannot be empty when the input signs are set!");
+      }
+      if (_mirror_output_signs.size() != topology().back())
+      {
+        Logger::panic("The mirror output signs size (", _mirror_output_signs.size(), ") does not match the number of outputs (", topology().back(), ")!");
+      }
+      for (const auto sign : _mirror_input_signs)
+      {
+        if (sign != 1.0 && sign != -1.0)
+        {
+          Logger::panic("A mirror input sign must be 1 or -1, not ", sign, "!");
+        }
+      }
+      for (const auto sign : _mirror_output_signs)
+      {
+        if (sign != 1.0 && sign != -1.0)
+        {
+          Logger::panic("A mirror output sign must be 1 or -1, not ", sign, "!");
+        }
+      }
     }
 
     // check the hidden layers.
@@ -860,6 +909,9 @@ public:
   [[nodiscard]] inline bool shuffle_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_training_data; }
   [[nodiscard]] inline bool shuffle_bptt_batches() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _shuffle_bptt_batches; }
   [[nodiscard]] inline bool bptt_random_offset() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_random_offset; }
+  [[nodiscard]] inline bool mirror_training_data() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return !_mirror_input_signs.empty(); }
+  [[nodiscard]] inline const std::vector<double>& mirror_input_signs() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _mirror_input_signs; }
+  [[nodiscard]] inline const std::vector<double>& mirror_output_signs() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _mirror_output_signs; }
   [[nodiscard]] inline bool bptt_supervise_last_step_only() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _bptt_supervise_last_step_only; }
   [[nodiscard]] inline const std::vector<ErrorCalculation::type>& final_error_calculation_types() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _final_error_calculation_types; }
   [[nodiscard]] inline bool enable_bptt() const noexcept { MYODDWEB_PROFILE_FUNCTION("NeuralNetworkOptions"); return _enable_bptt; }
@@ -915,6 +967,8 @@ private:
   bool _shuffle_training_data;
   bool _shuffle_bptt_batches;
   bool _bptt_random_offset;
+  std::vector<double> _mirror_input_signs;
+  std::vector<double> _mirror_output_signs;
   bool _bptt_supervise_last_step_only;
   std::vector<ErrorCalculation::type> _final_error_calculation_types;
   bool _enable_bptt;

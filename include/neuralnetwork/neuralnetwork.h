@@ -93,6 +93,11 @@ public:
 
   static std::vector<size_t> bptt_start_indexes(size_t total_samples, size_t bptt_size, size_t offset);
 
+  // 'values' with each value multiplied by signs[i % signs.size()], (a row, or a flattened
+  // BPTT block of rows, seen upside down - see NeuralNetworkOptions::with_mirror_training_data).
+  // Empty signs return the values unchanged.
+  static std::vector<double> mirror_values(const std::vector<double>& values, const std::vector<double>& signs);
+
   void set_attention_capture(bool capture);
   [[nodiscard]] std::vector<std::vector<std::vector<double>>> get_attention_weights(unsigned layer_index, size_t batch_index = 0) const;
   [[nodiscard]] std::vector<std::vector<double>> get_mean_attention_weights(unsigned layer_index, size_t batch_index = 0) const;
@@ -111,6 +116,9 @@ protected:
 
 private:
   static std::mt19937 make_shuffle_engine(const NeuralNetworkOptions& options);
+
+  void add_mirrored_copies(std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const;
+  void shuffle_together(std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const;
 
   void optimize_inference_temperature(const std::vector<std::vector<double>>& training_inputs, const std::vector<std::vector<double>>& training_outputs);
 

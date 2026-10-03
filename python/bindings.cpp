@@ -347,6 +347,10 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("with_shuffle_training_data", &NeuralNetworkOptions::with_shuffle_training_data)
         .def("with_shuffle_bptt_batches", &NeuralNetworkOptions::with_shuffle_bptt_batches)
         .def("with_bptt_random_offset", &NeuralNetworkOptions::with_bptt_random_offset)
+        .def("with_mirror_training_data", &NeuralNetworkOptions::with_mirror_training_data)
+        .def("mirror_training_data", &NeuralNetworkOptions::mirror_training_data)
+        .def("mirror_input_signs", &NeuralNetworkOptions::mirror_input_signs)
+        .def("mirror_output_signs", &NeuralNetworkOptions::mirror_output_signs)
         .def("bptt_random_offset", &NeuralNetworkOptions::bptt_random_offset)
         .def("with_bptt_supervise_last_step_only", &NeuralNetworkOptions::with_bptt_supervise_last_step_only)
         .def("bptt_supervise_last_step_only", &NeuralNetworkOptions::bptt_supervise_last_step_only)
@@ -412,6 +416,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("set_attention_capture", &NeuralNetwork::set_attention_capture, py::arg("capture"))
         .def("get_attention_weights", &NeuralNetwork::get_attention_weights, py::arg("layer_index"), py::arg("batch_index") = 0)
         .def("get_mean_attention_weights", &NeuralNetwork::get_mean_attention_weights, py::arg("layer_index"), py::arg("batch_index") = 0)
+        .def_static("mirror_values", &NeuralNetwork::mirror_values, py::arg("values"), py::arg("signs"))
+        .def_static("bptt_start_indexes", &NeuralNetwork::bptt_start_indexes, py::arg("total_samples"), py::arg("bptt_size"), py::arg("offset"))
         .def("options", py::overload_cast<>(&NeuralNetwork::options))
         .def("options", py::overload_cast<>(&NeuralNetwork::options, py::const_));
 

@@ -1748,6 +1748,28 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
   const auto bptt_max_ticks = options_object->get_or<int>("bptt-max-ticks", 0);
   const auto shuffle_bptt_batches = options_object->get_or<bool>("shuffle-bptt-batches", true);
   const auto bptt_random_offset = options_object->get_or<bool>("bptt-random-offset", false);
+  std::vector<double> mirror_input_signs;
+  if (const auto* mirror_input_signs_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("mirror-input-signs")))
+  {
+    for (unsigned i = 0; i < mirror_input_signs_array->get_number_of_items(); ++i)
+    {
+      if (const auto* item = dynamic_cast<const TinyJSON::TJValueNumber*>(mirror_input_signs_array->at(i)))
+      {
+        mirror_input_signs.push_back(static_cast<double>(item->get_float()));
+      }
+    }
+  }
+  std::vector<double> mirror_output_signs;
+  if (const auto* mirror_output_signs_array = dynamic_cast<const TinyJSON::TJValueArray*>(options_object->try_get_value("mirror-output-signs")))
+  {
+    for (unsigned i = 0; i < mirror_output_signs_array->get_number_of_items(); ++i)
+    {
+      if (const auto* item = dynamic_cast<const TinyJSON::TJValueNumber*>(mirror_output_signs_array->at(i)))
+      {
+        mirror_output_signs.push_back(static_cast<double>(item->get_float()));
+      }
+    }
+  }
   const auto bptt_supervise_last_step_only = options_object->get_or<bool>("bptt-supervise-last-step-only", false);
   const auto has_bias = options_object->get_or<bool>("has-bias", true);
   const auto log_training_info = options_object->get_or<bool>("log-training-info", true);
@@ -1805,6 +1827,7 @@ NeuralNetworkOptions NeuralNetworkSerializer::get_and_build_options(const TinyJS
     .with_bptt_max_ticks(bptt_max_ticks)
     .with_shuffle_bptt_batches(shuffle_bptt_batches)
     .with_bptt_random_offset(bptt_random_offset)
+    .with_mirror_training_data(mirror_input_signs, mirror_output_signs)
     .with_bptt_supervise_last_step_only(bptt_supervise_last_step_only)
     .with_final_error_calculation_types(final_error_calculation_types)
     .with_enable_bptt(enable_bptt)
@@ -2152,6 +2175,26 @@ void NeuralNetworkSerializer::add_options(const NeuralNetworkOptions& options, T
   options_object->set_boolean("enable-bptt", options.enable_bptt());
   options_object->set_boolean("shuffle-bptt-batches", options.shuffle_bptt_batches());
   options_object->set_boolean("bptt-random-offset", options.bptt_random_offset());
+  {
+    std::vector<long long> mirror_input_signs;
+    for (const auto sign : options.mirror_input_signs())
+    {
+      mirror_input_signs.push_back(static_cast<long long>(sign));
+    }
+    std::vector<long long> mirror_output_signs;
+    for (const auto sign : options.mirror_output_signs())
+    {
+      mirror_output_signs.push_back(static_cast<long long>(sign));
+    }
+    auto* mirror_input_signs_list = new TinyJSON::TJValueArray();
+    mirror_input_signs_list->add_numbers(mirror_input_signs);
+    options_object->set("mirror-input-signs", mirror_input_signs_list);
+    delete mirror_input_signs_list;
+    auto* mirror_output_signs_list = new TinyJSON::TJValueArray();
+    mirror_output_signs_list->add_numbers(mirror_output_signs);
+    options_object->set("mirror-output-signs", mirror_output_signs_list);
+    delete mirror_output_signs_list;
+  }
   options_object->set_boolean("bptt-supervise-last-step-only", options.bptt_supervise_last_step_only());
   set_float(options_object, "update-training-monitor-percent", options.update_training_monitor_percent());
   options_object->set_boolean("has-bias", options.has_bias());

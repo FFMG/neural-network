@@ -208,6 +208,8 @@ When training recurrent networks (RNN, GRU, LSTM), the order of samples is criti
     *   **RECOMMENDED WITH LAST STEP SUPERVISION:** When used alongside `bptt-supervise-last-step-only`, this prevents fixed-boundary data skipping by ensuring that over multiple training epochs, every sample in the dataset gets supervised as the final step of a full-context block, rather than only every $T$-th sample.
 *   **`bptt-supervise-last-step-only` (Last Step Supervision Only):** If set to `true`, only the final time step ($t = \text{bptt\_max\_ticks} - 1$) of each sequence block is supervised with target outputs during training.
     *   **USE CASE:** Ideal for sequence-to-one forecasting tasks (e.g. predicting the next price or direction after observing $T$ historical ticks). The recurrent layer consumes all $T$ input ticks to warm up its hidden state context, but loss and gradient backpropagation are calculated exclusively from the final prediction step.
+*   **`mirror-training-data` (Market Mirroring / Directional Invariance):** Augments training batches with sign-mirrored copies of each row or BPTT block. Configured via `with_mirror_training_data(input_signs, output_signs)`.
+    *   **USE CASE:** Prevents directional bias in financial time series. When trained on trending regimes, models may overfit to market direction. By specifying $+1.0$ for direction-independent features (volatility, volume, time) and $-1.0$ for direction-sensitive features (returns, momentum, price changes), the library synthesises an inverted market scenario. For BPTT, whole sequence blocks are mirrored to preserve temporal continuity. In-sample, checking, and evaluation sets remain un-mirrored on empirical market data.
 
 ```cpp
     auto options = NeuralNetworkOptions::create(topology)
@@ -217,6 +219,7 @@ When training recurrent networks (RNN, GRU, LSTM), the order of samples is criti
       .with_enable_bptt(true)
       .with_bptt_max_ticks(24)
       .with_bptt_supervise_last_step_only(true) // Supervise only the final tick of each sequence
+      .with_mirror_training_data({ -1.0, 1.0 }, { -1.0 }) // Invert direction features, preserve volatility/volume
       .build();
 ```
 

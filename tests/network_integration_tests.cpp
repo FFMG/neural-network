@@ -2639,6 +2639,189 @@ TEST(NetworkIntegrationTest, BpttRandomOffsetEndToEndTraining)
   EXPECT_GT(nn.get_percent_complete(), 0.0);
 }
 
+TEST(NetworkIntegrationTest, MirrorValuesAppliesTheSignsToEveryRow)
+{
+  EXPECT_EQ(NeuralNetwork::mirror_values({ 1.0, 2.0, 3.0, 4.0 }, { -1.0, 1.0 }), (std::vector<double>{ -1.0, 2.0, -3.0, 4.0 }));
+  EXPECT_EQ(NeuralNetwork::mirror_values({ 1.0, 2.0 }, {}), (std::vector<double>{ 1.0, 2.0 }));
+  EXPECT_TRUE(NeuralNetwork::mirror_values({}, { -1.0 }).empty());
+}
+
+TEST(NetworkIntegrationTest, MirrorValuesRejectsPartialRows)
+{
+  EXPECT_THROW(NeuralNetwork::mirror_values({ 1.0, 2.0, 3.0 }, { -1.0, 1.0 }), std::runtime_error);
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataIsOffByDefault)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 }).build();
+  EXPECT_FALSE(options.mirror_training_data());
+  EXPECT_TRUE(options.mirror_input_signs().empty());
+  EXPECT_TRUE(options.mirror_output_signs().empty());
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataValidatesTheSigns)
+{
+  EXPECT_THROW(NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0 }, { -1.0 }).build(), std::runtime_error);
+  EXPECT_THROW(NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0, 1.0 }, {}).build(), std::runtime_error);
+  EXPECT_THROW(NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0, 1.0 }, { -1.0, 1.0 }).build(), std::runtime_error);
+  EXPECT_THROW(NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0, 0.5 }, { -1.0 }).build(), std::runtime_error);
+  EXPECT_NO_THROW(NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0, 1.0 }, { -1.0 }).build());
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataSurvivesACopy)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 }).with_mirror_training_data({ -1.0, 1.0 }, { -1.0 }).build();
+  NeuralNetworkOptions copied(options);
+  EXPECT_TRUE(copied.mirror_training_data());
+  EXPECT_EQ(copied.mirror_input_signs(), (std::vector<double>{ -1.0, 1.0 }));
+  EXPECT_EQ(copied.mirror_output_signs(), (std::vector<double>{ -1.0 }));
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataDoublesSingleStepRows)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_enable_bptt(false)
+    .with_shuffle_bptt_batches(true)
+    .with_mirror_training_data({ -1.0, 1.0 }, { -1.0 })
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  for (int i = 1; i <= 5; ++i)
+  {
+    inputs.push_back({ static_cast<double>(i), 10.0 * i });
+    outputs.push_back({ 100.0 * i });
+  }
+
+  std::vector<std::vector<double>> rows_in;
+  std::vector<std::vector<double>> rows_out;
+  nn.create_bptt_batches(inputs, outputs, rows_in, rows_out);
+
+  ASSERT_EQ(rows_in.size(), 10u);
+  ASSERT_EQ(rows_out.size(), 10u);
+  std::set<double> firsts;
+  for (size_t row = 0; row < rows_in.size(); ++row)
+  {
+    EXPECT_DOUBLE_EQ(rows_out[row][0], rows_in[row][0] * 100.0);
+    EXPECT_DOUBLE_EQ(rows_in[row][1], std::abs(rows_in[row][0]) * 10.0);
+    firsts.insert(rows_in[row][0]);
+  }
+  EXPECT_EQ(firsts, (std::set<double>{ -5.0, -4.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 4.0, 5.0 }));
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataMirrorsWholeBpttBlocks)
+{
+  auto options = NeuralNetworkOptions::create({ 1, 2, 1 })
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_supervise_last_step_only(true)
+    .with_mirror_training_data({ -1.0 }, { -1.0 })
+    .build();
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  std::vector<std::vector<double>> bptt_in;
+  std::vector<std::vector<double>> bptt_out;
+  for (int pass = 0; pass < 5; ++pass)
+  {
+    nn.create_bptt_batches(inputs, outputs, bptt_in, bptt_out);
+    ASSERT_EQ(bptt_in.size(), 8u);
+    ASSERT_EQ(bptt_out.size(), 8u);
+
+    size_t mirrored = 0;
+    for (size_t seq = 0; seq < bptt_in.size(); ++seq)
+    {
+      ASSERT_EQ(bptt_in[seq].size(), 3u);
+      const double direction = bptt_in[seq][0] < 0.0 ? -1.0 : 1.0;
+      if (direction < 0.0)
+      {
+        ++mirrored;
+      }
+      EXPECT_DOUBLE_EQ(bptt_in[seq][1], bptt_in[seq][0] + direction);
+      EXPECT_DOUBLE_EQ(bptt_in[seq][2], bptt_in[seq][1] + direction);
+      ASSERT_EQ(bptt_out[seq].size(), 1u);
+      EXPECT_DOUBLE_EQ(bptt_out[seq][0], bptt_in[seq][2] * 100.0);
+    }
+    EXPECT_EQ(mirrored, 4u);
+  }
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataIsSavedAndLoaded)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 2, 1 })
+    .with_mirror_training_data({ -1.0, 1.0 }, { -1.0 })
+    .build();
+  NeuralNetwork nn(options);
+
+  const std::string test_path = "test_mirror_training_data_serializer.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+  auto loaded_nn = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  std::remove(test_path.c_str());
+
+  ASSERT_NE(loaded_nn, nullptr);
+  EXPECT_TRUE(loaded_nn->options().mirror_training_data());
+  EXPECT_EQ(loaded_nn->options().mirror_input_signs(), (std::vector<double>{ -1.0, 1.0 }));
+  EXPECT_EQ(loaded_nn->options().mirror_output_signs(), (std::vector<double>{ -1.0 }));
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataEndToEndSingleStepTraining)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 4, 1 })
+    .with_enable_bptt(false)
+    .with_shuffle_training_data(true)
+    .with_mirror_training_data({ -1.0, 1.0 }, { -1.0 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_batch_size(2)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs = {
+    { 1.0, 10.0 }, { 2.0, 20.0 }, { 3.0, 30.0 }, { 4.0, 40.0 }
+  };
+  std::vector<std::vector<double>> outputs = {
+    { 100.0 }, { 200.0 }, { 300.0 }, { 400.0 }
+  };
+
+  nn.train(inputs, outputs);
+  EXPECT_GT(nn.get_percent_complete(), 0.0);
+}
+
+TEST(NetworkIntegrationTest, MirrorTrainingDataEndToEndBpttTraining)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::Gru, 4, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 1, 4, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(3)
+    .with_shuffle_bptt_batches(true)
+    .with_bptt_random_offset(true)
+    .with_bptt_supervise_last_step_only(true)
+    .with_mirror_training_data({ -1.0 }, { -1.0 })
+    .with_learning_rate(0.01)
+    .with_number_of_epoch(5)
+    .with_batch_size(2)
+    .with_seed(42)
+    .build();
+
+  NeuralNetwork nn(options);
+  std::vector<std::vector<double>> inputs;
+  std::vector<std::vector<double>> outputs;
+  make_bptt_offset_rows(inputs, outputs);
+
+  nn.train(inputs, outputs);
+  EXPECT_GT(nn.get_percent_complete(), 0.0);
+}
+
 TEST(NetworkIntegrationTest, ThinkPerformanceSingleInferenceThroughput)
 {
   auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })

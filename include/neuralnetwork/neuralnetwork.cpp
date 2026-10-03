@@ -877,6 +877,65 @@ void NeuralNetwork::train_with_advantages(
   }
 }
 
+std::vector<double> NeuralNetwork::mirror_values(const std::vector<double>& values, const std::vector<double>& signs)
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (signs.empty())
+  {
+    return values;
+  }
+  const size_t sign_count = signs.size();
+  if (values.size() % sign_count != 0)
+  {
+    Logger::panic("Cannot mirror ", values.size(), " values with ", sign_count, " signs, the values must be whole rows!");
+  }
+
+  std::vector<double> mirrored(values.size());
+  for (size_t i = 0; i < values.size(); i += sign_count)
+  {
+    for (size_t j = 0; j < sign_count; ++j)
+    {
+      mirrored[i + j] = values[i + j] * signs[j];
+    }
+  }
+  return mirrored;
+}
+
+void NeuralNetwork::add_mirrored_copies(std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  const auto count = bptt_inputs.size();
+  bptt_inputs.reserve(count * 2);
+  bptt_outputs.reserve(count * 2);
+  for (size_t i = 0; i < count; ++i)
+  {
+    auto mirrored_inputs = mirror_values(bptt_inputs[i], _options.mirror_input_signs());
+    auto mirrored_outputs = mirror_values(bptt_outputs[i], _options.mirror_output_signs());
+    bptt_inputs.push_back(std::move(mirrored_inputs));
+    bptt_outputs.push_back(std::move(mirrored_outputs));
+  }
+}
+
+void NeuralNetwork::shuffle_together(std::vector<std::vector<double>>& bptt_inputs, std::vector<std::vector<double>>& bptt_outputs) const
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  if (bptt_inputs.size() < 2)
+  {
+    return;
+  }
+  auto& g = _shuffle_engine;
+  std::uniform_int_distribution<size_t> dist;
+  for (size_t i = bptt_inputs.size() - 1; i > 0; --i)
+  {
+    const size_t j = dist(g, std::uniform_int_distribution<size_t>::param_type(0, i));
+    if (i != j)
+    {
+      std::swap(bptt_inputs[i], bptt_inputs[j]);
+      std::swap(bptt_outputs[i], bptt_outputs[j]);
+    }
+  }
+}
+
 std::vector<size_t> NeuralNetwork::bptt_start_indexes(size_t total_samples, size_t bptt_size, size_t offset)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
@@ -947,6 +1006,10 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
     {
       bptt_inputs.push_back(inputs[i]);
       bptt_outputs.push_back(outputs[i]);
+    }
+    if (_options.mirror_training_data())
+    {
+      add_mirrored_copies(bptt_inputs, bptt_outputs);
     }
     if (is_shuffled && bptt_inputs.size() > 1)
     {
@@ -1030,6 +1093,15 @@ void NeuralNetwork::create_bptt_batches(const std::vector<std::vector<double>>& 
 
     bptt_inputs.push_back(std::move(flattened_in));
     bptt_outputs.push_back(std::move(flattened_out));
+  }
+
+  if (_options.mirror_training_data())
+  {
+    add_mirrored_copies(bptt_inputs, bptt_outputs);
+    if (is_shuffled)
+    {
+      shuffle_together(bptt_inputs, bptt_outputs);
+    }
   }
 }
 
@@ -2008,6 +2080,7 @@ void NeuralNetwork::log_training_info(
   Logger::info(tab, "BPTT Max Ticks             : ", _options.bptt_max_ticks());
   Logger::info(tab, "BPTT Batches are shuffled  : ", _options.shuffle_bptt_batches() ? "true" : "false");
   Logger::info(tab, "BPTT random block offset   : ", _options.bptt_random_offset() ? "true" : "false");
+  Logger::info(tab, "Mirror training data       : ", _options.mirror_training_data() ? "true" : "false");
   Logger::info(tab, "BPTT Supervise Last Step Only: ", _options.bptt_supervise_last_step_only() ? "true" : "false");
   if (_options.seed().has_value())
   {
