@@ -1,5 +1,9 @@
 # neural-network
 
+[![CI](https://github.com/FFMG/neural-network/actions/workflows/tests.yml/badge.svg)](https://github.com/FFMG/neural-network/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.0.71-blue.svg)](include/neuralnetwork/version.h)
+
 ## What is it?
 
 This is a lightweight Feedforward and Recurrent Neural Network library written in modern C++ with a primary goal: to be an educational tool. It is built entirely from scratch with zero external dependencies (except for optional charting), making it easy to compile, run, and understand.
