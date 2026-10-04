@@ -1,8 +1,11 @@
 # neural-network
 
 [![CI](https://github.com/FFMG/neural-network/actions/workflows/tests.yml/badge.svg)](https://github.com/FFMG/neural-network/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.0.71-blue.svg)](include/neuralnetwork/version.h)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![C++](https://img.shields.io/badge/C%2B%2B-17%20%2F%2020-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/17)
+[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](python/)
+[![Dependencies](https://img.shields.io/badge/dependencies-zero-success)](#what-is-it)
 
 ## What is it?
 
