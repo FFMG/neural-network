@@ -2933,6 +2933,84 @@ TEST(NetworkIntegrationTest, HelperRejectsANetworkWithAnotherTopology)
   EXPECT_THROW(helper.calculate_forecast_metrics_with(different_output, { ErrorCalculation::type::mse }, true), std::runtime_error);
 }
 
+TEST(NetworkIntegrationTest, VersionConstantsAndClassGetters)
+{
+  EXPECT_EQ(NEURALNETWORK_VERSION_MAJOR, 0);
+  EXPECT_EQ(NEURALNETWORK_VERSION_MINOR, 0);
+  EXPECT_EQ(NEURALNETWORK_VERSION_PATCH, 71);
+  EXPECT_STREQ(NEURALNETWORK_VERSION_STRING, "0.0.71");
+  EXPECT_EQ(NEURALNETWORK_VERSION_CODE, ((0 << 16) | (0 << 8) | 71));
+
+  EXPECT_EQ(Version::major(), 0u);
+  EXPECT_EQ(Version::minor(), 0u);
+  EXPECT_EQ(Version::patch(), 71u);
+  EXPECT_EQ(Version::code(), 71u);
+  EXPECT_STREQ(Version::string(), "0.0.71");
+  EXPECT_STREQ(NeuralNetwork::version(), "0.0.71");
+}
+
+TEST(NetworkIntegrationTest, VersionSavedInSerializerAndLoaded)
+{
+  auto options = NeuralNetworkOptions::create({ 2, 3, 1 })
+    .with_number_of_epoch(5)
+    .with_learning_rate(0.01)
+    .build();
+  NeuralNetwork nn(options);
+
+  const std::string test_path = "test_version_serializer.json";
+  NeuralNetworkSerializer::save(nn, test_path);
+
+  // Verify "version": "0.0.71" is present in the raw saved JSON
+  std::ifstream json_file(test_path);
+  ASSERT_TRUE(json_file.is_open());
+  std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
+  json_file.close();
+
+  EXPECT_NE(json_content.find("\"version\": \"0.0.71\""), std::string::npos);
+
+  // Load back and verify loaded_version()
+  std::unique_ptr<NeuralNetwork> loaded(NeuralNetworkSerializer::load(test_path));
+  ASSERT_NE(loaded, nullptr);
+  EXPECT_EQ(loaded->loaded_version(), "0.0.71");
+
+  std::remove(test_path.c_str());
+}
+
+TEST(NetworkIntegrationTest, VersionMatchesTopChangelogEntry)
+{
+  // Check that Version::string() matches the latest version in CHANGELOG.md
+  std::ifstream changelog("../../CHANGELOG.md");
+  if (!changelog.is_open())
+  {
+    changelog.open("../CHANGELOG.md");
+  }
+  if (!changelog.is_open())
+  {
+    changelog.open("CHANGELOG.md");
+  }
+
+  if (changelog.is_open())
+  {
+    std::string line;
+    std::string changelog_version = "";
+    while (std::getline(changelog, line))
+    {
+      auto start = line.find("## [");
+      if (start != std::string::npos)
+      {
+        auto end = line.find(']', start + 4);
+        if (end != std::string::npos)
+        {
+          changelog_version = line.substr(start + 4, end - (start + 4));
+          break;
+        }
+      }
+    }
+    ASSERT_FALSE(changelog_version.empty());
+    EXPECT_EQ(changelog_version, Version::string());
+  }
+}
+
 TEST(NetworkIntegrationTest, ThinkPerformanceSingleInferenceThroughput)
 {
   auto options = NeuralNetworkOptions::create({ 4, 16, 8, 2 })

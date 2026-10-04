@@ -15,12 +15,21 @@
 #include "helpers/errorcalculation.h"
 #include "helpers/neuralnetworkserializer.h"
 #include "common/logger.h"
+#include "version.h"
 
 namespace py = pybind11;
 using namespace myoddweb::nn;
 
 PYBIND11_MODULE(neuralnetwork, m) {
     m.doc() = "Python bindings for the myoddweb::nn Neural Network Library";
+    m.attr("__version__") = Version::string();
+
+    py::class_<Version>(m, "Version")
+        .def_property_readonly_static("major", [](py::object) { return Version::major(); })
+        .def_property_readonly_static("minor", [](py::object) { return Version::minor(); })
+        .def_property_readonly_static("patch", [](py::object) { return Version::patch(); })
+        .def_property_readonly_static("code", [](py::object) { return Version::code(); })
+        .def_property_readonly_static("string", [](py::object) { return Version::string(); });
 
     // 1. Enums
     py::enum_<activation::method>(m, "ActivationMethod")
@@ -420,6 +429,8 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def("get_mean_attention_weights", &NeuralNetwork::get_mean_attention_weights, py::arg("layer_index"), py::arg("batch_index") = 0)
         .def_static("mirror_values", &NeuralNetwork::mirror_values, py::arg("values"), py::arg("signs"))
         .def_static("bptt_start_indexes", &NeuralNetwork::bptt_start_indexes, py::arg("total_samples"), py::arg("bptt_size"), py::arg("offset"))
+        .def_static("version", &NeuralNetwork::version)
+        .def_property_readonly("loaded_version", &NeuralNetwork::loaded_version)
         .def("options", py::overload_cast<>(&NeuralNetwork::options))
         .def("options", py::overload_cast<>(&NeuralNetwork::options, py::const_));
 

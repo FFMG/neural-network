@@ -82,6 +82,10 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 
 ### Functions and Classes
 
+*   `nn.__version__`: Library and bindings semantic version string (e.g. `"0.0.71"`).
+*   `nn.Version`: Compile-time version information.
+    *   Properties: `major` (int), `minor` (int), `patch` (int), `code` (int), `string` (str).
+    *   `__repr__()`: Formatted representation string (e.g. `<Version 0.0.71>`).
 *   `nn.Logger`: Global logging interface.
     *   `set_level(level)`: Sets the current logging level.
     *   `get_level()`: Returns the current logging level.
@@ -140,6 +144,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `build()`: Finalises and returns the immutable options object.
 *   `nn.NeuralNetwork`: Core neural network model.
     *   `NeuralNetwork(options)`: Constructor.
+    *   `version()`: Static method returning the library version string (e.g. `"0.0.71"`).
+    *   `loaded_version`: Read-only property returning the serialised library version if the model was loaded from a file via `NeuralNetworkSerializer`, or `""` if created in memory.
     *   `train(inputs, outputs)`: Runs supervised training on the provided datasets.
     *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs. When `with_entropy_coefficient(beta)` is configured (> 0.0) with a Softmax output layer, an entropy bonus $\beta \cdot p_k (\ln p_k + H)$ is added to prevent premature policy collapse and encourage exploration.
     *   `train_with_advantages(training_inputs, training_action_targets, training_advantages, training_action_masks)`: Overload with invalid-action masking. Accepts a binary mask list (1.0 = legal, 0.0 = illegal) per sample. Softmax probabilities and the policy entropy bonus are renormalised over legal actions only ($q_k = p_k / \sum_{j \in \text{legal}} p_j$), and illegal actions receive zero gradient ($t'_k = p_k$), ensuring negative advantage updates shift probability exclusively across other legal choices.
@@ -153,8 +159,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `get_attention_weights(layer_index, batch_index=0)`: Returns 3D attention weight tensor `[head][query_t][key_t]` from the last inference pass of the target `SelfAttention` layer.
     *   `get_mean_attention_weights(layer_index, batch_index=0)`: Returns 2D attention weight matrix `[query_t][key_t]` averaged across all heads from the last inference pass.
 *   `nn.NeuralNetworkSerializer`: Serialisation and deserialisation utilities.
-    *   `save(net, filepath)`: Static method to save a network instance to a JSON file.
-    *   `load(filepath)`: Static method to load a network instance from a JSON file.
+    *   `save(net, filepath)`: Static method to save a network instance to a JSON file (persisting the library version under `"version"`).
+    *   `load(filepath)`: Static method to load a network instance from a JSON file (restoring the model version into `net.loaded_version`).
 
 ### Attention Pooling
 

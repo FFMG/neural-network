@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(NeuralNetworkTests LANGUAGES CXX C)
+project(NeuralNetworkTests VERSION 0.0.71 LANGUAGES CXX C)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)

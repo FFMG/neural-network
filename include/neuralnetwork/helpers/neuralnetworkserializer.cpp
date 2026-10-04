@@ -79,9 +79,15 @@ NeuralNetwork* NeuralNetworkSerializer::load(const std::string& path)
     return nullptr;
   }
 
+  std::string loaded_version = "";
+  if (nullptr != json_object && nullptr != json_object->try_get_value("version"))
+  {
+    loaded_version = json_object->get_string("version");
+  }
+
   // create the NN
 
-  auto nn = new NeuralNetwork(layers, options, errors);
+  auto nn = new NeuralNetwork(layers, options, errors, loaded_version);
   Logger::info("Created Neural Network.");
 
   return nn;
@@ -2231,6 +2237,7 @@ void NeuralNetworkSerializer::add_basic(TinyJSON::TJValueObject& json)
   long long current_timestamp = now_seconds.time_since_epoch().count();
 
   json.set_number("created", current_timestamp);
+  json.set_string("version", Version::string());
 }
 
 TinyJSON::TJValueObject* NeuralNetworkSerializer::add_neuron(const Neuron& neuron)

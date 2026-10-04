@@ -47,14 +47,16 @@ NeuralNetwork::NeuralNetwork(
 NeuralNetwork::NeuralNetwork(
   const Layers& layers,
   const NeuralNetworkOptions& options,
-  const std::vector<std::map<ErrorCalculation::type, double>>& errors
+  const std::vector<std::map<ErrorCalculation::type, double>>& errors,
+  const std::string& loaded_version
 ) :
   _learning_rate(options.learning_rate()),
   _has_learning_rate_override(false),
   _layers(layers),
   _options(options),
   _saved_errors(errors),
-  _shuffle_engine(make_shuffle_engine(options))
+  _shuffle_engine(make_shuffle_engine(options)),
+  _loaded_version(loaded_version)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
 }
@@ -66,7 +68,8 @@ NeuralNetwork::NeuralNetwork(const NeuralNetwork& src) :
   _options(src._options),
   _saved_errors(src._saved_errors),
   _shuffle_engine(src._shuffle_engine),
-  _last_metrics(src._last_metrics)
+  _last_metrics(src._last_metrics),
+  _loaded_version(src._loaded_version)
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   std::shared_lock<std::shared_mutex> rhs_lock(src._mutex);
@@ -90,7 +93,8 @@ NeuralNetwork::NeuralNetwork(NeuralNetwork&& src) noexcept :
   _neural_network_helpers(std::move(src._neural_network_helpers)),
   _saved_errors(std::move(src._saved_errors)),
   _shuffle_engine(std::move(src._shuffle_engine)),
-  _last_metrics(std::move(src._last_metrics))
+  _last_metrics(std::move(src._last_metrics)),
+  _loaded_version(std::move(src._loaded_version))
 {
   MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
   for (auto& helper : _neural_network_helpers)
@@ -122,6 +126,7 @@ NeuralNetwork& NeuralNetwork::operator=(const NeuralNetwork& src)
     _saved_errors = src._saved_errors;
     _shuffle_engine = src._shuffle_engine;
     _last_metrics = src._last_metrics;
+    _loaded_version = src._loaded_version;
 
     _neural_network_helpers.clear();
     for (const auto& src_helper : src._neural_network_helpers)
@@ -153,6 +158,7 @@ NeuralNetwork& NeuralNetwork::operator=(NeuralNetwork&& src) noexcept
     _saved_errors = std::move(src._saved_errors);
     _shuffle_engine = std::move(src._shuffle_engine);
     _last_metrics = std::move(src._last_metrics);
+    _loaded_version = std::move(src._loaded_version);
 
     _neural_network_helpers = std::move(src._neural_network_helpers);
     for (auto& helper : _neural_network_helpers)
@@ -498,6 +504,18 @@ bool NeuralNetwork::has_training_data() const
 
   // do we have saved error, (from file).
   return !_saved_errors.empty();
+}
+
+const char* NeuralNetwork::version() noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return Version::string();
+}
+
+const std::string& NeuralNetwork::loaded_version() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("NeuralNetwork");
+  return _loaded_version;
 }
 
 void NeuralNetwork::set_attention_capture(bool capture)

@@ -585,8 +585,22 @@ The library integrates [Microsoft's mimalloc](https://github.com/microsoft/mimal
 
 ```cpp
   NeuralNetworkSerializer::save(nn, "model.nn");
-  auto loaded_nn = NeuralNetworkSerializer::load("model.nn");
+  std::unique_ptr<NeuralNetwork> loaded_nn(NeuralNetworkSerializer::load("model.nn"));
+  Logger::info("Loaded model trained with library version: ", loaded_nn->loaded_version());
 ```
+
+### Versioning
+
+The library follows Semantic Versioning (`MAJOR.MINOR.PATCH`). Version metadata can be queried programmatically or inspected via preprocessor macros:
+
+*   **Preprocessor Macros (`version.h`):**
+    *   `NEURALNETWORK_VERSION_MAJOR`, `NEURALNETWORK_VERSION_MINOR`, `NEURALNETWORK_VERSION_PATCH`
+    *   `NEURALNETWORK_VERSION_STRING` (e.g. `"0.0.71"`)
+    *   `NEURALNETWORK_VERSION_CODE` (e.g. `((MAJOR << 16) | (MINOR << 8) | PATCH)` for compile-time `#if` checks)
+*   **C++ Type-Safe API:**
+    *   `Version::string()` and `NeuralNetwork::version()` return the library version string.
+    *   `Version::major()`, `Version::minor()`, `Version::patch()`, `Version::code()`.
+    *   `nn.loaded_version()` returns the version string recorded in the serialized model file (persisted at the root JSON level as `"version"`).
 
 ## Error Calculations
 

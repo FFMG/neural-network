@@ -5,6 +5,11 @@ All notable changes to the `neural-network` library will be documented in this f
 ## [0.0.71] - 2026-10-02
 
 ### Added
+- Added programmatic versioning mechanism:
+  - Header [`include/neuralnetwork/version.h`](./include/neuralnetwork/version.h) defining compile-time preprocessor macros (`NEURALNETWORK_VERSION_MAJOR`, `NEURALNETWORK_VERSION_MINOR`, `NEURALNETWORK_VERSION_PATCH`, `NEURALNETWORK_VERSION_STRING`, `NEURALNETWORK_VERSION_CODE`) and `myoddweb::nn::Version` class with `constexpr` accessors (`major()`, `minor()`, `patch()`, `code()`, `string()`).
+  - Added `NeuralNetwork::version()` static method returning the library version string.
+  - Added `NeuralNetwork::loaded_version()` getter and serialised model metadata persistence (`"version": Version::string()`) in `NeuralNetworkSerializer`.
+  - Exposed module-level `__version__`, `Version` class, `NeuralNetwork.version()`, and `NeuralNetwork.loaded_version` in Python bindings.
 - Added `NeuralNetworkOptions::with_bptt_random_offset(bool)` / `bptt_random_offset()` (JSON `bptt-random-offset`, default `false`):
   - When enabled with BPTT batch shuffling, sequence blocks are rebuilt on each rebuild with a random start offset in `[0, bptt_max_ticks - 1]`.
   - Ensures every sample eventually acts as the final supervised timestep when `bptt_supervise_last_step_only` is active, avoiding fixed-boundary data skipping.
@@ -22,6 +27,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - `LSTMLayer` copy constructor did not allocate the per-thread workspaces, (the copy assignment and the other constructors do, as do the GRU and Elman layers). The first multi-threaded forward pass of a copied LSTM layer then had up to 4 worker threads each call `allocate_workspace` through `get_workspace`, resizing the same `_thread_workspaces` vector at the same time. SWA snapshots the layers by copy and deploys that copy at the end of training, so the final metrics pass of an LSTM run with SWA could crash, (access violation in `AlignedVector::resize_and_zero` from `LSTMLayer::run_forward_pass`). Tests in [`tests/lstmlayer_tests.cpp`](./tests/lstmlayer_tests.cpp) check that construction, copy construction and copy assignment all allocate the workspaces.
 
 ### Tests
+- Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): version preprocessor macros, `Version` class getters, `NeuralNetwork::version()`, serializer version persistence with backward compatibility verification, and version alignment with the latest `CHANGELOG.md` release entry.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): scoring partitions with other networks, checkpoint save/load evaluation, and topology mismatch validation.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): row mirroring, sign validation, single-step and BPTT block mirroring, serialization round-trip, and end-to-end training integration tests.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): sequence start indexes from offset with clamping, serialization round-trip, default option state, sample coverage over rebuilds, and end-to-end BPTT training with random offset.

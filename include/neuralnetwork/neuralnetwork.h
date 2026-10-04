@@ -27,6 +27,7 @@
 #include "neuralnetworkoptions.h"
 #include "common/rng.h"
 #include "common/taskqueue.h"
+#include "version.h"
 
 
 namespace myoddweb::nn
@@ -36,7 +37,7 @@ class NeuralNetwork
 public:
   NeuralNetwork(const NeuralNetworkOptions& options);
   NeuralNetwork(const std::vector<unsigned>& topology, const activation::method& hidden_layer_activation, const activation::method& output_layer_activation);
-  NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::vector<std::map<ErrorCalculation::type, double>>& errors);
+  NeuralNetwork(const Layers& layers, const NeuralNetworkOptions& options, const std::vector<std::map<ErrorCalculation::type, double>>& errors, const std::string& loaded_version = "");
 
   NeuralNetwork(const NeuralNetwork& src);
   NeuralNetwork(NeuralNetwork&& src) noexcept;
@@ -97,6 +98,9 @@ public:
   // BPTT block of rows, seen upside down - see NeuralNetworkOptions::with_mirror_training_data).
   // Empty signs return the values unchanged.
   static std::vector<double> mirror_values(const std::vector<double>& values, const std::vector<double>& signs);
+
+  [[nodiscard]] static const char* version() noexcept;
+  [[nodiscard]] const std::string& loaded_version() const noexcept;
 
   void set_attention_capture(bool capture);
   [[nodiscard]] std::vector<std::vector<std::vector<double>>> get_attention_weights(unsigned layer_index, size_t batch_index = 0) const;
@@ -197,5 +201,6 @@ private:
   mutable std::mt19937 _shuffle_engine;
 
   mutable std::vector<NeuralNetworkHelperMetrics> _last_metrics;
+  std::string _loaded_version = "";
 };
 } // namespace myoddweb::nn
