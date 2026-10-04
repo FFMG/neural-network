@@ -9,9 +9,18 @@
 
 ## What is it?
 
-This is a lightweight Feedforward and Recurrent Neural Network library written in modern C++ with a primary goal: to be an educational tool. It is built entirely from scratch with zero external dependencies (except for optional charting), making it easy to compile, run, and understand.
+This is a lightweight, dependency-free neural network library written in modern C++ (C++17/C++20) with native Python bindings. Designed from first principles with educational clarity and mathematical rigor in mind, it provides a clean, transparent implementation of modern deep learning mechanics without the bloat or opacity of massive frameworks.
 
-While not focused on high performance, it provides a clean implementation of the core mechanics of training and inference, including advanced features like Backpropagation Through Time (BPTT), AdamW/NadamW optimizers, and post-training temperature calibration.
+While built entirely from scratch with **zero external dependencies**, the engine is engineered for practical CPU performance featuring **AVX2 SIMD acceleration** (GEMM matrix multiplications, vectorised activations, and analytical derivatives), **multi-threaded batch execution**, and aligned memory recycling.
+
+### Key Capabilities
+
+* **Diverse Architectures**: Feed-Forward (Dense), Recurrent (Elman, GRU, LSTM) with Backpropagation Through Time (BPTT), Dilated Causal Temporal Convolutional Networks (TCN), Multi-Head Causal Self-Attention, Attention Pooling, Gated Residual Networks (GRN), Categorical Entity Embeddings, and Multi-Output heads.
+* **Modern Optimisation**: SWA (Stochastic Weight Averaging), Lookahead, Cosine Annealing with Warm Restarts (SGDR), Gradient Clipping, and a rich suite of optimisers (AdamW, NadamW, Lion, RAdam, RMSProp, AdaGrad, AdaDelta, AMSGrad, Lamb, SGD with Momentum/Nesterov).
+* **Reinforcement Learning**: Policy-gradient (REINFORCE) training via `train_with_advantages`, supporting invalid-action masking and entropy exploration bonuses.
+* **Time-Series & Financial Modeling**: Specialised loss functions (Sharpe Ratio, Sortino Ratio, Quantile/Pinball Loss, Directional Huber), sequence start jittering (`bptt-random-offset`), and directional market trend mirroring (`mirror-training-data`).
+* **Interpretability & Calibration**: Causal attention weight inspection tensor tools and post-training temperature calibration.
+* **First-Class Python Bindings**: Full `pybind11` native wrapper allowing models to be designed, trained, serialised, and evaluated directly in Python.
 
 ## How to use
 
@@ -50,22 +59,19 @@ myoddweb::nn::NeuralNetwork nn(options);
 
 ### Optimizers
 
-* None
-* SGD
-* Adam (Standard Adam does not apply weight decay; if `weight_decay > 0` is configured, a warning is logged. Use `AdamW` if decoupled weight decay is desired.)
-* AdamW (Adam with decoupled weight decay)
-* Nadam
-* NadamW
-* Adagrad
-* RMSProp
-* Lion
-
-#### Not supported (yet)
-
-* Nesterov
-* AdaDelta
-* AMSGrad
-* LAMB
+* `None`: Disabled layer optimiser updates.
+* `SGD`: Stochastic Gradient Descent (supports Momentum and Nesterov acceleration).
+* `Adam`: Standard Adam (does not decouple weight decay; if `weight_decay > 0` is configured, a warning is logged. Use `AdamW` for decoupled weight decay).
+* `AdamW`: Adam with decoupled weight decay.
+* `Nadam`: Nesterov-accelerated Adaptive Moment Estimation.
+* `NadamW`: Nadam with decoupled weight decay.
+* `AMSGrad`: Variant of Adam tracking the maximum of past squared gradients.
+* `AdaGrad`: Adaptive Gradient algorithm.
+* `AdaDelta`: Adaptive delta algorithm designed to restrict aggressive learning rate decay.
+* `RMSProp`: Root Mean Squared Propagation.
+* `RAdam`: Rectified Adam with dynamic variance rectification.
+* `Lion`: EvoLved Sign Momentum (Lion) optimizer.
+* `Lamb`: Layer-wise Adaptive Moments optimizer for Batch training.
 
 ## Python Bindings
 
@@ -77,7 +83,8 @@ Standalone Python examples are located in [python/examples/](python/examples/):
 - **XOR Classification (`python/examples/xor.py`)**: Classic non-linearly separable XOR problem using Feed-Forward layers and Sigmoid activation.
 - **Multi-Output Layer (`python/examples/multi_output.py`)**: Parallel multi-output model performing joint classification (Sigmoid) and regression (Tanh).
 - **General Example (`python/examples/example.py`)**: Comprehensive demonstration of configuration options, progress monitoring callbacks, and model serialization.
-- **Reinforcement Learning (`python/examples/tic_tac_toe.py`)**: Policy-gradient (REINFORCE) agent learning Tic-Tac-Toe via advantage rewards and playing against a Random opponent.
+- **Reinforcement Learning Tic-Tac-Toe (`python/examples/tic_tac_toe.py`)**: Policy-gradient (REINFORCE) agent learning Tic-Tac-Toe via advantage rewards and playing against a Random opponent.
+- **Reinforcement Learning Gridworld (`python/examples/gridworld.py`)**: Discrete action policy navigation in an obstacle grid using action masking, discounted advantages, and ASCII grid path rendering.
 - **GRN & Attention Interpretability (`python/examples/grn_attention.py`)**: Temporal sequence modeling combining Multi-Head Self-Attention with Gated Residual Networks (GRN) and extracting attention weights.
 
 ### Python Quickstart Example
@@ -125,6 +132,8 @@ The hidden layer configuration allows you to define the architecture of your net
   * `AttentionPool`: Additive (Bahdanau-style) attention pooling over a preceding `Gru`/`Lstm` layer's BPTT window (see "Attention Pooling" below).
   * `Tcn`: Dilated causal 1D convolution ("Temporal Convolutional Network" block) over a window of preceding timesteps (see "TCN" below).
   * `SelfAttention`: Multi-head causal self-attention plus a position-wise feed-forward sub-block (see "Self-Attention" below).
+  * `Embedding`: Categorical entity embedding lookup table mapping discrete integer IDs to continuous dense vectors (see "Embedding Layer" below).
+  * `Grn`: Gated Residual Network with Gated Linear Unit (GLU) and optional Layer Normalisation (see "Gated Residual Network (GRN)" below).
 * **Layer size:** Number of neurons in the hidden layer.
 * **Activation:** The activation object (method, alpha, and temperature).
 * **Weight Decay:** Regularization strength.
@@ -611,19 +620,24 @@ The library follows Semantic Versioning (`MAJOR.MINOR.PATCH`). Version metadata 
 
 ## Error Calculations
 
-* `huber_loss`
-* `huber_direction_loss`
-* `mae`
-* `mse`
-* `rmse`
-* `directional_accuracy`
-* `cross_entropy`
-* `bce_loss`
-* `directional_confidence_score`
-* `prediction_coverage`
-* `quantile_loss` (Pinball loss for single or multi-quantile regression)
-* `sharpe_ratio_loss` (Negative Sharpe ratio loss for trading return optimization)
-* `sortino_ratio_loss` (Negative Sortino ratio loss penalizing downside volatility)
+* `huber_loss`: Huber loss (smooth L1).
+* `huber_direction_loss`: Directional-penalised Huber loss.
+* `mae`: Mean Absolute Error.
+* `mse`: Mean Squared Error.
+* `rmse`: Root Mean Squared Error.
+* `nrmse`: Normalised Root Mean Squared Error.
+* `mape`: Mean Absolute Percentage Error.
+* `smape`: Symmetric Mean Absolute Percentage Error.
+* `wape`: Weighted Absolute Percentage Error.
+* `directional_accuracy`: Directional accuracy ratio.
+* `cross_entropy`: Categorical Cross Entropy.
+* `bce_loss`: Binary Cross Entropy (supports label smoothing).
+* `log_cosh`: Log-hyperbolic cosine loss ($\log(\cosh(\hat{y} - y))$).
+* `directional_confidence_score`: Confidence score for directional movement.
+* `prediction_coverage`: Ratio of samples exceeding confidence threshold.
+* `quantile_loss`: Pinball loss for single or multi-quantile regression.
+* `sharpe_ratio_loss`: Negative Sharpe ratio loss for return maximization.
+* `sortino_ratio_loss`: Negative Sortino ratio loss penalizing downside volatility.
 
 ### Calculating Metrics
 
@@ -771,11 +785,11 @@ For more information on AVX2, see the [Intel Intrinsics Guide](https://www.intel
 
 ## Repository Layout
 
-*   `\docs\`: In-depth architectural guides and feature documentation (e.g. [Reinforcement Learning](docs/reinforced-learning.md)).
-*   `\include\neuralnetwork\`: The stand-alone core C++ neural network library (including `/layers/`, `/helpers/`, and `/common/` subdirectories).
-*   `\examples\`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
-*   `\tests\`: Comprehensive unit test suite.
-*   `\python\`: Pybind11-based Visual Studio 2022 solution (`neuralnetwork_py.sln`) and Python usage examples in `\python\examples\`.
+*   `docs/`: In-depth architectural guides and feature documentation (e.g. [Reinforcement Learning](docs/reinforced-learning.md)).
+*   `include/neuralnetwork/`: The stand-alone core C++ neural network library (including `layers/`, `helpers/`, and `common/` subdirectories).
+*   `examples/`: Standalone example implementations, runner (`main.cpp`), and the main Visual Studio solution (`neuralnetwork.sln`).
+*   `tests/`: Comprehensive unit test suite.
+*   `python/`: Pybind11-based Visual Studio 2022 solution (`neuralnetwork_py.sln`) and Python usage examples in `python/examples/`.
 
 ## Building and Running
 
