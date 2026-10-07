@@ -126,6 +126,38 @@ TEST(TrainingMonitorTest, StatusStuckDueToLowScore)
   EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
 }
 
+TEST(TrainingMonitorTest, StatusDivergingWithHuberDirectionLoss)
+{
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3);
+
+  // Huber direction loss increasing (getting worse), DA decreasing (getting worse)
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 0.8);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 1.2);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 1.6); // slope: 0.4
+
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.55);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.52);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.50); // slope: -0.025
+
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Diverging);
+}
+
+TEST(TrainingMonitorTest, StatusOnTrackWithHuberDirectionLoss)
+{
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3);
+
+  // Huber direction loss decreasing (improving), DA increasing (improving)
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 1.6);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 1.2);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 0.8); // slope: -0.4
+
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.50);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.52);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.55); // slope: 0.025
+
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::OnTrack);
+}
+
 TEST(TrainingMonitorTest, StatusToString)
 {
   EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(TrainingMonitor::TrainingStatus::OnTrack), "on-track");

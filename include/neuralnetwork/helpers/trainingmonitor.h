@@ -5,6 +5,7 @@
 #include "errorcalculation.h"
 #include "neuralnetworkhelpermetrics.h"
 #include <unordered_map>
+#include <vector>
 
 namespace myoddweb::nn
 {
@@ -107,29 +108,29 @@ public:
   TrainingStatus evaluate() const
   {
     MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
-    auto rmse_win_it = _metrics.find(ErrorCalculation::type::rmse);
+    auto loss_win_it = find_loss_metric();
     auto da_win_it = _metrics.find(ErrorCalculation::type::directional_accuracy);
 
-    if (rmse_win_it == _metrics.end() || da_win_it == _metrics.end())
+    if (loss_win_it == _metrics.end() || da_win_it == _metrics.end())
     {
-      Logger::error("RMSE or DA metrics missing for training status.");
+      Logger::error("Loss or DA metrics missing for training status.");
       return TrainingStatus::OnTrack;
     }
 
-    const auto& rmse_vals = rmse_win_it->second;
+    const auto& loss_vals = loss_win_it->second;
     const auto& da_vals = da_win_it->second;
 
-    if (rmse_vals.size() < _min_window || da_vals.size() < _min_window)
+    if (loss_vals.size() < _min_window || da_vals.size() < _min_window)
     {
       Logger::trace("Not enough data for training status yet.");
       return TrainingStatus::OnTrack; // Not enough data
     }
 
-    double rmse_slope = (rmse_vals.back() - rmse_vals[rmse_vals.size() - _min_window]) / _min_window;
+    double loss_slope = (loss_vals.back() - loss_vals[loss_vals.size() - _min_window]) / _min_window;
     double da_slope = (da_vals.back() - da_vals[da_vals.size() - _min_window]) / _min_window;
 
     // Weighted score for trends: positive = improving
-    double score = (-rmse_slope * _rmse_weight) + (da_slope * _da_weight);
+    double score = (-loss_slope * _rmse_weight) + (da_slope * _da_weight);
 
     if (score < 0.0)
     {
@@ -164,6 +165,44 @@ public:
   }
 
 private:
+  [[nodiscard]] std::unordered_map<ErrorCalculation::type, std::vector<double>>::const_iterator find_loss_metric() const
+  {
+    MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
+    auto rmse_iterator = _metrics.find(ErrorCalculation::type::rmse);
+    if (rmse_iterator != _metrics.end())
+    {
+      return rmse_iterator;
+    }
+
+    static const std::vector<ErrorCalculation::type> candidate_loss_types = {
+      ErrorCalculation::type::huber_direction_loss,
+      ErrorCalculation::type::huber_loss,
+      ErrorCalculation::type::mse,
+      ErrorCalculation::type::mae,
+      ErrorCalculation::type::cross_entropy,
+      ErrorCalculation::type::bce_loss,
+      ErrorCalculation::type::log_cosh,
+      ErrorCalculation::type::quantile_loss,
+      ErrorCalculation::type::nrmse,
+      ErrorCalculation::type::smape,
+      ErrorCalculation::type::mape,
+      ErrorCalculation::type::wape,
+      ErrorCalculation::type::sharpe_ratio_loss,
+      ErrorCalculation::type::sortino_ratio_loss
+    };
+
+    for (const auto candidate_type : candidate_loss_types)
+    {
+      auto candidate_iterator = _metrics.find(candidate_type);
+      if (candidate_iterator != _metrics.end())
+      {
+        return candidate_iterator;
+      }
+    }
+
+    return _metrics.end();
+  }
+
   std::unordered_map<ErrorCalculation::type, std::vector<double>> _metrics;
   size_t _min_window;
   double _da_weight;
