@@ -2,7 +2,7 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
-## [0.0.71] - 2026-10-02
+## [0.0.71] - 2026-10-15
 
 ### Added
 - Added programmatic versioning mechanism:
@@ -23,6 +23,9 @@ All notable changes to the `neural-network` library will be documented in this f
 - Added `NeuralNetwork::mirror_values(values, signs)` static helper to multiply row vectors by sign masks.
 - Added `NeuralNetworkHelper::calculate_forecast_metrics_with(...)` to score dataset partitions using another network of matching topology, and exposed in Python bindings.
 
+### Changed
+- `TrainingMonitor::evaluate()` ([`include/neuralnetwork/helpers/trainingmonitor.h`](./include/neuralnetwork/helpers/trainingmonitor.h)) no longer requires RMSE: it uses RMSE when tracked, otherwise the first tracked loss metric (Huber direction, Huber, MSE, MAE, cross-entropy, BCE, log-cosh, quantile, NRMSE, SMAPE, MAPE, WAPE, Sharpe or Sortino ratio loss), so models trained on other losses still get a training status.
+
 ### Fixed
 - `LSTMLayer` copy constructor did not allocate the per-thread workspaces, (the copy assignment and the other constructors do, as do the GRU and Elman layers). The first multi-threaded forward pass of a copied LSTM layer then had up to 4 worker threads each call `allocate_workspace` through `get_workspace`, resizing the same `_thread_workspaces` vector at the same time. SWA snapshots the layers by copy and deploys that copy at the end of training, so the final metrics pass of an LSTM run with SWA could crash, (access violation in `AlignedVector::resize_and_zero` from `LSTMLayer::run_forward_pass`). Tests in [`tests/lstmlayer_tests.cpp`](./tests/lstmlayer_tests.cpp) check that construction, copy construction and copy assignment all allocate the workspaces.
 
@@ -31,6 +34,7 @@ All notable changes to the `neural-network` library will be documented in this f
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): scoring partitions with other networks, checkpoint save/load evaluation, and topology mismatch validation.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): row mirroring, sign validation, single-step and BPTT block mirroring, serialization round-trip, and end-to-end training integration tests.
 - Tests in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp): sequence start indexes from offset with clamping, serialization round-trip, default option state, sample coverage over rebuilds, and end-to-end BPTT training with random offset.
+- Tests in [`tests/trainingmonitor_tests.cpp`](./tests/trainingmonitor_tests.cpp): `StatusOnTrackWithHuberDirectionLoss` and `StatusDivergingWithHuberDirectionLoss`, training status evaluated without RMSE.
 
 ## [0.0.70] - 2026-09-29
 

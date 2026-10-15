@@ -535,7 +535,6 @@ std::vector<std::vector<std::vector<double>>> NeuralNetwork::get_attention_weigh
   if (layer_index >= _layers.size())
   {
     Logger::panic("Layer index ", layer_index, " is out of range for get_attention_weights!");
-    return {};
   }
   return _layers[layer_index].get_last_attention_weights(batch_index);
 }
@@ -547,7 +546,6 @@ std::vector<std::vector<double>> NeuralNetwork::get_mean_attention_weights(unsig
   if (layer_index >= _layers.size())
   {
     Logger::panic("Layer index ", layer_index, " is out of range for get_mean_attention_weights!");
-    return {};
   }
   return _layers[layer_index].get_last_mean_attention_weights(batch_index);
 }

@@ -113,7 +113,7 @@ public:
 
     if (loss_win_it == _metrics.end() || da_win_it == _metrics.end())
     {
-      Logger::error("Loss or DA metrics missing for training status.");
+      Logger::trace("Loss or DA metrics not tracked, training status not evaluated.");
       return TrainingStatus::OnTrack;
     }
 
