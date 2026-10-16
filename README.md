@@ -687,7 +687,7 @@ For a dedicated, in-depth guide covering the underlying mathematics, full config
   * When entropy regularisation is configured (`with_entropy_coefficient`), the entropy bonus is computed over the renormalised legal distribution and never pushes probability onto illegal actions.
   * Passing an empty mask list `{}` is identical to calling the unmasked 3-argument overload.
 * Hidden layer gradients are computed via standard backpropagation from the advantage-scaled output gradients, updating all upstream layers proportionally.
-* Sub-batches are chunked and executed according to `options.batch_size()`.
+* Sub-batches are chunked and executed according to `options.batch_size()`, reusing pre-allocated `GradientsAndOutputs`, `HiddenStates`, and masked-target buffers across batches and consecutive `train_with_advantages` calls without dynamic heap allocations.
 * Model weights and optimiser velocity/momentum states persist across consecutive updates, allowing the agent to continuously learn online or episode-by-episode.
 
 > [!NOTE]
@@ -774,7 +774,10 @@ See [python/examples/tic_tac_toe.py](python/examples/tic_tac_toe.py) for a compl
 
 ## Performance Optimization (SIMD)
 
-To achieve high throughput during training and inference, this library leverages **Advanced Vector Extensions 2 (AVX2)** intrinsics for core mathematical operations (GEMM, dot products, and optimizer updates).
+To achieve high throughput during training, reinforcement learning rollouts, and inference, this library leverages **Advanced Vector Extensions 2 (AVX2)** intrinsics and allocation-free workspace reuse:
+
+*   **SIMD Kernels:** Vectorised GEMM matrix multiplications (`gemm`, `gemm_transposed`, `gemm_transposed_accumulate`), contiguous row-major attention projections (`mul_add`, `dot_product`), Layer Normalisation forward/backward passes, activation functions, and optimiser weight updates.
+*   **Zero-Allocation Workspaces:** Thread-local inference workspaces (`think`) and persistent training workspaces (`train` and `train_with_advantages`, including masked-target buffers, stack-cached log-probabilities for entropy bonuses, and per-thread layer scratchpad buffers in `GrnLayer`, `SelfAttentionLayer`, and `AttentionPoolLayer`) avoid heap allocations on hot paths.
 
 To enable these optimizations, ensure your compiler is configured to target the AVX2 instruction set:
 

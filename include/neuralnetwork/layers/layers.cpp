@@ -9,6 +9,7 @@
 #include "multioutputlayer.h"
 #include "outputlayer.h"
 #include "../common/simd_utils.h"
+#include <array>
 #include <cmath>
 
 
@@ -16,33 +17,48 @@ namespace myoddweb::nn
 {
 namespace
 {
-std::vector<std::vector<double>> build_masked_action_targets(
+void build_masked_action_targets(
   const OutputLayer& output_layer,
   const std::vector<GradientsAndOutputs>& gradients,
   unsigned output_layer_index,
   std::vector<std::vector<double>>::const_iterator targets_begin,
   const std::vector<std::vector<double>>& action_masks,
   size_t action_masks_offset,
-  size_t batch_size)
+  size_t batch_size,
+  std::vector<std::vector<double>>& masked_targets)
 {
-  std::vector<std::vector<double>> masked_targets;
-  masked_targets.reserve(batch_size);
+  const auto& details = output_layer.output_layer_details();
+  for (const auto& detail : details)
+  {
+    if (detail.get_activation().get_method() == activation::method::softmax)
+    {
+      const auto& evaluation_config = detail.get_error_evaluation_config();
+      if (evaluation_config.label_smoothing() > 0.0 || evaluation_config.use_direction_penalty())
+      {
+        Logger::panic("Action masks are not supported with label smoothing or the direction penalty.");
+      }
+    }
+  }
+
+  if (masked_targets.size() < batch_size)
+  {
+    masked_targets.resize(batch_size);
+  }
+
   for (size_t b = 0; b < batch_size; ++b)
   {
-    auto target = *(targets_begin + b);
+    const auto& src_target = *(targets_begin + b);
+    auto& target = masked_targets[b];
+    target.assign(src_target.begin(), src_target.end());
+
     const auto& mask = action_masks[action_masks_offset + b];
     const auto probabilities = gradients[b].get_outputs(output_layer_index);
     unsigned neuron_offset = 0;
-    for (const auto& detail : output_layer.output_layer_details())
+    for (const auto& detail : details)
     {
       const auto detail_size = detail.get_size();
       if (detail.get_activation().get_method() == activation::method::softmax)
       {
-        const auto& evaluation_config = detail.get_error_evaluation_config();
-        if (evaluation_config.label_smoothing() > 0.0 || evaluation_config.use_direction_penalty())
-        {
-          Logger::panic("Action masks are not supported with label smoothing or the direction penalty.");
-        }
         if (probabilities.size() < neuron_offset + detail_size || target.size() < neuron_offset + detail_size || mask.size() < neuron_offset + detail_size)
         {
           Logger::panic("Action masking found fewer outputs, targets or mask values than the softmax head expects.");
@@ -61,11 +77,12 @@ std::vector<std::vector<double>> build_masked_action_targets(
           Logger::panic("Action masking needs at least one legal action with a non-zero probability in every softmax head (sample ", b, ").");
         }
 
+        const double inv_legal_probability = 1.0 / legal_probability;
         for (unsigned k = neuron_offset; k < neuron_offset + detail_size; ++k)
         {
           if (mask[k] == 1.0)
           {
-            target[k] = (target[k] - (probabilities[k] / legal_probability)) + probabilities[k];
+            target[k] = (target[k] - (probabilities[k] * inv_legal_probability)) + probabilities[k];
           }
           else
           {
@@ -75,9 +92,7 @@ std::vector<std::vector<double>> build_masked_action_targets(
       }
       neuron_offset += detail_size;
     }
-    masked_targets.push_back(std::move(target));
   }
-  return masked_targets;
 }
 
 void add_masked_entropy_bonus_to_gradients(double* raw, const double* probabilities, const double* mask, size_t count, double entropy_coefficient) noexcept
@@ -100,22 +115,51 @@ void add_masked_entropy_bonus_to_gradients(double* raw, const double* probabilit
     return;
   }
 
-  double entropy = 0.0;
-  for (size_t k = 0; k < count; ++k)
+  const double inv_legal_probability = 1.0 / legal_probability;
+  if (count <= 64)
   {
-    if (mask[k] == 1.0 && probabilities[k] > 0.0 && std::isfinite(probabilities[k]))
+    std::array<double, 64> q_vals{};
+    std::array<double, 64> log_q_vals{};
+    double entropy = 0.0;
+    for (size_t k = 0; k < count; ++k)
     {
-      const double q = probabilities[k] / legal_probability;
-      entropy -= q * std::log(q);
+      if (mask[k] == 1.0 && probabilities[k] > 0.0 && std::isfinite(probabilities[k]))
+      {
+        const double q = probabilities[k] * inv_legal_probability;
+        const double log_q = std::log(q);
+        q_vals[k] = q;
+        log_q_vals[k] = log_q;
+        entropy -= q * log_q;
+      }
+    }
+
+    for (size_t k = 0; k < count; ++k)
+    {
+      if (q_vals[k] > 0.0)
+      {
+        raw[k] += entropy_coefficient * q_vals[k] * (log_q_vals[k] + entropy);
+      }
     }
   }
-
-  for (size_t k = 0; k < count; ++k)
+  else
   {
-    if (mask[k] == 1.0 && probabilities[k] > 0.0 && std::isfinite(probabilities[k]))
+    double entropy = 0.0;
+    for (size_t k = 0; k < count; ++k)
     {
-      const double q = probabilities[k] / legal_probability;
-      raw[k] += entropy_coefficient * q * (std::log(q) + entropy);
+      if (mask[k] == 1.0 && probabilities[k] > 0.0 && std::isfinite(probabilities[k]))
+      {
+        const double q = probabilities[k] * inv_legal_probability;
+        entropy -= q * std::log(q);
+      }
+    }
+
+    for (size_t k = 0; k < count; ++k)
+    {
+      if (mask[k] == 1.0 && probabilities[k] > 0.0 && std::isfinite(probabilities[k]))
+      {
+        const double q = probabilities[k] * inv_legal_probability;
+        raw[k] += entropy_coefficient * q * (std::log(q) + entropy);
+      }
     }
   }
 }
@@ -129,22 +173,50 @@ void add_entropy_bonus_to_gradients(double* raw, const double* probabilities, si
     return;
   }
 
-  double entropy = 0.0;
-  for (size_t k = 0; k < count; ++k)
+  if (count <= 64)
   {
-    const double p = probabilities[k];
-    if (p > 0.0 && std::isfinite(p))
+    std::array<double, 64> p_vals{};
+    std::array<double, 64> log_p_vals{};
+    double entropy = 0.0;
+    for (size_t k = 0; k < count; ++k)
     {
-      entropy -= p * std::log(p);
+      const double p = probabilities[k];
+      if (p > 0.0 && std::isfinite(p))
+      {
+        const double log_p = std::log(p);
+        p_vals[k] = p;
+        log_p_vals[k] = log_p;
+        entropy -= p * log_p;
+      }
+    }
+
+    for (size_t k = 0; k < count; ++k)
+    {
+      if (p_vals[k] > 0.0)
+      {
+        raw[k] += entropy_coefficient * p_vals[k] * (log_p_vals[k] + entropy);
+      }
     }
   }
-
-  for (size_t k = 0; k < count; ++k)
+  else
   {
-    const double p = probabilities[k];
-    if (p > 0.0 && std::isfinite(p))
+    double entropy = 0.0;
+    for (size_t k = 0; k < count; ++k)
     {
-      raw[k] += entropy_coefficient * p * (std::log(p) + entropy);
+      const double p = probabilities[k];
+      if (p > 0.0 && std::isfinite(p))
+      {
+        entropy -= p * std::log(p);
+      }
+    }
+
+    for (size_t k = 0; k < count; ++k)
+    {
+      const double p = probabilities[k];
+      if (p > 0.0 && std::isfinite(p))
+      {
+        raw[k] += entropy_coefficient * p * (std::log(p) + entropy);
+      }
     }
   }
 }
@@ -340,7 +412,8 @@ Layers::Layers(
 Layers::Layers(Layers&& src) noexcept :
   _layers(std::move(src._layers)),
   _training_gradients_buffer(std::move(src._training_gradients_buffer)),
-  _training_hidden_states_buffer(std::move(src._training_hidden_states_buffer))
+  _training_hidden_states_buffer(std::move(src._training_hidden_states_buffer)),
+  _training_masked_targets_buffer(std::move(src._training_masked_targets_buffer))
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
 }
@@ -363,6 +436,7 @@ Layers& Layers::operator=(const Layers& src) noexcept
 
     _training_gradients_buffer = src._training_gradients_buffer;
     _training_hidden_states_buffer = src._training_hidden_states_buffer;
+    _training_masked_targets_buffer = src._training_masked_targets_buffer;
   }
   return *this;
 }
@@ -380,6 +454,7 @@ Layers& Layers::operator=(Layers&& src) noexcept
 
     _training_gradients_buffer = std::move(src._training_gradients_buffer);
     _training_hidden_states_buffer = std::move(src._training_hidden_states_buffer);
+    _training_masked_targets_buffer = std::move(src._training_masked_targets_buffer);
   }
   return *this;
 }
@@ -762,19 +837,31 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
   }
 
   const unsigned output_layer_index = ol.get_layer_index();
+  const auto entropy_coefficient = options.entropy_coefficient();
+  const OutputLayer* output_layer_with_details = nullptr;
+  if (action_masks != nullptr || entropy_coefficient > 0.0)
+  {
+    output_layer_with_details = dynamic_cast<const OutputLayer*>(&ol);
+  }
 
-  std::vector<std::vector<double>> masked_targets;
   auto targets_begin = outputs_begin;
   if (action_masks != nullptr)
   {
-    const auto* masked_output_layer = dynamic_cast<const OutputLayer*>(&ol);
-    if (masked_output_layer == nullptr)
+    if (output_layer_with_details == nullptr)
     {
       Logger::panic("Advantage training with action masks requires an OutputLayer.");
       return;
     }
-    masked_targets = build_masked_action_targets(*masked_output_layer, gradients, output_layer_index, outputs_begin, *action_masks, action_masks_offset, batch_size);
-    targets_begin = masked_targets.cbegin();
+    build_masked_action_targets(
+      *output_layer_with_details,
+      gradients,
+      output_layer_index,
+      outputs_begin,
+      *action_masks,
+      action_masks_offset,
+      batch_size,
+      _training_masked_targets_buffer);
+    targets_begin = _training_masked_targets_buffer.cbegin();
   }
 
   ol.calculate_output_gradients(gradients, targets_begin, hidden_states, batch_size);
@@ -816,16 +903,15 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
   }
 
   // Apply entropy regularisation bonus to softmax heads during advantage training.
-  const auto entropy_coefficient = options.entropy_coefficient();
   if (entropy_coefficient > 0.0)
   {
-    const auto* output_layer_with_details = dynamic_cast<const OutputLayer*>(&ol);
     if (output_layer_with_details == nullptr)
     {
       Logger::panic("Advantage training with entropy regularisation requires an OutputLayer.");
       return;
     }
 
+    const auto time_steps = (has_rnn && count > 0) ? (rnn_count / count) : 0;
     unsigned neuron_offset = 0;
     for (const auto& detail : output_layer_with_details->output_layer_details())
     {
@@ -841,7 +927,8 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
         auto* raw = gradients[b].get_gradients_raw(output_layer_index);
         const auto outputs = gradients[b].get_outputs(output_layer_index);
         const double* mask = (action_masks != nullptr) ? ((*action_masks)[action_masks_offset + b].data() + neuron_offset) : nullptr;
-        if (raw != nullptr && outputs.size() >= neuron_offset + detail_size)
+        const bool updated_raw = (raw != nullptr && outputs.size() >= neuron_offset + detail_size);
+        if (updated_raw)
         {
           if (mask != nullptr)
           {
@@ -856,38 +943,44 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
         if (has_rnn)
         {
           auto* rnn_raw = gradients[b].get_rnn_gradients_raw(output_layer_index, rnn_count);
-          const auto& rnn_outputs = gradients[b].get_rnn_outputs(output_layer_index);
-          const auto time_steps = (count > 0) ? (rnn_count / count) : 0;
-          for (size_t t = 0; t < time_steps; ++t)
+          if (time_steps == 1 && updated_raw && rnn_raw != nullptr && (neuron_offset + detail_size <= rnn_count))
           {
-            const double* prob_data = nullptr;
-            if (rnn_outputs.size() >= (t * count + neuron_offset + detail_size))
+            std::memcpy(rnn_raw + neuron_offset, raw + neuron_offset, detail_size * sizeof(double));
+          }
+          else
+          {
+            const auto& rnn_outputs = gradients[b].get_rnn_outputs(output_layer_index);
+            for (size_t t = 0; t < time_steps; ++t)
             {
-              prob_data = rnn_outputs.data() + t * count + neuron_offset;
-            }
-            else if (time_steps == 1 && outputs.size() >= neuron_offset + detail_size)
-            {
-              prob_data = outputs.data() + neuron_offset;
-            }
-
-            if (rnn_raw != nullptr && prob_data != nullptr && (t * count + neuron_offset + detail_size <= rnn_count))
-            {
-              if (mask != nullptr)
+              const double* prob_data = nullptr;
+              if (rnn_outputs.size() >= (t * count + neuron_offset + detail_size))
               {
-                add_masked_entropy_bonus_to_gradients(
-                  rnn_raw + t * count + neuron_offset,
-                  prob_data,
-                  mask,
-                  detail_size,
-                  entropy_coefficient);
+                prob_data = rnn_outputs.data() + t * count + neuron_offset;
               }
-              else
+              else if (time_steps == 1 && outputs.size() >= neuron_offset + detail_size)
               {
-                add_entropy_bonus_to_gradients(
-                  rnn_raw + t * count + neuron_offset,
-                  prob_data,
-                  detail_size,
-                  entropy_coefficient);
+                prob_data = outputs.data() + neuron_offset;
+              }
+
+              if (rnn_raw != nullptr && prob_data != nullptr && (t * count + neuron_offset + detail_size <= rnn_count))
+              {
+                if (mask != nullptr)
+                {
+                  add_masked_entropy_bonus_to_gradients(
+                    rnn_raw + t * count + neuron_offset,
+                    prob_data,
+                    mask,
+                    detail_size,
+                    entropy_coefficient);
+                }
+                else
+                {
+                  add_entropy_bonus_to_gradients(
+                    rnn_raw + t * count + neuron_offset,
+                    prob_data,
+                    detail_size,
+                    entropy_coefficient);
+                }
               }
             }
           }

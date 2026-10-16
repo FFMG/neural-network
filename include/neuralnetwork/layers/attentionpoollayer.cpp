@@ -346,6 +346,7 @@ void AttentionPoolLayer::calculate_forward_feed(
   std::vector<double> output(N);
   std::vector<double> mask(N);
   std::vector<double> scores;
+  std::vector<double> e_buf(d_a);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -356,20 +357,30 @@ void AttentionPoolLayer::calculate_forward_feed(
 
     if (T > 0)
     {
-      scores.assign(T, 0.0);
+      scores.resize(T);
       for (size_t t = 0; t < T; ++t)
       {
         const double* h_t = seq.data() + t * N;
+        if (use_bias && _ba_values.size() >= d_a)
+        {
+          std::memcpy(e_buf.data(), _ba_values.data(), d_a * sizeof(double));
+        }
+        else
+        {
+          std::memset(e_buf.data(), 0, d_a * sizeof(double));
+          if (use_bias && !_ba_values.empty())
+          {
+            std::memcpy(e_buf.data(), _ba_values.data(), _ba_values.size() * sizeof(double));
+          }
+        }
+        for (size_t i = 0; i < N; ++i)
+        {
+          simd::mul_add(h_t[i], _wa_values.data() + i * d_a, e_buf.data(), d_a);
+        }
         double score = 0.0;
         for (size_t j = 0; j < d_a; ++j)
         {
-          double e = (use_bias && j < _ba_values.size()) ? _ba_values[j] : 0.0;
-          const double* wa_row = _wa_values.data() + j;
-          for (size_t i = 0; i < N; ++i)
-          {
-            e += h_t[i] * wa_row[i * d_a];
-          }
-          const double u = std::tanh(e);
+          const double u = std::tanh(e_buf[j]);
           score += _v_values[j] * u;
         }
         scores[t] = score;
@@ -379,10 +390,7 @@ void AttentionPoolLayer::calculate_forward_feed(
       {
         const double* h_t = seq.data() + t * N;
         const double a_t = scores[t];
-        for (size_t i = 0; i < N; ++i)
-        {
-          context[i] += a_t * h_t[i];
-        }
+        simd::mul_add(a_t, h_t, context.data(), N);
       }
     }
 
@@ -439,7 +447,8 @@ void AttentionPoolLayer::attention_backward_one(
   double* out_dh,
   double* wa_grad_accum,
   double* ba_grad_accum,
-  double* v_grad_accum) const
+  double* v_grad_accum,
+  backward_scratch& scratch) const
 {
   MYODDWEB_PROFILE_FUNCTION("AttentionPoolLayer");
   const size_t N = get_number_neurons();
@@ -450,76 +459,90 @@ void AttentionPoolLayer::attention_backward_one(
   }
   const bool use_bias = has_bias();
 
-  std::vector<double> scores(T);
-  std::vector<double> u_flat(T * d_a);
+  scratch.alpha.resize(T);
+  scratch.u_flat.resize(T * d_a);
+  scratch.dalpha.resize(T);
+  scratch.dscore.resize(T);
+  scratch.de.resize(d_a);
 
   for (size_t t = 0; t < T; ++t)
   {
     const double* h_t = h_seq + t * N;
+    double* u_t = scratch.u_flat.data() + t * d_a;
+    if (use_bias && _ba_values.size() >= d_a)
+    {
+      std::memcpy(u_t, _ba_values.data(), d_a * sizeof(double));
+    }
+    else
+    {
+      std::memset(u_t, 0, d_a * sizeof(double));
+      if (use_bias && !_ba_values.empty())
+      {
+        std::memcpy(u_t, _ba_values.data(), _ba_values.size() * sizeof(double));
+      }
+    }
+    for (size_t i = 0; i < N; ++i)
+    {
+      simd::mul_add(h_t[i], _wa_values.data() + i * d_a, u_t, d_a);
+    }
     double score = 0.0;
     for (size_t j = 0; j < d_a; ++j)
     {
-      double e = (use_bias && j < _ba_values.size()) ? _ba_values[j] : 0.0;
-      for (size_t i = 0; i < N; ++i)
-      {
-        e += h_t[i] * _wa_values[i * d_a + j];
-      }
-      const double u = std::tanh(e);
-      u_flat[t * d_a + j] = u;
+      const double u = std::tanh(u_t[j]);
+      u_t[j] = u;
       score += _v_values[j] * u;
     }
-    scores[t] = score;
+    scratch.alpha[t] = score;
   }
 
-  std::vector<double> alpha(scores);
-  simd::softmax_forward(alpha.data(), T);
-
-  std::vector<double> dalpha(T);
-  for (size_t t = 0; t < T; ++t)
-  {
-    const double* h_t = h_seq + t * N;
-    double dot = 0.0;
-    for (size_t i = 0; i < N; ++i)
-    {
-      dot += delta[i] * h_t[i];
-    }
-    dalpha[t] = dot;
-  }
-
-  std::vector<double> dscore(T);
-  simd::softmax_backward(alpha.data(), dalpha.data(), dscore.data(), T);
+  simd::softmax_forward(scratch.alpha.data(), T);
 
   for (size_t t = 0; t < T; ++t)
   {
     const double* h_t = h_seq + t * N;
-    double* dh_t = out_dh + t * N;
-    const double a_t = alpha[t];
+    scratch.dalpha[t] = simd::dot_product(delta, h_t, N);
+  }
 
-    for (size_t i = 0; i < N; ++i)
-    {
-      dh_t[i] = a_t * delta[i];
-    }
+  simd::softmax_backward(scratch.alpha.data(), scratch.dalpha.data(), scratch.dscore.data(), T);
+
+  for (size_t t = 0; t < T; ++t)
+  {
+    const double* h_t = h_seq + t * N;
+    const double* u_t = scratch.u_flat.data() + t * d_a;
+    const double dscore_t = scratch.dscore[t];
 
     for (size_t j = 0; j < d_a; ++j)
     {
-      const double u = u_flat[t * d_a + j];
-      const double de = dscore[t] * _v_values[j] * (1.0 - u * u);
+      const double u = u_t[j];
+      const double de = dscore_t * _v_values[j] * (1.0 - u * u);
+      scratch.de[j] = de;
 
       if (v_grad_accum != nullptr)
       {
-        v_grad_accum[j] += dscore[t] * u;
+        v_grad_accum[j] += dscore_t * u;
       }
       if (ba_grad_accum != nullptr)
       {
         ba_grad_accum[j] += de;
       }
+    }
+
+    if (wa_grad_accum != nullptr)
+    {
       for (size_t i = 0; i < N; ++i)
       {
-        if (wa_grad_accum != nullptr)
-        {
-          wa_grad_accum[i * d_a + j] += h_t[i] * de;
-        }
-        dh_t[i] += _wa_values[i * d_a + j] * de;
+        simd::mul_add(h_t[i], scratch.de.data(), wa_grad_accum + i * d_a, d_a);
+      }
+    }
+
+    if (out_dh != nullptr)
+    {
+      double* dh_t = out_dh + t * N;
+      const double a_t = scratch.alpha[t];
+      simd::mul_scalar(delta, a_t, dh_t, N);
+      for (size_t i = 0; i < N; ++i)
+      {
+        dh_t[i] += simd::dot_product(_wa_values.data() + i * d_a, scratch.de.data(), d_a);
       }
     }
   }
@@ -538,7 +561,7 @@ void AttentionPoolLayer::finish_hidden_gradients(
 
   std::vector<double> delta(N);
   std::vector<double> deriv(N);
-  std::vector<double> dh_scratch;
+  backward_scratch scratch;
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -560,10 +583,7 @@ void AttentionPoolLayer::finish_hidden_gradients(
         deriv.data() + r.start
       );
     }
-    for (size_t i = 0; i < N; ++i)
-    {
-      delta[i] = raw[i] * deriv[i] * mask_vals[i];
-    }
+    simd::mul_three_vectors(raw, deriv.data(), mask_vals, delta.data(), N);
 
     batch_gradients_and_outputs[b].set_gradients(this_layer_index, delta.data(), N);
 
@@ -571,9 +591,8 @@ void AttentionPoolLayer::finish_hidden_gradients(
     const size_t T = (N > 0 && !seq.empty()) ? seq.size() / N : 0;
     if (T > 0)
     {
-      dh_scratch.assign(T * N, 0.0);
-      attention_backward_one(seq.data(), T, delta.data(), dh_scratch.data(), nullptr, nullptr, nullptr);
-      batch_gradients_and_outputs[b].set_rnn_gradients(this_layer_index, dh_scratch.data(), T * N);
+      double* out_dh = batch_gradients_and_outputs[b].get_rnn_gradients_raw(this_layer_index, T * N);
+      attention_backward_one(seq.data(), T, delta.data(), out_dh, nullptr, nullptr, nullptr, scratch);
     }
   }
 }
@@ -612,16 +631,24 @@ void AttentionPoolLayer::calculate_hidden_gradients(
       src = std::span<const double>(batch_next_grad_matrix[b].data(), batch_next_grad_matrix[b].size());
     }
 
-    std::fill(next_grad.begin(), next_grad.end(), 0.0);
-    if (!src.empty())
+    const double* next_grad_ptr = nullptr;
+    if (src.size() >= N_next)
     {
-      const size_t copy_size = std::min(src.size(), N_next);
-      std::copy(src.data(), src.data() + copy_size, next_grad.begin());
+      next_grad_ptr = src.data();
+    }
+    else
+    {
+      std::fill(next_grad.begin(), next_grad.end(), 0.0);
+      if (!src.empty())
+      {
+        std::copy(src.data(), src.data() + src.size(), next_grad.begin());
+      }
+      next_grad_ptr = next_grad.data();
     }
 
     // Chain-rule through next_layer's dense weight matrix: raw_delta[i] = sum_j next_grad[j] * W_next[i,j]
     double* raw = raw_delta_all.data() + b * N;
-    simd::gemm_transposed_one_batch(next_grad.data(), next_layer.get_w_values().data(), raw, N, N_next);
+    simd::gemm_transposed_one_batch(next_grad_ptr, next_layer.get_w_values().data(), raw, N, N_next);
   }
 
   finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
@@ -689,7 +716,7 @@ void AttentionPoolLayer::calculate_and_store_gradients(
   const unsigned this_layer_index = get_layer_index();
   const size_t N = get_number_neurons();
 
-  std::vector<double> dh_scratch;
+  backward_scratch scratch;
   size_t contributing = 0;
 
   for (size_t b = 0; b < batch_size; ++b)
@@ -702,8 +729,7 @@ void AttentionPoolLayer::calculate_and_store_gradients(
       continue;
     }
 
-    dh_scratch.assign(T * N, 0.0);
-    attention_backward_one(seq.data(), T, delta.data(), dh_scratch.data(), _wa_grads.data(), _ba_grads.data(), _v_grads.data());
+    attention_backward_one(seq.data(), T, delta.data(), nullptr, _wa_grads.data(), _ba_grads.data(), _v_grads.data(), scratch);
     ++contributing;
   }
 

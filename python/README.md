@@ -147,8 +147,8 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `version()`: Static method returning the library version string (e.g. `"0.0.71"`).
     *   `loaded_version`: Read-only property returning the serialised library version if the model was loaded from a file via `NeuralNetworkSerializer`, or `""` if created in memory.
     *   `train(inputs, outputs)`: Runs supervised training on the provided datasets.
-    *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs. When `with_entropy_coefficient(beta)` is configured (> 0.0) with a Softmax output layer, an entropy bonus $\beta \cdot p_k (\ln p_k + H)$ is added to prevent premature policy collapse and encourage exploration.
-    *   `train_with_advantages(training_inputs, training_action_targets, training_advantages, training_action_masks)`: Overload with invalid-action masking. Accepts a binary mask list (1.0 = legal, 0.0 = illegal) per sample. Softmax probabilities and the policy entropy bonus are renormalised over legal actions only ($q_k = p_k / \sum_{j \in \text{legal}} p_j$), and illegal actions receive zero gradient ($t'_k = p_k$), ensuring negative advantage updates shift probability exclusively across other legal choices.
+    *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs. When `with_entropy_coefficient(beta)` is configured (> 0.0) with a Softmax output layer, an entropy bonus $\beta \cdot p_k (\ln p_k + H)$ is added to prevent premature policy collapse and encourage exploration. Reuses pre-allocated training workspaces and stack-cached log-probabilities across batches and consecutive updates.
+    *   `train_with_advantages(training_inputs, training_action_targets, training_advantages, training_action_masks)`: Overload with invalid-action masking. Accepts a binary mask list (1.0 = legal, 0.0 = illegal) per sample. Softmax probabilities and the policy entropy bonus are renormalised over legal actions only ($q_k = p_k / \sum_{j \in \text{legal}} p_j$), and illegal actions receive zero gradient ($t'_k = p_k$), ensuring negative advantage updates shift probability exclusively across other legal choices. Reuses internal masked-target buffers across batches without dynamic heap allocations.
     *   `think(inputs)`: Performs prediction/inference. Accepts single or multiple input rows.
     *   `mirror_values(values, signs)`: Static helper method. Multiplies row vectors by element-wise sign masks (+1 / -1).
     *   `bptt_start_indexes(total_samples, bptt_size, offset)`: Static helper method. Computes valid sequence block start indices with boundary clamping.
@@ -170,6 +170,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * `use_layer_normalisation` must be `False`.
 * `attention_hidden_size` must be non-zero (sets the internal scoring-projection width).
 * Requires `with_enable_bptt(True)`.
+* Accelerated via contiguous row-major AVX2 SIMD scoring projections and zero-allocation per-thread backward scratchpads.
 
 ### TCN
 
@@ -210,7 +211,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 * `feed_forward_hidden_size`: Dimension of the intermediate non-linear projection ($W_1$).
 * `use_layer_normalisation`: Controls final Layer Normalisation over the residual sum (defaults to `True`).
 * Residual connection: If input dimension equals output dimension ($d_{in} == d_{out}$), an exact zero-parameter identity shortcut is used; if $d_{in} \neq d_{out}$, a trainable linear projection skip ($W_{\text{skip}} a + b_{\text{skip}}$) matches dimensions.
-* Fully differentiable with exact analytical backward pass for all parameters.
+* Fully differentiable with AVX2 SIMD-accelerated forward/backward passes, transposed GEMM hidden gradient propagation, and zero-allocation per-thread workspaces.
 
 ### Attention Interpretability
 

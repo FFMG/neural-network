@@ -1461,3 +1461,234 @@ TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskAllIllegalThrows)
   EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, masks), std::runtime_error);
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, ActionMaskMultiBatchRemainderAndRepeatedCallsReuseBufferCleanly)
+{
+  // Batch size 2 with 5 samples (batches of 2, 2, 1) followed by a second call of 1 sample.
+  // Verifies that _training_masked_targets_buffer reuses capacity without stale data leakage
+  // and produces identical results to training each mini-batch in its own call.
+  auto options_single_call = build_three_action_policy_options(0.15);
+  options_single_call = NeuralNetworkOptions(options_single_call)
+    .with_batch_size(2)
+    .with_entropy_coefficient(0.15);
+
+  NeuralNetwork nn_batched(options_single_call);
+  NeuralNetwork nn_stepwise(options_single_call);
+
+  std::vector<std::vector<double>> inputs =
+  {
+    { 0.2, -0.1, 0.4 },
+    { -0.3, 0.5, 0.1 },
+    { 0.1, 0.2, -0.4 },
+    { -0.5, -0.2, 0.3 },
+    { 0.4, -0.3, 0.2 }
+  };
+  std::vector<std::vector<double>> action_targets =
+  {
+    { 1.0, 0.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 0.0, 1.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 0.0, 1.0, 0.0 }
+  };
+  std::vector<double> advantages = { 1.2, -0.8, 0.5, -1.1, 0.9 };
+  std::vector<std::vector<double>> masks =
+  {
+    { 1.0, 1.0, 0.0 },
+    { 1.0, 0.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 1.0, 1.0, 0.0 }
+  };
+
+  nn_batched.train_with_advantages(inputs, action_targets, advantages, masks);
+
+  // Feed the same 5 samples in chunks of 2, 2, 1 to nn_stepwise
+  nn_stepwise.train_with_advantages(
+    { inputs[0], inputs[1] },
+    { action_targets[0], action_targets[1] },
+    { advantages[0], advantages[1] },
+    { masks[0], masks[1] });
+  nn_stepwise.train_with_advantages(
+    { inputs[2], inputs[3] },
+    { action_targets[2], action_targets[3] },
+    { advantages[2], advantages[3] },
+    { masks[2], masks[3] });
+  nn_stepwise.train_with_advantages(
+    { inputs[4] },
+    { action_targets[4] },
+    { advantages[4] },
+    { masks[4] });
+
+  expect_same_weights(collect_output_layer_weights(nn_stepwise), collect_output_layer_weights(nn_batched), 1e-12);
+  expect_same_weights(collect_layer_weights(nn_stepwise, 1), collect_layer_weights(nn_batched, 1), 1e-12);
+
+  // Follow up with another single-sample call on both networks to ensure shrunk buffer re-expands/reuses cleanly
+  nn_batched.train_with_advantages({ inputs[0] }, { action_targets[0] }, { advantages[0] }, { masks[0] });
+  nn_stepwise.train_with_advantages({ inputs[0] }, { action_targets[0] }, { advantages[0] }, { masks[0] });
+
+  expect_same_weights(collect_output_layer_weights(nn_stepwise), collect_output_layer_weights(nn_batched), 1e-12);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, LargeActionSpaceExceedingStackCacheMatchesUnmaskedAndMaskedExpectations)
+{
+  // 72 actions (> 64 stack cache threshold in add_entropy_bonus_to_gradients and add_masked_entropy_bonus_to_gradients)
+  const unsigned num_actions = 72;
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 8, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    num_actions,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::SGD,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 4, 8, num_actions })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.2)
+    .with_batch_size(2)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(99u)
+    .with_clip_threshold(1000.0)
+    .build()
+    .with_entropy_coefficient(0.25);
+
+  NeuralNetwork nn_unmasked(options);
+  NeuralNetwork nn_all_legal(options);
+
+  std::vector<double> target_row(num_actions, 0.0);
+  target_row[5] = 1.0;
+  std::vector<double> all_legal_row(num_actions, 1.0);
+
+  std::vector<std::vector<double>> inputs = { { 0.3, -0.2, 0.5, 0.1 } };
+  std::vector<std::vector<double>> targets = { target_row };
+  std::vector<double> advantages = { 1.0 };
+  std::vector<std::vector<double>> all_legal_masks = { all_legal_row };
+
+  nn_unmasked.train_with_advantages(inputs, targets, advantages);
+  nn_all_legal.train_with_advantages(inputs, targets, advantages, all_legal_masks);
+
+  expect_same_weights(collect_output_layer_weights(nn_unmasked), collect_output_layer_weights(nn_all_legal), 1e-12);
+
+  // Also verify masked illegal action weight invariance for >64 actions
+  NeuralNetwork nn_masked(options);
+  std::vector<double> partial_mask(num_actions, 1.0);
+  partial_mask[70] = 0.0;
+  const auto illegal_before = collect_output_neuron_weights(nn_masked, 70);
+  nn_masked.train_with_advantages(inputs, targets, advantages, { partial_mask });
+  expect_same_weights(illegal_before, collect_output_neuron_weights(nn_masked, 70), 1e-12);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, CompoundOutputLayerMixedSoftmaxAndTanhHeadsValidationAndTraining)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::SGD, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  std::vector<OutputLayerDetails> compound_outputs =
+  {
+    OutputLayerDetails(2, activation(activation::method::softmax, 0.0, 1.0), ErrorCalculation::type::cross_entropy, eval_config, 0.0, OptimiserType::SGD, 0.9),
+    OutputLayerDetails(1, activation(activation::method::tanh, 0.0), ErrorCalculation::type::mse, eval_config, 0.0, OptimiserType::SGD, 0.9)
+  };
+
+  auto options = NeuralNetworkOptions::create({ 3, 4, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(compound_outputs)
+    .with_learning_rate(0.1)
+    .with_batch_size(2)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(42u)
+    .build()
+    .with_entropy_coefficient(0.1);
+
+  NeuralNetwork nn(options);
+
+  std::vector<std::vector<double>> inputs = { { 0.2, -0.1, 0.4 }, { -0.3, 0.5, 0.1 } };
+  std::vector<std::vector<double>> valid_targets = { { 1.0, 0.0, 0.5 }, { 0.0, 1.0, -0.5 } };
+  std::vector<double> advantages = { 1.0, 0.8 };
+
+  const auto before_0 = nn.think(inputs[0]);
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, valid_targets, advantages));
+  const auto after_0 = nn.think(inputs[0]);
+  EXPECT_GT(after_0[0], before_0[0]);
+
+  // Out-of-range tanh target in the second head must be caught by the pre-computed activation validation
+  std::vector<std::vector<double>> invalid_tanh_targets = { { 1.0, 0.0, 1.5 }, { 0.0, 1.0, -0.5 } };
+  EXPECT_THROW(nn.train_with_advantages(inputs, invalid_tanh_targets, advantages), std::runtime_error);
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, GrnAndSelfAttentionPoolPolicyTrunkAdvantageTraining)
+{
+  const unsigned input_size = 4;
+  const unsigned hidden_size = 4;
+  const unsigned num_actions = 3;
+
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails::create_grn(hidden_size, 6, activation(activation::method::elu, 1.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, true),
+    LayerDetails(Layer::Architecture::SelfAttention, hidden_size, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, true, 0, 0, 0, 2, 6, 0, 0),
+    LayerDetails(Layer::Architecture::Gru, hidden_size, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, hidden_size, activation(activation::method::linear, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 3, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    num_actions,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ input_size, hidden_size, hidden_size, hidden_size, hidden_size, num_actions })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.05)
+    .with_batch_size(2)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_seed(42u)
+    .build()
+    .with_entropy_coefficient(0.05);
+
+  NeuralNetwork nn(options);
+
+  std::vector<double> state_a = { 0.2, -0.4, 0.5, 0.1 };
+  std::vector<double> state_b = { -0.3, 0.3, -0.2, 0.4 };
+
+  std::vector<std::vector<double>> inputs = { state_a, state_b };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 } };
+  std::vector<double> advantages = { 1.5, 1.2 };
+  std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 }, { 1.0, 1.0, 1.0 } };
+
+  const auto before_a = nn.think(state_a);
+  ASSERT_EQ(before_a.size(), num_actions);
+
+  // Action masks with BPTT must throw, whereas unmasked advantage training succeeds
+  EXPECT_THROW(nn.train_with_advantages(inputs, action_targets, advantages, masks), std::runtime_error);
+  EXPECT_NO_THROW(nn.train_with_advantages(inputs, action_targets, advantages));
+
+  const auto after_a = nn.think(state_a);
+  ASSERT_EQ(after_a.size(), num_actions);
+  for (unsigned a = 0; a < num_actions; ++a)
+  {
+    EXPECT_TRUE(std::isfinite(after_a[a]));
+  }
+  EXPECT_GT(after_a[0], before_a[0]);
+}

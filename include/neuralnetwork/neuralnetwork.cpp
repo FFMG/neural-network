@@ -4,6 +4,7 @@
 #include "common/denormal_disabler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iomanip>
 #include <numeric>
@@ -772,7 +773,19 @@ void NeuralNetwork::train_with_advantages(
   const auto input_size = _options.topology().front();
   const auto output_size = _options.topology().back();
   const auto is_bptt = _options.enable_bptt() && _options.bptt_max_ticks() > 1;
-  const bool is_softmax = (_layers.output_layer().get_activation(0).get_method() == activation::method::softmax);
+  std::array<activation::method, 64> neuron_activations_stack{};
+  std::vector<activation::method> neuron_activations_heap;
+  activation::method* neuron_activations = neuron_activations_stack.data();
+  if (output_size > neuron_activations_stack.size())
+  {
+    neuron_activations_heap.resize(output_size);
+    neuron_activations = neuron_activations_heap.data();
+  }
+  for (unsigned j = 0; j < output_size; ++j)
+  {
+    neuron_activations[j] = _layers.output_layer().get_activation(j).get_method();
+  }
+  const bool is_softmax = (output_size > 0 && neuron_activations[0] == activation::method::softmax);
 
   for (size_t i = 0; i < training_inputs.size(); ++i)
   {
@@ -805,8 +818,8 @@ void NeuralNetwork::train_with_advantages(
       {
         Logger::panic("Training action target value at sample ", i, ", index ", j, " is not finite (NaN or Inf).");
       }
-      const auto neuron_idx = static_cast<unsigned>(j % output_size);
-      const auto neuron_act = _layers.output_layer().get_activation(neuron_idx).get_method();
+      const auto neuron_idx = (current_out_size == output_size) ? static_cast<unsigned>(j) : static_cast<unsigned>(j % output_size);
+      const auto neuron_act = neuron_activations[neuron_idx];
       if (neuron_act == activation::method::softmax && target_val < 0.0)
       {
         Logger::panic("Training action target at sample ", i, ", index ", j, " is negative (", target_val, "), which is invalid for Softmax policies.");
@@ -857,7 +870,7 @@ void NeuralNetwork::train_with_advantages(
         {
           continue;
         }
-        if (_layers.output_layer().get_activation(static_cast<unsigned>(j)).get_method() != activation::method::softmax)
+        if (neuron_activations[j] != activation::method::softmax)
         {
           Logger::panic("Action mask at sample ", i, ", index ", j, " masks a non-softmax output neuron, which is not supported.");
         }

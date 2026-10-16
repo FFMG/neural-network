@@ -1128,14 +1128,16 @@ void SelfAttentionLayer::self_attention_backward_one(
     const double* dk_row = scratch.d_K.data() + t * d;
     const double* dv_row = scratch.d_V.data() + t * d;
     const double* xp_row = scratch.xp.data() + t * d;
-    double* out_dx_row = out_dx + t * d;
-
-    for (size_t i = 0; i < d; ++i)
+    if (out_dx != nullptr)
     {
-      const double sum_q = simd::dot_product(dq_row, _wq.values.data() + i * d, d);
-      const double sum_k = simd::dot_product(dk_row, _wk.values.data() + i * d, d);
-      const double sum_v = simd::dot_product(dv_row, _wv.values.data() + i * d, d);
-      out_dx_row[i] = scratch.dy1[t * d + i] + sum_q + sum_k + sum_v;
+      double* out_dx_row = out_dx + t * d;
+      for (size_t i = 0; i < d; ++i)
+      {
+        const double sum_q = simd::dot_product(dq_row, _wq.values.data() + i * d, d);
+        const double sum_k = simd::dot_product(dk_row, _wk.values.data() + i * d, d);
+        const double sum_v = simd::dot_product(dv_row, _wv.values.data() + i * d, d);
+        out_dx_row[i] = scratch.dy1[t * d + i] + sum_q + sum_k + sum_v;
+      }
     }
 
     if (accum.wq != nullptr && accum.wk != nullptr && accum.wv != nullptr)
@@ -1206,16 +1208,15 @@ void SelfAttentionLayer::finish_hidden_gradients_range(
       continue;
     }
 
-    scratch.delta.resize(T * d);
+    double* delta = batch_gradients_and_outputs[b].get_rnn_gate_gradients_raw(this_layer_index, T * d);
     for (size_t t = 0; t < T; ++t)
     {
       const double* raw = raw_delta_all + (b * T + t) * d;
       const double* mask_vals = hs_row[t].get_cell_state_values().data();
-      simd::mul_vectors(raw, mask_vals, scratch.delta.data() + t * d, d);
+      simd::mul_vectors(raw, mask_vals, delta + t * d, d);
     }
 
-    batch_gradients_and_outputs[b].set_gradients(this_layer_index, scratch.delta.data() + (T - 1) * d, d);
-    batch_gradients_and_outputs[b].set_rnn_gate_gradients(this_layer_index, scratch.delta.data(), scratch.delta.size());
+    batch_gradients_and_outputs[b].set_gradients(this_layer_index, delta + (T - 1) * d, d);
 
     const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     if (d == 0 || seq.size() != T * d)
@@ -1223,9 +1224,8 @@ void SelfAttentionLayer::finish_hidden_gradients_range(
       continue;
     }
 
-    scratch.out_dx_scratch.assign(T * d, 0.0);
-    self_attention_backward_one(seq.data(), T, scratch.delta.data(), scratch.out_dx_scratch.data(), grad_accumulators{}, scratch);
-    batch_gradients_and_outputs[b].set_rnn_gradients(this_layer_index, scratch.out_dx_scratch.data(), scratch.out_dx_scratch.size());
+    double* out_dx = batch_gradients_and_outputs[b].get_rnn_gradients_raw(this_layer_index, T * d);
+    self_attention_backward_one(seq.data(), T, delta, out_dx, grad_accumulators{}, scratch);
   }
 }
 
@@ -1420,8 +1420,7 @@ void SelfAttentionLayer::accumulate_gradients_range(
       continue;
     }
 
-    scratch.out_dx_scratch.assign(T * d, 0.0);
-    self_attention_backward_one(seq.data(), T, own_delta.data(), scratch.out_dx_scratch.data(), accum, scratch);
+    self_attention_backward_one(seq.data(), T, own_delta.data(), nullptr, accum, scratch);
     ++local_contributing;
   }
 }

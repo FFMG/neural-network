@@ -529,3 +529,107 @@ TEST_F(AttentionPoolLayerTest, ForwardFeedPartialBias)
 
     EXPECT_NO_THROW(layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false));
 }
+
+TEST_F(AttentionPoolLayerTest, NonSquareHiddenAndNextLayerNumericalGradients)
+{
+    // Exercises N = 5, d_a = 6, N_next = 4, T = 3 so both SIMD vector lanes (4 doubles)
+    // and scalar tail elements are exercised in the row-major Wa loops and calculate_hidden_gradients.
+    const unsigned N = 5;
+    const unsigned d_a = 6;
+    const unsigned N_next = 4;
+    const size_t T = 3;
+
+    AttentionPoolLayer layer = make_layer(N, d_a, true);
+    std::vector<double> wa(static_cast<size_t>(N) * d_a);
+    for (size_t i = 0; i < wa.size(); ++i)
+    {
+        wa[i] = 0.25 * std::sin(0.6 * static_cast<double>(i) + 0.3);
+    }
+    std::vector<double> ba(d_a);
+    std::vector<double> v(d_a);
+    for (size_t j = 0; j < d_a; ++j)
+    {
+        ba[j] = 0.1 * std::cos(0.5 * static_cast<double>(j) + 0.1);
+        v[j] = 0.4 * std::sin(0.8 * static_cast<double>(j) + 0.7);
+    }
+    layer.set_wa_values(wa);
+    layer.set_ba_values(ba);
+    layer.set_v_values(v);
+
+    std::vector<double> h_seq(T * N);
+    for (size_t i = 0; i < h_seq.size(); ++i)
+    {
+        h_seq[i] = 0.6 * std::sin(0.45 * static_cast<double>(i) + 0.2);
+    }
+
+    std::vector<double> next_w(static_cast<size_t>(N) * N_next);
+    for (size_t i = 0; i < next_w.size(); ++i)
+    {
+        next_w[i] = 0.35 * std::cos(0.55 * static_cast<double>(i) + 0.4);
+    }
+    std::vector<double> next_grad = { 0.5, -0.3, 0.2, -0.6 };
+
+    // Expected delta at the output of AttentionPoolLayer: delta[i] = sum_k next_w[i * N_next + k] * next_grad[k]
+    std::vector<double> expected_delta(N, 0.0);
+    for (unsigned i = 0; i < N; ++i)
+    {
+        double sum = 0.0;
+        for (unsigned k = 0; k < N_next; ++k)
+        {
+            sum += next_w[static_cast<size_t>(i) * N_next + k] * next_grad[k];
+        }
+        expected_delta[i] = sum;
+    }
+
+    MockLayer prev_layer(0, N);
+    MockLayer next_layer(2, N_next, N);
+    next_layer.set_w_values(next_w);
+
+    std::vector<unsigned> topology = { N, N, N_next };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1, 1);
+    batch_go[0].set_rnn_outputs(0, h_seq.data(), h_seq.size());
+
+    layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, false);
+    batch_go[0].set_gradients(2, next_grad.data(), next_grad.size());
+    layer.calculate_hidden_gradients(batch_go, next_layer, {}, batch_hs, 1, 0);
+    layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, 1, 0);
+
+    const auto dh = batch_go[0].get_rnn_gradients(1);
+    ASSERT_EQ(dh.size(), h_seq.size());
+
+    const double eps = 1e-6;
+    for (size_t k = 0; k < h_seq.size(); ++k)
+    {
+        auto h_plus = h_seq;
+        h_plus[k] += eps;
+        auto h_minus = h_seq;
+        h_minus[k] -= eps;
+
+        const double loss_plus = compute_loss(layer, prev_layer, h_plus, T, N, expected_delta);
+        const double loss_minus = compute_loss(layer, prev_layer, h_minus, T, N, expected_delta);
+        const double numerical = (loss_plus - loss_minus) / (2.0 * eps);
+        EXPECT_NEAR(dh[k], numerical, 1e-5) << "dh[" << k << "]";
+    }
+
+    const auto wa_grads = layer.get_wa_grads();
+    ASSERT_EQ(wa_grads.size(), wa.size());
+    for (size_t k = 0; k < wa.size(); ++k)
+    {
+        auto wa_plus = wa;
+        wa_plus[k] += eps;
+        auto wa_minus = wa;
+        wa_minus[k] -= eps;
+
+        AttentionPoolLayer probe = make_layer(N, d_a, true);
+        probe.set_ba_values(ba);
+        probe.set_v_values(v);
+
+        probe.set_wa_values(wa_plus);
+        const double loss_plus = compute_loss(probe, prev_layer, h_seq, T, N, expected_delta);
+        probe.set_wa_values(wa_minus);
+        const double loss_minus = compute_loss(probe, prev_layer, h_seq, T, N, expected_delta);
+        const double numerical = (loss_plus - loss_minus) / (2.0 * eps);
+        EXPECT_NEAR(wa_grads[k], numerical, 1e-5) << "wa_grads[" << k << "]";
+    }
+}

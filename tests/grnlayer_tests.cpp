@@ -622,3 +622,112 @@ TEST_F(GrnLayerTest, LookaheadMovesSlowTowardsFastAndResetsFast)
     EXPECT_NEAR(v, 0.75, 1e-12);
   }
 }
+
+TEST_F(GrnLayerTest, CalculateHiddenGradientsThroughNextLayerWeightsMatchesDirectProjection)
+{
+  // Verifies GrnLayer::calculate_hidden_gradients (the SIMD gemm_transposed_one_batch path
+  // projecting next_layer's gradients through W_next) for both multi-timestep next_rnn
+  // gradients and single-timestep next_grads.
+  const unsigned d_in = 3;
+  const unsigned d_out = 5;
+  const unsigned d_ff = 6;
+  const unsigned n_next = 4;
+  const size_t time_steps = 3;
+
+  GrnLayer layer_via_next = make_grn_layer(d_in, d_out, d_ff, true);
+  GrnLayer layer_direct = make_grn_layer(d_in, d_out, d_ff, true);
+  set_test_weights(layer_via_next);
+  set_test_weights(layer_direct);
+
+  const auto input_seq = make_wave(time_steps * d_in, 0.85, 0.15, 0.7);
+  const auto next_weights = make_wave(static_cast<size_t>(d_out) * n_next, 0.65, 0.4, 0.5);
+  const auto next_rnn_grads = make_wave(time_steps * n_next, 1.15, 0.25, 0.9);
+
+  MockLayer previous_layer(0, d_in);
+  MockLayer next_layer(2, n_next, d_out);
+  next_layer.set_w_values(next_weights);
+
+  // Compute expected projected upstream gradient: for each t, upstream[t, j] = sum_k W_next[j, k] * next_rnn_grads[t, k]
+  std::vector<double> expected_upstream(time_steps * d_out, 0.0);
+  for (size_t t = 0; t < time_steps; ++t)
+  {
+    for (unsigned j = 0; j < d_out; ++j)
+    {
+      double sum = 0.0;
+      for (unsigned k = 0; k < n_next; ++k)
+      {
+        sum += next_weights[static_cast<size_t>(j) * n_next + k] * next_rnn_grads[t * n_next + k];
+      }
+      expected_upstream[t * d_out + j] = sum;
+    }
+  }
+
+  const std::vector<unsigned> topology = { d_in, d_out, n_next };
+  auto go_via_next = create_batch_gradients_and_outputs(topology, 1);
+  auto hs_via_next = create_batch_hidden_states(topology, 1, 1, 1);
+  go_via_next[0].set_rnn_outputs(0, input_seq.data(), input_seq.size());
+  layer_via_next.calculate_forward_feed(go_via_next, previous_layer, {}, hs_via_next, 1, true);
+  go_via_next[0].set_rnn_gradients(2, next_rnn_grads.data(), next_rnn_grads.size());
+  layer_via_next.calculate_hidden_gradients(go_via_next, next_layer, {}, hs_via_next, 1, 0);
+  layer_via_next.calculate_and_store_gradients(go_via_next, hs_via_next, previous_layer, 1, 0);
+
+  auto go_direct = create_batch_gradients_and_outputs(topology, 1);
+  auto hs_direct = create_batch_hidden_states(topology, 1, 1, 1);
+  go_direct[0].set_rnn_outputs(0, input_seq.data(), input_seq.size());
+  layer_direct.calculate_forward_feed(go_direct, previous_layer, {}, hs_direct, 1, true);
+  layer_direct.calculate_hidden_gradients_from_output_gradients(go_direct, { expected_upstream }, hs_direct, 1, 0);
+  layer_direct.calculate_and_store_gradients(go_direct, hs_direct, previous_layer, 1, 0);
+
+  const auto dx_via_next = go_via_next[0].get_rnn_gradients(1);
+  const auto dx_direct = go_direct[0].get_rnn_gradients(1);
+  ASSERT_EQ(dx_via_next.size(), dx_direct.size());
+  for (size_t i = 0; i < dx_via_next.size(); ++i)
+  {
+    EXPECT_NEAR(dx_via_next[i], dx_direct[i], 1e-12) << "dx[" << i << "]";
+  }
+
+  for (const auto& fam : all_family_access)
+  {
+    const auto& grads_via_next = (layer_via_next.*fam.get_grads)();
+    const auto& grads_direct = (layer_direct.*fam.get_grads)();
+    ASSERT_EQ(grads_via_next.size(), grads_direct.size()) << fam.name;
+    for (size_t i = 0; i < grads_via_next.size(); ++i)
+    {
+      EXPECT_NEAR(grads_via_next[i], grads_direct[i], 1e-12) << fam.name << "[" << i << "]";
+    }
+  }
+
+  // Also test the single-timestep / last-step supervision path where next_layer only populates get_gradients(2)
+  const auto single_step_next_grads = make_wave(n_next, 0.95, 0.3, 0.8);
+  std::vector<double> expected_last_step_upstream(time_steps * d_out, 0.0);
+  for (unsigned j = 0; j < d_out; ++j)
+  {
+    double sum = 0.0;
+    for (unsigned k = 0; k < n_next; ++k)
+    {
+      sum += next_weights[static_cast<size_t>(j) * n_next + k] * single_step_next_grads[k];
+    }
+    expected_last_step_upstream[(time_steps - 1) * d_out + j] = sum;
+  }
+
+  auto go_last_via_next = create_batch_gradients_and_outputs(topology, 1);
+  auto hs_last_via_next = create_batch_hidden_states(topology, 1, 1, 1);
+  go_last_via_next[0].set_rnn_outputs(0, input_seq.data(), input_seq.size());
+  layer_via_next.calculate_forward_feed(go_last_via_next, previous_layer, {}, hs_last_via_next, 1, true);
+  go_last_via_next[0].set_gradients(2, single_step_next_grads.data(), single_step_next_grads.size());
+  layer_via_next.calculate_hidden_gradients(go_last_via_next, next_layer, {}, hs_last_via_next, 1, 0);
+
+  auto go_last_direct = create_batch_gradients_and_outputs(topology, 1);
+  auto hs_last_direct = create_batch_hidden_states(topology, 1, 1, 1);
+  go_last_direct[0].set_rnn_outputs(0, input_seq.data(), input_seq.size());
+  layer_direct.calculate_forward_feed(go_last_direct, previous_layer, {}, hs_last_direct, 1, true);
+  layer_direct.calculate_hidden_gradients_from_output_gradients(go_last_direct, { expected_last_step_upstream }, hs_last_direct, 1, 0);
+
+  const auto dx_last_via_next = go_last_via_next[0].get_rnn_gradients(1);
+  const auto dx_last_direct = go_last_direct[0].get_rnn_gradients(1);
+  ASSERT_EQ(dx_last_via_next.size(), dx_last_direct.size());
+  for (size_t i = 0; i < dx_last_via_next.size(); ++i)
+  {
+    EXPECT_NEAR(dx_last_via_next[i], dx_last_direct[i], 1e-12) << "last_step dx[" << i << "]";
+  }
+}

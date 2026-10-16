@@ -344,6 +344,15 @@ public:
   Layer* clone() const override;
 
 private:
+  struct backward_scratch
+  {
+    std::vector<double> alpha;
+    std::vector<double> u_flat;
+    std::vector<double> dalpha;
+    std::vector<double> dscore;
+    std::vector<double> de;
+  };
+
   void attention_backward_one(
     const double* h_seq,
     size_t T,
@@ -351,7 +360,8 @@ private:
     double* out_dh,
     double* wa_grad_accum,
     double* ba_grad_accum,
-    double* v_grad_accum) const;
+    double* v_grad_accum,
+    backward_scratch& scratch) const;
 
   void finish_hidden_gradients(
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
