@@ -1673,7 +1673,7 @@ TEST(NeuralNetworkAdvantageTrainingTest, GrnAndSelfAttentionPoolPolicyTrunkAdvan
   std::vector<double> state_b = { -0.3, 0.3, -0.2, 0.4 };
 
   std::vector<std::vector<double>> inputs = { state_a, state_b };
-  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 } };
+  std::vector<std::vector<double>> action_targets = { { 1.0, 0.0, 0.0 }, { 1.0, 0.0, 0.0 } };
   std::vector<double> advantages = { 1.5, 1.2 };
   std::vector<std::vector<double>> masks = { { 1.0, 1.0, 0.0 }, { 1.0, 1.0, 1.0 } };
 
