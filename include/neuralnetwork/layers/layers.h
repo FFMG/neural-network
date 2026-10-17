@@ -127,6 +127,14 @@ private:
     std::vector<HiddenStates>& hidden_states,
     bool is_training) const;
 
+  void calculate_forward_feed(
+    const NeuralNetworkOptions& options,
+    std::vector<GradientsAndOutputs>& gradients_and_output,
+    const std::vector<double>* inputs_begin,
+    size_t batch_size,
+    std::vector<HiddenStates>& hidden_states,
+    bool is_training) const;
+
   void calculate_back_propagation(
     const NeuralNetworkOptions& options,
     std::vector<GradientsAndOutputs>& gradients,

@@ -2937,16 +2937,16 @@ TEST(NetworkIntegrationTest, VersionConstantsAndClassGetters)
 {
   EXPECT_EQ(NEURALNETWORK_VERSION_MAJOR, 0);
   EXPECT_EQ(NEURALNETWORK_VERSION_MINOR, 0);
-  EXPECT_EQ(NEURALNETWORK_VERSION_PATCH, 71);
-  EXPECT_STREQ(NEURALNETWORK_VERSION_STRING, "0.0.71");
-  EXPECT_EQ(NEURALNETWORK_VERSION_CODE, ((0 << 16) | (0 << 8) | 71));
+  EXPECT_EQ(NEURALNETWORK_VERSION_PATCH, 72);
+  EXPECT_STREQ(NEURALNETWORK_VERSION_STRING, "0.0.72");
+  EXPECT_EQ(NEURALNETWORK_VERSION_CODE, ((0 << 16) | (0 << 8) | 72));
 
   EXPECT_EQ(Version::major(), 0u);
   EXPECT_EQ(Version::minor(), 0u);
-  EXPECT_EQ(Version::patch(), 71u);
-  EXPECT_EQ(Version::code(), 71u);
-  EXPECT_STREQ(Version::string(), "0.0.71");
-  EXPECT_STREQ(NeuralNetwork::version(), "0.0.71");
+  EXPECT_EQ(Version::patch(), 72u);
+  EXPECT_EQ(Version::code(), 72u);
+  EXPECT_STREQ(Version::string(), "0.0.72");
+  EXPECT_STREQ(NeuralNetwork::version(), "0.0.72");
 }
 
 TEST(NetworkIntegrationTest, VersionSavedInSerializerAndLoaded)
@@ -2960,18 +2960,18 @@ TEST(NetworkIntegrationTest, VersionSavedInSerializerAndLoaded)
   const std::string test_path = "test_version_serializer.json";
   NeuralNetworkSerializer::save(nn, test_path);
 
-  // Verify "version": "0.0.71" is present in the raw saved JSON
+  // Verify "version": "0.0.72" is present in the raw saved JSON
   std::ifstream json_file(test_path);
   ASSERT_TRUE(json_file.is_open());
   std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
   json_file.close();
 
-  EXPECT_NE(json_content.find("\"version\": \"0.0.71\""), std::string::npos);
+  EXPECT_NE(json_content.find("\"version\": \"0.0.72\""), std::string::npos);
 
   // Load back and verify loaded_version()
   std::unique_ptr<NeuralNetwork> loaded(NeuralNetworkSerializer::load(test_path));
   ASSERT_NE(loaded, nullptr);
-  EXPECT_EQ(loaded->loaded_version(), "0.0.71");
+  EXPECT_EQ(loaded->loaded_version(), "0.0.72");
 
   std::remove(test_path.c_str());
 }

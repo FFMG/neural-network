@@ -678,6 +678,24 @@ void Layers::calculate_forward_feed(
   bool is_training) const
 {
   MYODDWEB_PROFILE_FUNCTION("Layers");
+  calculate_forward_feed(
+    options,
+    gradients_and_output,
+    batch_size > 0 ? std::addressof(*inputs_begin) : nullptr,
+    batch_size,
+    hidden_states,
+    is_training);
+}
+
+void Layers::calculate_forward_feed(
+  const NeuralNetworkOptions& options,
+  std::vector<GradientsAndOutputs>& gradients_and_output,
+  const std::vector<double>* inputs_begin,
+  size_t batch_size,
+  std::vector<HiddenStates>& hidden_states,
+  bool is_training) const
+{
+  MYODDWEB_PROFILE_FUNCTION("Layers");
 
 #if VALIDATE_DATA ==1
   if (gradients_and_output.size() < batch_size) /* can be less in case of mismatch total BPTTs */
@@ -704,7 +722,7 @@ void Layers::calculate_forward_feed(
 
   for (size_t b = 0; b < batch_size; ++b)
   {
-    const auto& current_input = *(inputs_begin + b);
+    const auto& current_input = inputs_begin[b];
 
     if (current_input.size() == input_size)
     {
@@ -894,6 +912,10 @@ void Layers::calculate_back_propagation_output_layer_with_advantages(
       if (advantage == 0.0)
       {
         std::memset(rnn_raw, 0, rnn_count * sizeof(double));
+      }
+      else if (rnn_count == count)
+      {
+        std::memcpy(rnn_raw, raw, count * sizeof(double));
       }
       else
       {
@@ -1199,13 +1221,8 @@ void Layers::think(const NeuralNetworkOptions& options, const std::vector<double
 
   auto& workspace = get_inference_workspace();
   workspace.prepare(topology, 1);
-  if (workspace.input_wrapper().size() != 1)
-  {
-    workspace.input_wrapper().resize(1);
-  }
-  workspace.input_wrapper()[0] = inputs;
 
-  calculate_forward_feed(options, workspace.gradients(), workspace.input_wrapper().begin(), 1, workspace.hidden_states(), false);
+  calculate_forward_feed(options, workspace.gradients(), &inputs, 1, workspace.hidden_states(), false);
   const auto s = workspace.gradients().front().output_back_span();
   outputs.assign(s.begin(), s.end());
 }

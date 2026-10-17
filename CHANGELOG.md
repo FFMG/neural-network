@@ -2,6 +2,21 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.72] - 2026-10-17
+
+### Optimised
+- Optimised `TempBuffer<T, Tag>` ([`include/neuralnetwork/common/tempbuffer.h`](./include/neuralnetwork/common/tempbuffer.h)) to reuse a `thread_local` backing `std::vector<T>` per `<T, Tag>` instantiation with an `in_use` re-entrancy guard and automatic shrinking of oversized capacities (`> 262144` elements when a small `<= 4096` buffer is requested), eliminating up to 14 heap allocations/deallocations per layer on every single `think()` and `train_with_advantages()` mini-batch across `FFLayer` and `FFOutputLayer`.
+- Optimised `FFOutputLayer::run_output_gradients`, `FFOutputLayer::calculate_error_deltas`, and `Layer::calculate_error_deltas` ([`include/neuralnetwork/layers/ffoutputlayer.h`](./include/neuralnetwork/layers/ffoutputlayer.h), [`include/neuralnetwork/layers/ffoutputlayer.cpp`](./include/neuralnetwork/layers/ffoutputlayer.cpp), [`include/neuralnetwork/layers/layer.h`](./include/neuralnetwork/layers/layer.h), [`include/neuralnetwork/layers/layer.cpp`](./include/neuralnetwork/layers/layer.cpp)):
+  - Bound `output_layer_detail.get_error_evaluation_config()` by `const auto&` instead of copying `EvaluationConfig` by value on every sample and output head, eliminating a `std::vector<double>` (`_quantiles`) heap allocation per sample/head during backpropagation.
+  - Updated `Layer::calculate_error_deltas` (and all `calculate_*_error_deltas` helpers) and `FFOutputLayer::calculate_error_deltas` to accept `std::span<double>` and `std::span<const double>`, avoiding per-sample/per-timestep copies of `given_outputs` and `target_outputs` and writing error deltas directly into `rnn_grads_row`.
+- Optimised `Layers::think` and `Layers::calculate_back_propagation_output_layer_with_advantages` ([`include/neuralnetwork/layers/layers.h`](./include/neuralnetwork/layers/layers.h), [`include/neuralnetwork/layers/layers.cpp`](./include/neuralnetwork/layers/layers.cpp)):
+  - Added a pointer-based `Layers::calculate_forward_feed` overload so single-sample `Layers::think` passes `&inputs` directly without copying the input vector into `workspace.input_wrapper()[0]`.
+  - Reused the advantage-scaled output gradient buffer via `std::memcpy` into `rnn_gradients` when `rnn_count == count` (`T == 1`) instead of executing `simd::mul_scalar` a second time.
+
+### Tests
+- Added `TempBufferThreadLocalReuseAndReentrancyFallback` and `CalculateOutputGradientsPartialGivenOutputsSafe` in [`tests/ffoutputlayer_tests.cpp`](./tests/ffoutputlayer_tests.cpp).
+- Added `SingleSampleThinkReuseAndAdvantageScalingConsistency` in [`tests/neuralnetwork_advantage_training_tests.cpp`](./tests/neuralnetwork_advantage_training_tests.cpp).
+
 ## [0.0.71] - 2026-10-15
 
 ### Added

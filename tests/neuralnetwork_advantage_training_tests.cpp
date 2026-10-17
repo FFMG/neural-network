@@ -1692,3 +1692,60 @@ TEST(NeuralNetworkAdvantageTrainingTest, GrnAndSelfAttentionPoolPolicyTrunkAdvan
   }
   EXPECT_GT(after_a[0], before_a[0]);
 }
+
+TEST(NeuralNetworkAdvantageTrainingTest, SingleSampleThinkReuseAndAdvantageScalingConsistency)
+{
+  auto options = build_policy_options(OptimiserType::AdamW, 0.05, 4, 42u)
+    .with_entropy_coefficient(0.05);
+  NeuralNetwork nn(options);
+
+  const std::vector<std::vector<double>> states =
+  {
+    { 0.25, -0.15, 0.45 },
+    { -0.35, 0.55, -0.10 },
+    { 0.10, 0.20, -0.30 },
+    { -0.20, -0.40, 0.60 }
+  };
+
+  // Verify that single-sample think(input, output_buf) matches batched think(states) across repeated rollouts
+  const auto batch_preds = nn.think(states);
+  ASSERT_EQ(batch_preds.size(), states.size());
+
+  std::vector<double> single_pred;
+  for (size_t i = 0; i < states.size(); ++i)
+  {
+    nn.think(states[i], single_pred);
+    ASSERT_EQ(single_pred.size(), batch_preds[i].size());
+    for (size_t j = 0; j < single_pred.size(); ++j)
+    {
+      EXPECT_NEAR(single_pred[j], batch_preds[i][j], 1e-12);
+    }
+  }
+
+  // Run multiple advantage-training updates with mixed positive, zero, unit, and negative advantages
+  const std::vector<std::vector<double>> targets =
+  {
+    { 1.0, 0.0 },
+    { 0.0, 1.0 },
+    { 1.0, 0.0 },
+    { 0.0, 1.0 }
+  };
+  const std::vector<double> advantages = { 1.5, 0.0, 1.0, -0.75 };
+
+  for (int step = 0; step < 5; ++step)
+  {
+    nn.train_with_advantages(states, targets, advantages);
+  }
+
+  const auto updated_batch_preds = nn.think(states);
+  for (size_t i = 0; i < states.size(); ++i)
+  {
+    nn.think(states[i], single_pred);
+    for (size_t j = 0; j < single_pred.size(); ++j)
+    {
+      EXPECT_TRUE(std::isfinite(single_pred[j]));
+      EXPECT_NEAR(single_pred[j], updated_batch_preds[i][j], 1e-12);
+    }
+  }
+}
+

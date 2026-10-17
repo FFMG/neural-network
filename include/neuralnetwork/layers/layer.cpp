@@ -289,9 +289,9 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
 }
 
 void Layer::calculate_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   ErrorCalculation::type error_calculation_type,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
@@ -355,9 +355,9 @@ void Layer::calculate_error_deltas(
 }
 
 void Layer::calculate_huber_direction_loss_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
@@ -419,9 +419,9 @@ void Layer::calculate_huber_direction_loss_error_deltas(
 }
 
 void Layer::calculate_huber_loss_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
@@ -497,9 +497,9 @@ void Layer::calculate_huber_loss_error_deltas(
 }
 
 void Layer::calculate_cross_entropy_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
@@ -629,9 +629,9 @@ void Layer::calculate_cross_entropy_error_deltas(
 }
 
 void Layer::calculate_bce_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
@@ -781,9 +781,9 @@ void Layer::calculate_bce_error_deltas(
 }
 
 void Layer::calculate_mse_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
@@ -819,9 +819,9 @@ void Layer::calculate_mse_error_deltas(
 }
 
 void Layer::calculate_rmse_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
@@ -888,9 +888,9 @@ void Layer::calculate_rmse_error_deltas(
 }
 
 void Layer::calculate_log_cosh_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
 {
@@ -928,9 +928,9 @@ void Layer::calculate_log_cosh_error_deltas(
 }
 
 void Layer::calculate_quantile_loss_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons) const
@@ -958,9 +958,9 @@ void Layer::calculate_quantile_loss_error_deltas(
 }
 
 void Layer::calculate_sharpe_ratio_loss_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons,
@@ -1012,9 +1012,9 @@ void Layer::calculate_sharpe_ratio_loss_error_deltas(
 }
 
 void Layer::calculate_sortino_ratio_loss_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const EvaluationConfig& evaluation_config,
   const activation::method activation_method,
   std::span<Neuron> neurons,

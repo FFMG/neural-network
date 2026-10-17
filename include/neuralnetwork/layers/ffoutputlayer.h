@@ -121,9 +121,9 @@ private:
 
 
   void calculate_error_deltas(
-    std::vector<double>& deltas,
-    const std::vector<double>& target_outputs,
-    const std::vector<double>& given_outputs,
+    std::span<double> deltas,
+    std::span<const double> target_outputs,
+    std::span<const double> given_outputs,
     const PerHeadStepContexts& per_head_step_context,
     size_t b,
     size_t gated_step_index) const;

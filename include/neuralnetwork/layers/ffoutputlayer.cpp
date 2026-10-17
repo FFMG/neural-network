@@ -487,9 +487,8 @@ void FFOutputLayer::run_output_gradients(
 
   TempBuffer<double, 55> deriv_buf(num_neurons);
   TempBuffer<double, 56> rnn_grads_row(num_time_steps * num_neurons);
-  TempBuffer<double, 57> given_outputs_vec(num_neurons);
-  TempBuffer<double, 58> current_target(num_neurons);
-  TempBuffer<double, 59> deltas(num_neurons);
+  TempBuffer<double, 57> given_outputs_vec(0);
+  TempBuffer<double, 58> current_target(0);
 
   for (size_t b = start; b < end; b++)
   {
@@ -502,33 +501,42 @@ void FFOutputLayer::run_output_gradients(
     {
       const auto& current_hidden_state = layer_states[t];
       const auto& given_outputs = current_hidden_state.get_hidden_state_values();
-      const size_t copy_outputs = std::min(given_outputs.size(), num_neurons);
-      if (copy_outputs > 0)
+      std::span<const double> given_span;
+      if (given_outputs.size() >= num_neurons)
       {
-        std::memcpy(given_outputs_vec.data(), given_outputs.data(), copy_outputs * sizeof(double));
+        given_span = std::span<const double>(given_outputs.data(), num_neurons);
       }
-      if (copy_outputs < num_neurons)
+      else
       {
-        std::memset(given_outputs_vec.data() + copy_outputs, 0, (num_neurons - copy_outputs) * sizeof(double));
+        given_outputs_vec.assign(num_neurons, 0.0);
+        if (!given_outputs.empty())
+        {
+          std::memcpy(given_outputs_vec.data(), given_outputs.data(), given_outputs.size() * sizeof(double));
+        }
+        given_span = std::span<const double>(given_outputs_vec.data(), num_neurons);
       }
-      
+
       // Determine target for this time step
+      std::span<const double> target_span;
       if (target_outputs.size() == num_time_steps * num_neurons)
       {
-        const double* tgt_ptr = target_outputs.data() + t * num_neurons;
-        std::memcpy(current_target.data(), tgt_ptr, num_neurons * sizeof(double));
+        target_span = std::span<const double>(target_outputs.data() + t * num_neurons, num_neurons);
       }
       else if (t == num_time_steps - 1)
       {
         // Only one target provided, apply to the last step
-        const size_t copy_target = std::min(target_outputs.size(), num_neurons);
-        if (copy_target > 0)
+        if (target_outputs.size() >= num_neurons)
         {
-          std::memcpy(current_target.data(), target_outputs.data(), copy_target * sizeof(double));
+          target_span = std::span<const double>(target_outputs.data(), num_neurons);
         }
-        if (copy_target < num_neurons)
+        else
         {
-          std::memset(current_target.data() + copy_target, 0, (num_neurons - copy_target) * sizeof(double));
+          current_target.assign(num_neurons, 0.0);
+          if (!target_outputs.empty())
+          {
+            std::memcpy(current_target.data(), target_outputs.data(), target_outputs.size() * sizeof(double));
+          }
+          target_span = std::span<const double>(current_target.data(), num_neurons);
         }
       }
       else
@@ -537,8 +545,9 @@ void FFOutputLayer::run_output_gradients(
         continue;
       }
 
-      std::memset(deltas.data(), 0, deltas.size() * sizeof(double));
-      calculate_error_deltas(deltas.vec(), current_target.vec(), given_outputs_vec.vec(), per_head_step_context, b, gated_step_index);
+      double* step_grads_base = rnn_grads_row.data() + t * num_neurons;
+      std::span<double> step_grads_span(step_grads_base, num_neurons);
+      calculate_error_deltas(step_grads_span, target_span, given_span, per_head_step_context, b, gated_step_index);
       ++gated_step_index;
 
       const auto& pre_act_vec = current_hidden_state.get_pre_activation_sums();
@@ -555,8 +564,7 @@ void FFOutputLayer::run_output_gradients(
         const bool skip_derivative = (activation.get_method() == activation::method::softmax) ||
           is_not_using_activation_derivative(activation.get_method(), detail.get_output_error_calculation_type());
 
-        double* out_grad_ptr = rnn_grads_row.data() + t * num_neurons + r.start;
-        const double* delta_ptr = deltas.data() + r.start;
+        double* out_grad_ptr = step_grads_base + r.start;
         const size_t range_size = r.end - r.start;
 
         if (skip_derivative)
@@ -564,15 +572,11 @@ void FFOutputLayer::run_output_gradients(
           if (has_dropout)
           {
             simd::mul_vectors(
-              delta_ptr,
+              out_grad_ptr,
               mask_vals + r.start,
               out_grad_ptr,
               range_size
             );
-          }
-          else
-          {
-            std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
 
           if (activation.get_logit_cap() > 0.0 && pre_act != nullptr)
@@ -610,15 +614,11 @@ void FFOutputLayer::run_output_gradients(
           if (has_dropout)
           {
             simd::mul_vectors(
-              delta_ptr,
+              out_grad_ptr,
               mask_vals + r.start,
               out_grad_ptr,
               range_size
             );
-          }
-          else
-          {
-            std::memcpy(out_grad_ptr, delta_ptr, range_size * sizeof(double));
           }
         }
         else
@@ -633,7 +633,7 @@ void FFOutputLayer::run_output_gradients(
           if (has_dropout)
           {
             simd::mul_three_vectors(
-              delta_ptr,
+              out_grad_ptr,
               deriv_buf.data() + r.start,
               mask_vals + r.start,
               out_grad_ptr,
@@ -643,7 +643,7 @@ void FFOutputLayer::run_output_gradients(
           else
           {
             simd::mul_vectors(
-              delta_ptr,
+              out_grad_ptr,
               deriv_buf.data() + r.start,
               out_grad_ptr,
               range_size
@@ -683,9 +683,9 @@ double FFOutputLayer::get_momentum(unsigned neuron_number) const noexcept
 }
 
 void FFOutputLayer::calculate_error_deltas(
-  std::vector<double>& deltas,
-  const std::vector<double>& target_outputs,
-  const std::vector<double>& given_outputs,
+  std::span<double> deltas,
+  std::span<const double> target_outputs,
+  std::span<const double> given_outputs,
   const PerHeadStepContexts& per_head_step_context,
   size_t b,
   size_t gated_step_index) const
@@ -696,7 +696,7 @@ void FFOutputLayer::calculate_error_deltas(
   {
     const auto error_calculation_type = output_layer_detail.get_output_error_calculation_type();
     const auto activation_method = output_layer_detail.get_activation().get_method();
-    const auto evaluation_config = output_layer_detail.get_error_evaluation_config();
+    const auto& evaluation_config = output_layer_detail.get_error_evaluation_config();
     const auto& bounds = layer_bounds(layer_number);
     const StepGradientContext* step_context = nullptr;
     if (_has_sharpe_sortino_heads && layer_number < per_head_step_context.size())

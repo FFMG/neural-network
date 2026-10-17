@@ -1,7 +1,7 @@
 # neural-network
 
 [![CI](https://github.com/FFMG/neural-network/actions/workflows/tests.yml/badge.svg)](https://github.com/FFMG/neural-network/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.0.71-blue.svg)](include/neuralnetwork/version.h)
+[![Version](https://img.shields.io/badge/version-0.0.72-blue.svg)](include/neuralnetwork/version.h)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-17%20%2F%2020-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/17)
 [![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](python/)
@@ -611,7 +611,7 @@ The library follows Semantic Versioning (`MAJOR.MINOR.PATCH`). Version metadata 
 
 *   **Preprocessor Macros (`version.h`):**
     *   `NEURALNETWORK_VERSION_MAJOR`, `NEURALNETWORK_VERSION_MINOR`, `NEURALNETWORK_VERSION_PATCH`
-    *   `NEURALNETWORK_VERSION_STRING` (e.g. `"0.0.71"`)
+    *   `NEURALNETWORK_VERSION_STRING` (e.g. `"0.0.72"`)
     *   `NEURALNETWORK_VERSION_CODE` (e.g. `((MAJOR << 16) | (MINOR << 8) | PATCH)` for compile-time `#if` checks)
 *   **C++ Type-Safe API:**
     *   `Version::string()` and `NeuralNetwork::version()` return the library version string.

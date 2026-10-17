@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "common/tempbuffer.h"
 #include "layers/ffoutputlayer.h"
 #include "test_helper.h"
 #include <vector>
@@ -1271,4 +1272,95 @@ TEST_F(FFOutputLayerTest, CalculateOutputMetricsCombinedMetricsExact)
     EXPECT_NEAR(combined[0][1].error(), sortino_only[0][0].error(), 1e-12);
     EXPECT_NEAR(combined[0][2].error(), mse_only[0][0].error(), 1e-12);
 }
+
+TEST_F(FFOutputLayerTest, TempBufferThreadLocalReuseAndReentrancyFallback)
+{
+    const double* first_ptr = nullptr;
+    {
+        TempBuffer<double, 901> buf(32, true);
+        first_ptr = buf.data();
+        ASSERT_EQ(buf.size(), 32u);
+        for (size_t i = 0; i < buf.size(); ++i)
+        {
+            EXPECT_DOUBLE_EQ(buf.data()[i], 0.0);
+            buf.data()[i] = static_cast<double>(i + 1);
+        }
+
+        // Re-entering the same Tag on the same thread must safely fall back to a distinct buffer
+        TempBuffer<double, 901> nested_buf(16, true);
+        EXPECT_NE(nested_buf.data(), buf.data());
+        for (size_t i = 0; i < nested_buf.size(); ++i)
+        {
+            EXPECT_DOUBLE_EQ(nested_buf.data()[i], 0.0);
+            nested_buf.data()[i] = -10.0;
+        }
+
+        // Outer buffer contents must remain intact
+        for (size_t i = 0; i < buf.size(); ++i)
+        {
+            EXPECT_DOUBLE_EQ(buf.data()[i], static_cast<double>(i + 1));
+        }
+    }
+
+    // Subsequent non-nested acquisition of the same Tag must reuse the thread-local allocation
+    {
+        TempBuffer<double, 901> reused_buf(16, false);
+        EXPECT_EQ(reused_buf.data(), first_ptr);
+        EXPECT_EQ(reused_buf.size(), 16u);
+        EXPECT_EQ(reused_buf.vec().size(), 16u);
+    }
+
+    // Zero-sized TempBuffer followed by assign() must acquire TLS and populate values
+    {
+        TempBuffer<double, 902> lazy_buf(0);
+        EXPECT_TRUE(lazy_buf.empty());
+        lazy_buf.assign(8, 3.25);
+        ASSERT_EQ(lazy_buf.size(), 8u);
+        for (size_t i = 0; i < lazy_buf.size(); ++i)
+        {
+            EXPECT_DOUBLE_EQ(lazy_buf.data()[i], 3.25);
+        }
+    }
+
+    // Oversized TLS buffer (> 262144) must shrink when later requested for a small size (<= 4096)
+    {
+        TempBuffer<double, 903> large_buf(300000);
+        EXPECT_GE(large_buf.vec().capacity(), 300000u);
+    }
+    {
+        TempBuffer<double, 903> small_buf(64);
+        EXPECT_LE(small_buf.vec().capacity(), 4096u);
+    }
+}
+
+TEST_F(FFOutputLayerTest, CalculateOutputGradientsPartialGivenOutputsSafe)
+{
+    const unsigned num_inputs = 4;
+    const unsigned num_outputs = 4;
+    std::vector<OutputLayerDetails> details = {
+        OutputLayerDetails(num_outputs, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, EvaluationConfig(), 0.0, OptimiserType::None, 0.0)
+    };
+
+    FFOutputLayer layer(1, details, num_inputs, num_outputs, 1, true, std::nullopt);
+
+    std::vector<unsigned> topology = { num_inputs, num_outputs };
+    auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+    auto batch_hs = create_batch_hidden_states(topology, 1, 1);
+
+    // Provide fewer hidden state values than num_outputs; remaining outputs must safely zero-fill
+    batch_hs[0].at(1, 0).set_hidden_state_values({ 0.5, 0.25 });
+    batch_hs[0].at(1, 0).set_pre_activation_sums({ 0.5, 0.25, 0.0, 0.0 });
+    batch_hs[0].at(1, 0).set_cell_state_values({ 1.0, 1.0, 1.0, 1.0 });
+
+    std::vector<std::vector<double>> targets = { { 1.0, 0.25, -0.5, 0.5 } };
+    EXPECT_NO_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1));
+
+    const auto grads = batch_go[0].get_gradients(1);
+    ASSERT_EQ(grads.size(), 4u);
+    EXPECT_NEAR(grads[0], (0.5 - 1.0) / 4.0, 1e-9);
+    EXPECT_NEAR(grads[1], (0.25 - 0.25) / 4.0, 1e-9);
+    EXPECT_NEAR(grads[2], (0.0 - (-0.5)) / 4.0, 1e-9);
+    EXPECT_NEAR(grads[3], (0.0 - 0.5) / 4.0, 1e-9);
+}
+
 

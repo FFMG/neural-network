@@ -82,10 +82,10 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 
 ### Functions and Classes
 
-*   `nn.__version__`: Library and bindings semantic version string (e.g. `"0.0.71"`).
+*   `nn.__version__`: Library and bindings semantic version string (e.g. `"0.0.72"`).
 *   `nn.Version`: Compile-time version information.
     *   Properties: `major` (int), `minor` (int), `patch` (int), `code` (int), `string` (str).
-    *   `__repr__()`: Formatted representation string (e.g. `<Version 0.0.71>`).
+    *   `__repr__()`: Formatted representation string (e.g. `<Version 0.0.72>`).
 *   `nn.Logger`: Global logging interface.
     *   `set_level(level)`: Sets the current logging level.
     *   `get_level()`: Returns the current logging level.
@@ -144,7 +144,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `build()`: Finalises and returns the immutable options object.
 *   `nn.NeuralNetwork`: Core neural network model.
     *   `NeuralNetwork(options)`: Constructor.
-    *   `version()`: Static method returning the library version string (e.g. `"0.0.71"`).
+    *   `version()`: Static method returning the library version string (e.g. `"0.0.72"`).
     *   `loaded_version`: Read-only property returning the serialised library version if the model was loaded from a file via `NeuralNetworkSerializer`, or `""` if created in memory.
     *   `train(inputs, outputs)`: Runs supervised training on the provided datasets.
     *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs. When `with_entropy_coefficient(beta)` is configured (> 0.0) with a Softmax output layer, an entropy bonus $\beta \cdot p_k (\ln p_k + H)$ is added to prevent premature policy collapse and encourage exploration. Reuses pre-allocated training workspaces and stack-cached log-probabilities across batches and consecutive updates.
