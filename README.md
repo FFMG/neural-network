@@ -687,7 +687,8 @@ For a dedicated, in-depth guide covering the underlying mathematics, full config
   * When entropy regularisation is configured (`with_entropy_coefficient`), the entropy bonus is computed over the renormalised legal distribution and never pushes probability onto illegal actions.
   * Passing an empty mask list `{}` is identical to calling the unmasked 3-argument overload.
 * Hidden layer gradients are computed via standard backpropagation from the advantage-scaled output gradients, updating all upstream layers proportionally.
-* Sub-batches are chunked and executed according to `options.batch_size()`, reusing pre-allocated `GradientsAndOutputs`, `HiddenStates`, and masked-target buffers across batches and consecutive `train_with_advantages` calls without dynamic heap allocations.
+* Sub-batches are chunked and executed according to `options.batch_size()`, reusing pre-allocated `GradientsAndOutputs`, `HiddenStates`, `TempBuffer` thread-local scratchpads, and masked-target buffers across batches and consecutive `train_with_advantages` calls without dynamic heap allocations. For single-step (`T = 1`) RL updates, output and feed-forward hidden gradients are written directly in-place without populating recurrent sequence buffers, and transposed feed-forward weight matrices (`get_w_values_T()`) are computed lazily on demand.
+* Rollout inference (`think`) bypasses `HiddenStates` allocation and per-layer training state copies altogether when `is_training == false`.
 * Model weights and optimiser velocity/momentum states persist across consecutive updates, allowing the agent to continuously learn online or episode-by-episode.
 
 > [!NOTE]

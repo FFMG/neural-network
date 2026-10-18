@@ -1,4 +1,5 @@
 #include "grnlayer.h"
+#include "fflayer.h"
 #include "../common/logger.h"
 #include "../common/simd_utils.h"
 #include "../libraries/instrumentor.h"
@@ -399,17 +400,11 @@ void GrnLayer::process_forward_range(
       {
         std::memset(scratch.z1.data(), 0, d_ff * sizeof(double));
       }
-      for (size_t i = 0; i < d_in; ++i)
-      {
-        const double xi = x_row[i];
-        simd::mul_add(xi, _w1.values.data() + i * d_ff, scratch.z1.data(), d_ff);
-      }
+      simd::gemm_one_batch(x_row, _w1.values.data(), scratch.z1.data(), d_in, d_ff);
 
       // Activation: eta2 = act(z1)
-      for (size_t j = 0; j < d_ff; ++j)
-      {
-        scratch.eta2[j] = act.activate(scratch.z1[j]);
-      }
+      std::memcpy(scratch.eta2.data(), scratch.z1.data(), d_ff * sizeof(double));
+      act.activate(scratch.eta2.data(), scratch.eta2.data() + d_ff, is_training);
 
       // 2. Dense 2: eta1 = W2 * eta2 + b2
       if (use_bias)
@@ -420,11 +415,7 @@ void GrnLayer::process_forward_range(
       {
         std::memset(scratch.eta1.data(), 0, 2 * d_out * sizeof(double));
       }
-      for (size_t j = 0; j < d_ff; ++j)
-      {
-        const double ej = scratch.eta2[j];
-        simd::mul_add(ej, _w2.values.data() + j * (2 * d_out), scratch.eta1.data(), 2 * d_out);
-      }
+      simd::gemm_one_batch(scratch.eta2.data(), _w2.values.data(), scratch.eta1.data(), d_ff, 2 * d_out);
 
       // 3. GLU: eta_val * sigmoid(eta_gate)
       for (size_t k = 0; k < d_out; ++k)
@@ -456,10 +447,7 @@ void GrnLayer::process_forward_range(
           }
         }
       }
-      for (size_t k = 0; k < d_out; ++k)
-      {
-        scratch.glu_drop[k] = scratch.glu[k] * scratch.mask[k];
-      }
+      simd::mul_vectors(scratch.glu.data(), scratch.mask.data(), scratch.glu_drop.data(), d_out);
 
       // 5. Residual skip connection
       if (has_skip_proj)
@@ -472,21 +460,15 @@ void GrnLayer::process_forward_range(
         {
           std::memset(scratch.x_skip.data(), 0, d_out * sizeof(double));
         }
-        for (size_t i = 0; i < d_in; ++i)
-        {
-          const double xi = x_row[i];
-          simd::mul_add(xi, _w_skip.values.data() + i * d_out, scratch.x_skip.data(), d_out);
-        }
+        simd::gemm_one_batch(x_row, _w_skip.values.data(), scratch.x_skip.data(), d_in, d_out);
       }
       else
       {
         std::memcpy(scratch.x_skip.data(), x_row, d_out * sizeof(double));
       }
 
-      for (size_t k = 0; k < d_out; ++k)
-      {
-        scratch.y_res[k] = scratch.x_skip[k] + scratch.glu_drop[k];
-      }
+      std::memcpy(scratch.y_res.data(), scratch.x_skip.data(), d_out * sizeof(double));
+      simd::add_vectors(scratch.glu_drop.data(), scratch.y_res.data(), d_out);
 
       // Apply external residual connection if present
       if (!batch_residual_output_values.empty() && b < batch_residual_output_values.size() && batch_residual_output_values[b].size() == d_out)
@@ -522,7 +504,7 @@ void GrnLayer::process_forward_range(
       std::memcpy(scratch.out_seq.data() + t * d_out, scratch.y_norm.data(), d_out * sizeof(double));
     }
 
-    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(scratch.out_seq.end() - d_out, scratch.out_seq.end()));
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), scratch.out_seq.data() + (T - 1) * d_out, d_out);
     if (is_sequence)
     {
       batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), scratch.out_seq);
@@ -550,7 +532,7 @@ void GrnLayer::calculate_forward_feed(
 
   if (active_threads <= 1)
   {
-    forward_scratch scratch;
+    thread_local forward_scratch tl_scratch;
     process_forward_range(
       0,
       batch_size,
@@ -559,11 +541,16 @@ void GrnLayer::calculate_forward_feed(
       batch_residual_output_values,
       batch_hidden_states,
       is_training,
-      scratch);
+      tl_scratch);
     return;
   }
 
-  std::vector<forward_scratch> thread_scratch(active_threads);
+  thread_local std::vector<forward_scratch> tl_thread_scratch;
+  if (tl_thread_scratch.size() < active_threads)
+  {
+    tl_thread_scratch.resize(active_threads);
+  }
+
   size_t start = 0;
   for (unsigned int t = 0; t < active_threads; ++t)
   {
@@ -580,7 +567,7 @@ void GrnLayer::calculate_forward_feed(
         &batch_residual_output_values,
         &batch_hidden_states,
         is_training,
-        &thread_scratch[t]
+        &tl_thread_scratch[t]
       });
     }
     start = end;
@@ -659,16 +646,10 @@ void GrnLayer::grn_backward_one(
     {
       std::memset(scratch.z1.data(), 0, d_ff * sizeof(double));
     }
-    for (size_t i = 0; i < d_in; ++i)
-    {
-      const double xi = x_row[i];
-      simd::mul_add(xi, _w1.values.data() + i * d_ff, scratch.z1.data(), d_ff);
-    }
+    simd::gemm_one_batch(x_row, _w1.values.data(), scratch.z1.data(), d_in, d_ff);
 
-    for (size_t j = 0; j < d_ff; ++j)
-    {
-      scratch.eta2[j] = act.activate(scratch.z1[j]);
-    }
+    std::memcpy(scratch.eta2.data(), scratch.z1.data(), d_ff * sizeof(double));
+    act.activate(scratch.eta2.data(), scratch.eta2.data() + d_ff, false);
 
     if (use_bias)
     {
@@ -678,11 +659,7 @@ void GrnLayer::grn_backward_one(
     {
       std::memset(scratch.eta1.data(), 0, 2 * d_out * sizeof(double));
     }
-    for (size_t j = 0; j < d_ff; ++j)
-    {
-      const double ej = scratch.eta2[j];
-      simd::mul_add(ej, _w2.values.data() + j * (2 * d_out), scratch.eta1.data(), 2 * d_out);
-    }
+    simd::gemm_one_batch(scratch.eta2.data(), _w2.values.data(), scratch.eta1.data(), d_ff, 2 * d_out);
 
     const double* y_res = hidden_state_row[t].get_pre_activation_sums().data();
     const double* mask = hidden_state_row[t].get_cell_state_values().data();
@@ -756,16 +733,12 @@ void GrnLayer::grn_backward_one(
     }
 
     // dL/deta2 = W2 * d_eta1
-    for (size_t j = 0; j < d_ff; ++j)
-    {
-      scratch.d_eta2[j] = simd::dot_product(_w2.values.data() + j * (2 * d_out), scratch.d_eta1.data(), 2 * d_out);
-    }
+    std::memset(scratch.d_eta2.data(), 0, d_ff * sizeof(double));
+    simd::gemm_transposed_one_batch(scratch.d_eta1.data(), _w2.values.data(), scratch.d_eta2.data(), d_ff, 2 * d_out);
 
     // 5. Activation backward:
-    for (size_t j = 0; j < d_ff; ++j)
-    {
-      scratch.d_z1[j] = scratch.d_eta2[j] * act.activate_derivative(scratch.z1[j]);
-    }
+    act.activate_derivative(scratch.z1.data(), scratch.z1.data() + d_ff, scratch.eta2.data(), scratch.d_z1.data());
+    simd::mul_vectors(scratch.d_eta2.data(), scratch.d_z1.data(), scratch.d_z1.data(), d_ff);
 
     // 6. Dense 1 backward:
     if (use_bias && accum.b1 != nullptr)
@@ -785,10 +758,8 @@ void GrnLayer::grn_backward_one(
     if (out_dx != nullptr)
     {
       // dL/dx_dense = W1 * d_z1
-      for (size_t i = 0; i < d_in; ++i)
-      {
-        scratch.d_x_dense[i] = simd::dot_product(_w1.values.data() + i * d_ff, scratch.d_z1.data(), d_ff);
-      }
+      std::memset(scratch.d_x_dense.data(), 0, d_in * sizeof(double));
+      simd::gemm_transposed_one_batch(scratch.d_z1.data(), _w1.values.data(), scratch.d_x_dense.data(), d_in, d_ff);
     }
 
     // 7. Skip backward & combine input gradients:
@@ -809,19 +780,16 @@ void GrnLayer::grn_backward_one(
       }
       if (out_dx != nullptr)
       {
-        for (size_t i = 0; i < d_in; ++i)
-        {
-          const double dx_skip_i = simd::dot_product(_w_skip.values.data() + i * d_out, scratch.d_x_skip.data(), d_out);
-          out_dx[t * d_in + i] = scratch.d_x_dense[i] + dx_skip_i;
-        }
+        double* out_dx_row = out_dx + t * d_in;
+        std::memcpy(out_dx_row, scratch.d_x_dense.data(), d_in * sizeof(double));
+        simd::gemm_transposed_one_batch(scratch.d_x_skip.data(), _w_skip.values.data(), out_dx_row, d_in, d_out);
       }
     }
     else if (out_dx != nullptr)
     {
-      for (size_t i = 0; i < d_in; ++i)
-      {
-        out_dx[t * d_in + i] = scratch.d_x_dense[i] + scratch.d_x_skip[i];
-      }
+      double* out_dx_row = out_dx + t * d_in;
+      std::memcpy(out_dx_row, scratch.d_x_dense.data(), d_in * sizeof(double));
+      simd::add_vectors(scratch.d_x_skip.data(), out_dx_row, d_in);
     }
   }
 }
@@ -886,14 +854,17 @@ void GrnLayer::finish_hidden_gradients(
   const auto num_threads = get_number_of_threads();
   const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
+  if (_backward_scratch.size() < active_threads)
+  {
+    _backward_scratch.resize(active_threads);
+  }
+
   if (active_threads <= 1)
   {
-    backward_scratch scratch;
-    finish_hidden_gradients_range(0, batch_size, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all, scratch);
+    finish_hidden_gradients_range(0, batch_size, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all, _backward_scratch[0]);
     return;
   }
 
-  std::vector<backward_scratch> thread_scratch(active_threads);
   size_t start = 0;
   for (unsigned int t = 0; t < active_threads; ++t)
   {
@@ -908,7 +879,7 @@ void GrnLayer::finish_hidden_gradients(
         &batch_gradients_and_outputs,
         &batch_hidden_states,
         raw_delta_all,
-        &thread_scratch[t]
+        &_backward_scratch[t]
       });
     }
     start = end;
@@ -951,6 +922,8 @@ void GrnLayer::calculate_hidden_gradients(
   const size_t next_neurons = next_layer.get_number_neurons();
   const auto& next_w_values = next_layer.get_w_values();
   const double* w_next_ptr = (next_w_values.size() >= d_out * next_neurons) ? next_w_values.data() : nullptr;
+  const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
+  const double* w_next_T_ptr = (ff_next != nullptr && ff_next->get_w_values_T().size() >= d_out * next_neurons) ? ff_next->get_w_values_T().data() : nullptr;
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -969,7 +942,16 @@ void GrnLayer::calculate_hidden_gradients(
       const auto& next_rnn = batch_gradients_and_outputs[b].get_rnn_gradients(next_layer_index);
       const size_t next_T = (next_neurons > 0) ? next_rnn.size() / next_neurons : 0;
       const size_t common_T = std::min(T, next_T);
-      if (w_next_ptr != nullptr)
+      if (w_next_T_ptr != nullptr)
+      {
+        for (size_t t = 0; t < common_T; ++t)
+        {
+          const double* g_next = next_rnn.data() + t * next_neurons;
+          double* d_this = deltas + t * d_out;
+          simd::gemm_one_batch(g_next, w_next_T_ptr, d_this, next_neurons, d_out);
+        }
+      }
+      else if (w_next_ptr != nullptr)
       {
         for (size_t t = 0; t < common_T; ++t)
         {
@@ -1011,7 +993,11 @@ void GrnLayer::calculate_hidden_gradients(
       if (!next_grads.empty())
       {
         double* d_last = deltas + (T - 1) * d_out;
-        if (w_next_ptr != nullptr && next_grads.size() >= next_neurons)
+        if (w_next_T_ptr != nullptr && next_grads.size() >= next_neurons)
+        {
+          simd::gemm_one_batch(next_grads.data(), w_next_T_ptr, d_last, next_neurons, d_out);
+        }
+        else if (w_next_ptr != nullptr && next_grads.size() >= next_neurons)
         {
           simd::gemm_transposed_one_batch(next_grads.data(), w_next_ptr, d_last, d_out, next_neurons);
         }
@@ -1178,9 +1164,13 @@ void GrnLayer::calculate_and_store_gradients(
   const auto num_threads = get_number_of_threads();
   const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
+  if (_backward_scratch.size() < active_threads)
+  {
+    _backward_scratch.resize(active_threads);
+  }
+
   if (active_threads <= 1)
   {
-    backward_scratch scratch;
     grad_accumulators accum{
       _w1.grads.data(), _b1.grads.data(),
       _w2.grads.data(), _b2.grads.data(),
@@ -1188,7 +1178,7 @@ void GrnLayer::calculate_and_store_gradients(
       _ln_gain.grads.data(), _ln_bias.grads.data()
     };
     size_t contributing = 0;
-    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, hidden_states, prev_layer_index, this_layer_index, accum, contributing, scratch);
+    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, hidden_states, prev_layer_index, this_layer_index, accum, contributing, _backward_scratch[0]);
 
     if (contributing > 0)
     {
@@ -1204,19 +1194,22 @@ void GrnLayer::calculate_and_store_gradients(
     return;
   }
 
-  std::vector<backward_scratch> thread_scratch(active_threads);
-  std::vector<thread_grad_accumulators> thread_accums(active_threads);
+  if (_thread_grad_accumulators.size() < active_threads)
+  {
+    _thread_grad_accumulators.resize(active_threads);
+  }
 
   for (size_t i = 0; i < active_threads; ++i)
   {
-    thread_accums[i].w1.assign(_w1.grads.size(), 0.0);
-    thread_accums[i].b1.assign(_b1.grads.size(), 0.0);
-    thread_accums[i].w2.assign(_w2.grads.size(), 0.0);
-    thread_accums[i].b2.assign(_b2.grads.size(), 0.0);
-    thread_accums[i].w_skip.assign(_w_skip.grads.size(), 0.0);
-    thread_accums[i].b_skip.assign(_b_skip.grads.size(), 0.0);
-    thread_accums[i].ln_gain.assign(_ln_gain.grads.size(), 0.0);
-    thread_accums[i].ln_bias.assign(_ln_bias.grads.size(), 0.0);
+    _thread_grad_accumulators[i].contributing = 0;
+    _thread_grad_accumulators[i].w1.assign(_w1.grads.size(), 0.0);
+    _thread_grad_accumulators[i].b1.assign(_b1.grads.size(), 0.0);
+    _thread_grad_accumulators[i].w2.assign(_w2.grads.size(), 0.0);
+    _thread_grad_accumulators[i].b2.assign(_b2.grads.size(), 0.0);
+    _thread_grad_accumulators[i].w_skip.assign(_w_skip.grads.size(), 0.0);
+    _thread_grad_accumulators[i].b_skip.assign(_b_skip.grads.size(), 0.0);
+    _thread_grad_accumulators[i].ln_gain.assign(_ln_gain.grads.size(), 0.0);
+    _thread_grad_accumulators[i].ln_bias.assign(_ln_bias.grads.size(), 0.0);
   }
 
   size_t start = 0;
@@ -1227,10 +1220,10 @@ void GrnLayer::calculate_and_store_gradients(
     if (start < end)
     {
       grad_accumulators accum{
-        thread_accums[t].w1.data(), thread_accums[t].b1.data(),
-        thread_accums[t].w2.data(), thread_accums[t].b2.data(),
-        thread_accums[t].w_skip.data(), thread_accums[t].b_skip.data(),
-        thread_accums[t].ln_gain.data(), thread_accums[t].ln_bias.data()
+        _thread_grad_accumulators[t].w1.data(), _thread_grad_accumulators[t].b1.data(),
+        _thread_grad_accumulators[t].w2.data(), _thread_grad_accumulators[t].b2.data(),
+        _thread_grad_accumulators[t].w_skip.data(), _thread_grad_accumulators[t].b_skip.data(),
+        _thread_grad_accumulators[t].ln_gain.data(), _thread_grad_accumulators[t].ln_bias.data()
       };
 
       _task_queue_pool->enqueue(grn_grad_calc_task{
@@ -1242,8 +1235,8 @@ void GrnLayer::calculate_and_store_gradients(
         prev_layer_index,
         this_layer_index,
         accum,
-        &thread_accums[t].contributing,
-        &thread_scratch[t]
+        &_thread_grad_accumulators[t].contributing,
+        &_backward_scratch[t]
       });
     }
     start = end;
@@ -1253,38 +1246,38 @@ void GrnLayer::calculate_and_store_gradients(
   size_t total_contributing = 0;
   for (size_t i = 0; i < active_threads; ++i)
   {
-    total_contributing += thread_accums[i].contributing;
+    total_contributing += _thread_grad_accumulators[i].contributing;
     if (!_w1.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].w1.data(), _w1.grads.data(), _w1.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].w1.data(), _w1.grads.data(), _w1.grads.size());
     }
     if (!_b1.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].b1.data(), _b1.grads.data(), _b1.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].b1.data(), _b1.grads.data(), _b1.grads.size());
     }
     if (!_w2.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].w2.data(), _w2.grads.data(), _w2.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].w2.data(), _w2.grads.data(), _w2.grads.size());
     }
     if (!_b2.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].b2.data(), _b2.grads.data(), _b2.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].b2.data(), _b2.grads.data(), _b2.grads.size());
     }
     if (!_w_skip.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].w_skip.data(), _w_skip.grads.data(), _w_skip.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].w_skip.data(), _w_skip.grads.data(), _w_skip.grads.size());
     }
     if (!_b_skip.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].b_skip.data(), _b_skip.grads.data(), _b_skip.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].b_skip.data(), _b_skip.grads.data(), _b_skip.grads.size());
     }
     if (!_ln_gain.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].ln_gain.data(), _ln_gain.grads.data(), _ln_gain.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].ln_gain.data(), _ln_gain.grads.data(), _ln_gain.grads.size());
     }
     if (!_ln_bias.grads.empty())
     {
-      simd::add_vectors(thread_accums[i].ln_bias.data(), _ln_bias.grads.data(), _ln_bias.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[i].ln_bias.data(), _ln_bias.grads.data(), _ln_bias.grads.size());
     }
   }
 

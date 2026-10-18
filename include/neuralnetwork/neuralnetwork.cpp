@@ -678,14 +678,8 @@ std::vector<std::vector<NeuralNetworkHelperMetrics>> NeuralNetwork::calculate_fo
     gradients.emplace_back(topology);
   }
 
-  std::vector<HiddenStates> hidden_states;
-  hidden_states.reserve(prediction_size);
-  while (hidden_states.size() < prediction_size)
-  {
-    hidden_states.emplace_back(topology);
-  }
-
-  calculate_forward_feed_for_forecast_metrics(gradients, training_inputs, *checks_indexes, target_layers, hidden_states, false);
+  static thread_local std::vector<HiddenStates> empty_hidden_states;
+  calculate_forward_feed_for_forecast_metrics(gradients, training_inputs, *checks_indexes, target_layers, empty_hidden_states, false);
 
   const unsigned last_layer_index = static_cast<unsigned>(target_layers.size() - 1);
   for (size_t i = 0; i < prediction_size; ++i)
@@ -781,11 +775,17 @@ void NeuralNetwork::train_with_advantages(
     neuron_activations_heap.resize(output_size);
     neuron_activations = neuron_activations_heap.data();
   }
+  bool all_same_activation = true;
   for (unsigned j = 0; j < output_size; ++j)
   {
     neuron_activations[j] = _layers.output_layer().get_activation(j).get_method();
+    if (neuron_activations[j] != neuron_activations[0])
+    {
+      all_same_activation = false;
+    }
   }
   const bool is_softmax = (output_size > 0 && neuron_activations[0] == activation::method::softmax);
+  const auto uniform_act = (output_size > 0) ? neuron_activations[0] : activation::method::linear;
 
   for (size_t i = 0; i < training_inputs.size(); ++i)
   {
@@ -818,8 +818,9 @@ void NeuralNetwork::train_with_advantages(
       {
         Logger::panic("Training action target value at sample ", i, ", index ", j, " is not finite (NaN or Inf).");
       }
-      const auto neuron_idx = (current_out_size == output_size) ? static_cast<unsigned>(j) : static_cast<unsigned>(j % output_size);
-      const auto neuron_act = neuron_activations[neuron_idx];
+      const auto neuron_act = all_same_activation
+        ? uniform_act
+        : neuron_activations[(current_out_size == output_size) ? static_cast<unsigned>(j) : static_cast<unsigned>(j % output_size)];
       if (neuron_act == activation::method::softmax && target_val < 0.0)
       {
         Logger::panic("Training action target at sample ", i, ", index ", j, " is negative (", target_val, "), which is invalid for Softmax policies.");
@@ -1897,16 +1898,19 @@ void NeuralNetwork::calculate_forward_feed_for_forecast_metrics(
       batch_residual_values.clear();
     }
 
-    for (size_t b = 0; b < batch_size; ++b)
+    if (!hidden_states.empty())
     {
-      const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
-      const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
+      for (size_t b = 0; b < batch_size; ++b)
+      {
+        const auto& prev_rnn_out = gradients_and_output[b].get_rnn_outputs(previous_layer.get_layer_index());
+        const auto prev_std_out = gradients_and_output[b].get_outputs(previous_layer.get_layer_index());
 
-      const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
-      const size_t n_prev = previous_layer.get_number_neurons();
-      const size_t num_time_steps = (n_prev > 0 && !prev_rnn_out.empty()) ? seq_size / n_prev : 1;
-      
-      hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+        const size_t seq_size = !prev_rnn_out.empty() ? prev_rnn_out.size() : prev_std_out.size();
+        const size_t n_prev = previous_layer.get_number_neurons();
+        const size_t num_time_steps = (n_prev > 0 && !prev_rnn_out.empty()) ? seq_size / n_prev : 1;
+        
+        hidden_states[b].assign(layer_number, num_time_steps, HiddenState(), current_layer.get_pre_activation_multiplier());
+      }
     }
 
     // Call batched forward feed

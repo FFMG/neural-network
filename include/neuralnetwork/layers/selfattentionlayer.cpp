@@ -2,6 +2,7 @@
 #include "../common/simd_utils.h"
 #include "../libraries/instrumentor.h"
 #include "selfattentionlayer.h"
+#include "fflayer.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -726,7 +727,7 @@ void SelfAttentionLayer::process_forward_range(
 
     scratch.out_seq.resize(T * d);
     std::copy(scratch.y2n.begin(), scratch.y2n.begin() + T * d, scratch.out_seq.begin());
-    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), std::vector<double>(scratch.out_seq.end() - d, scratch.out_seq.end()));
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), scratch.out_seq.data() + (T - 1) * d, d);
     batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), scratch.out_seq);
   }
 }
@@ -758,16 +759,20 @@ void SelfAttentionLayer::calculate_forward_feed(
 
   if (active_threads <= 1)
   {
-    forward_scratch scratch;
-    scratch.capture = capture_attention ? &capture : nullptr;
-    process_forward_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, batch_residual_output_values, batch_hidden_states, is_training, scratch);
+    thread_local forward_scratch tl_scratch;
+    tl_scratch.capture = capture_attention ? &capture : nullptr;
+    process_forward_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, batch_residual_output_values, batch_hidden_states, is_training, tl_scratch);
   }
   else
   {
-    std::vector<forward_scratch> thread_scratch(active_threads);
-    for (auto& thread_scratch_item : thread_scratch)
+    thread_local std::vector<forward_scratch> tl_thread_scratch;
+    if (tl_thread_scratch.size() < active_threads)
     {
-      thread_scratch_item.capture = capture_attention ? &capture : nullptr;
+      tl_thread_scratch.resize(active_threads);
+    }
+    for (unsigned int t = 0; t < active_threads; ++t)
+    {
+      tl_thread_scratch[t].capture = capture_attention ? &capture : nullptr;
     }
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
@@ -785,7 +790,7 @@ void SelfAttentionLayer::calculate_forward_feed(
           &batch_residual_output_values,
           &batch_hidden_states,
           is_training,
-          &thread_scratch[t]
+          &tl_thread_scratch[t]
         });
       }
       start = end;
@@ -1239,14 +1244,17 @@ void SelfAttentionLayer::finish_hidden_gradients(
   const auto num_threads = get_number_of_threads();
   const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
+  if (_backward_scratch.size() < active_threads)
+  {
+    _backward_scratch.resize(active_threads);
+  }
+
   if (active_threads <= 1)
   {
-    backward_scratch scratch;
-    finish_hidden_gradients_range(0, batch_size, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all, scratch);
+    finish_hidden_gradients_range(0, batch_size, batch_gradients_and_outputs, batch_hidden_states, raw_delta_all, _backward_scratch[0]);
   }
   else
   {
-    std::vector<backward_scratch> thread_scratch(active_threads);
     size_t start = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
@@ -1261,7 +1269,7 @@ void SelfAttentionLayer::finish_hidden_gradients(
           &batch_gradients_and_outputs,
           &batch_hidden_states,
           raw_delta_all,
-          &thread_scratch[t]
+          &_backward_scratch[t]
         });
       }
       start = end;
@@ -1293,13 +1301,16 @@ void SelfAttentionLayer::calculate_hidden_gradients(
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned next_layer_index = next_layer.get_layer_index();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
+  const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
+  const double* w_next_T_ptr = (ff_next != nullptr && ff_next->get_w_values_T().size() >= d * N_next) ? ff_next->get_w_values_T().data() : nullptr;
 
-  std::vector<double> raw_delta_all;
+  _raw_delta_all_scratch.clear();
   for (size_t b = 0; b < batch_size; ++b)
   {
     const size_t T = batch_hidden_states[b].at(layer_idx).size();
-    const size_t base = raw_delta_all.size();
-    raw_delta_all.resize(base + T * d, 0.0);
+    const size_t base = _raw_delta_all_scratch.size();
+    _raw_delta_all_scratch.resize(base + T * d, 0.0);
+    std::fill(_raw_delta_all_scratch.begin() + base, _raw_delta_all_scratch.end(), 0.0);
     if (T == 0 || N_next == 0)
     {
       continue;
@@ -1321,15 +1332,27 @@ void SelfAttentionLayer::calculate_hidden_gradients(
 
     const size_t T_avail = (src.size() == N_next) ? T : std::min(T, src.size() / N_next);
     const double* W_next = next_layer.get_w_values().data();
-    for (size_t t = 0; t < T_avail; ++t)
+    if (w_next_T_ptr != nullptr)
     {
-      const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
-      double* out_row = raw_delta_all.data() + base + t * d;
-      simd::gemm_transposed_one_batch(nd, W_next, out_row, d, N_next);
+      for (size_t t = 0; t < T_avail; ++t)
+      {
+        const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
+        double* out_row = _raw_delta_all_scratch.data() + base + t * d;
+        simd::gemm_one_batch(nd, w_next_T_ptr, out_row, N_next, d);
+      }
+    }
+    else
+    {
+      for (size_t t = 0; t < T_avail; ++t)
+      {
+        const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
+        double* out_row = _raw_delta_all_scratch.data() + base + t * d;
+        simd::gemm_transposed_one_batch(nd, W_next, out_row, d, N_next);
+      }
     }
   }
 
-  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
+  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, _raw_delta_all_scratch.data());
 }
 
 void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
@@ -1353,12 +1376,13 @@ void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
   const size_t d = get_number_neurons();
   const bool use_direct_gradients = batch_output_gradients.empty();
 
-  std::vector<double> raw_delta_all;
+  _raw_delta_all_scratch.clear();
   for (size_t b = 0; b < batch_size; ++b)
   {
     const size_t T = batch_hidden_states[b].at(this_layer_index).size();
-    const size_t base = raw_delta_all.size();
-    raw_delta_all.resize(base + T * d, 0.0);
+    const size_t base = _raw_delta_all_scratch.size();
+    _raw_delta_all_scratch.resize(base + T * d, 0.0);
+    std::fill(_raw_delta_all_scratch.begin() + base, _raw_delta_all_scratch.end(), 0.0);
     if (T == 0)
     {
       continue;
@@ -1379,7 +1403,7 @@ void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
       continue;
     }
 
-    double* out_row = raw_delta_all.data() + base;
+    double* out_row = _raw_delta_all_scratch.data() + base;
     if (src.size() == d)
     {
       for (size_t t = 0; t < T; ++t)
@@ -1394,7 +1418,7 @@ void SelfAttentionLayer::calculate_hidden_gradients_from_output_gradients(
     }
   }
 
-  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
+  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, _raw_delta_all_scratch.data());
 }
 
 void SelfAttentionLayer::accumulate_gradients_range(
@@ -1448,6 +1472,11 @@ void SelfAttentionLayer::calculate_and_store_gradients(
   const auto num_threads = get_number_of_threads();
   const unsigned int active_threads = (num_threads > 1) ? std::min(static_cast<unsigned int>(num_threads), static_cast<unsigned int>(batch_size)) : 1;
 
+  if (_backward_scratch.size() < active_threads)
+  {
+    _backward_scratch.resize(active_threads);
+  }
+
   if (active_threads <= 1)
   {
     grad_accumulators accum;
@@ -1464,8 +1493,7 @@ void SelfAttentionLayer::calculate_and_store_gradients(
     }
 
     size_t contributing = 0;
-    backward_scratch scratch;
-    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, d, accum, contributing, scratch);
+    accumulate_gradients_range(0, batch_size, batch_gradients_and_outputs, prev_layer_index, this_layer_index, d, accum, contributing, _backward_scratch[0]);
 
     if (contributing > 0)
     {
@@ -1478,20 +1506,23 @@ void SelfAttentionLayer::calculate_and_store_gradients(
   }
   else
   {
-    std::vector<thread_grad_accumulators> thread_grads(active_threads);
-    std::vector<backward_scratch> thread_scratch(active_threads);
+    if (_thread_grad_accumulators.size() < active_threads)
+    {
+      _thread_grad_accumulators.resize(active_threads);
+    }
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      thread_grads[t].wq.assign(d * d, 0.0); thread_grads[t].bq.assign(d, 0.0);
-      thread_grads[t].wk.assign(d * d, 0.0); thread_grads[t].bk.assign(d, 0.0);
-      thread_grads[t].wv.assign(d * d, 0.0); thread_grads[t].bv.assign(d, 0.0);
-      thread_grads[t].wo.assign(d * d, 0.0); thread_grads[t].bo.assign(d, 0.0);
-      thread_grads[t].ff1_w.assign(d * d_ff, 0.0); thread_grads[t].ff1_b.assign(d_ff, 0.0);
-      thread_grads[t].ff2_w.assign(d_ff * d, 0.0); thread_grads[t].ff2_b.assign(d, 0.0);
+      _thread_grad_accumulators[t].contributing = 0;
+      _thread_grad_accumulators[t].wq.assign(d * d, 0.0); _thread_grad_accumulators[t].bq.assign(d, 0.0);
+      _thread_grad_accumulators[t].wk.assign(d * d, 0.0); _thread_grad_accumulators[t].bk.assign(d, 0.0);
+      _thread_grad_accumulators[t].wv.assign(d * d, 0.0); _thread_grad_accumulators[t].bv.assign(d, 0.0);
+      _thread_grad_accumulators[t].wo.assign(d * d, 0.0); _thread_grad_accumulators[t].bo.assign(d, 0.0);
+      _thread_grad_accumulators[t].ff1_w.assign(d * d_ff, 0.0); _thread_grad_accumulators[t].ff1_b.assign(d_ff, 0.0);
+      _thread_grad_accumulators[t].ff2_w.assign(d_ff * d, 0.0); _thread_grad_accumulators[t].ff2_b.assign(d, 0.0);
       if (_use_layer_normalisation)
       {
-        thread_grads[t].ln1_gain.assign(d, 0.0); thread_grads[t].ln1_bias.assign(d, 0.0);
-        thread_grads[t].ln2_gain.assign(d, 0.0); thread_grads[t].ln2_bias.assign(d, 0.0);
+        _thread_grad_accumulators[t].ln1_gain.assign(d, 0.0); _thread_grad_accumulators[t].ln1_bias.assign(d, 0.0);
+        _thread_grad_accumulators[t].ln2_gain.assign(d, 0.0); _thread_grad_accumulators[t].ln2_bias.assign(d, 0.0);
       }
     }
 
@@ -1503,16 +1534,16 @@ void SelfAttentionLayer::calculate_and_store_gradients(
       if (start < end)
       {
         grad_accumulators accum;
-        accum.wq = thread_grads[t].wq.data(); accum.bq = thread_grads[t].bq.data();
-        accum.wk = thread_grads[t].wk.data(); accum.bk = thread_grads[t].bk.data();
-        accum.wv = thread_grads[t].wv.data(); accum.bv = thread_grads[t].bv.data();
-        accum.wo = thread_grads[t].wo.data(); accum.bo = thread_grads[t].bo.data();
-        accum.ff1_w = thread_grads[t].ff1_w.data(); accum.ff1_b = thread_grads[t].ff1_b.data();
-        accum.ff2_w = thread_grads[t].ff2_w.data(); accum.ff2_b = thread_grads[t].ff2_b.data();
+        accum.wq = _thread_grad_accumulators[t].wq.data(); accum.bq = _thread_grad_accumulators[t].bq.data();
+        accum.wk = _thread_grad_accumulators[t].wk.data(); accum.bk = _thread_grad_accumulators[t].bk.data();
+        accum.wv = _thread_grad_accumulators[t].wv.data(); accum.bv = _thread_grad_accumulators[t].bv.data();
+        accum.wo = _thread_grad_accumulators[t].wo.data(); accum.bo = _thread_grad_accumulators[t].bo.data();
+        accum.ff1_w = _thread_grad_accumulators[t].ff1_w.data(); accum.ff1_b = _thread_grad_accumulators[t].ff1_b.data();
+        accum.ff2_w = _thread_grad_accumulators[t].ff2_w.data(); accum.ff2_b = _thread_grad_accumulators[t].ff2_b.data();
         if (_use_layer_normalisation)
         {
-          accum.ln1_gain = thread_grads[t].ln1_gain.data(); accum.ln1_bias = thread_grads[t].ln1_bias.data();
-          accum.ln2_gain = thread_grads[t].ln2_gain.data(); accum.ln2_bias = thread_grads[t].ln2_bias.data();
+          accum.ln1_gain = _thread_grad_accumulators[t].ln1_gain.data(); accum.ln1_bias = _thread_grad_accumulators[t].ln1_bias.data();
+          accum.ln2_gain = _thread_grad_accumulators[t].ln2_gain.data(); accum.ln2_bias = _thread_grad_accumulators[t].ln2_bias.data();
         }
 
         _task_queue_pool->enqueue(self_attention_grad_calc_task{
@@ -1524,8 +1555,8 @@ void SelfAttentionLayer::calculate_and_store_gradients(
           this_layer_index,
           d,
           accum,
-          &thread_grads[t].contributing,
-          &thread_scratch[t]
+          &_thread_grad_accumulators[t].contributing,
+          &_backward_scratch[t]
         });
       }
       start = end;
@@ -1535,26 +1566,26 @@ void SelfAttentionLayer::calculate_and_store_gradients(
     size_t total_contributing = 0;
     for (unsigned int t = 0; t < active_threads; ++t)
     {
-      simd::add_vectors(thread_grads[t].wq.data(), _wq.grads.data(), _wq.grads.size());
-      simd::add_vectors(thread_grads[t].bq.data(), _bq.grads.data(), _bq.grads.size());
-      simd::add_vectors(thread_grads[t].wk.data(), _wk.grads.data(), _wk.grads.size());
-      simd::add_vectors(thread_grads[t].bk.data(), _bk.grads.data(), _bk.grads.size());
-      simd::add_vectors(thread_grads[t].wv.data(), _wv.grads.data(), _wv.grads.size());
-      simd::add_vectors(thread_grads[t].bv.data(), _bv.grads.data(), _bv.grads.size());
-      simd::add_vectors(thread_grads[t].wo.data(), _wo.grads.data(), _wo.grads.size());
-      simd::add_vectors(thread_grads[t].bo.data(), _bo.grads.data(), _bo.grads.size());
-      simd::add_vectors(thread_grads[t].ff1_w.data(), _ff1_w.grads.data(), _ff1_w.grads.size());
-      simd::add_vectors(thread_grads[t].ff1_b.data(), _ff1_b.grads.data(), _ff1_b.grads.size());
-      simd::add_vectors(thread_grads[t].ff2_w.data(), _ff2_w.grads.data(), _ff2_w.grads.size());
-      simd::add_vectors(thread_grads[t].ff2_b.data(), _ff2_b.grads.data(), _ff2_b.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].wq.data(), _wq.grads.data(), _wq.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].bq.data(), _bq.grads.data(), _bq.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].wk.data(), _wk.grads.data(), _wk.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].bk.data(), _bk.grads.data(), _bk.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].wv.data(), _wv.grads.data(), _wv.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].bv.data(), _bv.grads.data(), _bv.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].wo.data(), _wo.grads.data(), _wo.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].bo.data(), _bo.grads.data(), _bo.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].ff1_w.data(), _ff1_w.grads.data(), _ff1_w.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].ff1_b.data(), _ff1_b.grads.data(), _ff1_b.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].ff2_w.data(), _ff2_w.grads.data(), _ff2_w.grads.size());
+      simd::add_vectors(_thread_grad_accumulators[t].ff2_b.data(), _ff2_b.grads.data(), _ff2_b.grads.size());
       if (_use_layer_normalisation)
       {
-        simd::add_vectors(thread_grads[t].ln1_gain.data(), _ln1_gain.grads.data(), _ln1_gain.grads.size());
-        simd::add_vectors(thread_grads[t].ln1_bias.data(), _ln1_bias.grads.data(), _ln1_bias.grads.size());
-        simd::add_vectors(thread_grads[t].ln2_gain.data(), _ln2_gain.grads.data(), _ln2_gain.grads.size());
-        simd::add_vectors(thread_grads[t].ln2_bias.data(), _ln2_bias.grads.data(), _ln2_bias.grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].ln1_gain.data(), _ln1_gain.grads.data(), _ln1_gain.grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].ln1_bias.data(), _ln1_bias.grads.data(), _ln1_bias.grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].ln2_gain.data(), _ln2_gain.grads.data(), _ln2_gain.grads.size());
+        simd::add_vectors(_thread_grad_accumulators[t].ln2_bias.data(), _ln2_bias.grads.data(), _ln2_bias.grads.size());
       }
-      total_contributing += thread_grads[t].contributing;
+      total_contributing += _thread_grad_accumulators[t].contributing;
     }
 
     if (total_contributing > 0)

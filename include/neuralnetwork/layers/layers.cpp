@@ -230,15 +230,12 @@ public:
     {
       _topology = topology;
       _gradients.clear();
-      _hidden_states.clear();
     }
 
     if (_gradients.size() > 512 && batch_size <= 32)
     {
       _gradients.clear();
-      _hidden_states.clear();
       _gradients.shrink_to_fit();
-      _hidden_states.shrink_to_fit();
     }
 
     if (_gradients.size() < batch_size)
@@ -247,15 +244,6 @@ public:
       while (_gradients.size() < batch_size)
       {
         _gradients.emplace_back(_topology);
-      }
-    }
-
-    if (_hidden_states.size() < batch_size)
-    {
-      _hidden_states.reserve(batch_size);
-      while (_hidden_states.size() < batch_size)
-      {
-        _hidden_states.emplace_back(_topology);
       }
     }
 
@@ -273,16 +261,6 @@ public:
   [[nodiscard]] const std::vector<GradientsAndOutputs>& gradients() const noexcept
   {
     return _gradients;
-  }
-
-  std::vector<HiddenStates>& hidden_states() noexcept
-  {
-    return _hidden_states;
-  }
-
-  [[nodiscard]] const std::vector<HiddenStates>& hidden_states() const noexcept
-  {
-    return _hidden_states;
   }
 
   std::vector<std::vector<double>>& input_wrapper() noexcept
@@ -303,7 +281,6 @@ public:
 private:
   std::vector<unsigned> _topology;
   std::vector<GradientsAndOutputs> _gradients;
-  std::vector<HiddenStates> _hidden_states;
   std::vector<std::vector<double>> _input_wrapper;
 };
 
@@ -702,13 +679,16 @@ void Layers::calculate_forward_feed(
   {
     Logger::panic("Layers trying calculate forward feed but output size does not match batch size!");
   }
-  if (hidden_states.size() < batch_size)
+  if (is_training || !hidden_states.empty())
   {
-    Logger::panic("Layers trying calculate forward feed but hidden states size does not match batch size!");
-  }
-  if (hidden_states.size() != gradients_and_output.size())
-  {
-    Logger::panic("Layers trying calculate forward feed but hidden states size does not match gradients and output!");
+    if (hidden_states.size() < batch_size)
+    {
+      Logger::panic("Layers trying calculate forward feed but hidden states size does not match batch size!");
+    }
+    if (hidden_states.size() != gradients_and_output.size())
+    {
+      Logger::panic("Layers trying calculate forward feed but hidden states size does not match gradients and output!");
+    }
   }
 
 #endif
@@ -1196,7 +1176,8 @@ std::vector<std::vector<double>> Layers::think(const NeuralNetworkOptions& optio
   auto& workspace = get_inference_workspace();
   workspace.prepare(topology, batch_size);
 
-  calculate_forward_feed(options, workspace.gradients(), inputs.begin(), batch_size, workspace.hidden_states(), false);
+  static thread_local std::vector<HiddenStates> empty_hidden_states;
+  calculate_forward_feed(options, workspace.gradients(), inputs.begin(), batch_size, empty_hidden_states, false);
 
   std::vector<std::vector<double>> outputs;
   outputs.reserve(batch_size);
@@ -1222,7 +1203,8 @@ void Layers::think(const NeuralNetworkOptions& options, const std::vector<double
   auto& workspace = get_inference_workspace();
   workspace.prepare(topology, 1);
 
-  calculate_forward_feed(options, workspace.gradients(), &inputs, 1, workspace.hidden_states(), false);
+  static thread_local std::vector<HiddenStates> empty_hidden_states;
+  calculate_forward_feed(options, workspace.gradients(), &inputs, 1, empty_hidden_states, false);
   const auto s = workspace.gradients().front().output_back_span();
   outputs.assign(s.begin(), s.end());
 }

@@ -1078,6 +1078,10 @@ private:
   std::atomic<bool> _capture_attention{ false };
   mutable std::mutex _attention_mutex;
   mutable std::vector<attention_capture> _last_attention;
+
+  mutable std::vector<backward_scratch> _backward_scratch;
+  mutable std::vector<thread_grad_accumulators> _thread_grad_accumulators;
+  mutable std::vector<double> _raw_delta_all_scratch;
 };
 
 } // namespace myoddweb::nn

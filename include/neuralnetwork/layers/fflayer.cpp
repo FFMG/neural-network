@@ -264,7 +264,8 @@ FFLayer::FFLayer(
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
   Layer(src),
-  _w_values_T(src._w_values_T)
+  _w_values_T(src._w_values_T),
+  _w_values_T_dirty(src._w_values_T_dirty)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -331,7 +332,8 @@ FFLayer::FFLayer(
 
 FFLayer::FFLayer(FFLayer&& src) noexcept :
   Layer(std::move(src)),
-  _w_values_T(std::move(src._w_values_T))
+  _w_values_T(std::move(src._w_values_T)),
+  _w_values_T_dirty(src._w_values_T_dirty)
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
 }
@@ -343,6 +345,7 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   {
     Layer::operator=(src);
     _w_values_T = src._w_values_T;
+    _w_values_T_dirty = src._w_values_T_dirty;
   }
   return *this;
 }
@@ -354,6 +357,7 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   {
     Layer::operator=(std::move(src));
     _w_values_T = std::move(src._w_values_T);
+    _w_values_T_dirty = src._w_values_T_dirty;
   }
   return *this;
 }
@@ -735,7 +739,14 @@ void FFLayer::run_post_gemm(
     const double* seq_ptr = has_dropout ? output_row_ptr : b_pre_act_base;
     double* dest_ptr = batch_gradients_and_outputs[b].get_outputs_raw(get_layer_index());
     std::memcpy(dest_ptr, seq_ptr + (num_time_steps - 1) * N_this, N_this * sizeof(double));
-    batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
+    if (num_time_steps > 1 || get_layer_role() != Role::Output)
+    {
+      batch_gradients_and_outputs[b].set_rnn_outputs(get_layer_index(), seq_ptr, num_time_steps * N_this);
+    }
+    else
+    {
+      batch_gradients_and_outputs[b].clear_rnn_outputs(get_layer_index());
+    }
   }
 }
 
@@ -1343,7 +1354,7 @@ void FFLayer::run_post_gemm_backward(
   TempBuffer<double, 6> deriv_heap(N_this > 64 ? N_this : 0);
   double* deriv_ptr = (N_this <= 64) ? deriv_stack.data() : deriv_heap.data();
 
-  TempBuffer<double, 7> rnn_grads_row(initial_time_steps * N_this);
+  TempBuffer<double, 7> rnn_grads_row(initial_time_steps > 1 ? initial_time_steps * N_this : 0);
 
   const bool has_dropout = (get_dropout() > 0.0);
 
@@ -1356,11 +1367,20 @@ void FFLayer::run_post_gemm_backward(
       continue;
     }
 
-    if (rnn_grads_row.size() < num_time_steps * N_this)
+    double* rnn_grads_ptr = nullptr;
+    if (num_time_steps == 1)
     {
-      rnn_grads_row.assign(num_time_steps * N_this, 0.0);
+      rnn_grads_ptr = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+      batch_gradients_and_outputs[b].clear_rnn_gradients(get_layer_index());
     }
-    double* rnn_grads_ptr = rnn_grads_row.data();
+    else
+    {
+      if (rnn_grads_row.size() < num_time_steps * N_this)
+      {
+        rnn_grads_row.assign(num_time_steps * N_this, 0.0);
+      }
+      rnn_grads_ptr = rnn_grads_row.data();
+    }
 
     for (size_t t = 0; t < num_time_steps; ++t)
     {
@@ -1387,7 +1407,7 @@ void FFLayer::run_post_gemm_backward(
               range_size
             );
           }
-          else
+          else if (out_grad_dest != g_src)
           {
             std::memcpy(out_grad_dest, g_src, range_size * sizeof(double));
           }
@@ -1425,8 +1445,11 @@ void FFLayer::run_post_gemm_backward(
       }
     }
 
-    batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_ptr + (num_time_steps - 1) * N_this, N_this);
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_ptr, num_time_steps * N_this);
+    if (num_time_steps > 1)
+    {
+      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_ptr + (num_time_steps - 1) * N_this, N_this);
+      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_ptr, num_time_steps * N_this);
+    }
   }
 }
 
@@ -1863,15 +1886,29 @@ void FFLayer::calculate_and_store_gradients_chunk(
 void FFLayer::cache_recurrent_weights()
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  const size_t n_prev = get_number_input_neurons();
-  const size_t n_this = get_number_neurons();
-  const auto& w_vals = get_w_values();
-  if (w_vals.empty() || n_prev == 0 || n_this == 0)
+  _w_values_T_dirty = true;
+}
+
+const FFLayer::AlignedVector& FFLayer::get_w_values_T() const noexcept
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  if (_w_values_T_dirty)
   {
-    return;
+    const size_t n_prev = get_number_input_neurons();
+    const size_t n_this = get_number_neurons();
+    const auto& w_vals = get_w_values();
+    if (!w_vals.empty() && n_prev > 0 && n_this > 0)
+    {
+      _w_values_T.resize(n_this * n_prev);
+      simd::transpose(w_vals.data(), _w_values_T.data(), n_prev, n_this);
+    }
+    else
+    {
+      _w_values_T.clear();
+    }
+    _w_values_T_dirty = false;
   }
-  _w_values_T.resize(n_this * n_prev);
-  simd::transpose(w_vals.data(), _w_values_T.data(), n_prev, n_this);
+  return _w_values_T;
 }
 
 void FFLayer::run_gemm_backward_fast(

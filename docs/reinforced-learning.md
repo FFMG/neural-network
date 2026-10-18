@@ -624,3 +624,6 @@ if __name__ == "__main__":
    Enable `with_clip_threshold(1.0)` or `2.0` when environment rewards have high variance or rare extreme spikes to protect weights from divergence.
 6. **Action Masking**:
    Always pass valid action masks during both action sampling and the `train_with_advantages` call. This prevents invalid options from corrupting policy gradients or absorbing probability mass.
+7. **High-Throughput Rollouts and Updates**:
+   In C++, prefer the pre-allocated output buffer overload `nn.think(state, action_probs)` inside tight environment rollout loops; `think()` skips all `HiddenStates` allocations and training-state copies when `is_training == false`. During `train_with_advantages()`, single-step (`T = 1`) updates write output and hidden feed-forward gradients directly in-place without populating recurrent sequence buffers, lazy transposed weight caches (`get_w_values_T()`) avoid redundant matrix transpositions, and thread-local `TempBuffer` / persistent layer scratch workspaces (`GrnLayer`, `SelfAttentionLayer`, `AttentionPoolLayer`) eliminate per-batch heap allocations.
+

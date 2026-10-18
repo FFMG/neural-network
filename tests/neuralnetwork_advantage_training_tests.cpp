@@ -1749,3 +1749,156 @@ TEST(NeuralNetworkAdvantageTrainingTest, SingleSampleThinkReuseAndAdvantageScali
   }
 }
 
+TEST(NeuralNetworkAdvantageTrainingTest, LazyTransposedWeightsUpdatedOnDemandDuringAdvantageTraining)
+{
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::FF, 5, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::FF, 4, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    3,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ 3, 5, 4, 3 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.05)
+    .with_batch_size(2)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_seed(123u)
+    .build()
+    .with_entropy_coefficient(0.02);
+
+  NeuralNetwork nn(options);
+
+  const auto* layer1_ff = dynamic_cast<const FFLayer*>(&nn.get_layer(1));
+  const auto* layer2_ff = dynamic_cast<const FFLayer*>(&nn.get_layer(2));
+  const auto* layer3_ff = dynamic_cast<const FFLayer*>(&nn.get_layer(3));
+  ASSERT_NE(layer1_ff, nullptr);
+  ASSERT_NE(layer2_ff, nullptr);
+  ASSERT_NE(layer3_ff, nullptr);
+
+  const std::vector<std::vector<double>> inputs =
+  {
+    { 0.4, -0.2, 0.7 },
+    { -0.5, 0.6, -0.1 }
+  };
+  const std::vector<std::vector<double>> targets =
+  {
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 }
+  };
+  const std::vector<double> advantages = { 1.5, 1.2 };
+
+  const auto before_probs = nn.think(inputs[0]);
+  nn.train_with_advantages(inputs, targets, advantages);
+  const auto after_probs = nn.think(inputs[0]);
+  EXPECT_GT(after_probs[0], before_probs[0]);
+
+  // Verify lazy get_w_values_T() matches exact transpose of get_w_values() on all FFLayers after training
+  const FFLayer* ff_layers[3] = { layer1_ff, layer2_ff, layer3_ff };
+  for (int idx = 0; idx < 3; ++idx)
+  {
+    const FFLayer* ff = ff_layers[idx];
+    const size_t num_in = ff->get_number_input_neurons();
+    const size_t num_out = ff->get_number_neurons();
+    const auto& w = ff->get_w_values();
+    const auto& w_T = ff->get_w_values_T();
+    ASSERT_EQ(w.size(), num_in * num_out);
+    ASSERT_EQ(w_T.size(), num_in * num_out);
+    for (size_t i = 0; i < num_in; ++i)
+    {
+      for (size_t j = 0; j < num_out; ++j)
+      {
+        EXPECT_DOUBLE_EQ(w_T[j * num_in + i], w[i * num_out + j]);
+      }
+    }
+  }
+}
+
+TEST(NeuralNetworkAdvantageTrainingTest, TcnGrnSelfAttentionFollowedByFFLayerAdvantageTraining)
+{
+  const unsigned input_size = 4;
+  const unsigned hidden_size = 4;
+  const unsigned num_actions = 3;
+
+  std::vector<LayerDetails> hidden_layers =
+  {
+    LayerDetails(Layer::Architecture::Tcn, hidden_size, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 2, 1, 0, 0, 0, 0),
+    LayerDetails::create_grn(hidden_size, 6, activation(activation::method::elu, 1.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, true),
+    LayerDetails(Layer::Architecture::SelfAttention, hidden_size, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, true, 0, 0, 0, 2, 6, 0, 0),
+    LayerDetails(Layer::Architecture::Gru, hidden_size, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::AttentionPool, hidden_size, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 3, 0, 0, 0, 0, 0, 0),
+    LayerDetails(Layer::Architecture::FF, hidden_size, activation(activation::method::relu, 0.0), 0.0, 0.0, OptimiserType::AdamW, 0.9, false, 0, 0, 0, 0, 0, 0, 0)
+  };
+
+  EvaluationConfig eval_config(0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0);
+  OutputLayerDetails output_layer_details(
+    num_actions,
+    activation(activation::method::softmax, 0.0, 1.0),
+    ErrorCalculation::type::cross_entropy,
+    eval_config,
+    0.0,
+    OptimiserType::AdamW,
+    0.9);
+
+  auto options = NeuralNetworkOptions::create({ input_size, hidden_size, hidden_size, hidden_size, hidden_size, hidden_size, hidden_size, num_actions })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(output_layer_details)
+    .with_learning_rate(0.05)
+    .with_batch_size(2)
+    .with_number_of_epoch(1)
+    .with_shuffle_training_data(false)
+    .with_has_bias(true)
+    .with_enable_bptt(true)
+    .with_bptt_max_ticks(2)
+    .with_seed(77u)
+    .build()
+    .with_entropy_coefficient(0.02);
+
+  NeuralNetwork nn(options);
+
+  const std::vector<std::vector<double>> inputs =
+  {
+    { 0.3, -0.2, 0.5, 0.1 },
+    { -0.4, 0.4, -0.1, 0.3 },
+    { 0.2, 0.1, -0.3, 0.6 },
+    { -0.1, -0.3, 0.4, -0.2 }
+  };
+  const std::vector<std::vector<double>> targets =
+  {
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 }
+  };
+  const std::vector<double> advantages = { 1.0, 1.2, 0.9, 1.4 };
+
+  const auto initial_probs = nn.think(inputs[1]);
+  ASSERT_EQ(initial_probs.size(), num_actions);
+
+  for (int step = 0; step < 3; ++step)
+  {
+    EXPECT_NO_THROW(nn.train_with_advantages(inputs, targets, advantages));
+  }
+
+  const auto updated_probs = nn.think(inputs[1]);
+  ASSERT_EQ(updated_probs.size(), num_actions);
+  for (unsigned a = 0; a < num_actions; ++a)
+  {
+    EXPECT_TRUE(std::isfinite(updated_probs[a]));
+  }
+  EXPECT_GT(updated_probs[0], initial_probs[0]);
+}
+
+

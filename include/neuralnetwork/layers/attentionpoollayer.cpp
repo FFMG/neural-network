@@ -1,5 +1,6 @@
 #include "../libraries/instrumentor.h"
 #include "attentionpoollayer.h"
+#include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
 #include <cmath>
@@ -342,65 +343,62 @@ void AttentionPoolLayer::calculate_forward_feed(
   const bool have_hs = !batch_hidden_states.empty();
   const bool use_bias = has_bias();
 
-  std::vector<double> context(N);
-  std::vector<double> output(N);
-  std::vector<double> mask(N);
-  std::vector<double> scores;
-  std::vector<double> e_buf(d_a);
+  thread_local forward_scratch tl_scratch;
+  tl_scratch.context.resize(N);
+  tl_scratch.output.resize(N);
+  tl_scratch.mask.resize(N);
+  tl_scratch.e_buf.resize(d_a);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
     const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const size_t T = (N > 0 && !seq.empty()) ? seq.size() / N : 0;
 
-    std::fill(context.begin(), context.end(), 0.0);
+    std::fill(tl_scratch.context.begin(), tl_scratch.context.end(), 0.0);
 
     if (T > 0)
     {
-      scores.resize(T);
+      tl_scratch.scores.resize(T);
       for (size_t t = 0; t < T; ++t)
       {
         const double* h_t = seq.data() + t * N;
         if (use_bias && _ba_values.size() >= d_a)
         {
-          std::memcpy(e_buf.data(), _ba_values.data(), d_a * sizeof(double));
+          std::memcpy(tl_scratch.e_buf.data(), _ba_values.data(), d_a * sizeof(double));
         }
         else
         {
-          std::memset(e_buf.data(), 0, d_a * sizeof(double));
+          std::memset(tl_scratch.e_buf.data(), 0, d_a * sizeof(double));
           if (use_bias && !_ba_values.empty())
           {
-            std::memcpy(e_buf.data(), _ba_values.data(), _ba_values.size() * sizeof(double));
+            std::memcpy(tl_scratch.e_buf.data(), _ba_values.data(), _ba_values.size() * sizeof(double));
           }
         }
-        for (size_t i = 0; i < N; ++i)
-        {
-          simd::mul_add(h_t[i], _wa_values.data() + i * d_a, e_buf.data(), d_a);
-        }
+        simd::gemm_one_batch(h_t, _wa_values.data(), tl_scratch.e_buf.data(), N, d_a);
         double score = 0.0;
         for (size_t j = 0; j < d_a; ++j)
         {
-          const double u = std::tanh(e_buf[j]);
+          const double u = std::tanh(tl_scratch.e_buf[j]);
           score += _v_values[j] * u;
         }
-        scores[t] = score;
+        tl_scratch.scores[t] = score;
       }
-      simd::softmax_forward(scores.data(), T);
+      simd::softmax_forward(tl_scratch.scores.data(), T);
       for (size_t t = 0; t < T; ++t)
       {
         const double* h_t = seq.data() + t * N;
-        const double a_t = scores[t];
-        simd::mul_add(a_t, h_t, context.data(), N);
+        const double a_t = tl_scratch.scores[t];
+        simd::mul_add(a_t, h_t, tl_scratch.context.data(), N);
       }
     }
 
-    output = context;
+    std::memcpy(tl_scratch.output.data(), tl_scratch.context.data(), N * sizeof(double));
     for (const auto& r : get_activation_helper().ranges())
     {
-      r.activation_method.activate(output.data() + r.start, output.data() + r.end, is_training);
+      r.activation_method.activate(tl_scratch.output.data() + r.start, tl_scratch.output.data() + r.end, is_training);
     }
 
-    std::fill(mask.begin(), mask.end(), 1.0);
+    std::fill(tl_scratch.mask.begin(), tl_scratch.mask.end(), 1.0);
     if (is_training && get_dropout() > 0.0)
     {
       const auto& neurons = get_neurons();
@@ -411,14 +409,14 @@ void AttentionPoolLayer::calculate_forward_feed(
         {
           if (neuron.must_randomly_drop(b))
           {
-            output[j] = 0.0;
-            mask[j] = 0.0;
+            tl_scratch.output[j] = 0.0;
+            tl_scratch.mask[j] = 0.0;
           }
           else
           {
             const double scale = 1.0 / (1.0 - neuron.get_dropout_rate());
-            output[j] *= scale;
-            mask[j] = scale;
+            tl_scratch.output[j] *= scale;
+            tl_scratch.mask[j] = scale;
           }
         }
       }
@@ -431,12 +429,12 @@ void AttentionPoolLayer::calculate_forward_feed(
         batch_hidden_states[b].assign(get_layer_index(), 1, HiddenState(), get_pre_activation_multiplier());
       }
       auto& hs_row = batch_hidden_states[b].at(get_layer_index());
-      hs_row[0].set_pre_activation_sums(context.data(), N);
-      hs_row[0].set_hidden_state_values(output.data(), N);
-      hs_row[0].set_cell_state_values(mask.data(), N);
+      hs_row[0].set_pre_activation_sums(tl_scratch.context.data(), N);
+      hs_row[0].set_hidden_state_values(tl_scratch.output.data(), N);
+      hs_row[0].set_cell_state_values(tl_scratch.mask.data(), N);
     }
 
-    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), output.data(), N);
+    batch_gradients_and_outputs[b].set_outputs(get_layer_index(), tl_scratch.output.data(), N);
   }
 }
 
@@ -481,10 +479,7 @@ void AttentionPoolLayer::attention_backward_one(
         std::memcpy(u_t, _ba_values.data(), _ba_values.size() * sizeof(double));
       }
     }
-    for (size_t i = 0; i < N; ++i)
-    {
-      simd::mul_add(h_t[i], _wa_values.data() + i * d_a, u_t, d_a);
-    }
+    simd::gemm_one_batch(h_t, _wa_values.data(), u_t, N, d_a);
     double score = 0.0;
     for (size_t j = 0; j < d_a; ++j)
     {
@@ -540,10 +535,7 @@ void AttentionPoolLayer::attention_backward_one(
       double* dh_t = out_dh + t * N;
       const double a_t = scratch.alpha[t];
       simd::mul_scalar(delta, a_t, dh_t, N);
-      for (size_t i = 0; i < N; ++i)
-      {
-        dh_t[i] += simd::dot_product(_wa_values.data() + i * d_a, scratch.de.data(), d_a);
-      }
+      simd::gemm_transposed_one_batch(scratch.de.data(), _wa_values.data(), dh_t, N, d_a);
     }
   }
 }
@@ -559,9 +551,8 @@ void AttentionPoolLayer::finish_hidden_gradients(
   const unsigned this_layer_index = get_layer_index();
   const unsigned prev_layer_index = this_layer_index - 1;
 
-  std::vector<double> delta(N);
-  std::vector<double> deriv(N);
-  backward_scratch scratch;
+  _backward_scratch.delta.resize(N);
+  _backward_scratch.deriv.resize(N);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -580,19 +571,19 @@ void AttentionPoolLayer::finish_hidden_gradients(
         pre_act + r.start,
         pre_act + r.end,
         y_vals ? (y_vals + r.start) : nullptr,
-        deriv.data() + r.start
+        _backward_scratch.deriv.data() + r.start
       );
     }
-    simd::mul_three_vectors(raw, deriv.data(), mask_vals, delta.data(), N);
+    simd::mul_three_vectors(raw, _backward_scratch.deriv.data(), mask_vals, _backward_scratch.delta.data(), N);
 
-    batch_gradients_and_outputs[b].set_gradients(this_layer_index, delta.data(), N);
+    batch_gradients_and_outputs[b].set_gradients(this_layer_index, _backward_scratch.delta.data(), N);
 
     const auto& seq = batch_gradients_and_outputs[b].get_rnn_outputs(prev_layer_index);
     const size_t T = (N > 0 && !seq.empty()) ? seq.size() / N : 0;
     if (T > 0)
     {
       double* out_dh = batch_gradients_and_outputs[b].get_rnn_gradients_raw(this_layer_index, T * N);
-      attention_backward_one(seq.data(), T, delta.data(), out_dh, nullptr, nullptr, nullptr, scratch);
+      attention_backward_one(seq.data(), T, _backward_scratch.delta.data(), out_dh, nullptr, nullptr, nullptr, _backward_scratch);
     }
   }
 }
@@ -615,9 +606,11 @@ void AttentionPoolLayer::calculate_hidden_gradients(
   const size_t N_next = next_layer.get_number_neurons();
   const unsigned next_layer_index = next_layer.get_layer_index();
   const bool use_direct_gradients = batch_next_grad_matrix.empty();
+  const FFLayer* ff_next = next_layer.is_ff_layer() ? static_cast<const FFLayer*>(&next_layer) : nullptr;
+  const double* w_next_T_ptr = (ff_next != nullptr && ff_next->get_w_values_T().size() >= N * N_next) ? ff_next->get_w_values_T().data() : nullptr;
 
-  std::vector<double> raw_delta_all(batch_size * N, 0.0);
-  std::vector<double> next_grad(N_next);
+  _backward_scratch.raw_delta_all.assign(batch_size * N, 0.0);
+  _backward_scratch.next_grad.resize(N_next);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -638,20 +631,27 @@ void AttentionPoolLayer::calculate_hidden_gradients(
     }
     else
     {
-      std::fill(next_grad.begin(), next_grad.end(), 0.0);
+      std::fill(_backward_scratch.next_grad.begin(), _backward_scratch.next_grad.end(), 0.0);
       if (!src.empty())
       {
-        std::copy(src.data(), src.data() + src.size(), next_grad.begin());
+        std::copy(src.data(), src.data() + src.size(), _backward_scratch.next_grad.begin());
       }
-      next_grad_ptr = next_grad.data();
+      next_grad_ptr = _backward_scratch.next_grad.data();
     }
 
     // Chain-rule through next_layer's dense weight matrix: raw_delta[i] = sum_j next_grad[j] * W_next[i,j]
-    double* raw = raw_delta_all.data() + b * N;
-    simd::gemm_transposed_one_batch(next_grad_ptr, next_layer.get_w_values().data(), raw, N, N_next);
+    double* raw = _backward_scratch.raw_delta_all.data() + b * N;
+    if (w_next_T_ptr != nullptr)
+    {
+      simd::gemm_one_batch(next_grad_ptr, w_next_T_ptr, raw, N_next, N);
+    }
+    else
+    {
+      simd::gemm_transposed_one_batch(next_grad_ptr, next_layer.get_w_values().data(), raw, N, N_next);
+    }
   }
 
-  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
+  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, _backward_scratch.raw_delta_all.data());
 }
 
 void AttentionPoolLayer::calculate_hidden_gradients_from_output_gradients(
@@ -671,7 +671,7 @@ void AttentionPoolLayer::calculate_hidden_gradients_from_output_gradients(
   const unsigned this_layer_index = get_layer_index();
   const bool use_direct_gradients = batch_output_gradients.empty();
 
-  std::vector<double> raw_delta_all(batch_size * N, 0.0);
+  _backward_scratch.raw_delta_all.assign(batch_size * N, 0.0);
 
   for (size_t b = 0; b < batch_size; ++b)
   {
@@ -689,12 +689,12 @@ void AttentionPoolLayer::calculate_hidden_gradients_from_output_gradients(
     {
       continue;
     }
-    double* raw = raw_delta_all.data() + b * N;
+    double* raw = _backward_scratch.raw_delta_all.data() + b * N;
     const size_t copy_size = std::min(src.size(), N);
     std::copy(src.data(), src.data() + copy_size, raw);
   }
 
-  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, raw_delta_all.data());
+  finish_hidden_gradients(batch_gradients_and_outputs, batch_hidden_states, batch_size, _backward_scratch.raw_delta_all.data());
 }
 
 void AttentionPoolLayer::calculate_and_store_gradients(
@@ -716,7 +716,6 @@ void AttentionPoolLayer::calculate_and_store_gradients(
   const unsigned this_layer_index = get_layer_index();
   const size_t N = get_number_neurons();
 
-  backward_scratch scratch;
   size_t contributing = 0;
 
   for (size_t b = 0; b < batch_size; ++b)
@@ -729,7 +728,7 @@ void AttentionPoolLayer::calculate_and_store_gradients(
       continue;
     }
 
-    attention_backward_one(seq.data(), T, delta.data(), nullptr, _wa_grads.data(), _ba_grads.data(), _v_grads.data(), scratch);
+    attention_backward_one(seq.data(), T, delta.data(), nullptr, _wa_grads.data(), _ba_grads.data(), _v_grads.data(), _backward_scratch);
     ++contributing;
   }
 

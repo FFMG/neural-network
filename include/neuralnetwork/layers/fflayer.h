@@ -208,11 +208,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] inline const AlignedVector& get_w_values_T() const noexcept
-  {
-    MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return _w_values_T;
-  }
+  [[nodiscard]] const AlignedVector& get_w_values_T() const noexcept;
 
   void set_w_values(const std::vector<double>& v) override
   {
@@ -301,6 +297,7 @@ private:
     double* flattened_this_grads) const;
 
   mutable std::vector<thread_ff_grad_accumulators> _thread_grad_accumulators;
-  AlignedVector _w_values_T;
+  mutable AlignedVector _w_values_T;
+  mutable bool _w_values_T_dirty = true;
 };
 } // namespace myoddweb::nn

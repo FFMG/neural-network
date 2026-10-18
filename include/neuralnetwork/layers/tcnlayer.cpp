@@ -1,5 +1,6 @@
 #include "../libraries/instrumentor.h"
 #include "tcnlayer.h"
+#include "fflayer.h"
 #include "../common/simd_utils.h"
 #include "../common/logger.h"
 #include <algorithm>
@@ -518,6 +519,8 @@ void TcnLayer::process_hidden_gradients_range(
     {
       const size_t N_next = next_layer->get_number_neurons();
       const unsigned next_layer_index = next_layer->get_layer_index();
+      const FFLayer* ff_next = next_layer->is_ff_layer() ? static_cast<const FFLayer*>(next_layer) : nullptr;
+      const double* w_next_T_ptr = (ff_next != nullptr && ff_next->get_w_values_T().size() >= N_out * N_next) ? ff_next->get_w_values_T().data() : nullptr;
       std::span<const double> src;
       if (use_direct_gradients)
       {
@@ -531,12 +534,24 @@ void TcnLayer::process_hidden_gradients_range(
       if (!src.empty() && N_next > 0)
       {
         const size_t T_avail = (src.size() == N_next) ? T : std::min(T, src.size() / N_next);
-        const double* W_next = next_layer->get_w_values().data();
-        for (size_t t = 0; t < T_avail; ++t)
+        if (w_next_T_ptr != nullptr)
         {
-          const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
-          double* out_row = raw_delta + t * N_out;
-          simd::gemm_transposed_one_batch(nd, W_next, out_row, N_out, N_next);
+          for (size_t t = 0; t < T_avail; ++t)
+          {
+            const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
+            double* out_row = raw_delta + t * N_out;
+            simd::gemm_one_batch(nd, w_next_T_ptr, out_row, N_next, N_out);
+          }
+        }
+        else
+        {
+          const double* W_next = next_layer->get_w_values().data();
+          for (size_t t = 0; t < T_avail; ++t)
+          {
+            const double* nd = (src.size() == N_next) ? src.data() : (src.data() + t * N_next);
+            double* out_row = raw_delta + t * N_out;
+            simd::gemm_transposed_one_batch(nd, W_next, out_row, N_out, N_next);
+          }
         }
       }
     }

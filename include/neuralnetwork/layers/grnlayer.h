@@ -375,6 +375,9 @@ private:
   WeightFamily _w2, _b2;
   WeightFamily _w_skip, _b_skip;
   WeightFamily _ln_gain, _ln_bias;
+
+  mutable std::vector<backward_scratch> _backward_scratch;
+  mutable std::vector<thread_grad_accumulators> _thread_grad_accumulators;
 };
 
 } // namespace myoddweb::nn

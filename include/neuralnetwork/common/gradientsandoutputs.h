@@ -225,6 +225,15 @@ public:
     _rnn_outputs[layer].assign(data, data + size);
   }
 
+  inline void clear_rnn_outputs(unsigned layer) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer < _rnn_outputs.size())
+    {
+      _rnn_outputs[layer].clear();
+    }
+  }
+
   [[nodiscard]] inline const std::vector<double>& get_rnn_outputs(unsigned layer) const
   {
     MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
@@ -279,6 +288,15 @@ public:
       _rnn_gradients.resize(layer + 1);
     }
     _rnn_gradients[layer].assign(data, data + size);
+  }
+
+  inline void clear_rnn_gradients(unsigned layer) noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("GradientsAndOutputs");
+    if (layer < _rnn_gradients.size())
+    {
+      _rnn_gradients[layer].clear();
+    }
   }
 
   [[nodiscard]] inline bool has_rnn_gradients(unsigned layer) const noexcept

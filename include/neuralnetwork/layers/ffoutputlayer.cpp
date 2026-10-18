@@ -486,7 +486,7 @@ void FFOutputLayer::run_output_gradients(
   const bool has_dropout = (get_dropout() > 0.0);
 
   TempBuffer<double, 55> deriv_buf(num_neurons);
-  TempBuffer<double, 56> rnn_grads_row(num_time_steps * num_neurons);
+  TempBuffer<double, 56> rnn_grads_row(num_time_steps > 1 ? num_time_steps * num_neurons : 0);
   TempBuffer<double, 57> given_outputs_vec(0);
   TempBuffer<double, 58> current_target(0);
 
@@ -494,7 +494,17 @@ void FFOutputLayer::run_output_gradients(
   {
     const auto& target_outputs = *(target_outputs_begin + b);
     const auto& layer_states = batch_hidden_states[b].at(get_layer_index());
-    std::memset(rnn_grads_row.data(), 0, rnn_grads_row.size() * sizeof(double));
+    double* single_step_grads = nullptr;
+    if (num_time_steps == 1)
+    {
+      single_step_grads = batch_gradients_and_outputs[b].get_gradients_raw(get_layer_index());
+      std::memset(single_step_grads, 0, num_neurons * sizeof(double));
+      batch_gradients_and_outputs[b].clear_rnn_gradients(get_layer_index());
+    }
+    else
+    {
+      std::memset(rnn_grads_row.data(), 0, rnn_grads_row.size() * sizeof(double));
+    }
     size_t gated_step_index = 0;
 
     for (size_t t = 0; t < num_time_steps; ++t)
@@ -545,7 +555,7 @@ void FFOutputLayer::run_output_gradients(
         continue;
       }
 
-      double* step_grads_base = rnn_grads_row.data() + t * num_neurons;
+      double* step_grads_base = (num_time_steps == 1) ? single_step_grads : (rnn_grads_row.data() + t * num_neurons);
       std::span<double> step_grads_span(step_grads_base, num_neurons);
       calculate_error_deltas(step_grads_span, target_span, given_span, per_head_step_context, b, gated_step_index);
       ++gated_step_index;
@@ -653,11 +663,14 @@ void FFOutputLayer::run_output_gradients(
       }
     }
 
-    if (!rnn_grads_row.empty())
+    if (num_time_steps > 1)
     {
-      batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - num_neurons, num_neurons);
+      if (!rnn_grads_row.empty())
+      {
+        batch_gradients_and_outputs[b].set_gradients(get_layer_index(), rnn_grads_row.data() + rnn_grads_row.size() - num_neurons, num_neurons);
+      }
+      batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
     }
-    batch_gradients_and_outputs[b].set_rnn_gradients(get_layer_index(), rnn_grads_row.data(), rnn_grads_row.size());
   }
 }
 

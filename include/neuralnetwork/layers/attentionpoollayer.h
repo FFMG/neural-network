@@ -344,6 +344,15 @@ public:
   Layer* clone() const override;
 
 private:
+  struct forward_scratch
+  {
+    std::vector<double> context;
+    std::vector<double> output;
+    std::vector<double> mask;
+    std::vector<double> scores;
+    std::vector<double> e_buf;
+  };
+
   struct backward_scratch
   {
     std::vector<double> alpha;
@@ -351,6 +360,10 @@ private:
     std::vector<double> dalpha;
     std::vector<double> dscore;
     std::vector<double> de;
+    std::vector<double> delta;
+    std::vector<double> deriv;
+    std::vector<double> raw_delta_all;
+    std::vector<double> next_grad;
   };
 
   void attention_backward_one(
@@ -382,6 +395,8 @@ private:
   std::vector<double> _v_values, _v_grads, _v_velocities, _v_m1, _v_m2;
   mutable std::vector<long long> _v_timesteps;
   std::vector<double> _v_decays;
+
+  mutable backward_scratch _backward_scratch;
 };
 
 } // namespace myoddweb::nn
