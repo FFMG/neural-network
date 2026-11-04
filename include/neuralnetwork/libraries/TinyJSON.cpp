@@ -42,6 +42,8 @@
 #include <sys/stat.h>
 
 static constexpr short TJ_MAX_NUMBER_OF_DIGGITS = 19;
+// the largest exponent we accept when parsing, 1e100000 or 1e-100000, anything larger is rejected.
+static constexpr long long TJ_MAX_EXPONENT = 100000;
 static constexpr short TJ_DEFAULT_STRING_READ_SIZE = 10;
 static constexpr unsigned int TJ_DEFAULT_STRING_MAX_READ_SIZE = 4294967295;
 
@@ -145,6 +147,59 @@ namespace TinyJSON
     return len;
   }
 
+  /// <summary>
+  /// A 1-based line and column position in a source, -1 if unknown.
+  /// </summary>
+  struct source_position
+  {
+    int _line;
+    int _column;
+  };
+
+  /// <summary>
+  /// Calculate the 1-based line and column of a position in the source.
+  /// '\n', '\r\n' and a lone '\r' all count as a single new line.
+  /// If either the start of the source or the position is unknown we return -1, -1.
+  /// </summary>
+  /// <param name="source_begin">The start of the source.</param>
+  /// <param name="position">The position we want the line/column of.</param>
+  /// <returns></returns>
+  static source_position calculate_source_position(const TJCHAR* source_begin, const TJCHAR* position)
+  {
+    if (nullptr == source_begin || nullptr == position || position < source_begin)
+    {
+      return { -1, -1 };
+    }
+
+    source_position result = { 1, 1 };
+    for (const TJCHAR* p = source_begin; p < position; ++p)
+    {
+      if (*p == TJ_NULL_TERMINATOR)
+      {
+        break;
+      }
+      if (*p == TJ_ESCAPE_CARRIAGE_RETURN)
+      {
+        if (p + 1 < position && *(p + 1) == TJ_ESCAPE_LINE_FEED)
+        {
+          // '\r\n' is a single new line, the '\n' will move us to the next line.
+          continue;
+        }
+        ++result._line;
+        result._column = 1;
+        continue;
+      }
+      if (*p == TJ_ESCAPE_LINE_FEED)
+      {
+        ++result._line;
+        result._column = 1;
+        continue;
+      }
+      ++result._column;
+    }
+    return result;
+  }
+
   static void report_file_open_error(const TJCHAR* file_path, int err_code, const parse_options& options)
   {
     const TJCHAR* prefix = nullptr;
@@ -193,7 +248,7 @@ namespace TinyJSON
     }
     msg[total_len] = TJ_NULL_TERMINATOR;
 
-    options.callback_function(parse_options::message_type::error, msg);
+    options.callback_function(parse_options::message_type::error, msg, -1, -1);
 
     delete[] msg;
   }
@@ -247,7 +302,10 @@ namespace TinyJSON
     ParseResult(const parse_options& parse_options) :
       _exception_message(nullptr),
       _options(parse_options),
-      _depth(0)
+      _depth(0),
+      _source_begin(nullptr),
+      _line(-1),
+      _column(-1)
     {
     }
 
@@ -275,10 +333,29 @@ namespace TinyJSON
     }
 
     /// <summary>
-    /// Assign a parse error message.
+    /// Set where the source starts, all the line/column positions are relative to this.
+    /// </summary>
+    /// <param name="source_begin"></param>
+    void set_source_begin(const TJCHAR* source_begin)
+    {
+      _source_begin = source_begin;
+    }
+
+    /// <summary>
+    /// Assign a parse error message without a known position.
     /// </summary>
     /// <param name="parse_exception_message"></param>
     void assign_exception_message(const char* parse_exception_message)
+    {
+      assign_exception_message(nullptr, parse_exception_message);
+    }
+
+    /// <summary>
+    /// Assign a parse error message at a given position in the source.
+    /// </summary>
+    /// <param name="position">Where in the source the error happened.</param>
+    /// <param name="parse_exception_message"></param>
+    void assign_exception_message(const TJCHAR* position, const char* parse_exception_message)
     {
       free_exception_message();
       if (parse_exception_message != nullptr)
@@ -287,11 +364,20 @@ namespace TinyJSON
         _exception_message = new char[length + 1];
         std::strcpy(_exception_message, parse_exception_message);
       }
+      const auto position_in_source = calculate_source_position(_source_begin, position);
+      _line = position_in_source._line;
+      _column = position_in_source._column;
     }
 
     void assign_exception_message_and_throw(const char* parse_exception_message)
     {
       assign_exception_message(parse_exception_message);
+      throw_if_exception();
+    }
+
+    void assign_exception_message_and_throw(const TJCHAR* position, const char* parse_exception_message)
+    {
+      assign_exception_message(position, parse_exception_message);
       throw_if_exception();
     }
 
@@ -301,12 +387,24 @@ namespace TinyJSON
       {
         return;
       }
-      _options.callback_function(parse_options::message_type::fatal, _exception_message);
+      _options.callback_function(parse_options::message_type::fatal, _exception_message, _line, _column);
       if (!_options.throw_exception)
       {
         return;
       }
-      throw TJParseException(_exception_message);
+      throw TJParseException(_exception_message, _line, _column);
+    }
+
+    /// <summary>
+    /// Raise a non fatal message at a given position in the source.
+    /// </summary>
+    /// <param name="message_type"></param>
+    /// <param name="position">Where in the source the message was raised.</param>
+    /// <param name="message"></param>
+    void raise(parse_options::message_type message_type, const TJCHAR* position, const TJCHAR* message) const
+    {
+      const auto position_in_source = calculate_source_position(_source_begin, position);
+      _options.callback_function(message_type, message, position_in_source._line, position_in_source._column);
     }
 
     bool has_exception_message() const
@@ -332,6 +430,9 @@ namespace TinyJSON
     char* _exception_message;
     parse_options _options;
     unsigned int _depth;
+    const TJCHAR* _source_begin;
+    int _line;
+    int _column;
   };
 
   ///////////////////////////////////////
@@ -366,6 +467,12 @@ namespace TinyJSON
         _exception_message = new char[length + 1];
         std::strcpy(_exception_message, write_exception_message);
       }
+    }
+
+    void assign_exception_message_and_throw(const char* parse_exception_message)
+    {
+      assign_exception_message(parse_exception_message);
+      throw_if_exception();
     }
 
     void throw_if_exception()
@@ -407,14 +514,18 @@ namespace TinyJSON
 
   ///////////////////////////////////////
   /// Parsing Exception
-  TJParseException::TJParseException(const char* message) :
-    _message(nullptr)
+  TJParseException::TJParseException(const char* message, int line, int column) :
+    _message(nullptr),
+    _line(line),
+    _column(column)
   {
     assign_message(message);
   }
 
   TJParseException::TJParseException(const TJParseException& exception)
-    : _message(nullptr)
+    : _message(nullptr),
+    _line(-1),
+    _column(-1)
   {
     *this = exception;
   }
@@ -429,6 +540,8 @@ namespace TinyJSON
     if (this != &exception)
     {
       assign_message(exception._message);
+      _line = exception._line;
+      _column = exception._column;
     }
     return *this;
   }
@@ -436,6 +549,16 @@ namespace TinyJSON
   const char* TJParseException::what() const noexcept
   {
     return _message == nullptr ? "Unknown" : _message;
+  }
+
+  int TJParseException::line() const noexcept
+  {
+    return _line;
+  }
+
+  int TJParseException::column() const noexcept
+  {
+    return _column;
   }
 
   void TJParseException::assign_message(const char* message)
@@ -778,6 +901,19 @@ namespace TinyJSON
     /// </summary>
     void set(TJMember* value, const parse_options& options)
     {
+      if (set_or_replace(value))
+      {
+        options.callback_function(parse_options::message_type::trace, TJCHARPREFIX("Duplicate key found, overwriting."), -1, -1);
+      }
+    }
+
+    /// <summary>
+    /// set a value in our dictionary, if the value exists, (by name)
+    /// we will replace the old value with the new value.
+    /// </summary>
+    /// <returns>True if an existing value was replaced.</returns>
+    bool set_or_replace(TJMember* value)
+    {
       if (nullptr == _values)
       {
         initilize();
@@ -791,7 +927,7 @@ namespace TinyJSON
           grow();
         }
         _values[_number_of_items++] = value;
-        return;
+        return false;
       }
 
       // check if the key already exists, if it does simply update the value.
@@ -799,9 +935,8 @@ namespace TinyJSON
       auto binary_search_result_cs = binary_search(key, true);
       if (true == binary_search_result_cs._was_found)
       {
-        options.callback_function(parse_options::message_type::trace, TJCHARPREFIX("Duplicate key found, overwriting."));
         replace_dictionaries_data(value, binary_search_result_cs._dictionary_index);
-        return;
+        return true;
       }
 
       // check if the value can be added.
@@ -852,6 +987,7 @@ namespace TinyJSON
         _values_dictionary_ci,
         _number_of_items_dictionary_ci
       );
+      return false;
     }
 
     /// <summary>
@@ -1412,11 +1548,22 @@ namespace TinyJSON
       return (number << 3) + (number << 1);
     }
 
+    /// <summary>
+    /// Raise 10 to the power of exponent.
+    /// 10^19 is the largest power of 10 that fits in an unsigned long long,
+    /// anything larger returns the max unsigned long long rather than silently wrapping around, (or returning 0).
+    /// </summary>
+    /// <param name="exponent"></param>
+    /// <returns></returns>
     static unsigned long long fast_power_of_10(unsigned int exponent)
     {
       if (exponent == 0)
       {
         return 1;
+      }
+      if (exponent > static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS))
+      {
+        return std::numeric_limits<unsigned long long>::max();
       }
 
       unsigned long long base = 10;
@@ -1480,86 +1627,42 @@ namespace TinyJSON
     /// <returns></returns>
     static TJCHAR* fast_number_to_string(unsigned long long number, unsigned int fraction_exponent, bool is_negative, unsigned int& length, bool force_positive_sign = false)
     {
-      TJCHAR reverse_buffer[255];
-      unsigned reverse_position = 0;
-      length = 0;
+      // Work out the exact length needed first; fraction_exponent has no upper limit, so we cannot use a fixed-size buffer:
 
-      if (number == 0)
+      //   - the number of digits, (zero is a single digit).
+      //   - the number of leading zeros, (if the fraction_exponent is longer than the number).
+      //   - the sign, if we need one.
+      const unsigned int number_of_digits = number == 0 ? 1 : get_number_of_digits(number);
+      const unsigned int number_of_leading_zeros = fraction_exponent > number_of_digits ? fraction_exponent - number_of_digits : 0;
+      const unsigned int number_of_signs = (is_negative || force_positive_sign) ? 1 : 0;
+      length = number_of_signs + number_of_leading_zeros + number_of_digits;
+
+      TJCHAR* buffer = new TJCHAR[length + 1];
+      buffer[length] = TJ_NULL_TERMINATOR;
+
+      // write the digits from the end of the buffer.
+      unsigned int position = length;
+      for (unsigned int i = 0; i < number_of_digits; ++i)
       {
-        reverse_buffer[reverse_position++] = '0';
-      }
-      else
-      {
-        while (number > 0)
-        {
-          auto mod = number % 10;
-          switch (mod)
-          {
-          case 0:
-            reverse_buffer[reverse_position++] = '0';
-            break;
-
-          case 1:
-            reverse_buffer[reverse_position++] = '1';
-            break;
-
-          case 2:
-            reverse_buffer[reverse_position++] = '2';
-            break;
-          case 3:
-            reverse_buffer[reverse_position++] = '3';
-            break;
-          case 4:
-            reverse_buffer[reverse_position++] = '4';
-            break;
-          case 5:
-            reverse_buffer[reverse_position++] = '5';
-            break;
-          case 6:
-            reverse_buffer[reverse_position++] = '6';
-            break;
-          case 7:
-            reverse_buffer[reverse_position++] = '7';
-            break;
-          case 8:
-            reverse_buffer[reverse_position++] = '8';
-            break;
-          case 9:
-            reverse_buffer[reverse_position++] = '9';
-            break;
-
-          default:
-            break;
-          }
-          number /= 10;
-        }
+        buffer[--position] = static_cast<TJCHAR>('0' + static_cast<int>(number % 10));
+        number /= 10;
       }
 
-      if (fraction_exponent > reverse_position)
+      // then the leading zeros, if any.
+      while (position > number_of_signs)
       {
-        const unsigned int zeros = fraction_exponent - reverse_position;
-        for (unsigned int j = 0; j < zeros; ++j)
-        {
-          reverse_buffer[reverse_position++] = '0';
-        }
+        buffer[--position] = '0';
       }
+
+      // and finally the sign
       if (is_negative)
       {
-        reverse_buffer[reverse_position++] = '-';
+        buffer[0] = '-';
       }
       else if (force_positive_sign)
       {
-        reverse_buffer[reverse_position++] = '+';
+        buffer[0] = '+';
       }
-
-      TJCHAR* buffer = new TJCHAR[reverse_position + 1];
-      buffer[reverse_position] = TJ_NULL_TERMINATOR;
-      for (unsigned int i = 0; i < reverse_position; ++i)
-      {
-        buffer[reverse_position - 1 - i] = reverse_buffer[i];
-      }
-
-      length = reverse_position;
       return buffer;
     }
 
@@ -1968,6 +2071,12 @@ namespace TinyJSON
       {
         return 0ull;
       }
+      if (number >= 10000000000000000000ull)
+      {
+        // 10^19 is the largest power of 10 that fits in an unsigned long long
+        // so we cannot multiply by 10 again without wrapping around.
+        return 20;
+      }
       unsigned int digit = 0;
       for (unsigned long long i = 0; i <= number; ++digit)
       {
@@ -2319,7 +2428,7 @@ namespace TinyJSON
     {
       if (parse_result.options().specification != parse_options::json5_1_0_0)
       {
-        parse_result.assign_exception_message(TJCHARPREFIX("Comments are only allowed in json5_1_0_0 specification."));
+        parse_result.assign_exception_message(p, TJCHARPREFIX("Comments are only allowed in json5_1_0_0 specification."));
         return nullptr;
       }
 
@@ -2383,14 +2492,14 @@ namespace TinyJSON
         if (!closed)
         {
           delete[] result;
-          parse_result.assign_exception_message("Multi-line comment was not closed.");
+          parse_result.assign_exception_message(p, "Multi-line comment was not closed.");
           return nullptr;
         }
       }
       else
       {
         delete[] result;
-        parse_result.assign_exception_message("Invalid comment start.");
+        parse_result.assign_exception_message(p, "Invalid comment start.");
         return nullptr;
       }
 
@@ -2419,7 +2528,7 @@ namespace TinyJSON
           if (!add_char_to_string(TJ_NULL_TERMINATOR, result, result_pos, result_max_length))
           {
             delete[] result;
-            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            parse_result.assign_exception_message(p, "Maximum JSON string read size exceeded.");
             return nullptr;
           }
           return result;
@@ -2437,14 +2546,14 @@ namespace TinyJSON
             {
               // ERROR: invalid character inside the string.
               delete[] result;
-              parse_result.assign_exception_message("Invalid character inside the string.");
+              parse_result.assign_exception_message(p, "Invalid character inside the string.");
               return nullptr;
             }
             break;
           case  TJ_ESCAPE_TAB:            // % x74 / ; t    tab             U + 0009
             // ERROR: invalid character inside the string.
             delete[] result;
-            parse_result.assign_exception_message("Invalid character inside the string.");
+            parse_result.assign_exception_message(p, "Invalid character inside the string.");
             return nullptr;
           }
           add_char_to_string(*p, result, result_pos, result_max_length);
@@ -2457,12 +2566,12 @@ namespace TinyJSON
             delete[] result;
             if (result_max_length == 0)
             {
-              parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+              parse_result.assign_exception_message(p, "Maximum JSON string read size exceeded.");
             }
             else
             {
               // ERROR: invalid/unknown character after single reverse solidus.
-              parse_result.assign_exception_message("Invalid/unknown character after single reverse solidus.");
+              parse_result.assign_exception_message(p, "Invalid/unknown character after single reverse solidus.");
             }
             return nullptr;
           }
@@ -2475,7 +2584,7 @@ namespace TinyJSON
           if (!add_char_to_string(*p, result, result_pos, result_max_length))
           {
             delete[] result;
-            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            parse_result.assign_exception_message(p, "Maximum JSON string read size exceeded.");
             return nullptr;
           }
           p++;
@@ -2485,7 +2594,7 @@ namespace TinyJSON
         case TJ_ESCAPE_FORM_FEED:       // % x66 / ; f    form feed       U + 000C
           delete[] result;
           // ERROR: invalid character inside the string.
-          parse_result.assign_exception_message("Invalid character inside the string..");
+          parse_result.assign_exception_message(p, "Invalid character inside the string..");
           return nullptr;
 
         default:
@@ -2493,7 +2602,7 @@ namespace TinyJSON
           if (!add_char_to_string(*p, result, result_pos, result_max_length))
           {
             delete[] result;
-            parse_result.assign_exception_message("Maximum JSON string read size exceeded.");
+            parse_result.assign_exception_message(p, "Maximum JSON string read size exceeded.");
             return nullptr;
           }
           p++;
@@ -2503,7 +2612,7 @@ namespace TinyJSON
 
       // // ERROR: we could not close the object.
       delete[] result;
-      parse_result.assign_exception_message("We could not close the string.");
+      parse_result.assign_exception_message(p, "We could not close the string.");
       return nullptr;
     }
 
@@ -2766,37 +2875,100 @@ namespace TinyJSON
       return shifted_unsigned_fraction;
     }
 
+    /// <summary>
+    /// Create an exponent number with a single digit whole number, for example 123.45e+6 becomes 1.2345e+8
+    /// and 0.0012e+6 becomes 1.2e+3
+    /// If the fraction would need more than TJ_MAX_NUMBER_OF_DIGGITS digits then it is truncated
+    /// rather than overflowing
+    /// </summary>
+    /// <param name="is_negative"></param>
+    /// <param name="unsigned_whole_number"></param>
+    /// <param name="unsigned_fraction"></param>
+    /// <param name="fraction_exponent"></param>
+    /// <param name="exponent">The signed exponent</param>
+    /// <param name="options"></param>
+    /// <returns></returns>
+    static TJValue* create_number_from_parts_as_exponent(const bool& is_negative, const unsigned long long& unsigned_whole_number, const unsigned long long& unsigned_fraction, const unsigned int fraction_exponent, const int exponent, const parse_options& options = {})
+    {
+      const auto& max_number_of_digits = static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS);
+      if (unsigned_whole_number == 0)
+      {
+        if (unsigned_fraction == 0)
+        {
+          // zero is a positive number
+          return new TJValueNumberInt(0ull, false, options);
+        }
+
+        // the first significant digit of the fraction becomes the whole number.
+        // 0.0012e+6 has 2 leading zeros so the 1 is moved 3 places to the left, 1.2e+3
+        const auto& fraction_length = get_number_of_digits(unsigned_fraction);
+        const auto& leading_zeros = fraction_exponent - fraction_length;
+        unsigned long long shifted_unsigned_fraction = 0;
+        const auto& shifted_unsigned_whole_number = shift_number_right(unsigned_fraction, fraction_length - 1, shifted_unsigned_fraction);
+        return new TJValueNumberExponent(
+          shifted_unsigned_whole_number,
+          shifted_unsigned_fraction,
+          fraction_length - 1,
+          exponent - static_cast<int>(leading_zeros + 1),
+          is_negative, options);
+      }
+
+      // the whole number is moved to a single digit, the rest of the digits are moved to the fraction.
+      // 123.45e+6 the 23 is moved to the front of the fraction, 1.2345e+8
+      const auto& number_of_digit_whole = get_number_of_digits(unsigned_whole_number);
+      const unsigned int whole_number_shift = number_of_digit_whole - 1;
+      unsigned long long whole_number_remainder = 0;
+      const auto& shifted_unsigned_whole_number = shift_number_right(unsigned_whole_number, whole_number_shift, whole_number_remainder);
+
+      unsigned long long shifted_unsigned_fraction = 0;
+      unsigned int shifted_fraction_exponent = 0;
+      if (whole_number_remainder == 0)
+      {
+        // only zeros were moved, (or nothing at all), so the fraction just has more leading zeros.
+        // 100.5e+6 becomes 1.005e+8
+        shifted_unsigned_fraction = unsigned_fraction;
+        shifted_fraction_exponent = unsigned_fraction == 0 ? 0 : whole_number_shift + fraction_exponent;
+      }
+      else if (whole_number_shift + fraction_exponent <= max_number_of_digits)
+      {
+        // everything fits, we just put the remainder in front of the fraction.
+        shifted_unsigned_fraction = shift_number_left(whole_number_remainder, fraction_exponent) + unsigned_fraction;
+        shifted_fraction_exponent = whole_number_shift + fraction_exponent;
+      }
+      else
+      {
+        // we cannot keep all the digits, so we keep as many of the fraction as we can.
+        const unsigned int fraction_digits_to_keep = max_number_of_digits - whole_number_shift;
+        unsigned long long ignored = 0;
+        shifted_unsigned_fraction = shift_number_left(whole_number_remainder, fraction_digits_to_keep)
+          + shift_number_right(unsigned_fraction, fraction_exponent - fraction_digits_to_keep, ignored);
+        shifted_fraction_exponent = max_number_of_digits;
+      }
+
+      return new TJValueNumberExponent(
+        shifted_unsigned_whole_number,
+        shifted_unsigned_fraction,
+        shifted_fraction_exponent,
+        exponent + static_cast<int>(whole_number_shift),
+        is_negative, options);
+    }
+
     static TJValue* try_create_number_from_parts_positive_exponent_no_whole_number(const bool& is_negative, const unsigned long long& unsigned_fraction, const unsigned int fraction_exponent, const unsigned int exponent, const parse_options& options = {})
     {
       if (exponent >= fraction_exponent)
       {
-        unsigned long long shifted_unsigned_fraction = 0;
-        unsigned int shitfed_unsigned_fraction_exponent = 0;
-        const auto& fraction_length = get_number_of_digits(unsigned_fraction);
-        const auto& leading_zeros = fraction_exponent - fraction_length;
-        // we just want the first number so we are passing a 1x exponent only
-        // but we need to add the number of leading zeros to make sure that we shift properly.
-        const auto& shifted_unsigned_whole_number = shift_fraction_left(unsigned_fraction, fraction_exponent, leading_zeros + 1, shifted_unsigned_fraction, shitfed_unsigned_fraction_exponent);
-
-        const auto& shifted_fraction_exponent = exponent - fraction_exponent;
-        if (shifted_fraction_exponent <= TJ_MAX_NUMBER_OF_DIGGITS)
+        // the whole fraction moves to the whole number, 0.0012e+6 becomes 1200
+        // so the number is the fraction shifted by what is left of the exponent.
+        const auto& shift = exponent - fraction_exponent;
+        if (shift <= static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS) &&
+          unsigned_fraction <= std::numeric_limits<unsigned long long>::max() / fast_power_of_10(shift))
         {
-          if (shifted_unsigned_fraction == 0)
-          {
-            return new TJValueNumberInt(shift_number_left(shifted_unsigned_whole_number, shifted_fraction_exponent), is_negative, options);
-          }
-
-          return new TJValueNumberFloat(
-            shift_number_left(shifted_unsigned_whole_number, shifted_fraction_exponent),
-            shifted_unsigned_fraction,
-            shifted_fraction_exponent,
-            is_negative, options);
+          return new TJValueNumberInt(shift_number_left(unsigned_fraction, shift), is_negative, options);
         }
 
-        // TODO: Cases where exponent is > than TJ_MAX_NUMBER_OF_DIGGITS
-        return nullptr;
+        // the number is too big, so we keep it as an exponent, 0.12e+30 becomes 1.2e+29
+        return create_number_from_parts_as_exponent(is_negative, 0ull, unsigned_fraction, fraction_exponent, static_cast<int>(exponent), options);
       }
-
 
       // the number is something like 0.00001e+3 the fraction_exponent is 4 and the exponent is 3
       // so we can just move the fraction to the left the whole number will remain zero
@@ -2808,8 +2980,8 @@ namespace TinyJSON
         return new TJValueNumberFloat(0ull, unsigned_fraction, shifted_fraction_exponent, is_negative, options);
       }
 
-      // TODO: Cases where exponent is > than TJ_MAX_NUMBER_OF_DIGGITS
-      return nullptr;
+      // the fraction is too long to be kept as a float, so we keep it as an exponent.
+      return create_number_from_parts_as_exponent(is_negative, 0ull, unsigned_fraction, fraction_exponent, static_cast<int>(exponent), options);
     }
 
     static TJValue* try_create_number_from_parts_positive_exponent(const bool& is_negative, const unsigned long long& unsigned_whole_number, const unsigned long long& unsigned_fraction, const unsigned int fraction_exponent, const unsigned int exponent, const parse_options& options = {})
@@ -2866,23 +3038,8 @@ namespace TinyJSON
       // case 2b:
       //   The whole number is more than zero _and_ the fraction is also non zero.
       //   The total is, (currently), greater than TJ_MAX_NUMBER_OF_DIGGITS
-      const unsigned int shifted_unsigned_whole_number_exponent = number_of_digit_whole - 1;
-      unsigned long long shifted_unsigned_fraction = 0;
-      const auto& shifted_unsigned_whole_number = shift_number_right(unsigned_whole_number, shifted_unsigned_whole_number_exponent, shifted_unsigned_fraction);
-
-      // we then need to add shifted_unsigned_fraction in front of unsigned_fraction
-      auto shifted_fraction_exponent = shifted_unsigned_whole_number_exponent + (fraction_exponent - shifted_unsigned_whole_number_exponent);
-      shifted_unsigned_fraction = (shifted_unsigned_fraction * fast_power_of_10(shifted_fraction_exponent)) + unsigned_fraction;
-
-      // and the exponent also shitt byt the number we moved.
-      const unsigned int shifted_exponent = exponent + shifted_unsigned_whole_number_exponent;
-
-      return new TJValueNumberExponent(
-        shifted_unsigned_whole_number,
-        shifted_unsigned_fraction,
-        (shifted_unsigned_whole_number_exponent + fraction_exponent),
-        shifted_exponent,
-        is_negative, options);
+      //   so we move the whole number to be a single digit and the exponent is moved accordingly.
+      return create_number_from_parts_as_exponent(is_negative, unsigned_whole_number, unsigned_fraction, fraction_exponent, static_cast<int>(exponent), options);
     }
 
     static TJValue* try_create_number_from_parts_negative_exponent(const bool& is_negative, const unsigned long long& unsigned_whole_number, const unsigned long long& unsigned_fraction, const unsigned int fraction_exponent, const unsigned int exponent, const parse_options& options = {})
@@ -2896,7 +3053,10 @@ namespace TinyJSON
       // case 1:
       //   The total number is less than TJ_MAX_NUMBER_OF_DIGGITS
       //   so we can get rid of the exponent altogether.
-      if (number_of_digit_whole + number_of_digit_fraction + exponent <= TJ_MAX_NUMBER_OF_DIGGITS)
+      //   But if the whole number is not zero, the digits we move from the whole number are shifted
+      //   by the fraction_exponent, (leading zeros included), so that must also fit.
+      if (number_of_digit_whole + number_of_digit_fraction + exponent <= TJ_MAX_NUMBER_OF_DIGGITS &&
+        (unsigned_whole_number == 0 || fraction_exponent + exponent <= static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS)))
       {
         // we will shift the whole number to the left right by the number of exponents.
         // so 2e-3 would become 0.002
@@ -2939,24 +3099,8 @@ namespace TinyJSON
       // case 2b:
       //   The whole number is more than zero _and_ the fraction is also non zero.
       //   The total is, (currently), greater than TJ_MAX_NUMBER_OF_DIGGITS
-      const unsigned int shifted_unsigned_whole_number_exponent = number_of_digit_whole - 1;
-      unsigned long long shifted_unsigned_fraction = 0;
-      const auto& shifted_unsigned_whole_number = shift_number_right(unsigned_whole_number, shifted_unsigned_whole_number_exponent, shifted_unsigned_fraction);
-
-      // we then need to add shifted_unsigned_fraction in front of unsigned_fraction
-      auto shifted_fraction_exponent = shifted_unsigned_whole_number_exponent + (fraction_exponent - shifted_unsigned_whole_number_exponent);
-      shifted_unsigned_fraction = (shifted_unsigned_fraction * fast_power_of_10(shifted_fraction_exponent)) + unsigned_fraction;
-
-      // and the exponent also shitt by the number we moved.
-      // as it is a negative exponent we need to move to the left.
-      const unsigned int shifted_exponent = exponent - shifted_unsigned_whole_number_exponent;
-
-      return new TJValueNumberExponent(
-        shifted_unsigned_whole_number,
-        shifted_unsigned_fraction,
-        (shifted_unsigned_whole_number_exponent + fraction_exponent),
-        -1 * shifted_exponent,
-        is_negative, options);
+      //   so we move the whole number to be a single digit and the exponent is moved accordingly.
+      return create_number_from_parts_as_exponent(is_negative, unsigned_whole_number, unsigned_fraction, fraction_exponent, -1 * static_cast<int>(exponent), options);
     }
 
     static TJValue* try_create_number_from_parts_negative_exponent_no_whole_number(const bool& is_negative, const unsigned long long& unsigned_fraction, const unsigned int fraction_exponent, const unsigned int exponent, const parse_options& options = {})
@@ -2978,15 +3122,9 @@ namespace TinyJSON
 
       if (actual_shifted_fraction_exponent <= TJ_MAX_NUMBER_OF_DIGGITS)
       {
-        if (shifted_unsigned_fraction == 0)
-        {
-          return new TJValueNumberInt(shift_number_left(shifted_unsigned_whole_number, shifted_unsigned_fraction_exponent), is_negative, options);
-        }
-        return new TJValueNumberFloat(
-          shift_number_left(shifted_unsigned_whole_number, shifted_unsigned_fraction_exponent),
-          shifted_unsigned_fraction,
-          shifted_unsigned_fraction_exponent,
-          is_negative, options);
+        // there is no whole number and the exponent is negative so the number is less than one
+        // the fraction remains the same, it just has more leading zeros, 0.12e-1 becomes 0.012
+        return new TJValueNumberFloat(0ull, unsigned_fraction, fraction_exponent + exponent, is_negative, options);
       }
 
       // TODO: Cases where exponent is > than TJ_MAX_NUMBER_OF_DIGGITS
@@ -3047,7 +3185,7 @@ namespace TinyJSON
           if (found_spaces > 0)
           {
             // ERROR: Number has a space between it.
-            parse_result.assign_exception_message("Number has a space between it.");
+            parse_result.assign_exception_message(p, "Number has a space between it.");
             return nullptr;
           }
           p++;
@@ -3083,7 +3221,7 @@ namespace TinyJSON
       auto whole_number = try_read_whole_number(p, parse_result);
       if (nullptr == whole_number)
       {
-        parse_result.assign_exception_message("Fraction does not have a number after the token '.'");
+        parse_result.assign_exception_message(p, "Fraction does not have a number after the token '.'");
         return nullptr;
       }
       // trip the trailling zeros are they are not needed in a fraction
@@ -3096,6 +3234,59 @@ namespace TinyJSON
         --len;
       }
       return whole_number;
+    }
+
+    /// <summary>
+    /// Convert a string of digits to an unsigned long long, but stop before the number overflows
+    /// or before we read more than maximum_number_of_significant_digits, (leading zeros are not significant).
+    /// </summary>
+    /// <param name="p">The string of digits, it should only contain digits.</param>
+    /// <param name="maximum_number_of_significant_digits">The maximum number of significant digits we want to read.</param>
+    /// <param name="number">The number we read.</param>
+    /// <returns>The number of digits we read, if it is less than the length of the string then the rest of the digits were ignored.</returns>
+    static unsigned int fast_string_to_unsigned_long_long_without_overflow(const TJCHAR* p, const unsigned int maximum_number_of_significant_digits, unsigned long long& number)
+    {
+      number = 0;
+      unsigned int number_of_digits_read = 0;
+      unsigned int number_of_significant_digits = 0;
+      while (*p >= '0' && *p <= '9')
+      {
+        const auto& digit = static_cast<unsigned long long>(*p - '0');
+        if (number != 0 || digit != 0)
+        {
+          if (number_of_significant_digits >= maximum_number_of_significant_digits)
+          {
+            break;
+          }
+          if (number > (std::numeric_limits<unsigned long long>::max() - digit) / 10)
+          {
+            break;
+          }
+          ++number_of_significant_digits;
+        }
+        number = fast_multiply_by_10(number) + digit;
+        ++number_of_digits_read;
+        ++p;
+      }
+      return number_of_digits_read;
+    }
+
+    /// <summary>
+    /// Check if a string of digits contains at least one non zero digit.
+    /// </summary>
+    /// <param name="p">The string of digits, it should only contain digits.</param>
+    /// <returns>True if at least one of the digits is not zero.</returns>
+    static bool has_non_zero_digit(const TJCHAR* p)
+    {
+      while (*p >= '0' && *p <= '9')
+      {
+        if (*p != '0')
+        {
+          return true;
+        }
+        ++p;
+      }
+      return false;
     }
 
     static unsigned long long fast_string_to_long_long(const TJCHAR* p)
@@ -3235,6 +3426,7 @@ namespace TinyJSON
     /// <returns></returns>
     static TJValue* try_read_number(const TJCHAR*& p, ParseResult& parse_result)
     {
+      const TJCHAR* number_start = p;
       bool is_negative = false;
       if (*p == '-')
       {
@@ -3277,16 +3469,25 @@ namespace TinyJSON
       if (has_possible_double_zero(possible_number) && parse_result.options().specification != parse_options::json5_1_0_0)
       {
         // ERROR: Numbers cannot have leading zeros
-        parse_result.assign_exception_message("Numbers cannot have leading zeros.");
+        parse_result.assign_exception_message(number_start, "Numbers cannot have leading zeros.");
         delete[] possible_number;
         return nullptr;
       }
 
-      // convert that number to an unsigned long, long
-      const auto& unsigned_whole_number = fast_string_to_long_long(possible_number);
+      // convert that number to an unsigned long long
+      // if the number is too big, (more than 18446744073709551615), we keep the digits that fit
+      // and the digits we could not read are added to the exponent, (we lose some precision).
+      unsigned long long unsigned_whole_number = 0;
+      const auto& number_of_whole_digits = string_length(possible_number);
+      const auto& number_of_whole_digits_read = fast_string_to_unsigned_long_long_without_overflow(possible_number, number_of_whole_digits, unsigned_whole_number);
+      const auto& number_of_whole_digits_ignored = number_of_whole_digits - number_of_whole_digits_read;
+      if (has_non_zero_digit(possible_number + number_of_whole_digits_read))
+      {
+        parse_result.raise(parse_options::message_type::warning, number_start, TJCHARPREFIX("Whole number exceeds supported precision, some digits were truncated."));
+      }
       delete[] possible_number;
 
-      // read the faction if there is one.
+      // read the fraction if there is one.
       unsigned long long unsigned_fraction = 0;
       unsigned int fraction_exponent = 0;
       if (*p == '.')
@@ -3309,15 +3510,26 @@ namespace TinyJSON
         }
         else
         {
-          // so 001 become exponent = 3
-          fraction_exponent = string_length(possible_fraction_number);
-          unsigned_fraction = fast_string_to_long_long(possible_fraction_number);
+          if (number_of_whole_digits_ignored == 0)
+          {
+            // Keep at most TJ_MAX_NUMBER_OF_DIGGITS significant digits; leading zeros are preserved.
+            fraction_exponent = fast_string_to_unsigned_long_long_without_overflow(possible_fraction_number, static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS), unsigned_fraction);
+            if (has_non_zero_digit(possible_fraction_number + fraction_exponent))
+            {
+              parse_result.raise(parse_options::message_type::warning, number_start, TJCHARPREFIX("Fraction exceeds supported precision, some digits were truncated."));
+            }
+          }
+          else if (has_non_zero_digit(possible_fraction_number))
+          {
+            parse_result.raise(parse_options::message_type::warning, number_start, TJCHARPREFIX("Whole number exceeds supported precision, the fraction was ignored."));
+          }
           delete[] possible_fraction_number;
         }
       }
 
       // try read the exponent if there is one.
-      int exponent = 0;
+      // the digits of the whole number we could not read are added to the exponent
+      long long exponent = static_cast<long long>(number_of_whole_digits_ignored);
       if (*p == 'e' || *p == 'E')
       {
         p++;
@@ -3336,26 +3548,32 @@ namespace TinyJSON
         if (nullptr == possible_exponent)
         {
           // ERROR: we cannot have a number like '-12e' or '42e
-          parse_result.assign_exception_message("Number has exponent 'e' or 'E' but does not have a number.");
+          parse_result.assign_exception_message(p, "Number has exponent 'e' or 'E' but does not have a number.");
           return nullptr;
         }
 
-        const auto& unsigned_exponent = static_cast<unsigned int>(fast_string_to_long_long(possible_exponent));
+        // read the exponent without overflowing, if we cannot read all of it then it is too big.
+        unsigned long long unsigned_exponent = 0;
+        const auto& number_of_exponent_digits = string_length(possible_exponent);
+        const auto& number_of_exponent_digits_read = fast_string_to_unsigned_long_long_without_overflow(possible_exponent, number_of_exponent_digits, unsigned_exponent);
         delete[] possible_exponent;
+        if (number_of_exponent_digits_read != number_of_exponent_digits || unsigned_exponent > static_cast<unsigned long long>(TJ_MAX_EXPONENT))
+        {
+          parse_result.assign_exception_message(number_start, "Number exponent is out of range.");
+          return nullptr;
+        }
 
         // as per the spec it is allowed to have 1e00
-        // https://github.com/FFMG/tinyjson/issues/14
-        if (0 == unsigned_exponent)
-        {
-          exponent = 0;
-          is_negative_exponent = false;
-        }
-        else
-        {
-          exponent = is_negative_exponent ? unsigned_exponent * -1 : unsigned_exponent;
-        }
+        exponent += is_negative_exponent ? -1 * static_cast<long long>(unsigned_exponent) : static_cast<long long>(unsigned_exponent);
       }
-      return try_create_number_from_parts(is_negative, unsigned_whole_number, unsigned_fraction, fraction_exponent, exponent, parse_result.options());
+
+      // the exponent could have grown because the whole number was too big.
+      if (exponent > TJ_MAX_EXPONENT || exponent < -1 * TJ_MAX_EXPONENT)
+      {
+        parse_result.assign_exception_message(number_start, "Number exponent is out of range.");
+        return nullptr;
+      }
+      return try_create_number_from_parts(is_negative, unsigned_whole_number, unsigned_fraction, fraction_exponent, static_cast<int>(exponent), parse_result.options());
     }
 
     /// <summary>
@@ -3365,7 +3583,8 @@ namespace TinyJSON
     /// </summary>
     /// <param name="member"></param>
     /// <param name="members"></param>
-    static void move_member_to_members(TJMember* member, TJDICTIONARY*& members, const parse_options& options)
+    /// <returns>True if a member with the same name was replaced.</returns>
+    static bool move_member_to_members(TJMember* member, TJDICTIONARY*& members)
     {
       if (nullptr == members)
       {
@@ -3377,9 +3596,9 @@ namespace TinyJSON
 #if TJ_INCLUDE_STDVECTOR == 1
         members->push_back(member);
 #else
-        members->set(member, options);
+        members->set_or_replace(member);
 #endif
-        return;
+        return false;
       }
 
 #if TJ_INCLUDE_STDVECTOR == 1
@@ -3391,16 +3610,32 @@ namespace TinyJSON
           });
         if (current != members->end())
         {
-          options.callback_function(parse_options::message_type::trace, TJCHARPREFIX("Duplicate key found, overwriting."));
           delete* current;
           *current = member;
-          return;
+          return true;
         }
       }
       members->push_back(member);
+      return false;
 #else
-      members->set(member, options);
+      return members->set_or_replace(member);
 #endif
+    }
+
+    /// <summary>
+    /// Move the member to the members while we are parsing,
+    /// if the member replaced a duplicate key we raise a trace message with the position of that key.
+    /// </summary>
+    /// <param name="member"></param>
+    /// <param name="members"></param>
+    /// <param name="parse_result"></param>
+    /// <param name="position">Where the member started in the source.</param>
+    static void move_member_to_members(TJMember* member, TJDICTIONARY*& members, const ParseResult& parse_result, const TJCHAR* position)
+    {
+      if (move_member_to_members(member, members))
+      {
+        parse_result.raise(parse_options::message_type::trace, position, TJCHARPREFIX("Duplicate key found, overwriting."));
+      }
     }
 
     static TJMember* try_read_unquoted_string_and_value(const TJCHAR*& p, ParseResult& parse_result)
@@ -3418,7 +3653,7 @@ namespace TinyJSON
       if (!try_skip_colon(p))
       {
         delete[] key;
-        parse_result.assign_exception_message("Could not locate the expected colon after the unquoted key.");
+        parse_result.assign_exception_message(p, "Could not locate the expected colon after the unquoted key.");
         return nullptr;
       }
 
@@ -3442,7 +3677,7 @@ namespace TinyJSON
       if (parse_result.current_depth() >= parse_result.options().max_depth)
       {
         // Error: We reached the max depth
-        parse_result.assign_exception_message("Reached the max parse depth (object).");
+        parse_result.assign_exception_message(p, "Reached the max parse depth (object).");
         return nullptr;
       }
       //  assume no members in that object.
@@ -3469,7 +3704,7 @@ namespace TinyJSON
           else
           {
             free_members(members);
-            parse_result.assign_exception_message("Unknown character.");
+            parse_result.assign_exception_message(p, "Unknown character.");
             return nullptr;
           }
 
@@ -3483,7 +3718,7 @@ namespace TinyJSON
           }
           TJCHAR* empty_key = nullptr;
           auto member = TJMember::move(empty_key, comment, parse_result.options());
-          move_member_to_members(member, members, parse_result.options());
+          move_member_to_members(member, members, parse_result, p);
           // we are NOT waiting for a string, and we are NOT after a string
           // so that we can find the next actual member or comma or end.
         }
@@ -3496,7 +3731,7 @@ namespace TinyJSON
             // ERROR: unexpected end of object, there was a "," after
             //        the last string and we expected a string now, not a close "}"
             free_members(members);
-            parse_result.assign_exception_message("Unexpected end of object, there was a ', ' after the last string.");
+            parse_result.assign_exception_message(p, "Unexpected end of object, there was a ', ' after the last string.");
             return nullptr;
           }
           p++;
@@ -3510,7 +3745,7 @@ namespace TinyJSON
           if (parse_result.options().specification != parse_options::json5_1_0_0)
           {
             free_members(members);
-            parse_result.assign_exception_message("Single quotes are only allowed in json5_1_0_0 specification.");
+            parse_result.assign_exception_message(p, "Single quotes are only allowed in json5_1_0_0 specification.");
             return nullptr;
           }
         } 
@@ -3526,7 +3761,7 @@ namespace TinyJSON
           {
             // ERROR: expected a comma after the last element
             free_members(members);
-            parse_result.assign_exception_message("Expected a comma after the last element.");
+            parse_result.assign_exception_message(p, "Expected a comma after the last element.");
             return nullptr;
           }
 
@@ -3538,6 +3773,7 @@ namespace TinyJSON
 
           // read the actual string and value
           // that's the way it has to be.
+          const TJCHAR* member_start = p;
           auto member = try_read_string_and_value(p, parse_result, quote_char);
           if (member == nullptr)
           {
@@ -3547,7 +3783,7 @@ namespace TinyJSON
           }
 
           found_comma = false;
-          move_member_to_members(member, members, parse_result.options());
+          move_member_to_members(member, members, parse_result, member_start);
 
           after_string = true;
           }
@@ -3558,7 +3794,7 @@ namespace TinyJSON
             {
               // ERROR: found a comma out of order
               free_members(members);
-              parse_result.assign_exception_message("Found a comma out of order.");
+              parse_result.assign_exception_message(p, "Found a comma out of order.");
               return nullptr;
             }
           // we are no longer after the string
@@ -3581,7 +3817,7 @@ namespace TinyJSON
                if (after_string && !found_comma)
                {
                  free_members(members);
-                 parse_result.assign_exception_message("Expected a comma after the last element.");
+                 parse_result.assign_exception_message(p, "Expected a comma after the last element.");
                  return nullptr;
                }
 
@@ -3591,6 +3827,7 @@ namespace TinyJSON
                // we are no longer after the string
                after_string = false;
 
+               const TJCHAR* member_start = p;
                auto member = try_read_unquoted_string_and_value(p, parse_result);
                if (member == nullptr)
                {
@@ -3599,7 +3836,7 @@ namespace TinyJSON
                }
 
                found_comma = false;
-               move_member_to_members(member, members, parse_result.options());
+               move_member_to_members(member, members, parse_result, member_start);
                after_string = true;
                break;
             }
@@ -3607,14 +3844,14 @@ namespace TinyJSON
 
           // ERROR: unknown character
           free_members(members);
-          parse_result.assign_exception_message("Unknown character.");
+          parse_result.assign_exception_message(p, "Unknown character.");
           return nullptr;
         }
       }
 
       // ERROR end of the string was found and we didn't find what we needed.
       free_members(members);
-      parse_result.assign_exception_message("End of the string was found and we didn't find what we needed.");
+      parse_result.assign_exception_message(p, "End of the string was found and we didn't find what we needed.");
       return nullptr;
     }
 
@@ -3629,7 +3866,7 @@ namespace TinyJSON
       if (parse_result.current_depth() >= parse_result.options().max_depth)
       {
         // Error: We reached the max depth
-        parse_result.assign_exception_message("Reached the max parse depth (array).");
+        parse_result.assign_exception_message(p, "Reached the max parse depth (array).");
         return nullptr;
       }
 
@@ -3656,7 +3893,7 @@ namespace TinyJSON
           else
           {
             free_values(values);
-            parse_result.assign_exception_message("Unknown character.");
+            parse_result.assign_exception_message(p, "Unknown character.");
             return nullptr;
           }
 
@@ -3688,7 +3925,7 @@ namespace TinyJSON
             // ERROR: unexpected end of array, there was a "," after
             //        the last value and we expected a value now, not a close "]"
             free_values(values);
-            parse_result.assign_exception_message("Unexpected end of array, there was a ', ' after the last string.");
+            parse_result.assign_exception_message(p, "Unexpected end of array, there was a ', ' after the last string.");
             return nullptr;
           }
           p++;
@@ -3702,7 +3939,7 @@ namespace TinyJSON
             {
               // ERROR: found a comma out of order, (2 commas)
               free_values(values);
-              parse_result.assign_exception_message("Found a comma out of order, (2 commas).");
+              parse_result.assign_exception_message(p, "Found a comma out of order, (2 commas).");
               return nullptr;
             }
           // we are now waiting for a value
@@ -3717,6 +3954,7 @@ namespace TinyJSON
             p++;
             break;
           }
+          const TJCHAR* value_start = p;
           const auto& value = try_read_Value(p, parse_result);
           if (value == nullptr)
           {
@@ -3733,7 +3971,7 @@ namespace TinyJSON
             // ERROR: We found a value but we expected a comma.
             delete value;
             free_values(values);
-            parse_result.assign_exception_message("We found a value but we expected a comma.");
+            parse_result.assign_exception_message(value_start, "We found a value but we expected a comma.");
             return nullptr;
           }
 #if TJ_INCLUDE_STDVECTOR == 1
@@ -3749,7 +3987,7 @@ namespace TinyJSON
 
       // ERROR: end of the string was found and we didn't find what we needed.
       free_values(values);
-      parse_result.assign_exception_message("End of the string was found and we didn't find what we needed.");
+      parse_result.assign_exception_message(p, "End of the string was found and we didn't find what we needed.");
       return nullptr;
     }
 
@@ -3773,7 +4011,7 @@ namespace TinyJSON
           }
           else
           {
-            parse_result.assign_exception_message("Unexpected Token while trying to read value.");
+            parse_result.assign_exception_message(p, "Unexpected Token while trying to read value.");
             return nullptr;
           }
 
@@ -3781,7 +4019,7 @@ namespace TinyJSON
         {
           if (parse_result.options().specification != parse_options::json5_1_0_0)
           {
-            parse_result.assign_exception_message("Single quotes are only allowed in json5_1_0_0 specification.");
+            parse_result.assign_exception_message(p, "Single quotes are only allowed in json5_1_0_0 specification.");
             return nullptr;
           }
         }
@@ -3807,7 +4045,7 @@ namespace TinyJSON
             if (nullptr == true_value)
             {
               //  ERROR could not read the word 'true'
-              parse_result.assign_exception_message("Could not read the word 'true'.");
+              parse_result.assign_exception_message(p - 1, "Could not read the word 'true'.");
               return nullptr;
             }
             return true_value;
@@ -3819,7 +4057,7 @@ namespace TinyJSON
           if (nullptr == false_value)
           {
             //  ERROR: could not read the word 'false'
-            parse_result.assign_exception_message("Could not read the word 'false'.");
+            parse_result.assign_exception_message(p - 1, "Could not read the word 'false'.");
             return nullptr;
           }
           return false_value;
@@ -3831,7 +4069,7 @@ namespace TinyJSON
           if (nullptr == null_value)
           {
             //  ERROR: could not read the word 'null'
-            parse_result.assign_exception_message("Could not read the word 'null'.");
+            parse_result.assign_exception_message(p - 1, "Could not read the word 'null'.");
             return nullptr;
           }
           return null_value;
@@ -3851,14 +4089,14 @@ namespace TinyJSON
         case 'I':
           if (parse_result.options().specification != parse_options::json5_1_0_0)
           {
-            parse_result.assign_exception_message("Unexpected Token while trying to read value.");
+            parse_result.assign_exception_message(p, "Unexpected Token while trying to read value.");
             return nullptr;
           }
           TJ_FALLTHROUGH;
         case '.':
           if (c == '.' && parse_result.options().specification != parse_options::json5_1_0_0)
           {
-             parse_result.assign_exception_message("Unexpected Token while trying to read value.");
+             parse_result.assign_exception_message(p, "Unexpected Token while trying to read value.");
              return nullptr;
           }
           TJ_FALLTHROUGH;
@@ -3909,7 +4147,7 @@ namespace TinyJSON
             break;
           }
           // ERROR: Unexpected Token while trying to read value.
-          parse_result.assign_exception_message("Unexpected Token while trying to read value.");
+          parse_result.assign_exception_message(p, "Unexpected Token while trying to read value.");
           return nullptr;
         }
       }
@@ -3934,7 +4172,7 @@ namespace TinyJSON
       {
         delete[] string_value;
         //  ERROR: could not locate the expected colon after the key value
-        parse_result.assign_exception_message("Could not locate the expected colon after the key value.");
+        parse_result.assign_exception_message(p, "Could not locate the expected colon after the key value.");
         return nullptr;
       }
 
@@ -4116,8 +4354,8 @@ namespace TinyJSON
     ParseResult parse_result(parse_options);
     if (nullptr == source)
     {
-      parse_result.assign_exception_message("The given source is null.");
-      parse_result.throw_if_exception();
+
+      parse_result.assign_exception_message_and_throw("The given source is null.");
       return nullptr;
     }
 
@@ -4127,8 +4365,12 @@ namespace TinyJSON
       source += 3;
     }
 
+    // all the line/column positions are relative to the start of the source, (after the BOM).
+    parse_result.set_source_begin(source);
+
     // we can only have one value and nothing else
     TJValue* value_found = nullptr;
+    const TJCHAR* value_start = nullptr;
     while (*source != TJ_NULL_TERMINATOR)
     {
       TJCHAR c = *source;
@@ -4191,15 +4433,14 @@ namespace TinyJSON
           else
           {
             // Error: Unexpected multiple JSON values in root.
-            parse_result.assign_exception_message("Unexpected multiple JSON values in root.");
             delete value_found;
-            TJASSERT(parse_result.has_exception_message());
-            parse_result.throw_if_exception();
+            parse_result.assign_exception_message_and_throw(source, "Unexpected multiple JSON values in root.");
             return nullptr;
           }
         }
 
         // try and look for the value
+        value_start = source;
         value_found = TJHelper::try_read_Value(source, parse_result);
         if (nullptr == value_found)
         {
@@ -4214,7 +4455,7 @@ namespace TinyJSON
 
     if (value_found != nullptr && value_found->is_comment())
     {
-      parse_result.assign_exception_message(TJCHARPREFIX("A JSON text cannot contain only a comment."));
+      parse_result.assign_exception_message(source, TJCHARPREFIX("A JSON text cannot contain only a comment."));
       delete value_found;
       value_found = nullptr;
 
@@ -4222,34 +4463,28 @@ namespace TinyJSON
       return nullptr;
     }
 
-    if (value_found == nullptr && parse_options.specification == parse_options::json5_1_0_0)
+    if (value_found == nullptr)
     {
-       // JSON5 requires a value
-       return nullptr;
+      parse_result.assign_exception_message_and_throw(source, "The JSON text is empty or contains no value.");
+      return nullptr;
     }
 
     if (parse_options.specification == parse_options::rfc4627 && !parse_result.has_exception_message())
     {
-      if (value_found == nullptr || (!value_found->is_array() && !value_found->is_object()))
+      if (!value_found->is_array() && !value_found->is_object())
       {
-        // error: RFC 4627: A JSON text must be either an object or an array.
-        parse_result.assign_exception_message("RFC 4627: A JSON text must be either an object or an array.");
         delete value_found;
 
         // throw if the options want us to, otherwise return null.
-        parse_result.throw_if_exception();
+        // error: RFC 4627: A JSON text must be either an object or an array.
+        parse_result.assign_exception_message_and_throw(value_start, "RFC 4627: A JSON text must be either an object or an array.");
         return nullptr;
       }
     }
 
     // return if we found anything.
-    // if we found nothing ... then it is not an error, just an empty string
     parse_result.throw_if_exception();
-    if (value_found == nullptr && parse_result.options().specification == parse_options::json5_1_0_0)
-    {
-       return nullptr;
-    }
-    return value_found != nullptr ? value_found : new TJValueString(TJCHARPREFIX(""));
+    return value_found;
   }
 
   /// <summary>
@@ -4267,8 +4502,7 @@ namespace TinyJSON
     auto json = root.dump(write_result.options().write_formatting);
     if (nullptr == json)
     {
-      write_result.assign_exception_message("Unable to dump the json.");
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to dump the json.");
       return false;
     }
 
@@ -4285,9 +4519,8 @@ namespace TinyJSON
     FILE* outFile = std::fopen((const char*)tmp_file_path, "wb");
     if (!outFile)
     {
-      write_result.assign_exception_message("Unable to open file for writing.");
       delete[] tmp_file_path;
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to open file for writing.");
       return false;
     }
 
@@ -4296,10 +4529,9 @@ namespace TinyJSON
       char utf8_marker[3]{ TJ_UTF8_BOM0, TJ_UTF8_BOM1, TJ_UTF8_BOM2 };
       if (std::fwrite(utf8_marker, 1, 3, outFile) != 3)
       {
-        write_result.assign_exception_message("Unable to write UTF-8 BOM.");
         std::fclose(outFile);
         delete[] tmp_file_path;
-        write_result.throw_if_exception();
+        write_result.assign_exception_message_and_throw("Unable to write UTF-8 BOM.");
         return false;
       }
     }
@@ -4307,20 +4539,18 @@ namespace TinyJSON
     auto length = TJHelper::string_length(json);
     if (std::fwrite(json, sizeof(TJCHAR), length, outFile) != length)
     {
-      write_result.assign_exception_message("Unable to write to file.");
       std::fclose(outFile);
       delete[] tmp_file_path;
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to write to file.");
       return false;
     }
 
     // Flush C-runtime buffers to the OS
     if (std::fflush(outFile) != 0)
     {
-      write_result.assign_exception_message("Unable to flush the C-runtime buffer.");
       std::fclose(outFile);
       delete[] tmp_file_path;
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to flush the C-runtime buffer.");
       return false;
     }
 
@@ -4348,9 +4578,8 @@ namespace TinyJSON
 
     if (std::fclose(outFile) != 0)
     {
-      write_result.assign_exception_message("Unable to close the file.");
       delete[] tmp_file_path;
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to close the file.");
       return false;
     }
 
@@ -4358,9 +4587,8 @@ namespace TinyJSON
     std::remove((const char*)file_path);
     if (std::rename((const char*)tmp_file_path, (const char*)file_path) != 0)
     {
-      write_result.assign_exception_message("Unable to atomically rename the temporary file to the target file path.");
       delete[] tmp_file_path;
-      write_result.throw_if_exception();
+      write_result.assign_exception_message_and_throw("Unable to atomically rename the temporary file to the target file path.");
       return false;
     }
 
@@ -4679,6 +4907,11 @@ namespace TinyJSON
   }
 
   bool TJValue::is_comment() const
+  {
+    return false;
+  }
+
+  bool TJValue::is_numeric(bool /*strict*/) const
   {
     return false;
   }
@@ -5091,6 +5324,66 @@ namespace TinyJSON
     return true;
   }
 
+  bool TJValueString::is_numeric(bool strict) const
+  {
+    if (strict)
+    {
+      return false;
+    }
+
+    const TJCHAR* s = raw_value();
+    if (!s || *s == TJ_NULL_TERMINATOR)
+    {
+      return false;
+    }
+
+    bool has_digit = false;
+    bool has_decimal = false;
+    bool has_exponent = false;
+
+    if (*s == '+' || *s == '-')
+    {
+      s++;
+    }
+
+    while (*s != TJ_NULL_TERMINATOR)
+    {
+      if (*s >= '0' && *s <= '9')
+      {
+        has_digit = true;
+      }
+      else if (*s == '.')
+      {
+        if (has_decimal || has_exponent)
+        {
+          return false;
+        }
+        has_decimal = true;
+      }
+      else if (*s == 'e' || *s == 'E')
+      {
+        if (has_exponent || !has_digit)
+        {
+          return false;
+        }
+        has_exponent = true;
+
+        // the exponent must have at least one digit of its own, ("1e" and "1e+" are not numbers).
+        has_digit = false;
+        if (*(s + 1) == '+' || *(s + 1) == '-')
+        {
+          s++;
+        }
+      }
+      else
+      {
+        return false;
+      }
+      s++;
+    }
+    return has_digit;
+  }
+
   void TJValueString::free_value()
   {
     if (nullptr != _value)
@@ -5177,6 +5470,11 @@ namespace TinyJSON
     return !_is_true;
   }
 
+  bool TJValueBoolean::is_numeric(bool /*strict*/) const
+  {
+    return false;
+  }
+
   ///////////////////////////////////////
   /// TJValue null
   TJValueNull::TJValueNull(const parse_options& options) :
@@ -5236,6 +5534,11 @@ namespace TinyJSON
   bool TJValueNull::is_null() const
   {
     return true;
+  }
+
+  bool TJValueNull::is_numeric(bool /*strict*/) const
+  {
+    return false;
   }
 
   ///////////////////////////////////////
@@ -5518,7 +5821,7 @@ namespace TinyJSON
 
     if (type == parse_options::message_type::fatal)
     {
-      _parse_options.callback_function(parse_options::message_type::fatal, msg);
+      _parse_options.callback_function(parse_options::message_type::fatal, msg, -1, -1);
       if (_parse_options.throw_exception)
       {
 #if TJ_USE_CHAR == 1
@@ -5533,7 +5836,7 @@ namespace TinyJSON
     }
     else
     {
-      _parse_options.callback_function(type, msg);
+      _parse_options.callback_function(type, msg, -1, -1);
     }
 
     delete[] msg;
@@ -5843,6 +6146,11 @@ namespace TinyJSON
     return true;
   }
 
+  bool TJValueObject::is_numeric(bool /*strict*/) const
+  {
+    return false;
+  }
+
   unsigned int TJValueObject::get_number_of_items() const
   {
     if (_members == nullptr)
@@ -5949,7 +6257,11 @@ namespace TinyJSON
 
   void TJValueObject::move_member_to_members(TJMember* member)
   {
-    TJHelper::move_member_to_members(member, _members, _parse_options);
+    if (TJHelper::move_member_to_members(member, _members))
+    {
+      // there is no position in a source when the member is moved outside of parsing.
+      _parse_options.callback_function(parse_options::message_type::trace, TJCHARPREFIX("Duplicate key found, overwriting."), -1, -1);
+    }
     TJNumberedValues::reset_number_of_items();
   }
 
@@ -6314,6 +6626,11 @@ namespace TinyJSON
     return true;
   }
 
+  bool TJValueArray::is_numeric(bool /*strict*/) const
+  {
+    return false;
+  }
+
   unsigned int TJValueArray::get_number_of_items() const
   {
     if (_values == nullptr)
@@ -6634,6 +6951,11 @@ namespace TinyJSON
     return true;
   }
 
+  bool TJValueNumber::is_numeric(bool /*strict*/) const
+  {
+    return true;
+  }
+
   long double TJValueNumber::get_float() const
   {
     auto value_float = dynamic_cast<const TinyJSON::TJValueNumberFloat*>(this);
@@ -6645,7 +6967,7 @@ namespace TinyJSON
     auto value_int = dynamic_cast<const TinyJSON::TJValueNumberInt*>(this);
     if (nullptr != value_int)
     {
-      return static_cast<long double>(value_int->get_number());
+      return value_int->get_float();
     }
 
     auto value_exponent = dynamic_cast<const TinyJSON::TJValueNumberExponent*>(this);
@@ -6660,12 +6982,35 @@ namespace TinyJSON
     return 0.0L;
   }
 
+  /// <summary>
+  /// Convert a long double to a long long, clamping the values that do not fit
+  /// as casting them is undefined behaviour.
+  /// </summary>
+  /// <param name="value"></param>
+  /// <returns></returns>
+  static long long clamp_long_double_to_long_long(const long double value)
+  {
+    if (std::isnan(value))
+    {
+      return 0;
+    }
+    if (value >= static_cast<long double>(std::numeric_limits<long long>::max()))
+    {
+      return std::numeric_limits<long long>::max();
+    }
+    if (value <= static_cast<long double>(std::numeric_limits<long long>::min()))
+    {
+      return std::numeric_limits<long long>::min();
+    }
+    return static_cast<long long>(value);
+  }
+
   long long TJValueNumber::get_number() const
   {
     auto value_float = dynamic_cast<const TinyJSON::TJValueNumberFloat*>(this);
     if (nullptr != value_float)
     {
-      return static_cast<long long>(value_float->get_number());
+      return clamp_long_double_to_long_long(value_float->get_number());
     }
 
     auto value_int = dynamic_cast<const TinyJSON::TJValueNumberInt*>(this);
@@ -6678,7 +7023,7 @@ namespace TinyJSON
     if (nullptr != value_exponent)
     {
       // probably over/underflow
-      return static_cast<long long>(value_exponent->get_number());
+      return clamp_long_double_to_long_long(value_exponent->get_number());
     }
 
     ParseResult _parse_result(_parse_options);
@@ -6761,7 +7106,30 @@ namespace TinyJSON
 
   long long TJValueNumberInt::get_number() const
   {
-    return _is_negative ? -1 * static_cast<long long>(_number) : static_cast<long long>(_number);
+    // the number is unsigned so it can be bigger than a long long, in that case we clamp it
+    // rather than silently wrapping around
+    const auto& max_long_long = static_cast<unsigned long long>(std::numeric_limits<long long>::max());
+    if (_is_negative)
+    {
+      if (_number > max_long_long)
+      {
+        // this includes LLONG_MIN itself, (max+1), as we cannot do -1 * (max+1)
+        return std::numeric_limits<long long>::min();
+      }
+      return -1 * static_cast<long long>(_number);
+    }
+    if (_number > max_long_long)
+    {
+      return std::numeric_limits<long long>::max();
+    }
+    return static_cast<long long>(_number);
+  }
+
+  long double TJValueNumberInt::get_float() const
+  {
+    // use the unsigned number directly so we do not lose the numbers that do not fit in a long long.
+    const auto& number = static_cast<long double>(_number);
+    return _is_negative ? -1 * number : number;
   }
 
   ///////////////////////////////////////
@@ -6951,6 +7319,13 @@ namespace TinyJSON
 
     if (_fraction == 0) {
       return static_cast<long double>(_number);
+    }
+
+    if (_fraction_exponent > static_cast<unsigned int>(TJ_MAX_NUMBER_OF_DIGGITS))
+    {
+      // the fraction has a lot of leading zeros, 10^_fraction_exponent does not fit in an unsigned long long
+      const auto& fraction = static_cast<long double>(_fraction) / std::pow(10.0L, static_cast<long double>(_fraction_exponent));
+      return (_is_negative ? -1 : 1) * (static_cast<long double>(_number) + fraction);
     }
 
     // Convert b to its fractional form
@@ -7187,6 +7562,11 @@ namespace TinyJSON
   bool TJValueComment::is_comment() const
   {
     return true;
+  }
+
+  bool TJValueComment::is_numeric(bool /*strict*/) const
+  {
+    return false;
   }
 
   const TJCHAR* TJValueComment::raw_value() const

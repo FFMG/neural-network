@@ -49,10 +49,13 @@
 // v0.2.5 - added raise warning when key is not found.
 // v0.2.6 - fixed a bug in the resizing of string buffers.
 // v0.2.7 - improved parse_file error reporting with specific system errors and file name.
+// v0.2.8 - conformed empty input parsing to RFC specifications (returns nullptr / throws instead of empty string).
+// v0.2.9 - added line and column numbers to parse messages and TJParseException.
+// v0.2.10 - fixed number overflows when parsing, dumping and getting numbers, (issues #53, #54 and #55).
 static const short TJ_VERSION_MAJOR = 0;
 static const short TJ_VERSION_MINOR = 2;
-static const short TJ_VERSION_PATCH = 7;
-static const char TJ_VERSION_STRING[] = "0.2.7";
+static const short TJ_VERSION_PATCH = 10;
+static const char TJ_VERSION_STRING[] = "0.2.10";
 
 #ifndef TJ_USE_CHAR
 #  define TJ_USE_CHAR 1
@@ -380,8 +383,11 @@ class TJDictionary;
     //  3 = warning
     //  4 = error
     //  5 = fatal/panic/exception
+    //  The line and column are 1-based and point to where in the source the message was raised.
+    //  If there is no position, (the source is null, the file could not be opened, a key was not found etc.)
+    //  then both the line and column are -1.
     /// <summary>
-    std::function<void(message_type, const TJCHAR*)> callback_function = [] (message_type, const TJCHAR*) {
+    std::function<void(message_type, const TJCHAR*, int, int)> callback_function = [] (message_type, const TJCHAR*, int, int) {
       // do nothing
     };
   };
@@ -432,17 +438,29 @@ class TJDictionary;
   class TJParseException : public std::exception
   {
   public:
-    TJParseException(const char* message);
+    TJParseException(const char* message, int line = -1, int column = -1);
     TJParseException(const TJParseException& exception);
     TJParseException& operator=(const TJParseException& exception);
     virtual ~TJParseException() noexcept;
 
     virtual const char* what() const noexcept;
 
+    /// <summary>
+    /// The 1-based line number where the error happened, -1 if unknown.
+    /// </summary>
+    int line() const noexcept;
+
+    /// <summary>
+    /// The 1-based column number where the error happened, -1 if unknown.
+    /// </summary>
+    int column() const noexcept;
+
   private:
     void free_message() noexcept;
     void assign_message(const char* message);
     char* _message;
+    int _line;
+    int _column;
   };
 
   struct internal_dump_configuration;
@@ -542,6 +560,7 @@ class TJDictionary;
     virtual bool is_false() const;
     virtual bool is_null() const;
     virtual bool is_comment() const;
+    virtual bool is_numeric(bool strict = false) const;
 
     const TJCHAR* dump(formatting formatting = formatting::indented, const TJCHAR* indent = TJCHARPREFIX("  ")) const;
     const TJCHAR* dump_string() const;
@@ -959,6 +978,7 @@ class TJDictionary;
     /// </summary>
     /// <returns></returns>
     unsigned int get_number_of_elements() const;
+    bool is_numeric(bool strict = false) const override;
 
     /// <summary>
     /// Try and get a string value, if it does not exist, then we return null.
@@ -1550,6 +1570,7 @@ class TJDictionary;
     TJValue* element_at(int idx) const;
 
     bool is_array() const override;
+    bool is_numeric(bool strict = false) const override;
 
     void add(const TJValue* value);
     void add_boolean(bool value);
@@ -1689,6 +1710,7 @@ class TJDictionary;
     virtual ~TJValueString();
 
     bool is_string() const override;
+    bool is_numeric(bool strict = false) const override;
 
     const TJCHAR* raw_value() const;
 
@@ -1726,6 +1748,7 @@ class TJDictionary;
 
     bool is_true() const override;
     bool is_false() const override;
+    bool is_numeric(bool strict = false) const override;
 
   protected:
     /// <summary>
@@ -1751,6 +1774,7 @@ class TJDictionary;
     virtual ~TJValueNull() = default;
 
     bool is_null() const override;
+    bool is_numeric(bool strict = false) const override;
 
   protected:
     /// <summary>
@@ -1774,6 +1798,7 @@ class TJDictionary;
 
   public:
     bool is_number() const override;
+    bool is_numeric(bool strict = false) const override;
 
     long double get_float() const;
     long long get_number() const;
@@ -1795,6 +1820,7 @@ class TJDictionary;
     virtual ~TJValueNumberInt() = default;
 
     long long get_number() const;
+    long double get_float() const;
 
   protected:
     /// <summary>
@@ -1881,6 +1907,7 @@ class TJDictionary;
     virtual ~TJValueComment();
 
     bool is_comment() const override;
+    bool is_numeric(bool strict = false) const override;
 
     const TJCHAR* raw_value() const;
 
