@@ -6752,12 +6752,61 @@ namespace TinyJSON
     _values = nullptr;
   }
 
+  /// <summary>
+  /// Raise the error when a value in an array cannot be converted to a number.
+  /// The offending value is added to the message as minified JSON, truncated if it is too long.
+  /// Any character that is not printable ASCII is replaced with '?' so the message is always
+  /// a safe char string, regardless of what TJCHAR is.
+  /// </summary>
+  /// <param name="parse_result"></param>
+  /// <param name="value">The value that is not a number.</param>
+  /// <param name="index">The index of the value in the array, (comments are not counted).</param>
+  static void assign_array_value_not_a_number_and_throw(ParseResult& parse_result, const TJValue& value, const unsigned int index)
+  {
+    const unsigned int max_value_length = 32;
+    const char* const ellipsis = "...";
+
+    // the value, the ellipsis and the null terminator.
+    char value_text[max_value_length + 4] = {};
+    const TJCHAR* dumped_value = value.dump(formatting::minify);
+    if (nullptr == dumped_value)
+    {
+      std::strcpy(value_text, "<unknown>");
+    }
+    else
+    {
+      unsigned int value_length = 0;
+      while (dumped_value[value_length] != TJ_NULL_TERMINATOR && value_length < max_value_length)
+      {
+        const auto character = static_cast<unsigned long>(dumped_value[value_length]);
+        if (character >= 0x20 && character <= 0x7E)
+        {
+          value_text[value_length] = static_cast<char>(character);
+        }
+        else
+        {
+          value_text[value_length] = '?';
+        }
+        ++value_length;
+      }
+      if (dumped_value[value_length] != TJ_NULL_TERMINATOR)
+      {
+        std::strcpy(value_text + value_length, ellipsis);
+      }
+    }
+
+    char message[256] = {};
+    std::snprintf(message, sizeof(message), "One or more values in the array is not a number! The value %s at index %u could not be converted to a number.", value_text, index);
+    parse_result.assign_exception_message_and_throw(message);
+  }
+
   std::vector<long double> TJValueArray::get_floats() const
   {
     const unsigned int count = get_number_of_items();
     std::vector<long double> values = {};
     values.reserve(count);
     const unsigned int elements_count = get_number_of_elements();
+    unsigned int item_index = 0;
     for (unsigned int i = 0; i < elements_count; ++i)
     {
       auto* value = element_at(i);
@@ -6768,9 +6817,11 @@ namespace TinyJSON
       if (!value->is_number())
       {
         ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("One or more values in the array is not a number!");
+        assign_array_value_not_a_number_and_throw(_parse_result, *value, item_index);
+        ++item_index;
         continue;
       }
+      ++item_index;
       auto number = static_cast<TJValueNumber*>(value);
       values.push_back(number->get_float());
     }
@@ -6783,6 +6834,7 @@ namespace TinyJSON
     std::vector<long long> values = {};
     values.reserve(count);
     const unsigned int elements_count = get_number_of_elements();
+    unsigned int item_index = 0;
     for (unsigned int i = 0; i < elements_count; ++i)
     {
       auto* value = element_at(i);
@@ -6793,9 +6845,11 @@ namespace TinyJSON
       if (!value->is_number())
       {
         ParseResult _parse_result(_parse_options);
-        _parse_result.assign_exception_message_and_throw("One or more values in the array is not a number!");
+        assign_array_value_not_a_number_and_throw(_parse_result, *value, item_index);
+        ++item_index;
         continue;
       }
+      ++item_index;
       auto number = static_cast<TJValueNumber*>(value);
       values.push_back(number->get_number());
     }
